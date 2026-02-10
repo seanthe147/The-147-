@@ -6,6 +6,7 @@ import {
   ScrollView,
   Pressable,
   Platform,
+  Linking,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -106,7 +107,7 @@ export default function HomeScreen() {
           <Pressable
             onPress={() => {
               if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              router.push("/(tabs)/book");
+              Linking.openURL("https://www.the147.co.uk/book-online");
             }}
             style={({ pressed }) => [
               styles.heroButton,
@@ -115,6 +116,7 @@ export default function HomeScreen() {
           >
             <Ionicons name="calendar" size={18} color={Colors.brand.dark} />
             <Text style={styles.heroButtonText}>Book Now</Text>
+            <Ionicons name="open-outline" size={14} color={Colors.brand.dark} />
           </Pressable>
         </View>
       </LinearGradient>
@@ -125,7 +127,7 @@ export default function HomeScreen() {
           <QuickAction
             icon="calendar"
             label="Book Table"
-            onPress={() => router.push("/(tabs)/book")}
+            onPress={() => Linking.openURL("https://www.the147.co.uk/book-online")}
             color={Colors.brand.blue}
           />
           <QuickAction
@@ -136,8 +138,8 @@ export default function HomeScreen() {
           />
           <QuickAction
             icon="restaurant"
-            label="Dine In"
-            onPress={() => router.push("/(tabs)/book")}
+            label="Order"
+            onPress={() => router.push("/(tabs)/order")}
             color={Colors.brand.gold}
           />
           <QuickAction
