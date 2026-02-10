@@ -183,10 +183,10 @@ export default function BookScreen() {
           })}
         </View>
 
-        <View style={{ height: Platform.OS === "web" ? 34 : 140 }} />
+        <View style={{ height: Platform.OS === "web" ? 120 : 140 }} />
       </ScrollView>
 
-      <View style={[styles.bottomBar, { paddingBottom: Platform.OS === "web" ? 34 : insets.bottom + 16 }]}>
+      <View style={[styles.bottomBar, { paddingBottom: Platform.OS === "web" ? 34 : insets.bottom + 16, bottom: Platform.OS === "web" ? 84 : 0 }]}>
         <Pressable
           onPress={handleBook}
           disabled={!canBook}
