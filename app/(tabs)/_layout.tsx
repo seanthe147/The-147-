@@ -18,6 +18,10 @@ function NativeTabLayout() {
         <Icon sf={{ default: "calendar", selected: "calendar" }} />
         <Label>Book</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="menu">
+        <Icon sf={{ default: "fork.knife", selected: "fork.knife" }} />
+        <Label>Menu</Label>
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="events">
         <Icon sf={{ default: "ticket", selected: "ticket.fill" }} />
         <Label>Events</Label>
@@ -82,6 +86,15 @@ function ClassicTabLayout() {
           title: "Book",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="calendar" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="menu"
+        options={{
+          title: "Menu",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="restaurant" size={size} color={color} />
           ),
         }}
       />
