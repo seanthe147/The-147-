@@ -6,6 +6,7 @@ import { Platform, StyleSheet, useColorScheme, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import Colors from "@/constants/colors";
+import { useTabBar } from "@/contexts/TabBarContext";
 
 function NativeTabLayout() {
   return (
@@ -18,9 +19,9 @@ function NativeTabLayout() {
         <Icon sf={{ default: "calendar", selected: "calendar" }} />
         <Label>Book</Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="menu">
+      <NativeTabs.Trigger name="order">
         <Icon sf={{ default: "fork.knife", selected: "fork.knife" }} />
-        <Label>Menu</Label>
+        <Label>Order</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="events">
         <Icon sf={{ default: "ticket", selected: "ticket.fill" }} />
@@ -39,6 +40,9 @@ function ClassicTabLayout() {
   const isDark = colorScheme === "dark";
   const isWeb = Platform.OS === "web";
   const isIOS = Platform.OS === "ios";
+  const { tabBarVisible } = useTabBar();
+
+  const tabBarHeight = isWeb ? 84 : 50;
 
   return (
     <Tabs
@@ -53,6 +57,8 @@ function ClassicTabLayout() {
           borderTopColor: isDark ? "#1F2937" : "#E5E7EB",
           elevation: 0,
           ...(isWeb ? { height: 84 } : {}),
+          transform: [{ translateY: tabBarVisible ? 0 : tabBarHeight + 40 }],
+          transition: "transform 0.25s ease-in-out" as any,
         },
         tabBarBackground: () =>
           isIOS ? (
@@ -90,9 +96,9 @@ function ClassicTabLayout() {
         }}
       />
       <Tabs.Screen
-        name="menu"
+        name="order"
         options={{
-          title: "Menu",
+          title: "Order",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="restaurant" size={size} color={color} />
           ),
