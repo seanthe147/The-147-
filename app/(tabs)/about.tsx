@@ -71,6 +71,7 @@ export default function AboutScreen() {
             source={require("@/attached_assets/logo.png")}
             style={styles.heroLogo}
             resizeMode="contain"
+            tintColor="#FFFFFF"
           />
           <Text style={styles.heroTagline}>
             Your premier destination for snooker, pool, dining and entertainment
@@ -195,7 +196,6 @@ const styles = StyleSheet.create({
     width: 180,
     height: 55,
     marginBottom: 12,
-    tintColor: "#FFFFFF",
   },
   heroTagline: {
     fontFamily: "Montserrat_400Regular",

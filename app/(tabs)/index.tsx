@@ -106,6 +106,7 @@ export default function HomeScreen() {
             source={require("@/attached_assets/logo.png")}
             style={styles.logo}
             resizeMode="contain"
+            tintColor="#FFFFFF"
           />
           <Text style={styles.heroSubtitle}>Venue  /  Snooker  /  Bar  /  Restaurant</Text>
           <Pressable
@@ -222,7 +223,6 @@ const styles = StyleSheet.create({
     width: 200,
     height: 60,
     marginBottom: 8,
-    tintColor: "#FFFFFF",
   },
   heroSubtitle: {
     fontFamily: "Montserrat_400Regular",
@@ -295,10 +295,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     overflow: "hidden",
     elevation: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
+    boxShadow: "0px 2px 8px rgba(0, 0, 0, 0.15)",
   },
   featuredGradient: {
     padding: 20,
