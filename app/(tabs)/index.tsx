@@ -6,7 +6,6 @@ import {
   ScrollView,
   Pressable,
   Platform,
-  Image,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -102,12 +101,7 @@ export default function HomeScreen() {
         end={{ x: 0.5, y: 1 }}
       >
         <View style={[styles.heroContent, { paddingTop: insets.top + 20 + webTopInset }]}>
-          <Image
-            source={require("@/attached_assets/logo.png")}
-            style={styles.logo}
-            resizeMode="contain"
-            tintColor="#FFFFFF"
-          />
+          <Text style={styles.logoText}>The 147</Text>
           <Text style={styles.heroSubtitle}>Venue  /  Snooker  /  Bar  /  Restaurant</Text>
           <Pressable
             onPress={() => {
@@ -219,10 +213,12 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
     alignItems: "center",
   },
-  logo: {
-    width: 200,
-    height: 60,
-    marginBottom: 8,
+  logoText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 42,
+    color: "#FFFFFF",
+    letterSpacing: 1,
+    marginBottom: 4,
   },
   heroSubtitle: {
     fontFamily: "Montserrat_400Regular",

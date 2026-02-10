@@ -7,7 +7,6 @@ import {
   Pressable,
   Platform,
   Linking,
-  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -67,12 +66,7 @@ export default function AboutScreen() {
         style={styles.heroSection}
       >
         <View style={[styles.heroInner, { paddingTop: insets.top + 24 + webTopInset }]}>
-          <Image
-            source={require("@/attached_assets/logo.png")}
-            style={styles.heroLogo}
-            resizeMode="contain"
-            tintColor="#FFFFFF"
-          />
+          <Text style={styles.heroLogoText}>The 147</Text>
           <Text style={styles.heroTagline}>
             Your premier destination for snooker, pool, dining and entertainment
           </Text>
@@ -192,9 +186,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 32,
   },
-  heroLogo: {
-    width: 180,
-    height: 55,
+  heroLogoText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 38,
+    color: "#FFFFFF",
+    letterSpacing: 1,
     marginBottom: 12,
   },
   heroTagline: {
