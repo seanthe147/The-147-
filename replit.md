@@ -9,7 +9,7 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - **Events**: Event listings with external TicketSource integration
 - **Order**: Embedded WebView to OrderTab menu
 - **About**: Venue info, facilities grid, opening hours, contact/social links, legal & privacy links
-- **Staff Portal**: PIN-authenticated gateway to all admin tools (offers, notifications) with session management
+- **Staff Portal**: Username + PIN authenticated gateway to all admin tools (offers, notifications) with session management
 - **Bookings Calendar**: Staff admin screen to view/manage bookings by date with week navigation, cancel/delete actions
 - **Offers Management**: Admin interface to create/edit/delete promotional offers (protected by staff auth)
 - **GDPR Compliance**: Consent banner on first launch, privacy policy screen, consent management with revoke option
@@ -46,9 +46,12 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - `server/templates/staff-dashboard.html` - Staff web dashboard for PC-based booking management
 
 ## API Endpoints
-- `POST /api/staff/login` - Authenticate with staff PIN, returns session token
+- `POST /api/staff/register` - Create staff account (requires master PIN, username, PIN, optional display name)
+- `POST /api/staff/login` - Authenticate with username + PIN, returns session token
 - `POST /api/staff/logout` - Invalidate session token
 - `GET /api/staff/verify` - Verify session token validity (auth required)
+- `GET /api/staff/users` - List all active staff users (auth required)
+- `POST /api/staff/migrate-encryption` - Encrypt existing plaintext customer data (auth required)
 - `GET /api/offers` - List all offers
 - `POST /api/offers` - Create a new offer (auth required)
 - `PUT /api/offers/:id` - Update an offer (auth required)
@@ -68,7 +71,7 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 
 ## Staff Web Dashboard
 - Served at GET `/staff` on port 5000 (self-contained HTML, no external dependencies)
-- PIN login, then full booking management: view by date, create, edit, cancel, delete
+- Username + PIN login, then full booking management: view by date, create, edit, cancel, delete
 - Optimized for desktop/PC use by staff
 - Access URL: `{domain}/staff` (goes through Express backend on port 5000)
 
@@ -84,12 +87,15 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - **Staff GDPR Panel**: Dashboard tools for data lookup, export, erase, and retention cleanup
 
 ## Security
+- **Customer data encryption**: AES-256-GCM encryption for PII (name, email, phone) with SHA-256 email hashing for searchable lookups
+- **Staff authentication**: Individual username + PIN accounts with scrypt-hashed PINs (64-byte derived key), timing-safe verification
+- **Staff registration**: Requires venue master PIN (STAFF_PIN env var) to create accounts
 - Rate limiting on staff login: 5 attempts per 15-minute window per IP
-- Timing-safe PIN comparison to prevent timing attacks
 - Secure HTTP headers: CSP, X-Frame-Options, X-Content-Type-Options, X-XSS-Protection
-- Session tokens expire after 8 hours with cleanup endpoint
+- Session tokens expire after 8 hours with cleanup endpoint, linked to staff user accounts
 - XSS protection in staff dashboard via HTML entity escaping
 - JSON body size limit: 100kb
+- Encryption migration endpoint to encrypt existing plaintext data
 
 ## Technical Notes
 - Query cache uses refetchQueries (not invalidateQueries) due to staleTime: Infinity config
@@ -114,3 +120,6 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - Feb 2026: Added security hardening - rate limiting, timing-safe PIN, CSP headers, session expiry
 - Feb 2026: Added GDPR data subject rights - export, erasure, retention cleanup APIs and staff dashboard tools
 - Feb 2026: Updated privacy policy with booking data collection, 90-day retention, legal bases
+- Feb 2026: Added AES-256-GCM encryption for customer PII (name, email, phone) with SHA-256 email hashing
+- Feb 2026: Added staff user accounts with username + PIN authentication, scrypt-hashed PINs
+- Feb 2026: Updated staff portal and web dashboard with username login and account registration
