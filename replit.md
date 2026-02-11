@@ -30,6 +30,8 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - `app/admin-bookings.tsx` - Staff bookings calendar with week navigation (modal, auth-guarded)
 - `app/admin-offers.tsx` - Admin offers management screen (modal, auth-guarded)
 - `app/admin-notifications.tsx` - Push notification admin screen (modal, auth-guarded)
+- `app/admin-banner.tsx` - Admin banner image management screen (modal, auth-guarded)
+- `app/contact.tsx` - Contact Us form screen (modal)
 - `app/privacy-policy.tsx` - Privacy policy & UK GDPR info screen (modal)
 - `components/ConsentBanner.tsx` - GDPR consent banner overlay
 - `components/ErrorBoundary.tsx` - Error boundary component
@@ -68,6 +70,12 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - `PATCH /api/bookings/:id/status` - Update booking status (auth required)
 - `PUT /api/bookings/:id` - Update a booking with conflict detection (auth required)
 - `DELETE /api/bookings/:id` - Delete a booking (auth required)
+- `GET /api/settings` - Get all site settings (public)
+- `GET /api/settings/:key` - Get a single setting (public)
+- `PUT /api/settings/:key` - Update a setting (auth required)
+- `POST /api/contact` - Submit a contact form message (public)
+- `GET /api/contact` - List all contact messages (auth required)
+- `PATCH /api/contact/:id/status` - Update contact message status (auth required)
 
 ## Staff Web Dashboard
 - Served at GET `/staff` on port 5000 (self-contained HTML, no external dependencies)
