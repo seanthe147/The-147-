@@ -103,23 +103,42 @@ export default function OrderScreen() {
     ],
   }));
 
+  const hideTabBarNow = useCallback(() => {
+    if (!hasHiddenRef.current) {
+      hasHiddenRef.current = true;
+      setTabBarVisible(false);
+    }
+  }, [setTabBarVisible]);
+
   if (Platform.OS === "web") {
     return (
-      <View style={styles.container}>
+      <View
+        style={styles.container}
+        onTouchStart={hideTabBarNow}
+        {...({ onMouseDown: hideTabBarNow, onWheel: hideTabBarNow } as any)}
+      >
         <View style={{ height: webTopInset }} />
         <View style={styles.webHeader}>
           <Text style={styles.headerTitle}>Order</Text>
         </View>
-        <iframe
-          src={MENU_URL}
-          style={{
-            flex: 1,
-            border: "none",
-            width: "100%",
-            height: "100%",
-          } as any}
-          title="The 147 Order"
-        />
+        <View style={{ flex: 1, position: "relative" as any }}>
+          <iframe
+            src={MENU_URL}
+            style={{
+              flex: 1,
+              border: "none",
+              width: "100%",
+              height: "100%",
+            } as any}
+            title="The 147 Order"
+          />
+          {tabBarVisible && (
+            <Pressable
+              onPress={hideTabBarNow}
+              style={styles.iframeOverlay}
+            />
+          )}
+        </View>
         {!tabBarVisible && (
           <Animated.View
             style={[
@@ -246,6 +265,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.light.textSecondary,
     marginTop: 12,
+  },
+  iframeOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 50,
+    backgroundColor: "transparent",
   },
   fab: {
     position: "absolute",

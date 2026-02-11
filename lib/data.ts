@@ -40,13 +40,6 @@ export const TABLE_TYPES: TableType[] = [
     pricePerHour: "Free",
     icon: "restaurant",
   },
-  {
-    id: "vip",
-    name: "VIP Lounge",
-    description: "Private area with dedicated service",
-    pricePerHour: "25",
-    icon: "star",
-  },
 ];
 
 export const EVENTS: Event[] = [

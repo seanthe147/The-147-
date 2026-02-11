@@ -22,14 +22,12 @@ const TABLE_LABELS: Record<string, string> = {
   snooker: "Snooker",
   pool: "Pool",
   dining: "Dining",
-  vip: "VIP Lounge",
 };
 
 const TABLE_ICONS: Record<string, string> = {
   snooker: "ellipse",
   pool: "ellipse-outline",
   dining: "restaurant",
-  vip: "star",
 };
 
 function formatDateLabel(dateStr: string): string {

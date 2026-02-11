@@ -13,6 +13,8 @@ import {
   type InsertBooking,
   type StaffSession,
   type StaffUser,
+  type ContactMessage,
+  type InsertContactMessage,
   users,
   offers,
   pushTokens,
@@ -20,6 +22,7 @@ import {
   bookings,
   staffSessions,
   staffUsers,
+  contactMessages,
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
 
@@ -323,6 +326,20 @@ export class DatabaseStorage implements IStorage {
       migrated++;
     }
     return migrated;
+  }
+
+  async createContactMessage(data: InsertContactMessage): Promise<ContactMessage> {
+    const [created] = await db.insert(contactMessages).values(data).returning();
+    return created;
+  }
+
+  async getContactMessages(): Promise<ContactMessage[]> {
+    return db.select().from(contactMessages).orderBy(contactMessages.createdAt);
+  }
+
+  async updateContactMessageStatus(id: number, status: string): Promise<ContactMessage | undefined> {
+    const [updated] = await db.update(contactMessages).set({ status }).where(eq(contactMessages.id, id)).returning();
+    return updated;
   }
 }
 

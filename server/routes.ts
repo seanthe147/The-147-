@@ -4,7 +4,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { storage } from "./storage";
-import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema } from "@shared/schema";
+import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema } from "@shared/schema";
 import { hashPin, verifyPin } from "./encryption";
 
 const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
@@ -513,6 +513,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
       expiredSessionsCleared: sessionsCleared,
       retentionPeriodDays: 90,
     });
+  });
+
+  app.post("/api/contact", async (req, res) => {
+    const parsed = insertContactMessageSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Please fill in all required fields", errors: parsed.error.flatten() });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(parsed.data.email)) {
+      return res.status(400).json({ message: "Please enter a valid email address" });
+    }
+
+    const contact = await storage.createContactMessage(parsed.data);
+
+    try {
+      const resendKey = process.env.RESEND_API_KEY;
+      if (resendKey) {
+        await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${resendKey}`,
+          },
+          body: JSON.stringify({
+            from: "The 147 App <onboarding@resend.dev>",
+            to: "info@the147.co.uk",
+            subject: `Contact Form: ${parsed.data.subject}`,
+            html: `<h2>New Contact Form Submission</h2>
+<p><strong>Name:</strong> ${parsed.data.name}</p>
+<p><strong>Email:</strong> ${parsed.data.email}</p>
+<p><strong>Phone:</strong> ${parsed.data.phone || "Not provided"}</p>
+<p><strong>Subject:</strong> ${parsed.data.subject}</p>
+<p><strong>Message:</strong></p>
+<p>${parsed.data.message.replace(/\n/g, "<br>")}</p>
+<hr>
+<p><small>Sent via The 147 App contact form</small></p>`,
+          }),
+        });
+      }
+    } catch (err) {
+      console.error("Email send error (non-critical):", err);
+    }
+
+    res.status(201).json({ message: "Your message has been sent. We'll get back to you soon!", id: contact.id });
+  });
+
+  app.get("/api/contact", staffAuth, async (_req, res) => {
+    const messages = await storage.getContactMessages();
+    res.json(messages);
+  });
+
+  app.patch("/api/contact/:id/status", staffAuth, async (req, res) => {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const { status } = req.body;
+    if (!status || !["new", "read", "replied"].includes(status)) {
+      return res.status(400).json({ message: "Invalid status" });
+    }
+    const updated = await storage.updateContactMessageStatus(id, status);
+    if (!updated) return res.status(404).json({ message: "Message not found" });
+    res.json(updated);
   });
 
   app.get("/staff", (_req, res) => {

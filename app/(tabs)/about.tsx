@@ -97,7 +97,7 @@ export default function AboutScreen() {
             <FacilityItem icon="restaurant" label="Restaurant & Kitchen" />
             <FacilityItem icon="beer" label="Fully Licensed Bar" />
             <FacilityItem icon="tv" label="Live Sports Screens" />
-            <FacilityItem icon="star" label="VIP Lounge Area" />
+            <FacilityItem icon="game-controller" label="Entertainment Area" />
             <FacilityItem icon="musical-notes" label="Live Music Events" />
             <FacilityItem icon="trophy" label="Weekly Tournaments" />
             <FacilityItem icon="wifi" label="Free Wi-Fi" />
@@ -133,6 +133,16 @@ export default function AboutScreen() {
 
         <InfoSection icon="call" title="Contact & Location">
           <View style={styles.contactList}>
+            <Pressable
+              onPress={() => router.push("/contact")}
+              style={({ pressed }) => [styles.contactItem, { opacity: pressed ? 0.7 : 1 }]}
+              testID="contact-us-link"
+            >
+              <Ionicons name="mail-outline" size={18} color={Colors.brand.blue} />
+              <Text style={styles.contactText}>Contact Us</Text>
+              <Ionicons name="chevron-forward" size={14} color={Colors.light.textSecondary} />
+            </Pressable>
+
             <Pressable
               onPress={() => Linking.openURL("https://www.the147.co.uk")}
               style={({ pressed }) => [styles.contactItem, { opacity: pressed ? 0.7 : 1 }]}
