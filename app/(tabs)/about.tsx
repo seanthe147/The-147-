@@ -149,6 +149,26 @@ export default function AboutScreen() {
           </View>
         </InfoSection>
 
+        <InfoSection icon="shield-checkmark" title="Legal & Privacy">
+          <Pressable
+            onPress={() => router.push("/privacy-policy")}
+            style={({ pressed }) => [styles.contactItem, { opacity: pressed ? 0.7 : 1 }]}
+            testID="privacy-policy-link"
+          >
+            <Ionicons name="document-text-outline" size={18} color={Colors.brand.blue} />
+            <Text style={styles.contactText}>Privacy Policy</Text>
+            <Ionicons name="chevron-forward" size={14} color={Colors.light.textSecondary} />
+          </Pressable>
+          <Pressable
+            onPress={() => router.push("/privacy-policy")}
+            style={({ pressed }) => [styles.contactItem, { opacity: pressed ? 0.7 : 1 }]}
+          >
+            <Ionicons name="shield-outline" size={18} color={Colors.brand.blue} />
+            <Text style={styles.contactText}>UK GDPR Rights</Text>
+            <Ionicons name="chevron-forward" size={14} color={Colors.light.textSecondary} />
+          </Pressable>
+        </InfoSection>
+
         <Pressable
           onPress={() => router.push("/admin-offers")}
           style={({ pressed }) => [
