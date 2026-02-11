@@ -5,11 +5,12 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 
 ## Features
 - **Home**: Hero branding, quick actions, offers banner, featured events, today's hours
-- **Book a Table**: Embedded WebView to the147.co.uk booking system
+- **Book a Table**: Native in-app booking flow (select table, date/time, contact details, GDPR consent, confirm)
 - **Events**: Event listings with external TicketSource integration
 - **Order**: Embedded WebView to OrderTab menu
 - **About**: Venue info, facilities grid, opening hours, contact/social links, legal & privacy links
 - **Staff Portal**: PIN-authenticated gateway to all admin tools (offers, notifications) with session management
+- **Bookings Calendar**: Staff admin screen to view/manage bookings by date with week navigation, cancel/delete actions
 - **Offers Management**: Admin interface to create/edit/delete promotional offers (protected by staff auth)
 - **GDPR Compliance**: Consent banner on first launch, privacy policy screen, consent management with revoke option
 - **Push Notifications**: Admin interface to compose and send push notifications (protected by staff auth)
@@ -17,7 +18,7 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 ## Architecture
 - Frontend: Expo Router with tab navigation (5 tabs: Home, Book, Events, Order, About)
 - Backend: Express on port 5000 (landing page + API)
-- Database: PostgreSQL for offers, push tokens, and notification history
+- Database: PostgreSQL for offers, push tokens, notification history, and bookings
 - State: React Query for server state, AsyncStorage for consent preferences
 - Font: Montserrat (Google Fonts)
 - Colors: Brand blue (#0047AB), red (#DF3131), gold (#D4A843), dark navy (#0A1628)
@@ -26,6 +27,7 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - `app/(tabs)/` - Tab screens (index, book, events, order, about)
 - `app/_layout.tsx` - Root layout with providers (QueryClient, Consent, StaffAuth, Notification, TabBar)
 - `app/staff-portal.tsx` - Staff portal with PIN login gate and admin dashboard
+- `app/admin-bookings.tsx` - Staff bookings calendar with week navigation (modal, auth-guarded)
 - `app/admin-offers.tsx` - Admin offers management screen (modal, auth-guarded)
 - `app/admin-notifications.tsx` - Push notification admin screen (modal, auth-guarded)
 - `app/privacy-policy.tsx` - Privacy policy & UK GDPR info screen (modal)
@@ -39,7 +41,7 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - `lib/query-client.ts` - React Query client configuration
 - `constants/colors.ts` - Theme colors
 - `shared/schema.ts` - Database schema (Drizzle ORM)
-- `server/routes.ts` - API routes (offers CRUD, push tokens, notifications)
+- `server/routes.ts` - API routes (offers CRUD, push tokens, notifications, bookings)
 - `server/storage.ts` - Database storage layer
 
 ## API Endpoints
@@ -55,6 +57,12 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - `DELETE /api/push-tokens/:token` - Remove a push token (auth required)
 - `POST /api/notifications/send` - Send push notification to all devices (auth required)
 - `GET /api/notifications/history` - Get notification send history (auth required)
+- `POST /api/bookings` - Create a new table booking (public)
+- `GET /api/bookings` - List all bookings, optionally filter by ?date=YYYY-MM-DD (auth required)
+- `GET /api/bookings/availability` - Check slot availability for ?date=X&tableType=Y (public)
+- `GET /api/bookings/:id` - Get a single booking (auth required)
+- `PATCH /api/bookings/:id/status` - Update booking status (auth required)
+- `DELETE /api/bookings/:id` - Delete a booking (auth required)
 
 ## GDPR & Data Protection
 - Consent banner shown on first app launch with "Essential Only" and "Accept All" options
@@ -67,7 +75,7 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 ## Technical Notes
 - Query cache uses refetchQueries (not invalidateQueries) due to staleTime: Infinity config
 - Delete confirmations use Platform.OS check for web vs native dialog handling
-- WebView tabs (Book, Order) auto-hide tab bar after 1.5s delay
+- WebView tabs (Order) auto-hide tab bar after 1.5s delay
 
 ## Recent Changes
 - Feb 2026: Initial build with all tabs, booking flow, events/tickets, about page
@@ -75,3 +83,5 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - Feb 2026: Added UK GDPR compliance - consent banner, privacy policy, consent management
 - Feb 2026: Added push notifications - admin compose/send screen, device registration, notification history
 - Feb 2026: Added staff portal with PIN authentication, session tokens, auth guards on all admin endpoints
+- Feb 2026: Added native in-app booking system with table selection, date/time picker, GDPR consent, availability checking
+- Feb 2026: Added staff bookings calendar with week navigation, day selection, booking management (cancel/delete)
