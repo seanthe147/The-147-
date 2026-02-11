@@ -222,7 +222,9 @@ export default function AdminBookingsScreen() {
                       <View style={styles.bookingInfo}>
                         <View style={styles.bookingNameRow}>
                           <Ionicons name={TABLE_ICONS[booking.tableType] as any} size={16} color={Colors.brand.blue} />
-                          <Text style={styles.bookingTableType}>{TABLE_LABELS[booking.tableType] || booking.tableType}</Text>
+                          <Text style={styles.bookingTableType}>
+                            {TABLE_LABELS[booking.tableType] || booking.tableType}{booking.tableNumber ? ` - Table ${booking.tableNumber}` : ""}
+                          </Text>
                         </View>
                         <Text style={styles.bookingName}>{booking.customerName}</Text>
                         <View style={styles.contactRow}>

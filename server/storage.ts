@@ -42,7 +42,7 @@ export interface IStorage {
   getBooking(id: number): Promise<Booking | undefined>;
   updateBookingStatus(id: number, status: string): Promise<Booking | undefined>;
   deleteBooking(id: number): Promise<boolean>;
-  getBookedSlots(date: string, tableType: string): Promise<Array<{ startTime: string; duration: number }>>;
+  getBookedSlots(date: string, tableType: string, tableNumber?: string): Promise<Array<{ startTime: string; duration: number }>>;
   createStaffSession(token: string, expiresAt: Date): Promise<StaffSession>;
   validateStaffSession(token: string): Promise<StaffSession | undefined>;
   invalidateStaffSession(token: string): Promise<boolean>;
@@ -141,17 +141,19 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
-  async getBookedSlots(date: string, tableType: string): Promise<Array<{ startTime: string; duration: number }>> {
+  async getBookedSlots(date: string, tableType: string, tableNumber?: string): Promise<Array<{ startTime: string; duration: number }>> {
+    const conditions = [
+      eq(bookings.date, date),
+      eq(bookings.tableType, tableType),
+      eq(bookings.status, "confirmed"),
+    ];
+    if (tableNumber) {
+      conditions.push(eq(bookings.tableNumber, tableNumber));
+    }
     const results = await db
       .select({ startTime: bookings.startTime, duration: bookings.duration })
       .from(bookings)
-      .where(
-        and(
-          eq(bookings.date, date),
-          eq(bookings.tableType, tableType),
-          eq(bookings.status, "confirmed")
-        )
-      );
+      .where(and(...conditions));
     return results;
   }
 

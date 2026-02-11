@@ -63,6 +63,7 @@ export const bookings = pgTable("bookings", {
   customerEmail: text("customer_email").notNull(),
   customerPhone: text("customer_phone").notNull(),
   tableType: text("table_type").notNull(),
+  tableNumber: text("table_number"),
   date: text("date").notNull(),
   startTime: text("start_time").notNull(),
   duration: serial("duration").notNull(),

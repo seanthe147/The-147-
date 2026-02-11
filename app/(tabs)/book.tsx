@@ -26,6 +26,8 @@ const BOOKING_HOURS = [
 
 const DURATION_OPTIONS = [1, 2, 3];
 
+const SNOOKER_TABLES = Array.from({ length: 10 }, (_, i) => (i + 1).toString());
+
 function getNext7Days(): Array<{ label: string; date: string; dayName: string; dayNum: string }> {
   const days: Array<{ label: string; date: string; dayName: string; dayNum: string }> = [];
   const now = new Date();
@@ -49,6 +51,7 @@ export default function BookScreen() {
 
   const [step, setStep] = useState<Step>("table");
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
+  const [selectedTableNumber, setSelectedTableNumber] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [duration, setDuration] = useState(1);
@@ -60,9 +63,13 @@ export default function BookScreen() {
 
   const days = useMemo(() => getNext7Days(), []);
 
+  const isSnooker = selectedTable === "snooker";
+  const availabilityQueryStr = isSnooker && selectedTableNumber
+    ? `?date=${selectedDate}&tableType=${selectedTable}&tableNumber=${selectedTableNumber}`
+    : `?date=${selectedDate}&tableType=${selectedTable}`;
   const availabilityQuery = useQuery<Array<{ startTime: string; duration: number }>>({
-    queryKey: ["/api/bookings/availability", `?date=${selectedDate}&tableType=${selectedTable}`],
-    enabled: !!selectedDate && !!selectedTable,
+    queryKey: ["/api/bookings/availability", availabilityQueryStr],
+    enabled: !!selectedDate && !!selectedTable && (!isSnooker || !!selectedTableNumber),
   });
 
   const bookedSlots = availabilityQuery.data ?? [];
@@ -113,6 +120,7 @@ export default function BookScreen() {
       customerEmail: email.trim(),
       customerPhone: phone.trim(),
       tableType: selectedTable,
+      tableNumber: selectedTableNumber || null,
       date: selectedDate,
       startTime: selectedTime,
       duration,
@@ -125,6 +133,7 @@ export default function BookScreen() {
   const resetForm = () => {
     setStep("table");
     setSelectedTable(null);
+    setSelectedTableNumber(null);
     setSelectedDate(null);
     setSelectedTime(null);
     setDuration(1);
@@ -180,7 +189,7 @@ export default function BookScreen() {
                   return (
                     <Pressable
                       key={table.id}
-                      onPress={() => setSelectedTable(table.id)}
+                      onPress={() => { setSelectedTable(table.id); if (table.id !== "snooker") setSelectedTableNumber(null); }}
                       style={[styles.tableCard, isSelected && styles.tableCardSelected]}
                       testID={`table-${table.id}`}
                     >
@@ -200,10 +209,32 @@ export default function BookScreen() {
                   );
                 })}
               </View>
+              {isSnooker && selectedTable && (
+                <>
+                  <Text style={[styles.stepTitle, { marginTop: 24 }]}>Select Table Number</Text>
+                  <Text style={styles.stepSubtitle}>Choose from our 10 full-size snooker tables</Text>
+                  <View style={styles.tableNumberGrid}>
+                    {SNOOKER_TABLES.map((num) => {
+                      const isSelected = selectedTableNumber === num;
+                      return (
+                        <Pressable
+                          key={num}
+                          onPress={() => setSelectedTableNumber(num)}
+                          style={[styles.tableNumberChip, isSelected && styles.tableNumberChipSelected]}
+                          testID={`snooker-table-${num}`}
+                        >
+                          <Text style={[styles.tableNumberText, isSelected && styles.tableNumberTextSelected]}>{num}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </>
+              )}
+
               <Pressable
-                onPress={() => { if (selectedTable) setStep("datetime"); }}
-                disabled={!selectedTable}
-                style={[styles.nextButton, !selectedTable && styles.nextButtonDisabled]}
+                onPress={() => { if (selectedTable && (!isSnooker || selectedTableNumber)) setStep("datetime"); }}
+                disabled={!selectedTable || (isSnooker && !selectedTableNumber)}
+                style={[styles.nextButton, (!selectedTable || (isSnooker && !selectedTableNumber)) && styles.nextButtonDisabled]}
                 testID="book-next-step-1"
               >
                 <Text style={styles.nextButtonText}>Continue</Text>
@@ -429,7 +460,9 @@ export default function BookScreen() {
                   <Ionicons name={selectedTableData?.icon as any} size={20} color={Colors.brand.blue} />
                   <View style={styles.summaryInfo}>
                     <Text style={styles.summaryLabel}>Table</Text>
-                    <Text style={styles.summaryValue}>{selectedTableData?.name}</Text>
+                    <Text style={styles.summaryValue}>
+                      {selectedTableData?.name}{selectedTableNumber ? ` - Table ${selectedTableNumber}` : ""}
+                    </Text>
                   </View>
                 </View>
                 <View style={styles.divider} />
@@ -531,7 +564,7 @@ export default function BookScreen() {
               </View>
               <Text style={styles.successTitle}>Booking Confirmed!</Text>
               <Text style={styles.successSubtitle}>
-                Your {selectedTableData?.name?.toLowerCase()} has been booked for {selectedDate ? new Date(selectedDate + "T00:00:00").toLocaleDateString("en-GB", {
+                Your {selectedTableData?.name?.toLowerCase()}{selectedTableNumber ? ` (Table ${selectedTableNumber})` : ""} has been booked for {selectedDate ? new Date(selectedDate + "T00:00:00").toLocaleDateString("en-GB", {
                   weekday: "short", day: "numeric", month: "short",
                 }) : ""} at {selectedTime}.
               </Text>
@@ -685,6 +718,34 @@ const styles = StyleSheet.create({
   },
   tablePriceSelected: {
     color: Colors.brand.blue,
+  },
+  tableNumberGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 20,
+  },
+  tableNumberChip: {
+    width: 56,
+    height: 56,
+    borderRadius: 14,
+    backgroundColor: Colors.light.surface,
+    borderWidth: 2,
+    borderColor: Colors.light.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tableNumberChipSelected: {
+    borderColor: Colors.brand.blue,
+    backgroundColor: Colors.brand.blue,
+  },
+  tableNumberText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 18,
+    color: Colors.light.text,
+  },
+  tableNumberTextSelected: {
+    color: "#FFFFFF",
   },
   nextButton: {
     backgroundColor: Colors.brand.blue,

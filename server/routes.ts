@@ -170,7 +170,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!parsed.data.gdprConsent) {
       return res.status(400).json({ message: "GDPR consent is required to process your booking" });
     }
-    const bookedSlots = await storage.getBookedSlots(parsed.data.date, parsed.data.tableType);
+    const bookedSlots = await storage.getBookedSlots(parsed.data.date, parsed.data.tableType, parsed.data.tableNumber ?? undefined);
     const requestedStart = parseInt(parsed.data.startTime.replace(":", ""));
     const requestedEnd = requestedStart + (parsed.data.duration ?? 1) * 100;
     for (const slot of bookedSlots) {
@@ -185,11 +185,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/bookings/availability", async (req, res) => {
-    const { date, tableType } = req.query;
+    const { date, tableType, tableNumber } = req.query;
     if (!date || !tableType) {
       return res.status(400).json({ message: "date and tableType are required" });
     }
-    const bookedSlots = await storage.getBookedSlots(String(date), String(tableType));
+    const bookedSlots = await storage.getBookedSlots(String(date), String(tableType), tableNumber ? String(tableNumber) : undefined);
     res.json(bookedSlots);
   });
 
