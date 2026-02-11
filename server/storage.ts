@@ -9,11 +9,14 @@ import {
   type PushToken,
   type InsertPushToken,
   type Notification,
+  type Booking,
+  type InsertBooking,
   type StaffSession,
   users,
   offers,
   pushTokens,
   notifications,
+  bookings,
   staffSessions,
 } from "@shared/schema";
 
@@ -33,6 +36,13 @@ export interface IStorage {
   removePushToken(token: string): Promise<boolean>;
   saveNotification(title: string, body: string, recipientCount: number): Promise<Notification>;
   getNotificationHistory(): Promise<Notification[]>;
+  createBooking(booking: InsertBooking): Promise<Booking>;
+  getBookings(): Promise<Booking[]>;
+  getBookingsByDate(date: string): Promise<Booking[]>;
+  getBooking(id: number): Promise<Booking | undefined>;
+  updateBookingStatus(id: number, status: string): Promise<Booking | undefined>;
+  deleteBooking(id: number): Promise<boolean>;
+  getBookedSlots(date: string, tableType: string): Promise<Array<{ startTime: string; duration: number }>>;
   createStaffSession(token: string, expiresAt: Date): Promise<StaffSession>;
   validateStaffSession(token: string): Promise<StaffSession | undefined>;
   invalidateStaffSession(token: string): Promise<boolean>;
@@ -101,6 +111,48 @@ export class DatabaseStorage implements IStorage {
 
   async getNotificationHistory(): Promise<Notification[]> {
     return db.select().from(notifications).orderBy(notifications.sentAt);
+  }
+
+  async createBooking(booking: InsertBooking): Promise<Booking> {
+    const [created] = await db.insert(bookings).values(booking).returning();
+    return created;
+  }
+
+  async getBookings(): Promise<Booking[]> {
+    return db.select().from(bookings).orderBy(bookings.date, bookings.startTime);
+  }
+
+  async getBookingsByDate(date: string): Promise<Booking[]> {
+    return db.select().from(bookings).where(eq(bookings.date, date)).orderBy(bookings.startTime);
+  }
+
+  async getBooking(id: number): Promise<Booking | undefined> {
+    const [booking] = await db.select().from(bookings).where(eq(bookings.id, id));
+    return booking;
+  }
+
+  async updateBookingStatus(id: number, status: string): Promise<Booking | undefined> {
+    const [updated] = await db.update(bookings).set({ status }).where(eq(bookings.id, id)).returning();
+    return updated;
+  }
+
+  async deleteBooking(id: number): Promise<boolean> {
+    const result = await db.delete(bookings).where(eq(bookings.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getBookedSlots(date: string, tableType: string): Promise<Array<{ startTime: string; duration: number }>> {
+    const results = await db
+      .select({ startTime: bookings.startTime, duration: bookings.duration })
+      .from(bookings)
+      .where(
+        and(
+          eq(bookings.date, date),
+          eq(bookings.tableType, tableType),
+          eq(bookings.status, "confirmed")
+        )
+      );
+    return results;
   }
 
   async createStaffSession(token: string, expiresAt: Date): Promise<StaffSession> {

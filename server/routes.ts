@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "node:http";
 import { randomBytes } from "node:crypto";
 import { storage } from "./storage";
-import { insertOfferSchema, insertPushTokenSchema } from "@shared/schema";
+import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema } from "@shared/schema";
 
 async function staffAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
@@ -160,6 +160,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/notifications/history", staffAuth, async (_req, res) => {
     const history = await storage.getNotificationHistory();
     res.json(history);
+  });
+
+  app.post("/api/bookings", async (req, res) => {
+    const parsed = insertBookingSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid booking data", errors: parsed.error.flatten() });
+    }
+    if (!parsed.data.gdprConsent) {
+      return res.status(400).json({ message: "GDPR consent is required to process your booking" });
+    }
+    const bookedSlots = await storage.getBookedSlots(parsed.data.date, parsed.data.tableType);
+    const requestedStart = parseInt(parsed.data.startTime.replace(":", ""));
+    const requestedEnd = requestedStart + (parsed.data.duration ?? 1) * 100;
+    for (const slot of bookedSlots) {
+      const slotStart = parseInt(slot.startTime.replace(":", ""));
+      const slotEnd = slotStart + slot.duration * 100;
+      if (requestedStart < slotEnd && requestedEnd > slotStart) {
+        return res.status(409).json({ message: "This time slot is already booked" });
+      }
+    }
+    const booking = await storage.createBooking(parsed.data);
+    res.status(201).json(booking);
+  });
+
+  app.get("/api/bookings/availability", async (req, res) => {
+    const { date, tableType } = req.query;
+    if (!date || !tableType) {
+      return res.status(400).json({ message: "date and tableType are required" });
+    }
+    const bookedSlots = await storage.getBookedSlots(String(date), String(tableType));
+    res.json(bookedSlots);
+  });
+
+  app.get("/api/bookings", staffAuth, async (req, res) => {
+    const { date } = req.query;
+    if (date) {
+      const bookingsList = await storage.getBookingsByDate(String(date));
+      return res.json(bookingsList);
+    }
+    const allBookings = await storage.getBookings();
+    res.json(allBookings);
+  });
+
+  app.get("/api/bookings/:id", staffAuth, async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const booking = await storage.getBooking(id);
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    res.json(booking);
+  });
+
+  app.patch("/api/bookings/:id/status", staffAuth, async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const { status } = req.body;
+    if (!status || !["confirmed", "cancelled"].includes(status)) {
+      return res.status(400).json({ message: "Invalid status" });
+    }
+    const booking = await storage.updateBookingStatus(id, status);
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    res.json(booking);
+  });
+
+  app.delete("/api/bookings/:id", staffAuth, async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const deleted = await storage.deleteBooking(id);
+    if (!deleted) return res.status(404).json({ message: "Booking not found" });
+    res.status(204).send();
   });
 
   const httpServer = createServer(app);

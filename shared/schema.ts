@@ -57,6 +57,26 @@ export const notifications = pgTable("notifications", {
 
 export type Notification = typeof notifications.$inferSelect;
 
+export const bookings = pgTable("bookings", {
+  id: serial("id").primaryKey(),
+  customerName: text("customer_name").notNull(),
+  customerEmail: text("customer_email").notNull(),
+  customerPhone: text("customer_phone").notNull(),
+  tableType: text("table_type").notNull(),
+  date: text("date").notNull(),
+  startTime: text("start_time").notNull(),
+  duration: serial("duration").notNull(),
+  status: text("status").notNull().default("confirmed"),
+  notes: text("notes"),
+  gdprConsent: boolean("gdpr_consent").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertBookingSchema = createInsertSchema(bookings).omit({ id: true, createdAt: true });
+
+export type InsertBooking = z.infer<typeof insertBookingSchema>;
+export type Booking = typeof bookings.$inferSelect;
+
 export const staffSessions = pgTable("staff_sessions", {
   id: serial("id").primaryKey(),
   token: text("token").notNull().unique(),
