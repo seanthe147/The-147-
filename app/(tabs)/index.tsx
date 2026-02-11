@@ -8,6 +8,8 @@ import {
   Platform,
   Linking,
   ActivityIndicator,
+  Image,
+  ImageBackground,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -18,6 +20,8 @@ import { useQuery } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 import { OPENING_HOURS } from "@/lib/data";
 import type { Offer } from "@shared/schema";
+
+const logoImage = require("@/assets/images/logo-147.png");
 
 function QuickAction({
   icon,
@@ -89,6 +93,44 @@ export default function HomeScreen() {
     queryKey: ["/api/offers"],
   });
 
+  const { data: settings } = useQuery<Record<string, string>>({
+    queryKey: ["/api/settings"],
+  });
+
+  const bannerImageUrl = settings?.banner_image;
+
+  const heroInner = (
+    <>
+      <LinearGradient
+        colors={bannerImageUrl ? ["rgba(0,0,0,0.45)", "rgba(10,22,40,0.85)"] : [Colors.brand.dark, Colors.brand.navy, Colors.brand.blue + "90"]}
+        style={[styles.heroGradient, bannerImageUrl ? StyleSheet.absoluteFillObject : undefined]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+      />
+      <View style={[styles.heroContent, { paddingTop: insets.top + 12 + webTopInset }]}>
+        <View style={styles.logoRow}>
+          <Image source={logoImage} style={styles.logoImage} resizeMode="contain" />
+        </View>
+        <Text style={styles.logoText}>The 147</Text>
+        <Text style={styles.heroSubtitle}>Venue  /  Snooker  /  Bar  /  Restaurant</Text>
+        <Pressable
+          onPress={() => {
+            if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            Linking.openURL("https://www.the147.co.uk/book-online");
+          }}
+          style={({ pressed }) => [
+            styles.heroButton,
+            { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] },
+          ]}
+        >
+          <Ionicons name="calendar" size={18} color={Colors.brand.dark} />
+          <Text style={styles.heroButtonText}>Book Now</Text>
+          <Ionicons name="open-outline" size={14} color={Colors.brand.dark} />
+        </Pressable>
+      </View>
+    </>
+  );
+
   return (
     <ScrollView
       style={styles.container}
@@ -99,31 +141,19 @@ export default function HomeScreen() {
       contentInsetAdjustmentBehavior="automatic"
       showsVerticalScrollIndicator={false}
     >
-      <LinearGradient
-        colors={[Colors.brand.dark, Colors.brand.navy, Colors.brand.blue + "90"]}
-        style={styles.heroGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      >
-        <View style={[styles.heroContent, { paddingTop: insets.top + 20 + webTopInset }]}>
-          <Text style={styles.logoText}>The 147</Text>
-          <Text style={styles.heroSubtitle}>Venue  /  Snooker  /  Bar  /  Restaurant</Text>
-          <Pressable
-            onPress={() => {
-              if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              Linking.openURL("https://www.the147.co.uk/book-online");
-            }}
-            style={({ pressed }) => [
-              styles.heroButton,
-              { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] },
-            ]}
-          >
-            <Ionicons name="calendar" size={18} color={Colors.brand.dark} />
-            <Text style={styles.heroButtonText}>Book Now</Text>
-            <Ionicons name="open-outline" size={14} color={Colors.brand.dark} />
-          </Pressable>
+      {bannerImageUrl ? (
+        <ImageBackground
+          source={{ uri: bannerImageUrl }}
+          style={styles.heroGradient}
+          resizeMode="cover"
+        >
+          {heroInner}
+        </ImageBackground>
+      ) : (
+        <View style={styles.heroGradient}>
+          {heroInner}
         </View>
-      </LinearGradient>
+      )}
 
       <View style={styles.body}>
         <Text style={styles.sectionTitle}>Quick Actions</Text>
@@ -220,6 +250,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 32,
     alignItems: "center",
+  },
+  logoRow: {
+    alignSelf: "flex-start",
+    marginBottom: 12,
+  },
+  logoImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 12,
   },
   logoText: {
     fontFamily: "Montserrat_700Bold",
