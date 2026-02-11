@@ -31,6 +31,8 @@ const COLOR_PRESETS = [
   { value: "#6D28D9", label: "Violet" },
 ];
 
+const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
 interface EventForm {
   title: string;
   description: string;
@@ -40,6 +42,8 @@ interface EventForm {
   ticketUrl: string;
   imageColor: string;
   active: boolean;
+  eventType: "event" | "weekly";
+  dayOfWeek: string;
 }
 
 const emptyForm: EventForm = {
@@ -51,9 +55,11 @@ const emptyForm: EventForm = {
   ticketUrl: "",
   imageColor: "#0047AB",
   active: true,
+  eventType: "event",
+  dayOfWeek: "",
 };
 
-function formatDisplayDate(dateStr: string): string {
+function formatDisplayDate(dateStr: string | null): string {
   if (!dateStr) return "";
   const d = new Date(dateStr + "T00:00:00");
   return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
@@ -82,6 +88,7 @@ export default function AdminEventsScreen() {
   const [form, setForm] = useState<EventForm>(emptyForm);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [adminTab, setAdminTab] = useState<"events" | "weekly">("events");
 
   const { data: events, isLoading } = useQuery<Event[]>({
     queryKey: ["/api/events/all"],
@@ -121,7 +128,7 @@ export default function AdminEventsScreen() {
   });
 
   function resetForm() {
-    setForm(emptyForm);
+    setForm({ ...emptyForm, eventType: adminTab === "weekly" ? "weekly" : "event" });
     setEditingId(null);
     setShowForm(false);
   }
@@ -130,12 +137,14 @@ export default function AdminEventsScreen() {
     setForm({
       title: event.title,
       description: event.description || "",
-      date: event.date,
+      date: event.date || "",
       time: event.time || "",
       endTime: event.endTime || "",
       ticketUrl: event.ticketUrl || "",
       imageColor: event.imageColor,
       active: event.active,
+      eventType: (event.eventType as "event" | "weekly") || "event",
+      dayOfWeek: event.dayOfWeek || "",
     });
     setEditingId(event.id);
     setShowForm(true);
@@ -146,13 +155,20 @@ export default function AdminEventsScreen() {
       Alert.alert("Missing Info", "Please enter an event title.");
       return;
     }
-    if (!form.date.trim()) {
-      Alert.alert("Missing Info", "Please enter a date (YYYY-MM-DD).");
-      return;
-    }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(form.date.trim())) {
-      Alert.alert("Invalid Date", "Please enter the date in YYYY-MM-DD format (e.g. 2026-03-15).");
-      return;
+    if (form.eventType === "event") {
+      if (!form.date.trim()) {
+        Alert.alert("Missing Info", "Please enter a date (YYYY-MM-DD).");
+        return;
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(form.date.trim())) {
+        Alert.alert("Invalid Date", "Please enter the date in YYYY-MM-DD format (e.g. 2026-03-15).");
+        return;
+      }
+    } else {
+      if (!form.dayOfWeek) {
+        Alert.alert("Missing Info", "Please select a day of the week.");
+        return;
+      }
     }
     if (form.time && !/^\d{2}:\d{2}$/.test(form.time.trim())) {
       Alert.alert("Invalid Time", "Please enter the time in HH:MM format (e.g. 19:30).");
@@ -163,10 +179,11 @@ export default function AdminEventsScreen() {
       ...form,
       title: form.title.trim(),
       description: form.description.trim() || null,
-      date: form.date.trim(),
+      date: form.eventType === "event" ? form.date.trim() : null,
       time: form.time.trim() || null,
       endTime: form.endTime.trim() || null,
       ticketUrl: form.ticketUrl.trim() || null,
+      dayOfWeek: form.eventType === "weekly" ? form.dayOfWeek : null,
     };
 
     if (editingId !== null) {
@@ -200,10 +217,24 @@ export default function AdminEventsScreen() {
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
+  const allEvents = events || [];
+  const filteredEvents = allEvents.filter((e) => (e.eventType || "event") === adminTab);
+
   const now = new Date();
   now.setHours(0, 0, 0, 0);
-  const upcoming = (events || []).filter((e) => new Date(e.date + "T23:59:59") >= now);
-  const past = (events || []).filter((e) => new Date(e.date + "T23:59:59") < now);
+
+  const upcoming = adminTab === "events"
+    ? filteredEvents.filter((e) => e.date && new Date(e.date + "T23:59:59") >= now)
+    : filteredEvents;
+  const past = adminTab === "events"
+    ? filteredEvents.filter((e) => e.date && new Date(e.date + "T23:59:59") < now)
+    : [];
+
+  function openNewForm() {
+    setForm({ ...emptyForm, eventType: adminTab === "weekly" ? "weekly" : "event" });
+    setEditingId(null);
+    setShowForm(true);
+  }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
@@ -215,7 +246,7 @@ export default function AdminEventsScreen() {
         <Pressable
           onPress={() => {
             if (showForm) resetForm();
-            else setShowForm(true);
+            else openNewForm();
           }}
           hitSlop={12}
         >
@@ -224,6 +255,27 @@ export default function AdminEventsScreen() {
             size={28}
             color={Colors.brand.blue}
           />
+        </Pressable>
+      </View>
+
+      <View style={styles.adminTabBar}>
+        <Pressable
+          onPress={() => { setAdminTab("events"); if (showForm) resetForm(); }}
+          style={[styles.adminTab, adminTab === "events" && styles.adminTabActive]}
+        >
+          <Ionicons name="calendar" size={16} color={adminTab === "events" ? Colors.brand.blue : Colors.light.textSecondary} />
+          <Text style={[styles.adminTabText, adminTab === "events" && styles.adminTabTextActive]}>
+            One-Off Events
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => { setAdminTab("weekly"); if (showForm) resetForm(); }}
+          style={[styles.adminTab, adminTab === "weekly" && styles.adminTabActive]}
+        >
+          <Ionicons name="repeat" size={16} color={adminTab === "weekly" ? Colors.brand.blue : Colors.light.textSecondary} />
+          <Text style={[styles.adminTabText, adminTab === "weekly" && styles.adminTabTextActive]}>
+            Weekly (What's On)
+          </Text>
         </Pressable>
       </View>
 
@@ -236,13 +288,32 @@ export default function AdminEventsScreen() {
         {showForm && (
           <View style={styles.formContainer}>
             <Text style={styles.formHeading}>
-              {editingId !== null ? "Edit Event" : "New Event"}
+              {editingId !== null ? "Edit" : "New"} {form.eventType === "weekly" ? "Weekly Event" : "Event"}
             </Text>
+
+            {editingId === null && (
+              <View style={styles.typeToggle}>
+                <Pressable
+                  onPress={() => setForm((f) => ({ ...f, eventType: "event", dayOfWeek: "" }))}
+                  style={[styles.typeOption, form.eventType === "event" && styles.typeOptionActive]}
+                >
+                  <Ionicons name="calendar" size={16} color={form.eventType === "event" ? Colors.brand.blue : Colors.light.textSecondary} />
+                  <Text style={[styles.typeOptionText, form.eventType === "event" && { color: Colors.brand.blue }]}>One-Off Event</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setForm((f) => ({ ...f, eventType: "weekly", date: "" }))}
+                  style={[styles.typeOption, form.eventType === "weekly" && styles.typeOptionActive]}
+                >
+                  <Ionicons name="repeat" size={16} color={form.eventType === "weekly" ? Colors.brand.blue : Colors.light.textSecondary} />
+                  <Text style={[styles.typeOptionText, form.eventType === "weekly" && { color: Colors.brand.blue }]}>Weekly</Text>
+                </Pressable>
+              </View>
+            )}
 
             <Text style={styles.fieldLabel}>Event Title *</Text>
             <TextInput
               style={styles.input}
-              placeholder="e.g. Friday Night Live Music"
+              placeholder={form.eventType === "weekly" ? "e.g. Curry Night" : "e.g. Kids Easter Party"}
               placeholderTextColor="#9CA3AF"
               value={form.title}
               onChangeText={(t) => setForm((f) => ({ ...f, title: t }))}
@@ -260,39 +331,87 @@ export default function AdminEventsScreen() {
               testID="event-description-input"
             />
 
-            <View style={styles.rowFields}>
-              <View style={styles.halfField}>
-                <Text style={styles.fieldLabel}>Date * (YYYY-MM-DD)</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="2026-03-15"
-                  placeholderTextColor="#9CA3AF"
-                  value={form.date}
-                  onChangeText={(t) => setForm((f) => ({ ...f, date: t }))}
-                  testID="event-date-input"
-                />
+            {form.eventType === "weekly" ? (
+              <>
+                <Text style={styles.fieldLabel}>Day of the Week *</Text>
+                <View style={styles.dayGrid}>
+                  {DAYS_OF_WEEK.map((day) => (
+                    <Pressable
+                      key={day}
+                      onPress={() => setForm((f) => ({ ...f, dayOfWeek: day }))}
+                      style={[styles.dayOption, form.dayOfWeek === day && styles.dayOptionActive]}
+                    >
+                      <Text style={[styles.dayOptionText, form.dayOfWeek === day && styles.dayOptionTextActive]}>
+                        {day.slice(0, 3)}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </>
+            ) : (
+              <View style={styles.rowFields}>
+                <View style={styles.halfField}>
+                  <Text style={styles.fieldLabel}>Date * (YYYY-MM-DD)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="2026-03-15"
+                    placeholderTextColor="#9CA3AF"
+                    value={form.date}
+                    onChangeText={(t) => setForm((f) => ({ ...f, date: t }))}
+                    testID="event-date-input"
+                  />
+                </View>
+                <View style={styles.halfField}>
+                  <Text style={styles.fieldLabel}>Start Time (HH:MM)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="19:30"
+                    placeholderTextColor="#9CA3AF"
+                    value={form.time}
+                    onChangeText={(t) => setForm((f) => ({ ...f, time: t }))}
+                    testID="event-time-input"
+                  />
+                </View>
               </View>
-              <View style={styles.halfField}>
-                <Text style={styles.fieldLabel}>Start Time (HH:MM)</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="19:30"
-                  placeholderTextColor="#9CA3AF"
-                  value={form.time}
-                  onChangeText={(t) => setForm((f) => ({ ...f, time: t }))}
-                  testID="event-time-input"
-                />
-              </View>
-            </View>
+            )}
 
-            <Text style={styles.fieldLabel}>End Time (HH:MM)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="23:00"
-              placeholderTextColor="#9CA3AF"
-              value={form.endTime}
-              onChangeText={(t) => setForm((f) => ({ ...f, endTime: t }))}
-            />
+            {form.eventType === "weekly" && (
+              <View style={styles.rowFields}>
+                <View style={styles.halfField}>
+                  <Text style={styles.fieldLabel}>Start Time (HH:MM)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="19:00"
+                    placeholderTextColor="#9CA3AF"
+                    value={form.time}
+                    onChangeText={(t) => setForm((f) => ({ ...f, time: t }))}
+                  />
+                </View>
+                <View style={styles.halfField}>
+                  <Text style={styles.fieldLabel}>End Time (HH:MM)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="23:00"
+                    placeholderTextColor="#9CA3AF"
+                    value={form.endTime}
+                    onChangeText={(t) => setForm((f) => ({ ...f, endTime: t }))}
+                  />
+                </View>
+              </View>
+            )}
+
+            {form.eventType === "event" && (
+              <>
+                <Text style={styles.fieldLabel}>End Time (HH:MM)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="23:00"
+                  placeholderTextColor="#9CA3AF"
+                  value={form.endTime}
+                  onChangeText={(t) => setForm((f) => ({ ...f, endTime: t }))}
+                />
+              </>
+            )}
 
             <Text style={styles.fieldLabel}>Ticket Link (URL)</Text>
             <TextInput
@@ -367,12 +486,14 @@ export default function AdminEventsScreen() {
 
         {isLoading ? (
           <ActivityIndicator size="large" color={Colors.brand.blue} style={{ marginTop: 40 }} />
-        ) : (events || []).length === 0 ? (
+        ) : filteredEvents.length === 0 ? (
           <View style={styles.emptyState}>
-            <Ionicons name="calendar-outline" size={48} color="#D1D5DB" />
-            <Text style={styles.emptyText}>No events yet</Text>
+            <Ionicons name={adminTab === "weekly" ? "repeat-outline" : "calendar-outline"} size={48} color="#D1D5DB" />
+            <Text style={styles.emptyText}>
+              {adminTab === "weekly" ? "No weekly events yet" : "No events yet"}
+            </Text>
             <Text style={styles.emptySubtext}>
-              Tap the + button above to create your first event
+              Tap the + button above to create {adminTab === "weekly" ? "a weekly event" : "an event"}
             </Text>
           </View>
         ) : (
@@ -380,7 +501,9 @@ export default function AdminEventsScreen() {
             {upcoming.length > 0 && (
               <View style={styles.eventSection}>
                 <Text style={styles.listHeading}>
-                  Upcoming Events ({upcoming.length})
+                  {adminTab === "weekly"
+                    ? `Weekly Events (${upcoming.length})`
+                    : `Upcoming Events (${upcoming.length})`}
                 </Text>
                 {upcoming.map((event) => (
                   <EventRow
@@ -433,7 +556,10 @@ function EventRow({
   onToggleActive: () => void;
   isPast?: boolean;
 }) {
-  const dateDisplay = formatDisplayDate(event.date);
+  const isWeekly = event.eventType === "weekly";
+  const dateDisplay = isWeekly
+    ? `Every ${event.dayOfWeek || "week"}`
+    : formatDisplayDate(event.date);
   const timeDisplay = event.time ? formatDisplayTime(event.time) : "";
 
   return (
@@ -443,9 +569,12 @@ function EventRow({
         <View style={styles.eventRowTop}>
           <View style={{ flex: 1 }}>
             <Text style={styles.eventRowTitle} numberOfLines={1}>{event.title}</Text>
-            <Text style={styles.eventRowDate}>
-              {dateDisplay}{timeDisplay ? ` at ${timeDisplay}` : ""}
-            </Text>
+            <View style={styles.eventRowMetaLine}>
+              {isWeekly && <Ionicons name="repeat-outline" size={12} color={Colors.light.textSecondary} style={{ marginRight: 4 }} />}
+              <Text style={styles.eventRowDate}>
+                {dateDisplay}{timeDisplay ? ` at ${timeDisplay}` : ""}
+              </Text>
+            </View>
             {event.ticketUrl ? (
               <Pressable
                 onPress={() => Linking.openURL(event.ticketUrl!)}
@@ -457,11 +586,18 @@ function EventRow({
             ) : null}
           </View>
 
-          {!event.active && (
-            <View style={styles.draftBadge}>
-              <Text style={styles.draftBadgeText}>HIDDEN</Text>
-            </View>
-          )}
+          <View style={styles.badges}>
+            {isWeekly && (
+              <View style={styles.weeklyBadge}>
+                <Text style={styles.weeklyBadgeText}>WEEKLY</Text>
+              </View>
+            )}
+            {!event.active && (
+              <View style={styles.draftBadge}>
+                <Text style={styles.draftBadgeText}>HIDDEN</Text>
+              </View>
+            )}
+          </View>
         </View>
 
         <View style={styles.eventRowActions}>
@@ -504,6 +640,38 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: Colors.light.text,
   },
+  adminTabBar: {
+    flexDirection: "row",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    gap: 8,
+    backgroundColor: Colors.light.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
+  },
+  adminTab: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: Colors.light.surfaceElevated,
+  },
+  adminTabActive: {
+    backgroundColor: Colors.brand.blue + "12",
+    borderWidth: 1,
+    borderColor: Colors.brand.blue + "30",
+  },
+  adminTabText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+  },
+  adminTabTextActive: {
+    color: Colors.brand.blue,
+  },
   content: {
     flex: 1,
   },
@@ -524,6 +692,32 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: Colors.light.text,
     marginBottom: 16,
+  },
+  typeToggle: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 8,
+  },
+  typeOption: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: Colors.light.surfaceElevated,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+  },
+  typeOptionActive: {
+    borderColor: Colors.brand.blue,
+    backgroundColor: Colors.brand.blue + "10",
+  },
+  typeOptionText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: Colors.light.textSecondary,
   },
   fieldLabel: {
     fontFamily: "Montserrat_600SemiBold",
@@ -549,6 +743,31 @@ const styles = StyleSheet.create({
   },
   halfField: {
     flex: 1,
+  },
+  dayGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  dayOption: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: Colors.light.surfaceElevated,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+  },
+  dayOptionActive: {
+    borderColor: Colors.brand.blue,
+    backgroundColor: Colors.brand.blue + "10",
+  },
+  dayOptionText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+  },
+  dayOptionTextActive: {
+    color: Colors.brand.blue,
   },
   colorGrid: {
     flexDirection: "row",
@@ -661,11 +880,15 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.light.text,
   },
+  eventRowMetaLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 3,
+  },
   eventRowDate: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 12,
     color: Colors.light.textSecondary,
-    marginTop: 3,
   },
   ticketLinkRow: {
     flexDirection: "row",
@@ -677,6 +900,23 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_500Medium",
     fontSize: 11,
     color: Colors.brand.blue,
+  },
+  badges: {
+    flexDirection: "row",
+    gap: 6,
+    alignItems: "center",
+  },
+  weeklyBadge: {
+    backgroundColor: "#7C3AED" + "20",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  weeklyBadgeText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 9,
+    color: "#7C3AED",
+    letterSpacing: 0.5,
   },
   draftBadge: {
     backgroundColor: Colors.brand.gold + "20",

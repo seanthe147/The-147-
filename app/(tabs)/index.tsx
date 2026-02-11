@@ -81,7 +81,12 @@ function OfferCard({ offer, isFirst }: { offer: Offer; isFirst: boolean }) {
 
 function EventPreview() {
   const { data: events } = useQuery<Event[]>({
-    queryKey: ["/api/events"],
+    queryKey: ["/api/events", { type: "event" }],
+    queryFn: async () => {
+      const res = await fetch(`${process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : ""}/api/events?type=event`);
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
   });
 
   const now = new Date();
