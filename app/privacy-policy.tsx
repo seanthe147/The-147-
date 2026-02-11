@@ -93,11 +93,19 @@ export default function PrivacyPolicyScreen() {
               your device using AsyncStorage. This data never leaves your device.
             </Text>
             <Text style={styles.bulletItem}>
-              Booking and ordering: These services are provided through
-              third-party websites (the147.co.uk and ordertab.menu) embedded
-              within the app. Any personal data you provide during booking or
-              ordering is handled by those third parties under their own privacy
-              policies.
+              Table bookings: When you book a table, we collect your name,
+              email address, and phone number. This data is stored securely on
+              our servers and is necessary to manage your reservation. Booking
+              data is automatically anonymised after 90 days.
+            </Text>
+            <Text style={styles.bulletItem}>
+              Push notifications: If you opt in, your device token is stored to
+              send you venue updates. You can unsubscribe at any time.
+            </Text>
+            <Text style={styles.bulletItem}>
+              Food and drink ordering: Ordering is provided through OrderTab
+              (ordertab.menu) embedded within the app. Their privacy policy
+              applies to those transactions.
             </Text>
             <Text style={styles.bulletItem}>
               Event tickets: Ticket purchases are handled by TicketSource
@@ -115,13 +123,17 @@ export default function PrivacyPolicyScreen() {
           </Text>
           <View style={styles.bulletList}>
             <Text style={styles.bulletItem}>
+              Contract: Processing booking data (name, email, phone) is necessary
+              to fulfil your table reservation request (Article 6(1)(b)).
+            </Text>
+            <Text style={styles.bulletItem}>
               Legitimate interests: Operating the app and providing you with
               venue information, offers, and event listings (Article 6(1)(f)).
             </Text>
             <Text style={styles.bulletItem}>
-              Consent: For any optional analytics or marketing data processing,
-              we rely on your explicit consent which you can withdraw at any
-              time (Article 6(1)(a)).
+              Consent: For push notifications, optional analytics, or marketing
+              data processing, we rely on your explicit consent which you can
+              withdraw at any time (Article 6(1)(a)).
             </Text>
           </View>
         </Section>
@@ -193,13 +205,22 @@ export default function PrivacyPolicyScreen() {
         <Section title="6. Data Retention">
           <Text style={styles.bodyText}>
             Consent preferences are stored locally on your device and are
-            retained until you reset them or uninstall the app. We do not retain
-            personal data on our servers from app usage.
+            retained until you reset them or uninstall the app.
           </Text>
           <Text style={styles.bodyText}>
-            Data submitted through third-party services (bookings, orders,
-            ticket purchases) is retained by those third parties in accordance
-            with their own retention policies.
+            Booking data (name, email, phone number) is retained for 90 days
+            after the booking date, after which it is automatically anonymised.
+            This retention period allows us to manage your reservation and
+            handle any follow-up queries.
+          </Text>
+          <Text style={styles.bodyText}>
+            Push notification device tokens are retained until you unsubscribe
+            or uninstall the app.
+          </Text>
+          <Text style={styles.bodyText}>
+            Data submitted through third-party services (orders, ticket
+            purchases) is retained by those third parties in accordance with
+            their own retention policies.
           </Text>
         </Section>
 
