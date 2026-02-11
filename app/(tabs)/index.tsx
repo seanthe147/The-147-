@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
-import { EVENTS, formatDate } from "@/lib/data";
+import { OFFERS, Offer } from "@/lib/data";
 
 function QuickAction({
   icon,
@@ -46,45 +46,46 @@ function QuickAction({
   );
 }
 
-function FeaturedEventCard({ event }: { event: typeof EVENTS[0] }) {
+function OfferCard({ offer, index }: { offer: Offer; index: number }) {
   return (
-    <Pressable
-      onPress={() => router.push("/(tabs)/events")}
-      style={({ pressed }) => [
-        styles.featuredCard,
-        { transform: [{ scale: pressed ? 0.98 : 1 }] },
+    <View
+      style={[
+        styles.offerCard,
+        { width: 260, marginRight: 14, marginLeft: index === 0 ? 0 : 0 },
       ]}
     >
       <LinearGradient
-        colors={[event.imageColor, event.imageColor + "CC"]}
+        colors={offer.gradientColors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={styles.featuredGradient}
+        style={styles.offerGradient}
       >
-        <View style={styles.featuredBadge}>
-          <Text style={styles.featuredBadgeText}>{formatDate(event.date)}</Text>
-        </View>
-        <View style={styles.featuredContent}>
-          <Text style={styles.featuredTitle}>{event.title}</Text>
-          <View style={styles.featuredMeta}>
-            <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.8)" />
-            <Text style={styles.featuredMetaText}>{event.time}</Text>
-            <Ionicons name="pricetag-outline" size={14} color="rgba(255,255,255,0.8)" />
-            <Text style={styles.featuredMetaText}>
-              {event.price === "0" ? "Free" : `\u00A3${event.price}`}
-            </Text>
+        <View style={styles.offerIconRow}>
+          <View style={styles.offerIconCircle}>
+            <Ionicons
+              name={offer.icon as keyof typeof Ionicons.glyphMap}
+              size={22}
+              color="#FFFFFF"
+            />
+          </View>
+          <View style={styles.offerDiscountBadge}>
+            <Text style={styles.offerDiscountText}>{offer.discount}</Text>
           </View>
         </View>
+        <Text style={styles.offerTitle}>{offer.title}</Text>
+        <Text style={styles.offerSubtitle}>{offer.subtitle}</Text>
+        <View style={styles.offerFooter}>
+          <Ionicons name="calendar-outline" size={12} color="rgba(255,255,255,0.7)" />
+          <Text style={styles.offerValidText}>{offer.validUntil}</Text>
+        </View>
       </LinearGradient>
-    </Pressable>
+    </View>
   );
 }
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const upcomingEvents = EVENTS.slice(0, 3);
-
   return (
     <ScrollView
       style={styles.container}
@@ -150,16 +151,17 @@ export default function HomeScreen() {
           />
         </View>
 
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>What's On</Text>
-          <Pressable onPress={() => router.push("/(tabs)/events")}>
-            <Text style={styles.seeAll}>See All</Text>
-          </Pressable>
-        </View>
-
-        {upcomingEvents.map((event) => (
-          <FeaturedEventCard key={event.id} event={event} />
-        ))}
+        <Text style={styles.sectionTitle}>Offers</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.offerScroll}
+          contentContainerStyle={styles.offerScrollContent}
+        >
+          {OFFERS.map((offer, index) => (
+            <OfferCard key={offer.id} offer={offer} index={index} />
+          ))}
+        </ScrollView>
 
         <View style={styles.infoCard}>
           <LinearGradient
@@ -247,24 +249,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 24,
   },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-    marginTop: 8,
-  },
   sectionTitle: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 20,
     color: Colors.light.text,
     marginBottom: 16,
-  },
-  seeAll: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 14,
-    color: Colors.brand.blue,
-    marginBottom: 16,
+    marginTop: 8,
   },
   quickActions: {
     flexDirection: "row",
@@ -288,50 +278,70 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.light.textSecondary,
   },
-  featuredCard: {
+  offerScroll: {
+    marginHorizontal: -20,
+    marginBottom: 16,
+  },
+  offerScrollContent: {
+    paddingHorizontal: 20,
+  },
+  offerCard: {
     borderRadius: 16,
-    marginBottom: 14,
     overflow: "hidden",
     elevation: 4,
     boxShadow: "0px 2px 8px rgba(0, 0, 0, 0.15)",
   },
-  featuredGradient: {
-    padding: 20,
-    minHeight: 120,
-    justifyContent: "flex-end",
+  offerGradient: {
+    padding: 18,
+    minHeight: 150,
+    justifyContent: "space-between",
   },
-  featuredBadge: {
-    position: "absolute",
-    top: 14,
-    right: 14,
+  offerIconRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  offerIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  offerDiscountBadge: {
+    backgroundColor: "rgba(255,255,255,0.25)",
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
   },
-  featuredBadgeText: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 11,
-    color: "#FFFFFF",
-  },
-  featuredContent: {
-    gap: 6,
-  },
-  featuredTitle: {
+  offerDiscountText: {
     fontFamily: "Montserrat_700Bold",
-    fontSize: 18,
+    fontSize: 13,
     color: "#FFFFFF",
   },
-  featuredMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
+  offerTitle: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 17,
+    color: "#FFFFFF",
+    marginBottom: 4,
   },
-  featuredMetaText: {
+  offerSubtitle: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 13,
-    color: "rgba(255,255,255,0.8)",
-    marginRight: 8,
+    color: "rgba(255,255,255,0.85)",
+    marginBottom: 10,
+  },
+  offerFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  offerValidText: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 11,
+    color: "rgba(255,255,255,0.7)",
   },
   infoCard: {
     borderRadius: 16,
