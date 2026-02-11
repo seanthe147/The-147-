@@ -1,10 +1,59 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "node:http";
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { storage } from "./storage";
 import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema } from "@shared/schema";
+
+const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_DURATION = 15 * 60 * 1000;
+const ATTEMPT_WINDOW = 10 * 60 * 1000;
+
+function getClientIp(req: Request): string {
+  return (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown";
+}
+
+function checkRateLimit(ip: string): { allowed: boolean; retryAfter?: number } {
+  const entry = loginAttempts.get(ip);
+  if (!entry) return { allowed: true };
+  if (entry.blockedUntil > Date.now()) {
+    return { allowed: false, retryAfter: Math.ceil((entry.blockedUntil - Date.now()) / 1000) };
+  }
+  if (entry.blockedUntil > 0 && entry.blockedUntil <= Date.now()) {
+    loginAttempts.delete(ip);
+    return { allowed: true };
+  }
+  return { allowed: true };
+}
+
+function recordFailedLogin(ip: string): void {
+  const entry = loginAttempts.get(ip) || { count: 0, blockedUntil: 0 };
+  entry.count += 1;
+  if (entry.count >= MAX_LOGIN_ATTEMPTS) {
+    entry.blockedUntil = Date.now() + LOCKOUT_DURATION;
+    entry.count = 0;
+  }
+  loginAttempts.set(ip, entry);
+  setTimeout(() => {
+    const current = loginAttempts.get(ip);
+    if (current && current.blockedUntil === 0) {
+      loginAttempts.delete(ip);
+    }
+  }, ATTEMPT_WINDOW);
+}
+
+function clearFailedLogins(ip: string): void {
+  loginAttempts.delete(ip);
+}
+
+function timingSafeCompare(a: string, b: string): boolean {
+  const bufA = Buffer.from(a.padEnd(64, "\0"));
+  const bufB = Buffer.from(b.padEnd(64, "\0"));
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
 
 async function staffAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
@@ -12,6 +61,9 @@ async function staffAuth(req: Request, res: Response, next: NextFunction) {
     return res.status(401).json({ message: "Authentication required" });
   }
   const token = authHeader.slice(7);
+  if (token.length < 32 || token.length > 128) {
+    return res.status(401).json({ message: "Invalid session" });
+  }
   const session = await storage.validateStaffSession(token);
   if (!session) {
     return res.status(401).json({ message: "Invalid or expired session" });
@@ -21,9 +73,23 @@ async function staffAuth(req: Request, res: Response, next: NextFunction) {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/staff/login", async (req, res) => {
+    const clientIp = getClientIp(req);
+    const rateCheck = checkRateLimit(clientIp);
+    if (!rateCheck.allowed) {
+      res.setHeader("Retry-After", String(rateCheck.retryAfter));
+      return res.status(429).json({
+        message: `Too many login attempts. Please try again in ${Math.ceil((rateCheck.retryAfter || 900) / 60)} minutes.`,
+      });
+    }
+
     const { pin } = req.body;
-    if (!pin) {
+    if (!pin || typeof pin !== "string") {
       return res.status(400).json({ message: "PIN is required" });
+    }
+
+    if (pin.length < 4 || pin.length > 8 || !/^\d+$/.test(pin)) {
+      recordFailedLogin(clientIp);
+      return res.status(401).json({ message: "Incorrect PIN" });
     }
 
     const staffPin = process.env.STAFF_PIN;
@@ -31,12 +97,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(503).json({ message: "Staff access not configured" });
     }
 
-    if (pin !== staffPin) {
+    if (!timingSafeCompare(pin, staffPin)) {
+      recordFailedLogin(clientIp);
       return res.status(401).json({ message: "Incorrect PIN" });
     }
 
+    clearFailedLogins(clientIp);
     const token = randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000);
     const session = await storage.createStaffSession(token, expiresAt);
 
     res.json({ token: session.token, expiresAt: session.expiresAt });
@@ -274,6 +342,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const deleted = await storage.deleteBooking(id);
     if (!deleted) return res.status(404).json({ message: "Booking not found" });
     res.status(204).send();
+  });
+
+  app.get("/api/gdpr/export", async (req, res) => {
+    const { email } = req.query;
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({ message: "Email address is required" });
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: "Invalid email format" });
+    }
+    const userBookings = await storage.getBookingsByEmail(email);
+    const exportData = {
+      dataSubject: email,
+      exportDate: new Date().toISOString(),
+      dataController: "The 147",
+      legalBasis: "UK GDPR Article 15 - Right of Access",
+      bookings: userBookings.map((b) => ({
+        id: b.id,
+        customerName: b.customerName,
+        customerEmail: b.customerEmail,
+        customerPhone: b.customerPhone,
+        tableType: b.tableType,
+        tableNumber: b.tableNumber,
+        date: b.date,
+        startTime: b.startTime,
+        duration: b.duration,
+        status: b.status,
+        notes: b.notes,
+        gdprConsent: b.gdprConsent,
+        createdAt: b.createdAt,
+      })),
+      totalRecords: userBookings.length,
+    };
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Content-Disposition", `attachment; filename="gdpr-export-${Date.now()}.json"`);
+    res.json(exportData);
+  });
+
+  app.delete("/api/gdpr/erase", staffAuth, async (req, res) => {
+    const { email } = req.body;
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({ message: "Email address is required" });
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: "Invalid email format" });
+    }
+    const deletedCount = await storage.deleteBookingsByEmail(email);
+    res.json({
+      message: `Erasure complete under UK GDPR Article 17`,
+      recordsDeleted: deletedCount,
+      email,
+      erasureDate: new Date().toISOString(),
+    });
+  });
+
+  app.post("/api/gdpr/retention-cleanup", staffAuth, async (_req, res) => {
+    const anonymized = await storage.anonymizeOldBookings(90);
+    const sessionsCleared = await storage.cleanupExpiredSessions();
+    res.json({
+      message: "Data retention policy applied",
+      bookingsAnonymized: anonymized,
+      expiredSessionsCleared: sessionsCleared,
+      retentionPeriodDays: 90,
+    });
   });
 
   app.get("/staff", (_req, res) => {

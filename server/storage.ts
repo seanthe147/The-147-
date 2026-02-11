@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/node-postgres";
-import { eq } from "drizzle-orm";
+import { eq, lt, lte } from "drizzle-orm";
 import { and, gt } from "drizzle-orm";
 import {
   type User,
@@ -47,6 +47,10 @@ export interface IStorage {
   createStaffSession(token: string, expiresAt: Date): Promise<StaffSession>;
   validateStaffSession(token: string): Promise<StaffSession | undefined>;
   invalidateStaffSession(token: string): Promise<boolean>;
+  getBookingsByEmail(email: string): Promise<Booking[]>;
+  deleteBookingsByEmail(email: string): Promise<number>;
+  anonymizeOldBookings(retentionDays: number): Promise<number>;
+  cleanupExpiredSessions(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -189,6 +193,42 @@ export class DatabaseStorage implements IStorage {
       .where(eq(staffSessions.token, token))
       .returning();
     return result.length > 0;
+  }
+
+  async getBookingsByEmail(email: string): Promise<Booking[]> {
+    return db.select().from(bookings).where(eq(bookings.customerEmail, email.toLowerCase())).orderBy(bookings.date);
+  }
+
+  async deleteBookingsByEmail(email: string): Promise<number> {
+    const result = await db.delete(bookings).where(eq(bookings.customerEmail, email.toLowerCase())).returning();
+    return result.length;
+  }
+
+  async anonymizeOldBookings(retentionDays: number): Promise<number> {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+    const cutoffStr = cutoffDate.toISOString().split("T")[0];
+    const oldBookings = await db.select().from(bookings).where(lt(bookings.date, cutoffStr));
+    let count = 0;
+    for (const booking of oldBookings) {
+      if (booking.customerName !== "ANONYMIZED") {
+        await db.update(bookings).set({
+          customerName: "ANONYMIZED",
+          customerEmail: "anonymized@removed.local",
+          customerPhone: "000000",
+          notes: null,
+        }).where(eq(bookings.id, booking.id));
+        count++;
+      }
+    }
+    return count;
+  }
+
+  async cleanupExpiredSessions(): Promise<number> {
+    const result = await db.delete(staffSessions).where(
+      lte(staffSessions.expiresAt, new Date())
+    ).returning();
+    return result.length;
   }
 }
 

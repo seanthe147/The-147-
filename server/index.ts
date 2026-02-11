@@ -52,9 +52,31 @@ function setupCors(app: express.Application) {
   });
 }
 
+function setupSecurityHeaders(app: express.Application) {
+  app.use((req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("X-XSS-Protection", "1; mode=block");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    if (req.path === "/staff") {
+      res.setHeader(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'"
+      );
+    }
+    if (!req.path.startsWith("/api")) {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+      res.setHeader("Pragma", "no-cache");
+    }
+    next();
+  });
+}
+
 function setupBodyParsing(app: express.Application) {
   app.use(
     express.json({
+      limit: "100kb",
       verify: (req, _res, buf) => {
         req.rawBody = buf;
       },
@@ -227,6 +249,7 @@ function setupErrorHandler(app: express.Application) {
 
 (async () => {
   setupCors(app);
+  setupSecurityHeaders(app);
   setupBodyParsing(app);
   setupRequestLogging(app);
 
