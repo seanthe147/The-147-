@@ -22,6 +22,7 @@ export default function BookScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const [loading, setLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
   const { tabBarVisible, setTabBarVisible } = useTabBar();
   const isFocused = useIsFocused();
 
@@ -106,21 +107,40 @@ export default function BookScreen() {
       <View style={[styles.nativeHeader, { paddingTop: insets.top }]}>
         <Text style={styles.headerTitle}>Book Online</Text>
       </View>
-      {loading && (
+      {loading && !hasError && (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color={Colors.brand.blue} />
           <Text style={styles.loadingText}>Loading booking...</Text>
         </View>
       )}
-      <WebView
-        source={{ uri: BOOKING_URL }}
-        style={styles.webview}
-        onLoadEnd={() => setLoading(false)}
-        startInLoadingState={false}
-        javaScriptEnabled
-        domStorageEnabled
-        scalesPageToFit
-      />
+      {hasError ? (
+        <View style={styles.errorOverlay}>
+          <Ionicons name="cloud-offline-outline" size={48} color={Colors.light.textSecondary} />
+          <Text style={styles.errorTitle}>Unable to Load</Text>
+          <Text style={styles.errorText}>
+            Please check your internet connection and try again.
+          </Text>
+          <Pressable
+            onPress={() => { setHasError(false); setLoading(true); }}
+            style={({ pressed }) => [styles.retryButton, { opacity: pressed ? 0.8 : 1 }]}
+          >
+            <Ionicons name="refresh" size={18} color="#FFFFFF" />
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <WebView
+          source={{ uri: BOOKING_URL }}
+          style={styles.webview}
+          onLoadEnd={() => setLoading(false)}
+          onError={() => { setHasError(true); setLoading(false); }}
+          onHttpError={() => { setHasError(true); setLoading(false); }}
+          startInLoadingState={false}
+          javaScriptEnabled
+          domStorageEnabled
+          scalesPageToFit
+        />
+      )}
       {!tabBarVisible && (
         <Animated.View
           style={[
@@ -197,5 +217,40 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     boxShadow: "0px 4px 12px rgba(0,0,0,0.25)",
+  },
+  errorOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 40,
+    gap: 12,
+  },
+  errorTitle: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 18,
+    color: Colors.light.text,
+    marginTop: 4,
+  },
+  errorText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  retryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: Colors.brand.blue,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  retryButtonText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: "#FFFFFF",
   },
 });
