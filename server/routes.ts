@@ -1,6 +1,8 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "node:http";
 import { randomBytes } from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { storage } from "./storage";
 import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema } from "@shared/schema";
 
@@ -223,12 +225,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(booking);
   });
 
+  app.put("/api/bookings/:id", staffAuth, async (req, res) => {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const existing = await storage.getBooking(id);
+    if (!existing) return res.status(404).json({ message: "Booking not found" });
+    const { customerName, customerEmail, customerPhone, tableType, tableNumber, date, startTime, duration, notes, status } = req.body;
+    const updateData: any = {};
+    if (customerName !== undefined) updateData.customerName = customerName;
+    if (customerEmail !== undefined) updateData.customerEmail = customerEmail;
+    if (customerPhone !== undefined) updateData.customerPhone = customerPhone;
+    if (tableType !== undefined) updateData.tableType = tableType;
+    if (tableNumber !== undefined) updateData.tableNumber = tableNumber;
+    if (date !== undefined) updateData.date = date;
+    if (startTime !== undefined) updateData.startTime = startTime;
+    if (duration !== undefined) updateData.duration = duration;
+    if (notes !== undefined) updateData.notes = notes;
+    if (status !== undefined) updateData.status = status;
+    const finalDate = updateData.date ?? existing.date;
+    const finalTableType = updateData.tableType ?? existing.tableType;
+    const finalTableNumber = updateData.tableNumber ?? existing.tableNumber;
+    const finalStartTime = updateData.startTime ?? existing.startTime;
+    const finalDuration = updateData.duration ?? existing.duration;
+    if (updateData.date || updateData.startTime || updateData.duration || updateData.tableType || updateData.tableNumber) {
+      const bookedSlots = await storage.getBookedSlots(finalDate, finalTableType, finalTableNumber ?? undefined);
+      const requestedStart = parseInt(finalStartTime.replace(":", ""));
+      const requestedEnd = requestedStart + finalDuration * 100;
+      for (const slot of bookedSlots) {
+        const slotStart = parseInt(slot.startTime.replace(":", ""));
+        const slotEnd = slotStart + slot.duration * 100;
+        if (requestedStart < slotEnd && requestedEnd > slotStart) {
+          const slotBookings = await storage.getBookingsByDate(finalDate);
+          const conflicting = slotBookings.find(b => b.startTime === slot.startTime && b.tableType === finalTableType && (finalTableNumber ? b.tableNumber === finalTableNumber : true) && b.status === "confirmed");
+          if (conflicting && conflicting.id !== id) {
+            return res.status(409).json({ message: "This time slot is already booked" });
+          }
+        }
+      }
+    }
+    const updated = await storage.updateBooking(id, updateData);
+    if (!updated) return res.status(404).json({ message: "Booking not found" });
+    res.json(updated);
+  });
+
   app.delete("/api/bookings/:id", staffAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const deleted = await storage.deleteBooking(id);
     if (!deleted) return res.status(404).json({ message: "Booking not found" });
     res.status(204).send();
+  });
+
+  app.get("/staff", (_req, res) => {
+    const templatePath = path.resolve(process.cwd(), "server", "templates", "staff-dashboard.html");
+    const html = fs.readFileSync(templatePath, "utf-8");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.status(200).send(html);
   });
 
   const httpServer = createServer(app);

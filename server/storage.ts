@@ -41,6 +41,7 @@ export interface IStorage {
   getBookingsByDate(date: string): Promise<Booking[]>;
   getBooking(id: number): Promise<Booking | undefined>;
   updateBookingStatus(id: number, status: string): Promise<Booking | undefined>;
+  updateBooking(id: number, data: Partial<InsertBooking>): Promise<Booking | undefined>;
   deleteBooking(id: number): Promise<boolean>;
   getBookedSlots(date: string, tableType: string, tableNumber?: string): Promise<Array<{ startTime: string; duration: number }>>;
   createStaffSession(token: string, expiresAt: Date): Promise<StaffSession>;
@@ -133,6 +134,11 @@ export class DatabaseStorage implements IStorage {
 
   async updateBookingStatus(id: number, status: string): Promise<Booking | undefined> {
     const [updated] = await db.update(bookings).set({ status }).where(eq(bookings.id, id)).returning();
+    return updated;
+  }
+
+  async updateBooking(id: number, data: Partial<InsertBooking>): Promise<Booking | undefined> {
+    const [updated] = await db.update(bookings).set(data).where(eq(bookings.id, id)).returning();
     return updated;
   }
 
