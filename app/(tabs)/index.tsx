@@ -19,7 +19,7 @@ import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useQuery } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
-import { OPENING_HOURS, EVENTS } from "@/lib/data";
+import { OPENING_HOURS } from "@/lib/data";
 import type { Offer } from "@shared/schema";
 
 const logoImage = require("@/assets/images/logo-147.png");
@@ -79,10 +79,31 @@ function OfferCard({ offer, isFirst }: { offer: Offer; isFirst: boolean }) {
   );
 }
 
+interface AppEvent {
+  id: string;
+  title: string;
+  description: string;
+  date: string;
+  time: string;
+  isSoldOut: boolean;
+  ticketUrl: string;
+}
+
+const EVENT_PREVIEW_COLORS = ["#0047AB", "#7C3AED", "#059669", "#DC2626"];
+
 function EventPreview() {
-  const upcoming = EVENTS.filter((e) => new Date(e.date) >= new Date())
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    .slice(0, 2);
+  const { data: events } = useQuery<AppEvent[]>({
+    queryKey: ["/api/events"],
+  });
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const upcoming = (events || [])
+    .filter((e) => {
+      if (!e.date) return true;
+      return new Date(e.date + "T23:59:59") >= now;
+    })
+    .slice(0, 3);
 
   if (upcoming.length === 0) return null;
 
@@ -97,23 +118,40 @@ function EventPreview() {
           <Text style={styles.seeAllText}>See All</Text>
         </Pressable>
       </View>
-      {upcoming.map((event) => {
-        const eventDate = new Date(event.date + "T00:00:00");
-        const dayNum = eventDate.getDate();
-        const monthStr = eventDate.toLocaleDateString("en-GB", { month: "short" }).toUpperCase();
+      {upcoming.map((event, index) => {
+        const color = EVENT_PREVIEW_COLORS[index % EVENT_PREVIEW_COLORS.length];
+        let dayNum = "--";
+        let monthStr = "---";
+        if (event.date) {
+          const eventDate = new Date(event.date + "T00:00:00");
+          dayNum = eventDate.getDate().toString();
+          monthStr = eventDate.toLocaleDateString("en-GB", { month: "short" }).toUpperCase();
+        }
+        const timeDisplay = event.time
+          ? (() => {
+              const [h, m] = event.time.split(":");
+              const hour = parseInt(h, 10);
+              const suffix = hour >= 12 ? "pm" : "am";
+              const dh = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+              return m === "00" ? `${dh}${suffix}` : `${dh}:${m}${suffix}`;
+            })()
+          : "";
         return (
           <Pressable
             key={event.id}
             onPress={() => router.push("/(tabs)/events")}
             style={({ pressed }) => [styles.eventRow, { opacity: pressed ? 0.8 : 1 }]}
           >
-            <View style={[styles.eventDateBox, { backgroundColor: event.imageColor + "18" }]}>
-              <Text style={[styles.eventDateDay, { color: event.imageColor }]}>{dayNum}</Text>
-              <Text style={[styles.eventDateMonth, { color: event.imageColor }]}>{monthStr}</Text>
+            <View style={[styles.eventDateBox, { backgroundColor: color + "18" }]}>
+              <Text style={[styles.eventDateDay, { color }]}>{dayNum}</Text>
+              <Text style={[styles.eventDateMonth, { color }]}>{monthStr}</Text>
             </View>
             <View style={styles.eventInfo}>
               <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
-              <Text style={styles.eventMeta}>{event.time} {event.price !== "Free" ? `  ${event.price}` : ""}</Text>
+              <Text style={styles.eventMeta}>
+                {event.date ? `${dayNum} ${monthStr}` : "Date TBC"}
+                {timeDisplay ? ` at ${timeDisplay}` : ""}
+              </Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={Colors.light.border} />
           </Pressable>

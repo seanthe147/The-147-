@@ -6,6 +6,7 @@ import * as path from "node:path";
 import { storage } from "./storage";
 import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema } from "@shared/schema";
 import { hashPin, verifyPin } from "./encryption";
+import { fetchTicketSourceEvents, clearEventCache } from "./ticketsource";
 
 const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -513,6 +514,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       expiredSessionsCleared: sessionsCleared,
       retentionPeriodDays: 90,
     });
+  });
+
+  app.get("/api/events", async (_req, res) => {
+    try {
+      const events = await fetchTicketSourceEvents();
+      res.json(events);
+    } catch (err) {
+      console.error("Events fetch error:", err);
+      res.json([]);
+    }
+  });
+
+  app.post("/api/events/refresh", staffAuth, async (_req, res) => {
+    clearEventCache();
+    const events = await fetchTicketSourceEvents();
+    res.json({ message: "Events refreshed", count: events.length });
   });
 
   app.get("/api/settings", async (_req, res) => {
