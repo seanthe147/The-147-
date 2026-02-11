@@ -5,7 +5,9 @@ import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ConsentBanner } from "@/components/ConsentBanner";
 import { TabBarProvider } from "@/contexts/TabBarContext";
+import { ConsentProvider } from "@/contexts/ConsentContext";
 import { queryClient } from "@/lib/query-client";
 import {
   useFonts,
@@ -19,10 +21,14 @@ SplashScreen.preventAutoHideAsync();
 
 function RootLayoutNav() {
   return (
-    <Stack screenOptions={{ headerBackTitle: "Back" }}>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="admin-offers" options={{ headerShown: false, presentation: "modal" }} />
-    </Stack>
+    <>
+      <Stack screenOptions={{ headerBackTitle: "Back" }}>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="admin-offers" options={{ headerShown: false, presentation: "modal" }} />
+        <Stack.Screen name="privacy-policy" options={{ headerShown: false, presentation: "modal" }} />
+      </Stack>
+      <ConsentBanner />
+    </>
   );
 }
 
@@ -45,13 +51,15 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <TabBarProvider>
-          <GestureHandlerRootView>
-            <KeyboardProvider>
-              <RootLayoutNav />
-            </KeyboardProvider>
-          </GestureHandlerRootView>
-        </TabBarProvider>
+        <ConsentProvider>
+          <TabBarProvider>
+            <GestureHandlerRootView>
+              <KeyboardProvider>
+                <RootLayoutNav />
+              </KeyboardProvider>
+            </GestureHandlerRootView>
+          </TabBarProvider>
+        </ConsentProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );
