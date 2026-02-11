@@ -184,6 +184,14 @@ function DashboardScreen() {
 
         <View style={styles.toolsList}>
           <AdminTool
+            icon="calendar"
+            title="Bookings Calendar"
+            description="View and manage table bookings"
+            color={Colors.brand.green}
+            onPress={() => router.push("/admin-bookings")}
+            testID="portal-bookings-calendar"
+          />
+          <AdminTool
             icon="pricetag"
             title="Manage Offers"
             description="Create, edit and remove promotional offers"

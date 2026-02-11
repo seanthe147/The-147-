@@ -27,6 +27,7 @@ function RootLayoutNav() {
       <Stack screenOptions={{ headerBackTitle: "Back" }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="staff-portal" options={{ headerShown: false, presentation: "modal" }} />
+        <Stack.Screen name="admin-bookings" options={{ headerShown: false, presentation: "modal" }} />
         <Stack.Screen name="admin-offers" options={{ headerShown: false, presentation: "modal" }} />
         <Stack.Screen name="privacy-policy" options={{ headerShown: false, presentation: "modal" }} />
         <Stack.Screen name="admin-notifications" options={{ headerShown: false, presentation: "modal" }} />

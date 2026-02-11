@@ -204,7 +204,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/bookings/:id", staffAuth, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const booking = await storage.getBooking(id);
     if (!booking) return res.status(404).json({ message: "Booking not found" });
@@ -212,7 +212,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.patch("/api/bookings/:id/status", staffAuth, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const { status } = req.body;
     if (!status || !["confirmed", "cancelled"].includes(status)) {
@@ -224,7 +224,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.delete("/api/bookings/:id", staffAuth, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const deleted = await storage.deleteBooking(id);
     if (!deleted) return res.status(404).json({ message: "Booking not found" });
