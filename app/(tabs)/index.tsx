@@ -172,7 +172,10 @@ export default function HomeScreen() {
           </>
         ) : null}
 
-        <View style={styles.infoCard}>
+        <Pressable
+          onPress={() => router.push("/about")}
+          style={({ pressed }) => [styles.infoCard, { opacity: pressed ? 0.85 : 1 }]}
+        >
           <LinearGradient
             colors={[Colors.brand.navy, Colors.brand.dark]}
             style={styles.infoGradient}
@@ -186,7 +189,7 @@ export default function HomeScreen() {
             </View>
             <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.5)" />
           </LinearGradient>
-        </View>
+        </Pressable>
 
         <View style={{ height: Platform.OS === "web" ? 34 : 100 }} />
       </View>
