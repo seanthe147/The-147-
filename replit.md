@@ -11,29 +11,32 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - **About**: Venue info, facilities grid, opening hours, contact/social links, legal & privacy links
 - **Offers Management**: Admin interface to create/edit/delete promotional offers (accessible from About page)
 - **GDPR Compliance**: Consent banner on first launch, privacy policy screen, consent management with revoke option
+- **Push Notifications**: Admin interface to compose and send push notifications to all registered devices, device management, notification history
 
 ## Architecture
 - Frontend: Expo Router with tab navigation (5 tabs: Home, Book, Events, Order, About)
 - Backend: Express on port 5000 (landing page + API)
-- Database: PostgreSQL for offers data
+- Database: PostgreSQL for offers, push tokens, and notification history
 - State: React Query for server state, AsyncStorage for consent preferences
 - Font: Montserrat (Google Fonts)
 - Colors: Brand blue (#0047AB), red (#DF3131), gold (#D4A843), dark navy (#0A1628)
 
 ## Project Structure
 - `app/(tabs)/` - Tab screens (index, book, events, order, about)
-- `app/_layout.tsx` - Root layout with providers (QueryClient, Consent, TabBar)
+- `app/_layout.tsx` - Root layout with providers (QueryClient, Consent, Notification, TabBar)
 - `app/admin-offers.tsx` - Admin offers management screen (modal)
+- `app/admin-notifications.tsx` - Push notification admin screen (modal)
 - `app/privacy-policy.tsx` - Privacy policy & UK GDPR info screen (modal)
 - `components/ConsentBanner.tsx` - GDPR consent banner overlay
 - `components/ErrorBoundary.tsx` - Error boundary component
 - `contexts/ConsentContext.tsx` - Consent state management with AsyncStorage
+- `contexts/NotificationContext.tsx` - Push notification registration and handling
 - `contexts/TabBarContext.tsx` - Tab bar visibility management
 - `lib/data.ts` - Static data (events, table types, time slots, opening hours)
 - `lib/query-client.ts` - React Query client configuration
 - `constants/colors.ts` - Theme colors
 - `shared/schema.ts` - Database schema (Drizzle ORM)
-- `server/routes.ts` - API routes (offers CRUD)
+- `server/routes.ts` - API routes (offers CRUD, push tokens, notifications)
 - `server/storage.ts` - Database storage layer
 
 ## API Endpoints
@@ -41,6 +44,11 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - `POST /api/offers` - Create a new offer
 - `PUT /api/offers/:id` - Update an offer
 - `DELETE /api/offers/:id` - Delete an offer
+- `POST /api/push-tokens` - Register a device push token
+- `GET /api/push-tokens` - List all registered push tokens
+- `DELETE /api/push-tokens/:token` - Remove a push token
+- `POST /api/notifications/send` - Send push notification to all devices
+- `GET /api/notifications/history` - Get notification send history
 
 ## GDPR & Data Protection
 - Consent banner shown on first app launch with "Essential Only" and "Accept All" options
@@ -59,3 +67,4 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - Feb 2026: Initial build with all tabs, booking flow, events/tickets, about page
 - Feb 2026: Added dynamic offers management with admin interface and PostgreSQL backend
 - Feb 2026: Added UK GDPR compliance - consent banner, privacy policy, consent management
+- Feb 2026: Added push notifications - admin compose/send screen, device registration, notification history
