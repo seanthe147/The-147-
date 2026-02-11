@@ -43,6 +43,7 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - `shared/schema.ts` - Database schema (Drizzle ORM)
 - `server/routes.ts` - API routes (offers CRUD, push tokens, notifications, bookings)
 - `server/storage.ts` - Database storage layer
+- `server/templates/staff-dashboard.html` - Staff web dashboard for PC-based booking management
 
 ## API Endpoints
 - `POST /api/staff/login` - Authenticate with staff PIN, returns session token
@@ -62,7 +63,14 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - `GET /api/bookings/availability` - Check slot availability for ?date=X&tableType=Y (public)
 - `GET /api/bookings/:id` - Get a single booking (auth required)
 - `PATCH /api/bookings/:id/status` - Update booking status (auth required)
+- `PUT /api/bookings/:id` - Update a booking with conflict detection (auth required)
 - `DELETE /api/bookings/:id` - Delete a booking (auth required)
+
+## Staff Web Dashboard
+- Served at GET `/staff` on port 5000 (self-contained HTML, no external dependencies)
+- PIN login, then full booking management: view by date, create, edit, cancel, delete
+- Optimized for desktop/PC use by staff
+- Access URL: `{domain}/staff` (goes through Express backend on port 5000)
 
 ## GDPR & Data Protection
 - Consent banner shown on first app launch with "Essential Only" and "Accept All" options
@@ -85,3 +93,5 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - Feb 2026: Added staff portal with PIN authentication, session tokens, auth guards on all admin endpoints
 - Feb 2026: Added native in-app booking system with table selection, date/time picker, GDPR consent, availability checking
 - Feb 2026: Added staff bookings calendar with week navigation, day selection, booking management (cancel/delete)
+- Feb 2026: Added staff web dashboard at /staff for PC-based booking management with PIN login, create/edit/delete bookings
+- Feb 2026: Added PUT /api/bookings/:id endpoint for full booking editing with conflict detection
