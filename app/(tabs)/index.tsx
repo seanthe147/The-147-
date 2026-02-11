@@ -7,14 +7,16 @@ import {
   Pressable,
   Platform,
   Linking,
+  ActivityIndicator,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
+import { useQuery } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
-import { OFFERS, Offer } from "@/lib/data";
+import type { Offer } from "@shared/schema";
 
 function QuickAction({
   icon,
@@ -46,16 +48,11 @@ function QuickAction({
   );
 }
 
-function OfferCard({ offer, index }: { offer: Offer; index: number }) {
+function OfferCard({ offer }: { offer: Offer }) {
   return (
-    <View
-      style={[
-        styles.offerCard,
-        { width: 260, marginRight: 14, marginLeft: index === 0 ? 0 : 0 },
-      ]}
-    >
+    <View style={[styles.offerCard, { width: 260, marginRight: 14 }]}>
       <LinearGradient
-        colors={offer.gradientColors}
+        colors={[offer.gradientStart, offer.gradientEnd]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.offerGradient}
@@ -86,6 +83,11 @@ function OfferCard({ offer, index }: { offer: Offer; index: number }) {
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
+
+  const { data: offers, isLoading } = useQuery<Offer[]>({
+    queryKey: ["/api/offers"],
+  });
+
   return (
     <ScrollView
       style={styles.container}
@@ -151,17 +153,23 @@ export default function HomeScreen() {
           />
         </View>
 
-        <Text style={styles.sectionTitle}>Offers</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.offerScroll}
-          contentContainerStyle={styles.offerScrollContent}
-        >
-          {OFFERS.map((offer, index) => (
-            <OfferCard key={offer.id} offer={offer} index={index} />
-          ))}
-        </ScrollView>
+        {isLoading ? (
+          <ActivityIndicator size="small" color={Colors.brand.blue} style={{ marginVertical: 24 }} />
+        ) : offers && offers.length > 0 ? (
+          <>
+            <Text style={styles.sectionTitle}>Offers</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.offerScroll}
+              contentContainerStyle={styles.offerScrollContent}
+            >
+              {offers.map((offer) => (
+                <OfferCard key={offer.id} offer={offer} />
+              ))}
+            </ScrollView>
+          </>
+        ) : null}
 
         <View style={styles.infoCard}>
           <LinearGradient

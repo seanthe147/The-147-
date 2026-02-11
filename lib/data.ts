@@ -148,46 +148,6 @@ export function formatDate(dateStr: string): string {
   });
 }
 
-export interface Offer {
-  id: string;
-  title: string;
-  subtitle: string;
-  discount: string;
-  validUntil: string;
-  gradientColors: [string, string];
-  icon: string;
-}
-
-export const OFFERS: Offer[] = [
-  {
-    id: "1",
-    title: "Happy Hour",
-    subtitle: "50% off all drinks Mon-Thu, 4-6pm",
-    discount: "50% OFF",
-    validUntil: "Ongoing",
-    gradientColors: ["#0047AB", "#1E6FD9"],
-    icon: "beer",
-  },
-  {
-    id: "2",
-    title: "Date Night Deal",
-    subtitle: "Dinner for 2 + 1hr table time",
-    discount: "\u00A339.99",
-    validUntil: "Every Friday",
-    gradientColors: ["#DC2626", "#F87171"],
-    icon: "heart",
-  },
-  {
-    id: "3",
-    title: "Student Discount",
-    subtitle: "Show valid student ID at the bar",
-    discount: "20% OFF",
-    validUntil: "Term time",
-    gradientColors: ["#059669", "#34D399"],
-    icon: "school",
-  },
-];
-
 export function getCategoryLabel(cat: Event["category"]): string {
   switch (cat) {
     case "tournament": return "Tournament";

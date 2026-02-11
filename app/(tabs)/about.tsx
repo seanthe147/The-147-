@@ -11,6 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
 import Colors from "@/constants/colors";
 import { OPENING_HOURS } from "@/lib/data";
 
@@ -147,6 +148,19 @@ export default function AboutScreen() {
             </View>
           </View>
         </InfoSection>
+
+        <Pressable
+          onPress={() => router.push("/admin-offers")}
+          style={({ pressed }) => [
+            styles.adminButton,
+            { opacity: pressed ? 0.8 : 1 },
+          ]}
+          testID="manage-offers-button"
+        >
+          <Ionicons name="settings-outline" size={20} color={Colors.brand.blue} />
+          <Text style={styles.adminButtonText}>Manage Offers</Text>
+          <Ionicons name="chevron-forward" size={18} color={Colors.light.textSecondary} />
+        </Pressable>
 
         <View style={styles.socialRow}>
           <Pressable style={styles.socialBtn}>
@@ -336,6 +350,23 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.brand.blue + "10",
     alignItems: "center",
     justifyContent: "center",
+  },
+  adminButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: Colors.light.surface,
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    marginBottom: 24,
+  },
+  adminButtonText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 15,
+    color: Colors.light.text,
+    flex: 1,
   },
   footerText: {
     fontFamily: "Montserrat_400Regular",
