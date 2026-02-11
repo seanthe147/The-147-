@@ -515,6 +515,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  app.get("/api/settings", async (_req, res) => {
+    const settings = await storage.getAllSettings();
+    res.json(settings);
+  });
+
+  app.get("/api/settings/:key", async (req, res) => {
+    const value = await storage.getSetting(req.params.key as string);
+    res.json({ key: req.params.key, value });
+  });
+
+  app.put("/api/settings/:key", staffAuth, async (req, res) => {
+    const { value } = req.body;
+    if (value === undefined || value === null) {
+      return res.status(400).json({ message: "Value is required" });
+    }
+    await storage.setSetting(req.params.key as string, String(value));
+    res.json({ key: req.params.key, value: String(value) });
+  });
+
   app.post("/api/contact", async (req, res) => {
     const parsed = insertContactMessageSchema.safeParse(req.body);
     if (!parsed.success) {

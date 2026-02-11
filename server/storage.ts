@@ -23,6 +23,7 @@ import {
   staffSessions,
   staffUsers,
   contactMessages,
+  siteSettings,
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
 
@@ -340,6 +341,23 @@ export class DatabaseStorage implements IStorage {
   async updateContactMessageStatus(id: number, status: string): Promise<ContactMessage | undefined> {
     const [updated] = await db.update(contactMessages).set({ status }).where(eq(contactMessages.id, id)).returning();
     return updated;
+  }
+
+  async getSetting(key: string): Promise<string | null> {
+    const [row] = await db.select().from(siteSettings).where(eq(siteSettings.key, key));
+    return row?.value ?? null;
+  }
+
+  async setSetting(key: string, value: string): Promise<void> {
+    await db.insert(siteSettings).values({ key, value, updatedAt: new Date() })
+      .onConflictDoUpdate({ target: siteSettings.key, set: { value, updatedAt: new Date() } });
+  }
+
+  async getAllSettings(): Promise<Record<string, string>> {
+    const rows = await db.select().from(siteSettings);
+    const result: Record<string, string> = {};
+    for (const row of rows) result[row.key] = row.value;
+    return result;
   }
 }
 
