@@ -336,7 +336,10 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(events).orderBy(events.date);
   }
 
-  async getActiveEvents(): Promise<Event[]> {
+  async getActiveEvents(eventType?: string): Promise<Event[]> {
+    if (eventType) {
+      return db.select().from(events).where(and(eq(events.active, true), eq(events.eventType, eventType))).orderBy(events.date);
+    }
     return db.select().from(events).where(eq(events.active, true)).orderBy(events.date);
   }
 

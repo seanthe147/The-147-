@@ -120,12 +120,14 @@ export const events = pgTable("events", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
   description: text("description"),
-  date: text("date").notNull(),
+  date: text("date"),
   time: text("time"),
   endTime: text("end_time"),
   ticketUrl: text("ticket_url"),
   imageColor: text("image_color").notNull().default("#0047AB"),
   active: boolean("active").notNull().default(true),
+  eventType: text("event_type").notNull().default("event"),
+  dayOfWeek: text("day_of_week"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

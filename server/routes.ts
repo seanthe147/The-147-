@@ -515,9 +515,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  app.get("/api/events", async (_req, res) => {
+  app.get("/api/events", async (req, res) => {
     try {
-      const allEvents = await storage.getActiveEvents();
+      const eventType = req.query.type as string | undefined;
+      const allEvents = await storage.getActiveEvents(eventType);
       res.json(allEvents);
     } catch (err) {
       console.error("Events fetch error:", err);
