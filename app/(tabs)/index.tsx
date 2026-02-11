@@ -16,6 +16,7 @@ import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useQuery } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
+import { OPENING_HOURS } from "@/lib/data";
 import type { Offer } from "@shared/schema";
 
 function QuickAction({
@@ -196,16 +197,8 @@ export default function HomeScreen() {
 function getOpeningHoursToday(): string {
   const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const today = days[new Date().getDay()];
-  const hours: Record<string, string> = {
-    Monday: "12:00 - 23:00",
-    Tuesday: "12:00 - 23:00",
-    Wednesday: "12:00 - 23:00",
-    Thursday: "12:00 - 23:00",
-    Friday: "12:00 - 00:00",
-    Saturday: "10:00 - 00:00",
-    Sunday: "10:00 - 22:00",
-  };
-  return `${today}: ${hours[today]}`;
+  const entry = OPENING_HOURS.find((h) => h.day === today);
+  return `${today}: ${entry?.hours ?? "Closed"}`;
 }
 
 const styles = StyleSheet.create({
