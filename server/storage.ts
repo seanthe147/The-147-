@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/node-postgres";
-import { eq, lt, lte } from "drizzle-orm";
+import { eq, lt, lte, sql } from "drizzle-orm";
 import { and, gt } from "drizzle-orm";
 import {
   type User,
@@ -196,11 +196,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getBookingsByEmail(email: string): Promise<Booking[]> {
-    return db.select().from(bookings).where(eq(bookings.customerEmail, email.toLowerCase())).orderBy(bookings.date);
+    return db.select().from(bookings).where(sql`lower(${bookings.customerEmail}) = lower(${email})`).orderBy(bookings.date);
   }
 
   async deleteBookingsByEmail(email: string): Promise<number> {
-    const result = await db.delete(bookings).where(eq(bookings.customerEmail, email.toLowerCase())).returning();
+    const result = await db.delete(bookings).where(sql`lower(${bookings.customerEmail}) = lower(${email})`).returning();
     return result.length;
   }
 

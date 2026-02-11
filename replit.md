@@ -79,11 +79,27 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - Users can revoke consent at any time from the privacy policy screen
 - Policy covers UK GDPR rights (Articles 15-21), ICO complaint info, third-party disclosures
 - Platform-specific dialogs: window.confirm() on web, Alert.alert on native
+- **Data Subject Rights API**: Export (Article 15), Erasure (Article 17) endpoints
+- **Automated Retention**: 90-day anonymisation of old booking personal data
+- **Staff GDPR Panel**: Dashboard tools for data lookup, export, erase, and retention cleanup
+
+## Security
+- Rate limiting on staff login: 5 attempts per 15-minute window per IP
+- Timing-safe PIN comparison to prevent timing attacks
+- Secure HTTP headers: CSP, X-Frame-Options, X-Content-Type-Options, X-XSS-Protection
+- Session tokens expire after 8 hours with cleanup endpoint
+- XSS protection in staff dashboard via HTML entity escaping
+- JSON body size limit: 100kb
 
 ## Technical Notes
 - Query cache uses refetchQueries (not invalidateQueries) due to staleTime: Infinity config
 - Delete confirmations use Platform.OS check for web vs native dialog handling
 - WebView tabs (Order) auto-hide tab bar after 1.5s delay
+
+## API Endpoints - GDPR
+- `GET /api/gdpr/export?email=X` - Export all booking data for email (Article 15 right of access)
+- `DELETE /api/gdpr/erase` - Delete all booking data for email (Article 17 right to erasure, auth required)
+- `POST /api/gdpr/retention-cleanup` - Anonymise bookings older than 90 days, clear expired sessions (auth required)
 
 ## Recent Changes
 - Feb 2026: Initial build with all tabs, booking flow, events/tickets, about page
@@ -95,3 +111,6 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - Feb 2026: Added staff bookings calendar with week navigation, day selection, booking management (cancel/delete)
 - Feb 2026: Added staff web dashboard at /staff for PC-based booking management with PIN login, create/edit/delete bookings
 - Feb 2026: Added PUT /api/bookings/:id endpoint for full booking editing with conflict detection
+- Feb 2026: Added security hardening - rate limiting, timing-safe PIN, CSP headers, session expiry
+- Feb 2026: Added GDPR data subject rights - export, erasure, retention cleanup APIs and staff dashboard tools
+- Feb 2026: Updated privacy policy with booking data collection, 90-day retention, legal bases
