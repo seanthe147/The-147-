@@ -182,6 +182,19 @@ export default function AboutScreen() {
           <Ionicons name="chevron-forward" size={18} color={Colors.light.textSecondary} />
         </Pressable>
 
+        <Pressable
+          onPress={() => router.push("/admin-notifications")}
+          style={({ pressed }) => [
+            styles.adminButton,
+            { opacity: pressed ? 0.8 : 1 },
+          ]}
+          testID="manage-notifications-button"
+        >
+          <Ionicons name="notifications-outline" size={20} color={Colors.brand.blue} />
+          <Text style={styles.adminButtonText}>Push Notifications</Text>
+          <Ionicons name="chevron-forward" size={18} color={Colors.light.textSecondary} />
+        </Pressable>
+
         <View style={styles.socialRow}>
           <Pressable style={styles.socialBtn}>
             <Ionicons name="logo-facebook" size={22} color={Colors.brand.blue} />
