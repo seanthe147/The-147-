@@ -15,6 +15,8 @@ import {
   type StaffUser,
   type ContactMessage,
   type InsertContactMessage,
+  type Event,
+  type InsertEvent,
   users,
   offers,
   pushTokens,
@@ -23,6 +25,7 @@ import {
   staffSessions,
   staffUsers,
   contactMessages,
+  events,
   siteSettings,
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
@@ -327,6 +330,34 @@ export class DatabaseStorage implements IStorage {
       migrated++;
     }
     return migrated;
+  }
+
+  async getEvents(): Promise<Event[]> {
+    return db.select().from(events).orderBy(events.date);
+  }
+
+  async getActiveEvents(): Promise<Event[]> {
+    return db.select().from(events).where(eq(events.active, true)).orderBy(events.date);
+  }
+
+  async getEvent(id: number): Promise<Event | undefined> {
+    const [event] = await db.select().from(events).where(eq(events.id, id));
+    return event;
+  }
+
+  async createEvent(data: InsertEvent): Promise<Event> {
+    const [created] = await db.insert(events).values(data).returning();
+    return created;
+  }
+
+  async updateEvent(id: number, data: Partial<InsertEvent>): Promise<Event | undefined> {
+    const [updated] = await db.update(events).set(data).where(eq(events.id, id)).returning();
+    return updated;
+  }
+
+  async deleteEvent(id: number): Promise<boolean> {
+    const result = await db.delete(events).where(eq(events.id, id)).returning();
+    return result.length > 0;
   }
 
   async createContactMessage(data: InsertContactMessage): Promise<ContactMessage> {

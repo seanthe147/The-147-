@@ -116,6 +116,24 @@ export const contactMessages = pgTable("contact_messages", {
 
 export const insertContactMessageSchema = createInsertSchema(contactMessages).omit({ id: true, createdAt: true, status: true });
 
+export const events = pgTable("events", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description"),
+  date: text("date").notNull(),
+  time: text("time"),
+  endTime: text("end_time"),
+  ticketUrl: text("ticket_url"),
+  imageColor: text("image_color").notNull().default("#0047AB"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertEventSchema = createInsertSchema(events).omit({ id: true, createdAt: true });
+
+export type InsertEvent = z.infer<typeof insertEventSchema>;
+export type Event = typeof events.$inferSelect;
+
 export const siteSettings = pgTable("site_settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
