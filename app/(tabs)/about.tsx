@@ -170,28 +170,15 @@ export default function AboutScreen() {
         </InfoSection>
 
         <Pressable
-          onPress={() => router.push("/admin-offers")}
+          onPress={() => router.push("/staff-portal")}
           style={({ pressed }) => [
             styles.adminButton,
             { opacity: pressed ? 0.8 : 1 },
           ]}
-          testID="manage-offers-button"
+          testID="staff-portal-button"
         >
-          <Ionicons name="settings-outline" size={20} color={Colors.brand.blue} />
-          <Text style={styles.adminButtonText}>Manage Offers</Text>
-          <Ionicons name="chevron-forward" size={18} color={Colors.light.textSecondary} />
-        </Pressable>
-
-        <Pressable
-          onPress={() => router.push("/admin-notifications")}
-          style={({ pressed }) => [
-            styles.adminButton,
-            { opacity: pressed ? 0.8 : 1 },
-          ]}
-          testID="manage-notifications-button"
-        >
-          <Ionicons name="notifications-outline" size={20} color={Colors.brand.blue} />
-          <Text style={styles.adminButtonText}>Push Notifications</Text>
+          <Ionicons name="shield-checkmark" size={20} color={Colors.brand.blue} />
+          <Text style={styles.adminButtonText}>Staff Portal</Text>
           <Ionicons name="chevron-forward" size={18} color={Colors.light.textSecondary} />
         </Pressable>
 

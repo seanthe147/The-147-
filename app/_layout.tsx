@@ -9,6 +9,7 @@ import { ConsentBanner } from "@/components/ConsentBanner";
 import { TabBarProvider } from "@/contexts/TabBarContext";
 import { ConsentProvider } from "@/contexts/ConsentContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
+import { StaffAuthProvider } from "@/contexts/StaffAuthContext";
 import { queryClient } from "@/lib/query-client";
 import {
   useFonts,
@@ -25,6 +26,7 @@ function RootLayoutNav() {
     <>
       <Stack screenOptions={{ headerBackTitle: "Back" }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="staff-portal" options={{ headerShown: false, presentation: "modal" }} />
         <Stack.Screen name="admin-offers" options={{ headerShown: false, presentation: "modal" }} />
         <Stack.Screen name="privacy-policy" options={{ headerShown: false, presentation: "modal" }} />
         <Stack.Screen name="admin-notifications" options={{ headerShown: false, presentation: "modal" }} />
@@ -54,15 +56,17 @@ export default function RootLayout() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <ConsentProvider>
-          <NotificationProvider>
-            <TabBarProvider>
-              <GestureHandlerRootView>
-                <KeyboardProvider>
-                  <RootLayoutNav />
-                </KeyboardProvider>
-              </GestureHandlerRootView>
-            </TabBarProvider>
-          </NotificationProvider>
+          <StaffAuthProvider>
+            <NotificationProvider>
+              <TabBarProvider>
+                <GestureHandlerRootView>
+                  <KeyboardProvider>
+                    <RootLayoutNav />
+                  </KeyboardProvider>
+                </GestureHandlerRootView>
+              </TabBarProvider>
+            </NotificationProvider>
+          </StaffAuthProvider>
         </ConsentProvider>
       </QueryClientProvider>
     </ErrorBoundary>

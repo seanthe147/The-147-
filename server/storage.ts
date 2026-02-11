@@ -1,5 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { eq } from "drizzle-orm";
+import { and, gt } from "drizzle-orm";
 import {
   type User,
   type InsertUser,
@@ -8,10 +9,12 @@ import {
   type PushToken,
   type InsertPushToken,
   type Notification,
+  type StaffSession,
   users,
   offers,
   pushTokens,
   notifications,
+  staffSessions,
 } from "@shared/schema";
 
 const db = drizzle(process.env.DATABASE_URL!);
@@ -30,6 +33,9 @@ export interface IStorage {
   removePushToken(token: string): Promise<boolean>;
   saveNotification(title: string, body: string, recipientCount: number): Promise<Notification>;
   getNotificationHistory(): Promise<Notification[]>;
+  createStaffSession(token: string, expiresAt: Date): Promise<StaffSession>;
+  validateStaffSession(token: string): Promise<StaffSession | undefined>;
+  invalidateStaffSession(token: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -95,6 +101,34 @@ export class DatabaseStorage implements IStorage {
 
   async getNotificationHistory(): Promise<Notification[]> {
     return db.select().from(notifications).orderBy(notifications.sentAt);
+  }
+
+  async createStaffSession(token: string, expiresAt: Date): Promise<StaffSession> {
+    const [session] = await db.insert(staffSessions).values({ token, expiresAt }).returning();
+    return session;
+  }
+
+  async validateStaffSession(token: string): Promise<StaffSession | undefined> {
+    const [session] = await db
+      .select()
+      .from(staffSessions)
+      .where(
+        and(
+          eq(staffSessions.token, token),
+          eq(staffSessions.active, true),
+          gt(staffSessions.expiresAt, new Date())
+        )
+      );
+    return session;
+  }
+
+  async invalidateStaffSession(token: string): Promise<boolean> {
+    const result = await db
+      .update(staffSessions)
+      .set({ active: false })
+      .where(eq(staffSessions.token, token))
+      .returning();
+    return result.length > 0;
   }
 }
 

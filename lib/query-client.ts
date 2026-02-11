@@ -1,10 +1,6 @@
 import { fetch } from "expo/fetch";
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-/**
- * Gets the base URL for the Express API server (e.g., "http://localhost:3000")
- * @returns {string} The API base URL
- */
 export function getApiUrl(): string {
   let host = process.env.EXPO_PUBLIC_DOMAIN;
 
@@ -15,6 +11,27 @@ export function getApiUrl(): string {
   let url = new URL(`https://${host}`);
 
   return url.href;
+}
+
+let _staffToken: string | null = null;
+
+export function setStaffToken(token: string | null) {
+  _staffToken = token;
+}
+
+export function getStaffToken(): string | null {
+  return _staffToken;
+}
+
+function buildHeaders(data?: unknown): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (data) {
+    headers["Content-Type"] = "application/json";
+  }
+  if (_staffToken) {
+    headers["Authorization"] = `Bearer ${_staffToken}`;
+  }
+  return headers;
 }
 
 async function throwIfResNotOk(res: Response) {
@@ -34,7 +51,7 @@ export async function apiRequest(
 
   const res = await fetch(url.toString(), {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers: buildHeaders(data),
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -52,8 +69,14 @@ export const getQueryFn: <T>(options: {
     const baseUrl = getApiUrl();
     const url = new URL(queryKey.join("/") as string, baseUrl);
 
+    const headers: Record<string, string> = {};
+    if (_staffToken) {
+      headers["Authorization"] = `Bearer ${_staffToken}`;
+    }
+
     const res = await fetch(url.toString(), {
       credentials: "include",
+      headers,
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {

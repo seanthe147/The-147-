@@ -1,9 +1,57 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "node:http";
+import { randomBytes } from "node:crypto";
 import { storage } from "./storage";
 import { insertOfferSchema, insertPushTokenSchema } from "@shared/schema";
 
+async function staffAuth(req: Request, res: Response, next: NextFunction) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+  const token = authHeader.slice(7);
+  const session = await storage.validateStaffSession(token);
+  if (!session) {
+    return res.status(401).json({ message: "Invalid or expired session" });
+  }
+  next();
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
+  app.post("/api/staff/login", async (req, res) => {
+    const { pin } = req.body;
+    if (!pin) {
+      return res.status(400).json({ message: "PIN is required" });
+    }
+
+    const staffPin = process.env.STAFF_PIN;
+    if (!staffPin) {
+      return res.status(503).json({ message: "Staff access not configured" });
+    }
+
+    if (pin !== staffPin) {
+      return res.status(401).json({ message: "Incorrect PIN" });
+    }
+
+    const token = randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const session = await storage.createStaffSession(token, expiresAt);
+
+    res.json({ token: session.token, expiresAt: session.expiresAt });
+  });
+
+  app.post("/api/staff/logout", async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith("Bearer ")) {
+      await storage.invalidateStaffSession(authHeader.slice(7));
+    }
+    res.status(204).send();
+  });
+
+  app.get("/api/staff/verify", staffAuth, async (_req, res) => {
+    res.json({ authenticated: true });
+  });
+
   app.get("/api/offers", async (_req, res) => {
     const offers = await storage.getOffers();
     res.json(offers);
@@ -17,7 +65,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(offer);
   });
 
-  app.post("/api/offers", async (req, res) => {
+  app.post("/api/offers", staffAuth, async (req, res) => {
     const parsed = insertOfferSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid offer data", errors: parsed.error.flatten() });
@@ -26,8 +74,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(201).json(offer);
   });
 
-  app.put("/api/offers/:id", async (req, res) => {
-    const id = parseInt(req.params.id);
+  app.put("/api/offers/:id", staffAuth, async (req, res) => {
+    const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const parsed = insertOfferSchema.partial().safeParse(req.body);
     if (!parsed.success) {
@@ -38,8 +86,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(offer);
   });
 
-  app.delete("/api/offers/:id", async (req, res) => {
-    const id = parseInt(req.params.id);
+  app.delete("/api/offers/:id", staffAuth, async (req, res) => {
+    const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const deleted = await storage.deleteOffer(id);
     if (!deleted) return res.status(404).json({ message: "Offer not found" });
@@ -55,18 +103,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(201).json(token);
   });
 
-  app.delete("/api/push-tokens/:token", async (req, res) => {
-    const deleted = await storage.removePushToken(req.params.token);
+  app.delete("/api/push-tokens/:token", staffAuth, async (req, res) => {
+    const deleted = await storage.removePushToken(req.params.token as string);
     if (!deleted) return res.status(404).json({ message: "Token not found" });
     res.status(204).send();
   });
 
-  app.get("/api/push-tokens", async (_req, res) => {
+  app.get("/api/push-tokens", staffAuth, async (_req, res) => {
     const tokens = await storage.getAllPushTokens();
     res.json(tokens);
   });
 
-  app.post("/api/notifications/send", async (req, res) => {
+  app.post("/api/notifications/send", staffAuth, async (req, res) => {
     const { title, body } = req.body;
     if (!title || !body) {
       return res.status(400).json({ message: "Title and body are required" });
@@ -109,7 +157,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ sent: successCount, total: tokens.length, notification });
   });
 
-  app.get("/api/notifications/history", async (_req, res) => {
+  app.get("/api/notifications/history", staffAuth, async (_req, res) => {
     const history = await storage.getNotificationHistory();
     res.json(history);
   });
