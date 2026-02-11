@@ -131,3 +131,6 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - Feb 2026: Added AES-256-GCM encryption for customer PII (name, email, phone) with SHA-256 email hashing
 - Feb 2026: Added staff user accounts with username + PIN authentication, scrypt-hashed PINs
 - Feb 2026: Updated staff portal and web dashboard with username login and account registration
+- Feb 2026: Added database-backed event management replacing TicketSource integration
+- Feb 2026: Added "What's On" tab to Events page for weekly recurring events with day-of-week grouping
+- Feb 2026: Events support two types: one-off (with specific date) and weekly (with day of week)
