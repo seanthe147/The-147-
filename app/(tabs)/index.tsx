@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Image,
   ImageBackground,
+  Dimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -18,21 +19,20 @@ import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useQuery } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
-import { OPENING_HOURS } from "@/lib/data";
+import { OPENING_HOURS, EVENTS } from "@/lib/data";
 import type { Offer } from "@shared/schema";
 
 const logoImage = require("@/assets/images/logo-147.png");
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
-function QuickAction({
+function QuickActionPill({
   icon,
   label,
   onPress,
-  color,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   onPress: () => void;
-  color: string;
 }) {
   return (
     <Pressable
@@ -41,46 +41,84 @@ function QuickAction({
         onPress();
       }}
       style={({ pressed }) => [
-        styles.quickAction,
-        { transform: [{ scale: pressed ? 0.95 : 1 }] },
+        styles.pill,
+        { opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] },
       ]}
     >
-      <View style={[styles.quickActionIcon, { backgroundColor: color + "15" }]}>
-        <Ionicons name={icon} size={24} color={color} />
-      </View>
-      <Text style={styles.quickActionLabel}>{label}</Text>
+      <Ionicons name={icon} size={18} color={Colors.brand.blue} />
+      <Text style={styles.pillLabel}>{label}</Text>
+      <Ionicons name="chevron-forward" size={14} color={Colors.light.textSecondary} />
     </Pressable>
   );
 }
 
-function OfferCard({ offer }: { offer: Offer }) {
+function OfferCard({ offer, isFirst }: { offer: Offer; isFirst: boolean }) {
   return (
-    <View style={[styles.offerCard, { width: 260, marginRight: 14 }]}>
+    <View style={[styles.offerCard, isFirst && { marginLeft: 20 }]}>
       <LinearGradient
         colors={[offer.gradientStart, offer.gradientEnd]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.offerGradient}
       >
-        <View style={styles.offerIconRow}>
-          <View style={styles.offerIconCircle}>
-            <Ionicons
-              name={offer.icon as keyof typeof Ionicons.glyphMap}
-              size={22}
-              color="#FFFFFF"
-            />
-          </View>
-          <View style={styles.offerDiscountBadge}>
-            <Text style={styles.offerDiscountText}>{offer.discount}</Text>
+        <View style={styles.offerBadgeRow}>
+          <View style={styles.offerBadge}>
+            <Text style={styles.offerBadgeText}>{offer.discount}</Text>
           </View>
         </View>
-        <Text style={styles.offerTitle}>{offer.title}</Text>
-        <Text style={styles.offerSubtitle}>{offer.subtitle}</Text>
-        <View style={styles.offerFooter}>
-          <Ionicons name="calendar-outline" size={12} color="rgba(255,255,255,0.7)" />
-          <Text style={styles.offerValidText}>{offer.validUntil}</Text>
+        <View style={styles.offerBottom}>
+          <Text style={styles.offerTitle} numberOfLines={1}>{offer.title}</Text>
+          <Text style={styles.offerSubtitle} numberOfLines={2}>{offer.subtitle}</Text>
+          <View style={styles.offerMeta}>
+            <Ionicons name="time-outline" size={11} color="rgba(255,255,255,0.6)" />
+            <Text style={styles.offerMetaText}>{offer.validUntil}</Text>
+          </View>
         </View>
       </LinearGradient>
+    </View>
+  );
+}
+
+function EventPreview() {
+  const upcoming = EVENTS.filter((e) => new Date(e.date) >= new Date())
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .slice(0, 2);
+
+  if (upcoming.length === 0) return null;
+
+  return (
+    <View style={styles.eventsSection}>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Upcoming Events</Text>
+        <Pressable
+          onPress={() => router.push("/(tabs)/events")}
+          style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+        >
+          <Text style={styles.seeAllText}>See All</Text>
+        </Pressable>
+      </View>
+      {upcoming.map((event) => {
+        const eventDate = new Date(event.date + "T00:00:00");
+        const dayNum = eventDate.getDate();
+        const monthStr = eventDate.toLocaleDateString("en-GB", { month: "short" }).toUpperCase();
+        return (
+          <Pressable
+            key={event.id}
+            onPress={() => router.push("/(tabs)/events")}
+            style={({ pressed }) => [styles.eventRow, { opacity: pressed ? 0.8 : 1 }]}
+          >
+            <View style={[styles.eventDateBox, { backgroundColor: event.imageColor + "18" }]}>
+              <Text style={[styles.eventDateDay, { color: event.imageColor }]}>{dayNum}</Text>
+              <Text style={[styles.eventDateMonth, { color: event.imageColor }]}>{monthStr}</Text>
+            </View>
+            <View style={styles.eventInfo}>
+              <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
+              <Text style={styles.eventMeta}>{event.time} {event.price !== "Free" ? `  ${event.price}` : ""}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={Colors.light.border} />
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -98,317 +136,518 @@ export default function HomeScreen() {
   });
 
   const bannerImageUrl = settings?.banner_image;
+  const todayHours = getOpeningHoursToday();
 
-  const heroInner = (
-    <>
-      <LinearGradient
-        colors={bannerImageUrl ? ["rgba(0,0,0,0.45)", "rgba(10,22,40,0.85)"] : [Colors.brand.dark, Colors.brand.navy, Colors.brand.blue + "90"]}
-        style={[styles.heroGradient, bannerImageUrl ? StyleSheet.absoluteFillObject : undefined]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      />
-      <View style={[styles.heroContent, { paddingTop: insets.top + 12 + webTopInset }]}>
-        <View style={styles.logoRow}>
-          <Image source={logoImage} style={styles.logoImage} resizeMode="contain" />
+  const heroOverlay = (
+    <LinearGradient
+      colors={
+        bannerImageUrl
+          ? ["transparent", "rgba(10,22,40,0.55)", "rgba(10,22,40,0.92)"]
+          : [Colors.brand.dark, Colors.brand.navy, Colors.brand.blue + "70"]
+      }
+      locations={bannerImageUrl ? [0, 0.5, 1] : [0, 0.6, 1]}
+      style={StyleSheet.absoluteFillObject}
+    />
+  );
+
+  const heroContent = (
+    <View style={[styles.heroContent, { paddingTop: insets.top + 10 + webTopInset }]}>
+      <View style={styles.heroTopBar}>
+        <Image source={logoImage} style={styles.logoImage} resizeMode="contain" />
+        <Pressable
+          onPress={() => router.push("/about")}
+          style={({ pressed }) => [styles.hoursChip, { opacity: pressed ? 0.8 : 1 }]}
+        >
+          <View style={styles.liveDot} />
+          <Text style={styles.hoursChipText}>Open until {todayHours.closeTime}</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.heroCenter}>
+        <Text style={styles.heroTitle}>The 147</Text>
+        <View style={styles.heroTagline}>
+          <View style={styles.tagDivider} />
+          <Text style={styles.heroSubtitle}>Venue</Text>
+          <View style={styles.tagDot} />
+          <Text style={styles.heroSubtitle}>Snooker</Text>
+          <View style={styles.tagDot} />
+          <Text style={styles.heroSubtitle}>Bar</Text>
+          <View style={styles.tagDot} />
+          <Text style={styles.heroSubtitle}>Restaurant</Text>
+          <View style={styles.tagDivider} />
         </View>
-        <Text style={styles.logoText}>The 147</Text>
-        <Text style={styles.heroSubtitle}>Venue  /  Snooker  /  Bar  /  Restaurant</Text>
+      </View>
+
+      <View style={styles.heroActions}>
         <Pressable
           onPress={() => {
             if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            Linking.openURL("https://www.the147.co.uk/book-online");
+            router.push("/(tabs)/book");
           }}
           style={({ pressed }) => [
-            styles.heroButton,
-            { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] },
+            styles.primaryCta,
+            { transform: [{ scale: pressed ? 0.97 : 1 }] },
           ]}
         >
-          <Ionicons name="calendar" size={18} color={Colors.brand.dark} />
-          <Text style={styles.heroButtonText}>Book Now</Text>
-          <Ionicons name="open-outline" size={14} color={Colors.brand.dark} />
+          <Ionicons name="calendar" size={17} color={Colors.brand.dark} />
+          <Text style={styles.primaryCtaText}>Book a Table</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => {
+            if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push("/(tabs)/order");
+          }}
+          style={({ pressed }) => [
+            styles.secondaryCta,
+            { transform: [{ scale: pressed ? 0.97 : 1 }] },
+          ]}
+        >
+          <Ionicons name="restaurant" size={17} color="#FFFFFF" />
+          <Text style={styles.secondaryCtaText}>Order Food</Text>
         </Pressable>
       </View>
-    </>
+    </View>
   );
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={[
-        styles.scrollContent,
-        { paddingTop: insets.top + webTopInset },
-      ]}
-      contentInsetAdjustmentBehavior="automatic"
-      showsVerticalScrollIndicator={false}
-    >
-      {bannerImageUrl ? (
-        <ImageBackground
-          source={{ uri: bannerImageUrl }}
-          style={styles.heroGradient}
-          resizeMode="cover"
-        >
-          {heroInner}
-        </ImageBackground>
-      ) : (
-        <View style={styles.heroGradient}>
-          {heroInner}
-        </View>
-      )}
-
-      <View style={styles.body}>
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        <View style={styles.quickActions}>
-          <QuickAction
-            icon="calendar"
-            label="Book Table"
-            onPress={() => Linking.openURL("https://www.the147.co.uk/book-online")}
-            color={Colors.brand.blue}
-          />
-          <QuickAction
-            icon="ticket"
-            label="Events"
-            onPress={() => router.push("/(tabs)/events")}
-            color={Colors.brand.red}
-          />
-          <QuickAction
-            icon="restaurant"
-            label="Order"
-            onPress={() => router.push("/(tabs)/order")}
-            color={Colors.brand.gold}
-          />
-          <QuickAction
-            icon="information-circle"
-            label="About Us"
-            onPress={() => router.push("/(tabs)/about")}
-            color={Colors.brand.green}
-          />
-        </View>
-
-        {isLoading ? (
-          <ActivityIndicator size="small" color={Colors.brand.blue} style={{ marginVertical: 24 }} />
-        ) : offers && offers.length > 0 ? (
-          <>
-            <Text style={styles.sectionTitle}>Offers</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.offerScroll}
-              contentContainerStyle={styles.offerScrollContent}
-            >
-              {offers.map((offer) => (
-                <OfferCard key={offer.id} offer={offer} />
-              ))}
-            </ScrollView>
-          </>
-        ) : null}
-
-        <Pressable
-          onPress={() => router.push("/about")}
-          style={({ pressed }) => [styles.infoCard, { opacity: pressed ? 0.85 : 1 }]}
-        >
-          <LinearGradient
-            colors={[Colors.brand.navy, Colors.brand.dark]}
-            style={styles.infoGradient}
+    <View style={styles.container}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {bannerImageUrl ? (
+          <ImageBackground
+            source={{ uri: bannerImageUrl }}
+            style={styles.heroBanner}
+            resizeMode="cover"
           >
-            <Ionicons name="time" size={28} color={Colors.brand.gold} />
-            <View style={styles.infoTextContainer}>
-              <Text style={styles.infoTitle}>Open Today</Text>
-              <Text style={styles.infoSubtitle}>
-                {getOpeningHoursToday()}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.5)" />
-          </LinearGradient>
-        </Pressable>
+            {heroOverlay}
+            {heroContent}
+          </ImageBackground>
+        ) : (
+          <View style={styles.heroBanner}>
+            {heroOverlay}
+            {heroContent}
+          </View>
+        )}
 
-        <View style={{ height: Platform.OS === "web" ? 34 : 100 }} />
-      </View>
-    </ScrollView>
+        <View style={styles.body}>
+          <View style={styles.quickNav}>
+            <QuickActionPill
+              icon="calendar-outline"
+              label="Book a Table"
+              onPress={() => router.push("/(tabs)/book")}
+            />
+            <QuickActionPill
+              icon="ticket-outline"
+              label="Events & Tickets"
+              onPress={() => router.push("/(tabs)/events")}
+            />
+            <QuickActionPill
+              icon="restaurant-outline"
+              label="Food & Drinks Menu"
+              onPress={() => router.push("/(tabs)/order")}
+            />
+            <QuickActionPill
+              icon="mail-outline"
+              label="Contact Us"
+              onPress={() => router.push("/contact")}
+            />
+          </View>
+
+          {isLoading ? (
+            <ActivityIndicator size="small" color={Colors.brand.blue} style={{ marginVertical: 20 }} />
+          ) : offers && offers.length > 0 ? (
+            <View style={styles.offersSection}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Current Offers</Text>
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.offerScroll}
+                contentContainerStyle={styles.offerScrollContent}
+                decelerationRate="fast"
+                snapToInterval={SCREEN_WIDTH * 0.7 + 12}
+              >
+                {offers.map((offer, i) => (
+                  <OfferCard key={offer.id} offer={offer} isFirst={i === 0} />
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
+
+          <EventPreview />
+
+          <Pressable
+            onPress={() => router.push("/about")}
+            style={({ pressed }) => [styles.hoursCard, { transform: [{ scale: pressed ? 0.98 : 1 }] }]}
+          >
+            <View style={styles.hoursCardLeft}>
+              <View style={styles.hoursIconWrap}>
+                <Ionicons name="time" size={22} color={Colors.brand.gold} />
+              </View>
+              <View>
+                <Text style={styles.hoursCardTitle}>Opening Hours</Text>
+                <Text style={styles.hoursCardSub}>{todayHours.day}: {todayHours.hours}</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={Colors.light.textSecondary} />
+          </Pressable>
+
+          <Pressable
+            onPress={() => Linking.openURL("https://www.the147.co.uk")}
+            style={({ pressed }) => [styles.websiteCard, { opacity: pressed ? 0.8 : 1 }]}
+          >
+            <Ionicons name="globe-outline" size={18} color={Colors.brand.blue} />
+            <Text style={styles.websiteText}>Visit www.the147.co.uk</Text>
+            <Ionicons name="open-outline" size={13} color={Colors.light.textSecondary} />
+          </Pressable>
+
+          <View style={{ height: Platform.OS === "web" ? 50 : 110 }} />
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
-function getOpeningHoursToday(): string {
+function getOpeningHoursToday(): { day: string; hours: string; closeTime: string } {
   const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const today = days[new Date().getDay()];
   const entry = OPENING_HOURS.find((h) => h.day === today);
-  return `${today}: ${entry?.hours ?? "Closed"}`;
+  const hours = entry?.hours ?? "Closed";
+  const closeTime = hours.includes("-") ? hours.split("-")[1].trim() : "late";
+  return { day: today, hours, closeTime };
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.light.background,
+    backgroundColor: "#F5F6F8",
   },
   scrollContent: {
     paddingTop: 0,
   },
-  heroGradient: {
+  heroBanner: {
     width: "100%",
-    minHeight: 280,
+    minHeight: 360,
   },
   heroContent: {
-    paddingHorizontal: 24,
-    paddingBottom: 32,
-    alignItems: "center",
+    paddingHorizontal: 22,
+    paddingBottom: 28,
+    flex: 1,
+    justifyContent: "space-between",
   },
-  logoRow: {
-    alignSelf: "flex-start",
-    marginBottom: 12,
+  heroTopBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
   },
   logoImage: {
-    width: 52,
-    height: 52,
-    borderRadius: 12,
+    width: 46,
+    height: 46,
+    borderRadius: 10,
   },
-  logoText: {
+  hoursChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#4ADE80",
+  },
+  hoursChipText: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 11,
+    color: "rgba(255,255,255,0.9)",
+    letterSpacing: 0.2,
+  },
+  heroCenter: {
+    alignItems: "center",
+    marginVertical: 20,
+  },
+  heroTitle: {
     fontFamily: "Montserrat_700Bold",
-    fontSize: 42,
+    fontSize: 48,
     color: "#FFFFFF",
-    letterSpacing: 1,
-    marginBottom: 4,
+    letterSpacing: -0.5,
+    textShadowColor: "rgba(0,0,0,0.3)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
+  },
+  heroTagline: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 6,
+    gap: 8,
   },
   heroSubtitle: {
     fontFamily: "Montserrat_400Regular",
-    fontSize: 13,
+    fontSize: 12,
     color: "rgba(255,255,255,0.7)",
-    letterSpacing: 2,
-    marginBottom: 24,
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
   },
-  heroButton: {
+  tagDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: Colors.brand.gold,
+  },
+  tagDivider: {
+    width: 16,
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.2)",
+  },
+  heroActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 8,
+  },
+  primaryCta: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 8,
     backgroundColor: Colors.brand.gold,
-    paddingHorizontal: 28,
     paddingVertical: 14,
-    borderRadius: 30,
+    borderRadius: 14,
   },
-  heroButtonText: {
+  primaryCtaText: {
     fontFamily: "Montserrat_700Bold",
-    fontSize: 15,
+    fontSize: 14,
     color: Colors.brand.dark,
   },
+  secondaryCta: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+  },
+  secondaryCtaText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: "#FFFFFF",
+  },
   body: {
+    paddingTop: 20,
+  },
+  quickNav: {
     paddingHorizontal: 20,
-    paddingTop: 24,
+    gap: 6,
+    marginBottom: 24,
+  },
+  pill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#EEF0F3",
+  },
+  pillLabel: {
+    flex: 1,
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: Colors.light.text,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    marginBottom: 14,
   },
   sectionTitle: {
     fontFamily: "Montserrat_700Bold",
-    fontSize: 20,
+    fontSize: 18,
     color: Colors.light.text,
-    marginBottom: 16,
-    marginTop: 8,
+    letterSpacing: -0.3,
   },
-  quickActions: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 8,
+  seeAllText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: Colors.brand.blue,
   },
-  quickAction: {
-    alignItems: "center",
-    flex: 1,
-  },
-  quickActionIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-  },
-  quickActionLabel: {
-    fontFamily: "Montserrat_500Medium",
-    fontSize: 12,
-    color: Colors.light.textSecondary,
+  offersSection: {
+    marginBottom: 28,
   },
   offerScroll: {
-    marginHorizontal: -20,
-    marginBottom: 16,
+    overflow: "visible" as const,
   },
   offerScrollContent: {
-    paddingHorizontal: 20,
+    paddingRight: 20,
   },
   offerCard: {
-    borderRadius: 16,
+    width: SCREEN_WIDTH * 0.7,
+    marginRight: 12,
+    borderRadius: 18,
     overflow: "hidden",
     elevation: 4,
-    boxShadow: "0px 2px 8px rgba(0, 0, 0, 0.15)",
+    boxShadow: "0px 4px 16px rgba(0, 0, 0, 0.12)",
   },
   offerGradient: {
-    padding: 18,
-    minHeight: 150,
+    padding: 20,
+    minHeight: 140,
     justifyContent: "space-between",
   },
-  offerIconRow: {
+  offerBadgeRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
+    justifyContent: "flex-end",
   },
-  offerIconCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  offerDiscountBadge: {
-    backgroundColor: "rgba(255,255,255,0.25)",
+  offerBadge: {
+    backgroundColor: "rgba(255,255,255,0.22)",
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
   },
-  offerDiscountText: {
+  offerBadgeText: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 13,
     color: "#FFFFFF",
+  },
+  offerBottom: {
+    marginTop: 12,
   },
   offerTitle: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 17,
     color: "#FFFFFF",
-    marginBottom: 4,
+    marginBottom: 3,
   },
   offerSubtitle: {
     fontFamily: "Montserrat_400Regular",
-    fontSize: 13,
-    color: "rgba(255,255,255,0.85)",
-    marginBottom: 10,
+    fontSize: 12,
+    color: "rgba(255,255,255,0.8)",
+    lineHeight: 17,
+    marginBottom: 8,
   },
-  offerFooter: {
+  offerMeta: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
   },
-  offerValidText: {
+  offerMetaText: {
     fontFamily: "Montserrat_500Medium",
-    fontSize: 11,
-    color: "rgba(255,255,255,0.7)",
+    fontSize: 10,
+    color: "rgba(255,255,255,0.6)",
   },
-  infoCard: {
-    borderRadius: 16,
-    overflow: "hidden",
-    marginTop: 4,
+  eventsSection: {
+    marginBottom: 24,
   },
-  infoGradient: {
+  eventRow: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 20,
-    gap: 16,
+    gap: 14,
+    marginHorizontal: 20,
+    backgroundColor: "#FFFFFF",
+    padding: 14,
+    borderRadius: 14,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "#EEF0F3",
   },
-  infoTextContainer: {
+  eventDateBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  eventDateDay: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 18,
+    lineHeight: 22,
+  },
+  eventDateMonth: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 9,
+    letterSpacing: 0.5,
+  },
+  eventInfo: {
     flex: 1,
   },
-  infoTitle: {
-    fontFamily: "Montserrat_700Bold",
-    fontSize: 16,
+  eventTitle: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: Colors.light.text,
+    marginBottom: 2,
+  },
+  eventMeta: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+  },
+  hoursCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginHorizontal: 20,
+    backgroundColor: Colors.brand.navy,
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 10,
+  },
+  hoursCardLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  hoursIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: "rgba(212,168,67,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  hoursCardTitle: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
     color: "#FFFFFF",
   },
-  infoSubtitle: {
+  hoursCardSub: {
     fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: "rgba(255,255,255,0.6)",
+    marginTop: 1,
+  },
+  websiteCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#EEF0F3",
+  },
+  websiteText: {
+    fontFamily: "Montserrat_500Medium",
     fontSize: 13,
-    color: "rgba(255,255,255,0.7)",
-    marginTop: 2,
+    color: Colors.brand.blue,
   },
 });
