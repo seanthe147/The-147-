@@ -111,8 +111,8 @@ export default function AdminOffersScreen() {
 
   const createMutation = useMutation({
     mutationFn: (data: OfferForm) => apiRequest("POST", "/api/offers", data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/offers"] });
+    onSuccess: async () => {
+      await queryClient.refetchQueries({ queryKey: ["/api/offers"] });
       resetForm();
     },
   });
@@ -120,16 +120,22 @@ export default function AdminOffersScreen() {
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: OfferForm }) =>
       apiRequest("PUT", `/api/offers/${id}`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/offers"] });
+    onSuccess: async () => {
+      await queryClient.refetchQueries({ queryKey: ["/api/offers"] });
       resetForm();
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/offers/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/offers"] });
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/offers/${id}`);
+      return id;
+    },
+    onSuccess: async () => {
+      await queryClient.refetchQueries({ queryKey: ["/api/offers"] });
+    },
+    onError: () => {
+      Alert.alert("Error", "Failed to delete offer. Please try again.");
     },
   });
 
@@ -166,14 +172,21 @@ export default function AdminOffersScreen() {
   }
 
   function handleDelete(id: number) {
-    Alert.alert("Delete Offer", "Are you sure you want to remove this offer?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => deleteMutation.mutate(id),
-      },
-    ]);
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm("Are you sure you want to remove this offer?");
+      if (confirmed) {
+        deleteMutation.mutate(id);
+      }
+    } else {
+      Alert.alert("Delete Offer", "Are you sure you want to remove this offer?", [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => deleteMutation.mutate(id),
+        },
+      ]);
+    }
   }
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
@@ -367,15 +380,15 @@ export default function AdminOffersScreen() {
                 </View>
                 <Pressable
                   onPress={() => startEdit(offer)}
-                  hitSlop={8}
                   style={styles.offerRowAction}
+                  testID={`edit-offer-${offer.id}`}
                 >
                   <Ionicons name="create-outline" size={22} color={Colors.brand.blue} />
                 </Pressable>
                 <Pressable
                   onPress={() => handleDelete(offer.id)}
-                  hitSlop={8}
                   style={styles.offerRowAction}
+                  testID={`delete-offer-${offer.id}`}
                 >
                   <Ionicons name="trash-outline" size={22} color={Colors.brand.red} />
                 </Pressable>
@@ -641,7 +654,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   offerRowAction: {
-    padding: 4,
+    padding: 10,
   },
   emptyState: {
     alignItems: "center",
