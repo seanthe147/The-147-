@@ -123,13 +123,13 @@ export const TIME_SLOTS = [
 export const PARTY_SIZES = [1, 2, 3, 4, 5, 6, 7, 8];
 
 export const OPENING_HOURS = [
-  { day: "Monday", hours: "12:00 - 23:00" },
-  { day: "Tuesday", hours: "12:00 - 23:00" },
-  { day: "Wednesday", hours: "12:00 - 23:00" },
-  { day: "Thursday", hours: "12:00 - 23:00" },
-  { day: "Friday", hours: "12:00 - 00:00" },
-  { day: "Saturday", hours: "10:00 - 00:00" },
-  { day: "Sunday", hours: "10:00 - 22:00" },
+  { day: "Monday", hours: "10:00 - 00:00" },
+  { day: "Tuesday", hours: "10:00 - 00:00" },
+  { day: "Wednesday", hours: "10:00 - 00:00" },
+  { day: "Thursday", hours: "10:00 - 00:00" },
+  { day: "Friday", hours: "10:00 - 01:00" },
+  { day: "Saturday", hours: "10:00 - 01:00" },
+  { day: "Sunday", hours: "10:00 - 00:00" },
 ];
 
 export function formatDate(dateStr: string): string {
