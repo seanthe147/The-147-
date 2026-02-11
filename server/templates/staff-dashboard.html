@@ -686,6 +686,30 @@
     <div class="content" id="bookingsContent">
       <!-- Populated by JS -->
     </div>
+
+    <div style="padding: 0 24px 32px; max-width: 1200px; margin: 0 auto;">
+      <div style="border-top: 1px solid var(--border); padding-top: 24px; margin-top: 8px;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px;">
+          <span style="font-size: 20px;">&#128274;</span>
+          <h3 style="font-size: 16px; font-weight: 700; color: var(--text); margin: 0;">GDPR Data Subject Rights</h3>
+          <span style="font-size: 11px; background: var(--blue); color: #fff; padding: 2px 8px; border-radius: 4px; font-weight: 600;">UK GDPR</span>
+        </div>
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5;">
+          Look up, export, or delete a customer's personal data. Data is automatically anonymised after 90 days.
+        </p>
+        <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px;">
+          <div style="flex: 1; min-width: 240px;">
+            <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Customer Email</label>
+            <input type="email" id="gdprEmail" placeholder="customer@example.com" style="width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); font-family: inherit; font-size: 14px;">
+          </div>
+          <button onclick="gdprLookup()" style="padding: 10px 20px; background: var(--blue); color: #fff; border: none; border-radius: var(--radius); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;">Look Up</button>
+          <button onclick="gdprExport()" style="padding: 10px 20px; background: var(--green); color: #fff; border: none; border-radius: var(--radius); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;">Export Data</button>
+          <button onclick="gdprErase()" style="padding: 10px 20px; background: var(--red); color: #fff; border: none; border-radius: var(--radius); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;">Erase Data</button>
+          <button onclick="gdprRetentionCleanup()" style="padding: 10px 20px; background: var(--dark); color: #fff; border: none; border-radius: var(--radius); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;">Run 90-Day Cleanup</button>
+        </div>
+        <div id="gdprResults" style="display: none; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; font-size: 13px; line-height: 1.6; max-height: 400px; overflow-y: auto;"></div>
+      </div>
+    </div>
   </div>
 
   <!-- Booking Modal -->
@@ -1208,6 +1232,125 @@
         showLogin();
       }
     })();
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function getGdprEmail() {
+      const email = document.getElementById('gdprEmail').value.trim();
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        document.getElementById('gdprResults').style.display = 'block';
+        document.getElementById('gdprResults').innerHTML = '<span style="color:var(--red);">Please enter a valid email address.</span>';
+        return null;
+      }
+      return email;
+    }
+
+    function getStoredToken() {
+      return localStorage.getItem('staffToken');
+    }
+
+    async function gdprLookup() {
+      const email = getGdprEmail();
+      if (!email) return;
+      const results = document.getElementById('gdprResults');
+      results.style.display = 'block';
+      results.innerHTML = '<em>Looking up...</em>';
+      try {
+        const res = await fetch('/api/gdpr/export?email=' + encodeURIComponent(email));
+        const data = await res.json();
+        if (data.totalRecords === 0) {
+          results.innerHTML = '<strong>No records found</strong> for <em>' + escapeHtml(email) + '</em>.';
+          return;
+        }
+        let html = '<strong>' + data.totalRecords + ' record(s) found</strong> for <em>' + escapeHtml(email) + '</em>:<br><br>';
+        html += '<table style="width:100%; border-collapse: collapse; font-size: 12px;">';
+        html += '<tr style="background:#F3F4F6;"><th style="padding:8px; text-align:left; border-bottom:1px solid var(--border);">Date</th><th style="padding:8px; text-align:left; border-bottom:1px solid var(--border);">Time</th><th style="padding:8px; text-align:left; border-bottom:1px solid var(--border);">Table</th><th style="padding:8px; text-align:left; border-bottom:1px solid var(--border);">Name</th><th style="padding:8px; text-align:left; border-bottom:1px solid var(--border);">Phone</th><th style="padding:8px; text-align:left; border-bottom:1px solid var(--border);">Status</th></tr>';
+        data.bookings.forEach(function(b) {
+          html += '<tr><td style="padding:8px; border-bottom:1px solid var(--border);">' + escapeHtml(b.date) + '</td>';
+          html += '<td style="padding:8px; border-bottom:1px solid var(--border);">' + escapeHtml(b.startTime) + '</td>';
+          html += '<td style="padding:8px; border-bottom:1px solid var(--border);">' + escapeHtml(b.tableType) + (b.tableNumber ? ' #' + escapeHtml(b.tableNumber) : '') + '</td>';
+          html += '<td style="padding:8px; border-bottom:1px solid var(--border);">' + escapeHtml(b.customerName) + '</td>';
+          html += '<td style="padding:8px; border-bottom:1px solid var(--border);">' + escapeHtml(b.customerPhone) + '</td>';
+          html += '<td style="padding:8px; border-bottom:1px solid var(--border);">' + escapeHtml(b.status) + '</td></tr>';
+        });
+        html += '</table>';
+        results.innerHTML = html;
+      } catch (err) {
+        results.innerHTML = '<span style="color:var(--red);">Error looking up data. Please try again.</span>';
+      }
+    }
+
+    async function gdprExport() {
+      const email = getGdprEmail();
+      if (!email) return;
+      const results = document.getElementById('gdprResults');
+      results.style.display = 'block';
+      results.innerHTML = '<em>Exporting...</em>';
+      try {
+        const res = await fetch('/api/gdpr/export?email=' + encodeURIComponent(email));
+        const data = await res.json();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'gdpr-export-' + email.split('@')[0] + '-' + Date.now() + '.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        results.innerHTML = '<span style="color:var(--green);">Data exported successfully (' + data.totalRecords + ' records). Download started.</span>';
+      } catch (err) {
+        results.innerHTML = '<span style="color:var(--red);">Error exporting data. Please try again.</span>';
+      }
+    }
+
+    async function gdprErase() {
+      const email = getGdprEmail();
+      if (!email) return;
+      if (!confirm('This will permanently delete ALL booking records for ' + email + '. This action cannot be undone.\n\nProceed with erasure under UK GDPR Article 17?')) return;
+      const results = document.getElementById('gdprResults');
+      results.style.display = 'block';
+      results.innerHTML = '<em>Erasing...</em>';
+      try {
+        const res = await fetch('/api/gdpr/erase', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getStoredToken() },
+          body: JSON.stringify({ email: email })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          results.innerHTML = '<span style="color:var(--green);"><strong>Erasure complete.</strong> ' + data.recordsDeleted + ' record(s) deleted for <em>' + escapeHtml(email) + '</em>. (UK GDPR Article 17)</span>';
+        } else {
+          results.innerHTML = '<span style="color:var(--red);">' + escapeHtml(data.message) + '</span>';
+        }
+      } catch (err) {
+        results.innerHTML = '<span style="color:var(--red);">Error erasing data. Please try again.</span>';
+      }
+    }
+
+    async function gdprRetentionCleanup() {
+      if (!confirm('This will anonymise all booking records older than 90 days and remove expired staff sessions.\n\nProceed?')) return;
+      const results = document.getElementById('gdprResults');
+      results.style.display = 'block';
+      results.innerHTML = '<em>Running cleanup...</em>';
+      try {
+        const res = await fetch('/api/gdpr/retention-cleanup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getStoredToken() }
+        });
+        const data = await res.json();
+        if (res.ok) {
+          results.innerHTML = '<span style="color:var(--green);"><strong>Cleanup complete.</strong> ' + data.bookingsAnonymized + ' booking(s) anonymised. ' + data.expiredSessionsCleared + ' expired session(s) cleared.</span>';
+        } else {
+          results.innerHTML = '<span style="color:var(--red);">' + escapeHtml(data.message) + '</span>';
+        }
+      } catch (err) {
+        results.innerHTML = '<span style="color:var(--red);">Error running cleanup. Please try again.</span>';
+      }
+    }
   </script>
 </body>
 </html>
