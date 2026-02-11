@@ -27,10 +27,12 @@ export default function AdminNotificationsScreen() {
 
   const tokensQuery = useQuery<PushToken[]>({
     queryKey: ["/api/push-tokens"],
+    refetchOnMount: "always",
   });
 
   const historyQuery = useQuery<Notification[]>({
     queryKey: ["/api/notifications/history"],
+    refetchOnMount: "always",
   });
 
   const sendMutation = useMutation({
