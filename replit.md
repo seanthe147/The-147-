@@ -9,9 +9,10 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - **Events**: Event listings with external TicketSource integration
 - **Order**: Embedded WebView to OrderTab menu
 - **About**: Venue info, facilities grid, opening hours, contact/social links, legal & privacy links
-- **Offers Management**: Admin interface to create/edit/delete promotional offers (accessible from About page)
+- **Staff Portal**: PIN-authenticated gateway to all admin tools (offers, notifications) with session management
+- **Offers Management**: Admin interface to create/edit/delete promotional offers (protected by staff auth)
 - **GDPR Compliance**: Consent banner on first launch, privacy policy screen, consent management with revoke option
-- **Push Notifications**: Admin interface to compose and send push notifications to all registered devices, device management, notification history
+- **Push Notifications**: Admin interface to compose and send push notifications (protected by staff auth)
 
 ## Architecture
 - Frontend: Expo Router with tab navigation (5 tabs: Home, Book, Events, Order, About)
@@ -23,13 +24,15 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 
 ## Project Structure
 - `app/(tabs)/` - Tab screens (index, book, events, order, about)
-- `app/_layout.tsx` - Root layout with providers (QueryClient, Consent, Notification, TabBar)
-- `app/admin-offers.tsx` - Admin offers management screen (modal)
-- `app/admin-notifications.tsx` - Push notification admin screen (modal)
+- `app/_layout.tsx` - Root layout with providers (QueryClient, Consent, StaffAuth, Notification, TabBar)
+- `app/staff-portal.tsx` - Staff portal with PIN login gate and admin dashboard
+- `app/admin-offers.tsx` - Admin offers management screen (modal, auth-guarded)
+- `app/admin-notifications.tsx` - Push notification admin screen (modal, auth-guarded)
 - `app/privacy-policy.tsx` - Privacy policy & UK GDPR info screen (modal)
 - `components/ConsentBanner.tsx` - GDPR consent banner overlay
 - `components/ErrorBoundary.tsx` - Error boundary component
 - `contexts/ConsentContext.tsx` - Consent state management with AsyncStorage
+- `contexts/StaffAuthContext.tsx` - Staff authentication state management with AsyncStorage
 - `contexts/NotificationContext.tsx` - Push notification registration and handling
 - `contexts/TabBarContext.tsx` - Tab bar visibility management
 - `lib/data.ts` - Static data (events, table types, time slots, opening hours)
@@ -40,15 +43,18 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - `server/storage.ts` - Database storage layer
 
 ## API Endpoints
+- `POST /api/staff/login` - Authenticate with staff PIN, returns session token
+- `POST /api/staff/logout` - Invalidate session token
+- `GET /api/staff/verify` - Verify session token validity (auth required)
 - `GET /api/offers` - List all offers
-- `POST /api/offers` - Create a new offer
-- `PUT /api/offers/:id` - Update an offer
-- `DELETE /api/offers/:id` - Delete an offer
+- `POST /api/offers` - Create a new offer (auth required)
+- `PUT /api/offers/:id` - Update an offer (auth required)
+- `DELETE /api/offers/:id` - Delete an offer (auth required)
 - `POST /api/push-tokens` - Register a device push token
-- `GET /api/push-tokens` - List all registered push tokens
-- `DELETE /api/push-tokens/:token` - Remove a push token
-- `POST /api/notifications/send` - Send push notification to all devices
-- `GET /api/notifications/history` - Get notification send history
+- `GET /api/push-tokens` - List all registered push tokens (auth required)
+- `DELETE /api/push-tokens/:token` - Remove a push token (auth required)
+- `POST /api/notifications/send` - Send push notification to all devices (auth required)
+- `GET /api/notifications/history` - Get notification send history (auth required)
 
 ## GDPR & Data Protection
 - Consent banner shown on first app launch with "Essential Only" and "Accept All" options
@@ -68,3 +74,4 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - Feb 2026: Added dynamic offers management with admin interface and PostgreSQL backend
 - Feb 2026: Added UK GDPR compliance - consent banner, privacy policy, consent management
 - Feb 2026: Added push notifications - admin compose/send screen, device registration, notification history
+- Feb 2026: Added staff portal with PIN authentication, session tokens, auth guards on all admin endpoints
