@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   StyleSheet,
   View,
@@ -16,7 +16,32 @@ import Colors from "@/constants/colors";
 import { useTabBar } from "@/contexts/TabBarContext";
 
 const MENU_URL = "https://ordertab.menu/the147";
-const AUTO_HIDE_DELAY = 1500;
+const AUTO_HIDE_DELAY = 10000;
+
+const SCROLL_DETECT_JS = `
+  (function() {
+    var hidden = false;
+    window.addEventListener('scroll', function() {
+      if (!hidden) {
+        hidden = true;
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll' }));
+      }
+    }, { passive: true });
+    document.addEventListener('scroll', function() {
+      if (!hidden) {
+        hidden = true;
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll' }));
+      }
+    }, true);
+    document.addEventListener('touchmove', function() {
+      if (!hidden) {
+        hidden = true;
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll' }));
+      }
+    }, { passive: true });
+  })();
+  true;
+`;
 
 export default function OrderScreen() {
   const insets = useSafeAreaInsets();
@@ -25,14 +50,20 @@ export default function OrderScreen() {
   const [hasError, setHasError] = useState(false);
   const { tabBarVisible, setTabBarVisible } = useTabBar();
   const isFocused = useIsFocused();
+  const hasHiddenRef = useRef(false);
 
   useEffect(() => {
     if (isFocused) {
+      hasHiddenRef.current = false;
       const timer = setTimeout(() => {
-        setTabBarVisible(false);
+        if (!hasHiddenRef.current) {
+          hasHiddenRef.current = true;
+          setTabBarVisible(false);
+        }
       }, AUTO_HIDE_DELAY);
       return () => clearTimeout(timer);
     } else {
+      hasHiddenRef.current = false;
       setTabBarVisible(true);
     }
   }, [isFocused, setTabBarVisible]);
@@ -41,6 +72,16 @@ export default function OrderScreen() {
     return () => {
       setTabBarVisible(true);
     };
+  }, [setTabBarVisible]);
+
+  const handleWebViewMessage = useCallback((event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === "scroll" && !hasHiddenRef.current) {
+        hasHiddenRef.current = true;
+        setTabBarVisible(false);
+      }
+    } catch {}
   }, [setTabBarVisible]);
 
   const toggleTabBar = useCallback(() => {
@@ -135,6 +176,8 @@ export default function OrderScreen() {
           onLoadEnd={() => setLoading(false)}
           onError={() => { setHasError(true); setLoading(false); }}
           onHttpError={() => { setHasError(true); setLoading(false); }}
+          onMessage={handleWebViewMessage}
+          injectedJavaScript={SCROLL_DETECT_JS}
           startInLoadingState={false}
           javaScriptEnabled
           domStorageEnabled
