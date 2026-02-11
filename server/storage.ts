@@ -5,8 +5,13 @@ import {
   type InsertUser,
   type Offer,
   type InsertOffer,
+  type PushToken,
+  type InsertPushToken,
+  type Notification,
   users,
   offers,
+  pushTokens,
+  notifications,
 } from "@shared/schema";
 
 const db = drizzle(process.env.DATABASE_URL!);
@@ -20,6 +25,11 @@ export interface IStorage {
   createOffer(offer: InsertOffer): Promise<Offer>;
   updateOffer(id: number, offer: Partial<InsertOffer>): Promise<Offer | undefined>;
   deleteOffer(id: number): Promise<boolean>;
+  registerPushToken(token: InsertPushToken): Promise<PushToken>;
+  getAllPushTokens(): Promise<PushToken[]>;
+  removePushToken(token: string): Promise<boolean>;
+  saveNotification(title: string, body: string, recipientCount: number): Promise<Notification>;
+  getNotificationHistory(): Promise<Notification[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -60,6 +70,31 @@ export class DatabaseStorage implements IStorage {
   async deleteOffer(id: number): Promise<boolean> {
     const result = await db.delete(offers).where(eq(offers.id, id)).returning();
     return result.length > 0;
+  }
+
+  async registerPushToken(data: InsertPushToken): Promise<PushToken> {
+    const [existing] = await db.select().from(pushTokens).where(eq(pushTokens.token, data.token));
+    if (existing) return existing;
+    const [created] = await db.insert(pushTokens).values(data).returning();
+    return created;
+  }
+
+  async getAllPushTokens(): Promise<PushToken[]> {
+    return db.select().from(pushTokens);
+  }
+
+  async removePushToken(token: string): Promise<boolean> {
+    const result = await db.delete(pushTokens).where(eq(pushTokens.token, token)).returning();
+    return result.length > 0;
+  }
+
+  async saveNotification(title: string, body: string, recipientCount: number): Promise<Notification> {
+    const [created] = await db.insert(notifications).values({ title, body, recipientCount }).returning();
+    return created;
+  }
+
+  async getNotificationHistory(): Promise<Notification[]> {
+    return db.select().from(notifications).orderBy(notifications.sentAt);
   }
 }
 

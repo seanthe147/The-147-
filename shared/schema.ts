@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -34,3 +34,25 @@ export const insertOfferSchema = createInsertSchema(offers).omit({ id: true });
 
 export type InsertOffer = z.infer<typeof insertOfferSchema>;
 export type Offer = typeof offers.$inferSelect;
+
+export const pushTokens = pgTable("push_tokens", {
+  id: serial("id").primaryKey(),
+  token: text("token").notNull().unique(),
+  deviceName: text("device_name"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertPushTokenSchema = createInsertSchema(pushTokens).omit({ id: true, createdAt: true });
+
+export type InsertPushToken = z.infer<typeof insertPushTokenSchema>;
+export type PushToken = typeof pushTokens.$inferSelect;
+
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+  recipientCount: serial("recipient_count"),
+});
+
+export type Notification = typeof notifications.$inferSelect;
