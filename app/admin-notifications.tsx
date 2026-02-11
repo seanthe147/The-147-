@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -15,14 +15,22 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/query-client";
+import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import Colors from "@/constants/colors";
 import type { PushToken, Notification } from "@shared/schema";
 
 export default function AdminNotificationsScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
+  const { isAuthenticated, isLoading: authLoading } = useStaffAuth();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.replace("/staff-portal");
+    }
+  }, [authLoading, isAuthenticated]);
   const [activeTab, setActiveTab] = useState<"compose" | "history" | "devices">("compose");
 
   const tokensQuery = useQuery<PushToken[]>({

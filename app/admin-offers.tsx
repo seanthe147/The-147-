@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/query-client";
+import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import Colors from "@/constants/colors";
 import type { Offer } from "@shared/schema";
 
@@ -100,6 +101,13 @@ function OfferPreview({ form }: { form: OfferForm }) {
 export default function AdminOffersScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
+  const { isAuthenticated, isLoading: authLoading } = useStaffAuth();
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.replace("/staff-portal");
+    }
+  }, [authLoading, isAuthenticated]);
 
   const [form, setForm] = useState<OfferForm>(emptyForm);
   const [editingId, setEditingId] = useState<number | null>(null);
