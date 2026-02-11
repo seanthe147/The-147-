@@ -19,9 +19,15 @@ import Colors from "@/constants/colors";
 function LoginScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const { login } = useStaffAuth();
+  const { login, register } = useStaffAuth();
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [username, setUsername] = useState("");
   const [pin, setPin] = useState("");
+  const [masterPin, setMasterPin] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const shakeAnim = useRef(new Animated.Value(0)).current;
 
@@ -36,21 +42,76 @@ function LoginScreen() {
   };
 
   const handleLogin = async () => {
+    if (!username.trim()) {
+      setError("Please enter your username");
+      triggerShake();
+      return;
+    }
     if (!pin.trim()) {
-      setError("Please enter the staff PIN");
+      setError("Please enter your PIN");
       triggerShake();
       return;
     }
 
     setLoading(true);
     setError("");
-    const result = await login(pin.trim());
+    const result = await login(username.trim(), pin.trim());
     setLoading(false);
 
     if (!result.success) {
       setError(result.error || "Login failed");
       setPin("");
       triggerShake();
+    }
+  };
+
+  const handleRegister = async () => {
+    if (!masterPin.trim()) {
+      setError("Master PIN is required to create an account");
+      triggerShake();
+      return;
+    }
+    if (!username.trim() || username.trim().length < 3) {
+      setError("Username must be at least 3 characters");
+      triggerShake();
+      return;
+    }
+    if (!/^[a-zA-Z0-9_.-]+$/.test(username.trim())) {
+      setError("Username can only contain letters, numbers, dots, hyphens, and underscores");
+      triggerShake();
+      return;
+    }
+    if (!pin.trim() || pin.length < 4) {
+      setError("PIN must be at least 4 digits");
+      triggerShake();
+      return;
+    }
+    if (!/^\d+$/.test(pin)) {
+      setError("PIN must contain only numbers");
+      triggerShake();
+      return;
+    }
+    if (pin !== confirmPin) {
+      setError("PINs do not match");
+      triggerShake();
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    const result = await register(masterPin.trim(), username.trim(), pin.trim(), displayName.trim() || undefined);
+    setLoading(false);
+
+    if (!result.success) {
+      setError(result.error || "Registration failed");
+      triggerShake();
+    } else {
+      setSuccess("Account created! You can now sign in.");
+      setMode("login");
+      setMasterPin("");
+      setConfirmPin("");
+      setDisplayName("");
+      setPin("");
     }
   };
 
@@ -64,31 +125,105 @@ function LoginScreen() {
         <View style={{ width: 28 }} />
       </View>
 
-      <View style={styles.loginContent}>
+      <ScrollView contentContainerStyle={styles.loginScrollContent} keyboardShouldPersistTaps="handled">
         <View style={styles.lockIconWrap}>
-          <Ionicons name="lock-closed" size={40} color={Colors.brand.blue} />
+          <Ionicons name={mode === "login" ? "lock-closed" : "person-add"} size={40} color={Colors.brand.blue} />
         </View>
 
-        <Text style={styles.loginTitle}>Staff Portal</Text>
-        <Text style={styles.loginSubtitle}>Enter your staff PIN to access admin tools</Text>
+        <Text style={styles.loginTitle}>{mode === "login" ? "Staff Sign In" : "Create Account"}</Text>
+        <Text style={styles.loginSubtitle}>
+          {mode === "login"
+            ? "Enter your username and PIN"
+            : "Set up your staff account"}
+        </Text>
 
-        <Animated.View style={[styles.pinSection, { transform: [{ translateX: shakeAnim }] }]}>
-          <TextInput
-            style={[styles.pinInput, error ? styles.pinInputError : null]}
-            value={pin}
-            onChangeText={(text) => {
-              setPin(text);
-              if (error) setError("");
-            }}
-            placeholder="Enter PIN"
-            placeholderTextColor={Colors.light.textSecondary}
-            secureTextEntry
-            keyboardType="number-pad"
-            maxLength={10}
-            autoFocus
-            onSubmitEditing={handleLogin}
-            testID="staff-pin-input"
-          />
+        {success ? (
+          <View style={styles.successRow}>
+            <Ionicons name="checkmark-circle" size={16} color={Colors.brand.green} />
+            <Text style={styles.successText}>{success}</Text>
+          </View>
+        ) : null}
+
+        <Animated.View style={[styles.formSection, { transform: [{ translateX: shakeAnim }] }]}>
+          {mode === "register" && (
+            <>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>MASTER PIN</Text>
+                <TextInput
+                  style={[styles.textInput, error && !masterPin ? styles.inputError : null]}
+                  value={masterPin}
+                  onChangeText={(text) => { setMasterPin(text); setError(""); setSuccess(""); }}
+                  placeholder="Venue master PIN"
+                  placeholderTextColor={Colors.light.textSecondary}
+                  secureTextEntry
+                  keyboardType="number-pad"
+                  maxLength={10}
+                  testID="register-master-pin"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>DISPLAY NAME (OPTIONAL)</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={displayName}
+                  onChangeText={(text) => { setDisplayName(text); setError(""); }}
+                  placeholder="Your name"
+                  placeholderTextColor={Colors.light.textSecondary}
+                  maxLength={50}
+                  testID="register-display-name"
+                />
+              </View>
+            </>
+          )}
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>USERNAME</Text>
+            <TextInput
+              style={[styles.textInput, error && !username ? styles.inputError : null]}
+              value={username}
+              onChangeText={(text) => { setUsername(text); setError(""); setSuccess(""); }}
+              placeholder="Enter username"
+              placeholderTextColor={Colors.light.textSecondary}
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={30}
+              testID="staff-username-input"
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>PIN</Text>
+            <TextInput
+              style={[styles.textInput, error && !pin ? styles.inputError : null]}
+              value={pin}
+              onChangeText={(text) => { setPin(text); setError(""); setSuccess(""); }}
+              placeholder="Enter PIN"
+              placeholderTextColor={Colors.light.textSecondary}
+              secureTextEntry
+              keyboardType="number-pad"
+              maxLength={8}
+              onSubmitEditing={mode === "login" ? handleLogin : undefined}
+              testID="staff-pin-input"
+            />
+          </View>
+
+          {mode === "register" && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>CONFIRM PIN</Text>
+              <TextInput
+                style={[styles.textInput, error && pin !== confirmPin ? styles.inputError : null]}
+                value={confirmPin}
+                onChangeText={(text) => { setConfirmPin(text); setError(""); }}
+                placeholder="Re-enter PIN"
+                placeholderTextColor={Colors.light.textSecondary}
+                secureTextEntry
+                keyboardType="number-pad"
+                maxLength={8}
+                testID="register-confirm-pin"
+              />
+            </View>
+          )}
         </Animated.View>
 
         {error ? (
@@ -99,7 +234,7 @@ function LoginScreen() {
         ) : null}
 
         <Pressable
-          onPress={handleLogin}
+          onPress={mode === "login" ? handleLogin : handleRegister}
           disabled={loading}
           style={({ pressed }) => [
             styles.loginButton,
@@ -112,12 +247,33 @@ function LoginScreen() {
             <ActivityIndicator color="#FFFFFF" />
           ) : (
             <>
-              <Ionicons name="log-in-outline" size={20} color="#FFFFFF" />
-              <Text style={styles.loginButtonText}>Sign In</Text>
+              <Ionicons name={mode === "login" ? "log-in-outline" : "person-add-outline"} size={20} color="#FFFFFF" />
+              <Text style={styles.loginButtonText}>
+                {mode === "login" ? "Sign In" : "Create Account"}
+              </Text>
             </>
           )}
         </Pressable>
-      </View>
+
+        <Pressable
+          onPress={() => {
+            setMode(mode === "login" ? "register" : "login");
+            setError("");
+            setSuccess("");
+            setMasterPin("");
+            setConfirmPin("");
+            setDisplayName("");
+          }}
+          style={({ pressed }) => [styles.switchModeButton, { opacity: pressed ? 0.7 : 1 }]}
+          testID="switch-auth-mode"
+        >
+          <Text style={styles.switchModeText}>
+            {mode === "login"
+              ? "New staff? Create an account"
+              : "Already have an account? Sign in"}
+          </Text>
+        </Pressable>
+      </ScrollView>
     </View>
   );
 }
@@ -153,7 +309,7 @@ function AdminTool({ icon, title, description, color, onPress, testID }: AdminTo
 function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const { logout } = useStaffAuth();
+  const { logout, username, displayName } = useStaffAuth();
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
@@ -176,7 +332,9 @@ function DashboardScreen() {
             <Ionicons name="shield-checkmark" size={16} color={Colors.brand.green} />
             <Text style={styles.welcomeBadgeText}>Authenticated</Text>
           </View>
-          <Text style={styles.welcomeTitle}>Admin Dashboard</Text>
+          <Text style={styles.welcomeTitle}>
+            {displayName || username ? `Welcome, ${displayName || username}` : "Admin Dashboard"}
+          </Text>
           <Text style={styles.welcomeSubtitle}>Manage your venue from here</Text>
         </View>
 
@@ -210,6 +368,13 @@ function DashboardScreen() {
         </View>
 
         <Text style={styles.sectionLabel}>SESSION</Text>
+
+        {username ? (
+          <View style={styles.sessionInfo}>
+            <Ionicons name="person-circle-outline" size={20} color={Colors.light.textSecondary} />
+            <Text style={styles.sessionInfoText}>Signed in as {username}</Text>
+          </View>
+        ) : null}
 
         <Pressable
           onPress={logout}
@@ -267,11 +432,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: Colors.light.text,
   },
-  loginContent: {
-    flex: 1,
+  loginScrollContent: {
+    flexGrow: 1,
     justifyContent: "center",
     paddingHorizontal: 32,
-    marginTop: -60,
+    paddingBottom: 40,
   },
   lockIconWrap: {
     width: 80,
@@ -295,25 +460,33 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.light.textSecondary,
     textAlign: "center",
-    marginBottom: 32,
+    marginBottom: 28,
   },
-  pinSection: {
+  formSection: {
     marginBottom: 12,
   },
-  pinInput: {
+  inputGroup: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 11,
+    color: Colors.light.textSecondary,
+    letterSpacing: 1,
+    marginBottom: 6,
+  },
+  textInput: {
     backgroundColor: Colors.light.surface,
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: Colors.light.border,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 16,
     color: Colors.light.text,
-    textAlign: "center",
-    letterSpacing: 8,
   },
-  pinInputError: {
+  inputError: {
     borderColor: Colors.brand.red,
   },
   errorRow: {
@@ -327,6 +500,22 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_500Medium",
     fontSize: 13,
     color: Colors.brand.red,
+  },
+  successRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginBottom: 16,
+    backgroundColor: Colors.brand.green + "12",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+  },
+  successText: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 13,
+    color: Colors.brand.green,
   },
   loginButton: {
     backgroundColor: Colors.brand.blue,
@@ -345,6 +534,15 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_700Bold",
     fontSize: 16,
     color: "#FFFFFF",
+  },
+  switchModeButton: {
+    marginTop: 20,
+    alignItems: "center",
+  },
+  switchModeText: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 14,
+    color: Colors.brand.blue,
   },
   container: {
     flex: 1,
@@ -396,6 +594,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     color: Colors.light.text,
     marginBottom: 4,
+    textAlign: "center",
   },
   welcomeSubtitle: {
     fontFamily: "Montserrat_400Regular",
@@ -443,6 +642,18 @@ const styles = StyleSheet.create({
   toolDesc: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 12,
+    color: Colors.light.textSecondary,
+  },
+  sessionInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  sessionInfoText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 13,
     color: Colors.light.textSecondary,
   },
   logoutButton: {

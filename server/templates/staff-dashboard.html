@@ -79,7 +79,8 @@
       letter-spacing: 0.5px;
     }
 
-    .login-card input[type="password"] {
+    .login-card input[type="password"],
+    .login-card input[type="text"] {
       width: 100%;
       padding: 14px 16px;
       border: 2px solid var(--border);
@@ -92,7 +93,13 @@
       outline: none;
     }
 
-    .login-card input[type="password"]:focus {
+    .login-card input[type="text"] {
+      font-size: 15px;
+      letter-spacing: normal;
+    }
+
+    .login-card input[type="password"]:focus,
+    .login-card input[type="text"]:focus {
       border-color: var(--blue);
     }
 
@@ -658,10 +665,25 @@
       <div class="login-brand">The <span>147</span></div>
       <div class="login-subtitle">Staff Booking Portal</div>
       <form id="loginForm">
-        <label for="pinInput">Enter Staff PIN</label>
+        <label for="usernameInput">Username</label>
+        <input type="text" id="usernameInput" placeholder="Enter username" autocomplete="off" autocapitalize="off" required>
+        <div id="registerFields" class="hidden">
+          <label for="masterPinInput">Master PIN (venue PIN)</label>
+          <input type="password" id="masterPinInput" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="&#8226;&#8226;&#8226;&#8226;" autocomplete="off">
+          <label for="displayNameInput">Display Name (optional)</label>
+          <input type="text" id="displayNameInput" placeholder="Your name" autocomplete="off">
+        </div>
+        <label for="pinInput">Enter PIN</label>
         <input type="password" id="pinInput" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="&#8226;&#8226;&#8226;&#8226;" autocomplete="off" required>
+        <div id="confirmPinGroup" class="hidden">
+          <label for="confirmPinInput">Confirm PIN</label>
+          <input type="password" id="confirmPinInput" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="&#8226;&#8226;&#8226;&#8226;" autocomplete="off">
+        </div>
         <div class="login-error" id="loginError"></div>
         <button type="submit" class="login-btn" id="loginBtn">Sign In</button>
+        <div style="text-align:center; margin-top: 16px;">
+          <a href="#" id="toggleRegister" style="color: var(--blue); font-size: 13px; text-decoration: none;">New staff? Create an account</a>
+        </div>
       </form>
     </div>
   </div>
@@ -828,6 +850,14 @@
       const pinInput = document.getElementById('pinInput');
       const loginError = document.getElementById('loginError');
       const loginBtn = document.getElementById('loginBtn');
+      const usernameInput = document.getElementById('usernameInput');
+      const masterPinInput = document.getElementById('masterPinInput');
+      const displayNameInput = document.getElementById('displayNameInput');
+      const confirmPinInput = document.getElementById('confirmPinInput');
+      const registerFields = document.getElementById('registerFields');
+      const confirmPinGroup = document.getElementById('confirmPinGroup');
+      const toggleRegister = document.getElementById('toggleRegister');
+      let isRegisterMode = false;
       const logoutBtn = document.getElementById('logoutBtn');
       const dateInput = document.getElementById('dateInput');
       const dateLabel = document.getElementById('dateLabel');
@@ -905,7 +935,8 @@
         dashboard.style.display = 'none';
         loginError.textContent = '';
         pinInput.value = '';
-        pinInput.focus();
+        usernameInput.value = '';
+        usernameInput.focus();
       }
 
       function showDashboard() {
@@ -915,25 +946,66 @@
         loadBookings();
       }
 
+      document.getElementById('toggleRegister').addEventListener('click', function(e) {
+        e.preventDefault();
+        isRegisterMode = !isRegisterMode;
+        document.getElementById('registerFields').classList.toggle('hidden', !isRegisterMode);
+        document.getElementById('confirmPinGroup').classList.toggle('hidden', !isRegisterMode);
+        this.textContent = isRegisterMode ? 'Already have an account? Sign in' : 'New staff? Create an account';
+        loginBtn.textContent = isRegisterMode ? 'Create Account' : 'Sign In';
+        loginError.textContent = '';
+      });
+
       loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const pin = pinInput.value.trim();
-        if (!pin) return;
+        const username = usernameInput.value.trim();
+        if (!pin || !username) return;
         loginBtn.disabled = true;
         loginError.textContent = '';
         try {
-          const res = await fetch('/api/staff/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pin })
-          });
-          const data = await res.json();
-          if (!res.ok) {
-            loginError.textContent = data.message || 'Login failed';
-            return;
+          if (isRegisterMode) {
+            if (pinInput.value !== confirmPinInput.value) {
+              loginError.textContent = 'PINs do not match';
+              loginBtn.disabled = false;
+              return;
+            }
+            const res = await fetch('/api/staff/register', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ masterPin: masterPinInput.value, username: usernameInput.value.trim(), pin: pinInput.value, displayName: displayNameInput.value.trim() })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+              loginError.textContent = data.message || 'Registration failed';
+              return;
+            }
+            loginError.style.color = 'var(--green)';
+            loginError.textContent = 'Account created! You can now sign in.';
+            isRegisterMode = false;
+            registerFields.classList.add('hidden');
+            confirmPinGroup.classList.add('hidden');
+            toggleRegister.textContent = 'New staff? Create an account';
+            loginBtn.textContent = 'Sign In';
+            pinInput.value = '';
+            confirmPinInput.value = '';
+            masterPinInput.value = '';
+            displayNameInput.value = '';
+            setTimeout(() => { loginError.style.color = ''; }, 3000);
+          } else {
+            const res = await fetch('/api/staff/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ username: usernameInput.value.trim(), pin: pinInput.value })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+              loginError.textContent = data.message || 'Login failed';
+              return;
+            }
+            setToken(data.token);
+            showDashboard();
           }
-          setToken(data.token);
-          showDashboard();
         } catch (err) {
           loginError.textContent = 'Network error. Please try again.';
         } finally {

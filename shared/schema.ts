@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, timestamp, boolean, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -18,6 +18,18 @@ export const insertUserSchema = createInsertSchema(users).pick({
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+
+export const staffUsers = pgTable("staff_users", {
+  id: serial("id").primaryKey(),
+  username: text("username").notNull().unique(),
+  pinHash: text("pin_hash").notNull(),
+  pinSalt: text("pin_salt").notNull(),
+  displayName: text("display_name"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  active: boolean("active").notNull().default(true),
+});
+
+export type StaffUser = typeof staffUsers.$inferSelect;
 
 export const offers = pgTable("offers", {
   id: serial("id").primaryKey(),
@@ -62,6 +74,7 @@ export const bookings = pgTable("bookings", {
   customerName: text("customer_name").notNull(),
   customerEmail: text("customer_email").notNull(),
   customerPhone: text("customer_phone").notNull(),
+  emailHash: text("email_hash"),
   tableType: text("table_type").notNull(),
   tableNumber: text("table_number"),
   date: text("date").notNull(),
@@ -81,6 +94,8 @@ export type Booking = typeof bookings.$inferSelect;
 export const staffSessions = pgTable("staff_sessions", {
   id: serial("id").primaryKey(),
   token: text("token").notNull().unique(),
+  staffUserId: integer("staff_user_id"),
+  staffUsername: text("staff_username"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   expiresAt: timestamp("expires_at").notNull(),
   active: boolean("active").notNull().default(true),

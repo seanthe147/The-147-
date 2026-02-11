@@ -12,15 +12,37 @@ import {
   type Booking,
   type InsertBooking,
   type StaffSession,
+  type StaffUser,
   users,
   offers,
   pushTokens,
   notifications,
   bookings,
   staffSessions,
+  staffUsers,
 } from "@shared/schema";
+import { encrypt, decrypt, hashEmail } from "./encryption";
 
 const db = drizzle(process.env.DATABASE_URL!);
+
+function encryptBookingFields(booking: InsertBooking): InsertBooking & { emailHash?: string } {
+  return {
+    ...booking,
+    customerName: encrypt(booking.customerName),
+    customerEmail: encrypt(booking.customerEmail),
+    customerPhone: encrypt(booking.customerPhone),
+    emailHash: hashEmail(booking.customerEmail),
+  };
+}
+
+function decryptBookingFields(booking: Booking): Booking {
+  return {
+    ...booking,
+    customerName: decrypt(booking.customerName),
+    customerEmail: decrypt(booking.customerEmail),
+    customerPhone: decrypt(booking.customerPhone),
+  };
+}
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -44,13 +66,17 @@ export interface IStorage {
   updateBooking(id: number, data: Partial<InsertBooking>): Promise<Booking | undefined>;
   deleteBooking(id: number): Promise<boolean>;
   getBookedSlots(date: string, tableType: string, tableNumber?: string): Promise<Array<{ startTime: string; duration: number }>>;
-  createStaffSession(token: string, expiresAt: Date): Promise<StaffSession>;
+  createStaffSession(token: string, expiresAt: Date, staffUserId?: number, staffUsername?: string): Promise<StaffSession>;
   validateStaffSession(token: string): Promise<StaffSession | undefined>;
   invalidateStaffSession(token: string): Promise<boolean>;
   getBookingsByEmail(email: string): Promise<Booking[]>;
   deleteBookingsByEmail(email: string): Promise<number>;
   anonymizeOldBookings(retentionDays: number): Promise<number>;
   cleanupExpiredSessions(): Promise<number>;
+  createStaffUser(username: string, pinHash: string, pinSalt: string, displayName?: string): Promise<StaffUser>;
+  getStaffUserByUsername(username: string): Promise<StaffUser | undefined>;
+  getAllStaffUsers(): Promise<StaffUser[]>;
+  migrateEncryptExistingBookings(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -119,31 +145,41 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createBooking(booking: InsertBooking): Promise<Booking> {
-    const [created] = await db.insert(bookings).values(booking).returning();
-    return created;
+    const encrypted = encryptBookingFields(booking);
+    const [created] = await db.insert(bookings).values(encrypted).returning();
+    return decryptBookingFields(created);
   }
 
   async getBookings(): Promise<Booking[]> {
-    return db.select().from(bookings).orderBy(bookings.date, bookings.startTime);
+    const results = await db.select().from(bookings).orderBy(bookings.date, bookings.startTime);
+    return results.map(decryptBookingFields);
   }
 
   async getBookingsByDate(date: string): Promise<Booking[]> {
-    return db.select().from(bookings).where(eq(bookings.date, date)).orderBy(bookings.startTime);
+    const results = await db.select().from(bookings).where(eq(bookings.date, date)).orderBy(bookings.startTime);
+    return results.map(decryptBookingFields);
   }
 
   async getBooking(id: number): Promise<Booking | undefined> {
     const [booking] = await db.select().from(bookings).where(eq(bookings.id, id));
-    return booking;
+    return booking ? decryptBookingFields(booking) : undefined;
   }
 
   async updateBookingStatus(id: number, status: string): Promise<Booking | undefined> {
     const [updated] = await db.update(bookings).set({ status }).where(eq(bookings.id, id)).returning();
-    return updated;
+    return updated ? decryptBookingFields(updated) : undefined;
   }
 
   async updateBooking(id: number, data: Partial<InsertBooking>): Promise<Booking | undefined> {
-    const [updated] = await db.update(bookings).set(data).where(eq(bookings.id, id)).returning();
-    return updated;
+    const encData: any = { ...data };
+    if (data.customerName) encData.customerName = encrypt(data.customerName);
+    if (data.customerEmail) {
+      encData.customerEmail = encrypt(data.customerEmail);
+      encData.emailHash = hashEmail(data.customerEmail);
+    }
+    if (data.customerPhone) encData.customerPhone = encrypt(data.customerPhone);
+    const [updated] = await db.update(bookings).set(encData).where(eq(bookings.id, id)).returning();
+    return updated ? decryptBookingFields(updated) : undefined;
   }
 
   async deleteBooking(id: number): Promise<boolean> {
@@ -167,8 +203,13 @@ export class DatabaseStorage implements IStorage {
     return results;
   }
 
-  async createStaffSession(token: string, expiresAt: Date): Promise<StaffSession> {
-    const [session] = await db.insert(staffSessions).values({ token, expiresAt }).returning();
+  async createStaffSession(token: string, expiresAt: Date, staffUserId?: number, staffUsername?: string): Promise<StaffSession> {
+    const [session] = await db.insert(staffSessions).values({
+      token,
+      expiresAt,
+      staffUserId: staffUserId ?? null,
+      staffUsername: staffUsername ?? null,
+    }).returning();
     return session;
   }
 
@@ -196,12 +237,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getBookingsByEmail(email: string): Promise<Booking[]> {
-    return db.select().from(bookings).where(sql`lower(${bookings.customerEmail}) = lower(${email})`).orderBy(bookings.date);
+    const hash = hashEmail(email);
+    const byHash = await db.select().from(bookings).where(eq(bookings.emailHash, hash)).orderBy(bookings.date);
+    if (byHash.length > 0) {
+      return byHash.map(decryptBookingFields);
+    }
+    const byPlain = await db.select().from(bookings).where(sql`lower(${bookings.customerEmail}) = lower(${email})`).orderBy(bookings.date);
+    return byPlain.map(decryptBookingFields);
   }
 
   async deleteBookingsByEmail(email: string): Promise<number> {
-    const result = await db.delete(bookings).where(sql`lower(${bookings.customerEmail}) = lower(${email})`).returning();
-    return result.length;
+    const hash = hashEmail(email);
+    const byHash = await db.delete(bookings).where(eq(bookings.emailHash, hash)).returning();
+    if (byHash.length > 0) return byHash.length;
+    const byPlain = await db.delete(bookings).where(sql`lower(${bookings.customerEmail}) = lower(${email})`).returning();
+    return byPlain.length;
   }
 
   async anonymizeOldBookings(retentionDays: number): Promise<number> {
@@ -211,11 +261,13 @@ export class DatabaseStorage implements IStorage {
     const oldBookings = await db.select().from(bookings).where(lt(bookings.date, cutoffStr));
     let count = 0;
     for (const booking of oldBookings) {
-      if (booking.customerName !== "ANONYMIZED") {
+      const decryptedName = decrypt(booking.customerName);
+      if (decryptedName !== "ANONYMIZED") {
         await db.update(bookings).set({
           customerName: "ANONYMIZED",
           customerEmail: "anonymized@removed.local",
           customerPhone: "000000",
+          emailHash: null,
           notes: null,
         }).where(eq(bookings.id, booking.id));
         count++;
@@ -229,6 +281,48 @@ export class DatabaseStorage implements IStorage {
       lte(staffSessions.expiresAt, new Date())
     ).returning();
     return result.length;
+  }
+
+  async createStaffUser(username: string, pinHash: string, pinSalt: string, displayName?: string): Promise<StaffUser> {
+    const [user] = await db.insert(staffUsers).values({
+      username: username.toLowerCase().trim(),
+      pinHash,
+      pinSalt,
+      displayName: displayName || null,
+    }).returning();
+    return user;
+  }
+
+  async getStaffUserByUsername(username: string): Promise<StaffUser | undefined> {
+    const [user] = await db.select().from(staffUsers).where(
+      eq(staffUsers.username, username.toLowerCase().trim())
+    );
+    return user;
+  }
+
+  async getAllStaffUsers(): Promise<StaffUser[]> {
+    return db.select().from(staffUsers).where(eq(staffUsers.active, true));
+  }
+
+  async migrateEncryptExistingBookings(): Promise<number> {
+    const allBookings = await db.select().from(bookings);
+    let migrated = 0;
+    for (const booking of allBookings) {
+      if (booking.customerName === "ANONYMIZED") continue;
+      if (booking.customerEmail.startsWith("enc:")) continue;
+      const encName = encrypt(booking.customerName);
+      const encEmail = encrypt(booking.customerEmail);
+      const encPhone = encrypt(booking.customerPhone);
+      const eHash = hashEmail(booking.customerEmail);
+      await db.update(bookings).set({
+        customerName: encName,
+        customerEmail: encEmail,
+        customerPhone: encPhone,
+        emailHash: eHash,
+      }).where(eq(bookings.id, booking.id));
+      migrated++;
+    }
+    return migrated;
   }
 }
 

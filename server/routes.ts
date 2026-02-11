@@ -5,6 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { storage } from "./storage";
 import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema } from "@shared/schema";
+import { hashPin, verifyPin } from "./encryption";
 
 const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -72,6 +73,65 @@ async function staffAuth(req: Request, res: Response, next: NextFunction) {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  app.post("/api/staff/register", async (req, res) => {
+    const clientIp = getClientIp(req);
+    const rateCheck = checkRateLimit(clientIp);
+    if (!rateCheck.allowed) {
+      res.setHeader("Retry-After", String(rateCheck.retryAfter));
+      return res.status(429).json({
+        message: `Too many attempts. Please try again later.`,
+      });
+    }
+
+    const { masterPin, username, pin, displayName } = req.body;
+
+    if (!masterPin || !username || !pin) {
+      return res.status(400).json({ message: "Master PIN, username, and PIN are required" });
+    }
+
+    const staffPin = process.env.STAFF_PIN;
+    if (!staffPin) {
+      return res.status(503).json({ message: "Staff access not configured" });
+    }
+
+    if (!timingSafeCompare(masterPin, staffPin)) {
+      recordFailedLogin(clientIp);
+      return res.status(401).json({ message: "Invalid master PIN" });
+    }
+
+    if (typeof username !== "string" || username.trim().length < 3 || username.trim().length > 30) {
+      return res.status(400).json({ message: "Username must be 3-30 characters" });
+    }
+
+    if (!/^[a-zA-Z0-9_.-]+$/.test(username.trim())) {
+      return res.status(400).json({ message: "Username can only contain letters, numbers, dots, hyphens, and underscores" });
+    }
+
+    if (typeof pin !== "string" || pin.length < 4 || pin.length > 8 || !/^\d+$/.test(pin)) {
+      return res.status(400).json({ message: "PIN must be 4-8 digits" });
+    }
+
+    const existing = await storage.getStaffUserByUsername(username.trim());
+    if (existing) {
+      return res.status(409).json({ message: "Username already taken" });
+    }
+
+    const { hash, salt } = hashPin(pin);
+    const staffUser = await storage.createStaffUser(
+      username.trim(),
+      hash,
+      salt,
+      displayName?.trim() || undefined
+    );
+
+    clearFailedLogins(clientIp);
+    res.status(201).json({
+      message: "Staff account created",
+      username: staffUser.username,
+      displayName: staffUser.displayName,
+    });
+  });
+
   app.post("/api/staff/login", async (req, res) => {
     const clientIp = getClientIp(req);
     const rateCheck = checkRateLimit(clientIp);
@@ -82,14 +142,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
 
-    const { pin } = req.body;
+    const { username, pin } = req.body;
     if (!pin || typeof pin !== "string") {
       return res.status(400).json({ message: "PIN is required" });
     }
 
     if (pin.length < 4 || pin.length > 8 || !/^\d+$/.test(pin)) {
       recordFailedLogin(clientIp);
-      return res.status(401).json({ message: "Incorrect PIN" });
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    if (username && typeof username === "string" && username.trim().length > 0) {
+      const staffUser = await storage.getStaffUserByUsername(username.trim());
+      if (!staffUser || !staffUser.active) {
+        recordFailedLogin(clientIp);
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+
+      if (!verifyPin(pin, staffUser.pinHash, staffUser.pinSalt)) {
+        recordFailedLogin(clientIp);
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+
+      clearFailedLogins(clientIp);
+      const token = randomBytes(32).toString("hex");
+      const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000);
+      const session = await storage.createStaffSession(token, expiresAt, staffUser.id, staffUser.username);
+      return res.json({
+        token: session.token,
+        expiresAt: session.expiresAt,
+        username: staffUser.username,
+        displayName: staffUser.displayName,
+      });
     }
 
     const staffPin = process.env.STAFF_PIN;
@@ -99,7 +183,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     if (!timingSafeCompare(pin, staffPin)) {
       recordFailedLogin(clientIp);
-      return res.status(401).json({ message: "Incorrect PIN" });
+      return res.status(401).json({ message: "Invalid credentials" });
     }
 
     clearFailedLogins(clientIp);
@@ -120,6 +204,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/staff/verify", staffAuth, async (_req, res) => {
     res.json({ authenticated: true });
+  });
+
+  app.get("/api/staff/users", staffAuth, async (_req, res) => {
+    const users = await storage.getAllStaffUsers();
+    res.json(users.map(u => ({
+      id: u.id,
+      username: u.username,
+      displayName: u.displayName,
+      createdAt: u.createdAt,
+      active: u.active,
+    })));
+  });
+
+  app.post("/api/staff/migrate-encryption", staffAuth, async (_req, res) => {
+    try {
+      const count = await storage.migrateEncryptExistingBookings();
+      res.json({ message: "Encryption migration complete", recordsMigrated: count });
+    } catch (err) {
+      console.error("Encryption migration error:", err);
+      res.status(500).json({ message: "Migration failed" });
+    }
   });
 
   app.get("/api/offers", async (_req, res) => {

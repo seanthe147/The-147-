@@ -4,12 +4,16 @@ import { getApiUrl, setStaffToken } from "@/lib/query-client";
 import { fetch } from "expo/fetch";
 
 const STORAGE_KEY = "staff_session_token";
+const USERNAME_KEY = "staff_username";
 
 interface StaffAuthContextValue {
   isAuthenticated: boolean;
   isLoading: boolean;
   token: string | null;
-  login: (pin: string) => Promise<{ success: boolean; error?: string }>;
+  username: string | null;
+  displayName: string | null;
+  login: (username: string, pin: string) => Promise<{ success: boolean; error?: string }>;
+  register: (masterPin: string, username: string, pin: string, displayName?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
 }
 
@@ -17,6 +21,8 @@ const StaffAuthContext = createContext<StaffAuthContextValue | null>(null);
 
 export function StaffAuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
+  const [username, setUsername] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -27,6 +33,7 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
     (async () => {
       try {
         const stored = await AsyncStorage.getItem(STORAGE_KEY);
+        const storedUsername = await AsyncStorage.getItem(USERNAME_KEY);
         if (stored) {
           const baseUrl = getApiUrl();
           const url = new URL("/api/staff/verify", baseUrl);
@@ -35,8 +42,10 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
           });
           if (res.ok) {
             setToken(stored);
+            setUsername(storedUsername);
           } else {
             await AsyncStorage.removeItem(STORAGE_KEY);
+            await AsyncStorage.removeItem(USERNAME_KEY);
           }
         }
       } catch {
@@ -46,14 +55,14 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
-  const login = useCallback(async (pin: string): Promise<{ success: boolean; error?: string }> => {
+  const login = useCallback(async (loginUsername: string, pin: string): Promise<{ success: boolean; error?: string }> => {
     try {
       const baseUrl = getApiUrl();
       const url = new URL("/api/staff/login", baseUrl);
       const res = await fetch(url.toString(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin }),
+        body: JSON.stringify({ username: loginUsername, pin }),
       });
 
       if (!res.ok) {
@@ -63,7 +72,38 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
 
       const data = await res.json();
       await AsyncStorage.setItem(STORAGE_KEY, data.token);
+      if (data.username) {
+        await AsyncStorage.setItem(USERNAME_KEY, data.username);
+      }
       setToken(data.token);
+      setUsername(data.username || loginUsername);
+      setDisplayName(data.displayName || null);
+      return { success: true };
+    } catch {
+      return { success: false, error: "Connection error" };
+    }
+  }, []);
+
+  const register = useCallback(async (masterPin: string, regUsername: string, pin: string, regDisplayName?: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const baseUrl = getApiUrl();
+      const url = new URL("/api/staff/register", baseUrl);
+      const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          masterPin,
+          username: regUsername,
+          pin,
+          displayName: regDisplayName,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        return { success: false, error: data.message || "Registration failed" };
+      }
+
       return { success: true };
     } catch {
       return { success: false, error: "Connection error" };
@@ -83,7 +123,10 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
       }
     }
     await AsyncStorage.removeItem(STORAGE_KEY);
+    await AsyncStorage.removeItem(USERNAME_KEY);
     setToken(null);
+    setUsername(null);
+    setDisplayName(null);
   }, [token]);
 
   const value = useMemo(
@@ -91,10 +134,13 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: !!token,
       isLoading,
       token,
+      username,
+      displayName,
       login,
+      register,
       logout,
     }),
-    [token, isLoading, login, logout]
+    [token, isLoading, username, displayName, login, register, logout]
   );
 
   return (
