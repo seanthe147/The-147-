@@ -365,6 +365,14 @@ function DashboardScreen() {
             onPress={() => router.push("/admin-notifications")}
             testID="portal-push-notifications"
           />
+          <AdminTool
+            icon="image"
+            title="Banner Image"
+            description="Change the home screen banner photo"
+            color="#8B5CF6"
+            onPress={() => router.push("/admin-banner")}
+            testID="portal-banner-image"
+          />
         </View>
 
         <Text style={styles.sectionLabel}>SESSION</Text>
