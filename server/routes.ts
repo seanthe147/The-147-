@@ -4,9 +4,8 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { storage } from "./storage";
-import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema } from "@shared/schema";
+import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema } from "@shared/schema";
 import { hashPin, verifyPin } from "./encryption";
-import { fetchTicketSourceEvents, clearEventCache } from "./ticketsource";
 
 const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -518,18 +517,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/events", async (_req, res) => {
     try {
-      const events = await fetchTicketSourceEvents();
-      res.json(events);
+      const allEvents = await storage.getActiveEvents();
+      res.json(allEvents);
     } catch (err) {
       console.error("Events fetch error:", err);
       res.json([]);
     }
   });
 
-  app.post("/api/events/refresh", staffAuth, async (_req, res) => {
-    clearEventCache();
-    const events = await fetchTicketSourceEvents();
-    res.json({ message: "Events refreshed", count: events.length });
+  app.get("/api/events/all", staffAuth, async (_req, res) => {
+    const allEvents = await storage.getEvents();
+    res.json(allEvents);
+  });
+
+  app.post("/api/events", staffAuth, async (req, res) => {
+    const parsed = insertEventSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid event data", details: parsed.error.errors });
+    }
+    const event = await storage.createEvent(parsed.data);
+    res.status(201).json(event);
+  });
+
+  app.put("/api/events/:id", staffAuth, async (req, res) => {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid event ID" });
+    const event = await storage.updateEvent(id, req.body);
+    if (!event) return res.status(404).json({ error: "Event not found" });
+    res.json(event);
+  });
+
+  app.delete("/api/events/:id", staffAuth, async (req, res) => {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid event ID" });
+    const deleted = await storage.deleteEvent(id);
+    if (!deleted) return res.status(404).json({ error: "Event not found" });
+    res.json({ message: "Event deleted" });
   });
 
   app.get("/api/settings", async (_req, res) => {

@@ -358,6 +358,14 @@ function DashboardScreen() {
             testID="portal-manage-offers"
           />
           <AdminTool
+            icon="musical-notes"
+            title="Events"
+            description="Create and manage event listings"
+            color="#7C3AED"
+            onPress={() => router.push("/admin-events")}
+            testID="portal-manage-events"
+          />
+          <AdminTool
             icon="notifications"
             title="Push Notifications"
             description="Send notifications to app users"

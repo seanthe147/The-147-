@@ -20,7 +20,7 @@ import * as Haptics from "expo-haptics";
 import { useQuery } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 import { OPENING_HOURS } from "@/lib/data";
-import type { Offer } from "@shared/schema";
+import type { Offer, Event } from "@shared/schema";
 
 const logoImage = require("@/assets/images/logo-147.png");
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -79,20 +79,8 @@ function OfferCard({ offer, isFirst }: { offer: Offer; isFirst: boolean }) {
   );
 }
 
-interface AppEvent {
-  id: string;
-  title: string;
-  description: string;
-  date: string;
-  time: string;
-  isSoldOut: boolean;
-  ticketUrl: string;
-}
-
-const EVENT_PREVIEW_COLORS = ["#0047AB", "#7C3AED", "#059669", "#DC2626"];
-
 function EventPreview() {
-  const { data: events } = useQuery<AppEvent[]>({
+  const { data: events } = useQuery<Event[]>({
     queryKey: ["/api/events"],
   });
 
@@ -118,8 +106,8 @@ function EventPreview() {
           <Text style={styles.seeAllText}>See All</Text>
         </Pressable>
       </View>
-      {upcoming.map((event, index) => {
-        const color = EVENT_PREVIEW_COLORS[index % EVENT_PREVIEW_COLORS.length];
+      {upcoming.map((event) => {
+        const color = event.imageColor || "#0047AB";
         let dayNum = "--";
         let monthStr = "---";
         if (event.date) {
