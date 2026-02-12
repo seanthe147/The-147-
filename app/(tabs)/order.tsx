@@ -15,7 +15,7 @@ import Animated, { useAnimatedStyle, withTiming, withDelay } from "react-native-
 import Colors from "@/constants/colors";
 import { useTabBar } from "@/contexts/TabBarContext";
 
-const MENU_URL = "https://ordertab.menu/the147";
+const MENU_URL = "https://www.the147order.co.uk";
 const AUTO_HIDE_DELAY = 10000;
 
 const SCROLL_DETECT_JS = `
