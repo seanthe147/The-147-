@@ -26,6 +26,7 @@ function LoginScreen() {
   const [masterPin, setMasterPin] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
+  const [selectedRole, setSelectedRole] = useState<"staff" | "manager">("staff");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
@@ -99,7 +100,7 @@ function LoginScreen() {
 
     setLoading(true);
     setError("");
-    const result = await register(masterPin.trim(), username.trim(), pin.trim(), displayName.trim() || undefined);
+    const result = await register(masterPin.trim(), username.trim(), pin.trim(), displayName.trim() || undefined, selectedRole);
     setLoading(false);
 
     if (!result.success) {
@@ -112,6 +113,7 @@ function LoginScreen() {
       setConfirmPin("");
       setDisplayName("");
       setPin("");
+      setSelectedRole("staff");
     }
   };
 
@@ -173,6 +175,28 @@ function LoginScreen() {
                   maxLength={50}
                   testID="register-display-name"
                 />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>ROLE</Text>
+                <View style={styles.roleSelector}>
+                  <Pressable
+                    onPress={() => setSelectedRole("staff")}
+                    style={[styles.roleOption, selectedRole === "staff" && styles.roleOptionActive]}
+                    testID="role-staff"
+                  >
+                    <Ionicons name="person" size={18} color={selectedRole === "staff" ? Colors.brand.blue : Colors.light.textSecondary} />
+                    <Text style={[styles.roleOptionText, selectedRole === "staff" && styles.roleOptionTextActive]}>Staff</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setSelectedRole("manager")}
+                    style={[styles.roleOption, selectedRole === "manager" && styles.roleOptionActive]}
+                    testID="role-manager"
+                  >
+                    <Ionicons name="shield" size={18} color={selectedRole === "manager" ? Colors.brand.blue : Colors.light.textSecondary} />
+                    <Text style={[styles.roleOptionText, selectedRole === "manager" && styles.roleOptionTextActive]}>Manager</Text>
+                  </Pressable>
+                </View>
               </View>
             </>
           )}
@@ -309,7 +333,7 @@ function AdminTool({ icon, title, description, color, onPress, testID }: AdminTo
 function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const { logout, username, displayName } = useStaffAuth();
+  const { logout, username, displayName, role, isManager } = useStaffAuth();
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
@@ -328,17 +352,23 @@ function DashboardScreen() {
         contentContainerStyle={styles.scrollContent}
       >
         <View style={styles.welcomeSection}>
-          <View style={styles.welcomeBadge}>
-            <Ionicons name="shield-checkmark" size={16} color={Colors.brand.green} />
-            <Text style={styles.welcomeBadgeText}>Authenticated</Text>
+          <View style={[styles.welcomeBadge, isManager && styles.managerBadge]}>
+            <Ionicons name={isManager ? "shield" : "shield-checkmark"} size={16} color={isManager ? "#7C3AED" : Colors.brand.green} />
+            <Text style={[styles.welcomeBadgeText, isManager && styles.managerBadgeText]}>
+              {isManager ? "Manager" : "Staff"}
+            </Text>
           </View>
           <Text style={styles.welcomeTitle}>
-            {displayName || username ? `Welcome, ${displayName || username}` : "Admin Dashboard"}
+            {displayName || username ? `Welcome, ${displayName || username}` : "Dashboard"}
           </Text>
-          <Text style={styles.welcomeSubtitle}>Manage your venue from here</Text>
+          <Text style={styles.welcomeSubtitle}>
+            {isManager ? "Full venue management access" : "Bookings management"}
+          </Text>
         </View>
 
-        <Text style={styles.sectionLabel}>ADMIN TOOLS</Text>
+        <Text style={styles.sectionLabel}>
+          {isManager ? "ADMIN TOOLS" : "YOUR TOOLS"}
+        </Text>
 
         <View style={styles.toolsList}>
           <AdminTool
@@ -349,38 +379,42 @@ function DashboardScreen() {
             onPress={() => router.push("/admin-bookings")}
             testID="portal-bookings-calendar"
           />
-          <AdminTool
-            icon="pricetag"
-            title="Manage Offers"
-            description="Create, edit and remove promotional offers"
-            color={Colors.brand.blue}
-            onPress={() => router.push("/admin-offers")}
-            testID="portal-manage-offers"
-          />
-          <AdminTool
-            icon="musical-notes"
-            title="Events"
-            description="Create and manage event listings"
-            color="#7C3AED"
-            onPress={() => router.push("/admin-events")}
-            testID="portal-manage-events"
-          />
-          <AdminTool
-            icon="notifications"
-            title="Push Notifications"
-            description="Send notifications to app users"
-            color={Colors.brand.gold}
-            onPress={() => router.push("/admin-notifications")}
-            testID="portal-push-notifications"
-          />
-          <AdminTool
-            icon="image"
-            title="Banner Image"
-            description="Change the home screen banner photo"
-            color="#8B5CF6"
-            onPress={() => router.push("/admin-banner")}
-            testID="portal-banner-image"
-          />
+          {isManager && (
+            <>
+              <AdminTool
+                icon="pricetag"
+                title="Manage Offers"
+                description="Create, edit and remove promotional offers"
+                color={Colors.brand.blue}
+                onPress={() => router.push("/admin-offers")}
+                testID="portal-manage-offers"
+              />
+              <AdminTool
+                icon="musical-notes"
+                title="Events"
+                description="Create and manage event listings"
+                color="#7C3AED"
+                onPress={() => router.push("/admin-events")}
+                testID="portal-manage-events"
+              />
+              <AdminTool
+                icon="notifications"
+                title="Push Notifications"
+                description="Send notifications to app users"
+                color={Colors.brand.gold}
+                onPress={() => router.push("/admin-notifications")}
+                testID="portal-push-notifications"
+              />
+              <AdminTool
+                icon="image"
+                title="Banner Image"
+                description="Change the home screen banner photo"
+                color="#8B5CF6"
+                onPress={() => router.push("/admin-banner")}
+                testID="portal-banner-image"
+              />
+            </>
+          )}
         </View>
 
         <Text style={styles.sectionLabel}>SESSION</Text>
@@ -388,7 +422,7 @@ function DashboardScreen() {
         {username ? (
           <View style={styles.sessionInfo}>
             <Ionicons name="person-circle-outline" size={20} color={Colors.light.textSecondary} />
-            <Text style={styles.sessionInfoText}>Signed in as {username}</Text>
+            <Text style={styles.sessionInfoText}>Signed in as {username} ({role})</Text>
           </View>
         ) : null}
 
@@ -687,5 +721,39 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 15,
     color: Colors.brand.red,
+  },
+  managerBadge: {
+    backgroundColor: "#7C3AED" + "12",
+  },
+  managerBadgeText: {
+    color: "#7C3AED",
+  },
+  roleSelector: {
+    flexDirection: "row" as const,
+    gap: 10,
+    marginBottom: 16,
+  },
+  roleOption: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Colors.light.border,
+    backgroundColor: Colors.light.surface,
+    alignItems: "center" as const,
+    gap: 6,
+  },
+  roleOptionActive: {
+    borderColor: Colors.brand.blue,
+    backgroundColor: Colors.brand.blue + "08",
+  },
+  roleOptionText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+  },
+  roleOptionTextActive: {
+    color: Colors.brand.blue,
   },
 });
