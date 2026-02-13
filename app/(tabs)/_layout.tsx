@@ -9,8 +9,12 @@ import Colors from "@/constants/colors";
 import { useTabBar } from "@/contexts/TabBarContext";
 
 function NativeTabLayout() {
+  const { tabBarVisible } = useTabBar();
+
   return (
-    <NativeTabs>
+    <NativeTabs
+      tabBarStyle={tabBarVisible ? undefined : { display: "none" }}
+    >
       <NativeTabs.Trigger name="index">
         <Icon sf={{ default: "house", selected: "house.fill" }} />
         <Label>Home</Label>
@@ -57,8 +61,7 @@ function ClassicTabLayout() {
           borderTopColor: isDark ? "#1F2937" : "#E5E7EB",
           elevation: 0,
           ...(isWeb ? { height: 84 } : {}),
-          transform: [{ translateY: tabBarVisible ? 0 : tabBarHeight + 40 }],
-          transition: "transform 0.25s ease-in-out" as any,
+          display: tabBarVisible ? "flex" : "none",
         },
         tabBarBackground: () =>
           isIOS ? (

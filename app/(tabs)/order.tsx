@@ -16,7 +16,7 @@ import Colors from "@/constants/colors";
 import { useTabBar } from "@/contexts/TabBarContext";
 
 const MENU_URL = "https://www.the147order.co.uk";
-const AUTO_HIDE_DELAY = 10000;
+const AUTO_HIDE_DELAY = 0;
 
 const SCROLL_DETECT_JS = `
   (function() {
@@ -54,14 +54,8 @@ export default function OrderScreen() {
 
   useEffect(() => {
     if (isFocused) {
-      hasHiddenRef.current = false;
-      const timer = setTimeout(() => {
-        if (!hasHiddenRef.current) {
-          hasHiddenRef.current = true;
-          setTabBarVisible(false);
-        }
-      }, AUTO_HIDE_DELAY);
-      return () => clearTimeout(timer);
+      hasHiddenRef.current = true;
+      setTabBarVisible(false);
     } else {
       hasHiddenRef.current = false;
       setTabBarVisible(true);
