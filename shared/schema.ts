@@ -25,6 +25,7 @@ export const staffUsers = pgTable("staff_users", {
   pinHash: text("pin_hash").notNull(),
   pinSalt: text("pin_salt").notNull(),
   displayName: text("display_name"),
+  role: text("role").notNull().default("staff"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   active: boolean("active").notNull().default(true),
 });
