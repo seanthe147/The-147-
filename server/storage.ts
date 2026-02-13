@@ -80,7 +80,7 @@ export interface IStorage {
   deleteBookingsByEmail(email: string): Promise<number>;
   anonymizeOldBookings(retentionDays: number): Promise<number>;
   cleanupExpiredSessions(): Promise<number>;
-  createStaffUser(username: string, pinHash: string, pinSalt: string, displayName?: string): Promise<StaffUser>;
+  createStaffUser(username: string, pinHash: string, pinSalt: string, displayName?: string, role?: string): Promise<StaffUser>;
   getStaffUserByUsername(username: string): Promise<StaffUser | undefined>;
   getAllStaffUsers(): Promise<StaffUser[]>;
   migrateEncryptExistingBookings(): Promise<number>;

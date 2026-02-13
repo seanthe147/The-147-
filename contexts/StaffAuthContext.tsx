@@ -5,6 +5,9 @@ import { fetch } from "expo/fetch";
 
 const STORAGE_KEY = "staff_session_token";
 const USERNAME_KEY = "staff_username";
+const ROLE_KEY = "staff_role";
+
+type StaffRole = "staff" | "manager";
 
 interface StaffAuthContextValue {
   isAuthenticated: boolean;
@@ -12,8 +15,10 @@ interface StaffAuthContextValue {
   token: string | null;
   username: string | null;
   displayName: string | null;
+  role: StaffRole;
+  isManager: boolean;
   login: (username: string, pin: string) => Promise<{ success: boolean; error?: string }>;
-  register: (masterPin: string, username: string, pin: string, displayName?: string) => Promise<{ success: boolean; error?: string }>;
+  register: (masterPin: string, username: string, pin: string, displayName?: string, role?: StaffRole) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
 }
 
@@ -23,6 +28,7 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [role, setRole] = useState<StaffRole>("staff");
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -34,6 +40,7 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
       try {
         const stored = await AsyncStorage.getItem(STORAGE_KEY);
         const storedUsername = await AsyncStorage.getItem(USERNAME_KEY);
+        const storedRole = await AsyncStorage.getItem(ROLE_KEY);
         if (stored) {
           const baseUrl = getApiUrl();
           const url = new URL("/api/staff/verify", baseUrl);
@@ -41,11 +48,14 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
             headers: { Authorization: `Bearer ${stored}` },
           });
           if (res.ok) {
+            const data = await res.json();
             setToken(stored);
-            setUsername(storedUsername);
+            setUsername(data.username || storedUsername);
+            setRole((data.role as StaffRole) || (storedRole as StaffRole) || "staff");
           } else {
             await AsyncStorage.removeItem(STORAGE_KEY);
             await AsyncStorage.removeItem(USERNAME_KEY);
+            await AsyncStorage.removeItem(ROLE_KEY);
           }
         }
       } catch {
@@ -75,16 +85,18 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
       if (data.username) {
         await AsyncStorage.setItem(USERNAME_KEY, data.username);
       }
+      await AsyncStorage.setItem(ROLE_KEY, data.role || "staff");
       setToken(data.token);
       setUsername(data.username || loginUsername);
       setDisplayName(data.displayName || null);
+      setRole((data.role as StaffRole) || "staff");
       return { success: true };
     } catch {
       return { success: false, error: "Connection error" };
     }
   }, []);
 
-  const register = useCallback(async (masterPin: string, regUsername: string, pin: string, regDisplayName?: string): Promise<{ success: boolean; error?: string }> => {
+  const register = useCallback(async (masterPin: string, regUsername: string, pin: string, regDisplayName?: string, regRole?: StaffRole): Promise<{ success: boolean; error?: string }> => {
     try {
       const baseUrl = getApiUrl();
       const url = new URL("/api/staff/register", baseUrl);
@@ -96,6 +108,7 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
           username: regUsername,
           pin,
           displayName: regDisplayName,
+          role: regRole || "staff",
         }),
       });
 
@@ -124,9 +137,11 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
     }
     await AsyncStorage.removeItem(STORAGE_KEY);
     await AsyncStorage.removeItem(USERNAME_KEY);
+    await AsyncStorage.removeItem(ROLE_KEY);
     setToken(null);
     setUsername(null);
     setDisplayName(null);
+    setRole("staff");
   }, [token]);
 
   const value = useMemo(
@@ -136,11 +151,13 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
       token,
       username,
       displayName,
+      role,
+      isManager: role === "manager",
       login,
       register,
       logout,
     }),
-    [token, isLoading, username, displayName, login, register, logout]
+    [token, isLoading, username, displayName, role, login, register, logout]
   );
 
   return (
