@@ -290,12 +290,13 @@ export class DatabaseStorage implements IStorage {
     return result.length;
   }
 
-  async createStaffUser(username: string, pinHash: string, pinSalt: string, displayName?: string): Promise<StaffUser> {
+  async createStaffUser(username: string, pinHash: string, pinSalt: string, displayName?: string, role?: string): Promise<StaffUser> {
     const [user] = await db.insert(staffUsers).values({
       username: username.toLowerCase().trim(),
       pinHash,
       pinSalt,
       displayName: displayName || null,
+      role: role === "manager" ? "manager" : "staff",
     }).returning();
     return user;
   }

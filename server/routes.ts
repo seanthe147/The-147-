@@ -69,6 +69,21 @@ async function staffAuth(req: Request, res: Response, next: NextFunction) {
   if (!session) {
     return res.status(401).json({ message: "Invalid or expired session" });
   }
+  if (session.staffUsername) {
+    const user = await storage.getStaffUserByUsername(session.staffUsername);
+    (req as any).staffRole = user?.role || "staff";
+    (req as any).staffUsername = session.staffUsername;
+  } else {
+    (req as any).staffRole = "manager";
+    (req as any).staffUsername = null;
+  }
+  next();
+}
+
+async function managerAuth(req: Request, res: Response, next: NextFunction) {
+  if ((req as any).staffRole !== "manager") {
+    return res.status(403).json({ message: "Manager access required" });
+  }
   next();
 }
 
@@ -83,7 +98,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
 
-    const { masterPin, username, pin, displayName } = req.body;
+    const { masterPin, username, pin, displayName, role } = req.body;
 
     if (!masterPin || !username || !pin) {
       return res.status(400).json({ message: "Master PIN, username, and PIN are required" });
@@ -116,12 +131,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(409).json({ message: "Username already taken" });
     }
 
+    if (role && !["staff", "manager"].includes(role)) {
+      return res.status(400).json({ message: "Role must be 'staff' or 'manager'" });
+    }
+
     const { hash, salt } = hashPin(pin);
     const staffUser = await storage.createStaffUser(
       username.trim(),
       hash,
       salt,
-      displayName?.trim() || undefined
+      displayName?.trim() || undefined,
+      role || "staff"
     );
 
     clearFailedLogins(clientIp);
@@ -129,6 +149,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       message: "Staff account created",
       username: staffUser.username,
       displayName: staffUser.displayName,
+      role: staffUser.role,
     });
   });
 
@@ -173,6 +194,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         expiresAt: session.expiresAt,
         username: staffUser.username,
         displayName: staffUser.displayName,
+        role: staffUser.role,
       });
     }
 
@@ -191,7 +213,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000);
     const session = await storage.createStaffSession(token, expiresAt);
 
-    res.json({ token: session.token, expiresAt: session.expiresAt });
+    res.json({ token: session.token, expiresAt: session.expiresAt, role: "manager" });
   });
 
   app.post("/api/staff/logout", async (req, res) => {
@@ -202,11 +224,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(204).send();
   });
 
-  app.get("/api/staff/verify", staffAuth, async (_req, res) => {
-    res.json({ authenticated: true });
+  app.get("/api/staff/verify", staffAuth, async (req, res) => {
+    res.json({
+      authenticated: true,
+      role: (req as any).staffRole || "staff",
+      username: (req as any).staffUsername || null,
+    });
   });
 
-  app.get("/api/staff/users", staffAuth, async (_req, res) => {
+  app.get("/api/staff/users", staffAuth, managerAuth, async (_req, res) => {
     const users = await storage.getAllStaffUsers();
     res.json(users.map(u => ({
       id: u.id,
@@ -217,7 +243,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     })));
   });
 
-  app.post("/api/staff/migrate-encryption", staffAuth, async (_req, res) => {
+  app.post("/api/staff/migrate-encryption", staffAuth, managerAuth, async (_req, res) => {
     try {
       const count = await storage.migrateEncryptExistingBookings();
       res.json({ message: "Encryption migration complete", recordsMigrated: count });
@@ -240,7 +266,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(offer);
   });
 
-  app.post("/api/offers", staffAuth, async (req, res) => {
+  app.post("/api/offers", staffAuth, managerAuth, async (req, res) => {
     const parsed = insertOfferSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid offer data", errors: parsed.error.flatten() });
@@ -249,7 +275,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(201).json(offer);
   });
 
-  app.put("/api/offers/:id", staffAuth, async (req, res) => {
+  app.put("/api/offers/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const parsed = insertOfferSchema.partial().safeParse(req.body);
@@ -261,7 +287,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(offer);
   });
 
-  app.delete("/api/offers/:id", staffAuth, async (req, res) => {
+  app.delete("/api/offers/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const deleted = await storage.deleteOffer(id);
@@ -278,18 +304,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(201).json(token);
   });
 
-  app.delete("/api/push-tokens/:token", staffAuth, async (req, res) => {
+  app.delete("/api/push-tokens/:token", staffAuth, managerAuth, async (req, res) => {
     const deleted = await storage.removePushToken(req.params.token as string);
     if (!deleted) return res.status(404).json({ message: "Token not found" });
     res.status(204).send();
   });
 
-  app.get("/api/push-tokens", staffAuth, async (_req, res) => {
+  app.get("/api/push-tokens", staffAuth, managerAuth, async (_req, res) => {
     const tokens = await storage.getAllPushTokens();
     res.json(tokens);
   });
 
-  app.post("/api/notifications/send", staffAuth, async (req, res) => {
+  app.post("/api/notifications/send", staffAuth, managerAuth, async (req, res) => {
     const { title, body } = req.body;
     if (!title || !body) {
       return res.status(400).json({ message: "Title and body are required" });
@@ -332,7 +358,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ sent: successCount, total: tokens.length, notification });
   });
 
-  app.get("/api/notifications/history", staffAuth, async (_req, res) => {
+  app.get("/api/notifications/history", staffAuth, managerAuth, async (_req, res) => {
     const history = await storage.getNotificationHistory();
     res.json(history);
   });
@@ -486,7 +512,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(exportData);
   });
 
-  app.delete("/api/gdpr/erase", staffAuth, async (req, res) => {
+  app.delete("/api/gdpr/erase", staffAuth, managerAuth, async (req, res) => {
     const { email } = req.body;
     if (!email || typeof email !== "string") {
       return res.status(400).json({ message: "Email address is required" });
@@ -504,7 +530,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  app.post("/api/gdpr/retention-cleanup", staffAuth, async (_req, res) => {
+  app.post("/api/gdpr/retention-cleanup", staffAuth, managerAuth, async (_req, res) => {
     const anonymized = await storage.anonymizeOldBookings(90);
     const sessionsCleared = await storage.cleanupExpiredSessions();
     res.json({
@@ -526,12 +552,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/events/all", staffAuth, async (_req, res) => {
+  app.get("/api/events/all", staffAuth, managerAuth, async (_req, res) => {
     const allEvents = await storage.getEvents();
     res.json(allEvents);
   });
 
-  app.post("/api/events", staffAuth, async (req, res) => {
+  app.post("/api/events", staffAuth, managerAuth, async (req, res) => {
     const parsed = insertEventSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: "Invalid event data", details: parsed.error.errors });
@@ -540,7 +566,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(201).json(event);
   });
 
-  app.put("/api/events/:id", staffAuth, async (req, res) => {
+  app.put("/api/events/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid event ID" });
     const event = await storage.updateEvent(id, req.body);
@@ -548,7 +574,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(event);
   });
 
-  app.delete("/api/events/:id", staffAuth, async (req, res) => {
+  app.delete("/api/events/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid event ID" });
     const deleted = await storage.deleteEvent(id);
@@ -566,7 +592,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ key: req.params.key, value });
   });
 
-  app.put("/api/settings/:key", staffAuth, async (req, res) => {
+  app.put("/api/settings/:key", staffAuth, managerAuth, async (req, res) => {
     const { value } = req.body;
     if (value === undefined || value === null) {
       return res.status(400).json({ message: "Value is required" });
@@ -620,12 +646,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(201).json({ message: "Your message has been sent. We'll get back to you soon!", id: contact.id });
   });
 
-  app.get("/api/contact", staffAuth, async (_req, res) => {
+  app.get("/api/contact", staffAuth, managerAuth, async (_req, res) => {
     const messages = await storage.getContactMessages();
     res.json(messages);
   });
 
-  app.patch("/api/contact/:id/status", staffAuth, async (req, res) => {
+  app.patch("/api/contact/:id/status", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const { status } = req.body;
