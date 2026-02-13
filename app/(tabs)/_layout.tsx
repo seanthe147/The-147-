@@ -1,6 +1,4 @@
-import { isLiquidGlassAvailable } from "expo-glass-effect";
 import { Tabs } from "expo-router";
-import { NativeTabs, Icon, Label } from "expo-router/unstable-native-tabs";
 import { BlurView } from "expo-blur";
 import { Platform, StyleSheet, useColorScheme, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -8,45 +6,12 @@ import React from "react";
 import Colors from "@/constants/colors";
 import { useTabBar } from "@/contexts/TabBarContext";
 
-function NativeTabLayout() {
-  const { tabBarVisible } = useTabBar();
-
-  return (
-    <NativeTabs
-      tabBarStyle={tabBarVisible ? undefined : { display: "none" }}
-    >
-      <NativeTabs.Trigger name="index">
-        <Icon sf={{ default: "house", selected: "house.fill" }} />
-        <Label>Home</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="book">
-        <Icon sf={{ default: "calendar", selected: "calendar" }} />
-        <Label>Book</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="order">
-        <Icon sf={{ default: "fork.knife", selected: "fork.knife" }} />
-        <Label>Order</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="events">
-        <Icon sf={{ default: "ticket", selected: "ticket.fill" }} />
-        <Label>Events</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="about">
-        <Icon sf={{ default: "info.circle", selected: "info.circle.fill" }} />
-        <Label>About</Label>
-      </NativeTabs.Trigger>
-    </NativeTabs>
-  );
-}
-
 function ClassicTabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   const isWeb = Platform.OS === "web";
   const isIOS = Platform.OS === "ios";
   const { tabBarVisible } = useTabBar();
-
-  const tabBarHeight = isWeb ? 84 : 50;
 
   return (
     <Tabs
@@ -130,8 +95,5 @@ function ClassicTabLayout() {
 }
 
 export default function TabLayout() {
-  if (isLiquidGlassAvailable()) {
-    return <NativeTabLayout />;
-  }
   return <ClassicTabLayout />;
 }
