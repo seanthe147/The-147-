@@ -413,9 +413,7 @@ const styles = StyleSheet.create({
     fontSize: 48,
     color: "#FFFFFF",
     letterSpacing: -0.5,
-    textShadowColor: "rgba(0,0,0,0.3)",
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 8,
+    textShadow: "0px 2px 8px rgba(0,0,0,0.3)",
   },
   heroTagline: {
     flexDirection: "row",

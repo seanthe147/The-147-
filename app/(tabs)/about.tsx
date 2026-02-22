@@ -59,14 +59,13 @@ export default function AboutScreen() {
         styles.scrollContent,
         { paddingTop: insets.top + webTopInset },
       ]}
-      contentInsetAdjustmentBehavior="automatic"
       showsVerticalScrollIndicator={false}
     >
       <LinearGradient
         colors={[Colors.brand.dark, Colors.brand.navy]}
         style={styles.heroSection}
       >
-        <View style={[styles.heroInner, { paddingTop: insets.top + 24 + webTopInset }]}>
+        <View style={[styles.heroInner, { paddingTop: 24 }]}>
           <Text style={styles.heroLogoText}>The 147</Text>
           <Text style={styles.heroTagline}>
             Your premier destination for snooker, pool, dining and entertainment
