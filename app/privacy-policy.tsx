@@ -103,6 +103,13 @@ export default function PrivacyPolicyScreen() {
               send you venue updates. You can unsubscribe at any time.
             </Text>
             <Text style={styles.bulletItem}>
+              Contact form messages: When you use the contact form, we collect
+              your name, email address, optional phone number, subject, and
+              message. This data is stored securely and used only to respond
+              to your enquiry. Contact form data is retained for 12 months
+              then automatically deleted.
+            </Text>
+            <Text style={styles.bulletItem}>
               Food and drink ordering: Ordering is provided through OrderTab
               (ordertab.menu) embedded within the app. Their privacy policy
               applies to those transactions.
@@ -125,6 +132,11 @@ export default function PrivacyPolicyScreen() {
             <Text style={styles.bulletItem}>
               Contract: Processing booking data (name, email, phone) is necessary
               to fulfil your table reservation request (Article 6(1)(b)).
+            </Text>
+            <Text style={styles.bulletItem}>
+              Consent: When you submit the contact form, we process your data
+              based on your explicit consent given via the checkbox (Article
+              6(1)(a)). You may withdraw consent at any time.
             </Text>
             <Text style={styles.bulletItem}>
               Legitimate interests: Operating the app and providing you with
@@ -212,6 +224,12 @@ export default function PrivacyPolicyScreen() {
             after the booking date, after which it is automatically anonymised.
             This retention period allows us to manage your reservation and
             handle any follow-up queries.
+          </Text>
+          <Text style={styles.bodyText}>
+            Contact form messages (name, email, phone, subject, message) are
+            retained for 12 months after submission, after which they are
+            automatically deleted. You can request earlier deletion by
+            contacting us.
           </Text>
           <Text style={styles.bodyText}>
             Push notification device tokens are retained until you unsubscribe

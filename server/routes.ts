@@ -612,6 +612,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ message: "Please enter a valid email address" });
     }
 
+    if (!parsed.data.gdprConsent) {
+      return res.status(400).json({ message: "You must consent to data processing to send a message" });
+    }
+
     const contact = await storage.createContactMessage(parsed.data);
 
     try {

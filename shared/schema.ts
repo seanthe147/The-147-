@@ -112,6 +112,7 @@ export const contactMessages = pgTable("contact_messages", {
   subject: text("subject").notNull(),
   message: text("message").notNull(),
   status: text("status").notNull().default("new"),
+  gdprConsent: boolean("gdpr_consent").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

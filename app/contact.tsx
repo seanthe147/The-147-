@@ -35,6 +35,7 @@ export default function ContactScreen() {
   const [phone, setPhone] = useState("");
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
+  const [gdprConsent, setGdprConsent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
@@ -63,6 +64,10 @@ export default function ContactScreen() {
       setError("Please enter your message");
       return;
     }
+    if (!gdprConsent) {
+      setError("You must consent to data processing to send a message");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -77,6 +82,7 @@ export default function ContactScreen() {
           phone: phone.trim() || null,
           subject,
           message: message.trim(),
+          gdprConsent: true,
         }),
       });
 
@@ -93,6 +99,7 @@ export default function ContactScreen() {
       setPhone("");
       setSubject("");
       setMessage("");
+      setGdprConsent(false);
     } catch {
       setError("Connection error. Please try again.");
     } finally {
@@ -249,6 +256,21 @@ export default function ContactScreen() {
             </View>
           </View>
 
+          <Pressable
+            onPress={() => { setGdprConsent(!gdprConsent); setError(""); }}
+            style={styles.consentRow}
+            testID="contact-gdpr-consent"
+          >
+            <View style={[styles.checkbox, gdprConsent && styles.checkboxChecked]}>
+              {gdprConsent && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
+            </View>
+            <Text style={styles.consentText}>
+              I consent to The 147 processing my personal data to respond to this enquiry.
+              Your data will be stored securely and only used to handle your message.
+              You can request deletion at any time. See our Privacy Policy for details.
+            </Text>
+          </Pressable>
+
           {error ? (
             <View style={styles.errorRow}>
               <Ionicons name="alert-circle" size={16} color={Colors.brand.red} />
@@ -404,6 +426,33 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_500Medium",
     fontSize: 13,
     color: Colors.brand.red,
+  },
+  consentRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 16,
+    alignItems: "flex-start",
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: Colors.light.border,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
+  },
+  checkboxChecked: {
+    backgroundColor: Colors.brand.blue,
+    borderColor: Colors.brand.blue,
+  },
+  consentText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    flex: 1,
+    lineHeight: 18,
   },
   submitButton: {
     backgroundColor: Colors.brand.blue,
