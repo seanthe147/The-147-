@@ -13,7 +13,7 @@ const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION = 15 * 60 * 1000;
 const ATTEMPT_WINDOW = 10 * 60 * 1000;
 
-const loyaltyOtps = new Map<string, { code: string; expiresAt: number; attempts: number }>();
+const loyaltyOtps = new Map<string, { code: string; phone: string; expiresAt: number; attempts: number }>();
 const loyaltySessions = new Map<string, { phone: string; expiresAt: number }>();
 const OTP_EXPIRY = 5 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 3;
@@ -49,36 +49,44 @@ function validateLoyaltySession(token: string): string | null {
   return session.phone;
 }
 
-async function sendOtpSms(phone: string, code: string): Promise<boolean> {
-  const twilioSid = process.env.TWILIO_ACCOUNT_SID;
-  const twilioAuth = process.env.TWILIO_AUTH_TOKEN;
-  const twilioFrom = process.env.TWILIO_PHONE_NUMBER;
+async function sendOtpEmail(email: string, code: string): Promise<boolean> {
+  const resendKey = process.env.RESEND_API_KEY;
 
-  if (twilioSid && twilioAuth && twilioFrom) {
+  if (resendKey) {
     try {
-      const response = await fetch(
-        `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
-        {
-          method: "POST",
-          headers: {
-            "Authorization": `Basic ${Buffer.from(`${twilioSid}:${twilioAuth}`).toString("base64")}`,
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: new URLSearchParams({
-            To: phone,
-            From: twilioFrom,
-            Body: `Your The 147 loyalty verification code is: ${code}. This code expires in 5 minutes.`,
-          }).toString(),
-        }
-      );
-      if (response.ok) return true;
-      console.error("Twilio SMS error:", await response.text());
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${resendKey}`,
+        },
+        body: JSON.stringify({
+          from: "The 147 <onboarding@resend.dev>",
+          to: email,
+          subject: "Your Loyalty Verification Code",
+          html: `<div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+            <h2 style="color: #0A1628; margin-bottom: 8px;">The 147 Loyalty</h2>
+            <p style="color: #555; font-size: 15px;">Your verification code is:</p>
+            <div style="background: #F5F5F5; border-radius: 12px; padding: 24px; text-align: center; margin: 20px 0;">
+              <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #0047AB;">${code}</span>
+            </div>
+            <p style="color: #555; font-size: 14px;">This code expires in 5 minutes. If you didn't request this, you can safely ignore this email.</p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+            <p style="color: #999; font-size: 12px;">The 147 &mdash; Snooker, Bar &amp; Restaurant</p>
+          </div>`,
+        }),
+      });
+      if (response.ok) {
+        console.log(`[LOYALTY OTP] Email sent to ${email}`);
+        return true;
+      }
+      console.error("Resend email error:", await response.text());
     } catch (err) {
-      console.error("Twilio SMS send error:", err);
+      console.error("Resend email send error:", err);
     }
   }
 
-  console.log(`[LOYALTY OTP] Phone: ${phone} | Code: ${code} (SMS not configured - set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER)`);
+  console.log(`[LOYALTY OTP] Email: ${email} | Code: ${code} (RESEND_API_KEY not configured)`);
   return true;
 }
 
@@ -741,16 +749,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!square.isConfigured()) {
       return res.status(503).json({ message: "Loyalty program not configured" });
     }
-    const { phone } = req.body;
+    const { email, phone } = req.body;
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({ message: "Email address is required" });
+    }
     if (!phone || typeof phone !== "string") {
       return res.status(400).json({ message: "Phone number is required" });
     }
-    const cleaned = phone.replace(/\s/g, "");
-    if (cleaned.length < 10) {
+    const emailClean = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailClean)) {
+      return res.status(400).json({ message: "Please enter a valid email address" });
+    }
+    const phoneCleaned = phone.replace(/\s/g, "");
+    if (phoneCleaned.length < 10) {
       return res.status(400).json({ message: "Please enter a valid phone number" });
     }
+    const otpKey = `${emailClean}:${phoneCleaned}`;
     cleanupExpiredOtps();
-    const existing = loyaltyOtps.get(cleaned);
+    const existing = loyaltyOtps.get(otpKey);
     if (existing && existing.expiresAt > Date.now()) {
       const waitSeconds = Math.ceil((existing.expiresAt - Date.now() - (OTP_EXPIRY - 60000)) / 1000);
       if (waitSeconds > 0) {
@@ -758,25 +775,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
     const code = generateOtp();
-    loyaltyOtps.set(cleaned, { code, expiresAt: Date.now() + OTP_EXPIRY, attempts: 0 });
-    const e164 = cleaned.startsWith("+") ? cleaned : cleaned.startsWith("0") ? `+44${cleaned.slice(1)}` : `+44${cleaned}`;
-    await sendOtpSms(e164, code);
+    loyaltyOtps.set(otpKey, { code, phone: phoneCleaned, expiresAt: Date.now() + OTP_EXPIRY, attempts: 0 });
+    await sendOtpEmail(emailClean, code);
     res.json({ sent: true, expiresIn: OTP_EXPIRY / 1000 });
   });
 
   app.post("/api/loyalty/verify-code", async (req, res) => {
-    const { phone, code } = req.body;
-    if (!phone || !code) {
-      return res.status(400).json({ message: "Phone number and code are required" });
+    const { email, phone, code } = req.body;
+    if (!email || !phone || !code) {
+      return res.status(400).json({ message: "Email, phone number, and code are required" });
     }
-    const cleaned = phone.replace(/\s/g, "");
+    const emailClean = email.trim().toLowerCase();
+    const phoneCleaned = phone.replace(/\s/g, "");
+    const otpKey = `${emailClean}:${phoneCleaned}`;
     cleanupExpiredOtps();
-    const otpEntry = loyaltyOtps.get(cleaned);
+    const otpEntry = loyaltyOtps.get(otpKey);
     if (!otpEntry) {
       return res.status(400).json({ message: "No verification code found. Please request a new code." });
     }
     if (otpEntry.attempts >= OTP_MAX_ATTEMPTS) {
-      loyaltyOtps.delete(cleaned);
+      loyaltyOtps.delete(otpKey);
       return res.status(429).json({ message: "Too many incorrect attempts. Please request a new code." });
     }
     if (!timingSafeCompare(code, otpEntry.code)) {
@@ -784,10 +802,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const remaining = OTP_MAX_ATTEMPTS - otpEntry.attempts;
       return res.status(401).json({ message: `Incorrect code. ${remaining} attempt${remaining !== 1 ? "s" : ""} remaining.` });
     }
-    loyaltyOtps.delete(cleaned);
+    loyaltyOtps.delete(otpKey);
     cleanupExpiredLoyaltySessions();
     const sessionToken = randomBytes(32).toString("hex");
-    loyaltySessions.set(sessionToken, { phone: cleaned, expiresAt: Date.now() + LOYALTY_SESSION_EXPIRY });
+    loyaltySessions.set(sessionToken, { phone: phoneCleaned, expiresAt: Date.now() + LOYALTY_SESSION_EXPIRY });
     res.json({ verified: true, sessionToken, expiresIn: LOYALTY_SESSION_EXPIRY / 1000 });
   });
 

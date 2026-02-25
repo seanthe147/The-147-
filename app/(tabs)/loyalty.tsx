@@ -138,6 +138,7 @@ export default function LoyaltyScreen() {
   const isWeb = Platform.OS === "web";
 
   const [step, setStep] = useState<AuthStep>("loading");
+  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [sessionToken, setSessionToken] = useState<string | null>(null);
@@ -179,11 +180,11 @@ export default function LoyaltyScreen() {
   });
 
   const sendCodeMutation = useMutation({
-    mutationFn: async (phoneNumber: string) => {
+    mutationFn: async ({ emailAddr, phoneNumber }: { emailAddr: string; phoneNumber: string }) => {
       const res = await fetch(`${API_BASE}/api/loyalty/send-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: phoneNumber }),
+        body: JSON.stringify({ email: emailAddr, phone: phoneNumber }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to send code");
@@ -199,11 +200,11 @@ export default function LoyaltyScreen() {
   });
 
   const verifyCodeMutation = useMutation({
-    mutationFn: async ({ phoneNumber, otp }: { phoneNumber: string; otp: string }) => {
+    mutationFn: async ({ emailAddr, phoneNumber, otp }: { emailAddr: string; phoneNumber: string; otp: string }) => {
       const res = await fetch(`${API_BASE}/api/loyalty/verify-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: phoneNumber, code: otp }),
+        body: JSON.stringify({ email: emailAddr, phone: phoneNumber, code: otp }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Verification failed");
@@ -272,8 +273,16 @@ export default function LoyaltyScreen() {
   }, [step, sessionToken]);
 
   const handleSendCode = useCallback(() => {
-    const cleaned = phone.replace(/\s/g, "");
-    if (cleaned.length < 10) {
+    const emailTrimmed = email.trim();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailTrimmed)) {
+      const msg = "Please enter a valid email address";
+      if (Platform.OS === "web") window.alert(msg);
+      else Alert.alert("Invalid Email", msg);
+      return;
+    }
+    const phoneCleaned = phone.replace(/\s/g, "");
+    if (phoneCleaned.length < 10) {
       const msg = "Please enter a valid UK phone number";
       if (Platform.OS === "web") window.alert(msg);
       else Alert.alert("Invalid Number", msg);
@@ -281,15 +290,15 @@ export default function LoyaltyScreen() {
     }
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setError("");
-    sendCodeMutation.mutate(cleaned);
-  }, [phone]);
+    sendCodeMutation.mutate({ emailAddr: emailTrimmed, phoneNumber: phoneCleaned });
+  }, [email, phone]);
 
   const handleVerifyCode = useCallback(() => {
     if (code.length !== 6) return;
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setError("");
-    verifyCodeMutation.mutate({ phoneNumber: phone.replace(/\s/g, ""), otp: code });
-  }, [phone, code]);
+    verifyCodeMutation.mutate({ emailAddr: email.trim(), phoneNumber: phone.replace(/\s/g, ""), otp: code });
+  }, [email, phone, code]);
 
   const handleEnroll = useCallback(() => {
     if (!sessionToken) return;
@@ -317,6 +326,7 @@ export default function LoyaltyScreen() {
     setSessionToken(null);
     setAccount(null);
     setLookupDone(false);
+    setEmail("");
     setPhone("");
     setCode("");
     setError("");
@@ -402,12 +412,29 @@ export default function LoyaltyScreen() {
               <View style={styles.lockIconRow}>
                 <Ionicons name="shield-checkmark" size={24} color={Colors.brand.blue} />
               </View>
-              <Text style={styles.sectionTitle}>Verify Your Number</Text>
+              <Text style={styles.sectionTitle}>Verify Your Identity</Text>
               <Text style={styles.lookupDescription}>
-                Enter your phone number and we'll send you a verification code to access your loyalty account.
+                Enter your details below. We'll email you a verification code to access your loyalty account.
               </Text>
 
               <View style={styles.inputRow}>
+                <View style={styles.inputWrap}>
+                  <Ionicons name="mail-outline" size={18} color={Colors.light.textSecondary} style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.phoneInput}
+                    placeholder="your@email.com"
+                    placeholderTextColor={Colors.light.textSecondary}
+                    value={email}
+                    onChangeText={setEmail}
+                    keyboardType="email-address"
+                    autoComplete="email"
+                    autoCapitalize="none"
+                    maxLength={100}
+                  />
+                </View>
+              </View>
+
+              <View style={[styles.inputRow, { marginTop: 12 }]}>
                 <View style={styles.inputWrap}>
                   <Ionicons name="call-outline" size={18} color={Colors.light.textSecondary} style={styles.inputIcon} />
                   <TextInput
@@ -423,12 +450,16 @@ export default function LoyaltyScreen() {
                 </View>
               </View>
 
+              <Text style={styles.fieldHint}>
+                Your phone number is used to find your loyalty account on our system.
+              </Text>
+
               <Pressable
                 onPress={handleSendCode}
-                disabled={isLoading || phone.replace(/\s/g, "").length < 10}
+                disabled={isLoading || !email.trim() || phone.replace(/\s/g, "").length < 10}
                 style={({ pressed }) => [
                   styles.lookupButton,
-                  (isLoading || phone.replace(/\s/g, "").length < 10) && styles.buttonDisabled,
+                  (isLoading || !email.trim() || phone.replace(/\s/g, "").length < 10) && styles.buttonDisabled,
                   { opacity: pressed ? 0.85 : 1 },
                 ]}
               >
@@ -436,7 +467,7 @@ export default function LoyaltyScreen() {
                   <ActivityIndicator size="small" color="#FFF" />
                 ) : (
                   <>
-                    <Ionicons name="paper-plane" size={18} color="#FFF" />
+                    <Ionicons name="mail" size={18} color="#FFF" />
                     <Text style={styles.buttonText}>Send Verification Code</Text>
                   </>
                 )}
@@ -452,7 +483,7 @@ export default function LoyaltyScreen() {
             </View>
             <Text style={styles.sectionTitle}>Enter Verification Code</Text>
             <Text style={styles.lookupDescription}>
-              We've sent a 6-digit code to {phone}. Enter it below to verify your identity.
+              We've sent a 6-digit code to {email.trim()}. Check your inbox and enter it below.
             </Text>
 
             <CodeInput value={code} onChange={setCode} />
@@ -479,13 +510,13 @@ export default function LoyaltyScreen() {
             <View style={styles.codeActions}>
               <Pressable onPress={handleBackToPhone} style={styles.linkButton}>
                 <Ionicons name="arrow-back" size={16} color={Colors.brand.blue} />
-                <Text style={styles.linkButtonText}>Change Number</Text>
+                <Text style={styles.linkButtonText}>Change Details</Text>
               </Pressable>
 
               <Pressable
                 onPress={() => {
                   setError("");
-                  sendCodeMutation.mutate(phone.replace(/\s/g, ""));
+                  sendCodeMutation.mutate({ emailAddr: email.trim(), phoneNumber: phone.replace(/\s/g, "") });
                 }}
                 disabled={sendCodeMutation.isPending}
                 style={styles.linkButton}
@@ -731,6 +762,14 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     lineHeight: 20,
     fontFamily: "Montserrat_400Regular",
+  },
+  fieldHint: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginTop: 2,
+    marginBottom: 8,
+    fontFamily: "Montserrat_400Regular",
+    lineHeight: 16,
   },
   inputRow: {
     marginBottom: 12,
