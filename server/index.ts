@@ -55,15 +55,23 @@ function setupCors(app: express.Application) {
 function setupSecurityHeaders(app: express.Application) {
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("X-XSS-Protection", "1; mode=block");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
     if (req.path === "/staff") {
+      res.setHeader("X-Frame-Options", "DENY");
       res.setHeader(
         "Content-Security-Policy",
         "default-src 'self'; script-src 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'"
       );
+    } else if (!req.path.startsWith("/api")) {
+      res.setHeader("X-Frame-Options", "SAMEORIGIN");
+      res.setHeader(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://*.squareup.com https://*.resend.com; img-src 'self' data: https:; frame-src https://www.the147order.co.uk https://the147order.co.uk"
+      );
+    } else {
+      res.setHeader("X-Frame-Options", "DENY");
     }
     if (!req.path.startsWith("/api")) {
       res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
