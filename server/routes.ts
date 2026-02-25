@@ -13,6 +13,75 @@ const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION = 15 * 60 * 1000;
 const ATTEMPT_WINDOW = 10 * 60 * 1000;
 
+const loyaltyOtps = new Map<string, { code: string; expiresAt: number; attempts: number }>();
+const loyaltySessions = new Map<string, { phone: string; expiresAt: number }>();
+const OTP_EXPIRY = 5 * 60 * 1000;
+const OTP_MAX_ATTEMPTS = 3;
+const LOYALTY_SESSION_EXPIRY = 30 * 24 * 60 * 60 * 1000;
+
+function generateOtp(): string {
+  const bytes = randomBytes(3);
+  const num = (bytes[0] * 65536 + bytes[1] * 256 + bytes[2]) % 1000000;
+  return num.toString().padStart(6, "0");
+}
+
+function cleanupExpiredOtps(): void {
+  const now = Date.now();
+  for (const [key, val] of loyaltyOtps) {
+    if (val.expiresAt <= now) loyaltyOtps.delete(key);
+  }
+}
+
+function cleanupExpiredLoyaltySessions(): void {
+  const now = Date.now();
+  for (const [key, val] of loyaltySessions) {
+    if (val.expiresAt <= now) loyaltySessions.delete(key);
+  }
+}
+
+function validateLoyaltySession(token: string): string | null {
+  const session = loyaltySessions.get(token);
+  if (!session) return null;
+  if (session.expiresAt <= Date.now()) {
+    loyaltySessions.delete(token);
+    return null;
+  }
+  return session.phone;
+}
+
+async function sendOtpSms(phone: string, code: string): Promise<boolean> {
+  const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+  const twilioAuth = process.env.TWILIO_AUTH_TOKEN;
+  const twilioFrom = process.env.TWILIO_PHONE_NUMBER;
+
+  if (twilioSid && twilioAuth && twilioFrom) {
+    try {
+      const response = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Basic ${Buffer.from(`${twilioSid}:${twilioAuth}`).toString("base64")}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: new URLSearchParams({
+            To: phone,
+            From: twilioFrom,
+            Body: `Your The 147 loyalty verification code is: ${code}. This code expires in 5 minutes.`,
+          }).toString(),
+        }
+      );
+      if (response.ok) return true;
+      console.error("Twilio SMS error:", await response.text());
+    } catch (err) {
+      console.error("Twilio SMS send error:", err);
+    }
+  }
+
+  console.log(`[LOYALTY OTP] Phone: ${phone} | Code: ${code} (SMS not configured - set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER)`);
+  return true;
+}
+
 function getClientIp(req: Request): string {
   return (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown";
 }
@@ -668,6 +737,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(updated);
   });
 
+  app.post("/api/loyalty/send-code", async (req, res) => {
+    if (!square.isConfigured()) {
+      return res.status(503).json({ message: "Loyalty program not configured" });
+    }
+    const { phone } = req.body;
+    if (!phone || typeof phone !== "string") {
+      return res.status(400).json({ message: "Phone number is required" });
+    }
+    const cleaned = phone.replace(/\s/g, "");
+    if (cleaned.length < 10) {
+      return res.status(400).json({ message: "Please enter a valid phone number" });
+    }
+    cleanupExpiredOtps();
+    const existing = loyaltyOtps.get(cleaned);
+    if (existing && existing.expiresAt > Date.now()) {
+      const waitSeconds = Math.ceil((existing.expiresAt - Date.now() - (OTP_EXPIRY - 60000)) / 1000);
+      if (waitSeconds > 0) {
+        return res.status(429).json({ message: `Please wait before requesting a new code`, retryAfter: waitSeconds });
+      }
+    }
+    const code = generateOtp();
+    loyaltyOtps.set(cleaned, { code, expiresAt: Date.now() + OTP_EXPIRY, attempts: 0 });
+    const e164 = cleaned.startsWith("+") ? cleaned : cleaned.startsWith("0") ? `+44${cleaned.slice(1)}` : `+44${cleaned}`;
+    await sendOtpSms(e164, code);
+    res.json({ sent: true, expiresIn: OTP_EXPIRY / 1000 });
+  });
+
+  app.post("/api/loyalty/verify-code", async (req, res) => {
+    const { phone, code } = req.body;
+    if (!phone || !code) {
+      return res.status(400).json({ message: "Phone number and code are required" });
+    }
+    const cleaned = phone.replace(/\s/g, "");
+    cleanupExpiredOtps();
+    const otpEntry = loyaltyOtps.get(cleaned);
+    if (!otpEntry) {
+      return res.status(400).json({ message: "No verification code found. Please request a new code." });
+    }
+    if (otpEntry.attempts >= OTP_MAX_ATTEMPTS) {
+      loyaltyOtps.delete(cleaned);
+      return res.status(429).json({ message: "Too many incorrect attempts. Please request a new code." });
+    }
+    if (!timingSafeCompare(code, otpEntry.code)) {
+      otpEntry.attempts += 1;
+      const remaining = OTP_MAX_ATTEMPTS - otpEntry.attempts;
+      return res.status(401).json({ message: `Incorrect code. ${remaining} attempt${remaining !== 1 ? "s" : ""} remaining.` });
+    }
+    loyaltyOtps.delete(cleaned);
+    cleanupExpiredLoyaltySessions();
+    const sessionToken = randomBytes(32).toString("hex");
+    loyaltySessions.set(sessionToken, { phone: cleaned, expiresAt: Date.now() + LOYALTY_SESSION_EXPIRY });
+    res.json({ verified: true, sessionToken, expiresIn: LOYALTY_SESSION_EXPIRY / 1000 });
+  });
+
+  app.get("/api/loyalty/session", async (req, res) => {
+    const token = req.headers["x-loyalty-session"] as string;
+    if (!token) {
+      return res.json({ valid: false });
+    }
+    const phone = validateLoyaltySession(token);
+    if (!phone) {
+      return res.json({ valid: false });
+    }
+    res.json({ valid: true, phone });
+  });
+
+  app.post("/api/loyalty/logout", async (req, res) => {
+    const token = req.headers["x-loyalty-session"] as string;
+    if (token) {
+      loyaltySessions.delete(token);
+    }
+    res.json({ loggedOut: true });
+  });
+
   app.get("/api/loyalty/program", async (_req, res) => {
     if (!square.isConfigured()) {
       return res.status(503).json({ message: "Loyalty program not configured" });
@@ -709,12 +852,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!square.isConfigured()) {
       return res.status(503).json({ message: "Loyalty program not configured" });
     }
-    const { phone } = req.body;
-    if (!phone || typeof phone !== "string") {
-      return res.status(400).json({ message: "Phone number is required" });
+    const sessionToken = req.headers["x-loyalty-session"] as string;
+    const sessionPhone = sessionToken ? validateLoyaltySession(sessionToken) : null;
+    if (!sessionPhone) {
+      return res.status(401).json({ message: "Please verify your phone number first" });
     }
     try {
-      const account = await square.searchLoyaltyAccount(phone);
+      const account = await square.searchLoyaltyAccount(sessionPhone);
       if (!account) {
         return res.json({ found: false, account: null });
       }
@@ -738,10 +882,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!square.isConfigured()) {
       return res.status(503).json({ message: "Loyalty program not configured" });
     }
-    const { phone } = req.body;
-    if (!phone || typeof phone !== "string") {
-      return res.status(400).json({ message: "Phone number is required" });
+    const sessionToken = req.headers["x-loyalty-session"] as string;
+    const sessionPhone = sessionToken ? validateLoyaltySession(sessionToken) : null;
+    if (!sessionPhone) {
+      return res.status(401).json({ message: "Please verify your phone number first" });
     }
+    const phone = sessionPhone;
     try {
       const program = await square.getLoyaltyProgram();
       if (!program) {

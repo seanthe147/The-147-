@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   StyleSheet,
   Text,
@@ -11,14 +11,16 @@ import {
   Alert,
   KeyboardAvoidingView,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : "";
+const SESSION_KEY = "loyalty_session";
 
 interface LoyaltyAccount {
   id: string;
@@ -41,6 +43,8 @@ interface LoyaltyProgram {
   reward_tiers: RewardTier[];
   accrual_rules: { accrual_type: string; points: number; spend_data?: { amount: number; currency: string } }[];
 }
+
+type AuthStep = "loading" | "phone" | "code" | "authenticated";
 
 function PointsDisplay({ balance, terminology }: { balance: number; terminology?: { one: string; other: string } }) {
   const label = terminology ? (balance === 1 ? terminology.one : terminology.other) : "Points";
@@ -103,14 +107,66 @@ function RewardTierCard({
   );
 }
 
+function CodeInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const inputRef = useRef<TextInput>(null);
+
+  return (
+    <Pressable onPress={() => inputRef.current?.focus()} style={styles.codeInputContainer}>
+      <View style={styles.codeBoxRow}>
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <View key={i} style={[styles.codeBox, value.length === i && styles.codeBoxActive]}>
+            <Text style={styles.codeDigit}>{value[i] || ""}</Text>
+          </View>
+        ))}
+      </View>
+      <TextInput
+        ref={inputRef}
+        style={styles.hiddenInput}
+        value={value}
+        onChangeText={(t) => onChange(t.replace(/\D/g, "").slice(0, 6))}
+        keyboardType="number-pad"
+        maxLength={6}
+        autoFocus
+        textContentType="oneTimeCode"
+      />
+    </Pressable>
+  );
+}
+
 export default function LoyaltyScreen() {
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === "web";
-  const queryClient = useQueryClient();
 
+  const [step, setStep] = useState<AuthStep>("loading");
   const [phone, setPhone] = useState("");
+  const [code, setCode] = useState("");
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [account, setAccount] = useState<LoyaltyAccount | null>(null);
   const [lookupDone, setLookupDone] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const stored = await AsyncStorage.getItem(SESSION_KEY);
+        if (stored) {
+          const { token, phone: storedPhone } = JSON.parse(stored);
+          const res = await fetch(`${API_BASE}/api/loyalty/session`, {
+            headers: { "x-loyalty-session": token },
+          });
+          const data = await res.json();
+          if (data.valid) {
+            setSessionToken(token);
+            setPhone(storedPhone);
+            setStep("authenticated");
+            return;
+          }
+          await AsyncStorage.removeItem(SESSION_KEY);
+        }
+      } catch {}
+      setStep("phone");
+    })();
+  }, []);
 
   const { data: programData, isLoading: programLoading } = useQuery({
     queryKey: ["loyalty-program"],
@@ -122,33 +178,80 @@ export default function LoyaltyScreen() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const lookupMutation = useMutation({
+  const sendCodeMutation = useMutation({
     mutationFn: async (phoneNumber: string) => {
-      const res = await fetch(`${API_BASE}/api/loyalty/lookup`, {
+      const res = await fetch(`${API_BASE}/api/loyalty/send-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: phoneNumber }),
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to send code");
+      return data;
+    },
+    onSuccess: () => {
+      setError("");
+      setCode("");
+      setStep("code");
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+
+  const verifyCodeMutation = useMutation({
+    mutationFn: async ({ phoneNumber, otp }: { phoneNumber: string; otp: string }) => {
+      const res = await fetch(`${API_BASE}/api/loyalty/verify-code`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: phoneNumber, code: otp }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Verification failed");
+      return data;
+    },
+    onSuccess: async (data) => {
+      setSessionToken(data.sessionToken);
+      await AsyncStorage.setItem(SESSION_KEY, JSON.stringify({ token: data.sessionToken, phone: phone.replace(/\s/g, "") }));
+      setError("");
+      setStep("authenticated");
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+
+  const lookupMutation = useMutation({
+    mutationFn: async (token: string) => {
+      const res = await fetch(`${API_BASE}/api/loyalty/lookup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-loyalty-session": token },
+      });
+      if (res.status === 401) {
+        await AsyncStorage.removeItem(SESSION_KEY);
+        setSessionToken(null);
+        setStep("phone");
+        throw new Error("Session expired. Please verify your phone number again.");
+      }
       if (!res.ok) throw new Error("Failed to look up account");
       return res.json();
     },
     onSuccess: (data) => {
       setLookupDone(true);
-      if (data.found) {
-        setAccount(data.account);
-      } else {
-        setAccount(null);
-      }
+      setAccount(data.found ? data.account : null);
     },
   });
 
   const enrollMutation = useMutation({
-    mutationFn: async (phoneNumber: string) => {
+    mutationFn: async (token: string) => {
       const res = await fetch(`${API_BASE}/api/loyalty/enroll`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: phoneNumber }),
+        headers: { "Content-Type": "application/json", "x-loyalty-session": token },
       });
+      if (res.status === 401) {
+        await AsyncStorage.removeItem(SESSION_KEY);
+        setSessionToken(null);
+        setStep("phone");
+        throw new Error("Session expired. Please verify your phone number again.");
+      }
       if (!res.ok) {
         const errData = await res.json();
         throw new Error(errData.message || "Failed to enroll");
@@ -162,42 +265,73 @@ export default function LoyaltyScreen() {
     },
   });
 
-  const handleLookup = useCallback(() => {
+  useEffect(() => {
+    if (step === "authenticated" && sessionToken && !lookupDone) {
+      lookupMutation.mutate(sessionToken);
+    }
+  }, [step, sessionToken]);
+
+  const handleSendCode = useCallback(() => {
     const cleaned = phone.replace(/\s/g, "");
     if (cleaned.length < 10) {
       const msg = "Please enter a valid UK phone number";
-      if (Platform.OS === "web") {
-        window.alert(msg);
-      } else {
-        Alert.alert("Invalid Number", msg);
-      }
+      if (Platform.OS === "web") window.alert(msg);
+      else Alert.alert("Invalid Number", msg);
       return;
     }
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    lookupMutation.mutate(cleaned);
+    setError("");
+    sendCodeMutation.mutate(cleaned);
   }, [phone]);
+
+  const handleVerifyCode = useCallback(() => {
+    if (code.length !== 6) return;
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setError("");
+    verifyCodeMutation.mutate({ phoneNumber: phone.replace(/\s/g, ""), otp: code });
+  }, [phone, code]);
 
   const handleEnroll = useCallback(() => {
-    const cleaned = phone.replace(/\s/g, "");
+    if (!sessionToken) return;
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    enrollMutation.mutate(cleaned);
-  }, [phone]);
+    enrollMutation.mutate(sessionToken);
+  }, [sessionToken]);
 
   const handleRefresh = useCallback(() => {
-    if (account) {
-      lookupMutation.mutate(phone.replace(/\s/g, ""));
+    if (sessionToken) {
+      setLookupDone(false);
+      lookupMutation.mutate(sessionToken);
     }
-  }, [account, phone]);
+  }, [sessionToken]);
 
-  const handleReset = useCallback(() => {
+  const handleLogout = useCallback(async () => {
+    if (sessionToken) {
+      try {
+        await fetch(`${API_BASE}/api/loyalty/logout`, {
+          method: "POST",
+          headers: { "x-loyalty-session": sessionToken },
+        });
+      } catch {}
+    }
+    await AsyncStorage.removeItem(SESSION_KEY);
+    setSessionToken(null);
     setAccount(null);
     setLookupDone(false);
     setPhone("");
+    setCode("");
+    setError("");
+    setStep("phone");
+  }, [sessionToken]);
+
+  const handleBackToPhone = useCallback(() => {
+    setStep("phone");
+    setCode("");
+    setError("");
   }, []);
 
   const program: LoyaltyProgram | null = programData?.program || null;
   const programActive = programData?.active === true;
-  const isLoading = lookupMutation.isPending || enrollMutation.isPending;
+  const isLoading = sendCodeMutation.isPending || verifyCodeMutation.isPending || lookupMutation.isPending || enrollMutation.isPending;
 
   return (
     <KeyboardAvoidingView
@@ -223,7 +357,7 @@ export default function LoyaltyScreen() {
           </Text>
         </LinearGradient>
 
-        {programLoading ? (
+        {(programLoading || step === "loading") ? (
           <View style={styles.loadingWrap}>
             <ActivityIndicator size="large" color={Colors.brand.blue} />
             <Text style={styles.loadingText}>Loading loyalty program...</Text>
@@ -244,7 +378,7 @@ export default function LoyaltyScreen() {
               Our loyalty rewards program is almost ready. We'll let you know when you can start earning points!
             </Text>
           </View>
-        ) : (
+        ) : step === "phone" ? (
           <>
             {program?.accrual_rules && program.accrual_rules.length > 0 && (
               <View style={styles.howItWorksCard}>
@@ -264,80 +398,148 @@ export default function LoyaltyScreen() {
               </View>
             )}
 
-            {!account ? (
-              <View style={styles.lookupCard}>
-                <Text style={styles.sectionTitle}>
-                  {lookupDone ? "No Account Found" : "Check Your Points"}
-                </Text>
-                <Text style={styles.lookupDescription}>
-                  {lookupDone
-                    ? "We couldn't find a loyalty account with that number. Would you like to sign up?"
-                    : "Enter your phone number to view your loyalty balance and rewards."}
-                </Text>
+            <View style={styles.lookupCard}>
+              <View style={styles.lockIconRow}>
+                <Ionicons name="shield-checkmark" size={24} color={Colors.brand.blue} />
+              </View>
+              <Text style={styles.sectionTitle}>Verify Your Number</Text>
+              <Text style={styles.lookupDescription}>
+                Enter your phone number and we'll send you a verification code to access your loyalty account.
+              </Text>
 
-                <View style={styles.inputRow}>
-                  <View style={styles.inputWrap}>
-                    <Ionicons name="call-outline" size={18} color={Colors.light.textSecondary} style={styles.inputIcon} />
-                    <TextInput
-                      style={styles.phoneInput}
-                      placeholder="07xxx xxxxxx"
-                      placeholderTextColor={Colors.light.textSecondary}
-                      value={phone}
-                      onChangeText={setPhone}
-                      keyboardType="phone-pad"
-                      autoComplete="tel"
-                      maxLength={15}
-                    />
-                  </View>
+              <View style={styles.inputRow}>
+                <View style={styles.inputWrap}>
+                  <Ionicons name="call-outline" size={18} color={Colors.light.textSecondary} style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.phoneInput}
+                    placeholder="07xxx xxxxxx"
+                    placeholderTextColor={Colors.light.textSecondary}
+                    value={phone}
+                    onChangeText={setPhone}
+                    keyboardType="phone-pad"
+                    autoComplete="tel"
+                    maxLength={15}
+                  />
                 </View>
+              </View>
+
+              <Pressable
+                onPress={handleSendCode}
+                disabled={isLoading || phone.replace(/\s/g, "").length < 10}
+                style={({ pressed }) => [
+                  styles.lookupButton,
+                  (isLoading || phone.replace(/\s/g, "").length < 10) && styles.buttonDisabled,
+                  { opacity: pressed ? 0.85 : 1 },
+                ]}
+              >
+                {sendCodeMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <>
+                    <Ionicons name="paper-plane" size={18} color="#FFF" />
+                    <Text style={styles.buttonText}>Send Verification Code</Text>
+                  </>
+                )}
+              </Pressable>
+
+              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            </View>
+          </>
+        ) : step === "code" ? (
+          <View style={styles.lookupCard}>
+            <View style={styles.lockIconRow}>
+              <Ionicons name="keypad" size={28} color={Colors.brand.blue} />
+            </View>
+            <Text style={styles.sectionTitle}>Enter Verification Code</Text>
+            <Text style={styles.lookupDescription}>
+              We've sent a 6-digit code to {phone}. Enter it below to verify your identity.
+            </Text>
+
+            <CodeInput value={code} onChange={setCode} />
+
+            <Pressable
+              onPress={handleVerifyCode}
+              disabled={isLoading || code.length !== 6}
+              style={({ pressed }) => [
+                styles.lookupButton,
+                (isLoading || code.length !== 6) && styles.buttonDisabled,
+                { opacity: pressed ? 0.85 : 1, marginTop: 16 },
+              ]}
+            >
+              {verifyCodeMutation.isPending ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle" size={18} color="#FFF" />
+                  <Text style={styles.buttonText}>Verify</Text>
+                </>
+              )}
+            </Pressable>
+
+            <View style={styles.codeActions}>
+              <Pressable onPress={handleBackToPhone} style={styles.linkButton}>
+                <Ionicons name="arrow-back" size={16} color={Colors.brand.blue} />
+                <Text style={styles.linkButtonText}>Change Number</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  setError("");
+                  sendCodeMutation.mutate(phone.replace(/\s/g, ""));
+                }}
+                disabled={sendCodeMutation.isPending}
+                style={styles.linkButton}
+              >
+                <Ionicons name="refresh" size={16} color={Colors.brand.blue} />
+                <Text style={styles.linkButtonText}>Resend Code</Text>
+              </Pressable>
+            </View>
+
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+          </View>
+        ) : (
+          <>
+            {!account && !lookupDone ? (
+              <View style={styles.loadingWrap}>
+                <ActivityIndicator size="large" color={Colors.brand.blue} />
+                <Text style={styles.loadingText}>Loading your account...</Text>
+              </View>
+            ) : !account && lookupDone ? (
+              <View style={styles.lookupCard}>
+                <View style={styles.lockIconRow}>
+                  <Ionicons name="person-add" size={28} color={Colors.brand.gold} />
+                </View>
+                <Text style={styles.sectionTitle}>No Account Found</Text>
+                <Text style={styles.lookupDescription}>
+                  We couldn't find a loyalty account linked to your number. Would you like to sign up for rewards?
+                </Text>
 
                 <Pressable
-                  onPress={handleLookup}
-                  disabled={isLoading || phone.replace(/\s/g, "").length < 10}
+                  onPress={handleEnroll}
+                  disabled={isLoading}
                   style={({ pressed }) => [
-                    styles.lookupButton,
-                    (isLoading || phone.replace(/\s/g, "").length < 10) && styles.buttonDisabled,
+                    styles.enrollButton,
+                    isLoading && styles.buttonDisabled,
                     { opacity: pressed ? 0.85 : 1 },
                   ]}
                 >
-                  {isLoading ? (
+                  {enrollMutation.isPending ? (
                     <ActivityIndicator size="small" color="#FFF" />
                   ) : (
                     <>
-                      <Ionicons name="search" size={18} color="#FFF" />
-                      <Text style={styles.buttonText}>Look Up Account</Text>
+                      <Ionicons name="person-add" size={18} color="#FFF" />
+                      <Text style={styles.buttonText}>Sign Up for Rewards</Text>
                     </>
                   )}
                 </Pressable>
 
-                {lookupDone && !account && (
-                  <Pressable
-                    onPress={handleEnroll}
-                    disabled={isLoading}
-                    style={({ pressed }) => [
-                      styles.enrollButton,
-                      isLoading && styles.buttonDisabled,
-                      { opacity: pressed ? 0.85 : 1 },
-                    ]}
-                  >
-                    {enrollMutation.isPending ? (
-                      <ActivityIndicator size="small" color="#FFF" />
-                    ) : (
-                      <>
-                        <Ionicons name="person-add" size={18} color="#FFF" />
-                        <Text style={styles.buttonText}>Sign Up for Rewards</Text>
-                      </>
-                    )}
-                  </Pressable>
-                )}
-
                 {(lookupMutation.isError || enrollMutation.isError) && (
                   <Text style={styles.errorText}>
-                    {(lookupMutation.error || enrollMutation.error)?.message || "Something went wrong. Please try again."}
+                    {(lookupMutation.error || enrollMutation.error)?.message || "Something went wrong."}
                   </Text>
                 )}
               </View>
-            ) : (
+            ) : account ? (
               <>
                 <PointsDisplay balance={account.balance} terminology={program?.terminology} />
 
@@ -382,22 +584,22 @@ export default function LoyaltyScreen() {
                     ]}
                   >
                     <Ionicons name="refresh" size={18} color={Colors.brand.blue} />
-                    <Text style={styles.refreshButtonText}>Refresh Balance</Text>
+                    <Text style={styles.refreshButtonText}>Refresh</Text>
                   </Pressable>
 
                   <Pressable
-                    onPress={handleReset}
+                    onPress={handleLogout}
                     style={({ pressed }) => [
                       styles.logoutButton,
                       { opacity: pressed ? 0.85 : 1 },
                     ]}
                   >
                     <Ionicons name="log-out-outline" size={18} color={Colors.light.textSecondary} />
-                    <Text style={styles.logoutButtonText}>Different Number</Text>
+                    <Text style={styles.logoutButtonText}>Sign Out</Text>
                   </Pressable>
                 </View>
               </>
-            )}
+            ) : null}
 
             <View style={styles.infoCard}>
               <View style={styles.infoRow}>
@@ -508,6 +710,10 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: "Montserrat_400Regular",
   },
+  lockIconRow: {
+    alignItems: "center",
+    marginBottom: 8,
+  },
   lookupCard: {
     margin: 20,
     padding: 20,
@@ -565,7 +771,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    marginTop: 10,
   },
   buttonDisabled: {
     opacity: 0.5,
@@ -582,6 +787,57 @@ const styles = StyleSheet.create({
     marginTop: 10,
     textAlign: "center",
     fontFamily: "Montserrat_400Regular",
+  },
+  codeInputContainer: {
+    alignItems: "center",
+  },
+  codeBoxRow: {
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+  },
+  codeBox: {
+    width: 44,
+    height: 52,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: Colors.light.border,
+    backgroundColor: Colors.light.background,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  codeBoxActive: {
+    borderColor: Colors.brand.blue,
+    borderWidth: 2,
+  },
+  codeDigit: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: Colors.light.text,
+    fontFamily: "Montserrat_700Bold",
+  },
+  hiddenInput: {
+    position: "absolute",
+    width: 1,
+    height: 1,
+    opacity: 0,
+  },
+  codeActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 16,
+  },
+  linkButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    padding: 8,
+  },
+  linkButtonText: {
+    color: Colors.brand.blue,
+    fontSize: 13,
+    fontWeight: "600",
+    fontFamily: "Montserrat_600SemiBold",
   },
   pointsContainer: {
     marginHorizontal: 20,

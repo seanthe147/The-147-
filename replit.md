@@ -81,11 +81,15 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 
 ## API Endpoints - Loyalty (Square POS)
 - `GET /api/loyalty/program` - Get loyalty program details and reward tiers (public)
-- `POST /api/loyalty/lookup` - Look up loyalty account by phone number (public)
-- `POST /api/loyalty/enroll` - Enroll a new loyalty account by phone number (public)
-- `POST /api/loyalty/points/add` - Add points to an account (auth required)
-- `POST /api/loyalty/points/adjust` - Adjust points with reason (auth required)
-- `POST /api/loyalty/redeem` - Redeem a reward tier (auth required)
+- `POST /api/loyalty/send-code` - Send OTP verification code to phone number (public)
+- `POST /api/loyalty/verify-code` - Verify OTP code, returns loyalty session token (public)
+- `GET /api/loyalty/session` - Check loyalty session validity (loyalty session required)
+- `POST /api/loyalty/logout` - Invalidate loyalty session (loyalty session required)
+- `POST /api/loyalty/lookup` - Look up loyalty account (loyalty session required)
+- `POST /api/loyalty/enroll` - Enroll a new loyalty account (loyalty session required)
+- `POST /api/loyalty/points/add` - Add points to an account (staff auth required)
+- `POST /api/loyalty/points/adjust` - Adjust points with reason (staff auth required)
+- `POST /api/loyalty/redeem` - Redeem a reward tier (staff auth required)
 
 ## Staff Web Dashboard
 - Served at GET `/staff` on port 5000 (self-contained HTML, no external dependencies)
@@ -146,3 +150,4 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - Feb 2026: Events support two types: one-off (with specific date) and weekly (with day of week)
 - Feb 2026: Added Square POS Loyalty integration - program info, account lookup/enroll, points management, reward redemption
 - Feb 2026: Added Loyalty tab with phone-based account lookup, enrollment, points display, and reward tiers
+- Feb 2026: Added OTP phone verification for loyalty - 6-digit code, 5-min expiry, 30-day session persistence, Twilio SMS ready
