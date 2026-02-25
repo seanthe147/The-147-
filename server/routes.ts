@@ -6,6 +6,7 @@ import * as path from "node:path";
 import { storage } from "./storage";
 import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema } from "@shared/schema";
 import { hashPin, verifyPin } from "./encryption";
+import * as square from "./square";
 
 const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -665,6 +666,198 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const updated = await storage.updateContactMessageStatus(id, status);
     if (!updated) return res.status(404).json({ message: "Message not found" });
     res.json(updated);
+  });
+
+  app.get("/api/loyalty/program", async (_req, res) => {
+    if (!square.isConfigured()) {
+      return res.status(503).json({ message: "Loyalty program not configured" });
+    }
+    try {
+      const program = await square.getLoyaltyProgram();
+      if (!program) {
+        return res.json({ configured: true, active: false, program: null });
+      }
+      res.json({
+        configured: true,
+        active: program.status === "ACTIVE",
+        program: {
+          id: program.id,
+          terminology: program.terminology,
+          reward_tiers: program.reward_tiers?.map((t: any) => ({
+            id: t.id,
+            name: t.name,
+            points: t.points,
+            definition: t.definition,
+          })),
+          accrual_rules: program.accrual_rules?.map((r: any) => ({
+            accrual_type: r.accrual_type,
+            points: r.points,
+            spend_data: r.spend_amount_money ? {
+              amount: r.spend_amount_money.amount,
+              currency: r.spend_amount_money.currency,
+            } : undefined,
+          })),
+        },
+      });
+    } catch (err: any) {
+      console.error("Square loyalty program error:", err.message);
+      res.status(err.statusCode || 500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/loyalty/lookup", async (req, res) => {
+    if (!square.isConfigured()) {
+      return res.status(503).json({ message: "Loyalty program not configured" });
+    }
+    const { phone } = req.body;
+    if (!phone || typeof phone !== "string") {
+      return res.status(400).json({ message: "Phone number is required" });
+    }
+    try {
+      const account = await square.searchLoyaltyAccount(phone);
+      if (!account) {
+        return res.json({ found: false, account: null });
+      }
+      res.json({
+        found: true,
+        account: {
+          id: account.id,
+          balance: account.balance,
+          lifetime_points: account.lifetime_points,
+          enrolled_at: account.enrolled_at,
+          phone: account.mapping?.phone_number,
+        },
+      });
+    } catch (err: any) {
+      console.error("Square loyalty lookup error:", err.message);
+      res.status(err.statusCode || 500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/loyalty/enroll", async (req, res) => {
+    if (!square.isConfigured()) {
+      return res.status(503).json({ message: "Loyalty program not configured" });
+    }
+    const { phone } = req.body;
+    if (!phone || typeof phone !== "string") {
+      return res.status(400).json({ message: "Phone number is required" });
+    }
+    try {
+      const program = await square.getLoyaltyProgram();
+      if (!program) {
+        return res.status(400).json({ message: "No active loyalty program" });
+      }
+      const existing = await square.searchLoyaltyAccount(phone);
+      if (existing) {
+        return res.json({
+          enrolled: false,
+          existing: true,
+          account: {
+            id: existing.id,
+            balance: existing.balance,
+            lifetime_points: existing.lifetime_points,
+            enrolled_at: existing.enrolled_at,
+            phone: existing.mapping?.phone_number,
+          },
+        });
+      }
+      const account = await square.createLoyaltyAccount(phone, program.id);
+      res.status(201).json({
+        enrolled: true,
+        existing: false,
+        account: {
+          id: account.id,
+          balance: account.balance,
+          lifetime_points: account.lifetime_points,
+          enrolled_at: account.enrolled_at,
+          phone: account.mapping?.phone_number,
+        },
+      });
+    } catch (err: any) {
+      console.error("Square loyalty enroll error:", err.message);
+      res.status(err.statusCode || 500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/loyalty/points/add", staffAuth, async (req, res) => {
+    if (!square.isConfigured()) {
+      return res.status(503).json({ message: "Loyalty program not configured" });
+    }
+    const { accountId, points } = req.body;
+    if (!accountId || typeof points !== "number" || points <= 0) {
+      return res.status(400).json({ message: "Account ID and positive points value required" });
+    }
+    try {
+      const idempotencyKey = `add-${accountId}-${points}-${Date.now()}`;
+      const event = await square.accumulateLoyaltyPoints(accountId, points, idempotencyKey);
+      const updated = await square.getLoyaltyAccount(accountId);
+      res.json({
+        success: true,
+        event,
+        account: {
+          id: updated.id,
+          balance: updated.balance,
+          lifetime_points: updated.lifetime_points,
+        },
+      });
+    } catch (err: any) {
+      console.error("Square loyalty add points error:", err.message);
+      res.status(err.statusCode || 500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/loyalty/points/adjust", staffAuth, async (req, res) => {
+    if (!square.isConfigured()) {
+      return res.status(503).json({ message: "Loyalty program not configured" });
+    }
+    const { accountId, points, reason } = req.body;
+    if (!accountId || typeof points !== "number" || !reason) {
+      return res.status(400).json({ message: "Account ID, points value, and reason required" });
+    }
+    try {
+      const idempotencyKey = `adjust-${accountId}-${points}-${Date.now()}`;
+      const event = await square.adjustLoyaltyPoints(accountId, points, reason, idempotencyKey);
+      const updated = await square.getLoyaltyAccount(accountId);
+      res.json({
+        success: true,
+        event,
+        account: {
+          id: updated.id,
+          balance: updated.balance,
+          lifetime_points: updated.lifetime_points,
+        },
+      });
+    } catch (err: any) {
+      console.error("Square loyalty adjust points error:", err.message);
+      res.status(err.statusCode || 500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/loyalty/redeem", staffAuth, async (req, res) => {
+    if (!square.isConfigured()) {
+      return res.status(503).json({ message: "Loyalty program not configured" });
+    }
+    const { accountId, rewardTierId } = req.body;
+    if (!accountId || !rewardTierId) {
+      return res.status(400).json({ message: "Account ID and reward tier ID required" });
+    }
+    try {
+      const idempotencyKey = `redeem-${accountId}-${rewardTierId}-${Date.now()}`;
+      const reward = await square.redeemLoyaltyReward(accountId, rewardTierId, idempotencyKey);
+      const updated = await square.getLoyaltyAccount(accountId);
+      res.json({
+        success: true,
+        reward,
+        account: {
+          id: updated.id,
+          balance: updated.balance,
+          lifetime_points: updated.lifetime_points,
+        },
+      });
+    } catch (err: any) {
+      console.error("Square loyalty redeem error:", err.message);
+      res.status(err.statusCode || 500).json({ message: err.message });
+    }
   });
 
   app.get("/staff", (_req, res) => {

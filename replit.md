@@ -14,9 +14,10 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - **Offers Management**: Admin interface to create/edit/delete promotional offers (protected by staff auth)
 - **GDPR Compliance**: Consent banner on first launch, privacy policy screen, consent management with revoke option
 - **Push Notifications**: Admin interface to compose and send push notifications (protected by staff auth)
+- **Loyalty Rewards**: Square POS Loyalty integration - customers can look up points balance, enroll, and view available rewards
 
 ## Architecture
-- Frontend: Expo Router with tab navigation (5 tabs: Home, Book, Events, Order, About)
+- Frontend: Expo Router with tab navigation (6 tabs: Home, Book, Order, Loyalty, Events, About)
 - Backend: Express on port 5000 (landing page + API)
 - Database: PostgreSQL for offers, push tokens, notification history, and bookings
 - State: React Query for server state, AsyncStorage for consent preferences
@@ -24,7 +25,7 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - Colors: Brand blue (#0047AB), red (#DF3131), gold (#D4A843), dark navy (#0A1628)
 
 ## Project Structure
-- `app/(tabs)/` - Tab screens (index, book, events, order, about)
+- `app/(tabs)/` - Tab screens (index, book, order, loyalty, events, about)
 - `app/_layout.tsx` - Root layout with providers (QueryClient, Consent, StaffAuth, Notification, TabBar)
 - `app/staff-portal.tsx` - Staff portal with PIN login gate and admin dashboard
 - `app/admin-bookings.tsx` - Staff bookings calendar with week navigation (modal, auth-guarded)
@@ -43,7 +44,8 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - `lib/query-client.ts` - React Query client configuration
 - `constants/colors.ts` - Theme colors
 - `shared/schema.ts` - Database schema (Drizzle ORM)
-- `server/routes.ts` - API routes (offers CRUD, push tokens, notifications, bookings)
+- `server/routes.ts` - API routes (offers CRUD, push tokens, notifications, bookings, loyalty)
+- `server/square.ts` - Square POS API client (loyalty program, accounts, points, rewards)
 - `server/storage.ts` - Database storage layer
 - `server/templates/staff-dashboard.html` - Staff web dashboard for PC-based booking management
 
@@ -76,6 +78,14 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - `POST /api/contact` - Submit a contact form message (public)
 - `GET /api/contact` - List all contact messages (auth required)
 - `PATCH /api/contact/:id/status` - Update contact message status (auth required)
+
+## API Endpoints - Loyalty (Square POS)
+- `GET /api/loyalty/program` - Get loyalty program details and reward tiers (public)
+- `POST /api/loyalty/lookup` - Look up loyalty account by phone number (public)
+- `POST /api/loyalty/enroll` - Enroll a new loyalty account by phone number (public)
+- `POST /api/loyalty/points/add` - Add points to an account (auth required)
+- `POST /api/loyalty/points/adjust` - Adjust points with reason (auth required)
+- `POST /api/loyalty/redeem` - Redeem a reward tier (auth required)
 
 ## Staff Web Dashboard
 - Served at GET `/staff` on port 5000 (self-contained HTML, no external dependencies)
@@ -134,3 +144,5 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - Feb 2026: Added database-backed event management replacing TicketSource integration
 - Feb 2026: Added "What's On" tab to Events page for weekly recurring events with day-of-week grouping
 - Feb 2026: Events support two types: one-off (with specific date) and weekly (with day of week)
+- Feb 2026: Added Square POS Loyalty integration - program info, account lookup/enroll, points management, reward redemption
+- Feb 2026: Added Loyalty tab with phone-based account lookup, enrollment, points display, and reward tiers

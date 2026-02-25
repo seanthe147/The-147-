@@ -73,6 +73,15 @@ function ClassicTabLayout() {
         }}
       />
       <Tabs.Screen
+        name="loyalty"
+        options={{
+          title: "Loyalty",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="diamond" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="events"
         options={{
           title: "Events",
