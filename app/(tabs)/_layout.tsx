@@ -1,10 +1,25 @@
 import { Tabs } from "expo-router";
+import { NativeTabs } from "expo-router/unstable-native-tabs";
+import { isLiquidGlassAvailable } from "expo-glass-effect";
 import { BlurView } from "expo-blur";
 import { Platform, StyleSheet, useColorScheme, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import Colors from "@/constants/colors";
 import { useTabBar } from "@/contexts/TabBarContext";
+
+function LiquidGlassTabLayout() {
+  return (
+    <NativeTabs>
+      <NativeTabs.Trigger name="index" icon={{ sfSymbol: "house.fill" }} title="Home" />
+      <NativeTabs.Trigger name="book" icon={{ sfSymbol: "calendar" }} title="Book" />
+      <NativeTabs.Trigger name="order" icon={{ sfSymbol: "fork.knife" }} title="Order" />
+      <NativeTabs.Trigger name="loyalty" icon={{ sfSymbol: "star.fill" }} title="Loyalty" />
+      <NativeTabs.Trigger name="events" icon={{ sfSymbol: "ticket.fill" }} title="Events" />
+      <NativeTabs.Trigger name="about" icon={{ sfSymbol: "info.circle.fill" }} title="About" />
+    </NativeTabs>
+  );
+}
 
 function ClassicTabLayout() {
   const colorScheme = useColorScheme();
@@ -104,5 +119,8 @@ function ClassicTabLayout() {
 }
 
 export default function TabLayout() {
+  if (Platform.OS === "ios" && isLiquidGlassAvailable()) {
+    return <LiquidGlassTabLayout />;
+  }
   return <ClassicTabLayout />;
 }
