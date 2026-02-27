@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { WebView } from "react-native-webview";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import Colors from "@/constants/colors";
 
@@ -17,6 +18,7 @@ const MENU_URL = "https://www.the147order.co.uk";
 export default function OrderScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
+  const tabBarHeight = useBottomTabBarHeight();
   const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
 
@@ -27,7 +29,7 @@ export default function OrderScreen() {
         <View style={styles.webHeader}>
           <Text style={styles.headerTitle}>Order</Text>
         </View>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, paddingBottom: tabBarHeight }}>
           <iframe
             src={MENU_URL}
             style={{
@@ -72,7 +74,7 @@ export default function OrderScreen() {
       ) : (
         <WebView
           source={{ uri: MENU_URL }}
-          style={styles.webview}
+          style={[styles.webview, { marginBottom: tabBarHeight }]}
           onLoadEnd={() => setLoading(false)}
           onError={() => { setHasError(true); setLoading(false); }}
           onHttpError={() => { setHasError(true); setLoading(false); }}
