@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState } from "react";
 import {
   StyleSheet,
   View,
@@ -9,113 +9,25 @@ import {
 } from "react-native";
 import { WebView } from "react-native-webview";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useIsFocused } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import Animated, { useAnimatedStyle, withTiming, withDelay } from "react-native-reanimated";
 import Colors from "@/constants/colors";
-import { useTabBar } from "@/contexts/TabBarContext";
 
 const MENU_URL = "https://www.the147order.co.uk";
-const AUTO_HIDE_DELAY = 0;
-
-const SCROLL_DETECT_JS = `
-  (function() {
-    var hidden = false;
-    window.addEventListener('scroll', function() {
-      if (!hidden) {
-        hidden = true;
-        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll' }));
-      }
-    }, { passive: true });
-    document.addEventListener('scroll', function() {
-      if (!hidden) {
-        hidden = true;
-        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll' }));
-      }
-    }, true);
-    document.addEventListener('touchmove', function() {
-      if (!hidden) {
-        hidden = true;
-        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll' }));
-      }
-    }, { passive: true });
-  })();
-  true;
-`;
 
 export default function OrderScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
-  const { tabBarVisible, setTabBarVisible } = useTabBar();
-  const isFocused = useIsFocused();
-  const hasHiddenRef = useRef(false);
-
-  useEffect(() => {
-    if (isFocused) {
-      hasHiddenRef.current = true;
-      setTabBarVisible(false);
-    } else {
-      hasHiddenRef.current = false;
-      setTabBarVisible(true);
-    }
-  }, [isFocused, setTabBarVisible]);
-
-  useEffect(() => {
-    return () => {
-      setTabBarVisible(true);
-    };
-  }, [setTabBarVisible]);
-
-  const handleWebViewMessage = useCallback((event: any) => {
-    try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.type === "scroll" && !hasHiddenRef.current) {
-        hasHiddenRef.current = true;
-        setTabBarVisible(false);
-      }
-    } catch {}
-  }, [setTabBarVisible]);
-
-  const toggleTabBar = useCallback(() => {
-    setTabBarVisible(!tabBarVisible);
-  }, [tabBarVisible, setTabBarVisible]);
-
-  const fabStyle = useAnimatedStyle(() => ({
-    opacity: withDelay(
-      tabBarVisible ? 0 : 300,
-      withTiming(tabBarVisible ? 0 : 1, { duration: 200 })
-    ),
-    transform: [
-      {
-        scale: withDelay(
-          tabBarVisible ? 0 : 300,
-          withTiming(tabBarVisible ? 0.5 : 1, { duration: 200 })
-        ),
-      },
-    ],
-  }));
-
-  const hideTabBarNow = useCallback(() => {
-    if (!hasHiddenRef.current) {
-      hasHiddenRef.current = true;
-      setTabBarVisible(false);
-    }
-  }, [setTabBarVisible]);
 
   if (Platform.OS === "web") {
     return (
-      <View
-        style={styles.container}
-        onTouchStart={hideTabBarNow}
-        {...({ onMouseDown: hideTabBarNow, onWheel: hideTabBarNow } as any)}
-      >
+      <View style={styles.container}>
         <View style={{ height: webTopInset }} />
         <View style={styles.webHeader}>
           <Text style={styles.headerTitle}>Order</Text>
         </View>
-        <View style={{ flex: 1, position: "relative" as any }}>
+        <View style={{ flex: 1 }}>
           <iframe
             src={MENU_URL}
             style={{
@@ -126,32 +38,7 @@ export default function OrderScreen() {
             } as any}
             title="The 147 Order"
           />
-          {tabBarVisible && (
-            <Pressable
-              onPress={hideTabBarNow}
-              style={styles.iframeOverlay}
-            />
-          )}
         </View>
-        {!tabBarVisible && (
-          <Animated.View
-            style={[
-              styles.fab,
-              { bottom: 20 },
-              fabStyle,
-            ]}
-          >
-            <Pressable
-              onPress={toggleTabBar}
-              style={({ pressed }) => [
-                styles.fabButton,
-                { opacity: pressed ? 0.8 : 1 },
-              ]}
-            >
-              <Ionicons name="menu" size={22} color="#FFFFFF" />
-            </Pressable>
-          </Animated.View>
-        )}
       </View>
     );
   }
@@ -189,32 +76,11 @@ export default function OrderScreen() {
           onLoadEnd={() => setLoading(false)}
           onError={() => { setHasError(true); setLoading(false); }}
           onHttpError={() => { setHasError(true); setLoading(false); }}
-          onMessage={handleWebViewMessage}
-          injectedJavaScript={SCROLL_DETECT_JS}
           startInLoadingState={false}
           javaScriptEnabled
           domStorageEnabled
           scalesPageToFit
         />
-      )}
-      {!tabBarVisible && (
-        <Animated.View
-          style={[
-            styles.fab,
-            { bottom: insets.bottom + 16 },
-            fabStyle,
-          ]}
-        >
-          <Pressable
-            onPress={toggleTabBar}
-            style={({ pressed }) => [
-              styles.fabButton,
-              { opacity: pressed ? 0.8 : 1 },
-            ]}
-          >
-            <Ionicons name="menu" size={22} color="#FFFFFF" />
-          </Pressable>
-        </Animated.View>
       )}
     </View>
   );
@@ -259,29 +125,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.light.textSecondary,
     marginTop: 12,
-  },
-  iframeOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 50,
-    backgroundColor: "transparent",
-  },
-  fab: {
-    position: "absolute",
-    right: 20,
-    zIndex: 100,
-  },
-  fabButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: Colors.brand.navy,
-    alignItems: "center",
-    justifyContent: "center",
-    boxShadow: "0px 4px 12px rgba(0,0,0,0.25)",
   },
   errorOverlay: {
     flex: 1,
