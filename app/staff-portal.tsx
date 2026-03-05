@@ -406,9 +406,9 @@ function DashboardScreen() {
                 testID="portal-push-notifications"
               />
               <AdminTool
-                icon="image"
-                title="Banner Image"
-                description="Change the home screen banner photo"
+                icon="images"
+                title="Banner Images"
+                description="Manage home screen banner photos"
                 color="#8B5CF6"
                 onPress={() => router.push("/admin-banner")}
                 testID="portal-banner-image"

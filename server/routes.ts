@@ -4,7 +4,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { storage } from "./storage";
-import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema } from "@shared/schema";
+import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema } from "@shared/schema";
 import { hashPin, verifyPin } from "./encryption";
 import * as square from "./square";
 
@@ -677,6 +677,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     await storage.setSetting(req.params.key as string, String(value));
     res.json({ key: req.params.key, value: String(value) });
+  });
+
+  app.get("/api/banner-images", async (_req, res) => {
+    const images = await storage.getBannerImages();
+    res.json(images);
+  });
+
+  app.get("/api/banner-images/all", staffAuth, async (_req, res) => {
+    const images = await storage.getAllBannerImages();
+    res.json(images);
+  });
+
+  app.post("/api/banner-images", staffAuth, managerAuth, async (req, res) => {
+    const parsed = insertBannerImageSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid banner image data", errors: parsed.error.flatten() });
+    }
+    const image = await storage.createBannerImage(parsed.data);
+    res.status(201).json(image);
+  });
+
+  app.put("/api/banner-images/:id", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const updated = await storage.updateBannerImage(id, req.body);
+    if (!updated) return res.status(404).json({ error: "Banner image not found" });
+    res.json(updated);
+  });
+
+  app.delete("/api/banner-images/:id", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const deleted = await storage.deleteBannerImage(id);
+    if (!deleted) return res.status(404).json({ error: "Banner image not found" });
+    res.json({ message: "Banner image deleted" });
   });
 
   app.post("/api/contact", async (req, res) => {

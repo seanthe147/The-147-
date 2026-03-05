@@ -31,7 +31,7 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - `app/admin-bookings.tsx` - Staff bookings calendar with week navigation (modal, auth-guarded)
 - `app/admin-offers.tsx` - Admin offers management screen (modal, auth-guarded)
 - `app/admin-notifications.tsx` - Push notification admin screen (modal, auth-guarded)
-- `app/admin-banner.tsx` - Admin banner image management screen (modal, auth-guarded)
+- `app/admin-banner.tsx` - Admin banner images management screen (modal, auth-guarded) - add/remove/reorder/toggle multiple banner images
 - `app/contact.tsx` - Contact Us form screen (modal)
 - `app/privacy-policy.tsx` - Privacy policy & UK GDPR info screen (modal)
 - `components/ConsentBanner.tsx` - GDPR consent banner overlay
@@ -75,6 +75,11 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - `GET /api/settings` - Get all site settings (public)
 - `GET /api/settings/:key` - Get a single setting (public)
 - `PUT /api/settings/:key` - Update a setting (auth required)
+- `GET /api/banner-images` - List active banner images sorted by order (public)
+- `GET /api/banner-images/all` - List all banner images including hidden (auth required)
+- `POST /api/banner-images` - Add a new banner image (auth required)
+- `PUT /api/banner-images/:id` - Update a banner image (auth required)
+- `DELETE /api/banner-images/:id` - Delete a banner image (auth required)
 - `POST /api/contact` - Submit a contact form message (public)
 - `GET /api/contact` - List all contact messages (auth required)
 - `PATCH /api/contact/:id/status` - Update contact message status (auth required)
@@ -151,3 +156,5 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - Feb 2026: Added Square POS Loyalty integration - program info, account lookup/enroll, points management, reward redemption
 - Feb 2026: Added Loyalty tab with phone-based account lookup, enrollment, points display, and reward tiers
 - Feb 2026: Added OTP email verification for loyalty - 6-digit code sent via Resend email, 5-min expiry, 30-day session persistence
+- Mar 2026: Replaced offers carousel on home page with banner images carousel - staff can add/remove/reorder/toggle banner images from admin portal
+- Mar 2026: Fixed Order tab navigation - removed tab bar hiding/overlay that trapped users; added bottom padding for tab bar clearance

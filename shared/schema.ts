@@ -146,3 +146,17 @@ export const siteSettings = pgTable("site_settings", {
 
 export type InsertContactMessage = z.infer<typeof insertContactMessageSchema>;
 export type ContactMessage = typeof contactMessages.$inferSelect;
+
+export const bannerImages = pgTable("banner_images", {
+  id: serial("id").primaryKey(),
+  imageUrl: text("image_url").notNull(),
+  title: text("title"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertBannerImageSchema = createInsertSchema(bannerImages).omit({ id: true, createdAt: true });
+
+export type InsertBannerImage = z.infer<typeof insertBannerImageSchema>;
+export type BannerImage = typeof bannerImages.$inferSelect;

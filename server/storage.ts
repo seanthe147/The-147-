@@ -17,6 +17,8 @@ import {
   type InsertContactMessage,
   type Event,
   type InsertEvent,
+  type BannerImage,
+  type InsertBannerImage,
   users,
   offers,
   pushTokens,
@@ -27,6 +29,7 @@ import {
   contactMessages,
   events,
   siteSettings,
+  bannerImages,
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
 
@@ -393,6 +396,29 @@ export class DatabaseStorage implements IStorage {
     const result: Record<string, string> = {};
     for (const row of rows) result[row.key] = row.value;
     return result;
+  }
+
+  async getBannerImages(): Promise<BannerImage[]> {
+    return db.select().from(bannerImages).where(eq(bannerImages.active, true)).orderBy(bannerImages.sortOrder);
+  }
+
+  async getAllBannerImages(): Promise<BannerImage[]> {
+    return db.select().from(bannerImages).orderBy(bannerImages.sortOrder);
+  }
+
+  async createBannerImage(data: InsertBannerImage): Promise<BannerImage> {
+    const [row] = await db.insert(bannerImages).values(data).returning();
+    return row;
+  }
+
+  async updateBannerImage(id: number, data: Partial<InsertBannerImage>): Promise<BannerImage | undefined> {
+    const [row] = await db.update(bannerImages).set(data).where(eq(bannerImages.id, id)).returning();
+    return row;
+  }
+
+  async deleteBannerImage(id: number): Promise<boolean> {
+    const [row] = await db.delete(bannerImages).where(eq(bannerImages.id, id)).returning();
+    return !!row;
   }
 }
 

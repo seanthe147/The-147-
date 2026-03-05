@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef, useState, useEffect, useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -11,6 +11,7 @@ import {
   Image,
   ImageBackground,
   Dimensions,
+  FlatList,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,7 +21,7 @@ import * as Haptics from "expo-haptics";
 import { useQuery } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 import { OPENING_HOURS } from "@/lib/data";
-import type { Offer, Event } from "@shared/schema";
+import type { Event, BannerImage } from "@shared/schema";
 
 const logoImage = require("@/assets/images/logo-147.png");
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -52,29 +53,79 @@ function QuickActionPill({
   );
 }
 
-function OfferCard({ offer, isFirst }: { offer: Offer; isFirst: boolean }) {
+const BANNER_WIDTH = SCREEN_WIDTH - 40;
+const BANNER_HEIGHT = 180;
+const AUTO_SCROLL_INTERVAL = 5000;
+
+function BannerCarousel({ images }: { images: BannerImage[] }) {
+  const scrollRef = useRef<FlatList>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startAutoScroll = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (images.length <= 1) return;
+    timerRef.current = setInterval(() => {
+      setActiveIndex((prev) => {
+        const next = (prev + 1) % images.length;
+        scrollRef.current?.scrollToOffset({ offset: next * (BANNER_WIDTH + 12), animated: true });
+        return next;
+      });
+    }, AUTO_SCROLL_INTERVAL);
+  }, [images.length]);
+
+  useEffect(() => {
+    startAutoScroll();
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [startAutoScroll]);
+
+  const onScrollEnd = useCallback((e: any) => {
+    const x = e.nativeEvent.contentOffset.x;
+    const idx = Math.round(x / (BANNER_WIDTH + 12));
+    setActiveIndex(idx);
+    startAutoScroll();
+  }, [startAutoScroll]);
+
+  const renderBanner = useCallback(({ item }: { item: BannerImage }) => (
+    <View style={styles.bannerSlide}>
+      <Image source={{ uri: item.imageUrl }} style={styles.bannerImage} resizeMode="cover" />
+      {item.title ? (
+        <LinearGradient
+          colors={["transparent", "rgba(0,0,0,0.6)"]}
+          style={styles.bannerOverlay}
+        >
+          <Text style={styles.bannerCaption} numberOfLines={2}>{item.title}</Text>
+        </LinearGradient>
+      ) : null}
+    </View>
+  ), []);
+
   return (
-    <View style={[styles.offerCard, isFirst && { marginLeft: 20 }]}>
-      <LinearGradient
-        colors={[offer.gradientStart, offer.gradientEnd]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.offerGradient}
-      >
-        <View style={styles.offerBadgeRow}>
-          <View style={styles.offerBadge}>
-            <Text style={styles.offerBadgeText}>{offer.discount}</Text>
-          </View>
+    <View style={styles.bannerSection}>
+      <FlatList
+        ref={scrollRef}
+        data={images}
+        renderItem={renderBanner}
+        keyExtractor={(item) => item.id.toString()}
+        horizontal
+        pagingEnabled={false}
+        showsHorizontalScrollIndicator={false}
+        snapToInterval={BANNER_WIDTH + 12}
+        decelerationRate="fast"
+        contentContainerStyle={{ paddingHorizontal: 20 }}
+        onMomentumScrollEnd={onScrollEnd}
+        scrollEnabled={images.length > 1}
+      />
+      {images.length > 1 && (
+        <View style={styles.dotRow}>
+          {images.map((_, i) => (
+            <View
+              key={i}
+              style={[styles.dot, i === activeIndex && styles.dotActive]}
+            />
+          ))}
         </View>
-        <View style={styles.offerBottom}>
-          <Text style={styles.offerTitle} numberOfLines={1}>{offer.title}</Text>
-          <Text style={styles.offerSubtitle} numberOfLines={2}>{offer.subtitle}</Text>
-          <View style={styles.offerMeta}>
-            <Ionicons name="time-outline" size={11} color="rgba(255,255,255,0.6)" />
-            <Text style={styles.offerMetaText}>{offer.validUntil}</Text>
-          </View>
-        </View>
-      </LinearGradient>
+      )}
     </View>
   );
 }
@@ -158,8 +209,8 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
-  const { data: offers, isLoading } = useQuery<Offer[]>({
-    queryKey: ["/api/offers"],
+  const { data: bannerImages, isLoading: bannersLoading } = useQuery<BannerImage[]>({
+    queryKey: ["/api/banner-images"],
   });
 
   const { data: settings } = useQuery<Record<string, string>>({
@@ -287,26 +338,10 @@ export default function HomeScreen() {
             />
           </View>
 
-          {isLoading ? (
+          {bannersLoading ? (
             <ActivityIndicator size="small" color={Colors.brand.blue} style={{ marginVertical: 20 }} />
-          ) : offers && offers.length > 0 ? (
-            <View style={styles.offersSection}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Current Offers</Text>
-              </View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.offerScroll}
-                contentContainerStyle={styles.offerScrollContent}
-                decelerationRate="fast"
-                snapToInterval={SCREEN_WIDTH * 0.7 + 12}
-              >
-                {offers.map((offer, i) => (
-                  <OfferCard key={offer.id} offer={offer} isFirst={i === 0} />
-                ))}
-              </ScrollView>
-            </View>
+          ) : bannerImages && bannerImages.length > 0 ? (
+            <BannerCarousel images={bannerImages} />
           ) : null}
 
           <EventPreview />
@@ -519,68 +554,53 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.brand.blue,
   },
-  offersSection: {
+  bannerSection: {
     marginBottom: 28,
   },
-  offerScroll: {
-    overflow: "visible" as const,
-  },
-  offerScrollContent: {
-    paddingRight: 20,
-  },
-  offerCard: {
-    width: SCREEN_WIDTH * 0.7,
-    marginRight: 12,
-    borderRadius: 18,
+  bannerSlide: {
+    width: BANNER_WIDTH,
+    height: BANNER_HEIGHT,
+    borderRadius: 16,
     overflow: "hidden",
-    elevation: 4,
-    boxShadow: "0px 4px 16px rgba(0, 0, 0, 0.12)",
+    marginRight: 12,
+    backgroundColor: Colors.light.surface,
   },
-  offerGradient: {
-    padding: 20,
-    minHeight: 140,
-    justifyContent: "space-between",
+  bannerImage: {
+    width: "100%",
+    height: "100%",
   },
-  offerBadgeRow: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
+  bannerOverlay: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    paddingTop: 30,
   },
-  offerBadge: {
-    backgroundColor: "rgba(255,255,255,0.22)",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  offerBadgeText: {
+  bannerCaption: {
     fontFamily: "Montserrat_700Bold",
-    fontSize: 13,
+    fontSize: 16,
     color: "#FFFFFF",
+    textShadow: "0px 1px 4px rgba(0,0,0,0.3)",
   },
-  offerBottom: {
+  dotRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
     marginTop: 12,
   },
-  offerTitle: {
-    fontFamily: "Montserrat_700Bold",
-    fontSize: 17,
-    color: "#FFFFFF",
-    marginBottom: 3,
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.light.border,
   },
-  offerSubtitle: {
-    fontFamily: "Montserrat_400Regular",
-    fontSize: 12,
-    color: "rgba(255,255,255,0.8)",
-    lineHeight: 17,
-    marginBottom: 8,
-  },
-  offerMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  offerMetaText: {
-    fontFamily: "Montserrat_500Medium",
-    fontSize: 10,
-    color: "rgba(255,255,255,0.6)",
+  dotActive: {
+    backgroundColor: Colors.brand.blue,
+    width: 20,
+    borderRadius: 3,
   },
   eventsSection: {
     marginBottom: 24,
