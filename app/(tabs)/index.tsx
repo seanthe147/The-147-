@@ -11,7 +11,8 @@ import {
   Image,
   ImageBackground,
   Dimensions,
-  FlatList,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -58,7 +59,7 @@ const BANNER_HEIGHT = 180;
 const AUTO_SCROLL_INTERVAL = 5000;
 
 function BannerCarousel({ images }: { images: BannerImage[] }) {
-  const scrollRef = useRef<FlatList>(null);
+  const scrollRef = useRef<ScrollView>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -68,7 +69,7 @@ function BannerCarousel({ images }: { images: BannerImage[] }) {
     timerRef.current = setInterval(() => {
       setActiveIndex((prev) => {
         const next = (prev + 1) % images.length;
-        scrollRef.current?.scrollToOffset({ offset: next * (BANNER_WIDTH + 12), animated: true });
+        scrollRef.current?.scrollTo({ x: next * (BANNER_WIDTH + 12), animated: true });
         return next;
       });
     }, AUTO_SCROLL_INTERVAL);
@@ -79,43 +80,39 @@ function BannerCarousel({ images }: { images: BannerImage[] }) {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [startAutoScroll]);
 
-  const onScrollEnd = useCallback((e: any) => {
+  const onScrollEnd = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const x = e.nativeEvent.contentOffset.x;
     const idx = Math.round(x / (BANNER_WIDTH + 12));
     setActiveIndex(idx);
     startAutoScroll();
   }, [startAutoScroll]);
 
-  const renderBanner = useCallback(({ item }: { item: BannerImage }) => (
-    <View style={styles.bannerSlide}>
-      <Image source={{ uri: item.imageUrl }} style={styles.bannerImage} resizeMode="cover" />
-      {item.title ? (
-        <LinearGradient
-          colors={["transparent", "rgba(0,0,0,0.6)"]}
-          style={styles.bannerOverlay}
-        >
-          <Text style={styles.bannerCaption} numberOfLines={2}>{item.title}</Text>
-        </LinearGradient>
-      ) : null}
-    </View>
-  ), []);
-
   return (
     <View style={styles.bannerSection}>
-      <FlatList
+      <ScrollView
         ref={scrollRef}
-        data={images}
-        renderItem={renderBanner}
-        keyExtractor={(item) => item.id.toString()}
         horizontal
-        pagingEnabled={false}
         showsHorizontalScrollIndicator={false}
         snapToInterval={BANNER_WIDTH + 12}
         decelerationRate="fast"
         contentContainerStyle={{ paddingHorizontal: 20 }}
         onMomentumScrollEnd={onScrollEnd}
         scrollEnabled={images.length > 1}
-      />
+      >
+        {images.map((item) => (
+          <View key={item.id} style={styles.bannerSlide}>
+            <Image source={{ uri: item.imageUrl }} style={styles.bannerImage} resizeMode="cover" />
+            {item.title ? (
+              <LinearGradient
+                colors={["transparent", "rgba(0,0,0,0.6)"]}
+                style={styles.bannerOverlay}
+              >
+                <Text style={styles.bannerCaption} numberOfLines={2}>{item.title}</Text>
+              </LinearGradient>
+            ) : null}
+          </View>
+        ))}
+      </ScrollView>
       {images.length > 1 && (
         <View style={styles.dotRow}>
           {images.map((_, i) => (
