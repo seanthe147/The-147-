@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { reloadAppAsync } from "expo";
 import {
   StyleSheet,
@@ -34,6 +34,24 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
 
   const [isModalVisible, setIsModalVisible] = useState(false);
 
+  useEffect(() => {
+    try {
+      const domain = process.env.EXPO_PUBLIC_DOMAIN;
+      if (domain) {
+        fetch(`https://${domain}/api/crash-report`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: error.message,
+            stack: error.stack,
+            platform: Platform.OS,
+            timestamp: new Date().toISOString(),
+          }),
+        }).catch(() => {});
+      }
+    } catch {}
+  }, [error]);
+
   const handleRestart = async () => {
     try {
       await reloadAppAsync();
@@ -59,23 +77,21 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {__DEV__ ? (
-        <Pressable
-          onPress={() => setIsModalVisible(true)}
-          accessibilityLabel="View error details"
-          accessibilityRole="button"
-          style={({ pressed }) => [
-            styles.topButton,
-            {
-              top: insets.top + 16,
-              backgroundColor: theme.backgroundSecondary,
-              opacity: pressed ? 0.8 : 1,
-            },
-          ]}
-        >
-          <Feather name="alert-circle" size={20} color={theme.text} />
-        </Pressable>
-      ) : null}
+      <Pressable
+        onPress={() => setIsModalVisible(true)}
+        accessibilityLabel="View error details"
+        accessibilityRole="button"
+        style={({ pressed }) => [
+          styles.topButton,
+          {
+            top: insets.top + 16,
+            backgroundColor: theme.backgroundSecondary,
+            opacity: pressed ? 0.8 : 1,
+          },
+        ]}
+      >
+        <Feather name="alert-circle" size={20} color={theme.text} />
+      </Pressable>
 
       <View style={styles.content}>
         <Text style={[styles.title, { color: theme.text }]}>
@@ -83,7 +99,7 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
         </Text>
 
         <Text style={[styles.message, { color: theme.textSecondary }]}>
-          Please reload the app to continue.
+          {error.message || "Please reload the app to continue."}
         </Text>
 
         <Pressable
@@ -103,78 +119,76 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
         </Pressable>
       </View>
 
-      {__DEV__ ? (
-        <Modal
-          visible={isModalVisible}
-          animationType="slide"
-          transparent={true}
-          onRequestClose={() => setIsModalVisible(false)}
-        >
-          <View style={styles.modalOverlay}>
+      <Modal
+        visible={isModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.modalContainer,
+              { backgroundColor: theme.background },
+            ]}
+          >
             <View
               style={[
-                styles.modalContainer,
-                { backgroundColor: theme.background },
+                styles.modalHeader,
+                {
+                  borderBottomColor: isDark
+                    ? "rgba(255, 255, 255, 0.1)"
+                    : "rgba(0, 0, 0, 0.1)",
+                },
               ]}
+            >
+              <Text style={[styles.modalTitle, { color: theme.text }]}>
+                Error Details
+              </Text>
+              <Pressable
+                onPress={() => setIsModalVisible(false)}
+                accessibilityLabel="Close error details"
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.closeButton,
+                  { opacity: pressed ? 0.6 : 1 },
+                ]}
+              >
+                <Feather name="x" size={24} color={theme.text} />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              style={styles.modalScrollView}
+              contentContainerStyle={[
+                styles.modalScrollContent,
+                { paddingBottom: insets.bottom + 16 },
+              ]}
+              showsVerticalScrollIndicator
             >
               <View
                 style={[
-                  styles.modalHeader,
-                  {
-                    borderBottomColor: isDark
-                      ? "rgba(255, 255, 255, 0.1)"
-                      : "rgba(0, 0, 0, 0.1)",
-                  },
+                  styles.errorContainer,
+                  { backgroundColor: theme.backgroundSecondary },
                 ]}
               >
-                <Text style={[styles.modalTitle, { color: theme.text }]}>
-                  Error Details
-                </Text>
-                <Pressable
-                  onPress={() => setIsModalVisible(false)}
-                  accessibilityLabel="Close error details"
-                  accessibilityRole="button"
-                  style={({ pressed }) => [
-                    styles.closeButton,
-                    { opacity: pressed ? 0.6 : 1 },
-                  ]}
-                >
-                  <Feather name="x" size={24} color={theme.text} />
-                </Pressable>
-              </View>
-
-              <ScrollView
-                style={styles.modalScrollView}
-                contentContainerStyle={[
-                  styles.modalScrollContent,
-                  { paddingBottom: insets.bottom + 16 },
-                ]}
-                showsVerticalScrollIndicator
-              >
-                <View
+                <Text
                   style={[
-                    styles.errorContainer,
-                    { backgroundColor: theme.backgroundSecondary },
+                    styles.errorText,
+                    {
+                      color: theme.text,
+                      fontFamily: monoFont,
+                    },
                   ]}
+                  selectable
                 >
-                  <Text
-                    style={[
-                      styles.errorText,
-                      {
-                        color: theme.text,
-                        fontFamily: monoFont,
-                      },
-                    ]}
-                    selectable
-                  >
-                    {formatErrorDetails()}
-                  </Text>
-                </View>
-              </ScrollView>
-            </View>
+                  {formatErrorDetails()}
+                </Text>
+              </View>
+            </ScrollView>
           </View>
-        </Modal>
-      ) : null}
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -202,9 +216,10 @@ const styles = StyleSheet.create({
     lineHeight: 40,
   },
   message: {
-    fontSize: 16,
+    fontSize: 14,
     textAlign: "center",
-    lineHeight: 24,
+    lineHeight: 20,
+    paddingHorizontal: 16,
   },
   topButton: {
     position: "absolute",

@@ -428,6 +428,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(204).send();
   });
 
+  app.post("/api/crash-report", (req, res) => {
+    const { message, stack, platform, timestamp } = req.body || {};
+    console.error(`[CRASH REPORT] platform=${platform} time=${timestamp} message=${message}`);
+    if (stack) console.error(`[CRASH STACK] ${stack}`);
+    res.status(200).json({ received: true });
+  });
+
   app.post("/api/push-tokens", async (req, res) => {
     const parsed = insertPushTokenSchema.safeParse(req.body);
     if (!parsed.success) {
