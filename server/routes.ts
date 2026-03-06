@@ -321,6 +321,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
     })));
   });
 
+  app.post("/api/staff/change-pin", staffAuth, async (req, res) => {
+    const { currentPin, newPin } = req.body;
+    const username = (req as any).staffUsername;
+
+    if (!username) {
+      return res.status(400).json({ message: "PIN change is only available for named accounts" });
+    }
+
+    if (!currentPin || typeof currentPin !== "string") {
+      return res.status(400).json({ message: "Current PIN is required" });
+    }
+
+    if (!newPin || typeof newPin !== "string" || newPin.length < 4 || newPin.length > 8 || !/^\d+$/.test(newPin)) {
+      return res.status(400).json({ message: "New PIN must be 4-8 digits" });
+    }
+
+    if (currentPin === newPin) {
+      return res.status(400).json({ message: "New PIN must be different from current PIN" });
+    }
+
+    const staffUser = await storage.getStaffUserByUsername(username);
+    if (!staffUser) {
+      return res.status(404).json({ message: "Account not found" });
+    }
+
+    if (!verifyPin(currentPin, staffUser.pinHash, staffUser.pinSalt)) {
+      return res.status(401).json({ message: "Current PIN is incorrect" });
+    }
+
+    const { hash, salt } = hashPin(newPin);
+    await storage.updateStaffPin(username, hash, salt);
+    res.json({ message: "PIN changed successfully" });
+  });
+
+  app.post("/api/staff/reset-pin", staffAuth, managerAuth, async (req, res) => {
+    const { username, newPin } = req.body;
+
+    if (!username || typeof username !== "string" || username.trim().length < 3) {
+      return res.status(400).json({ message: "Username is required" });
+    }
+
+    if (!newPin || typeof newPin !== "string" || newPin.length < 4 || newPin.length > 8 || !/^\d+$/.test(newPin)) {
+      return res.status(400).json({ message: "New PIN must be 4-8 digits" });
+    }
+
+    const staffUser = await storage.getStaffUserByUsername(username.trim());
+    if (!staffUser) {
+      return res.status(404).json({ message: "Staff user not found" });
+    }
+
+    const { hash, salt } = hashPin(newPin);
+    await storage.updateStaffPin(username.trim(), hash, salt);
+    res.json({ message: "PIN reset successfully for " + staffUser.username });
+  });
+
   app.post("/api/staff/migrate-encryption", staffAuth, managerAuth, async (_req, res) => {
     try {
       const count = await storage.migrateEncryptExistingBookings();

@@ -86,6 +86,7 @@ export interface IStorage {
   createStaffUser(username: string, pinHash: string, pinSalt: string, displayName?: string, role?: string): Promise<StaffUser>;
   getStaffUserByUsername(username: string): Promise<StaffUser | undefined>;
   getAllStaffUsers(): Promise<StaffUser[]>;
+  updateStaffPin(username: string, pinHash: string, pinSalt: string): Promise<StaffUser | undefined>;
   migrateEncryptExistingBookings(): Promise<number>;
 }
 
@@ -313,6 +314,14 @@ export class DatabaseStorage implements IStorage {
 
   async getAllStaffUsers(): Promise<StaffUser[]> {
     return db.select().from(staffUsers).where(eq(staffUsers.active, true));
+  }
+
+  async updateStaffPin(username: string, pinHash: string, pinSalt: string): Promise<StaffUser | undefined> {
+    const [updated] = await db.update(staffUsers)
+      .set({ pinHash, pinSalt })
+      .where(eq(staffUsers.username, username.toLowerCase().trim()))
+      .returning();
+    return updated;
   }
 
   async migrateEncryptExistingBookings(): Promise<number> {

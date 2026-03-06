@@ -55,6 +55,8 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - `POST /api/staff/logout` - Invalidate session token
 - `GET /api/staff/verify` - Verify session token validity (auth required)
 - `GET /api/staff/users` - List all active staff users (auth required)
+- `POST /api/staff/change-pin` - Change own PIN (requires current PIN verification, auth required)
+- `POST /api/staff/reset-pin` - Manager reset of any staff PIN (manager auth required)
 - `POST /api/staff/migrate-encryption` - Encrypt existing plaintext customer data (auth required)
 - `GET /api/offers` - List all offers
 - `POST /api/offers` - Create a new offer (auth required)
@@ -162,3 +164,4 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - Mar 2026: Replaced offers carousel on home page with banner images carousel - staff can add/remove/reorder/toggle banner images from admin portal
 - Mar 2026: Fixed Order tab navigation - removed tab bar hiding/overlay that trapped users; added bottom padding for tab bar clearance
 - Mar 2026: Added Messages tab to staff web dashboard - staff can view/filter/manage customer contact messages from browser
+- Mar 2026: Added secure PIN reset - staff can change own PIN (current PIN required), managers can reset any staff PIN

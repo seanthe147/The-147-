@@ -936,7 +936,11 @@
   <div class="dashboard" id="dashboard">
     <header class="header">
       <div class="header-title">The <span>147</span> &mdash; Staff Portal</div>
-      <button class="logout-btn" id="logoutBtn">Sign Out</button>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <button class="logout-btn" id="changePinBtn" title="Change PIN">&#128274; Change PIN</button>
+        <button class="logout-btn" id="resetPinBtn" title="Reset Staff PIN" style="display:none;">&#128273; Reset PIN</button>
+        <button class="logout-btn" id="logoutBtn">Sign Out</button>
+      </div>
     </header>
 
     <div class="tabs-nav">
@@ -1023,6 +1027,67 @@
         <div class="field-value message-body-text" id="detailMessage"></div>
       </div>
       <div class="message-detail-footer" id="detailFooter">
+      </div>
+    </div>
+  </div>
+
+  <!-- Change PIN Modal -->
+  <div class="modal-overlay" id="changePinModal">
+    <div class="modal" style="max-width: 420px;">
+      <div class="modal-header">
+        <h2 class="modal-title">Change Your PIN</h2>
+        <button class="modal-close" onclick="document.getElementById('changePinModal').classList.remove('active')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-error" id="changePinError"></div>
+        <div class="form-group">
+          <label for="cpCurrentPin">Current PIN</label>
+          <input type="password" id="cpCurrentPin" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="&#8226;&#8226;&#8226;&#8226;" autocomplete="off" style="text-align:center; letter-spacing:8px; font-size:20px;">
+        </div>
+        <div class="form-group">
+          <label for="cpNewPin">New PIN (4-8 digits)</label>
+          <input type="password" id="cpNewPin" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="&#8226;&#8226;&#8226;&#8226;" autocomplete="off" style="text-align:center; letter-spacing:8px; font-size:20px;">
+        </div>
+        <div class="form-group">
+          <label for="cpConfirmPin">Confirm New PIN</label>
+          <input type="password" id="cpConfirmPin" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="&#8226;&#8226;&#8226;&#8226;" autocomplete="off" style="text-align:center; letter-spacing:8px; font-size:20px;">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="document.getElementById('changePinModal').classList.remove('active')">Cancel</button>
+        <button class="btn-primary" id="changePinSubmit">Change PIN</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reset Staff PIN Modal (Manager Only) -->
+  <div class="modal-overlay" id="resetPinModal">
+    <div class="modal" style="max-width: 420px;">
+      <div class="modal-header">
+        <h2 class="modal-title">Reset Staff PIN</h2>
+        <button class="modal-close" onclick="document.getElementById('resetPinModal').classList.remove('active')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5;">As a manager, you can reset a staff member's PIN if they have forgotten it.</p>
+        <div class="modal-error" id="resetPinError"></div>
+        <div class="form-group">
+          <label for="rpUsername">Staff Username</label>
+          <select id="rpUsername" style="font-size: 15px;">
+            <option value="">Select staff member...</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="rpNewPin">New PIN (4-8 digits)</label>
+          <input type="password" id="rpNewPin" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="&#8226;&#8226;&#8226;&#8226;" autocomplete="off" style="text-align:center; letter-spacing:8px; font-size:20px;">
+        </div>
+        <div class="form-group">
+          <label for="rpConfirmPin">Confirm New PIN</label>
+          <input type="password" id="rpConfirmPin" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="&#8226;&#8226;&#8226;&#8226;" autocomplete="off" style="text-align:center; letter-spacing:8px; font-size:20px;">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="document.getElementById('resetPinModal').classList.remove('active')">Cancel</button>
+        <button class="btn-primary" id="resetPinSubmit">Reset PIN</button>
       </div>
     </div>
   </div>
@@ -1297,6 +1362,10 @@
               return;
             }
             setToken(data.token);
+            currentUserRole = data.role || 'staff';
+            if (currentUserRole === 'manager') {
+              document.getElementById('resetPinBtn').style.display = '';
+            }
             showDashboard();
           }
         } catch (err) {
@@ -1730,6 +1799,8 @@
       document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
           document.getElementById('messageDetailOverlay').classList.remove('active');
+          document.getElementById('changePinModal').classList.remove('active');
+          document.getElementById('resetPinModal').classList.remove('active');
           bookingModal.classList.remove('active');
         }
       });
@@ -1771,16 +1842,135 @@
         }
       };
 
+      // PIN Change
+      let currentUserRole = 'staff';
+
+      document.getElementById('changePinBtn').addEventListener('click', function() {
+        document.getElementById('cpCurrentPin').value = '';
+        document.getElementById('cpNewPin').value = '';
+        document.getElementById('cpConfirmPin').value = '';
+        var err = document.getElementById('changePinError');
+        err.textContent = '';
+        err.classList.remove('visible');
+        document.getElementById('changePinModal').classList.add('active');
+        document.getElementById('cpCurrentPin').focus();
+      });
+
+      document.getElementById('changePinSubmit').addEventListener('click', async function() {
+        var currentPin = document.getElementById('cpCurrentPin').value.trim();
+        var newPin = document.getElementById('cpNewPin').value.trim();
+        var confirmPin = document.getElementById('cpConfirmPin').value.trim();
+        var err = document.getElementById('changePinError');
+
+        if (!currentPin) { err.textContent = 'Please enter your current PIN'; err.classList.add('visible'); return; }
+        if (!newPin || newPin.length < 4 || newPin.length > 8 || !/^\d+$/.test(newPin)) { err.textContent = 'New PIN must be 4-8 digits'; err.classList.add('visible'); return; }
+        if (newPin !== confirmPin) { err.textContent = 'New PINs do not match'; err.classList.add('visible'); return; }
+
+        this.disabled = true;
+        try {
+          var res = await apiFetch('/api/staff/change-pin', {
+            method: 'POST',
+            body: JSON.stringify({ currentPin: currentPin, newPin: newPin })
+          });
+          var data = await res.json();
+          if (!res.ok) {
+            err.textContent = data.message || 'Failed to change PIN';
+            err.classList.add('visible');
+            return;
+          }
+          document.getElementById('changePinModal').classList.remove('active');
+          showToast('PIN changed successfully', 'success');
+        } catch (e) {
+          err.textContent = 'Network error. Please try again.';
+          err.classList.add('visible');
+        } finally {
+          this.disabled = false;
+        }
+      });
+
+      // Manager PIN Reset
+      document.getElementById('resetPinBtn').addEventListener('click', async function() {
+        document.getElementById('rpNewPin').value = '';
+        document.getElementById('rpConfirmPin').value = '';
+        var err = document.getElementById('resetPinError');
+        err.textContent = '';
+        err.classList.remove('visible');
+
+        var select = document.getElementById('rpUsername');
+        select.innerHTML = '<option value="">Loading...</option>';
+        document.getElementById('resetPinModal').classList.add('active');
+
+        try {
+          var res = await apiFetch('/api/staff/users');
+          var users = await res.json();
+          select.innerHTML = '<option value="">Select staff member...</option>';
+          users.forEach(function(u) {
+            var opt = document.createElement('option');
+            opt.value = u.username;
+            opt.textContent = u.displayName ? u.displayName + ' (' + u.username + ')' : u.username;
+            select.appendChild(opt);
+          });
+        } catch (e) {
+          select.innerHTML = '<option value="">Error loading staff</option>';
+        }
+      });
+
+      document.getElementById('resetPinSubmit').addEventListener('click', async function() {
+        var username = document.getElementById('rpUsername').value;
+        var newPin = document.getElementById('rpNewPin').value.trim();
+        var confirmPin = document.getElementById('rpConfirmPin').value.trim();
+        var err = document.getElementById('resetPinError');
+
+        if (!username) { err.textContent = 'Please select a staff member'; err.classList.add('visible'); return; }
+        if (!newPin || newPin.length < 4 || newPin.length > 8 || !/^\d+$/.test(newPin)) { err.textContent = 'New PIN must be 4-8 digits'; err.classList.add('visible'); return; }
+        if (newPin !== confirmPin) { err.textContent = 'PINs do not match'; err.classList.add('visible'); return; }
+
+        if (!confirm('Are you sure you want to reset the PIN for ' + username + '?')) return;
+
+        this.disabled = true;
+        try {
+          var res = await apiFetch('/api/staff/reset-pin', {
+            method: 'POST',
+            body: JSON.stringify({ username: username, newPin: newPin })
+          });
+          var data = await res.json();
+          if (!res.ok) {
+            err.textContent = data.message || 'Failed to reset PIN';
+            err.classList.add('visible');
+            return;
+          }
+          document.getElementById('resetPinModal').classList.remove('active');
+          showToast('PIN reset for ' + username, 'success');
+        } catch (e) {
+          err.textContent = 'Network error. Please try again.';
+          err.classList.add('visible');
+        } finally {
+          this.disabled = false;
+        }
+      });
+
+      document.getElementById('changePinModal').addEventListener('click', function(e) {
+        if (e.target === this) this.classList.remove('active');
+      });
+      document.getElementById('resetPinModal').addEventListener('click', function(e) {
+        if (e.target === this) this.classList.remove('active');
+      });
+
       // Init
       if (getToken()) {
-        apiFetch('/api/staff/verify').then(res => {
+        apiFetch('/api/staff/verify').then(async function(res) {
           if (res.ok) {
+            var data = await res.json();
+            currentUserRole = data.role || 'staff';
+            if (currentUserRole === 'manager') {
+              document.getElementById('resetPinBtn').style.display = '';
+            }
             showDashboard();
           } else {
             clearToken();
             showLogin();
           }
-        }).catch(() => {
+        }).catch(function() {
           showLogin();
         });
       } else {
