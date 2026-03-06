@@ -96,10 +96,13 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - `POST /api/loyalty/points/adjust` - Adjust points with reason (staff auth required)
 - `POST /api/loyalty/redeem` - Redeem a reward tier (staff auth required)
 
-## Staff Web Dashboard
+## Staff Web Dashboard (Browser Portal)
 - Served at GET `/staff` on port 5000 (self-contained HTML, no external dependencies)
-- Username + PIN login, then full booking management: view by date, create, edit, cancel, delete
-- Optimized for desktop/PC use by staff
+- Username + PIN login with tabbed interface: Bookings and Messages
+- **Bookings tab**: View by date, create, edit, cancel, delete bookings + GDPR tools
+- **Messages tab**: View customer contact messages, filter by status (All/New/Read/Replied), click to view details, update status
+- Messages auto-mark as "read" when opened; badge shows count of new messages
+- Optimized for desktop/PC use by staff on Windows
 - Access URL: `{domain}/staff` (goes through Express backend on port 5000)
 
 ## GDPR & Data Protection
@@ -158,3 +161,4 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - Feb 2026: Added OTP email verification for loyalty - 6-digit code sent via Resend email, 5-min expiry, 30-day session persistence
 - Mar 2026: Replaced offers carousel on home page with banner images carousel - staff can add/remove/reorder/toggle banner images from admin portal
 - Mar 2026: Fixed Order tab navigation - removed tab bar hiding/overlay that trapped users; added bottom padding for tab bar clearance
+- Mar 2026: Added Messages tab to staff web dashboard - staff can view/filter/manage customer contact messages from browser

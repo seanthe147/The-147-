@@ -763,12 +763,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(201).json({ message: "Your message has been sent. We'll get back to you soon!", id: contact.id });
   });
 
-  app.get("/api/contact", staffAuth, managerAuth, async (_req, res) => {
+  app.get("/api/contact", staffAuth, async (_req, res) => {
     const messages = await storage.getContactMessages();
     res.json(messages);
   });
 
-  app.patch("/api/contact/:id/status", staffAuth, managerAuth, async (req, res) => {
+  app.patch("/api/contact/:id/status", staffAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const { status } = req.body;
