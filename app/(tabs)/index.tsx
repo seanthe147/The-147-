@@ -129,12 +129,7 @@ function BannerCarousel({ images }: { images: BannerImage[] }) {
 
 function EventPreview() {
   const { data: events } = useQuery<Event[]>({
-    queryKey: ["/api/events", { type: "event" }],
-    queryFn: async () => {
-      const res = await fetch(`${process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : ""}/api/events?type=event`);
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
-    },
+    queryKey: ["/api/events?type=event"],
   });
 
   const now = new Date();
@@ -445,7 +440,9 @@ const styles = StyleSheet.create({
     fontSize: 48,
     color: "#FFFFFF",
     letterSpacing: -0.5,
-    textShadow: "0px 2px 8px rgba(0,0,0,0.3)",
+    textShadowColor: "rgba(0,0,0,0.3)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
   },
   heroTagline: {
     flexDirection: "row",
@@ -579,7 +576,9 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_700Bold",
     fontSize: 16,
     color: "#FFFFFF",
-    textShadow: "0px 1px 4px rgba(0,0,0,0.3)",
+    textShadowColor: "rgba(0,0,0,0.3)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   dotRow: {
     flexDirection: "row",

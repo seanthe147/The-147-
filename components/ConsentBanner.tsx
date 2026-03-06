@@ -87,7 +87,11 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     paddingHorizontal: 20,
     paddingTop: 24,
-    boxShadow: "0px -4px 12px rgba(0, 0, 0, 0.15)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
   },
   iconRow: {
     flexDirection: "row",
