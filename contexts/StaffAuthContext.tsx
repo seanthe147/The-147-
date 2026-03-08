@@ -7,7 +7,7 @@ const STORAGE_KEY = "staff_session_token";
 const USERNAME_KEY = "staff_username";
 const ROLE_KEY = "staff_role";
 
-type StaffRole = "staff" | "manager";
+type StaffRole = "staff" | "manager" | "owner";
 
 interface StaffAuthContextValue {
   isAuthenticated: boolean;
@@ -17,6 +17,7 @@ interface StaffAuthContextValue {
   displayName: string | null;
   role: StaffRole;
   isManager: boolean;
+  isOwner: boolean;
   login: (username: string, pin: string) => Promise<{ success: boolean; error?: string }>;
   register: (masterPin: string, username: string, pin: string, displayName?: string, role?: StaffRole) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
@@ -152,7 +153,8 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
       username,
       displayName,
       role,
-      isManager: role === "manager",
+      isManager: role === "manager" || role === "owner",
+      isOwner: role === "owner",
       login,
       register,
       logout,

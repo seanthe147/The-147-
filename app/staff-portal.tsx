@@ -333,7 +333,7 @@ function AdminTool({ icon, title, description, color, onPress, testID }: AdminTo
 function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const { logout, username, displayName, role, isManager } = useStaffAuth();
+  const { logout, username, displayName, role, isManager, isOwner } = useStaffAuth();
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
@@ -352,17 +352,17 @@ function DashboardScreen() {
         contentContainerStyle={styles.scrollContent}
       >
         <View style={styles.welcomeSection}>
-          <View style={[styles.welcomeBadge, isManager && styles.managerBadge]}>
-            <Ionicons name={isManager ? "shield" : "shield-checkmark"} size={16} color={isManager ? "#7C3AED" : Colors.brand.green} />
-            <Text style={[styles.welcomeBadgeText, isManager && styles.managerBadgeText]}>
-              {isManager ? "Manager" : "Staff"}
+          <View style={[styles.welcomeBadge, isOwner ? styles.ownerBadge : isManager ? styles.managerBadge : null]}>
+            <Ionicons name={isOwner ? "star" : isManager ? "shield" : "shield-checkmark"} size={16} color={isOwner ? Colors.brand.gold : isManager ? "#7C3AED" : Colors.brand.green} />
+            <Text style={[styles.welcomeBadgeText, isOwner ? styles.ownerBadgeText : isManager ? styles.managerBadgeText : null]}>
+              {isOwner ? "Owner" : isManager ? "Manager" : "Staff"}
             </Text>
           </View>
           <Text style={styles.welcomeTitle}>
             {displayName || username ? `Welcome, ${displayName || username}` : "Dashboard"}
           </Text>
           <Text style={styles.welcomeSubtitle}>
-            {isManager ? "Full venue management access" : "Bookings management"}
+            {isOwner ? "Full venue owner access" : isManager ? "Full venue management access" : "Bookings management"}
           </Text>
         </View>
 
@@ -414,6 +414,16 @@ function DashboardScreen() {
                 testID="portal-banner-image"
               />
             </>
+          )}
+          {isOwner && (
+            <AdminTool
+              icon="people"
+              title="Staff Accounts"
+              description="View accounts, manage roles and permissions"
+              color="#F59E0B"
+              onPress={() => router.push("/admin-staff")}
+              testID="portal-staff-accounts"
+            />
           )}
         </View>
 
@@ -727,6 +737,12 @@ const styles = StyleSheet.create({
   },
   managerBadgeText: {
     color: "#7C3AED",
+  },
+  ownerBadge: {
+    backgroundColor: Colors.brand.gold + "12",
+  },
+  ownerBadgeText: {
+    color: Colors.brand.gold,
   },
   roleSelector: {
     flexDirection: "row" as const,

@@ -185,8 +185,16 @@ async function staffAuth(req: Request, res: Response, next: NextFunction) {
 }
 
 async function managerAuth(req: Request, res: Response, next: NextFunction) {
-  if ((req as any).staffRole !== "manager") {
+  const role = (req as any).staffRole;
+  if (role !== "manager" && role !== "owner") {
     return res.status(403).json({ message: "Manager access required" });
+  }
+  next();
+}
+
+async function ownerAuth(req: Request, res: Response, next: NextFunction) {
+  if ((req as any).staffRole !== "owner") {
+    return res.status(403).json({ message: "Owner access required" });
   }
   next();
 }
@@ -235,8 +243,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(409).json({ message: "Username already taken" });
     }
 
-    if (role && !["staff", "manager"].includes(role)) {
-      return res.status(400).json({ message: "Role must be 'staff' or 'manager'" });
+    if (role && !["staff", "manager", "owner"].includes(role)) {
+      return res.status(400).json({ message: "Role must be 'staff', 'manager', or 'owner'" });
     }
 
     const { hash, salt } = hashPin(pin);
@@ -342,6 +350,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       id: u.id,
       username: u.username,
       displayName: u.displayName,
+      role: u.role,
       createdAt: u.createdAt,
       active: u.active,
     })));
@@ -400,6 +409,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const { hash, salt } = hashPin(newPin);
     await storage.updateStaffPin(username.trim(), hash, salt);
     res.json({ message: "PIN reset successfully for " + staffUser.username });
+  });
+
+  app.patch("/api/staff/update-role", staffAuth, ownerAuth, async (req, res) => {
+    const { username, role } = req.body;
+    if (!username || typeof username !== "string") {
+      return res.status(400).json({ message: "Username is required" });
+    }
+    if (!role || !["staff", "manager", "owner"].includes(role)) {
+      return res.status(400).json({ message: "Role must be 'staff', 'manager', or 'owner'" });
+    }
+    const currentUser = (req as any).staffUsername;
+    if (username.toLowerCase().trim() === currentUser?.toLowerCase()) {
+      return res.status(400).json({ message: "You cannot change your own role" });
+    }
+    const staffUser = await storage.getStaffUserByUsername(username.trim());
+    if (!staffUser) {
+      return res.status(404).json({ message: "Staff user not found" });
+    }
+    const updated = await storage.updateStaffRole(username.trim(), role);
+    if (!updated) {
+      return res.status(500).json({ message: "Failed to update role" });
+    }
+    res.json({ message: `Role updated to ${role} for ${updated.username}` });
   });
 
   app.post("/api/staff/migrate-encryption", staffAuth, managerAuth, async (_req, res) => {

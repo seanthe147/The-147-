@@ -17,7 +17,7 @@ import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
 import Colors from "@/constants/colors";
-import { apiRequest, queryClient, getApiUrl } from "@/lib/query-client";
+import { apiRequest, queryClient, getApiUrl, getStaffToken } from "@/lib/query-client";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import type { BannerImage } from "@shared/schema";
 
@@ -107,10 +107,16 @@ export default function AdminBannerScreen() {
 
     const baseUrl = getApiUrl();
     const url = new URL("/api/upload/banner", baseUrl).toString();
+    const headers: Record<string, string> = {};
+    const token = getStaffToken();
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
 
     const res = await fetch(url, {
       method: "POST",
       body: formData,
+      headers,
       credentials: "include",
     });
 

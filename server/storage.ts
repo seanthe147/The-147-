@@ -300,7 +300,7 @@ export class DatabaseStorage implements IStorage {
       pinHash,
       pinSalt,
       displayName: displayName || null,
-      role: role === "manager" ? "manager" : "staff",
+      role: role === "owner" ? "owner" : role === "manager" ? "manager" : "staff",
     }).returning();
     return user;
   }
@@ -314,6 +314,14 @@ export class DatabaseStorage implements IStorage {
 
   async getAllStaffUsers(): Promise<StaffUser[]> {
     return db.select().from(staffUsers).where(eq(staffUsers.active, true));
+  }
+
+  async updateStaffRole(username: string, newRole: string): Promise<StaffUser | undefined> {
+    const [updated] = await db.update(staffUsers)
+      .set({ role: newRole })
+      .where(eq(staffUsers.username, username.toLowerCase().trim()))
+      .returning();
+    return updated;
   }
 
   async updateStaffPin(username: string, pinHash: string, pinSalt: string): Promise<StaffUser | undefined> {
