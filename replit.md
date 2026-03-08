@@ -79,6 +79,7 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - `PUT /api/settings/:key` - Update a setting (auth required)
 - `GET /api/banner-images` - List active banner images sorted by order (public)
 - `GET /api/banner-images/all` - List all banner images including hidden (auth required)
+- `POST /api/upload/banner` - Upload a banner image file (multipart form, auth required, returns imageUrl)
 - `POST /api/banner-images` - Add a new banner image (auth required)
 - `PUT /api/banner-images/:id` - Update a banner image (auth required)
 - `DELETE /api/banner-images/:id` - Delete a banner image (auth required)
@@ -165,3 +166,7 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - Mar 2026: Fixed Order tab navigation - removed tab bar hiding/overlay that trapped users; added bottom padding for tab bar clearance
 - Mar 2026: Added Messages tab to staff web dashboard - staff can view/filter/manage customer contact messages from browser
 - Mar 2026: Added secure PIN reset - staff can change own PIN (current PIN required), managers can reset any staff PIN
+- Mar 2026: Changed banner management from URL input to file upload (multer, 10MB limit, JPEG/PNG/WebP/GIF)
+- Mar 2026: Fixed iOS tab bar padding - all tab screens now use BottomTabBarHeightContext for dynamic bottom padding
+- Mar 2026: Added Ionicons font loading in root layout for reliable icon rendering in native builds
+- Mar 2026: Uploads served statically at /uploads/ path

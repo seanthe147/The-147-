@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useRef, useContext } from "react";
 import {
   StyleSheet,
   Text,
@@ -14,6 +14,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { LinearGradient } from "expo-linear-gradient";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
@@ -136,6 +137,7 @@ function CodeInput({ value, onChange }: { value: string; onChange: (v: string) =
 export default function LoyaltyScreen() {
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === "web";
+  const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
 
   const [step, setStep] = useState<AuthStep>("loading");
   const [email, setEmail] = useState("");
@@ -352,7 +354,7 @@ export default function LoyaltyScreen() {
         style={styles.container}
         contentContainerStyle={[
           styles.content,
-          { paddingTop: (isWeb ? 67 : insets.top) + 16, paddingBottom: insets.bottom + 100 },
+          { paddingTop: (isWeb ? 67 : insets.top) + 16, paddingBottom: tabBarHeight + 20 },
         ]}
         keyboardShouldPersistTaps="handled"
       >

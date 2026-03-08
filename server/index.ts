@@ -62,7 +62,7 @@ function setupSecurityHeaders(app: express.Application) {
       res.setHeader("X-Frame-Options", "DENY");
       res.setHeader(
         "Content-Security-Policy",
-        "default-src 'self'; script-src 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'"
+        "default-src 'self'; script-src 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data: blob:; frame-ancestors 'none'"
       );
     } else if (!req.path.startsWith("/api")) {
       res.setHeader("X-Frame-Options", "SAMEORIGIN");
@@ -229,6 +229,7 @@ function configureExpoAndLanding(app: express.Application) {
   });
 
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
+  app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 
   log("Expo routing: Checking expo-platform header on / and /manifest");

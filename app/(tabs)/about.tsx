@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useContext } from "react";
 import {
   StyleSheet,
   Text,
@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import Colors from "@/constants/colors";
@@ -49,6 +50,7 @@ function FacilityItem({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; l
 export default function AboutScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
+  const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const today = new Date().getDay();
   const dayIndex = today === 0 ? 6 : today - 1;
 
@@ -207,7 +209,7 @@ export default function AboutScreen() {
           The 147  /  Venue  /  Snooker  /  Bar  /  Restaurant
         </Text>
 
-        <View style={{ height: Platform.OS === "web" ? 34 : 100 }} />
+        <View style={{ height: Platform.OS === "web" ? 34 : tabBarHeight + 20 }} />
       </View>
     </ScrollView>
   );

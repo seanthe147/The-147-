@@ -18,6 +18,7 @@ import {
   Montserrat_600SemiBold,
   Montserrat_700Bold,
 } from "@expo-google-fonts/montserrat";
+import { Ionicons } from "@expo/vector-icons";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -46,6 +47,7 @@ export default function RootLayout() {
     Montserrat_500Medium,
     Montserrat_600SemiBold,
     Montserrat_700Bold,
+    ...Ionicons.font,
   });
 
   useEffect(() => {

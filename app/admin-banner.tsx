@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   StyleSheet,
   Text,
@@ -15,8 +15,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
+import * as ImagePicker from "expo-image-picker";
 import Colors from "@/constants/colors";
-import { apiRequest, queryClient } from "@/lib/query-client";
+import { apiRequest, queryClient, getApiUrl } from "@/lib/query-client";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import type { BannerImage } from "@shared/schema";
 
@@ -24,9 +25,11 @@ export default function AdminBannerScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { isAuthenticated, isLoading: authLoading } = useStaffAuth();
-  const [imageUrl, setImageUrl] = useState("");
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const { data: bannerImages, isLoading } = useQuery<BannerImage[]>({
     queryKey: ["/api/banner-images/all"],
@@ -45,30 +48,111 @@ export default function AdminBannerScreen() {
     return null;
   }
 
+  const pickImageNative = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission Required", "Please allow access to your photo library to upload banner images.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [16, 9],
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setSelectedImage(result.assets[0].uri);
+    }
+  };
+
+  const pickImageWeb = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleWebFileChange = (e: any) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type)) {
+        window.alert("Please select a JPEG, PNG, WebP or GIF image.");
+        return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        window.alert("Image must be less than 10MB.");
+        return;
+      }
+      setSelectedFile(file);
+      setSelectedImage(URL.createObjectURL(file));
+    }
+  };
+
+  const uploadImage = async (): Promise<string | null> => {
+    const formData = new FormData();
+
+    if (Platform.OS === "web" && selectedFile) {
+      formData.append("image", selectedFile);
+    } else if (selectedImage) {
+      const filename = selectedImage.split("/").pop() || "image.jpg";
+      const match = /\.(\w+)$/.exec(filename);
+      const type = match ? `image/${match[1] === "jpg" ? "jpeg" : match[1]}` : "image/jpeg";
+      formData.append("image", {
+        uri: selectedImage,
+        name: filename,
+        type,
+      } as any);
+    } else {
+      return null;
+    }
+
+    const baseUrl = getApiUrl();
+    const url = new URL("/api/upload/banner", baseUrl).toString();
+
+    const res = await fetch(url, {
+      method: "POST",
+      body: formData,
+      credentials: "include",
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: "Upload failed" }));
+      throw new Error(err.message || "Upload failed");
+    }
+
+    const data = await res.json();
+    return data.imageUrl;
+  };
+
   const handleAdd = async () => {
-    const url = imageUrl.trim();
-    if (!url) {
-      const msg = "Please enter an image URL";
+    if (!selectedImage) {
+      const msg = "Please select an image to upload";
       Platform.OS === "web" ? window.alert(msg) : Alert.alert("Error", msg);
       return;
     }
     setSaving(true);
     try {
+      const imageUrl = await uploadImage();
+      if (!imageUrl) throw new Error("Upload failed");
+
       const maxOrder = bannerImages && bannerImages.length > 0
         ? Math.max(...bannerImages.map(b => b.sortOrder)) + 1
         : 0;
       await apiRequest("POST", "/api/banner-images", {
-        imageUrl: url,
+        imageUrl,
         title: title.trim() || null,
         sortOrder: maxOrder,
         active: true,
       });
-      setImageUrl("");
+      setSelectedImage(null);
+      setSelectedFile(null);
       setTitle("");
+      if (Platform.OS === "web" && fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
       await queryClient.refetchQueries({ queryKey: ["/api/banner-images/all"] });
       await queryClient.refetchQueries({ queryKey: ["/api/banner-images"] });
-    } catch {
-      const msg = "Failed to add banner image";
+    } catch (e: any) {
+      const msg = e?.message || "Failed to add banner image";
       Platform.OS === "web" ? window.alert(msg) : Alert.alert("Error", msg);
     } finally {
       setSaving(false);
@@ -132,8 +216,6 @@ export default function AdminBannerScreen() {
     } catch {}
   };
 
-  const previewUrl = imageUrl.trim();
-
   return (
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
       <View style={styles.header}>
@@ -153,23 +235,40 @@ export default function AdminBannerScreen() {
           <Ionicons name="images" size={32} color={Colors.brand.blue} />
           <Text style={styles.sectionTitle}>Home Screen Banners</Text>
           <Text style={styles.sectionDesc}>
-            Add images that will display as a scrollable banner on the home screen. Use landscape images for best results.
+            Upload images that will display as a scrollable banner on the home screen. Use landscape images for best results.
           </Text>
         </View>
 
         <View style={styles.addSection}>
-          <Text style={styles.inputLabel}>IMAGE URL</Text>
-          <TextInput
-            style={styles.textInput}
-            value={imageUrl}
-            onChangeText={setImageUrl}
-            placeholder="https://example.com/image.jpg"
-            placeholderTextColor={Colors.light.textSecondary}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            testID="banner-url-input"
-          />
+          <Text style={styles.inputLabel}>UPLOAD IMAGE</Text>
+
+          {Platform.OS === "web" && (
+            <input
+              ref={fileInputRef as any}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              onChange={handleWebFileChange}
+              style={{ display: "none" }}
+            />
+          )}
+
+          <Pressable
+            onPress={Platform.OS === "web" ? pickImageWeb : pickImageNative}
+            style={({ pressed }) => [
+              styles.uploadButton,
+              { opacity: pressed ? 0.8 : 1 },
+            ]}
+          >
+            <Ionicons
+              name={selectedImage ? "checkmark-circle" : "cloud-upload-outline"}
+              size={22}
+              color={selectedImage ? "#4ADE80" : Colors.brand.blue}
+            />
+            <Text style={styles.uploadButtonText}>
+              {selectedImage ? "Image Selected — Tap to Change" : "Choose Image"}
+            </Text>
+          </Pressable>
+
           <Text style={[styles.inputLabel, { marginTop: 10 }]}>CAPTION (OPTIONAL)</Text>
           <TextInput
             style={styles.textInput}
@@ -180,12 +279,12 @@ export default function AdminBannerScreen() {
             testID="banner-title-input"
           />
 
-          {previewUrl ? (
+          {selectedImage ? (
             <View style={styles.previewContainer}>
               <Text style={styles.previewLabel}>PREVIEW</Text>
               <View style={styles.previewImageWrap}>
                 <Image
-                  source={{ uri: previewUrl }}
+                  source={{ uri: selectedImage }}
                   style={styles.previewImage}
                   resizeMode="cover"
                 />
@@ -225,7 +324,7 @@ export default function AdminBannerScreen() {
             <View style={styles.emptyState}>
               <Ionicons name="image-outline" size={48} color={Colors.light.border} />
               <Text style={styles.emptyText}>No banner images yet</Text>
-              <Text style={styles.emptySubtext}>Add your first banner above</Text>
+              <Text style={styles.emptySubtext}>Upload your first banner above</Text>
             </View>
           ) : (
             bannerImages.map((img, index) => (
@@ -235,7 +334,6 @@ export default function AdminBannerScreen() {
                   <Text style={styles.cardTitle} numberOfLines={1}>
                     {img.title || `Banner ${index + 1}`}
                   </Text>
-                  <Text style={styles.cardUrl} numberOfLines={1}>{img.imageUrl}</Text>
                   <View style={styles.cardStatus}>
                     <View style={[styles.statusDot, { backgroundColor: img.active ? "#4ADE80" : "#9CA3AF" }]} />
                     <Text style={styles.statusText}>{img.active ? "Active" : "Hidden"}</Text>
@@ -279,6 +377,7 @@ export default function AdminBannerScreen() {
         <View style={styles.tipsSection}>
           <Text style={styles.tipsTitle}>Tips</Text>
           <Text style={styles.tipText}>Use wide landscape images (at least 800px wide) for best results.</Text>
+          <Text style={styles.tipText}>Max file size: 10MB. Supported formats: JPEG, PNG, WebP, GIF.</Text>
           <Text style={styles.tipText}>Add a caption to display text over the image.</Text>
           <Text style={styles.tipText}>Reorder banners with the up/down arrows.</Text>
           <Text style={styles.tipText}>Toggle visibility with the eye icon without deleting.</Text>
@@ -364,6 +463,22 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_500Medium",
     fontSize: 14,
     color: Colors.light.text,
+  },
+  uploadButton: {
+    backgroundColor: Colors.light.surface,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Colors.light.border,
+    borderStyle: "dashed",
+    paddingVertical: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  uploadButtonText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: Colors.brand.blue,
   },
   previewContainer: {
     marginTop: 12,
@@ -460,11 +575,6 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 13,
     color: Colors.light.text,
-  },
-  cardUrl: {
-    fontFamily: "Montserrat_400Regular",
-    fontSize: 10,
-    color: Colors.light.textSecondary,
   },
   cardStatus: {
     flexDirection: "row",

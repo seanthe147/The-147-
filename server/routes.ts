@@ -3,10 +3,36 @@ import { createServer, type Server } from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import multer from "multer";
 import { storage } from "./storage";
 import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema } from "@shared/schema";
 import { hashPin, verifyPin } from "./encryption";
 import * as square from "./square";
+
+const uploadsDir = path.resolve(process.cwd(), "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, uploadsDir),
+    filename: (_req, file, cb) => {
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      const ext = path.extname(file.originalname) || ".jpg";
+      cb(null, `banner-${uniqueSuffix}${ext}`);
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only JPEG, PNG, WebP and GIF images are allowed"));
+    }
+  },
+});
 
 const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -749,6 +775,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/banner-images/all", staffAuth, async (_req, res) => {
     const images = await storage.getAllBannerImages();
     res.json(images);
+  });
+
+  app.post("/api/upload/banner", staffAuth, managerAuth, upload.single("image"), (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ message: "No image file provided" });
+    }
+    const imageUrl = `/uploads/${req.file.filename}`;
+    res.json({ imageUrl });
   });
 
   app.post("/api/banner-images", staffAuth, managerAuth, async (req, res) => {

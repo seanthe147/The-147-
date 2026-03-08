@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback } from "react";
+import React, { useRef, useState, useEffect, useCallback, useContext } from "react";
 import {
   StyleSheet,
   Text,
@@ -17,6 +17,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useQuery } from "@tanstack/react-query";
@@ -200,6 +201,7 @@ function EventPreview() {
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
+  const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
 
   const { data: bannerImages, isLoading: bannersLoading } = useQuery<BannerImage[]>({
     queryKey: ["/api/banner-images"],
@@ -363,7 +365,7 @@ export default function HomeScreen() {
             <Ionicons name="open-outline" size={13} color={Colors.light.textSecondary} />
           </Pressable>
 
-          <View style={{ height: Platform.OS === "web" ? 50 : 110 }} />
+          <View style={{ height: Platform.OS === "web" ? 50 : tabBarHeight + 20 }} />
         </View>
       </ScrollView>
     </View>

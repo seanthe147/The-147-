@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useContext } from "react";
 import {
   StyleSheet,
   View,
@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { useQuery } from "@tanstack/react-query";
@@ -245,6 +246,7 @@ function WhatsOnTab() {
 export default function EventsScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
+  const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const [activeTab, setActiveTab] = useState<"events" | "whats-on">("events");
 
   return (
@@ -307,7 +309,7 @@ export default function EventsScreen() {
           {activeTab === "events" ? <UpcomingEventsTab /> : <WhatsOnTab />}
         </View>
 
-        <View style={{ height: Platform.OS === "web" ? 84 + 34 : 100 }} />
+        <View style={{ height: Platform.OS === "web" ? 84 + 34 : tabBarHeight + 20 }} />
       </ScrollView>
     </View>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useContext } from "react";
 import {
   StyleSheet,
   View,
@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import Colors from "@/constants/colors";
@@ -48,6 +49,7 @@ type Step = "table" | "datetime" | "details" | "confirm" | "success";
 export default function BookScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
+  const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
 
   const [step, setStep] = useState<Step>("table");
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
@@ -176,7 +178,7 @@ export default function BookScreen() {
       >
         <ScrollView
           style={styles.scrollView}
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: Platform.OS === "web" ? 50 : insets.bottom + 20 }]}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: Platform.OS === "web" ? 50 : tabBarHeight + 20 }]}
           keyboardShouldPersistTaps="handled"
         >
           {step === "table" && (
