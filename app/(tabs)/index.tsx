@@ -21,6 +21,7 @@ import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useQuery } from "@tanstack/react-query";
+import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import Colors from "@/constants/colors";
 import { OPENING_HOURS } from "@/lib/data";
 import type { Event, BannerImage } from "@shared/schema";
@@ -202,6 +203,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
+  const { isAuthenticated, customer } = useCustomerAuth();
 
   const { data: bannerImages, isLoading: bannersLoading } = useQuery<BannerImage[]>({
     queryKey: ["/api/banner-images"],
@@ -230,13 +232,21 @@ export default function HomeScreen() {
     <View style={[styles.heroContent, { paddingTop: insets.top + 10 + webTopInset }]}>
       <View style={styles.heroTopBar}>
         <Image source={logoImage} style={styles.logoImage} resizeMode="contain" />
-        <Pressable
-          onPress={() => router.push("/about")}
-          style={({ pressed }) => [styles.hoursChip, { opacity: pressed ? 0.8 : 1 }]}
-        >
-          <View style={styles.liveDot} />
-          <Text style={styles.hoursChipText}>Open until {todayHours.closeTime}</Text>
-        </Pressable>
+        <View style={styles.heroTopRight}>
+          <Pressable
+            onPress={() => router.push("/about")}
+            style={({ pressed }) => [styles.hoursChip, { opacity: pressed ? 0.8 : 1 }]}
+          >
+            <View style={styles.liveDot} />
+            <Text style={styles.hoursChipText}>Open until {todayHours.closeTime}</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => router.push("/account")}
+            style={({ pressed }) => [styles.accountButton, { opacity: pressed ? 0.8 : 1 }]}
+          >
+            <Ionicons name={isAuthenticated ? "person" : "person-outline"} size={18} color="#FFFFFF" />
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.heroCenter}>
@@ -404,6 +414,19 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 16,
+  },
+  heroTopRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  accountButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   logoImage: {
     width: 46,

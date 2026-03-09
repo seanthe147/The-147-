@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useContext } from "react";
+import React, { useState, useMemo, useContext, useEffect } from "react";
 import {
   StyleSheet,
   View,
@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/query-client";
+import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import Colors from "@/constants/colors";
 import { TABLE_TYPES } from "@/lib/data";
 
@@ -62,6 +63,17 @@ export default function BookScreen() {
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
   const [gdprConsent, setGdprConsent] = useState(false);
+  const { isAuthenticated, customer } = useCustomerAuth();
+  const [autoFilled, setAutoFilled] = useState(false);
+
+  useEffect(() => {
+    if (isAuthenticated && customer && !autoFilled && !name && !email && !phone) {
+      setName(customer.name || "");
+      setEmail(customer.email || "");
+      setPhone(customer.phone || "");
+      setAutoFilled(true);
+    }
+  }, [isAuthenticated, customer, autoFilled, name, email, phone]);
 
   const days = useMemo(() => getNext7Days(), []);
 
@@ -144,6 +156,7 @@ export default function BookScreen() {
     setPhone("");
     setNotes("");
     setGdprConsent(false);
+    setAutoFilled(false);
   };
 
   const stepIndex = ["table", "datetime", "details", "confirm", "success"].indexOf(step);

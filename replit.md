@@ -174,3 +174,8 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - Mar 2026: Added Staff Accounts admin screen (admin-staff.tsx) for viewing/managing team roles
 - Mar 2026: Fixed banner upload auth - Authorization header now included in file upload requests
 - Mar 2026: Enabled auto push notification registration - prompts on first launch (3s delay), silently re-registers on subsequent launches
+- Mar 2026: Added customer accounts system - register/login with email+password, view/manage bookings, cancel upcoming bookings
+- Mar 2026: Customer auth context (CustomerAuthContext.tsx) with token-based sessions (30-day expiry)
+- Mar 2026: Account screen (app/account.tsx) - login/register forms, profile editing, booking history with cancel
+- Mar 2026: Booking form auto-fills name, email, phone when customer is logged in
+- Mar 2026: Account button added to home screen hero bar (person icon, top right)

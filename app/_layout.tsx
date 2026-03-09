@@ -66,17 +66,17 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <ConsentProvider>
           <CustomerAuthProvider>
-          <StaffAuthProvider>
-            <NotificationProvider>
-              <TabBarProvider>
-                <GestureHandlerRootView>
-                  <KeyboardProvider>
-                    <RootLayoutNav />
-                  </KeyboardProvider>
-                </GestureHandlerRootView>
-              </TabBarProvider>
-            </NotificationProvider>
-          </StaffAuthProvider>
+            <StaffAuthProvider>
+              <NotificationProvider>
+                <TabBarProvider>
+                  <GestureHandlerRootView>
+                    <KeyboardProvider>
+                      <RootLayoutNav />
+                    </KeyboardProvider>
+                  </GestureHandlerRootView>
+                </TabBarProvider>
+              </NotificationProvider>
+            </StaffAuthProvider>
           </CustomerAuthProvider>
         </ConsentProvider>
       </QueryClientProvider>
