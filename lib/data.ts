@@ -16,6 +16,7 @@ export interface TableType {
   description: string;
   pricePerHour: string;
   priceUnit?: "hour" | "game";
+  priceLabel?: string;
   icon: string;
 }
 
@@ -24,7 +25,8 @@ export const TABLE_TYPES: TableType[] = [
     id: "snooker",
     name: "Snooker Table",
     description: "Full-size professional snooker table",
-    pricePerHour: "12",
+    pricePerHour: "7.95",
+    priceLabel: "From £7.95/hr",
     icon: "ellipse",
   },
   {

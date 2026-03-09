@@ -205,7 +205,7 @@ export default function BookScreen() {
                       <Text style={[styles.tableName, isSelected && styles.tableNameSelected]}>{table.name}</Text>
                       <Text style={styles.tableDesc}>{table.description}</Text>
                       <Text style={[styles.tablePrice, isSelected && styles.tablePriceSelected]}>
-                        {table.pricePerHour === "Free" ? "Free" : `\u00A3${table.pricePerHour}/${table.priceUnit === "game" ? "game" : "hr"}`}
+                        {table.pricePerHour === "Free" ? "Free" : table.priceLabel ?? `\u00A3${table.pricePerHour}/${table.priceUnit === "game" ? "game" : "hr"}`}
                       </Text>
                     </Pressable>
                   );
@@ -537,7 +537,7 @@ export default function BookScreen() {
                         <Text style={[styles.summaryValue, { color: Colors.brand.gold }]}>
                           {selectedTableData.priceUnit === "game"
                             ? `\u00A3${selectedTableData.pricePerHour}/game`
-                            : `\u00A3${parseInt(selectedTableData.pricePerHour) * duration}`}
+                            : selectedTableData.priceLabel ?? `\u00A3${parseFloat(selectedTableData.pricePerHour) * duration}`}
                         </Text>
                       </View>
                     </View>
