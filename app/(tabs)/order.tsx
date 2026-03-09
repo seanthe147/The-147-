@@ -1,4 +1,4 @@
-import React, { useContext, useState } from "react";
+import React, { useContext, useState, useRef, useCallback } from "react";
 import {
   StyleSheet,
   View,
@@ -21,6 +21,13 @@ export default function OrderScreen() {
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const webviewRef = useRef<WebView>(null);
+
+  const handleRetry = useCallback(() => {
+    setHasError(false);
+    setLoading(true);
+    webviewRef.current?.reload();
+  }, []);
 
   if (Platform.OS === "web") {
     return (
@@ -39,6 +46,7 @@ export default function OrderScreen() {
               height: "100%",
             } as any}
             title="The 147 Order"
+            loading="eager"
           />
         </View>
       </View>
@@ -56,7 +64,7 @@ export default function OrderScreen() {
           <Text style={styles.loadingText}>Loading menu...</Text>
         </View>
       )}
-      {hasError ? (
+      {hasError && (
         <View style={styles.errorOverlay}>
           <Ionicons name="cloud-offline-outline" size={48} color={Colors.light.textSecondary} />
           <Text style={styles.errorTitle}>Unable to Load</Text>
@@ -64,26 +72,32 @@ export default function OrderScreen() {
             Please check your internet connection and try again.
           </Text>
           <Pressable
-            onPress={() => { setHasError(false); setLoading(true); }}
+            onPress={handleRetry}
             style={({ pressed }) => [styles.retryButton, { opacity: pressed ? 0.8 : 1 }]}
           >
             <Ionicons name="refresh" size={18} color="#FFFFFF" />
             <Text style={styles.retryButtonText}>Try Again</Text>
           </Pressable>
         </View>
-      ) : (
-        <WebView
-          source={{ uri: MENU_URL }}
-          style={[styles.webview, { marginBottom: tabBarHeight }]}
-          onLoadEnd={() => setLoading(false)}
-          onError={() => { setHasError(true); setLoading(false); }}
-          onHttpError={() => { setHasError(true); setLoading(false); }}
-          startInLoadingState={false}
-          javaScriptEnabled
-          domStorageEnabled
-          scalesPageToFit
-        />
       )}
+      <WebView
+        ref={webviewRef}
+        source={{ uri: MENU_URL }}
+        style={[
+          styles.webview,
+          { marginBottom: tabBarHeight },
+          hasError && styles.hidden,
+        ]}
+        onLoadEnd={() => setLoading(false)}
+        onError={() => { setHasError(true); setLoading(false); }}
+        onHttpError={() => { setHasError(true); setLoading(false); }}
+        startInLoadingState={false}
+        javaScriptEnabled
+        domStorageEnabled
+        cacheEnabled
+        cacheMode="LOAD_CACHE_ELSE_NETWORK"
+        sharedCookiesEnabled
+      />
     </View>
   );
 }
@@ -110,6 +124,11 @@ const styles = StyleSheet.create({
   },
   webview: {
     flex: 1,
+  },
+  hidden: {
+    height: 0,
+    flex: 0,
+    opacity: 0,
   },
   loadingOverlay: {
     position: "absolute",
