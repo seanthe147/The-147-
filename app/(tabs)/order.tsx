@@ -13,7 +13,7 @@ import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import Colors from "@/constants/colors";
 
-const MENU_URL = "https://www.the147order.co.uk";
+const MENU_URL = "https://www.the147order.co.uk/?location=11f07c84b040cae5b0923cecef6dbaf0&seat_select=true";
 
 export default function OrderScreen() {
   const insets = useSafeAreaInsets();
