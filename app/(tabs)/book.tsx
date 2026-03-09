@@ -205,7 +205,7 @@ export default function BookScreen() {
                       <Text style={[styles.tableName, isSelected && styles.tableNameSelected]}>{table.name}</Text>
                       <Text style={styles.tableDesc}>{table.description}</Text>
                       <Text style={[styles.tablePrice, isSelected && styles.tablePriceSelected]}>
-                        {table.pricePerHour === "Free" ? "Free" : `\u00A3${table.pricePerHour}/hr`}
+                        {table.pricePerHour === "Free" ? "Free" : `\u00A3${table.pricePerHour}/${table.priceUnit === "game" ? "game" : "hr"}`}
                       </Text>
                     </Pressable>
                   );
@@ -531,9 +531,13 @@ export default function BookScreen() {
                     <View style={styles.summaryRow}>
                       <Ionicons name="cash" size={20} color={Colors.brand.gold} />
                       <View style={styles.summaryInfo}>
-                        <Text style={styles.summaryLabel}>Estimated Cost</Text>
+                        <Text style={styles.summaryLabel}>
+                          {selectedTableData.priceUnit === "game" ? "Price" : "Estimated Cost"}
+                        </Text>
                         <Text style={[styles.summaryValue, { color: Colors.brand.gold }]}>
-                          {"\u00A3"}{parseInt(selectedTableData.pricePerHour) * duration}
+                          {selectedTableData.priceUnit === "game"
+                            ? `\u00A3${selectedTableData.pricePerHour}/game`
+                            : `\u00A3${parseInt(selectedTableData.pricePerHour) * duration}`}
                         </Text>
                       </View>
                     </View>

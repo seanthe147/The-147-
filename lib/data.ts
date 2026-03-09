@@ -15,6 +15,7 @@ export interface TableType {
   name: string;
   description: string;
   pricePerHour: string;
+  priceUnit?: "hour" | "game";
   icon: string;
 }
 
@@ -30,7 +31,8 @@ export const TABLE_TYPES: TableType[] = [
     id: "pool",
     name: "Pool Table",
     description: "American-style pool table",
-    pricePerHour: "10",
+    pricePerHour: "1",
+    priceUnit: "game",
     icon: "ellipse-outline",
   },
   {
