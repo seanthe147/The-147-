@@ -335,7 +335,7 @@ export default function AdminBannerScreen() {
           ) : (
             bannerImages.map((img, index) => (
               <View key={img.id} style={[styles.imageCard, !img.active && styles.imageCardInactive]}>
-                <Image source={{ uri: img.imageUrl }} style={styles.cardImage} resizeMode="cover" />
+                <Image source={{ uri: img.imageUrl.startsWith("http") ? img.imageUrl : new URL(img.imageUrl, getApiUrl()).toString() }} style={styles.cardImage} resizeMode="cover" />
                 <View style={styles.cardInfo}>
                   <Text style={styles.cardTitle} numberOfLines={1}>
                     {img.title || `Banner ${index + 1}`}

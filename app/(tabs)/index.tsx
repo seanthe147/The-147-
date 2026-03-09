@@ -21,6 +21,7 @@ import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useQuery } from "@tanstack/react-query";
+import { getApiUrl } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import Colors from "@/constants/colors";
 import { OPENING_HOURS } from "@/lib/data";
@@ -28,6 +29,12 @@ import type { Event, BannerImage } from "@shared/schema";
 
 const logoImage = require("@/assets/images/logo-147.png");
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
+
+function resolveImageUrl(path: string): string {
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+  const base = getApiUrl();
+  return new URL(path, base).toString();
+}
 
 function QuickActionPill({
   icon,
@@ -103,7 +110,7 @@ function BannerCarousel({ images }: { images: BannerImage[] }) {
       >
         {images.map((item) => (
           <View key={item.id} style={styles.bannerSlide}>
-            <Image source={{ uri: item.imageUrl }} style={styles.bannerImage} resizeMode="cover" />
+            <Image source={{ uri: resolveImageUrl(item.imageUrl) }} style={styles.bannerImage} resizeMode="cover" />
             {item.title ? (
               <LinearGradient
                 colors={["transparent", "rgba(0,0,0,0.6)"]}
@@ -304,7 +311,7 @@ export default function HomeScreen() {
       >
         {bannerImageUrl ? (
           <ImageBackground
-            source={{ uri: bannerImageUrl }}
+            source={{ uri: resolveImageUrl(bannerImageUrl) }}
             style={styles.heroBanner}
             resizeMode="cover"
           >
