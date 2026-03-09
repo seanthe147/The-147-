@@ -170,3 +170,7 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - Mar 2026: Fixed iOS tab bar padding - all tab screens now use BottomTabBarHeightContext for dynamic bottom padding
 - Mar 2026: Added Ionicons font loading in root layout for reliable icon rendering in native builds
 - Mar 2026: Uploads served statically at /uploads/ path
+- Mar 2026: Added owner role tier above manager - owners can manage staff roles and permissions
+- Mar 2026: Added Staff Accounts admin screen (admin-staff.tsx) for viewing/managing team roles
+- Mar 2026: Fixed banner upload auth - Authorization header now included in file upload requests
+- Mar 2026: Enabled auto push notification registration - prompts on first launch (3s delay), silently re-registers on subsequent launches

@@ -1,9 +1,13 @@
-import React, { createContext, useContext, useEffect, useRef, useState, useMemo, ReactNode } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState, useMemo, useCallback, ReactNode } from "react";
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { EventSubscription } from "expo-modules-core";
 import { apiRequest } from "@/lib/query-client";
+
+const NOTIFICATION_ASKED_KEY = "notifications_asked";
+const NOTIFICATION_PROMPT_DELAY = 3000;
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -30,8 +34,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notification, setNotification] = useState<Notifications.Notification | null>(null);
   const notificationListener = useRef<EventSubscription | null>(null);
   const responseListener = useRef<EventSubscription | null>(null);
+  const hasAttempted = useRef(false);
 
-  async function registerForPushNotifications(): Promise<string | null> {
+  const registerForPushNotifications = useCallback(async (): Promise<string | null> => {
     if (Platform.OS === "web") {
       setPermissionStatus("web_unsupported");
       return null;
@@ -51,6 +56,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
 
     setPermissionStatus(finalStatus);
+    await AsyncStorage.setItem(NOTIFICATION_ASKED_KEY, "true");
 
     if (finalStatus !== "granted") {
       return null;
@@ -80,7 +86,34 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
 
     return token;
-  }
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS === "web" || hasAttempted.current) return;
+    hasAttempted.current = true;
+
+    const initNotifications = async () => {
+      if (!Device.isDevice) return;
+
+      const { status } = await Notifications.getPermissionsAsync();
+
+      if (status === "granted") {
+        await registerForPushNotifications();
+        return;
+      }
+
+      const asked = await AsyncStorage.getItem(NOTIFICATION_ASKED_KEY);
+      if (asked) return;
+
+      const timer = setTimeout(() => {
+        registerForPushNotifications();
+      }, NOTIFICATION_PROMPT_DELAY);
+
+      return () => clearTimeout(timer);
+    };
+
+    initNotifications();
+  }, [registerForPushNotifications]);
 
   useEffect(() => {
     notificationListener.current = Notifications.addNotificationReceivedListener((n) => {
@@ -107,7 +140,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       registerForPushNotifications,
       notification,
     }),
-    [expoPushToken, permissionStatus, notification]
+    [expoPushToken, permissionStatus, registerForPushNotifications, notification]
   );
 
   return (
