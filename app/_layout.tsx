@@ -10,6 +10,7 @@ import { TabBarProvider } from "@/contexts/TabBarContext";
 import { ConsentProvider } from "@/contexts/ConsentContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { StaffAuthProvider } from "@/contexts/StaffAuthContext";
+import { CustomerAuthProvider } from "@/contexts/CustomerAuthContext";
 import { queryClient } from "@/lib/query-client";
 import {
   useFonts,
@@ -36,6 +37,7 @@ function RootLayoutNav() {
         <Stack.Screen name="admin-banner" options={{ headerShown: false, presentation: "modal" }} />
         <Stack.Screen name="admin-events" options={{ headerShown: false, presentation: "modal" }} />
         <Stack.Screen name="admin-staff" options={{ headerShown: false, presentation: "modal" }} />
+        <Stack.Screen name="account" options={{ headerShown: false, presentation: "modal" }} />
       </Stack>
       <ConsentBanner />
     </>
@@ -63,6 +65,7 @@ export default function RootLayout() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <ConsentProvider>
+          <CustomerAuthProvider>
           <StaffAuthProvider>
             <NotificationProvider>
               <TabBarProvider>
@@ -74,6 +77,7 @@ export default function RootLayout() {
               </TabBarProvider>
             </NotificationProvider>
           </StaffAuthProvider>
+          </CustomerAuthProvider>
         </ConsentProvider>
       </QueryClientProvider>
     </ErrorBoundary>

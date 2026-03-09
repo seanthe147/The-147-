@@ -19,6 +19,8 @@ import {
   type InsertEvent,
   type BannerImage,
   type InsertBannerImage,
+  type Customer,
+  type CustomerSession,
   users,
   offers,
   pushTokens,
@@ -30,6 +32,8 @@ import {
   events,
   siteSettings,
   bannerImages,
+  customers,
+  customerSessions,
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
 
@@ -88,6 +92,13 @@ export interface IStorage {
   getAllStaffUsers(): Promise<StaffUser[]>;
   updateStaffPin(username: string, pinHash: string, pinSalt: string): Promise<StaffUser | undefined>;
   migrateEncryptExistingBookings(): Promise<number>;
+  createCustomer(email: string, name: string, phone: string | null, passwordHash: string): Promise<Customer>;
+  getCustomerByEmail(email: string): Promise<Customer | undefined>;
+  getCustomerById(id: number): Promise<Customer | undefined>;
+  updateCustomer(id: number, data: Partial<{ name: string; phone: string }>): Promise<Customer | undefined>;
+  createCustomerSession(token: string, customerId: number, expiresAt: Date): Promise<CustomerSession>;
+  validateCustomerSession(token: string): Promise<CustomerSession | undefined>;
+  invalidateCustomerSession(token: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -436,6 +447,63 @@ export class DatabaseStorage implements IStorage {
   async deleteBannerImage(id: number): Promise<boolean> {
     const [row] = await db.delete(bannerImages).where(eq(bannerImages.id, id)).returning();
     return !!row;
+  }
+
+  async createCustomer(email: string, name: string, phone: string | null, passwordHash: string): Promise<Customer> {
+    const [customer] = await db.insert(customers).values({
+      email: email.toLowerCase().trim(),
+      name,
+      phone,
+      passwordHash,
+    }).returning();
+    return customer;
+  }
+
+  async getCustomerByEmail(email: string): Promise<Customer | undefined> {
+    const [customer] = await db.select().from(customers).where(eq(customers.email, email.toLowerCase().trim()));
+    return customer;
+  }
+
+  async getCustomerById(id: number): Promise<Customer | undefined> {
+    const [customer] = await db.select().from(customers).where(eq(customers.id, id));
+    return customer;
+  }
+
+  async updateCustomer(id: number, data: Partial<{ name: string; phone: string }>): Promise<Customer | undefined> {
+    const [updated] = await db.update(customers).set(data).where(eq(customers.id, id)).returning();
+    return updated;
+  }
+
+  async createCustomerSession(token: string, customerId: number, expiresAt: Date): Promise<CustomerSession> {
+    const [session] = await db.insert(customerSessions).values({
+      token,
+      customerId,
+      expiresAt,
+    }).returning();
+    return session;
+  }
+
+  async validateCustomerSession(token: string): Promise<CustomerSession | undefined> {
+    const [session] = await db
+      .select()
+      .from(customerSessions)
+      .where(
+        and(
+          eq(customerSessions.token, token),
+          eq(customerSessions.active, true),
+          gt(customerSessions.expiresAt, new Date())
+        )
+      );
+    return session;
+  }
+
+  async invalidateCustomerSession(token: string): Promise<boolean> {
+    const result = await db
+      .update(customerSessions)
+      .set({ active: false })
+      .where(eq(customerSessions.token, token))
+      .returning();
+    return result.length > 0;
   }
 }
 

@@ -147,6 +147,31 @@ export const siteSettings = pgTable("site_settings", {
 export type InsertContactMessage = z.infer<typeof insertContactMessageSchema>;
 export type ContactMessage = typeof contactMessages.$inferSelect;
 
+export const customers = pgTable("customers", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  name: text("name").notNull(),
+  phone: text("phone"),
+  passwordHash: text("password_hash").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true, createdAt: true });
+
+export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
+export type Customer = typeof customers.$inferSelect;
+
+export const customerSessions = pgTable("customer_sessions", {
+  id: serial("id").primaryKey(),
+  token: text("token").notNull().unique(),
+  customerId: integer("customer_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  active: boolean("active").notNull().default(true),
+});
+
+export type CustomerSession = typeof customerSessions.$inferSelect;
+
 export const bannerImages = pgTable("banner_images", {
   id: serial("id").primaryKey(),
   imageUrl: text("image_url").notNull(),

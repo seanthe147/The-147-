@@ -199,6 +199,53 @@ async function ownerAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+const customerLoginAttempts = new Map<string, { count: number; blockedUntil: number }>();
+
+function checkCustomerRateLimit(ip: string): { allowed: boolean; retryAfter?: number } {
+  const now = Date.now();
+  const record = customerLoginAttempts.get(ip);
+  if (record && record.blockedUntil > now) {
+    return { allowed: false, retryAfter: Math.ceil((record.blockedUntil - now) / 1000) };
+  }
+  if (record && now - record.blockedUntil > ATTEMPT_WINDOW) {
+    customerLoginAttempts.delete(ip);
+  }
+  return { allowed: true };
+}
+
+function recordCustomerLoginFailure(ip: string) {
+  const now = Date.now();
+  const record = customerLoginAttempts.get(ip) || { count: 0, blockedUntil: 0 };
+  record.count++;
+  if (record.count >= MAX_LOGIN_ATTEMPTS) {
+    record.blockedUntil = now + LOCKOUT_DURATION;
+    record.count = 0;
+  }
+  customerLoginAttempts.set(ip, record);
+}
+
+async function customerAuth(req: Request, res: Response, next: NextFunction) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+  const token = authHeader.slice(7);
+  if (token.length < 32 || token.length > 128) {
+    return res.status(401).json({ message: "Invalid session" });
+  }
+  const session = await storage.validateCustomerSession(token);
+  if (!session) {
+    return res.status(401).json({ message: "Invalid or expired session" });
+  }
+  const customer = await storage.getCustomerById(session.customerId);
+  if (!customer) {
+    return res.status(401).json({ message: "Account not found" });
+  }
+  (req as any).customerId = customer.id;
+  (req as any).customerEmail = customer.email;
+  next();
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/staff/register", async (req, res) => {
     const clientIp = getClientIp(req);
@@ -1192,6 +1239,148 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const html = fs.readFileSync(templatePath, "utf-8");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.status(200).send(html);
+  });
+
+  app.post("/api/customers/register", async (req, res) => {
+    const clientIp = getClientIp(req);
+    const rateCheck = checkCustomerRateLimit(clientIp);
+    if (!rateCheck.allowed) {
+      res.setHeader("Retry-After", String(rateCheck.retryAfter));
+      return res.status(429).json({ message: "Too many attempts. Please try again later." });
+    }
+    const { name, email, phone, password } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: "Name, email, and password are required" });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters" });
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: "Invalid email address" });
+    }
+    try {
+      const existing = await storage.getCustomerByEmail(email);
+      if (existing) {
+        return res.status(409).json({ message: "An account with this email already exists" });
+      }
+      const { hash, salt } = hashPin(password);
+      const passwordHash = `${salt}:${hash}`;
+      const customer = await storage.createCustomer(email, name.trim(), phone?.trim() || null, passwordHash);
+      const token = randomBytes(48).toString("hex");
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      await storage.createCustomerSession(token, customer.id, expiresAt);
+      res.status(201).json({
+        token,
+        customer: { id: customer.id, name: customer.name, email: customer.email, phone: customer.phone },
+      });
+    } catch (err: any) {
+      console.error("Customer register error:", err.message);
+      res.status(500).json({ message: "Registration failed" });
+    }
+  });
+
+  app.post("/api/customers/login", async (req, res) => {
+    const clientIp = getClientIp(req);
+    const rateCheck = checkCustomerRateLimit(clientIp);
+    if (!rateCheck.allowed) {
+      res.setHeader("Retry-After", String(rateCheck.retryAfter));
+      return res.status(429).json({ message: "Too many attempts. Please try again later." });
+    }
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password are required" });
+    }
+    try {
+      const customer = await storage.getCustomerByEmail(email);
+      if (!customer) {
+        recordCustomerLoginFailure(clientIp);
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+      const [salt, storedHash] = customer.passwordHash.split(":");
+      if (!salt || !storedHash || !verifyPin(password, storedHash, salt)) {
+        recordCustomerLoginFailure(clientIp);
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+      const token = randomBytes(48).toString("hex");
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      await storage.createCustomerSession(token, customer.id, expiresAt);
+      res.json({
+        token,
+        customer: { id: customer.id, name: customer.name, email: customer.email, phone: customer.phone },
+      });
+    } catch (err: any) {
+      console.error("Customer login error:", err.message);
+      res.status(500).json({ message: "Login failed" });
+    }
+  });
+
+  app.post("/api/customers/logout", customerAuth, async (req, res) => {
+    const authHeader = req.headers.authorization;
+    const token = authHeader!.slice(7);
+    await storage.invalidateCustomerSession(token);
+    res.json({ success: true });
+  });
+
+  app.get("/api/customers/me", customerAuth, async (req, res) => {
+    const customer = await storage.getCustomerById((req as any).customerId);
+    if (!customer) {
+      return res.status(404).json({ message: "Account not found" });
+    }
+    res.json({ id: customer.id, name: customer.name, email: customer.email, phone: customer.phone });
+  });
+
+  app.patch("/api/customers/me", customerAuth, async (req, res) => {
+    const { name, phone } = req.body;
+    const updates: Partial<{ name: string; phone: string }> = {};
+    if (name !== undefined) updates.name = name.trim();
+    if (phone !== undefined) updates.phone = phone.trim();
+    const updated = await storage.updateCustomer((req as any).customerId, updates);
+    if (!updated) {
+      return res.status(404).json({ message: "Account not found" });
+    }
+    res.json({ id: updated.id, name: updated.name, email: updated.email, phone: updated.phone });
+  });
+
+  app.get("/api/customers/bookings", customerAuth, async (req, res) => {
+    const email = (req as any).customerEmail;
+    const customerBookings = await storage.getBookingsByEmail(email);
+    const safeBookings = customerBookings.map((b) => ({
+      id: b.id,
+      tableType: b.tableType,
+      tableNumber: b.tableNumber,
+      date: b.date,
+      startTime: b.startTime,
+      duration: b.duration,
+      status: b.status,
+      notes: b.notes,
+      createdAt: b.createdAt,
+    }));
+    res.json(safeBookings);
+  });
+
+  app.patch("/api/customers/bookings/:id/cancel", customerAuth, async (req, res) => {
+    const bookingId = parseInt(req.params.id);
+    if (isNaN(bookingId)) {
+      return res.status(400).json({ message: "Invalid booking ID" });
+    }
+    const booking = await storage.getBooking(bookingId);
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+    const customerEmail = (req as any).customerEmail;
+    if (booking.customerEmail.toLowerCase() !== customerEmail.toLowerCase()) {
+      return res.status(403).json({ message: "Not your booking" });
+    }
+    if (booking.status === "cancelled") {
+      return res.status(400).json({ message: "Booking is already cancelled" });
+    }
+    const today = new Date().toISOString().split("T")[0];
+    if (booking.date < today) {
+      return res.status(400).json({ message: "Cannot cancel past bookings" });
+    }
+    const updated = await storage.updateBookingStatus(bookingId, "cancelled");
+    res.json({ success: true, booking: updated });
   });
 
   const httpServer = createServer(app);
