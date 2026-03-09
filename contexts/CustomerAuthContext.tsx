@@ -20,6 +20,7 @@ interface CustomerAuthContextValue {
   register: (name: string, email: string, phone: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   updateProfile: (data: { name?: string; phone?: string }) => Promise<{ success: boolean; error?: string }>;
+  deleteAccount: () => Promise<{ success: boolean; error?: string }>;
   refreshProfile: () => Promise<void>;
 }
 
@@ -98,7 +99,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       const res = await fetch(url.toString(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, phone, password }),
+        body: JSON.stringify({ name, email, phone, password, privacyConsent: true }),
       });
 
       if (!res.ok) {
@@ -158,6 +159,28 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
   }, [token]);
 
+  const deleteAccount = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
+    if (!token) return { success: false, error: "Not logged in" };
+    try {
+      const baseUrl = getApiUrl();
+      const url = new URL("/api/customers/me", baseUrl);
+      const res = await fetch(url.toString(), {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const resp = await res.json();
+        return { success: false, error: resp.message || "Deletion failed" };
+      }
+      await AsyncStorage.removeItem(TOKEN_KEY);
+      setToken(null);
+      setCustomer(null);
+      return { success: true };
+    } catch {
+      return { success: false, error: "Connection error" };
+    }
+  }, [token]);
+
   const refreshProfile = useCallback(async () => {
     if (!token) return;
     const profile = await fetchProfile(token);
@@ -173,9 +196,10 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       register,
       logout,
       updateProfile,
+      deleteAccount,
       refreshProfile,
     }),
-    [token, isLoading, customer, login, register, logout, updateProfile, refreshProfile]
+    [token, isLoading, customer, login, register, logout, updateProfile, deleteAccount, refreshProfile]
   );
 
   return (

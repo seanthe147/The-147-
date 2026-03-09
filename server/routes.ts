@@ -1248,9 +1248,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.setHeader("Retry-After", String(rateCheck.retryAfter));
       return res.status(429).json({ message: "Too many attempts. Please try again later." });
     }
-    const { name, email, phone, password } = req.body;
+    const { name, email, phone, password, privacyConsent } = req.body;
     if (!name || !email || !password) {
       return res.status(400).json({ message: "Name, email, and password are required" });
+    }
+    if (!privacyConsent) {
+      return res.status(400).json({ message: "You must agree to the Privacy Policy to create an account" });
     }
     if (password.length < 6) {
       return res.status(400).json({ message: "Password must be at least 6 characters" });
@@ -1340,6 +1343,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(404).json({ message: "Account not found" });
     }
     res.json({ id: updated.id, name: updated.name, email: updated.email, phone: updated.phone });
+  });
+
+  app.delete("/api/customers/me", customerAuth, async (req, res) => {
+    const customerId = (req as any).customerId;
+    const email = (req as any).customerEmail;
+    const bookingsDeleted = await storage.deleteBookingsByEmail(email);
+    const deleted = await storage.deleteCustomer(customerId);
+    if (!deleted) {
+      return res.status(404).json({ message: "Account not found" });
+    }
+    res.json({
+      success: true,
+      message: "Account and all associated data permanently deleted under UK GDPR Article 17",
+      bookingsDeleted,
+    });
   });
 
   app.get("/api/customers/bookings", customerAuth, async (req, res) => {

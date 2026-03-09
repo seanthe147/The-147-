@@ -68,7 +68,7 @@ export default function PrivacyPolicyScreen() {
           <Text style={styles.topBadgeText}>UK GDPR Compliant</Text>
         </View>
 
-        <Text style={styles.lastUpdated}>Last Updated: February 2026</Text>
+        <Text style={styles.lastUpdated}>Last Updated: March 2026</Text>
 
         <Section title="1. Who We Are">
           <Text style={styles.bodyText}>
@@ -110,6 +110,14 @@ export default function PrivacyPolicyScreen() {
               then automatically deleted.
             </Text>
             <Text style={styles.bulletItem}>
+              Customer accounts: If you create an account, we store your name,
+              email address, phone number (optional), and a securely hashed
+              password. Your password is never stored in plain text. Account
+              data is retained until you delete your account. You can delete
+              your account and all associated data at any time from the
+              My Account screen.
+            </Text>
+            <Text style={styles.bulletItem}>
               Food and drink ordering: Ordering is provided through OrderTab
               (ordertab.menu) embedded within the app. Their privacy policy
               applies to those transactions.
@@ -130,8 +138,9 @@ export default function PrivacyPolicyScreen() {
           </Text>
           <View style={styles.bulletList}>
             <Text style={styles.bulletItem}>
-              Contract: Processing booking data (name, email, phone) is necessary
-              to fulfil your table reservation request (Article 6(1)(b)).
+              Contract: Processing booking data (name, email, phone) and
+              customer account data is necessary to fulfil your table
+              reservation request and manage your account (Article 6(1)(b)).
             </Text>
             <Text style={styles.bulletItem}>
               Consent: When you submit the contact form, we process your data
@@ -232,6 +241,13 @@ export default function PrivacyPolicyScreen() {
             contacting us.
           </Text>
           <Text style={styles.bodyText}>
+            Customer account data (name, email, phone, hashed password) is
+            retained until you delete your account. You can delete your account
+            and all associated data at any time from the My Account screen.
+            Upon deletion, all personal data including booking history is
+            permanently removed.
+          </Text>
+          <Text style={styles.bodyText}>
             Push notification device tokens are retained until you unsubscribe
             or uninstall the app.
           </Text>
@@ -245,10 +261,24 @@ export default function PrivacyPolicyScreen() {
         <Section title="7. Data Security">
           <Text style={styles.bodyText}>
             We implement appropriate technical and organisational measures to
-            protect your data, in line with Article 32 of the UK GDPR. This
-            includes encrypted connections (HTTPS) for all data transfers and
-            local-only storage of app preferences.
+            protect your data, in line with Article 32 of the UK GDPR.
+            This includes:
           </Text>
+          <View style={styles.bulletList}>
+            <Text style={styles.bulletItem}>
+              Encrypted connections (HTTPS) for all data transfers
+            </Text>
+            <Text style={styles.bulletItem}>
+              Field-level encryption (AES-256-GCM) for booking personal data
+            </Text>
+            <Text style={styles.bulletItem}>
+              Secure password hashing (scrypt) for customer accounts — your
+              password is never stored in readable form
+            </Text>
+            <Text style={styles.bulletItem}>
+              Local-only storage of app preferences and consent choices
+            </Text>
+          </View>
         </Section>
 
         <Section title="8. Children's Privacy">

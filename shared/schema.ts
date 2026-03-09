@@ -153,6 +153,7 @@ export const customers = pgTable("customers", {
   name: text("name").notNull(),
   phone: text("phone"),
   passwordHash: text("password_hash").notNull(),
+  privacyConsentAt: timestamp("privacy_consent_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

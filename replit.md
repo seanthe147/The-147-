@@ -179,3 +179,10 @@ Mobile app for The 147 (www.the147.co.uk) - a snooker venue, bar, and restaurant
 - Mar 2026: Account screen (app/account.tsx) - login/register forms, profile editing, booking history with cancel
 - Mar 2026: Booking form auto-fills name, email, phone when customer is logged in
 - Mar 2026: Account button added to home screen hero bar (person icon, top right)
+- Mar 2026: GDPR compliance audit and hardening:
+  - Registration requires privacy consent checkbox (enforced client + server side)
+  - Privacy consent timestamp stored in customers table (privacyConsentAt)
+  - Delete Account feature (DELETE /api/customers/me) - removes account + all booking data (GDPR Art 17)
+  - Privacy policy updated: customer accounts, AES-256-GCM encryption, scrypt password hashing
+  - Account screen has Data & Privacy section with privacy policy link and delete account button
+  - Guest booking still works without creating an account

@@ -38,7 +38,7 @@ interface CustomerBooking {
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const { isAuthenticated, isLoading: authLoading, customer, login, register, logout, updateProfile } = useCustomerAuth();
+  const { isAuthenticated, isLoading: authLoading, customer, login, register, logout, updateProfile, deleteAccount } = useCustomerAuth();
 
   if (authLoading) {
     return (
@@ -58,7 +58,7 @@ export default function AccountScreen() {
         <View style={{ width: 40 }} />
       </View>
       {isAuthenticated && customer ? (
-        <LoggedInView customer={customer} logout={logout} updateProfile={updateProfile} />
+        <LoggedInView customer={customer} logout={logout} updateProfile={updateProfile} deleteAccount={deleteAccount} />
       ) : (
         <AuthView login={login} register={register} />
       )}
@@ -77,6 +77,7 @@ function AuthView({ login, register }: {
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [privacyConsent, setPrivacyConsent] = useState(false);
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
@@ -99,6 +100,10 @@ function AuthView({ login, register }: {
     }
     if (password.length < 6) {
       setError("Password must be at least 6 characters");
+      return;
+    }
+    if (!privacyConsent) {
+      setError("You must agree to the Privacy Policy to create an account");
       return;
     }
     setLoading(true);
@@ -180,6 +185,25 @@ function AuthView({ login, register }: {
         testID="auth-password"
       />
 
+      {mode === "register" && (
+        <Pressable
+          onPress={() => setPrivacyConsent(!privacyConsent)}
+          style={styles.consentRow}
+          testID="privacy-consent"
+        >
+          <View style={[styles.consentCheckbox, privacyConsent && styles.consentCheckboxChecked]}>
+            {privacyConsent && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
+          </View>
+          <Text style={styles.consentText}>
+            I agree to the{" "}
+            <Text style={styles.consentLink} onPress={() => router.push("/privacy-policy")}>
+              Privacy Policy
+            </Text>
+            {" "}and consent to The 147 processing my personal data to manage my account. You can delete your account and all data at any time.
+          </Text>
+        </Pressable>
+      )}
+
       <Pressable
         onPress={mode === "login" ? handleLogin : handleRegister}
         disabled={loading}
@@ -210,10 +234,11 @@ function AuthView({ login, register }: {
   );
 }
 
-function LoggedInView({ customer, logout, updateProfile }: {
+function LoggedInView({ customer, logout, updateProfile, deleteAccount }: {
   customer: { id: number; name: string; email: string; phone: string | null };
   logout: () => Promise<void>;
   updateProfile: (data: { name?: string; phone?: string }) => Promise<{ success: boolean; error?: string }>;
+  deleteAccount: () => Promise<{ success: boolean; error?: string }>;
 }) {
   const [editingProfile, setEditingProfile] = useState(false);
   const [editName, setEditName] = useState(customer.name);
@@ -397,6 +422,51 @@ function LoggedInView({ customer, logout, updateProfile }: {
           ))}
         </>
       )}
+
+      <View style={styles.dangerZone}>
+        <Text style={styles.dangerTitle}>Data & Privacy</Text>
+        <Pressable
+          onPress={() => router.push("/privacy-policy")}
+          style={({ pressed }) => [styles.privacyLink, { opacity: pressed ? 0.7 : 1 }]}
+        >
+          <Ionicons name="shield-checkmark-outline" size={18} color={Colors.brand.blue} />
+          <Text style={styles.privacyLinkText}>View Privacy Policy</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => {
+            const doDelete = async () => {
+              const result = await deleteAccount();
+              if (!result.success) {
+                const msg = result.error || "Failed to delete account";
+                if (Platform.OS === "web") window.alert(msg);
+                else Alert.alert("Error", msg);
+              }
+            };
+            if (Platform.OS === "web") {
+              if (window.confirm("This will permanently delete your account and all associated booking data. This cannot be undone.\n\nAre you sure?")) {
+                doDelete();
+              }
+            } else {
+              Alert.alert(
+                "Delete Account",
+                "This will permanently delete your account and all associated booking data. This cannot be undone.",
+                [
+                  { text: "Cancel", style: "cancel" },
+                  { text: "Delete Everything", style: "destructive", onPress: doDelete },
+                ]
+              );
+            }
+          }}
+          style={({ pressed }) => [styles.deleteAccountButton, { opacity: pressed ? 0.7 : 1 }]}
+          testID="delete-account"
+        >
+          <Ionicons name="trash-outline" size={18} color="#DC2626" />
+          <Text style={styles.deleteAccountText}>Delete Account & All Data</Text>
+        </Pressable>
+        <Text style={styles.dangerNote}>
+          This permanently removes your account, booking history, and all personal data (UK GDPR Article 17).
+        </Text>
+      </View>
 
       <View style={{ height: 40 }} />
     </ScrollView>
@@ -730,5 +800,86 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 13,
     color: Colors.brand.red,
+  },
+  consentRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    marginTop: 8,
+    marginBottom: 4,
+    paddingVertical: 8,
+  },
+  consentCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: "#D1D5DB",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 1,
+  },
+  consentCheckboxChecked: {
+    backgroundColor: Colors.brand.blue,
+    borderColor: Colors.brand.blue,
+  },
+  consentText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    flex: 1,
+    lineHeight: 18,
+  },
+  consentLink: {
+    color: Colors.brand.blue,
+    fontFamily: "Montserrat_600SemiBold",
+  },
+  dangerZone: {
+    marginTop: 32,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+  },
+  dangerTitle: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 16,
+    color: Colors.light.text,
+    marginBottom: 12,
+  },
+  privacyLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: "#F0F7FF",
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  privacyLinkText: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 14,
+    color: Colors.brand.blue,
+  },
+  deleteAccountButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: "#FEF2F2",
+    borderRadius: 10,
+    marginBottom: 8,
+  },
+  deleteAccountText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: "#DC2626",
+  },
+  dangerNote: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 11,
+    color: Colors.light.textSecondary,
+    lineHeight: 16,
   },
 });
