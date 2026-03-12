@@ -65,11 +65,11 @@ function setupSecurityHeaders(app: express.Application) {
         "default-src 'self'; script-src 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data: blob:; frame-ancestors 'none'"
       );
     } else if (req.path === "/widget/booking") {
-      // Allow embedding in Wix sites — no X-Frame-Options, permissive frame-ancestors
+      // Allow embedding anywhere (public booking widget for Wix and other websites)
       res.removeHeader("X-Frame-Options");
       res.setHeader(
         "Content-Security-Policy",
-        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; frame-ancestors https://*.wix.com https://*.wixsite.com https://*.editorx.com https://*.wixstudio.io 'self'"
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; frame-ancestors *"
       );
     } else if (!req.path.startsWith("/api")) {
       res.setHeader("X-Frame-Options", "SAMEORIGIN");
