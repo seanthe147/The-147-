@@ -1401,6 +1401,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ success: true, booking: updated });
   });
 
+  // Booking widget — embeddable iframe for Wix and other websites
+  app.get("/widget/booking", (_req, res) => {
+    const widgetPath = path.resolve(process.cwd(), "server", "templates", "booking-widget.html");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.sendFile(widgetPath);
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
