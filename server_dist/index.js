@@ -2131,6 +2131,12 @@ function setupErrorHandler(app2) {
   setupSecurityHeaders(app);
   setupBodyParsing(app);
   setupRequestLogging(app);
+  const widgetHtmlPath = path2.resolve(process.cwd(), "server", "templates", "booking-widget.html");
+  const widgetHtml = fs2.readFileSync(widgetHtmlPath, "utf-8");
+  app.get("/widget/booking", (_req, res) => {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.status(200).send(widgetHtml);
+  });
   configureExpoAndLanding(app);
   const server = await registerRoutes(app);
   setupErrorHandler(app);

@@ -269,6 +269,14 @@ function setupErrorHandler(app: express.Application) {
   setupBodyParsing(app);
   setupRequestLogging(app);
 
+  // Widget route registered FIRST — before static file serving — so nothing intercepts it
+  const widgetHtmlPath = path.resolve(process.cwd(), "server", "templates", "booking-widget.html");
+  const widgetHtml = fs.readFileSync(widgetHtmlPath, "utf-8");
+  app.get("/widget/booking", (_req, res) => {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.status(200).send(widgetHtml);
+  });
+
   configureExpoAndLanding(app);
 
   const server = await registerRoutes(app);
