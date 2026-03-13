@@ -277,6 +277,14 @@ function setupErrorHandler(app: express.Application) {
     res.status(200).send(widgetHtml);
   });
 
+  // Privacy policy — public web page required for App Store listing
+  const privacyPolicyHtmlPath = path.resolve(process.cwd(), "server", "templates", "privacy-policy.html");
+  const privacyPolicyHtml = fs.readFileSync(privacyPolicyHtmlPath, "utf-8");
+  app.get("/privacy-policy", (_req, res) => {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.status(200).send(privacyPolicyHtml);
+  });
+
   configureExpoAndLanding(app);
 
   const server = await registerRoutes(app);
