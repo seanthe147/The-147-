@@ -4,6 +4,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import multer from "multer";
+import sharp from "sharp";
 import { storage } from "./storage";
 import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema } from "@shared/schema";
 import { hashPin, verifyPin } from "./encryption";
@@ -959,17 +960,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(images);
   });
 
-  app.post("/api/upload/banner", staffAuth, managerAuth, upload.single("image"), (req, res) => {
+  app.post("/api/upload/banner", staffAuth, managerAuth, upload.single("image"), async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ message: "No image file provided" });
     }
-    const mimeType = req.file.mimetype || "image/jpeg";
-    const base64 = req.file.buffer.toString("base64");
-    const imageUrl = `data:${mimeType};base64,${base64}`;
-    res.json({ imageUrl });
+    try {
+      const compressed = await sharp(req.file.buffer)
+        .resize({ width: 1000, withoutEnlargement: true })
+        .jpeg({ quality: 72, mozjpeg: true })
+        .toBuffer();
+      const imageUrl = `data:image/jpeg;base64,${compressed.toString("base64")}`;
+      res.json({ imageUrl });
+    } catch {
+      const base64 = req.file.buffer.toString("base64");
+      res.json({ imageUrl: `data:${req.file.mimetype};base64,${base64}` });
+    }
   });
 
-  app.post("/api/banner-images", staffAuth, managerAuth, async (req, res) => {
+  app.post("/api/banner-images", staffAuth, managerAuth, upload.single("image"), async (req, res) => {
+    if (req.file) {
+      try {
+        const compressed = await sharp(req.file.buffer)
+          .resize({ width: 1000, withoutEnlargement: true })
+          .jpeg({ quality: 72, mozjpeg: true })
+          .toBuffer();
+        const imageUrl = `data:image/jpeg;base64,${compressed.toString("base64")}`;
+        const sortOrder = parseInt(req.body.sortOrder ?? "0");
+        const active = req.body.active !== "false";
+        const image = await storage.createBannerImage({
+          imageUrl,
+          title: req.body.title?.trim() || null,
+          sortOrder: isNaN(sortOrder) ? 0 : sortOrder,
+          active,
+        });
+        return res.status(201).json(image);
+      } catch (err) {
+        return res.status(500).json({ message: "Image processing failed" });
+      }
+    }
     const parsed = insertBannerImageSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid banner image data", errors: parsed.error.flatten() });

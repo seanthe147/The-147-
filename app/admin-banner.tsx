@@ -137,24 +137,39 @@ export default function AdminBannerScreen() {
     }
     setSaving(true);
     try {
-      const imageUrl = await uploadImage();
-      if (!imageUrl) throw new Error("Upload failed");
-
       const maxOrder = bannerImages && bannerImages.length > 0
         ? Math.max(...bannerImages.map(b => b.sortOrder)) + 1
         : 0;
-      await apiRequest("POST", "/api/banner-images", {
-        imageUrl,
-        title: title.trim() || null,
-        sortOrder: maxOrder,
-        active: true,
-      });
+
+      const formData = new FormData();
+      if (Platform.OS === "web" && selectedFile) {
+        formData.append("image", selectedFile);
+      } else if (selectedImage) {
+        const filename = selectedImage.split("/").pop() || "image.jpg";
+        const match = /\.(\w+)$/.exec(filename);
+        const type = match ? `image/${match[1] === "jpg" ? "jpeg" : match[1]}` : "image/jpeg";
+        formData.append("image", { uri: selectedImage, name: filename, type } as any);
+      }
+      formData.append("title", title.trim());
+      formData.append("sortOrder", String(maxOrder));
+      formData.append("active", "true");
+
+      const baseUrl = getApiUrl();
+      const url = new URL("/api/banner-images", baseUrl).toString();
+      const headers: Record<string, string> = {};
+      const token = getStaffToken();
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      const res = await fetch(url, { method: "POST", body: formData, headers, credentials: "include" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: "Upload failed" }));
+        throw new Error(err.message || "Upload failed");
+      }
+
       setSelectedImage(null);
       setSelectedFile(null);
       setTitle("");
-      if (Platform.OS === "web" && fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      if (Platform.OS === "web" && fileInputRef.current) fileInputRef.current.value = "";
       await queryClient.refetchQueries({ queryKey: ["/api/banner-images/all"] });
       await queryClient.refetchQueries({ queryKey: ["/api/banner-images"] });
     } catch (e: any) {
