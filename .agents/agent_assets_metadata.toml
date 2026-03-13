@@ -1,0 +1,20 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "8Yf8r4nXxk7njTTcNeWAv"
+uri = "file://attached_assets/generated_images/screenshot_1_home.png"
+type = "image"
+title = "Screenshot 1 - Home Screen"
+
+[[outputs]]
+id = "pVxuHtSkgth2RS3ixxGHv"
+uri = "file://attached_assets/generated_images/screenshot_2_booking.png"
+type = "image"
+title = "Screenshot 2 - Table Booking"
+
+[[outputs]]
+id = "a-Qk9qvu-1lfFLQg2DA96"
+uri = "file://attached_assets/generated_images/screenshot_3_loyalty.png"
+type = "image"
+title = "Screenshot 3 - Loyalty & Events"
