@@ -18,3 +18,21 @@ id = "a-Qk9qvu-1lfFLQg2DA96"
 uri = "file://attached_assets/generated_images/screenshot_3_loyalty.png"
 type = "image"
 title = "Screenshot 3 - Loyalty & Events"
+
+[[outputs]]
+id = "l_kzigJ56Xd7KFwYyX7a9"
+uri = "file://attached_assets/generated_images/appstore-1-home.png"
+type = "image"
+title = "Screenshot 1 — Your Snooker Club, In Your Pocket"
+
+[[outputs]]
+id = "M2W3KtgtlNUqiiffQ4lHA"
+uri = "file://attached_assets/generated_images/appstore-2-booking.png"
+type = "image"
+title = "Screenshot 2 — Reserve Your Table in Seconds"
+
+[[outputs]]
+id = "sjkNo-Vbeomz0Oxf7amKg"
+uri = "file://attached_assets/generated_images/appstore-3-events.png"
+type = "image"
+title = "Screenshot 3 — Never Miss a Night Out"
