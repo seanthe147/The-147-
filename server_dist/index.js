@@ -756,6 +756,80 @@ async function sendOtpEmail(email, code) {
   console.log(`[LOYALTY OTP] Email: ${email} | Code: ${code} (RESEND_API_KEY not configured)`);
   return true;
 }
+async function sendBookingConfirmationEmail(booking) {
+  const resendKey = process.env.RESEND_API_KEY;
+  const tableNames = {
+    snooker: "Snooker Table",
+    pool: "Pool Table",
+    "american-pool": "American Pool Table",
+    darts: "Darts Lane",
+    shuffleboard: "Shuffleboard"
+  };
+  const tableName = tableNames[booking.tableType] || booking.tableType;
+  const tableDisplay = booking.tableNumber ? `${tableName} #${booking.tableNumber}` : tableName;
+  const dateObj = /* @__PURE__ */ new Date(booking.date + "T00:00:00");
+  const dateFormatted = dateObj.toLocaleDateString("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric"
+  });
+  const endHour = parseInt(booking.startTime.split(":")[0]) + booking.duration;
+  const endTime = `${endHour.toString().padStart(2, "0")}:00`;
+  const durationLabel = booking.duration === 1 ? "1 hour" : `${booking.duration} hours`;
+  const bookingRef = `147-${booking.id.toString().padStart(5, "0")}`;
+  const html = `<div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px; background: #ffffff;">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="color: #0A1628; font-size: 24px; margin: 0;">The 147</h1>
+      <p style="color: #6b7280; font-size: 13px; margin: 4px 0 0;">Snooker, Bar &amp; Restaurant</p>
+    </div>
+    <div style="background: #dcfce7; border-radius: 12px; padding: 16px; text-align: center; margin-bottom: 24px;">
+      <span style="font-size: 28px;">&#10003;</span>
+      <h2 style="color: #16A34A; font-size: 18px; margin: 8px 0 0;">Booking Confirmed</h2>
+    </div>
+    <p style="color: #374151; font-size: 15px;">Hi ${booking.customerName},</p>
+    <p style="color: #374151; font-size: 15px;">Your booking at The 147 has been confirmed. Here are your details:</p>
+    <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; margin: 20px 0;">
+      <table style="width: 100%; border-collapse: collapse;">
+        <tr><td style="padding: 8px 0; color: #6b7280; font-size: 13px; font-weight: 600;">Booking Ref</td><td style="padding: 8px 0; color: #0047AB; font-size: 15px; font-weight: 700; text-align: right;">${bookingRef}</td></tr>
+        <tr><td style="padding: 8px 0; color: #6b7280; font-size: 13px; font-weight: 600;">Table</td><td style="padding: 8px 0; color: #0A1628; font-size: 14px; font-weight: 600; text-align: right;">${tableDisplay}</td></tr>
+        <tr><td style="padding: 8px 0; color: #6b7280; font-size: 13px; font-weight: 600;">Date</td><td style="padding: 8px 0; color: #0A1628; font-size: 14px; font-weight: 600; text-align: right;">${dateFormatted}</td></tr>
+        <tr><td style="padding: 8px 0; color: #6b7280; font-size: 13px; font-weight: 600;">Time</td><td style="padding: 8px 0; color: #0A1628; font-size: 14px; font-weight: 600; text-align: right;">${booking.startTime} - ${endTime} (${durationLabel})</td></tr>
+      </table>
+    </div>
+    <p style="color: #374151; font-size: 14px;">Please arrive 5 minutes before your slot. If you need to cancel or change your booking, please contact us.</p>
+    <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 12px; text-align: center;">The 147 &mdash; Snooker, Bar &amp; Restaurant<br/>www.the147.co.uk</p>
+  </div>`;
+  if (resendKey) {
+    try {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${resendKey}`
+        },
+        body: JSON.stringify({
+          from: "The 147 <onboarding@resend.dev>",
+          to: booking.customerEmail,
+          subject: `Booking Confirmed - ${tableDisplay} on ${dateFormatted}`,
+          html
+        })
+      });
+      if (response.ok) {
+        console.log(`[BOOKING] Confirmation email sent to ${booking.customerEmail} for booking #${booking.id}`);
+        return true;
+      }
+      console.error("[BOOKING] Resend email error:", await response.text());
+      return false;
+    } catch (err) {
+      console.error("[BOOKING] Resend email send error:", err);
+      return false;
+    }
+  }
+  console.warn(`[BOOKING] Confirmation email skipped for booking #${booking.id} to ${booking.customerEmail} \u2014 RESEND_API_KEY not configured`);
+  return false;
+}
 function getClientIp(req) {
   return req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
 }
@@ -1199,6 +1273,16 @@ async function registerRoutes(app2) {
       }
     }
     const booking = await storage.createBooking(parsed.data);
+    sendBookingConfirmationEmail({
+      customerName: parsed.data.customerName,
+      customerEmail: parsed.data.customerEmail,
+      tableType: parsed.data.tableType,
+      tableNumber: parsed.data.tableNumber,
+      date: parsed.data.date,
+      startTime: parsed.data.startTime,
+      duration: parsed.data.duration ?? 1,
+      id: booking.id
+    }).catch((err) => console.error("[BOOKING] Email send error:", err));
     res.status(201).json(booking);
   });
   app2.get("/api/bookings/availability", async (req, res) => {

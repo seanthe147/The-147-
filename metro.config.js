@@ -16,7 +16,8 @@ config.resolver = {
       : config.resolver?.blockList
         ? [config.resolver.blockList]
         : []),
-    new RegExp(path.resolve(__dirname, ".local/state/workflow-logs") + "/.*"),
+    // Exclude the entire .local directory (skills temp files, workflow logs, etc.)
+    new RegExp(path.resolve(__dirname, ".local") + "/.*"),
   ],
 };
 
