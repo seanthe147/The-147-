@@ -36,3 +36,21 @@ id = "sjkNo-Vbeomz0Oxf7amKg"
 uri = "file://attached_assets/generated_images/appstore-3-events.png"
 type = "image"
 title = "Screenshot 3 — Never Miss a Night Out"
+
+[[outputs]]
+id = "c3suERNG0mpvWRCtx6Ili"
+uri = "file://attached_assets/generated_images/final-1-home-1284x2778.png"
+type = "image"
+title = "Screenshot 1 — Home (1284 × 2778px)"
+
+[[outputs]]
+id = "-cWjJPFLIOR5JGWXNmkMM"
+uri = "file://attached_assets/generated_images/final-2-booking-1284x2778.png"
+type = "image"
+title = "Screenshot 2 — Booking (1284 × 2778px)"
+
+[[outputs]]
+id = "rj7FnhheAWH6qSb6lSuYr"
+uri = "file://attached_assets/generated_images/final-3-events-1284x2778.png"
+type = "image"
+title = "Screenshot 3 — Events (1284 × 2778px)"
