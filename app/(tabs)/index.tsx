@@ -31,7 +31,7 @@ const logoImage = require("@/assets/images/logo-147.png");
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 function resolveImageUrl(path: string): string {
-  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+  if (path.startsWith("http://") || path.startsWith("https://") || path.startsWith("data:")) return path;
   const base = getApiUrl();
   return new URL(path, base).toString();
 }
