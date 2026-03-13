@@ -325,7 +325,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllStaffUsers(): Promise<StaffUser[]> {
-    return db.select().from(staffUsers).where(eq(staffUsers.active, true));
+    return db.select().from(staffUsers).orderBy(staffUsers.createdAt);
+  }
+
+  async setStaffActive(id: number, active: boolean): Promise<StaffUser | undefined> {
+    const [updated] = await db.update(staffUsers)
+      .set({ active })
+      .where(eq(staffUsers.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteStaffUser(id: number): Promise<boolean> {
+    const [deleted] = await db.delete(staffUsers).where(eq(staffUsers.id, id)).returning();
+    return !!deleted;
   }
 
   async updateStaffRole(username: string, newRole: string): Promise<StaffUser | undefined> {

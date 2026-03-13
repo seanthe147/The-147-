@@ -8,6 +8,8 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  TextInput,
+  Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -36,7 +38,13 @@ export default function AdminStaffScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { isAuthenticated, isLoading: authLoading, username: currentUsername, isOwner } = useStaffAuth();
-  const [updatingUser, setUpdatingUser] = useState<string | null>(null);
+
+  const [updatingUser, setUpdatingUser] = useState<number | null>(null);
+  const [resetPinUserId, setResetPinUserId] = useState<number | null>(null);
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [pinError, setPinError] = useState("");
+  const [pinSaving, setPinSaving] = useState(false);
 
   const { data: staffUsers, isLoading } = useQuery<StaffUser[]>({
     queryKey: ["/api/staff/users"],
@@ -55,23 +63,19 @@ export default function AdminStaffScreen() {
     return null;
   }
 
+  const resetPinUser = staffUsers?.find(u => u.id === resetPinUserId);
+
   const handleRoleChange = (user: StaffUser, newRole: string) => {
     if (user.username === currentUsername) {
       const msg = "You cannot change your own role";
       Platform.OS === "web" ? window.alert(msg) : Alert.alert("Error", msg);
       return;
     }
-
     const doUpdate = async () => {
-      setUpdatingUser(user.username);
+      setUpdatingUser(user.id);
       try {
-        await apiRequest("PATCH", "/api/staff/update-role", {
-          username: user.username,
-          role: newRole,
-        });
+        await apiRequest("PATCH", "/api/staff/update-role", { username: user.username, role: newRole });
         await queryClient.refetchQueries({ queryKey: ["/api/staff/users"] });
-        const msg = `${user.displayName || user.username} is now ${newRole}`;
-        Platform.OS === "web" ? window.alert(msg) : Alert.alert("Updated", msg);
       } catch (e: any) {
         const msg = e?.message || "Failed to update role";
         Platform.OS === "web" ? window.alert(msg) : Alert.alert("Error", msg);
@@ -79,19 +83,110 @@ export default function AdminStaffScreen() {
         setUpdatingUser(null);
       }
     };
-
     const roleName = ROLES.find(r => r.value === newRole)?.label || newRole;
     if (Platform.OS === "web") {
       if (window.confirm(`Change ${user.displayName || user.username}'s role to ${roleName}?`)) doUpdate();
     } else {
+      Alert.alert("Change Role", `Change ${user.displayName || user.username}'s role to ${roleName}?`, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Confirm", onPress: doUpdate },
+      ]);
+    }
+  };
+
+  const handleToggleLock = (user: StaffUser) => {
+    if (user.username === currentUsername) {
+      const msg = "You cannot lock your own account";
+      Platform.OS === "web" ? window.alert(msg) : Alert.alert("Error", msg);
+      return;
+    }
+    const willLock = user.active;
+    const doToggle = async () => {
+      setUpdatingUser(user.id);
+      try {
+        await apiRequest("PATCH", "/api/staff/toggle-active", { id: user.id, active: !user.active });
+        await queryClient.refetchQueries({ queryKey: ["/api/staff/users"] });
+      } catch (e: any) {
+        const msg = e?.message || "Failed to update account";
+        Platform.OS === "web" ? window.alert(msg) : Alert.alert("Error", msg);
+      } finally {
+        setUpdatingUser(null);
+      }
+    };
+    const name = user.displayName || user.username;
+    if (Platform.OS === "web") {
+      if (window.confirm(willLock ? `Lock ${name}'s account? They won't be able to sign in.` : `Unlock ${name}'s account?`)) doToggle();
+    } else {
       Alert.alert(
-        "Change Role",
-        `Change ${user.displayName || user.username}'s role to ${roleName}?`,
+        willLock ? "Lock Account" : "Unlock Account",
+        willLock ? `Lock ${name}'s account? They won't be able to sign in until unlocked.` : `Unlock ${name}'s account?`,
         [
           { text: "Cancel", style: "cancel" },
-          { text: "Confirm", onPress: doUpdate },
+          { text: willLock ? "Lock" : "Unlock", style: willLock ? "destructive" : "default", onPress: doToggle },
         ]
       );
+    }
+  };
+
+  const handleDelete = (user: StaffUser) => {
+    if (user.username === currentUsername) {
+      const msg = "You cannot delete your own account";
+      Platform.OS === "web" ? window.alert(msg) : Alert.alert("Error", msg);
+      return;
+    }
+    const doDelete = async () => {
+      setUpdatingUser(user.id);
+      try {
+        await apiRequest("DELETE", `/api/staff/${user.id}`);
+        await queryClient.refetchQueries({ queryKey: ["/api/staff/users"] });
+      } catch (e: any) {
+        const msg = e?.message || "Failed to delete account";
+        Platform.OS === "web" ? window.alert(msg) : Alert.alert("Error", msg);
+      } finally {
+        setUpdatingUser(null);
+      }
+    };
+    const name = user.displayName || user.username;
+    if (Platform.OS === "web") {
+      if (window.confirm(`Permanently delete ${name}'s account? This cannot be undone.`)) doDelete();
+    } else {
+      Alert.alert("Delete Account", `Permanently delete ${name}'s account? This cannot be undone.`, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: doDelete },
+      ]);
+    }
+  };
+
+  const openResetPin = (user: StaffUser) => {
+    setResetPinUserId(user.id);
+    setNewPin("");
+    setConfirmPin("");
+    setPinError("");
+  };
+
+  const handleResetPin = async () => {
+    if (!newPin || newPin.length < 4 || newPin.length > 8 || !/^\d+$/.test(newPin)) {
+      setPinError("PIN must be 4–8 digits");
+      return;
+    }
+    if (newPin !== confirmPin) {
+      setPinError("PINs do not match");
+      return;
+    }
+    setPinSaving(true);
+    setPinError("");
+    try {
+      await apiRequest("POST", "/api/staff/reset-pin", {
+        username: resetPinUser?.username,
+        newPin,
+      });
+      setResetPinUserId(null);
+      const msg = `PIN updated for ${resetPinUser?.displayName || resetPinUser?.username}`;
+      Platform.OS === "web" ? window.alert(msg) : Alert.alert("Done", msg);
+    } catch (e: any) {
+      setPinError(e?.message || "Failed to reset PIN");
+    } finally {
+      setPinSaving(false);
     }
   };
 
@@ -105,15 +200,12 @@ export default function AdminStaffScreen() {
         <View style={{ width: 28 }} />
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-      >
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         <View style={styles.section}>
           <Ionicons name="people" size={32} color="#F59E0B" />
           <Text style={styles.sectionTitle}>Manage Team</Text>
           <Text style={styles.sectionDesc}>
-            View staff accounts and manage their permissions. Only owners can change roles.
+            View all staff accounts, change roles, reset PINs, lock or delete accounts.
           </Text>
         </View>
 
@@ -128,22 +220,32 @@ export default function AdminStaffScreen() {
           staffUsers.map((user) => {
             const roleConfig = ROLES.find(r => r.value === user.role) || ROLES[0];
             const isSelf = user.username === currentUsername;
-            const isUpdating = updatingUser === user.username;
+            const isBusy = updatingUser === user.id;
+            const isLocked = !user.active;
 
             return (
-              <View key={user.id} style={[styles.userCard, isSelf && styles.userCardSelf]}>
+              <View key={user.id} style={[styles.userCard, isSelf && styles.userCardSelf, isLocked && styles.userCardLocked]}>
                 <View style={styles.userHeader}>
-                  <View style={[styles.userIconWrap, { backgroundColor: roleConfig.color + "15" }]}>
-                    <Ionicons name={roleConfig.icon} size={22} color={roleConfig.color} />
+                  <View style={[styles.userIconWrap, { backgroundColor: isLocked ? "#9CA3AF15" : roleConfig.color + "15" }]}>
+                    <Ionicons
+                      name={isLocked ? "lock-closed" : roleConfig.icon}
+                      size={22}
+                      color={isLocked ? "#9CA3AF" : roleConfig.color}
+                    />
                   </View>
                   <View style={styles.userInfo}>
                     <View style={styles.userNameRow}>
-                      <Text style={styles.userName}>
+                      <Text style={[styles.userName, isLocked && styles.lockedText]}>
                         {user.displayName || user.username}
                       </Text>
                       {isSelf && (
                         <View style={styles.youBadge}>
                           <Text style={styles.youBadgeText}>You</Text>
+                        </View>
+                      )}
+                      {isLocked && (
+                        <View style={styles.lockedBadge}>
+                          <Text style={styles.lockedBadgeText}>Locked</Text>
                         </View>
                       )}
                     </View>
@@ -163,7 +265,7 @@ export default function AdminStaffScreen() {
                         <Pressable
                           key={r.value}
                           onPress={() => !isSelf && !isActive && handleRoleChange(user, r.value)}
-                          disabled={isSelf || isActive || isUpdating}
+                          disabled={isSelf || isActive || isBusy}
                           style={({ pressed }) => [
                             styles.roleButton,
                             isActive && { backgroundColor: r.color + "15", borderColor: r.color },
@@ -171,7 +273,7 @@ export default function AdminStaffScreen() {
                             pressed && !isSelf && !isActive ? { opacity: 0.7 } : null,
                           ]}
                         >
-                          {isUpdating && !isActive ? (
+                          {isBusy && !isActive ? (
                             <ActivityIndicator size="small" color={r.color} />
                           ) : (
                             <Ionicons name={r.icon} size={14} color={isActive ? r.color : Colors.light.textSecondary} />
@@ -184,6 +286,51 @@ export default function AdminStaffScreen() {
                     })}
                   </View>
                 </View>
+
+                {!isSelf && (
+                  <View style={styles.actionsRow}>
+                    <Pressable
+                      onPress={() => openResetPin(user)}
+                      disabled={isBusy}
+                      style={({ pressed }) => [styles.actionBtn, styles.actionBtnPrimary, { opacity: pressed ? 0.7 : 1 }]}
+                    >
+                      <Ionicons name="key-outline" size={15} color={Colors.brand.blue} />
+                      <Text style={[styles.actionBtnText, { color: Colors.brand.blue }]}>Reset PIN</Text>
+                    </Pressable>
+
+                    <Pressable
+                      onPress={() => handleToggleLock(user)}
+                      disabled={isBusy}
+                      style={({ pressed }) => [
+                        styles.actionBtn,
+                        isLocked ? styles.actionBtnSuccess : styles.actionBtnWarning,
+                        { opacity: pressed ? 0.7 : 1 },
+                      ]}
+                    >
+                      {isBusy ? (
+                        <ActivityIndicator size="small" color={isLocked ? Colors.brand.green : "#D97706"} />
+                      ) : (
+                        <Ionicons
+                          name={isLocked ? "lock-open-outline" : "lock-closed-outline"}
+                          size={15}
+                          color={isLocked ? Colors.brand.green : "#D97706"}
+                        />
+                      )}
+                      <Text style={[styles.actionBtnText, { color: isLocked ? Colors.brand.green : "#D97706" }]}>
+                        {isLocked ? "Unlock" : "Lock"}
+                      </Text>
+                    </Pressable>
+
+                    <Pressable
+                      onPress={() => handleDelete(user)}
+                      disabled={isBusy}
+                      style={({ pressed }) => [styles.actionBtn, styles.actionBtnDanger, { opacity: pressed ? 0.7 : 1 }]}
+                    >
+                      <Ionicons name="trash-outline" size={15} color={Colors.brand.red} />
+                      <Text style={[styles.actionBtnText, { color: Colors.brand.red }]}>Delete</Text>
+                    </Pressable>
+                  </View>
+                )}
               </View>
             );
           })
@@ -191,21 +338,88 @@ export default function AdminStaffScreen() {
 
         <View style={{ height: Platform.OS === "web" ? 50 : insets.bottom + 20 }} />
       </ScrollView>
+
+      <Modal
+        visible={resetPinUserId !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setResetPinUserId(null)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setResetPinUserId(null)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <View style={styles.modalHeader}>
+              <Ionicons name="key" size={22} color={Colors.brand.blue} />
+              <Text style={styles.modalTitle}>Reset PIN</Text>
+              <Pressable onPress={() => setResetPinUserId(null)} hitSlop={12}>
+                <Ionicons name="close" size={22} color={Colors.light.textSecondary} />
+              </Pressable>
+            </View>
+
+            <Text style={styles.modalSubtitle}>
+              Set a new PIN for <Text style={styles.modalUsername}>{resetPinUser?.displayName || resetPinUser?.username}</Text>
+            </Text>
+
+            <Text style={styles.inputLabel}>NEW PIN</Text>
+            <TextInput
+              style={styles.pinInput}
+              value={newPin}
+              onChangeText={(t) => { setNewPin(t); setPinError(""); }}
+              placeholder="4–8 digits"
+              placeholderTextColor={Colors.light.textSecondary}
+              keyboardType="number-pad"
+              secureTextEntry
+              maxLength={8}
+              autoFocus
+            />
+
+            <Text style={[styles.inputLabel, { marginTop: 12 }]}>CONFIRM PIN</Text>
+            <TextInput
+              style={styles.pinInput}
+              value={confirmPin}
+              onChangeText={(t) => { setConfirmPin(t); setPinError(""); }}
+              placeholder="Re-enter PIN"
+              placeholderTextColor={Colors.light.textSecondary}
+              keyboardType="number-pad"
+              secureTextEntry
+              maxLength={8}
+            />
+
+            {pinError ? (
+              <View style={styles.pinErrorRow}>
+                <Ionicons name="alert-circle" size={14} color={Colors.brand.red} />
+                <Text style={styles.pinErrorText}>{pinError}</Text>
+              </View>
+            ) : null}
+
+            <View style={styles.modalActions}>
+              <Pressable
+                onPress={() => setResetPinUserId(null)}
+                style={({ pressed }) => [styles.modalCancelBtn, { opacity: pressed ? 0.7 : 1 }]}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleResetPin}
+                disabled={pinSaving}
+                style={({ pressed }) => [styles.modalConfirmBtn, { opacity: pressed ? 0.7 : 1 }]}
+              >
+                {pinSaving ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.modalConfirmText}>Set PIN</Text>
+                )}
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: Colors.light.background,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: Colors.light.background,
-  },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: Colors.light.background },
+  container: { flex: 1, backgroundColor: Colors.light.background },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -215,46 +429,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.light.border,
   },
-  headerTitle: {
-    fontFamily: "Montserrat_700Bold",
-    fontSize: 18,
-    color: Colors.light.text,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-  },
-  section: {
-    alignItems: "center",
-    marginBottom: 24,
-    gap: 8,
-  },
-  sectionTitle: {
-    fontFamily: "Montserrat_700Bold",
-    fontSize: 22,
-    color: Colors.light.text,
-    marginTop: 4,
-  },
-  sectionDesc: {
-    fontFamily: "Montserrat_400Regular",
-    fontSize: 14,
-    color: Colors.light.textSecondary,
-    textAlign: "center",
-    lineHeight: 20,
-  },
-  emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 32,
-    gap: 6,
-  },
-  emptyText: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 15,
-    color: Colors.light.textSecondary,
-  },
+  headerTitle: { fontFamily: "Montserrat_700Bold", fontSize: 18, color: Colors.light.text },
+  scrollView: { flex: 1 },
+  scrollContent: { padding: 20 },
+  section: { alignItems: "center", marginBottom: 24, gap: 8 },
+  sectionTitle: { fontFamily: "Montserrat_700Bold", fontSize: 22, color: Colors.light.text, marginTop: 4 },
+  sectionDesc: { fontFamily: "Montserrat_400Regular", fontSize: 14, color: Colors.light.textSecondary, textAlign: "center", lineHeight: 20 },
+  emptyState: { alignItems: "center", justifyContent: "center", paddingVertical: 32, gap: 6 },
+  emptyText: { fontFamily: "Montserrat_600SemiBold", fontSize: 15, color: Colors.light.textSecondary },
   userCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
@@ -263,75 +445,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.light.border,
   },
-  userCardSelf: {
-    borderColor: Colors.brand.gold + "40",
-    borderWidth: 2,
-  },
-  userHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 14,
-  },
-  userIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  userInfo: {
-    flex: 1,
-  },
-  userNameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  userName: {
-    fontFamily: "Montserrat_700Bold",
-    fontSize: 16,
-    color: Colors.light.text,
-  },
-  youBadge: {
-    backgroundColor: Colors.brand.blue + "15",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  youBadgeText: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 10,
-    color: Colors.brand.blue,
-  },
-  userUsername: {
-    fontFamily: "Montserrat_500Medium",
-    fontSize: 13,
-    color: Colors.light.textSecondary,
-    marginTop: 2,
-  },
-  userJoined: {
-    fontFamily: "Montserrat_400Regular",
-    fontSize: 11,
-    color: Colors.light.textSecondary,
-    marginTop: 2,
-  },
-  roleSection: {
-    borderTopWidth: 1,
-    borderTopColor: Colors.light.border,
-    paddingTop: 12,
-  },
-  roleLabel: {
-    fontFamily: "Montserrat_700Bold",
-    fontSize: 11,
-    color: Colors.light.textSecondary,
-    letterSpacing: 1,
-    marginBottom: 8,
-  },
-  roleButtons: {
-    flexDirection: "row",
-    gap: 8,
-  },
+  userCardSelf: { borderColor: Colors.brand.gold + "40", borderWidth: 2 },
+  userCardLocked: { opacity: 0.75, borderColor: "#E5E7EB" },
+  userHeader: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14 },
+  userIconWrap: { width: 48, height: 48, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  userInfo: { flex: 1 },
+  userNameRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  userName: { fontFamily: "Montserrat_700Bold", fontSize: 16, color: Colors.light.text },
+  lockedText: { color: "#9CA3AF" },
+  youBadge: { backgroundColor: Colors.brand.blue + "15", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
+  youBadgeText: { fontFamily: "Montserrat_600SemiBold", fontSize: 10, color: Colors.brand.blue },
+  lockedBadge: { backgroundColor: "#FEE2E2", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
+  lockedBadgeText: { fontFamily: "Montserrat_600SemiBold", fontSize: 10, color: Colors.brand.red },
+  userUsername: { fontFamily: "Montserrat_500Medium", fontSize: 13, color: Colors.light.textSecondary, marginTop: 2 },
+  userJoined: { fontFamily: "Montserrat_400Regular", fontSize: 11, color: Colors.light.textSecondary, marginTop: 2 },
+  roleSection: { borderTopWidth: 1, borderTopColor: Colors.light.border, paddingTop: 12 },
+  roleLabel: { fontFamily: "Montserrat_700Bold", fontSize: 11, color: Colors.light.textSecondary, letterSpacing: 1, marginBottom: 8 },
+  roleButtons: { flexDirection: "row", gap: 8 },
   roleButton: {
     flex: 1,
     flexDirection: "row",
@@ -344,9 +474,83 @@ const styles = StyleSheet.create({
     borderColor: Colors.light.border,
     backgroundColor: Colors.light.surface,
   },
-  roleButtonText: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 12,
-    color: Colors.light.textSecondary,
+  roleButtonText: { fontFamily: "Montserrat_600SemiBold", fontSize: 12, color: Colors.light.textSecondary },
+  actionsRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: Colors.light.border,
   },
+  actionBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingVertical: 9,
+    borderRadius: 10,
+    borderWidth: 1.5,
+  },
+  actionBtnPrimary: { borderColor: Colors.brand.blue + "40", backgroundColor: Colors.brand.blue + "08" },
+  actionBtnWarning: { borderColor: "#D97706" + "40", backgroundColor: "#D97706" + "08" },
+  actionBtnSuccess: { borderColor: Colors.brand.green + "40", backgroundColor: Colors.brand.green + "08" },
+  actionBtnDanger: { borderColor: Colors.brand.red + "40", backgroundColor: Colors.brand.red + "08" },
+  actionBtnText: { fontFamily: "Montserrat_600SemiBold", fontSize: 12 },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  modalCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 24,
+    width: "100%",
+    maxWidth: 400,
+  },
+  modalHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 },
+  modalTitle: { fontFamily: "Montserrat_700Bold", fontSize: 18, color: Colors.light.text, flex: 1 },
+  modalSubtitle: { fontFamily: "Montserrat_400Regular", fontSize: 14, color: Colors.light.textSecondary, marginBottom: 20, lineHeight: 20 },
+  modalUsername: { fontFamily: "Montserrat_700Bold", color: Colors.light.text },
+  inputLabel: { fontFamily: "Montserrat_700Bold", fontSize: 11, color: Colors.light.textSecondary, letterSpacing: 1, marginBottom: 6 },
+  pinInput: {
+    backgroundColor: Colors.light.surface,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Colors.light.border,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 18,
+    color: Colors.light.text,
+    letterSpacing: 4,
+  },
+  pinErrorRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 10 },
+  pinErrorText: { fontFamily: "Montserrat_500Medium", fontSize: 13, color: Colors.brand.red },
+  modalActions: { flexDirection: "row", gap: 10, marginTop: 20 },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Colors.light.border,
+    alignItems: "center",
+  },
+  modalCancelText: { fontFamily: "Montserrat_600SemiBold", fontSize: 15, color: Colors.light.textSecondary },
+  modalConfirmBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: Colors.brand.blue,
+    alignItems: "center",
+  },
+  modalConfirmText: { fontFamily: "Montserrat_700Bold", fontSize: 15, color: "#FFFFFF" },
+  ownerBadge: { backgroundColor: Colors.brand.gold + "15" },
+  managerBadge: { backgroundColor: "#7C3AED15" },
+  ownerBadgeText: { color: Colors.brand.gold },
+  managerBadgeText: { color: "#7C3AED" },
 });

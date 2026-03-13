@@ -573,6 +573,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ message: `Role updated to ${role} for ${updated.username}` });
   });
 
+  app.patch("/api/staff/toggle-active", staffAuth, ownerAuth, async (req, res) => {
+    const { id, active } = req.body;
+    if (typeof id !== "number" || typeof active !== "boolean") {
+      return res.status(400).json({ message: "id (number) and active (boolean) are required" });
+    }
+    const currentUser = (req as any).staffUsername;
+    const currentUserRecord = currentUser ? await storage.getStaffUserByUsername(currentUser) : null;
+    if (currentUserRecord && currentUserRecord.id === id) {
+      return res.status(400).json({ message: "You cannot lock your own account" });
+    }
+    const updated = await storage.setStaffActive(id, active);
+    if (!updated) return res.status(404).json({ message: "Staff user not found" });
+    res.json({ message: `Account ${active ? "unlocked" : "locked"} successfully`, user: { id: updated.id, username: updated.username, active: updated.active } });
+  });
+
+  app.delete("/api/staff/:id", staffAuth, ownerAuth, async (req, res) => {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const currentUser = (req as any).staffUsername;
+    const currentUserRecord = currentUser ? await storage.getStaffUserByUsername(currentUser) : null;
+    if (currentUserRecord && currentUserRecord.id === id) {
+      return res.status(400).json({ message: "You cannot delete your own account" });
+    }
+    const deleted = await storage.deleteStaffUser(id);
+    if (!deleted) return res.status(404).json({ message: "Staff user not found" });
+    res.json({ message: "Staff account deleted" });
+  });
+
   app.post("/api/staff/migrate-encryption", staffAuth, managerAuth, async (_req, res) => {
     try {
       const count = await storage.migrateEncryptExistingBookings();
