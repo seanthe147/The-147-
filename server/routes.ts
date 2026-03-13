@@ -15,14 +15,7 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, uploadsDir),
-    filename: (_req, file, cb) => {
-      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-      const ext = path.extname(file.originalname) || ".jpg";
-      cb(null, `banner-${uniqueSuffix}${ext}`);
-    },
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
@@ -78,42 +71,48 @@ function validateLoyaltySession(token: string): string | null {
 async function sendOtpEmail(email: string, code: string): Promise<boolean> {
   const resendKey = process.env.RESEND_API_KEY;
 
-  if (resendKey) {
-    try {
-      const response = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${resendKey}`,
-        },
-        body: JSON.stringify({
-          from: "The 147 <onboarding@resend.dev>",
-          to: email,
-          subject: "Your Loyalty Verification Code",
-          html: `<div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
-            <h2 style="color: #0A1628; margin-bottom: 8px;">The 147 Loyalty</h2>
-            <p style="color: #555; font-size: 15px;">Your verification code is:</p>
-            <div style="background: #F5F5F5; border-radius: 12px; padding: 24px; text-align: center; margin: 20px 0;">
-              <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #0047AB;">${code}</span>
-            </div>
-            <p style="color: #555; font-size: 14px;">This code expires in 5 minutes. If you didn't request this, you can safely ignore this email.</p>
-            <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
-            <p style="color: #999; font-size: 12px;">The 147 &mdash; Snooker, Bar &amp; Restaurant</p>
-          </div>`,
-        }),
-      });
-      if (response.ok) {
-        console.log(`[LOYALTY OTP] Email sent to ${email}`);
-        return true;
-      }
-      console.error("Resend email error:", await response.text());
-    } catch (err) {
-      console.error("Resend email send error:", err);
-    }
+  if (!resendKey) {
+    console.log(`[LOYALTY OTP] RESEND_API_KEY not configured. Email: ${email} | Code: ${code}`);
+    return false;
   }
 
-  console.log(`[LOYALTY OTP] Email: ${email} | Code: ${code} (RESEND_API_KEY not configured)`);
-  return true;
+  const fromEmail = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+  const fromName = process.env.RESEND_FROM_NAME || "The 147";
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${resendKey}`,
+      },
+      body: JSON.stringify({
+        from: `${fromName} <${fromEmail}>`,
+        to: email,
+        subject: "Your Loyalty Verification Code — The 147",
+        html: `<div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+          <h2 style="color: #0A1628; margin-bottom: 8px;">The 147 Loyalty</h2>
+          <p style="color: #555; font-size: 15px;">Your verification code is:</p>
+          <div style="background: #F5F5F5; border-radius: 12px; padding: 24px; text-align: center; margin: 20px 0;">
+            <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #0047AB;">${code}</span>
+          </div>
+          <p style="color: #555; font-size: 14px;">This code expires in 5 minutes. If you didn't request this, you can safely ignore this email.</p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+          <p style="color: #999; font-size: 12px;">The 147 &mdash; Snooker, Bar &amp; Restaurant</p>
+        </div>`,
+      }),
+    });
+    if (response.ok) {
+      console.log(`[LOYALTY OTP] Email sent to ${email}`);
+      return true;
+    }
+    const errorText = await response.text();
+    console.error(`[LOYALTY OTP] Resend API error (${response.status}): ${errorText}`);
+    return false;
+  } catch (err) {
+    console.error("[LOYALTY OTP] Email send exception:", err);
+    return false;
+  }
 }
 
 async function sendBookingConfirmationEmail(booking: {
@@ -964,7 +963,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.file) {
       return res.status(400).json({ message: "No image file provided" });
     }
-    const imageUrl = `/uploads/${req.file.filename}`;
+    const mimeType = req.file.mimetype || "image/jpeg";
+    const base64 = req.file.buffer.toString("base64");
+    const imageUrl = `data:${mimeType};base64,${base64}`;
     res.json({ imageUrl });
   });
 
@@ -1090,7 +1091,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     const code = generateOtp();
     loyaltyOtps.set(otpKey, { code, phone: phoneCleaned, expiresAt: Date.now() + OTP_EXPIRY, attempts: 0 });
-    await sendOtpEmail(emailClean, code);
+    const emailSent = await sendOtpEmail(emailClean, code);
+    if (!emailSent) {
+      loyaltyOtps.delete(otpKey);
+      return res.status(503).json({ message: "Unable to send verification email. Please check your email address and try again, or contact the venue directly." });
+    }
     res.json({ sent: true, expiresIn: OTP_EXPIRY / 1000 });
   });
 

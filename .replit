@@ -81,6 +81,8 @@ ensurePreviewReachable = "/status"
 
 [userenv.shared]
 SQUARE_ENVIRONMENT = "production"
+RESEND_FROM_EMAIL = "noreply@the147.co.uk"
+RESEND_FROM_NAME = "The 147"
 
 [postMerge]
 path = "scripts/post-merge.sh"
