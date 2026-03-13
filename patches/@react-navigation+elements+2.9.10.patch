@@ -1,0 +1,136 @@
+diff --git a/node_modules/@react-navigation/elements/lib/module/Header/Header.js b/node_modules/@react-navigation/elements/lib/module/Header/Header.js
+index db27170..8eeae54 100644
+--- a/node_modules/@react-navigation/elements/lib/module/Header/Header.js
++++ b/node_modules/@react-navigation/elements/lib/module/Header/Header.js
+@@ -244,8 +244,7 @@ export function Header(props) {
+     ...props
+   }) : customTitle;
+   return /*#__PURE__*/_jsxs(Animated.View, {
+-    pointerEvents: "box-none",
+-    style: [{
++    style: [{ pointerEvents: "box-none" }, {
+       height,
+       minHeight,
+       maxHeight,
+@@ -253,34 +252,27 @@ export function Header(props) {
+       transform
+     }],
+     children: [/*#__PURE__*/_jsx(Animated.View, {
+-      pointerEvents: "box-none",
+-      style: [StyleSheet.absoluteFill, backgroundContainerStyle],
++      style: [{ pointerEvents: "box-none" }, StyleSheet.absoluteFill, backgroundContainerStyle],
+       children: headerBackground ? headerBackground({
+         style: backgroundStyle
+       }) : /*#__PURE__*/_jsx(HeaderBackground, {
+-        pointerEvents:
+-        // Allow touch through the header when background color is transparent
+-        headerTransparent && (backgroundStyle.backgroundColor === 'transparent' || Color(backgroundStyle.backgroundColor).alpha() === 0) ? 'none' : 'auto',
+-        style: backgroundStyle
++        style: [{ pointerEvents: headerTransparent && (backgroundStyle.backgroundColor === 'transparent' || Color(backgroundStyle.backgroundColor).alpha() === 0) ? 'none' : 'auto' }, backgroundStyle]
+       })
+     }), /*#__PURE__*/_jsx(View, {
+-      pointerEvents: "none",
+       style: {
++        pointerEvents: "none",
+         height: headerStatusBarHeight
+       }
+     }), /*#__PURE__*/_jsxs(View, {
+-      pointerEvents: "box-none",
+-      style: [styles.content, Platform.OS === 'ios' && frame.width >= IPAD_MINI_MEDIUM_WIDTH ? styles.large : null],
++      style: [{ pointerEvents: "box-none" }, styles.content, Platform.OS === 'ios' && frame.width >= IPAD_MINI_MEDIUM_WIDTH ? styles.large : null],
+       children: [/*#__PURE__*/_jsx(Animated.View, {
+-        pointerEvents: "box-none",
+-        style: [styles.start, !searchBarVisible && headerTitleAlign === 'center' && styles.expand, {
++        style: [{ pointerEvents: "box-none" }, styles.start, !searchBarVisible && headerTitleAlign === 'center' && styles.expand, {
+           marginStart: insets.left
+         }, leftContainerStyle],
+         children: leftButton
+       }), Platform.OS === 'ios' || !searchBarVisible ? /*#__PURE__*/_jsxs(_Fragment, {
+         children: [/*#__PURE__*/_jsx(Animated.View, {
+-          pointerEvents: "box-none",
+-          style: [styles.title, {
++          style: [{ pointerEvents: "box-none" }, styles.title, {
+             // Avoid the title from going offscreen or overlapping buttons
+             maxWidth: headerTitleAlign === 'center' ? layout.width - ((leftButton ? headerBackButtonDisplayMode !== 'minimal' ? 80 : 32 : 16) + (rightButton || headerSearchBarOptions ? 16 : 0) + Math.max(insets.left, insets.right)) * 2 : layout.width - ((leftButton ? 52 : 16) + (rightButton || headerSearchBarOptions ? 52 : 16) + insets.left - insets.right)
+           }, headerTitleAlign === 'left' && leftButton ? {
+@@ -296,8 +288,7 @@ export function Header(props) {
+             style: titleStyle
+           })
+         }), /*#__PURE__*/_jsxs(Animated.View, {
+-          pointerEvents: "box-none",
+-          style: [styles.end, styles.expand, {
++          style: [{ pointerEvents: "box-none" }, styles.end, styles.expand, {
+             marginEnd: insets.right
+           }, rightContainerStyle],
+           children: [rightButton, headerSearchBarOptions ? /*#__PURE__*/_jsx(HeaderButton, {
+diff --git a/node_modules/@react-navigation/elements/lib/module/Header/HeaderSearchBar.js b/node_modules/@react-navigation/elements/lib/module/Header/HeaderSearchBar.js
+index c60c74f..3f6e021 100644
+--- a/node_modules/@react-navigation/elements/lib/module/Header/HeaderSearchBar.js
++++ b/node_modules/@react-navigation/elements/lib/module/Header/HeaderSearchBar.js
+@@ -125,10 +125,9 @@ function HeaderSearchBarInternal({
+   }
+   const textColor = tintColor ?? colors.text;
+   return /*#__PURE__*/_jsxs(Animated.View, {
+-    pointerEvents: visible ? 'auto' : 'none',
+     "aria-live": "polite",
+     "aria-hidden": !visible,
+-    style: [styles.container, {
++    style: [{ pointerEvents: visible ? 'auto' : 'none' }, styles.container, {
+       opacity: visibleAnim
+     }, style],
+     children: [/*#__PURE__*/_jsxs(View, {
+diff --git a/node_modules/@react-navigation/elements/lib/module/ResourceSavingView.js b/node_modules/@react-navigation/elements/lib/module/ResourceSavingView.js
+index eb063ab..a35bf97 100644
+--- a/node_modules/@react-navigation/elements/lib/module/ResourceSavingView.js
++++ b/node_modules/@react-navigation/elements/lib/module/ResourceSavingView.js
+@@ -17,26 +17,22 @@ export function ResourceSavingView({
+     , {
+       hidden: !visible,
+       style: [{
+-        display: visible ? 'flex' : 'none'
++        display: visible ? 'flex' : 'none',
++        pointerEvents: visible ? 'auto' : 'none'
+       }, styles.container, style],
+-      pointerEvents: visible ? 'auto' : 'none',
+       ...rest,
+       children: children
+     });
+   }
+   return /*#__PURE__*/_jsx(View, {
+-    style: [styles.container, style]
+-    // box-none doesn't seem to work properly on Android
+-    ,
+-    pointerEvents: visible ? 'auto' : 'none',
++    style: [{ pointerEvents: visible ? 'auto' : 'none' }, styles.container, style],
+     children: /*#__PURE__*/_jsx(View, {
+       collapsable: false,
+       removeClippedSubviews:
+       // On iOS & macOS, set removeClippedSubviews to true only when not focused
+       // This is an workaround for a bug where the clipped view never re-appears
+       Platform.OS === 'ios' || Platform.OS === 'macos' ? !visible : true,
+-      pointerEvents: visible ? 'auto' : 'none',
+-      style: visible ? styles.attached : styles.detached,
++      style: [{ pointerEvents: visible ? 'auto' : 'none' }, visible ? styles.attached : styles.detached],
+       children: children
+     })
+   });
+diff --git a/node_modules/@react-navigation/elements/lib/module/Screen.js b/node_modules/@react-navigation/elements/lib/module/Screen.js
+index 5a7086e..4f78fa6 100644
+--- a/node_modules/@react-navigation/elements/lib/module/Screen.js
++++ b/node_modules/@react-navigation/elements/lib/module/Screen.js
+@@ -46,14 +46,13 @@ export function Screen(props) {
+       navigation: navigation,
+       children: /*#__PURE__*/_jsx(View, {
+         ref: headerRef,
+-        pointerEvents: "box-none",
+         onLayout: e => {
+           const {
+             height
+           } = e.nativeEvent.layout;
+           setHeaderHeight(height);
+         },
+-        style: [styles.header, headerTransparent ? styles.absolute : null],
++        style: [{ pointerEvents: "box-none" }, styles.header, headerTransparent ? styles.absolute : null],
+         children: header
+       })
+     }) : null, /*#__PURE__*/_jsx(View, {

@@ -37,5 +37,13 @@ The application features a mobile frontend built with Expo React Native, utilizi
 - **TicketSource:** External integration for event listings (can be replaced by internal event management).
 - **OrderTab:** Embedded WebView for displaying the venue's menu and ordering system.
 - **Square POS Loyalty API:** Used for customer loyalty program management (account lookup, enrollment, points, rewards).
-- **Resend:** Email service for sending OTP verification codes for loyalty program authentication.
+- **Resend:** Email service for sending OTP verification codes for loyalty program authentication and booking confirmation emails.
 - **Google Fonts:** For the Montserrat typeface.
+
+## QA & Pre-Launch Notes
+- **Booking confirmation emails**: Sent automatically via Resend API when a booking is created. Email includes venue name, table details, date/time, duration, and booking reference (format: 147-XXXXX). Non-blocking — booking succeeds even if email fails.
+- **Shadow deprecation fixes**: All `shadow*` style props replaced with `boxShadow` string format; `textShadow*` props replaced with `textShadow` string format across component files.
+- **Package versions**: expo@~54.0.33, expo-glass-effect@~0.1.9, expo-router@~6.0.23.
+- **pointerEvents deprecation**: Fixed via patch-package patches for `@react-navigation/elements@2.9.10` and `@react-navigation/bottom-tabs@7.15.5`. The patches move `pointerEvents` from View props to `style.pointerEvents`. Patches are in `patches/` directory and applied automatically via postinstall.
+- **Metro watcher crash fix**: `metro.config.js` updated to exclude `.local/state/workflow-logs` from Metro's file watcher blockList, preventing ENOENT crashes when temporary workflow-log directories are created/deleted.
+- **STAFF_PIN**: Environment variable required for staff master PIN login (POST /api/staff/login).

@@ -1,0 +1,19 @@
+diff --git a/node_modules/@react-navigation/bottom-tabs/lib/module/views/BottomTabBar.js b/node_modules/@react-navigation/bottom-tabs/lib/module/views/BottomTabBar.js
+index bb2d9c7..8cda45a 100644
+--- a/node_modules/@react-navigation/bottom-tabs/lib/module/views/BottomTabBar.js
++++ b/node_modules/@react-navigation/bottom-tabs/lib/module/views/BottomTabBar.js
+@@ -251,12 +251,10 @@ export function BottomTabBar({
+       paddingBottom: tabBarPosition === 'bottom' ? insets.bottom : 0,
+       paddingTop: tabBarPosition === 'top' ? insets.top : 0,
+       paddingHorizontal: Math.max(insets.left, insets.right)
+-    }], tabBarStyle],
+-    pointerEvents: isTabBarHidden ? 'none' : 'auto',
++    }, { pointerEvents: isTabBarHidden ? 'none' : 'auto' }], tabBarStyle],
+     onLayout: sidebar ? undefined : handleLayout,
+     children: [/*#__PURE__*/_jsx(View, {
+-      pointerEvents: "none",
+-      style: StyleSheet.absoluteFill,
++      style: [{ pointerEvents: "none" }, StyleSheet.absoluteFill],
+       children: tabBarBackgroundElement
+     }), /*#__PURE__*/_jsx(View, {
+       role: "tablist",
