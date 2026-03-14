@@ -3,2099 +3,1121 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>The 147 - Staff Portal</title>
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>The 147 — Staff Portal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --blue: #0047AB;
-      --red: #DF3131;
-      --gold: #D4A843;
-      --navy: #0A1628;
-      --dark: #132742;
-      --green: #1B5E20;
-      --bg: #F8F9FB;
-      --surface: #FFFFFF;
-      --border: #E5E7EB;
-      --text: #1A1A2E;
-      --text-secondary: #6B7280;
-      --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
-      --shadow-lg: 0 10px 25px rgba(0,0,0,0.15);
-      --radius: 8px;
-      --radius-lg: 12px;
-    }
-
-    body {
-      font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      line-height: 1.5;
-      min-height: 100vh;
-    }
-
-    /* Login Screen */
-    .login-screen {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      background: linear-gradient(135deg, var(--navy) 0%, var(--dark) 100%);
-    }
-
-    .login-card {
-      background: var(--surface);
-      border-radius: var(--radius-lg);
-      padding: 48px 40px;
-      width: 100%;
-      max-width: 400px;
-      box-shadow: var(--shadow-lg);
-      text-align: center;
-    }
-
-    .login-brand {
-      font-size: 32px;
-      font-weight: 700;
-      color: var(--navy);
-      margin-bottom: 4px;
-    }
-
-    .login-brand span { color: var(--gold); }
-
-    .login-subtitle {
-      color: var(--text-secondary);
-      font-size: 14px;
-      margin-bottom: 32px;
-    }
-
-    .login-card label {
-      display: block;
-      text-align: left;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text-secondary);
-      margin-bottom: 6px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .login-card input[type="password"],
-    .login-card input[type="text"] {
-      width: 100%;
-      padding: 14px 16px;
-      border: 2px solid var(--border);
-      border-radius: var(--radius);
-      font-size: 20px;
-      font-family: inherit;
-      text-align: center;
-      letter-spacing: 8px;
-      transition: border-color 0.2s;
-      outline: none;
-    }
-
-    .login-card input[type="text"] {
-      font-size: 15px;
-      letter-spacing: normal;
-    }
-
-    .login-card input[type="password"]:focus,
-    .login-card input[type="text"]:focus {
-      border-color: var(--blue);
-    }
-
-    .login-error {
-      color: var(--red);
-      font-size: 13px;
-      margin-top: 8px;
-      min-height: 20px;
-      font-weight: 500;
-    }
-
-    .login-btn {
-      width: 100%;
-      padding: 14px;
-      background: var(--blue);
-      color: #fff;
-      border: none;
-      border-radius: var(--radius);
-      font-size: 15px;
-      font-weight: 600;
-      font-family: inherit;
-      cursor: pointer;
-      margin-top: 20px;
-      transition: background 0.2s, opacity 0.2s;
-    }
-
-    .login-btn:hover { background: #003A8C; }
-    .login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
-    /* Dashboard */
-    .dashboard { display: none; }
-
-    .header {
-      background: var(--navy);
-      color: #fff;
-      padding: 0 32px;
-      height: 64px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-    }
-
-    .header-title {
-      font-size: 20px;
-      font-weight: 700;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .header-title span { color: var(--gold); }
-
-    .logout-btn {
-      background: rgba(255,255,255,0.1);
-      color: #fff;
-      border: 1px solid rgba(255,255,255,0.2);
-      padding: 8px 20px;
-      border-radius: var(--radius);
-      font-size: 13px;
-      font-weight: 600;
-      font-family: inherit;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    .logout-btn:hover { background: rgba(255,255,255,0.2); }
-
-    .toolbar {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 24px 32px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 16px;
-    }
-
-    .date-nav {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .date-nav-btn {
-      width: 36px;
-      height: 36px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      background: var(--surface);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 18px;
-      color: var(--text);
-      transition: background 0.15s, border-color 0.15s;
-    }
-
-    .date-nav-btn:hover {
-      background: var(--bg);
-      border-color: var(--blue);
-      color: var(--blue);
-    }
-
-    .date-input {
-      padding: 8px 14px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      font-size: 15px;
-      font-family: inherit;
-      font-weight: 500;
-      color: var(--text);
-      background: var(--surface);
-      outline: none;
-      cursor: pointer;
-    }
-
-    .date-input:focus { border-color: var(--blue); }
-
-    .date-label {
-      font-size: 14px;
-      color: var(--text-secondary);
-      font-weight: 500;
-      margin-left: 8px;
-    }
-
-    .new-booking-btn {
-      padding: 10px 24px;
-      background: var(--blue);
-      color: #fff;
-      border: none;
-      border-radius: var(--radius);
-      font-size: 14px;
-      font-weight: 600;
-      font-family: inherit;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      transition: background 0.2s;
-    }
-
-    .new-booking-btn:hover { background: #003A8C; }
-
-    /* Content area */
-    .content {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 0 32px 48px;
-    }
-
-    /* Loading */
-    .loading-state {
-      text-align: center;
-      padding: 80px 20px;
-      color: var(--text-secondary);
-    }
-
-    .loading-spinner {
-      width: 36px;
-      height: 36px;
-      border: 3px solid var(--border);
-      border-top-color: var(--blue);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      margin: 0 auto 16px;
-    }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* Empty state */
-    .empty-state {
-      text-align: center;
-      padding: 80px 20px;
-    }
-
-    .empty-icon {
-      font-size: 48px;
-      margin-bottom: 16px;
-      opacity: 0.3;
-    }
-
-    .empty-title {
-      font-size: 18px;
-      font-weight: 600;
-      color: var(--text);
-      margin-bottom: 8px;
-    }
-
-    .empty-desc {
-      color: var(--text-secondary);
-      font-size: 14px;
-    }
-
-    /* Booking cards */
-    .bookings-list {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    .booking-card {
-      background: var(--surface);
-      border-radius: var(--radius-lg);
-      border: 1px solid var(--border);
-      border-left: 4px solid var(--blue);
-      box-shadow: var(--shadow);
-      padding: 20px 24px;
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 16px;
-      align-items: start;
-      transition: box-shadow 0.2s;
-    }
-
-    .booking-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-
-    .booking-card.cancelled {
-      border-left-color: #9CA3AF;
-      opacity: 0.6;
-    }
-
-    .booking-card.cancelled .booking-status { background: #F3F4F6; color: #6B7280; }
-
-    .booking-info { display: flex; flex-direction: column; gap: 8px; }
-
-    .booking-top-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    .booking-time {
-      font-size: 18px;
-      font-weight: 700;
-      color: var(--text);
-    }
-
-    .booking-duration {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--blue);
-      background: rgba(0,71,171,0.08);
-      padding: 3px 10px;
-      border-radius: 20px;
-    }
-
-    .booking-table {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--gold);
-      background: rgba(212,168,67,0.1);
-      padding: 3px 10px;
-      border-radius: 20px;
-      text-transform: capitalize;
-    }
-
-    .booking-status {
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      padding: 3px 10px;
-      border-radius: 20px;
-      background: rgba(0,71,171,0.08);
-      color: var(--blue);
-    }
-
-    .booking-customer {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      flex-wrap: wrap;
-      font-size: 14px;
-    }
-
-    .customer-name { font-weight: 600; color: var(--text); }
-    .customer-detail { color: var(--text-secondary); font-size: 13px; }
-
-    .booking-notes {
-      font-size: 13px;
-      color: var(--text-secondary);
-      font-style: italic;
-      background: #F9FAFB;
-      padding: 8px 12px;
-      border-radius: var(--radius);
-      border-left: 3px solid var(--gold);
-    }
-
-    .booking-actions {
-      display: flex;
-      gap: 8px;
-      align-items: flex-start;
-      flex-shrink: 0;
-    }
-
-    .btn-edit, .btn-cancel, .btn-delete {
-      padding: 8px 16px;
-      border-radius: var(--radius);
-      font-size: 12px;
-      font-weight: 600;
-      font-family: inherit;
-      cursor: pointer;
-      border: 1px solid;
-      transition: all 0.15s;
-    }
-
-    .btn-edit {
-      background: var(--surface);
-      color: var(--blue);
-      border-color: var(--blue);
-    }
-    .btn-edit:hover { background: rgba(0,71,171,0.05); }
-
-    .btn-cancel {
-      background: var(--surface);
-      color: var(--text-secondary);
-      border-color: var(--border);
-    }
-    .btn-cancel:hover { background: #F3F4F6; }
-
-    .btn-delete {
-      background: var(--surface);
-      color: var(--red);
-      border-color: var(--red);
-    }
-    .btn-delete:hover { background: rgba(223,49,49,0.05); }
-
-    /* Modal */
-    .modal-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(10,22,40,0.6);
-      z-index: 200;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      backdrop-filter: blur(4px);
-    }
-
-    .modal-overlay.active { display: flex; }
-
-    .modal {
-      background: var(--surface);
-      border-radius: var(--radius-lg);
-      width: 100%;
-      max-width: 560px;
-      max-height: 90vh;
-      overflow-y: auto;
-      box-shadow: var(--shadow-lg);
-    }
-
-    .modal-header {
-      padding: 24px 28px 0;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .modal-title {
-      font-size: 20px;
-      font-weight: 700;
-      color: var(--text);
-    }
-
-    .modal-close {
-      width: 36px;
-      height: 36px;
-      border: none;
-      background: none;
-      font-size: 22px;
-      color: var(--text-secondary);
-      cursor: pointer;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: background 0.15s;
-    }
-
-    .modal-close:hover { background: var(--bg); }
-
-    .modal-body { padding: 24px 28px; }
-
-    .form-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-    }
-
-    .form-group {
-      margin-bottom: 18px;
-    }
-
-    .form-group label {
-      display: block;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text);
-      margin-bottom: 6px;
-    }
-
-    .form-group input,
-    .form-group select,
-    .form-group textarea {
-      width: 100%;
-      padding: 10px 14px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      font-size: 14px;
-      font-family: inherit;
-      color: var(--text);
-      background: var(--surface);
-      outline: none;
-      transition: border-color 0.2s;
-    }
-
-    .form-group input:focus,
-    .form-group select:focus,
-    .form-group textarea:focus {
-      border-color: var(--blue);
-    }
-
-    .form-group textarea { resize: vertical; min-height: 70px; }
-
-    .form-checkbox {
-      display: flex;
-      align-items: flex-start;
-      gap: 10px;
-      margin-bottom: 18px;
-    }
-
-    .form-checkbox input[type="checkbox"] {
-      width: 18px;
-      height: 18px;
-      margin-top: 2px;
-      flex-shrink: 0;
-      accent-color: var(--blue);
-    }
-
-    .form-checkbox label {
-      font-size: 13px;
-      color: var(--text-secondary);
-      cursor: pointer;
-    }
-
-    .modal-error {
-      color: var(--red);
-      font-size: 13px;
-      font-weight: 500;
-      margin-bottom: 16px;
-      padding: 10px 14px;
-      background: rgba(223,49,49,0.06);
-      border-radius: var(--radius);
-      border: 1px solid rgba(223,49,49,0.15);
-      display: none;
-    }
-
-    .modal-error.visible { display: block; }
-
-    .modal-footer {
-      padding: 0 28px 24px;
-      display: flex;
-      gap: 12px;
-      justify-content: flex-end;
-    }
-
-    .btn-secondary {
-      padding: 10px 24px;
-      background: var(--surface);
-      color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      font-size: 14px;
-      font-weight: 600;
-      font-family: inherit;
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-    .btn-secondary:hover { background: var(--bg); }
-
-    .btn-primary {
-      padding: 10px 24px;
-      background: var(--blue);
-      color: #fff;
-      border: none;
-      border-radius: var(--radius);
-      font-size: 14px;
-      font-weight: 600;
-      font-family: inherit;
-      cursor: pointer;
-      transition: background 0.2s, opacity 0.2s;
-    }
-    .btn-primary:hover { background: #003A8C; }
-    .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-
-    /* Toast */
-    .toast-container {
-      position: fixed;
-      top: 80px;
-      right: 24px;
-      z-index: 300;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .toast {
-      padding: 14px 20px;
-      border-radius: var(--radius);
-      font-size: 14px;
-      font-weight: 500;
-      font-family: inherit;
-      color: #fff;
-      min-width: 280px;
-      box-shadow: var(--shadow-lg);
-      animation: toastIn 0.3s ease;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .toast.success { background: var(--green); }
-    .toast.error { background: var(--red); }
-
-    .toast.removing { animation: toastOut 0.3s ease forwards; }
-
-    @keyframes toastIn {
-      from { opacity: 0; transform: translateX(40px); }
-      to { opacity: 1; transform: translateX(0); }
-    }
-
-    @keyframes toastOut {
-      from { opacity: 1; transform: translateX(0); }
-      to { opacity: 0; transform: translateX(40px); }
-    }
-
-    .hidden { display: none !important; }
-
-    /* Tabs */
-    .tabs-nav {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 20px 32px 0;
-      display: flex;
-      gap: 0;
-      border-bottom: 2px solid var(--border);
-    }
-
-    .tab-btn {
-      padding: 12px 28px;
-      background: none;
-      border: none;
-      border-bottom: 3px solid transparent;
-      margin-bottom: -2px;
-      font-size: 14px;
-      font-weight: 600;
-      font-family: inherit;
-      color: var(--text-secondary);
-      cursor: pointer;
-      transition: color 0.2s, border-color 0.2s;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .tab-btn:hover { color: var(--text); }
-    .tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); }
-
-    .tab-badge {
-      background: var(--red);
-      color: #fff;
-      font-size: 11px;
-      font-weight: 700;
-      padding: 2px 7px;
-      border-radius: 10px;
-      min-width: 20px;
-      text-align: center;
-    }
-
-    .tab-content { display: none; }
-    .tab-content.active { display: block; }
-
-    /* Messages */
-    .messages-toolbar {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 20px 32px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 12px;
-    }
-
-    .messages-filter {
-      display: flex;
-      gap: 8px;
-    }
-
-    .filter-btn {
-      padding: 8px 16px;
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      background: var(--surface);
-      font-size: 13px;
-      font-weight: 500;
-      font-family: inherit;
-      color: var(--text-secondary);
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-
-    .filter-btn:hover { border-color: var(--blue); color: var(--blue); }
-    .filter-btn.active { background: var(--blue); color: #fff; border-color: var(--blue); }
-
-    .messages-list {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    .message-card {
-      background: var(--surface);
-      border-radius: var(--radius-lg);
-      border: 1px solid var(--border);
-      border-left: 4px solid var(--blue);
-      box-shadow: var(--shadow);
-      padding: 20px 24px;
-      cursor: pointer;
-      transition: box-shadow 0.2s;
-    }
-
-    .message-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-
-    .message-card.status-new { border-left-color: var(--red); }
-    .message-card.status-read { border-left-color: var(--gold); }
-    .message-card.status-replied { border-left-color: var(--green); }
-
-    .message-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 8px;
-      flex-wrap: wrap;
-    }
-
-    .message-subject {
-      font-size: 16px;
-      font-weight: 700;
-      color: var(--text);
-    }
-
-    .message-badge {
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      padding: 3px 10px;
-      border-radius: 20px;
-    }
-
-    .message-badge.new { background: rgba(223,49,49,0.1); color: var(--red); }
-    .message-badge.read { background: rgba(212,168,67,0.1); color: var(--gold); }
-    .message-badge.replied { background: rgba(27,94,32,0.1); color: var(--green); }
-
-    .message-meta {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      flex-wrap: wrap;
-      font-size: 13px;
-      color: var(--text-secondary);
-      margin-bottom: 10px;
-    }
-
-    .message-meta strong { color: var(--text); font-weight: 600; }
-
-    .message-preview {
-      font-size: 14px;
-      color: var(--text-secondary);
-      line-height: 1.6;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-    }
-
-    .message-detail-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(10,22,40,0.6);
-      z-index: 200;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      backdrop-filter: blur(4px);
-    }
-
-    .message-detail-overlay.active { display: flex; }
-
-    .message-detail {
-      background: var(--surface);
-      border-radius: var(--radius-lg);
-      width: 100%;
-      max-width: 640px;
-      max-height: 90vh;
-      overflow-y: auto;
-      box-shadow: var(--shadow-lg);
-    }
-
-    .message-detail-header {
-      padding: 24px 28px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 16px;
-    }
-
-    .message-detail-body {
-      padding: 24px 28px;
-    }
-
-    .message-detail-body .field-label {
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-secondary);
-      margin-bottom: 4px;
-    }
-
-    .message-detail-body .field-value {
-      font-size: 14px;
-      color: var(--text);
-      margin-bottom: 16px;
-      line-height: 1.6;
-    }
-
-    .message-detail-body .message-body-text {
-      background: #F9FAFB;
-      padding: 16px;
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    .message-detail-footer {
-      padding: 16px 28px 24px;
-      border-top: 1px solid var(--border);
-      display: flex;
-      gap: 8px;
-      justify-content: flex-end;
-      flex-wrap: wrap;
-    }
-
-    .status-btn {
-      padding: 10px 20px;
-      border-radius: var(--radius);
-      font-size: 13px;
-      font-weight: 600;
-      font-family: inherit;
-      cursor: pointer;
-      border: 1px solid;
-      transition: all 0.15s;
-    }
-
-    .status-btn.mark-read { background: var(--surface); color: var(--gold); border-color: var(--gold); }
-    .status-btn.mark-read:hover { background: rgba(212,168,67,0.05); }
-    .status-btn.mark-replied { background: var(--surface); color: var(--green); border-color: var(--green); }
-    .status-btn.mark-replied:hover { background: rgba(27,94,32,0.05); }
-    .status-btn.mark-new { background: var(--surface); color: var(--red); border-color: var(--red); }
-    .status-btn.mark-new:hover { background: rgba(223,49,49,0.05); }
-
-    @media (max-width: 768px) {
-      .toolbar { padding: 16px; }
-      .content { padding: 0 16px 32px; }
-      .header { padding: 0 16px; }
-      .booking-card { grid-template-columns: 1fr; }
-      .booking-actions { justify-content: flex-start; }
-      .form-row { grid-template-columns: 1fr; }
-      .modal { max-width: 100%; }
-      .tabs-nav { padding: 16px 16px 0; }
-      .messages-toolbar { padding: 16px; }
-      .message-detail { max-width: 100%; }
-      .message-detail-header, .message-detail-body, .message-detail-footer { padding-left: 20px; padding-right: 20px; }
-    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --blue:#0047AB;--blue-dark:#003A8C;--blue-light:rgba(0,71,171,0.08);
+      --red:#DF3131;--red-light:rgba(223,49,49,0.08);
+      --gold:#D4A843;--gold-light:rgba(212,168,67,0.1);
+      --green:#16A34A;--green-light:rgba(22,163,74,0.08);
+      --amber:#D97706;--amber-light:rgba(217,119,6,0.08);
+      --purple:#7C3AED;--purple-light:rgba(124,58,237,0.08);
+      --navy:#0A1628;--dark:#132742;
+      --bg:#F1F5F9;--surface:#FFFFFF;
+      --border:#E2E8F0;--border-dark:#CBD5E1;
+      --text:#0F172A;--text-2:#475569;--text-3:#94A3B8;
+      --shadow:0 1px 3px rgba(0,0,0,0.07),0 1px 2px rgba(0,0,0,0.05);
+      --shadow-md:0 4px 12px rgba(0,0,0,0.1);
+      --shadow-lg:0 16px 40px rgba(0,0,0,0.18);
+      --r:8px;--r-lg:14px;
+      --sidebar:240px;
+    }
+    html,body{height:100%;overflow:hidden}
+    body{font-family:'Montserrat',-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
+
+    /* ── Login ── */
+    #loginScreen{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,var(--navy) 0%,var(--dark) 60%,#1a3a6b 100%);position:fixed;inset:0;z-index:1000}
+    .login-wrap{width:100%;max-width:420px;padding:20px}
+    .login-card{background:var(--surface);border-radius:20px;padding:44px 40px;box-shadow:var(--shadow-lg)}
+    .login-logo{text-align:center;margin-bottom:32px}
+    .login-logo-mark{display:inline-flex;align-items:center;justify-content:center;width:64px;height:64px;background:var(--navy);border-radius:16px;margin-bottom:14px}
+    .login-logo-mark svg{width:36px;height:36px}
+    .login-brand{font-size:28px;font-weight:800;color:var(--navy);line-height:1}
+    .login-brand span{color:var(--gold)}
+    .login-tagline{font-size:13px;color:var(--text-2);margin-top:6px}
+    .form-label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-2);margin-bottom:6px}
+    .form-input{width:100%;padding:12px 16px;border:2px solid var(--border);border-radius:var(--r);font-size:15px;font-family:inherit;color:var(--text);background:var(--surface);outline:none;transition:border-color .2s}
+    .form-input:focus{border-color:var(--blue)}
+    .pin-input{text-align:center;letter-spacing:8px;font-size:22px;font-weight:700}
+    .form-group{margin-bottom:18px}
+    .login-error{min-height:20px;color:var(--red);font-size:13px;font-weight:600;text-align:center;margin-bottom:8px}
+    .login-success{min-height:20px;color:var(--green);font-size:13px;font-weight:600;text-align:center;margin-bottom:8px}
+    .btn-login{width:100%;padding:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;transition:background .2s,opacity .2s;margin-top:4px}
+    .btn-login:hover{background:var(--blue-dark)}
+    .btn-login:disabled{opacity:.6;cursor:not-allowed}
+    .toggle-link{display:block;text-align:center;margin-top:18px;font-size:13px;color:var(--blue);font-weight:600;cursor:pointer;text-decoration:none}
+    .toggle-link:hover{text-decoration:underline}
+    .hidden-fields{display:none}
+
+    /* ── App Shell ── */
+    #app{display:none;height:100vh;overflow:hidden}
+    .app-layout{display:flex;height:100vh;overflow:hidden}
+
+    /* ── Sidebar ── */
+    .sidebar{width:var(--sidebar);flex-shrink:0;background:var(--navy);display:flex;flex-direction:column;overflow:hidden}
+    .sidebar-header{padding:20px 20px 16px;border-bottom:1px solid rgba(255,255,255,.08)}
+    .sidebar-brand{font-size:18px;font-weight:800;color:#fff;display:flex;align-items:center;gap:8px}
+    .sidebar-brand span{color:var(--gold)}
+    .sidebar-user{padding:14px 20px 12px;border-bottom:1px solid rgba(255,255,255,.08)}
+    .sidebar-user-name{font-size:13px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .sidebar-user-role{font-size:11px;font-weight:600;margin-top:2px;text-transform:capitalize}
+    .role-staff{color:var(--green)}
+    .role-manager{color:#A78BFA}
+    .role-owner{color:var(--gold)}
+    .sidebar-nav{flex:1;overflow-y:auto;padding:12px 0}
+    .nav-item{display:flex;align-items:center;gap:12px;padding:11px 20px;color:rgba(255,255,255,.65);font-size:13px;font-weight:600;cursor:pointer;transition:background .15s,color .15s;border-left:3px solid transparent}
+    .nav-item:hover{background:rgba(255,255,255,.06);color:#fff}
+    .nav-item.active{background:rgba(255,255,255,.1);color:#fff;border-left-color:var(--gold)}
+    .nav-icon{width:18px;height:18px;flex-shrink:0;opacity:.7}
+    .nav-item.active .nav-icon,.nav-item:hover .nav-icon{opacity:1}
+    .nav-badge{margin-left:auto;background:var(--red);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;min-width:20px;text-align:center}
+    .nav-section{padding:16px 20px 6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:rgba(255,255,255,.3)}
+    .sidebar-footer{padding:12px 20px;border-top:1px solid rgba(255,255,255,.08)}
+    .btn-logout{width:100%;padding:10px;background:rgba(223,49,49,.15);color:#F87171;border:1px solid rgba(223,49,49,.25);border-radius:var(--r);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .15s}
+    .btn-logout:hover{background:rgba(223,49,49,.25)}
+
+    /* ── Main ── */
+    .main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+    .topbar{height:56px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 28px;gap:16px;flex-shrink:0}
+    .topbar-title{font-size:16px;font-weight:700;color:var(--text)}
+    .topbar-sub{font-size:13px;color:var(--text-2);margin-left:4px}
+    .topbar-actions{margin-left:auto;display:flex;align-items:center;gap:10px}
+    .page{display:none;flex:1;overflow:hidden;flex-direction:column}
+    .page.active{display:flex}
+    .page-body{flex:1;overflow-y:auto;padding:24px 28px}
+
+    /* ── Buttons ── */
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 18px;border-radius:var(--r);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;border:1px solid transparent;transition:all .15s;white-space:nowrap}
+    .btn-sm{padding:6px 14px;font-size:12px}
+    .btn-primary{background:var(--blue);color:#fff;border-color:var(--blue)}
+    .btn-primary:hover{background:var(--blue-dark)}
+    .btn-primary:disabled{opacity:.6;cursor:not-allowed}
+    .btn-secondary{background:var(--surface);color:var(--text);border-color:var(--border)}
+    .btn-secondary:hover{background:var(--bg)}
+    .btn-ghost{background:transparent;color:var(--text-2);border-color:transparent}
+    .btn-ghost:hover{background:var(--bg);color:var(--text)}
+    .btn-danger{background:var(--surface);color:var(--red);border-color:var(--red)}
+    .btn-danger:hover{background:var(--red-light)}
+    .btn-success{background:var(--surface);color:var(--green);border-color:var(--green)}
+    .btn-success:hover{background:var(--green-light)}
+    .btn-warning{background:var(--surface);color:var(--amber);border-color:var(--amber)}
+    .btn-warning:hover{background:var(--amber-light)}
+
+    /* ── Bookings toolbar ── */
+    .bookings-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+    .date-nav{display:flex;align-items:center;gap:6px}
+    .btn-nav{width:34px;height:34px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-2);transition:all .15s;font-size:16px;flex-shrink:0}
+    .btn-nav:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-light)}
+    .date-label-box{display:flex;flex-direction:column;padding:6px 14px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);cursor:pointer;transition:border-color .2s}
+    .date-label-box:hover{border-color:var(--blue)}
+    #dateInput{border:none;background:transparent;font-family:inherit;font-size:13px;font-weight:700;color:var(--text);cursor:pointer;outline:none;width:120px}
+    .date-day-label{font-size:11px;color:var(--text-3);font-weight:500}
+    .today-btn{padding:6px 14px;background:var(--blue-light);color:var(--blue);border:1px solid rgba(0,71,171,.15);border-radius:var(--r);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;transition:all .15s}
+    .today-btn:hover{background:var(--blue);color:#fff}
+    .type-filter{display:flex;gap:6px;margin-left:auto}
+    .filter-pill{padding:6px 14px;border:1px solid var(--border);border-radius:20px;background:var(--surface);font-size:12px;font-weight:600;font-family:inherit;color:var(--text-2);cursor:pointer;transition:all .15s}
+    .filter-pill:hover{border-color:var(--blue);color:var(--blue)}
+    .filter-pill.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+    .search-box{position:relative}
+    .search-box input{width:200px;padding:8px 12px 8px 34px;border:1px solid var(--border);border-radius:var(--r);font-size:13px;font-family:inherit;color:var(--text);background:var(--surface);outline:none;transition:border-color .2s}
+    .search-box input:focus{border-color:var(--blue)}
+    .search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-3);pointer-events:none}
+
+    /* ── Summary cards ── */
+    .summary-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px}
+    .stat-card{background:var(--surface);border-radius:var(--r-lg);border:1px solid var(--border);padding:16px 20px;box-shadow:var(--shadow)}
+    .stat-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-bottom:6px}
+    .stat-value{font-size:28px;font-weight:800;color:var(--text);line-height:1}
+    .stat-sub{font-size:12px;color:var(--text-3);margin-top:4px}
+
+    /* ── Bookings list ── */
+    .bookings-list{display:flex;flex-direction:column;gap:10px}
+    .booking-card{background:var(--surface);border-radius:var(--r-lg);border:1px solid var(--border);border-left:4px solid var(--blue);box-shadow:var(--shadow);padding:16px 20px;display:grid;grid-template-columns:90px 1fr auto;gap:16px;align-items:center;transition:box-shadow .2s,transform .1s}
+    .booking-card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
+    .booking-card.cancelled{border-left-color:var(--text-3);opacity:.65}
+    .booking-card.pending{border-left-color:var(--amber)}
+    .booking-time-col{text-align:center}
+    .b-time{font-size:20px;font-weight:800;color:var(--text)}
+    .b-duration{font-size:11px;font-weight:600;color:var(--text-2);margin-top:2px}
+    .b-main{display:flex;flex-direction:column;gap:6px;min-width:0}
+    .b-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .b-customer{font-size:15px;font-weight:700;color:var(--text)}
+    .b-contact{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+    .b-detail{font-size:12px;color:var(--text-2)}
+    .b-notes{font-size:12px;color:var(--text-2);font-style:italic;background:#F8FAFC;border-left:3px solid var(--gold);padding:6px 10px;border-radius:0 var(--r) var(--r) 0;max-width:600px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .pill{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.3px;white-space:nowrap}
+    .pill-blue{background:var(--blue-light);color:var(--blue)}
+    .pill-gold{background:var(--gold-light);color:#92680a}
+    .pill-green{background:var(--green-light);color:var(--green)}
+    .pill-red{background:var(--red-light);color:var(--red)}
+    .pill-amber{background:var(--amber-light);color:var(--amber)}
+    .pill-gray{background:#F1F5F9;color:var(--text-2)}
+    .pill-purple{background:var(--purple-light);color:var(--purple)}
+    .b-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
+
+    /* ── Empty / loading ── */
+    .empty-state{text-align:center;padding:80px 20px}
+    .empty-icon{font-size:52px;opacity:.2;margin-bottom:14px}
+    .empty-title{font-size:17px;font-weight:700;color:var(--text);margin-bottom:6px}
+    .empty-desc{font-size:13px;color:var(--text-2)}
+    .loading-state{text-align:center;padding:80px 20px;color:var(--text-2)}
+    .spinner{width:34px;height:34px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 14px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    /* ── Messages ── */
+    .messages-filters{display:flex;gap:8px;margin-bottom:20px}
+    .msg-cards{display:flex;flex-direction:column;gap:10px}
+    .msg-card{background:var(--surface);border-radius:var(--r-lg);border:1px solid var(--border);border-left:4px solid var(--border-dark);box-shadow:var(--shadow);padding:18px 22px;cursor:pointer;transition:box-shadow .2s,transform .1s}
+    .msg-card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
+    .msg-card.new{border-left-color:var(--red)}
+    .msg-card.read{border-left-color:var(--gold)}
+    .msg-card.replied{border-left-color:var(--green)}
+    .msg-card-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px}
+    .msg-subject{font-size:15px;font-weight:700;color:var(--text)}
+    .msg-meta{font-size:12px;color:var(--text-2);display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px}
+    .msg-preview{font-size:13px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+
+    /* ── Staff tab ── */
+    .staff-grid{display:flex;flex-direction:column;gap:12px}
+    .staff-card{background:var(--surface);border-radius:var(--r-lg);border:1px solid var(--border);box-shadow:var(--shadow);padding:18px 22px;display:grid;grid-template-columns:48px 1fr auto;gap:14px;align-items:center}
+    .staff-card.locked{opacity:.7;border-color:#E2E8F0}
+    .staff-card.self{border-color:var(--gold);border-width:2px}
+    .staff-avatar{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:#fff;flex-shrink:0}
+    .staff-info{min-width:0}
+    .staff-name-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .staff-name{font-size:15px;font-weight:700;color:var(--text)}
+    .staff-username{font-size:12px;color:var(--text-2);margin-top:2px}
+    .staff-joined{font-size:11px;color:var(--text-3);margin-top:2px}
+    .staff-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
+    .role-select{padding:6px 10px;border:1px solid var(--border);border-radius:var(--r);font-size:12px;font-weight:600;font-family:inherit;color:var(--text);background:var(--surface);outline:none;cursor:pointer;transition:border-color .2s}
+    .role-select:focus{border-color:var(--blue)}
+
+    /* ── Settings tab ── */
+    .settings-section{background:var(--surface);border-radius:var(--r-lg);border:1px solid var(--border);box-shadow:var(--shadow);padding:24px 28px;max-width:480px;margin-bottom:20px}
+    .settings-title{font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px}
+    .settings-desc{font-size:13px;color:var(--text-2);margin-bottom:20px;line-height:1.6}
+
+    /* ── Modals ── */
+    .overlay{display:none;position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:500;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(3px)}
+    .overlay.open{display:flex}
+    .modal{background:var(--surface);border-radius:20px;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;box-shadow:var(--shadow-lg)}
+    .modal-sm{max-width:420px}
+    .modal-hd{padding:24px 28px 0;display:flex;align-items:center;justify-content:space-between}
+    .modal-hd-title{font-size:19px;font-weight:800;color:var(--text)}
+    .modal-close{width:34px;height:34px;border:none;background:none;font-size:22px;color:var(--text-2);cursor:pointer;border-radius:50%;display:flex;align-items:center;justify-content:center;transition:background .15s}
+    .modal-close:hover{background:var(--bg)}
+    .modal-bd{padding:20px 28px}
+    .modal-ft{padding:0 28px 24px;display:flex;gap:10px;justify-content:flex-end}
+    .modal-err{display:none;color:var(--red);font-size:13px;font-weight:600;padding:10px 14px;background:var(--red-light);border-radius:var(--r);border:1px solid rgba(223,49,49,.15);margin-bottom:14px}
+    .modal-err.show{display:block}
+    .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .modal .form-group{margin-bottom:16px}
+    .modal .form-label{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-bottom:6px}
+    .modal .form-input{width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--r);font-size:14px;font-family:inherit;color:var(--text);background:var(--surface);outline:none;transition:border-color .2s}
+    .modal .form-input:focus{border-color:var(--blue)}
+    .modal textarea.form-input{resize:vertical;min-height:72px}
+    .modal .checkbox-row{display:flex;align-items:flex-start;gap:10px;margin-bottom:16px}
+    .modal .checkbox-row input{width:16px;height:16px;margin-top:2px;accent-color:var(--blue);flex-shrink:0}
+    .modal .checkbox-row label{font-size:13px;color:var(--text-2);cursor:pointer}
+
+    /* ── Toast ── */
+    .toast-wrap{position:fixed;top:72px;right:24px;z-index:600;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+    .toast{padding:12px 18px;border-radius:var(--r);font-size:13px;font-weight:600;font-family:inherit;color:#fff;min-width:260px;max-width:340px;box-shadow:var(--shadow-md);display:flex;align-items:center;gap:10px;animation:tIn .25s ease;pointer-events:none}
+    .toast.success{background:var(--green)}
+    .toast.error{background:var(--red)}
+    .toast.out{animation:tOut .25s ease forwards}
+    @keyframes tIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
+    @keyframes tOut{from{opacity:1;transform:none}to{opacity:0;transform:translateX(30px)}}
+    .divider{height:1px;background:var(--border);margin:16px 0}
+    select.form-input option{font-family:'Montserrat',sans-serif}
   </style>
 </head>
 <body>
 
-  <!-- Login Screen -->
-  <div class="login-screen" id="loginScreen">
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="login-wrap">
     <div class="login-card">
-      <div class="login-brand">The <span>147</span></div>
-      <div class="login-subtitle">Staff Portal</div>
-      <form id="loginForm">
-        <label for="usernameInput">Username</label>
-        <input type="text" id="usernameInput" placeholder="Enter username" autocomplete="off" autocapitalize="off" required>
-        <div id="registerFields" class="hidden">
-          <label for="masterPinInput">Master PIN (venue PIN)</label>
-          <input type="password" id="masterPinInput" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="&#8226;&#8226;&#8226;&#8226;" autocomplete="off">
-          <label for="displayNameInput">Display Name (optional)</label>
-          <input type="text" id="displayNameInput" placeholder="Your name" autocomplete="off">
+      <div class="login-logo">
+        <div class="login-logo-mark">
+          <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="18" cy="18" r="16" fill="#D4A843" opacity=".15"/>
+            <text x="18" y="24" text-anchor="middle" font-family="Montserrat" font-weight="800" font-size="16" fill="#D4A843">147</text>
+          </svg>
         </div>
-        <label for="pinInput">Enter PIN</label>
-        <input type="password" id="pinInput" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="&#8226;&#8226;&#8226;&#8226;" autocomplete="off" required>
-        <div id="confirmPinGroup" class="hidden">
-          <label for="confirmPinInput">Confirm PIN</label>
-          <input type="password" id="confirmPinInput" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="&#8226;&#8226;&#8226;&#8226;" autocomplete="off">
+        <div class="login-brand">The <span>147</span></div>
+        <div class="login-tagline">Staff Management Portal</div>
+      </div>
+
+      <div id="registerFields" class="hidden-fields">
+        <div class="form-group">
+          <label class="form-label" for="lMasterPin">Master PIN</label>
+          <input class="form-input pin-input" type="password" id="lMasterPin" inputmode="numeric" maxlength="10" placeholder="• • • •" autocomplete="off">
         </div>
-        <div class="login-error" id="loginError"></div>
-        <button type="submit" class="login-btn" id="loginBtn">Sign In</button>
-        <div style="text-align:center; margin-top: 16px;">
-          <a href="#" id="toggleRegister" style="color: var(--blue); font-size: 13px; text-decoration: none;">New staff? Create an account</a>
+        <div class="form-group">
+          <label class="form-label" for="lDisplayName">Display Name (optional)</label>
+          <input class="form-input" type="text" id="lDisplayName" placeholder="Your name" maxlength="50">
         </div>
-      </form>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="lUsername">Username</label>
+        <input class="form-input" type="text" id="lUsername" placeholder="Enter username" autocomplete="username" autocapitalize="off" maxlength="30">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="lPin">PIN</label>
+        <input class="form-input pin-input" type="password" id="lPin" inputmode="numeric" maxlength="8" placeholder="• • • •" autocomplete="current-password">
+      </div>
+      <div id="confirmPinGroup" class="form-group hidden-fields">
+        <label class="form-label" for="lConfirmPin">Confirm PIN</label>
+        <input class="form-input pin-input" type="password" id="lConfirmPin" inputmode="numeric" maxlength="8" placeholder="• • • •" autocomplete="off">
+      </div>
+
+      <div id="loginError" class="login-error"></div>
+      <div id="loginSuccess" class="login-success"></div>
+
+      <button class="btn-login" id="loginBtn" type="button">Sign In</button>
+      <a class="toggle-link" id="toggleMode">New staff? Create an account</a>
     </div>
   </div>
+</div>
 
-  <!-- Dashboard -->
-  <div class="dashboard" id="dashboard">
-    <header class="header">
-      <div class="header-title">The <span>147</span> &mdash; Staff Portal</div>
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <button class="logout-btn" id="changePinBtn" title="Change PIN">&#128274; Change PIN</button>
-        <button class="logout-btn" id="resetPinBtn" title="Reset Staff PIN" style="display:none;">&#128273; Reset PIN</button>
-        <button class="logout-btn" id="logoutBtn">Sign Out</button>
+<!-- APP -->
+<div id="app">
+  <div class="app-layout">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-brand">The <span>147</span></div>
       </div>
-    </header>
-
-    <div class="tabs-nav">
-      <button class="tab-btn active" data-tab="bookings">&#128203; Bookings</button>
-      <button class="tab-btn" data-tab="messages">&#9993; Messages <span class="tab-badge" id="msgBadge" style="display:none;">0</span></button>
-    </div>
-
-    <!-- Bookings Tab -->
-    <div class="tab-content active" id="tab-bookings">
-      <div class="toolbar">
-        <div class="date-nav">
-          <button class="date-nav-btn" id="prevDay" title="Previous day">&#8249;</button>
-          <input type="date" class="date-input" id="dateInput">
-          <button class="date-nav-btn" id="nextDay" title="Next day">&#8250;</button>
-          <span class="date-label" id="dateLabel"></span>
+      <div class="sidebar-user">
+        <div class="sidebar-user-name" id="sidebarName">—</div>
+        <div class="sidebar-user-role" id="sidebarRole"></div>
+      </div>
+      <nav class="sidebar-nav">
+        <div class="nav-section">Management</div>
+        <div class="nav-item active" data-page="bookings">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          Bookings
         </div>
-        <button class="new-booking-btn" id="newBookingBtn">+ New Booking</button>
-      </div>
-
-      <div class="content" id="bookingsContent">
-      </div>
-
-      <div style="padding: 0 24px 32px; max-width: 1200px; margin: 0 auto;">
-        <div style="border-top: 1px solid var(--border); padding-top: 24px; margin-top: 8px;">
-          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px;">
-            <span style="font-size: 20px;">&#128274;</span>
-            <h3 style="font-size: 16px; font-weight: 700; color: var(--text); margin: 0;">GDPR Data Subject Rights</h3>
-            <span style="font-size: 11px; background: var(--blue); color: #fff; padding: 2px 8px; border-radius: 4px; font-weight: 600;">UK GDPR</span>
-          </div>
-          <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5;">
-            Look up, export, or delete a customer's personal data. Data is automatically anonymised after 90 days.
-          </p>
-          <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px;">
-            <div style="flex: 1; min-width: 240px;">
-              <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Customer Email</label>
-              <input type="email" id="gdprEmail" placeholder="customer@example.com" style="width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); font-family: inherit; font-size: 14px;">
-            </div>
-            <button onclick="gdprLookup()" style="padding: 10px 20px; background: var(--blue); color: #fff; border: none; border-radius: var(--radius); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;">Look Up</button>
-            <button onclick="gdprExport()" style="padding: 10px 20px; background: var(--green); color: #fff; border: none; border-radius: var(--radius); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;">Export Data</button>
-            <button onclick="gdprErase()" style="padding: 10px 20px; background: var(--red); color: #fff; border: none; border-radius: var(--radius); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;">Erase Data</button>
-            <button onclick="gdprRetentionCleanup()" style="padding: 10px 20px; background: var(--dark); color: #fff; border: none; border-radius: var(--radius); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;">Run 90-Day Cleanup</button>
-          </div>
-          <div id="gdprResults" style="display: none; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; font-size: 13px; line-height: 1.6; max-height: 400px; overflow-y: auto;"></div>
+        <div class="nav-item" data-page="messages" id="navMessages">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Messages
+          <span class="nav-badge hidden" id="msgBadge">0</span>
         </div>
-      </div>
-    </div>
-
-    <!-- Messages Tab -->
-    <div class="tab-content" id="tab-messages">
-      <div class="messages-toolbar">
-        <div class="messages-filter">
-          <button class="filter-btn active" data-filter="all">All</button>
-          <button class="filter-btn" data-filter="new">New</button>
-          <button class="filter-btn" data-filter="read">Read</button>
-          <button class="filter-btn" data-filter="replied">Replied</button>
+        <div class="nav-item hidden" data-page="staff" id="navStaff">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Staff Accounts
         </div>
-        <button class="new-booking-btn" id="refreshMsgBtn" style="background: var(--navy);">&#8635; Refresh</button>
+        <div class="nav-section" style="margin-top:8px">Account</div>
+        <div class="nav-item" data-page="settings">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Settings
+        </div>
+      </nav>
+      <div class="sidebar-footer">
+        <button class="btn-logout" id="logoutBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          Sign Out
+        </button>
       </div>
-      <div class="content" id="messagesContent">
-      </div>
-    </div>
-  </div>
+    </aside>
 
-  <!-- Message Detail Modal -->
-  <div class="message-detail-overlay" id="messageDetailOverlay">
-    <div class="message-detail">
-      <div class="message-detail-header">
+    <!-- Main -->
+    <main class="main">
+      <div class="topbar">
         <div>
-          <div class="message-subject" id="detailSubject"></div>
-          <div style="margin-top: 6px;"><span class="message-badge" id="detailBadge"></span></div>
+          <span class="topbar-title" id="topbarTitle">Bookings</span>
+          <span class="topbar-sub" id="topbarSub"></span>
         </div>
-        <button class="modal-close" id="detailClose">&times;</button>
+        <div class="topbar-actions" id="topbarActions"></div>
       </div>
-      <div class="message-detail-body">
-        <div class="field-label">From</div>
-        <div class="field-value" id="detailFrom"></div>
-        <div class="field-label">Email</div>
-        <div class="field-value" id="detailEmail"></div>
-        <div class="field-label" id="detailPhoneLabel">Phone</div>
-        <div class="field-value" id="detailPhone"></div>
-        <div class="field-label">Received</div>
-        <div class="field-value" id="detailDate"></div>
-        <div class="field-label">Message</div>
-        <div class="field-value message-body-text" id="detailMessage"></div>
-      </div>
-      <div class="message-detail-footer" id="detailFooter">
-      </div>
-    </div>
-  </div>
 
-  <!-- Change PIN Modal -->
-  <div class="modal-overlay" id="changePinModal">
-    <div class="modal" style="max-width: 420px;">
-      <div class="modal-header">
-        <h2 class="modal-title">Change Your PIN</h2>
-        <button class="modal-close" onclick="document.getElementById('changePinModal').classList.remove('active')">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="modal-error" id="changePinError"></div>
-        <div class="form-group">
-          <label for="cpCurrentPin">Current PIN</label>
-          <input type="password" id="cpCurrentPin" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="&#8226;&#8226;&#8226;&#8226;" autocomplete="off" style="text-align:center; letter-spacing:8px; font-size:20px;">
+      <!-- BOOKINGS PAGE -->
+      <div class="page active" id="pageBookings">
+        <div class="page-body">
+          <div class="summary-row" id="summaryRow">
+            <div class="stat-card"><div class="stat-label">Total Today</div><div class="stat-value" id="statTotal">—</div><div class="stat-sub">bookings</div></div>
+            <div class="stat-card"><div class="stat-label">Confirmed</div><div class="stat-value" id="statConfirmed" style="color:var(--green)">—</div><div class="stat-sub">active</div></div>
+            <div class="stat-card"><div class="stat-label">Cancelled</div><div class="stat-value" id="statCancelled" style="color:var(--red)">—</div><div class="stat-sub">cancelled</div></div>
+            <div class="stat-card"><div class="stat-label">Pending</div><div class="stat-value" id="statPending" style="color:var(--amber)">—</div><div class="stat-sub">awaiting confirmation</div></div>
+          </div>
+          <div class="bookings-toolbar">
+            <div class="date-nav">
+              <button class="btn-nav" id="prevDay" title="Previous day">&#8249;</button>
+              <div class="date-label-box">
+                <input type="date" id="dateInput">
+                <div class="date-day-label" id="dateDayLabel"></div>
+              </div>
+              <button class="btn-nav" id="nextDay" title="Next day">&#8250;</button>
+            </div>
+            <button class="today-btn" id="todayBtn">Today</button>
+            <div class="search-box">
+              <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="searchInput" placeholder="Search name, email…">
+            </div>
+            <div class="type-filter">
+              <button class="filter-pill active" data-type="all">All</button>
+              <button class="filter-pill" data-type="snooker">Snooker</button>
+              <button class="filter-pill" data-type="pool">Pool</button>
+              <button class="filter-pill" data-type="dining">Dining</button>
+            </div>
+          </div>
+          <div id="bookingsContent"></div>
         </div>
-        <div class="form-group">
-          <label for="cpNewPin">New PIN (4-8 digits)</label>
-          <input type="password" id="cpNewPin" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="&#8226;&#8226;&#8226;&#8226;" autocomplete="off" style="text-align:center; letter-spacing:8px; font-size:20px;">
-        </div>
-        <div class="form-group">
-          <label for="cpConfirmPin">Confirm New PIN</label>
-          <input type="password" id="cpConfirmPin" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="&#8226;&#8226;&#8226;&#8226;" autocomplete="off" style="text-align:center; letter-spacing:8px; font-size:20px;">
-        </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn-secondary" onclick="document.getElementById('changePinModal').classList.remove('active')">Cancel</button>
-        <button class="btn-primary" id="changePinSubmit">Change PIN</button>
-      </div>
-    </div>
-  </div>
 
-  <!-- Reset Staff PIN Modal (Manager Only) -->
-  <div class="modal-overlay" id="resetPinModal">
-    <div class="modal" style="max-width: 420px;">
-      <div class="modal-header">
-        <h2 class="modal-title">Reset Staff PIN</h2>
-        <button class="modal-close" onclick="document.getElementById('resetPinModal').classList.remove('active')">&times;</button>
+      <!-- MESSAGES PAGE -->
+      <div class="page" id="pageMessages">
+        <div class="page-body">
+          <div class="messages-filters">
+            <button class="filter-pill active" data-mfilter="all">All</button>
+            <button class="filter-pill" data-mfilter="new">New</button>
+            <button class="filter-pill" data-mfilter="read">Read</button>
+            <button class="filter-pill" data-mfilter="replied">Replied</button>
+          </div>
+          <div id="messagesContent"></div>
+        </div>
       </div>
-      <div class="modal-body">
-        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5;">As a manager, you can reset a staff member's PIN if they have forgotten it.</p>
-        <div class="modal-error" id="resetPinError"></div>
+
+      <!-- STAFF PAGE -->
+      <div class="page" id="pageStaff">
+        <div class="page-body">
+          <div id="staffContent"></div>
+        </div>
+      </div>
+
+      <!-- SETTINGS PAGE -->
+      <div class="page" id="pageSettings">
+        <div class="page-body">
+          <div class="settings-section">
+            <div class="settings-title">Change Your PIN</div>
+            <div class="settings-desc">Update the PIN you use to sign in to the staff portal. Your new PIN must be 4–8 digits.</div>
+            <div id="changePinError" class="modal-err"></div>
+            <div id="changePinSuccess" style="display:none;color:var(--green);font-size:13px;font-weight:600;margin-bottom:14px;padding:10px 14px;background:var(--green-light);border-radius:var(--r)"></div>
+            <div class="form-group">
+              <label class="form-label">Current PIN</label>
+              <input class="form-input pin-input" type="password" id="cpCurrent" inputmode="numeric" maxlength="8" placeholder="• • • •" autocomplete="off" style="max-width:200px;font-size:18px;letter-spacing:6px;text-align:center">
+            </div>
+            <div class="form-group">
+              <label class="form-label">New PIN (4–8 digits)</label>
+              <input class="form-input pin-input" type="password" id="cpNew" inputmode="numeric" maxlength="8" placeholder="• • • •" autocomplete="off" style="max-width:200px;font-size:18px;letter-spacing:6px;text-align:center">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Confirm New PIN</label>
+              <input class="form-input pin-input" type="password" id="cpConfirm" inputmode="numeric" maxlength="8" placeholder="• • • •" autocomplete="off" style="max-width:200px;font-size:18px;letter-spacing:6px;text-align:center">
+            </div>
+            <button class="btn btn-primary" id="changePinBtn">Update PIN</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- BOOKING MODAL -->
+<div class="overlay" id="bookingModal">
+  <div class="modal">
+    <div class="modal-hd">
+      <div class="modal-hd-title" id="modalTitle">New Booking</div>
+      <button class="modal-close" id="modalClose">&times;</button>
+    </div>
+    <div class="modal-bd">
+      <div class="modal-err" id="modalErr"></div>
+      <div class="form-row">
         <div class="form-group">
-          <label for="rpUsername">Staff Username</label>
-          <select id="rpUsername" style="font-size: 15px;">
-            <option value="">Select staff member...</option>
+          <label class="form-label">Table Type</label>
+          <select class="form-input" id="fTableType">
+            <option value="snooker">Snooker</option>
+            <option value="pool">Pool</option>
+            <option value="dining">Dining</option>
           </select>
         </div>
+        <div class="form-group" id="tableNumGroup">
+          <label class="form-label">Table Number</label>
+          <select class="form-input" id="fTableNum">
+            <option value="1">Table 1</option><option value="2">Table 2</option><option value="3">Table 3</option>
+            <option value="4">Table 4</option><option value="5">Table 5</option><option value="6">Table 6</option>
+            <option value="7">Table 7</option><option value="8">Table 8</option><option value="9">Table 9</option>
+            <option value="10">Table 10</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
         <div class="form-group">
-          <label for="rpNewPin">New PIN (4-8 digits)</label>
-          <input type="password" id="rpNewPin" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="&#8226;&#8226;&#8226;&#8226;" autocomplete="off" style="text-align:center; letter-spacing:8px; font-size:20px;">
+          <label class="form-label">Date</label>
+          <input class="form-input" type="date" id="fDate">
         </div>
         <div class="form-group">
-          <label for="rpConfirmPin">Confirm New PIN</label>
-          <input type="password" id="rpConfirmPin" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="&#8226;&#8226;&#8226;&#8226;" autocomplete="off" style="text-align:center; letter-spacing:8px; font-size:20px;">
+          <label class="form-label">Start Time</label>
+          <select class="form-input" id="fStartTime">
+            <option>10:00</option><option>10:30</option><option>11:00</option><option>11:30</option>
+            <option>12:00</option><option>12:30</option><option>13:00</option><option>13:30</option>
+            <option>14:00</option><option>14:30</option><option>15:00</option><option>15:30</option>
+            <option>16:00</option><option>16:30</option><option>17:00</option><option>17:30</option>
+            <option>18:00</option><option>18:30</option><option>19:00</option><option>19:30</option>
+            <option>20:00</option><option>20:30</option><option>21:00</option><option>21:30</option>
+            <option>22:00</option><option>22:30</option><option>23:00</option>
+          </select>
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn-secondary" onclick="document.getElementById('resetPinModal').classList.remove('active')">Cancel</button>
-        <button class="btn-primary" id="resetPinSubmit">Reset PIN</button>
+      <div class="form-group" style="max-width:200px">
+        <label class="form-label">Duration</label>
+        <select class="form-input" id="fDuration">
+          <option value="1">1 hour</option><option value="2">2 hours</option><option value="3">3 hours</option>
+        </select>
+      </div>
+      <div class="divider"></div>
+      <div class="form-group">
+        <label class="form-label">Customer Name</label>
+        <input class="form-input" type="text" id="fName" placeholder="Full name">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input class="form-input" type="email" id="fEmail" placeholder="email@example.com">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Phone</label>
+          <input class="form-input" type="tel" id="fPhone" placeholder="07xxx xxxxxx">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-input" id="fNotes" placeholder="Any special requests…"></textarea>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="fGdpr">
+        <label for="fGdpr">Customer consents to data processing</label>
       </div>
     </div>
-  </div>
-
-  <!-- Booking Modal -->
-  <div class="modal-overlay" id="bookingModal">
-    <div class="modal">
-      <div class="modal-header">
-        <h2 class="modal-title" id="modalTitle">New Booking</h2>
-        <button class="modal-close" id="modalClose">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div class="modal-error" id="modalError"></div>
-        <form id="bookingForm">
-          <div class="form-row">
-            <div class="form-group">
-              <label for="fTableType">Table Type</label>
-              <select id="fTableType" required>
-                <option value="snooker">Snooker</option>
-                <option value="pool">Pool</option>
-                <option value="dining">Dining</option>
-              </select>
-            </div>
-            <div class="form-group" id="tableNumberGroup">
-              <label for="fTableNumber">Table Number</label>
-              <select id="fTableNumber">
-                <option value="1">Table 1</option>
-                <option value="2">Table 2</option>
-                <option value="3">Table 3</option>
-                <option value="4">Table 4</option>
-                <option value="5">Table 5</option>
-                <option value="6">Table 6</option>
-                <option value="7">Table 7</option>
-                <option value="8">Table 8</option>
-                <option value="9">Table 9</option>
-                <option value="10">Table 10</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label for="fDate">Date</label>
-              <input type="date" id="fDate" required>
-            </div>
-            <div class="form-group">
-              <label for="fStartTime">Start Time</label>
-              <select id="fStartTime" required>
-                <option value="10:00">10:00</option>
-                <option value="11:00">11:00</option>
-                <option value="12:00">12:00</option>
-                <option value="13:00">13:00</option>
-                <option value="14:00">14:00</option>
-                <option value="15:00">15:00</option>
-                <option value="16:00">16:00</option>
-                <option value="17:00">17:00</option>
-                <option value="18:00">18:00</option>
-                <option value="19:00">19:00</option>
-                <option value="20:00">20:00</option>
-                <option value="21:00">21:00</option>
-                <option value="22:00">22:00</option>
-                <option value="23:00">23:00</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-group">
-            <label for="fDuration">Duration</label>
-            <select id="fDuration" required>
-              <option value="1">1 hour</option>
-              <option value="2">2 hours</option>
-              <option value="3">3 hours</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="fName">Customer Name</label>
-            <input type="text" id="fName" required placeholder="Full name">
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label for="fEmail">Customer Email</label>
-              <input type="email" id="fEmail" required placeholder="email@example.com">
-            </div>
-            <div class="form-group">
-              <label for="fPhone">Customer Phone</label>
-              <input type="tel" id="fPhone" required placeholder="07xxx xxxxxx">
-            </div>
-          </div>
-          <div class="form-group">
-            <label for="fNotes">Notes</label>
-            <textarea id="fNotes" placeholder="Any special requests or notes..."></textarea>
-          </div>
-          <div class="form-checkbox">
-            <input type="checkbox" id="fGdpr">
-            <label for="fGdpr">Customer consents to data processing (required)</label>
-          </div>
-        </form>
-      </div>
-      <div class="modal-footer">
-        <button class="btn-secondary" id="modalCancelBtn">Cancel</button>
-        <button class="btn-primary" id="modalSubmitBtn">Create Booking</button>
-      </div>
+    <div class="modal-ft">
+      <button class="btn btn-secondary" id="modalCancelBtn">Cancel</button>
+      <button class="btn btn-primary" id="modalSaveBtn">Create Booking</button>
     </div>
   </div>
-
-  <!-- Toast Container -->
-  <div class="toast-container" id="toastContainer"></div>
-
-  <script>
-    (function() {
-      const TOKEN_KEY = 'staffToken';
-      let currentDate = todayStr();
-      let editingId = null;
-
-      // Elements
-      const loginScreen = document.getElementById('loginScreen');
-      const dashboard = document.getElementById('dashboard');
-      const loginForm = document.getElementById('loginForm');
-      const pinInput = document.getElementById('pinInput');
-      const loginError = document.getElementById('loginError');
-      const loginBtn = document.getElementById('loginBtn');
-      const usernameInput = document.getElementById('usernameInput');
-      const masterPinInput = document.getElementById('masterPinInput');
-      const displayNameInput = document.getElementById('displayNameInput');
-      const confirmPinInput = document.getElementById('confirmPinInput');
-      const registerFields = document.getElementById('registerFields');
-      const confirmPinGroup = document.getElementById('confirmPinGroup');
-      const toggleRegister = document.getElementById('toggleRegister');
-      let isRegisterMode = false;
-      const logoutBtn = document.getElementById('logoutBtn');
-      const dateInput = document.getElementById('dateInput');
-      const dateLabel = document.getElementById('dateLabel');
-      const prevDay = document.getElementById('prevDay');
-      const nextDay = document.getElementById('nextDay');
-      const newBookingBtn = document.getElementById('newBookingBtn');
-      const bookingsContent = document.getElementById('bookingsContent');
-      const bookingModal = document.getElementById('bookingModal');
-      const modalTitle = document.getElementById('modalTitle');
-      const modalClose = document.getElementById('modalClose');
-      const modalCancelBtn = document.getElementById('modalCancelBtn');
-      const modalSubmitBtn = document.getElementById('modalSubmitBtn');
-      const modalError = document.getElementById('modalError');
-      const bookingForm = document.getElementById('bookingForm');
-      const fTableType = document.getElementById('fTableType');
-      const fTableNumber = document.getElementById('fTableNumber');
-      const tableNumberGroup = document.getElementById('tableNumberGroup');
-      const fDate = document.getElementById('fDate');
-      const fStartTime = document.getElementById('fStartTime');
-      const fDuration = document.getElementById('fDuration');
-      const fName = document.getElementById('fName');
-      const fEmail = document.getElementById('fEmail');
-      const fPhone = document.getElementById('fPhone');
-      const fNotes = document.getElementById('fNotes');
-      const fGdpr = document.getElementById('fGdpr');
-      const toastContainer = document.getElementById('toastContainer');
-
-      function todayStr() {
-        const d = new Date();
-        return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
-      }
-
-      function formatDateLabel(dateStr) {
-        const d = new Date(dateStr + 'T12:00:00');
-        const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        return days[d.getDay()] + ', ' + d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
-      }
-
-      function getToken() { return localStorage.getItem(TOKEN_KEY); }
-      function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
-      function clearToken() { localStorage.removeItem(TOKEN_KEY); }
-
-      function showToast(message, type) {
-        const el = document.createElement('div');
-        el.className = 'toast ' + type;
-        el.textContent = message;
-        toastContainer.appendChild(el);
-        setTimeout(() => {
-          el.classList.add('removing');
-          setTimeout(() => el.remove(), 300);
-        }, 3500);
-      }
-
-      async function apiFetch(url, options) {
-        options = options || {};
-        options.headers = options.headers || {};
-        options.headers['Content-Type'] = 'application/json';
-        const token = getToken();
-        if (token) {
-          options.headers['Authorization'] = 'Bearer ' + token;
-        }
-        const res = await fetch(url, options);
-        if (res.status === 401) {
-          clearToken();
-          showLogin();
-          throw new Error('Session expired');
-        }
-        return res;
-      }
-
-      // Auth
-      function showLogin() {
-        loginScreen.style.display = 'flex';
-        dashboard.style.display = 'none';
-        loginError.textContent = '';
-        pinInput.value = '';
-        usernameInput.value = '';
-        usernameInput.focus();
-      }
-
-      function showDashboard() {
-        loginScreen.style.display = 'none';
-        dashboard.style.display = 'block';
-        updateDate();
-        loadBookings();
-        loadMessages();
-      }
-
-      document.getElementById('toggleRegister').addEventListener('click', function(e) {
-        e.preventDefault();
-        isRegisterMode = !isRegisterMode;
-        document.getElementById('registerFields').classList.toggle('hidden', !isRegisterMode);
-        document.getElementById('confirmPinGroup').classList.toggle('hidden', !isRegisterMode);
-        this.textContent = isRegisterMode ? 'Already have an account? Sign in' : 'New staff? Create an account';
-        loginBtn.textContent = isRegisterMode ? 'Create Account' : 'Sign In';
-        loginError.textContent = '';
-      });
-
-      loginForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const pin = pinInput.value.trim();
-        const username = usernameInput.value.trim();
-        if (!pin || !username) return;
-        loginBtn.disabled = true;
-        loginError.textContent = '';
-        try {
-          if (isRegisterMode) {
-            if (pinInput.value !== confirmPinInput.value) {
-              loginError.textContent = 'PINs do not match';
-              loginBtn.disabled = false;
-              return;
-            }
-            const res = await fetch('/api/staff/register', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ masterPin: masterPinInput.value, username: usernameInput.value.trim(), pin: pinInput.value, displayName: displayNameInput.value.trim() })
-            });
-            const data = await res.json();
-            if (!res.ok) {
-              loginError.textContent = data.message || 'Registration failed';
-              return;
-            }
-            loginError.style.color = 'var(--green)';
-            loginError.textContent = 'Account created! You can now sign in.';
-            isRegisterMode = false;
-            registerFields.classList.add('hidden');
-            confirmPinGroup.classList.add('hidden');
-            toggleRegister.textContent = 'New staff? Create an account';
-            loginBtn.textContent = 'Sign In';
-            pinInput.value = '';
-            confirmPinInput.value = '';
-            masterPinInput.value = '';
-            displayNameInput.value = '';
-            setTimeout(() => { loginError.style.color = ''; }, 3000);
-          } else {
-            const res = await fetch('/api/staff/login', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ username: usernameInput.value.trim(), pin: pinInput.value })
-            });
-            const data = await res.json();
-            if (!res.ok) {
-              loginError.textContent = data.message || 'Login failed';
-              return;
-            }
-            setToken(data.token);
-            currentUserRole = data.role || 'staff';
-            if (currentUserRole === 'manager') {
-              document.getElementById('resetPinBtn').style.display = '';
-            }
-            showDashboard();
-          }
-        } catch (err) {
-          loginError.textContent = 'Network error. Please try again.';
-        } finally {
-          loginBtn.disabled = false;
-        }
-      });
-
-      logoutBtn.addEventListener('click', async () => {
-        try {
-          await apiFetch('/api/staff/logout', { method: 'POST' });
-        } catch (e) {}
-        clearToken();
-        showLogin();
-      });
-
-      // Date navigation
-      function updateDate() {
-        dateInput.value = currentDate;
-        dateLabel.textContent = formatDateLabel(currentDate);
-      }
-
-      dateInput.addEventListener('change', () => {
-        currentDate = dateInput.value;
-        updateDate();
-        loadBookings();
-      });
-
-      prevDay.addEventListener('click', () => {
-        const d = new Date(currentDate + 'T12:00:00');
-        d.setDate(d.getDate() - 1);
-        currentDate = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
-        updateDate();
-        loadBookings();
-      });
-
-      nextDay.addEventListener('click', () => {
-        const d = new Date(currentDate + 'T12:00:00');
-        d.setDate(d.getDate() + 1);
-        currentDate = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
-        updateDate();
-        loadBookings();
-      });
-
-      // Bookings
-      async function loadBookings() {
-        bookingsContent.innerHTML = '<div class="loading-state"><div class="loading-spinner"></div><div>Loading bookings...</div></div>';
-        try {
-          const res = await apiFetch('/api/bookings?date=' + currentDate);
-          if (!res.ok) throw new Error('Failed to load bookings');
-          const bookings = await res.json();
-          renderBookings(bookings);
-        } catch (err) {
-          if (err.message === 'Session expired') return;
-          bookingsContent.innerHTML = '<div class="empty-state"><div class="empty-title">Error loading bookings</div><div class="empty-desc">' + err.message + '</div></div>';
-        }
-      }
-
-      function tableTypeLabel(t) {
-        const map = { snooker: 'Snooker', pool: 'Pool', dining: 'Dining' };
-        return map[t] || t;
-      }
-
-      function renderBookings(bookings) {
-        if (!bookings.length) {
-          bookingsContent.innerHTML = '<div class="empty-state"><div class="empty-icon">&#128203;</div><div class="empty-title">No bookings for this date</div><div class="empty-desc">Click "New Booking" to add one.</div></div>';
-          return;
-        }
-
-        bookings.sort((a, b) => a.startTime.localeCompare(b.startTime));
-
-        let html = '<div class="bookings-list">';
-        for (const b of bookings) {
-          const isCancelled = b.status === 'cancelled';
-          html += '<div class="booking-card' + (isCancelled ? ' cancelled' : '') + '">';
-          html += '<div class="booking-info">';
-          html += '<div class="booking-top-row">';
-          html += '<span class="booking-time">' + escHtml(b.startTime) + '</span>';
-          html += '<span class="booking-duration">' + b.duration + 'h</span>';
-          html += '<span class="booking-table">' + escHtml(tableTypeLabel(b.tableType));
-          if (b.tableType === 'snooker' && b.tableNumber) {
-            html += ' #' + escHtml(String(b.tableNumber));
-          }
-          html += '</span>';
-          html += '<span class="booking-status">' + escHtml(b.status) + '</span>';
-          html += '</div>';
-          html += '<div class="booking-customer">';
-          html += '<span class="customer-name">' + escHtml(b.customerName) + '</span>';
-          if (b.customerPhone) html += '<span class="customer-detail">' + escHtml(b.customerPhone) + '</span>';
-          if (b.customerEmail) html += '<span class="customer-detail">' + escHtml(b.customerEmail) + '</span>';
-          html += '</div>';
-          if (b.notes) {
-            html += '<div class="booking-notes">' + escHtml(b.notes) + '</div>';
-          }
-          html += '</div>';
-          html += '<div class="booking-actions">';
-          html += '<button class="btn-edit" data-id="' + b.id + '">Edit</button>';
-          if (!isCancelled) {
-            html += '<button class="btn-cancel" data-id="' + b.id + '">Cancel</button>';
-          }
-          html += '<button class="btn-delete" data-id="' + b.id + '">Delete</button>';
-          html += '</div>';
-          html += '</div>';
-        }
-        html += '</div>';
-        bookingsContent.innerHTML = html;
-
-        bookingsContent.querySelectorAll('.btn-edit').forEach(btn => {
-          btn.addEventListener('click', () => openEditModal(bookings.find(b => b.id === parseInt(btn.dataset.id))));
-        });
-        bookingsContent.querySelectorAll('.btn-cancel').forEach(btn => {
-          btn.addEventListener('click', () => cancelBooking(parseInt(btn.dataset.id)));
-        });
-        bookingsContent.querySelectorAll('.btn-delete').forEach(btn => {
-          btn.addEventListener('click', () => deleteBooking(parseInt(btn.dataset.id)));
-        });
-      }
-
-      function escHtml(str) {
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
-      }
-
-      async function cancelBooking(id) {
-        try {
-          const res = await apiFetch('/api/bookings/' + id + '/status', {
-            method: 'PATCH',
-            body: JSON.stringify({ status: 'cancelled' })
-          });
-          if (!res.ok) {
-            const data = await res.json();
-            showToast(data.message || 'Failed to cancel', 'error');
-            return;
-          }
-          showToast('Booking cancelled', 'success');
-          loadBookings();
-        } catch (err) {
-          showToast('Network error', 'error');
-        }
-      }
-
-      async function deleteBooking(id) {
-        if (!confirm('Are you sure you want to permanently delete this booking?')) return;
-        try {
-          const res = await apiFetch('/api/bookings/' + id, { method: 'DELETE' });
-          if (!res.ok && res.status !== 204) {
-            const data = await res.json();
-            showToast(data.message || 'Failed to delete', 'error');
-            return;
-          }
-          showToast('Booking deleted', 'success');
-          loadBookings();
-        } catch (err) {
-          showToast('Network error', 'error');
-        }
-      }
-
-      // Modal
-      fTableType.addEventListener('change', () => {
-        tableNumberGroup.style.display = fTableType.value === 'snooker' ? '' : 'none';
-      });
-
-      function openNewModal() {
-        editingId = null;
-        modalTitle.textContent = 'New Booking';
-        modalSubmitBtn.textContent = 'Create Booking';
-        bookingForm.reset();
-        fTableType.value = 'snooker';
-        tableNumberGroup.style.display = '';
-        fDate.value = currentDate;
-        fGdpr.checked = false;
-        hideModalError();
-        bookingModal.classList.add('active');
-      }
-
-      function openEditModal(booking) {
-        if (!booking) return;
-        editingId = booking.id;
-        modalTitle.textContent = 'Edit Booking';
-        modalSubmitBtn.textContent = 'Update Booking';
-        fTableType.value = booking.tableType;
-        tableNumberGroup.style.display = booking.tableType === 'snooker' ? '' : 'none';
-        fTableNumber.value = booking.tableNumber || '1';
-        fDate.value = booking.date;
-        fStartTime.value = booking.startTime;
-        fDuration.value = String(booking.duration);
-        fName.value = booking.customerName;
-        fEmail.value = booking.customerEmail;
-        fPhone.value = booking.customerPhone;
-        fNotes.value = booking.notes || '';
-        fGdpr.checked = true;
-        hideModalError();
-        bookingModal.classList.add('active');
-      }
-
-      function closeModal() {
-        bookingModal.classList.remove('active');
-        editingId = null;
-      }
-
-      function showModalError(msg) {
-        modalError.textContent = msg;
-        modalError.classList.add('visible');
-      }
-
-      function hideModalError() {
-        modalError.textContent = '';
-        modalError.classList.remove('visible');
-      }
-
-      newBookingBtn.addEventListener('click', openNewModal);
-      modalClose.addEventListener('click', closeModal);
-      modalCancelBtn.addEventListener('click', closeModal);
-
-      bookingModal.addEventListener('click', (e) => {
-        if (e.target === bookingModal) closeModal();
-      });
-
-      modalSubmitBtn.addEventListener('click', async () => {
-        hideModalError();
-
-        if (!fName.value.trim() || !fEmail.value.trim() || !fPhone.value.trim()) {
-          showModalError('Please fill in all required fields.');
-          return;
-        }
-        if (!fGdpr.checked) {
-          showModalError('GDPR consent is required.');
-          return;
-        }
-
-        const payload = {
-          tableType: fTableType.value,
-          tableNumber: fTableType.value === 'snooker' ? fTableNumber.value : null,
-          date: fDate.value,
-          startTime: fStartTime.value,
-          duration: parseInt(fDuration.value),
-          customerName: fName.value.trim(),
-          customerEmail: fEmail.value.trim(),
-          customerPhone: fPhone.value.trim(),
-          notes: fNotes.value.trim() || null,
-          gdprConsent: true,
-          status: 'confirmed'
-        };
-
-        modalSubmitBtn.disabled = true;
-
-        try {
-          let res;
-          if (editingId) {
-            res = await apiFetch('/api/bookings/' + editingId, {
-              method: 'PUT',
-              body: JSON.stringify(payload)
-            });
-          } else {
-            res = await fetch('/api/bookings', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-            });
-          }
-
-          const data = await res.json();
-
-          if (!res.ok) {
-            showModalError(data.message || 'Failed to save booking');
-            return;
-          }
-
-          showToast(editingId ? 'Booking updated' : 'Booking created', 'success');
-          closeModal();
-          if (fDate.value !== currentDate) {
-            currentDate = fDate.value;
-            updateDate();
-          }
-          loadBookings();
-        } catch (err) {
-          showModalError('Network error. Please try again.');
-        } finally {
-          modalSubmitBtn.disabled = false;
-        }
-      });
-
-      // Tab switching
-      let allMessages = [];
-      let currentFilter = 'all';
-
-      document.querySelectorAll('.tab-btn').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-          document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
-          document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
-          btn.classList.add('active');
-          document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-          if (btn.dataset.tab === 'messages') loadMessages();
-        });
-      });
-
-      // Messages filter
-      document.querySelectorAll('.filter-btn').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-          document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
-          btn.classList.add('active');
-          currentFilter = btn.dataset.filter;
-          renderMessages();
-        });
-      });
-
-      document.getElementById('refreshMsgBtn').addEventListener('click', function() { loadMessages(); });
-
-      async function loadMessages() {
-        var messagesContent = document.getElementById('messagesContent');
-        messagesContent.innerHTML = '<div class="loading-state"><div class="loading-spinner"></div><div>Loading messages...</div></div>';
-        try {
-          var res = await apiFetch('/api/contact');
-          if (!res.ok) throw new Error('Failed to load messages');
-          allMessages = await res.json();
-          updateMsgBadge();
-          renderMessages();
-        } catch (err) {
-          if (err.message === 'Session expired') return;
-          messagesContent.innerHTML = '<div class="empty-state"><div class="empty-title">Error loading messages</div><div class="empty-desc">' + escHtml(err.message) + '</div></div>';
-        }
-      }
-
-      function updateMsgBadge() {
-        var newCount = allMessages.filter(function(m) { return m.status === 'new'; }).length;
-        var badge = document.getElementById('msgBadge');
-        if (newCount > 0) {
-          badge.textContent = newCount;
-          badge.style.display = '';
-        } else {
-          badge.style.display = 'none';
-        }
-      }
-
-      function renderMessages() {
-        var messagesContent = document.getElementById('messagesContent');
-        var filtered = currentFilter === 'all' ? allMessages : allMessages.filter(function(m) { return m.status === currentFilter; });
-
-        if (!filtered.length) {
-          var emptyMsg = currentFilter === 'all' ? 'No messages yet' : 'No ' + currentFilter + ' messages';
-          messagesContent.innerHTML = '<div class="empty-state"><div class="empty-icon">&#9993;</div><div class="empty-title">' + emptyMsg + '</div><div class="empty-desc">Customer messages will appear here.</div></div>';
-          return;
-        }
-
-        filtered.sort(function(a, b) { return new Date(b.createdAt) - new Date(a.createdAt); });
-
-        var html = '<div class="messages-list">';
-        for (var i = 0; i < filtered.length; i++) {
-          var m = filtered[i];
-          html += '<div class="message-card status-' + escHtml(m.status) + '" data-msg-id="' + m.id + '">';
-          html += '<div class="message-header">';
-          html += '<span class="message-subject">' + escHtml(m.subject) + '</span>';
-          html += '<span class="message-badge ' + escHtml(m.status) + '">' + escHtml(m.status) + '</span>';
-          html += '</div>';
-          html += '<div class="message-meta">';
-          html += '<span><strong>' + escHtml(m.name) + '</strong></span>';
-          html += '<span>' + escHtml(m.email) + '</span>';
-          if (m.phone) html += '<span>' + escHtml(m.phone) + '</span>';
-          html += '<span>' + formatMsgDate(m.createdAt) + '</span>';
-          html += '</div>';
-          html += '<div class="message-preview">' + escHtml(m.message) + '</div>';
-          html += '</div>';
-        }
-        html += '</div>';
-        messagesContent.innerHTML = html;
-
-        messagesContent.querySelectorAll('.message-card').forEach(function(card) {
-          card.addEventListener('click', function() {
-            var msg = allMessages.find(function(m) { return m.id === parseInt(card.dataset.msgId); });
-            if (msg) openMessageDetail(msg);
-          });
-        });
-      }
-
-      function formatMsgDate(dateStr) {
-        var d = new Date(dateStr);
-        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        var hours = d.getHours();
-        var mins = String(d.getMinutes()).padStart(2, '0');
-        var ampm = hours >= 12 ? 'PM' : 'AM';
-        hours = hours % 12 || 12;
-        return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear() + ' at ' + hours + ':' + mins + ' ' + ampm;
-      }
-
-      function openMessageDetail(msg) {
-        document.getElementById('detailSubject').textContent = msg.subject;
-        var badge = document.getElementById('detailBadge');
-        badge.textContent = msg.status;
-        badge.className = 'message-badge ' + msg.status;
-        document.getElementById('detailFrom').textContent = msg.name;
-        document.getElementById('detailEmail').textContent = msg.email;
-        var phoneLabel = document.getElementById('detailPhoneLabel');
-        var phoneValue = document.getElementById('detailPhone');
-        if (msg.phone) {
-          phoneLabel.style.display = '';
-          phoneValue.style.display = '';
-          phoneValue.textContent = msg.phone;
-        } else {
-          phoneLabel.style.display = 'none';
-          phoneValue.style.display = 'none';
-        }
-        document.getElementById('detailDate').textContent = formatMsgDate(msg.createdAt);
-        document.getElementById('detailMessage').textContent = msg.message;
-
-        var footer = document.getElementById('detailFooter');
-        var btns = '';
-        if (msg.status !== 'new') btns += '<button class="status-btn mark-new" onclick="updateMsgStatus(' + msg.id + ', \'new\')">Mark as New</button>';
-        if (msg.status !== 'read') btns += '<button class="status-btn mark-read" onclick="updateMsgStatus(' + msg.id + ', \'read\')">Mark as Read</button>';
-        if (msg.status !== 'replied') btns += '<button class="status-btn mark-replied" onclick="updateMsgStatus(' + msg.id + ', \'replied\')">Mark as Replied</button>';
-        footer.innerHTML = btns;
-
-        document.getElementById('messageDetailOverlay').classList.add('active');
-
-        if (msg.status === 'new') {
-          updateMsgStatus(msg.id, 'read');
-        }
-      }
-
-      document.getElementById('detailClose').addEventListener('click', function() {
-        document.getElementById('messageDetailOverlay').classList.remove('active');
-      });
-
-      document.getElementById('messageDetailOverlay').addEventListener('click', function(e) {
-        if (e.target === document.getElementById('messageDetailOverlay')) {
-          document.getElementById('messageDetailOverlay').classList.remove('active');
-        }
-      });
-
-      document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-          document.getElementById('messageDetailOverlay').classList.remove('active');
-          document.getElementById('changePinModal').classList.remove('active');
-          document.getElementById('resetPinModal').classList.remove('active');
-          bookingModal.classList.remove('active');
-        }
-      });
-
-      window.updateMsgStatus = async function(id, status) {
-        try {
-          var res = await apiFetch('/api/contact/' + id + '/status', {
-            method: 'PATCH',
-            body: JSON.stringify({ status: status })
-          });
-          if (!res.ok) {
-            var data = await res.json();
-            showToast(data.message || 'Failed to update status', 'error');
-            return;
-          }
-          var updated = await res.json();
-          for (var i = 0; i < allMessages.length; i++) {
-            if (allMessages[i].id === id) {
-              allMessages[i].status = updated.status;
-              break;
-            }
-          }
-          updateMsgBadge();
-          renderMessages();
-
-          var badge = document.getElementById('detailBadge');
-          badge.textContent = updated.status;
-          badge.className = 'message-badge ' + updated.status;
-          var footer = document.getElementById('detailFooter');
-          var btns = '';
-          if (updated.status !== 'new') btns += '<button class="status-btn mark-new" onclick="updateMsgStatus(' + id + ', \'new\')">Mark as New</button>';
-          if (updated.status !== 'read') btns += '<button class="status-btn mark-read" onclick="updateMsgStatus(' + id + ', \'read\')">Mark as Read</button>';
-          if (updated.status !== 'replied') btns += '<button class="status-btn mark-replied" onclick="updateMsgStatus(' + id + ', \'replied\')">Mark as Replied</button>';
-          footer.innerHTML = btns;
-
-          showToast('Message marked as ' + updated.status, 'success');
-        } catch (err) {
-          showToast('Network error', 'error');
-        }
-      };
-
-      // PIN Change
-      let currentUserRole = 'staff';
-
-      document.getElementById('changePinBtn').addEventListener('click', function() {
-        document.getElementById('cpCurrentPin').value = '';
-        document.getElementById('cpNewPin').value = '';
-        document.getElementById('cpConfirmPin').value = '';
-        var err = document.getElementById('changePinError');
-        err.textContent = '';
-        err.classList.remove('visible');
-        document.getElementById('changePinModal').classList.add('active');
-        document.getElementById('cpCurrentPin').focus();
-      });
-
-      document.getElementById('changePinSubmit').addEventListener('click', async function() {
-        var currentPin = document.getElementById('cpCurrentPin').value.trim();
-        var newPin = document.getElementById('cpNewPin').value.trim();
-        var confirmPin = document.getElementById('cpConfirmPin').value.trim();
-        var err = document.getElementById('changePinError');
-
-        if (!currentPin) { err.textContent = 'Please enter your current PIN'; err.classList.add('visible'); return; }
-        if (!newPin || newPin.length < 4 || newPin.length > 8 || !/^\d+$/.test(newPin)) { err.textContent = 'New PIN must be 4-8 digits'; err.classList.add('visible'); return; }
-        if (newPin !== confirmPin) { err.textContent = 'New PINs do not match'; err.classList.add('visible'); return; }
-
-        this.disabled = true;
-        try {
-          var res = await apiFetch('/api/staff/change-pin', {
-            method: 'POST',
-            body: JSON.stringify({ currentPin: currentPin, newPin: newPin })
-          });
-          var data = await res.json();
-          if (!res.ok) {
-            err.textContent = data.message || 'Failed to change PIN';
-            err.classList.add('visible');
-            return;
-          }
-          document.getElementById('changePinModal').classList.remove('active');
-          showToast('PIN changed successfully', 'success');
-        } catch (e) {
-          err.textContent = 'Network error. Please try again.';
-          err.classList.add('visible');
-        } finally {
-          this.disabled = false;
-        }
-      });
-
-      // Manager PIN Reset
-      document.getElementById('resetPinBtn').addEventListener('click', async function() {
-        document.getElementById('rpNewPin').value = '';
-        document.getElementById('rpConfirmPin').value = '';
-        var err = document.getElementById('resetPinError');
-        err.textContent = '';
-        err.classList.remove('visible');
-
-        var select = document.getElementById('rpUsername');
-        select.innerHTML = '<option value="">Loading...</option>';
-        document.getElementById('resetPinModal').classList.add('active');
-
-        try {
-          var res = await apiFetch('/api/staff/users');
-          var users = await res.json();
-          select.innerHTML = '<option value="">Select staff member...</option>';
-          users.forEach(function(u) {
-            var opt = document.createElement('option');
-            opt.value = u.username;
-            opt.textContent = u.displayName ? u.displayName + ' (' + u.username + ')' : u.username;
-            select.appendChild(opt);
-          });
-        } catch (e) {
-          select.innerHTML = '<option value="">Error loading staff</option>';
-        }
-      });
-
-      document.getElementById('resetPinSubmit').addEventListener('click', async function() {
-        var username = document.getElementById('rpUsername').value;
-        var newPin = document.getElementById('rpNewPin').value.trim();
-        var confirmPin = document.getElementById('rpConfirmPin').value.trim();
-        var err = document.getElementById('resetPinError');
-
-        if (!username) { err.textContent = 'Please select a staff member'; err.classList.add('visible'); return; }
-        if (!newPin || newPin.length < 4 || newPin.length > 8 || !/^\d+$/.test(newPin)) { err.textContent = 'New PIN must be 4-8 digits'; err.classList.add('visible'); return; }
-        if (newPin !== confirmPin) { err.textContent = 'PINs do not match'; err.classList.add('visible'); return; }
-
-        if (!confirm('Are you sure you want to reset the PIN for ' + username + '?')) return;
-
-        this.disabled = true;
-        try {
-          var res = await apiFetch('/api/staff/reset-pin', {
-            method: 'POST',
-            body: JSON.stringify({ username: username, newPin: newPin })
-          });
-          var data = await res.json();
-          if (!res.ok) {
-            err.textContent = data.message || 'Failed to reset PIN';
-            err.classList.add('visible');
-            return;
-          }
-          document.getElementById('resetPinModal').classList.remove('active');
-          showToast('PIN reset for ' + username, 'success');
-        } catch (e) {
-          err.textContent = 'Network error. Please try again.';
-          err.classList.add('visible');
-        } finally {
-          this.disabled = false;
-        }
-      });
-
-      document.getElementById('changePinModal').addEventListener('click', function(e) {
-        if (e.target === this) this.classList.remove('active');
-      });
-      document.getElementById('resetPinModal').addEventListener('click', function(e) {
-        if (e.target === this) this.classList.remove('active');
-      });
-
-      // Init
-      if (getToken()) {
-        apiFetch('/api/staff/verify').then(async function(res) {
-          if (res.ok) {
-            var data = await res.json();
-            currentUserRole = data.role || 'staff';
-            if (currentUserRole === 'manager') {
-              document.getElementById('resetPinBtn').style.display = '';
-            }
-            showDashboard();
-          } else {
-            clearToken();
-            showLogin();
-          }
-        }).catch(function() {
-          showLogin();
-        });
+</div>
+
+<!-- MESSAGE DETAIL MODAL -->
+<div class="overlay" id="msgModal">
+  <div class="modal">
+    <div class="modal-hd">
+      <div>
+        <div class="modal-hd-title" id="msgModalSubject"></div>
+        <div style="margin-top:6px"><span class="pill" id="msgModalBadge"></span></div>
+      </div>
+      <button class="modal-close" id="msgModalClose">&times;</button>
+    </div>
+    <div class="modal-bd">
+      <div style="margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-bottom:3px">From</div>
+        <div style="font-weight:700" id="msgModalFrom"></div>
+      </div>
+      <div style="margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-bottom:3px">Contact</div>
+        <div id="msgModalContact" style="font-size:13px;color:var(--text-2)"></div>
+      </div>
+      <div style="margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-bottom:3px">Received</div>
+        <div id="msgModalDate" style="font-size:13px;color:var(--text-2)"></div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-bottom:6px">Message</div>
+        <div id="msgModalBody" style="background:#F8FAFC;border:1px solid var(--border);border-radius:var(--r);padding:14px;font-size:14px;white-space:pre-wrap;word-break:break-word;line-height:1.7"></div>
+      </div>
+    </div>
+    <div class="modal-ft" id="msgModalFt"></div>
+  </div>
+</div>
+
+<!-- RESET PIN MODAL (Manager/Owner) -->
+<div class="overlay" id="resetPinModal">
+  <div class="modal modal-sm">
+    <div class="modal-hd">
+      <div class="modal-hd-title">Reset Staff PIN</div>
+      <button class="modal-close" onclick="closeOverlay('resetPinModal')">&times;</button>
+    </div>
+    <div class="modal-bd">
+      <div class="modal-err" id="rpErr"></div>
+      <div class="form-group">
+        <label class="form-label">Staff Member</label>
+        <select class="form-input" id="rpUsername"><option value="">Select staff member…</option></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">New PIN (4–8 digits)</label>
+        <input class="form-input pin-input" type="password" id="rpNew" inputmode="numeric" maxlength="8" placeholder="• • • •" autocomplete="off" style="text-align:center;letter-spacing:8px;font-size:20px">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Confirm PIN</label>
+        <input class="form-input pin-input" type="password" id="rpConfirm" inputmode="numeric" maxlength="8" placeholder="• • • •" autocomplete="off" style="text-align:center;letter-spacing:8px;font-size:20px">
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn btn-secondary" onclick="closeOverlay('resetPinModal')">Cancel</button>
+      <button class="btn btn-primary" id="rpSubmit">Reset PIN</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+(function(){
+  'use strict';
+  const TOKEN_KEY='staffToken147';
+  let state={role:'staff',username:null,displayName:null,currentDate:todayStr(),bookings:[],msgFilter:'all',tableFilter:'all',searchQ:''};
+  let editingId=null,currentMsgId=null;
+
+  /* ── Helpers ── */
+  function todayStr(){const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
+  function pad(n){return String(n).padStart(2,'0')}
+  function esc(s){const d=document.createElement('div');d.textContent=s??'';return d.innerHTML}
+  function el(id){return document.getElementById(id)}
+  function getToken(){return localStorage.getItem(TOKEN_KEY)}
+  function setToken(t){localStorage.setItem(TOKEN_KEY,t)}
+  function clearToken(){localStorage.removeItem(TOKEN_KEY)}
+  function formatDateLabel(s){const d=new Date(s+'T12:00:00');return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()]+', '+d.getDate()+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]+' '+d.getFullYear()}
+  function formatDateTime(s){try{return new Date(s).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}catch{return s}}
+  function openOverlay(id){el(id).classList.add('open')}
+  function closeOverlay(id){el(id).classList.remove('open')}
+
+  function toast(msg,type){
+    const w=el('toastWrap');
+    const t=document.createElement('div');
+    t.className='toast '+(type||'success');
+    t.textContent=msg;
+    w.appendChild(t);
+    setTimeout(()=>{t.classList.add('out');setTimeout(()=>t.remove(),250)},3200);
+  }
+
+  async function api(url,opts){
+    opts=opts||{};
+    opts.headers=opts.headers||{};
+    opts.headers['Content-Type']='application/json';
+    const tok=getToken();
+    if(tok)opts.headers['Authorization']='Bearer '+tok;
+    const r=await fetch(url,opts);
+    if(r.status===401){clearToken();showLogin();throw new Error('Session expired')}
+    return r;
+  }
+
+  /* ── Auth ── */
+  let isRegister=false;
+  el('toggleMode').addEventListener('click',()=>{
+    isRegister=!isRegister;
+    ['registerFields','confirmPinGroup'].forEach(id=>el(id).classList.toggle('hidden-fields',!isRegister));
+    el('loginBtn').textContent=isRegister?'Create Account':'Sign In';
+    el('toggleMode').textContent=isRegister?'Already have an account? Sign in':'New staff? Create an account';
+    el('loginError').textContent='';el('loginSuccess').textContent='';
+  });
+
+  el('loginBtn').addEventListener('click',handleAuth);
+  ['lUsername','lPin','lConfirmPin','lMasterPin'].forEach(id=>{
+    const e=el(id);if(e)e.addEventListener('keydown',ev=>{if(ev.key==='Enter')handleAuth()});
+  });
+
+  async function handleAuth(){
+    const username=el('lUsername').value.trim();
+    const pin=el('lPin').value.trim();
+    el('loginError').textContent='';el('loginSuccess').textContent='';
+    if(!username){el('loginError').textContent='Username is required';return}
+    if(!pin){el('loginError').textContent='PIN is required';return}
+    el('loginBtn').disabled=true;
+    try{
+      if(isRegister){
+        const confirmPin=el('lConfirmPin').value.trim();
+        const masterPin=el('lMasterPin').value.trim();
+        const displayName=el('lDisplayName').value.trim();
+        if(pin!==confirmPin){el('loginError').textContent='PINs do not match';return}
+        const r=await fetch('/api/staff/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({masterPin,username,pin,displayName:displayName||undefined})});
+        const d=await r.json();
+        if(!r.ok){el('loginError').textContent=d.message||'Registration failed';return}
+        el('loginSuccess').textContent='Account created! You can now sign in.';
+        isRegister=false;
+        ['registerFields','confirmPinGroup'].forEach(id=>el(id).classList.add('hidden-fields'));
+        el('loginBtn').textContent='Sign In';el('toggleMode').textContent='New staff? Create an account';
+        el('lPin').value='';el('lConfirmPin').value='';el('lMasterPin').value='';
       } else {
-        showLogin();
+        const r=await fetch('/api/staff/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,pin})});
+        const d=await r.json();
+        if(!r.ok){el('loginError').textContent=d.message||'Login failed';return}
+        setToken(d.token);
+        state.role=d.role||'staff';
+        state.username=d.username||username;
+        state.displayName=d.displayName||null;
+        bootApp();
       }
-    })();
+    } catch(e){if(e.message!=='Session expired')el('loginError').textContent='Network error. Please try again.'}
+    finally{el('loginBtn').disabled=false}
+  }
 
-    function escapeHtml(str) {
-      if (!str) return '';
-      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  function showLogin(){
+    el('loginScreen').style.display='flex';
+    el('app').style.display='none';
+    el('lPin').value='';el('lUsername').value='';
+    setTimeout(()=>el('lUsername').focus(),100);
+  }
+
+  async function bootApp(){
+    el('loginScreen').style.display='none';
+    el('app').style.display='block';
+    // Verify and get full role info
+    try{
+      const r=await api('/api/staff/verify');
+      const d=await r.json();
+      state.role=d.role||state.role;
+      state.username=d.username||state.username;
+    }catch(e){}
+    setupUI();
+    navigateTo('bookings');
+    loadMessages();
+  }
+
+  function setupUI(){
+    const isManager=state.role==='manager'||state.role==='owner';
+    const isOwner=state.role==='owner';
+    el('sidebarName').textContent=state.displayName||state.username||'Staff';
+    el('sidebarRole').textContent=state.role.charAt(0).toUpperCase()+state.role.slice(1);
+    el('sidebarRole').className='sidebar-user-role role-'+state.role;
+    el('navStaff').classList.toggle('hidden',!isOwner);
+    // Topbar new booking button shown for all
+    el('topbarActions').innerHTML=`<button class="btn btn-primary" id="newBookingBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Booking</button>`;
+    el('newBookingBtn').addEventListener('click',()=>openBookingModal(null));
+  }
+
+  el('logoutBtn').addEventListener('click',async()=>{
+    try{await api('/api/staff/logout',{method:'POST'})}catch(e){}
+    clearToken();showLogin();
+  });
+
+  /* ── Navigation ── */
+  document.querySelectorAll('.nav-item[data-page]').forEach(item=>{
+    item.addEventListener('click',()=>navigateTo(item.dataset.page));
+  });
+
+  function navigateTo(page){
+    document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
+    document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page'+cap(page)));
+    const titles={bookings:'Bookings',messages:'Messages',staff:'Staff Accounts',settings:'Settings'};
+    el('topbarTitle').textContent=titles[page]||'';
+    if(page==='bookings'){el('topbarActions').style.display='';loadBookings()}
+    else{el('topbarActions').style.display='none'}
+    if(page==='messages')loadMessages(true);
+    if(page==='staff')loadStaff();
+  }
+  function cap(s){return s.charAt(0).toUpperCase()+s.slice(1)}
+
+  /* ── Date navigation ── */
+  el('dateInput').addEventListener('change',()=>{state.currentDate=el('dateInput').value;updateDateUI();loadBookings()});
+  el('prevDay').addEventListener('click',()=>shiftDay(-1));
+  el('nextDay').addEventListener('click',()=>shiftDay(1));
+  el('todayBtn').addEventListener('click',()=>{state.currentDate=todayStr();updateDateUI();loadBookings()});
+  el('searchInput').addEventListener('input',()=>{state.searchQ=el('searchInput').value.toLowerCase();renderBookings()});
+  document.querySelectorAll('.filter-pill[data-type]').forEach(p=>{
+    p.addEventListener('click',()=>{
+      state.tableFilter=p.dataset.type;
+      document.querySelectorAll('.filter-pill[data-type]').forEach(x=>x.classList.toggle('active',x===p));
+      renderBookings();
+    });
+  });
+
+  function shiftDay(delta){
+    const d=new Date(state.currentDate+'T12:00:00');
+    d.setDate(d.getDate()+delta);
+    state.currentDate=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+    updateDateUI();loadBookings();
+  }
+
+  function updateDateUI(){
+    el('dateInput').value=state.currentDate;
+    el('dateDayLabel').textContent=formatDateLabel(state.currentDate);
+    el('topbarSub').textContent='— '+formatDateLabel(state.currentDate);
+  }
+
+  /* ── Bookings ── */
+  async function loadBookings(){
+    el('bookingsContent').innerHTML='<div class="loading-state"><div class="spinner"></div>Loading bookings…</div>';
+    try{
+      const r=await api('/api/bookings?date='+state.currentDate);
+      if(!r.ok)throw new Error('Failed');
+      state.bookings=await r.json();
+      renderBookings();
+    }catch(e){
+      if(e.message==='Session expired')return;
+      el('bookingsContent').innerHTML='<div class="empty-state"><div class="empty-title">Failed to load bookings</div><div class="empty-desc">'+esc(e.message)+'</div></div>';
+    }
+  }
+
+  function renderBookings(){
+    const q=state.searchQ;
+    const tf=state.tableFilter;
+    let list=[...state.bookings];
+    if(tf!=='all')list=list.filter(b=>b.tableType===tf);
+    if(q)list=list.filter(b=>(b.customerName||'').toLowerCase().includes(q)||(b.customerEmail||'').toLowerCase().includes(q)||(b.customerPhone||'').includes(q));
+    list.sort((a,b)=>a.startTime.localeCompare(b.startTime));
+
+    // Stats (from full list, not filtered)
+    const all=state.bookings;
+    el('statTotal').textContent=all.length;
+    el('statConfirmed').textContent=all.filter(b=>b.status==='confirmed').length;
+    el('statCancelled').textContent=all.filter(b=>b.status==='cancelled').length;
+    el('statPending').textContent=all.filter(b=>b.status==='pending'||(!b.status||b.status==='pending')).length;
+
+    if(!list.length){
+      el('bookingsContent').innerHTML='<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">'+(q||tf!=='all'?'No matching bookings':'No bookings for this date')+'</div><div class="empty-desc">'+(q||tf!=='all'?'Try a different search or filter':'Use the "New Booking" button to add one')+'</div></div>';
+      return;
     }
 
-    function getGdprEmail() {
-      const email = document.getElementById('gdprEmail').value.trim();
-      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        document.getElementById('gdprResults').style.display = 'block';
-        document.getElementById('gdprResults').innerHTML = '<span style="color:var(--red);">Please enter a valid email address.</span>';
-        return null;
-      }
-      return email;
+    const isManager=state.role==='manager'||state.role==='owner';
+    let html='<div class="bookings-list">';
+    for(const b of list){
+      const isCanc=b.status==='cancelled';
+      const isPend=!b.status||b.status==='pending';
+      const cardClass='booking-card'+(isCanc?' cancelled':isPend?' pending':'');
+      const statusPill=isCanc?'<span class="pill pill-gray">Cancelled</span>':isPend?'<span class="pill pill-amber">Pending</span>':'<span class="pill pill-green">Confirmed</span>';
+      const typePill=b.tableType==='snooker'?'pill-blue':b.tableType==='pool'?'pill-purple':'pill-gold';
+      const tableLabel=cap(b.tableType)+(b.tableType==='snooker'&&b.tableNumber?' #'+b.tableNumber:'');
+      html+=`<div class="${cardClass}">
+        <div class="booking-time-col"><div class="b-time">${esc(b.startTime)}</div><div class="b-duration">${b.duration}h</div></div>
+        <div class="b-main">
+          <div class="b-top">
+            <span class="b-customer">${esc(b.customerName)}</span>
+            ${statusPill}
+            <span class="pill ${typePill}">${esc(tableLabel)}</span>
+          </div>
+          <div class="b-contact">
+            ${b.customerPhone?`<span class="b-detail">📞 ${esc(b.customerPhone)}</span>`:''}
+            ${b.customerEmail?`<span class="b-detail">✉ ${esc(b.customerEmail)}</span>`:''}
+          </div>
+          ${b.notes?`<div class="b-notes">${esc(b.notes)}</div>`:''}
+        </div>
+        <div class="b-actions">
+          <button class="btn btn-secondary btn-sm" data-id="${b.id}" data-action="edit">Edit</button>
+          ${!isCanc?`<button class="btn btn-warning btn-sm" data-id="${b.id}" data-action="cancel">Cancel</button>`:''}
+          ${isManager?`<button class="btn btn-danger btn-sm" data-id="${b.id}" data-action="delete">Delete</button>`:''}
+        </div>
+      </div>`;
     }
+    html+='</div>';
+    el('bookingsContent').innerHTML=html;
 
-    function getStoredToken() {
-      return localStorage.getItem('staffToken');
-    }
+    el('bookingsContent').querySelectorAll('[data-action]').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        const id=parseInt(btn.dataset.id);
+        const action=btn.dataset.action;
+        if(action==='edit')openBookingModal(state.bookings.find(b=>b.id===id));
+        else if(action==='cancel')cancelBooking(id);
+        else if(action==='delete')deleteBooking(id);
+      });
+    });
+  }
 
-    async function gdprLookup() {
-      const email = getGdprEmail();
-      if (!email) return;
-      const results = document.getElementById('gdprResults');
-      results.style.display = 'block';
-      results.innerHTML = '<em>Looking up...</em>';
-      try {
-        const res = await fetch('/api/gdpr/export?email=' + encodeURIComponent(email));
-        const data = await res.json();
-        if (data.totalRecords === 0) {
-          results.innerHTML = '<strong>No records found</strong> for <em>' + escapeHtml(email) + '</em>.';
-          return;
-        }
-        let html = '<strong>' + data.totalRecords + ' record(s) found</strong> for <em>' + escapeHtml(email) + '</em>:<br><br>';
-        html += '<table style="width:100%; border-collapse: collapse; font-size: 12px;">';
-        html += '<tr style="background:#F3F4F6;"><th style="padding:8px; text-align:left; border-bottom:1px solid var(--border);">Date</th><th style="padding:8px; text-align:left; border-bottom:1px solid var(--border);">Time</th><th style="padding:8px; text-align:left; border-bottom:1px solid var(--border);">Table</th><th style="padding:8px; text-align:left; border-bottom:1px solid var(--border);">Name</th><th style="padding:8px; text-align:left; border-bottom:1px solid var(--border);">Phone</th><th style="padding:8px; text-align:left; border-bottom:1px solid var(--border);">Status</th></tr>';
-        data.bookings.forEach(function(b) {
-          html += '<tr><td style="padding:8px; border-bottom:1px solid var(--border);">' + escapeHtml(b.date) + '</td>';
-          html += '<td style="padding:8px; border-bottom:1px solid var(--border);">' + escapeHtml(b.startTime) + '</td>';
-          html += '<td style="padding:8px; border-bottom:1px solid var(--border);">' + escapeHtml(b.tableType) + (b.tableNumber ? ' #' + escapeHtml(b.tableNumber) : '') + '</td>';
-          html += '<td style="padding:8px; border-bottom:1px solid var(--border);">' + escapeHtml(b.customerName) + '</td>';
-          html += '<td style="padding:8px; border-bottom:1px solid var(--border);">' + escapeHtml(b.customerPhone) + '</td>';
-          html += '<td style="padding:8px; border-bottom:1px solid var(--border);">' + escapeHtml(b.status) + '</td></tr>';
-        });
-        html += '</table>';
-        results.innerHTML = html;
-      } catch (err) {
-        results.innerHTML = '<span style="color:var(--red);">Error looking up data. Please try again.</span>';
-      }
-    }
+  async function cancelBooking(id){
+    if(!confirm('Cancel this booking?'))return;
+    try{
+      const r=await api('/api/bookings/'+id+'/status',{method:'PATCH',body:JSON.stringify({status:'cancelled'})});
+      if(!r.ok){const d=await r.json();toast(d.message||'Failed to cancel','error');return}
+      toast('Booking cancelled','success');loadBookings();
+    }catch(e){if(e.message!=='Session expired')toast('Network error','error')}
+  }
 
-    async function gdprExport() {
-      const email = getGdprEmail();
-      if (!email) return;
-      const results = document.getElementById('gdprResults');
-      results.style.display = 'block';
-      results.innerHTML = '<em>Exporting...</em>';
-      try {
-        const res = await fetch('/api/gdpr/export?email=' + encodeURIComponent(email));
-        const data = await res.json();
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'gdpr-export-' + email.split('@')[0] + '-' + Date.now() + '.json';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        results.innerHTML = '<span style="color:var(--green);">Data exported successfully (' + data.totalRecords + ' records). Download started.</span>';
-      } catch (err) {
-        results.innerHTML = '<span style="color:var(--red);">Error exporting data. Please try again.</span>';
-      }
-    }
+  async function deleteBooking(id){
+    if(!confirm('Permanently delete this booking? This cannot be undone.'))return;
+    try{
+      const r=await api('/api/bookings/'+id,{method:'DELETE'});
+      if(r.status!==204&&!r.ok){const d=await r.json();toast(d.message||'Failed to delete','error');return}
+      toast('Booking deleted','success');loadBookings();
+    }catch(e){if(e.message!=='Session expired')toast('Network error','error')}
+  }
 
-    async function gdprErase() {
-      const email = getGdprEmail();
-      if (!email) return;
-      if (!confirm('This will permanently delete ALL booking records for ' + email + '. This action cannot be undone.\n\nProceed with erasure under UK GDPR Article 17?')) return;
-      const results = document.getElementById('gdprResults');
-      results.style.display = 'block';
-      results.innerHTML = '<em>Erasing...</em>';
-      try {
-        const res = await fetch('/api/gdpr/erase', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getStoredToken() },
-          body: JSON.stringify({ email: email })
-        });
-        const data = await res.json();
-        if (res.ok) {
-          results.innerHTML = '<span style="color:var(--green);"><strong>Erasure complete.</strong> ' + data.recordsDeleted + ' record(s) deleted for <em>' + escapeHtml(email) + '</em>. (UK GDPR Article 17)</span>';
-        } else {
-          results.innerHTML = '<span style="color:var(--red);">' + escapeHtml(data.message) + '</span>';
-        }
-      } catch (err) {
-        results.innerHTML = '<span style="color:var(--red);">Error erasing data. Please try again.</span>';
-      }
-    }
+  /* ── Booking Modal ── */
+  function openBookingModal(booking){
+    editingId=booking?booking.id:null;
+    el('modalTitle').textContent=booking?'Edit Booking':'New Booking';
+    el('modalSaveBtn').textContent=booking?'Save Changes':'Create Booking';
+    el('modalErr').classList.remove('show');
+    el('fTableType').value=booking?booking.tableType:'snooker';
+    el('fTableNum').value=booking&&booking.tableNumber?String(booking.tableNumber):'1';
+    el('tableNumGroup').style.display=(booking?booking.tableType:'snooker')==='snooker'?'':'none';
+    el('fDate').value=booking?booking.date:state.currentDate;
+    el('fStartTime').value=booking?booking.startTime:'10:00';
+    el('fDuration').value=booking?String(booking.duration):'1';
+    el('fName').value=booking?booking.customerName:'';
+    el('fEmail').value=booking?booking.customerEmail:'';
+    el('fPhone').value=booking?booking.customerPhone||'':'';
+    el('fNotes').value=booking?booking.notes||'':'';
+    el('fGdpr').checked=!!booking;
+    openOverlay('bookingModal');
+    setTimeout(()=>el('fName').focus(),100);
+  }
 
-    async function gdprRetentionCleanup() {
-      if (!confirm('This will anonymise all booking records older than 90 days and remove expired staff sessions.\n\nProceed?')) return;
-      const results = document.getElementById('gdprResults');
-      results.style.display = 'block';
-      results.innerHTML = '<em>Running cleanup...</em>';
-      try {
-        const res = await fetch('/api/gdpr/retention-cleanup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getStoredToken() }
-        });
-        const data = await res.json();
-        if (res.ok) {
-          results.innerHTML = '<span style="color:var(--green);"><strong>Cleanup complete.</strong> ' + data.bookingsAnonymized + ' booking(s) anonymised. ' + data.expiredSessionsCleared + ' expired session(s) cleared.</span>';
-        } else {
-          results.innerHTML = '<span style="color:var(--red);">' + escapeHtml(data.message) + '</span>';
-        }
-      } catch (err) {
-        results.innerHTML = '<span style="color:var(--red);">Error running cleanup. Please try again.</span>';
-      }
+  el('fTableType').addEventListener('change',()=>{el('tableNumGroup').style.display=el('fTableType').value==='snooker'?'':'none'});
+  el('modalClose').addEventListener('click',()=>closeOverlay('bookingModal'));
+  el('modalCancelBtn').addEventListener('click',()=>closeOverlay('bookingModal'));
+  el('modalSaveBtn').addEventListener('click',submitBooking);
+
+  async function submitBooking(){
+    const err=el('modalErr');
+    err.classList.remove('show');
+    const name=el('fName').value.trim();
+    const email=el('fEmail').value.trim();
+    const phone=el('fPhone').value.trim();
+    const gdpr=el('fGdpr').checked;
+    if(!name){err.textContent='Customer name is required';err.classList.add('show');return}
+    if(!email||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){err.textContent='Valid email is required';err.classList.add('show');return}
+    if(!phone){err.textContent='Phone number is required';err.classList.add('show');return}
+    if(!gdpr&&!editingId){err.textContent='Customer must consent to data processing';err.classList.add('show');return}
+    const tableType=el('fTableType').value;
+    const payload={
+      tableType,
+      tableNumber:tableType==='snooker'?parseInt(el('fTableNum').value):null,
+      date:el('fDate').value,
+      startTime:el('fStartTime').value,
+      duration:parseInt(el('fDuration').value),
+      customerName:name,customerEmail:email,customerPhone:phone,
+      notes:el('fNotes').value.trim()||null,
+      gdprConsent:true
+    };
+    el('modalSaveBtn').disabled=true;
+    try{
+      const url=editingId?'/api/bookings/'+editingId:'/api/bookings';
+      const method=editingId?'PUT':'POST';
+      const r=await api(url,{method,body:JSON.stringify(payload)});
+      const d=await r.json();
+      if(!r.ok){err.textContent=d.message||'Failed to save';err.classList.add('show');return}
+      closeOverlay('bookingModal');
+      toast(editingId?'Booking updated':'Booking created','success');
+      loadBookings();
+    }catch(e){if(e.message!=='Session expired'){err.textContent='Network error';err.classList.add('show')}}
+    finally{el('modalSaveBtn').disabled=false}
+  }
+
+  /* ── Messages ── */
+  let allMessages=[];
+  document.querySelectorAll('.filter-pill[data-mfilter]').forEach(p=>{
+    p.addEventListener('click',()=>{
+      state.msgFilter=p.dataset.mfilter;
+      document.querySelectorAll('.filter-pill[data-mfilter]').forEach(x=>x.classList.toggle('active',x===p));
+      renderMessages();
+    });
+  });
+
+  async function loadMessages(fromNav){
+    if(!fromNav)el('messagesContent').innerHTML='';
+    try{
+      const r=await api('/api/contact');
+      if(!r.ok)return;
+      allMessages=await r.json();
+      const newCount=allMessages.filter(m=>m.status==='new').length;
+      el('msgBadge').textContent=newCount;
+      el('msgBadge').classList.toggle('hidden',newCount===0);
+      renderMessages();
+    }catch(e){}
+  }
+
+  function renderMessages(){
+    const filter=state.msgFilter;
+    const list=filter==='all'?allMessages:allMessages.filter(m=>m.status===filter);
+    if(!list.length){
+      el('messagesContent').innerHTML='<div class="empty-state"><div class="empty-icon">💬</div><div class="empty-title">No messages</div><div class="empty-desc">'+(filter==='all'?'No contact messages yet':'No '+filter+' messages')+'</div></div>';
+      return;
     }
-  </script>
+    const statusBadge=s=>s==='new'?'<span class="pill pill-red">New</span>':s==='read'?'<span class="pill pill-amber">Read</span>':'<span class="pill pill-green">Replied</span>';
+    let html='<div class="msg-cards">';
+    for(const m of list){
+      html+=`<div class="msg-card ${esc(m.status||'new')}" data-id="${m.id}">
+        <div class="msg-card-header"><div class="msg-subject">${esc(m.subject||'(No subject)')}</div>${statusBadge(m.status||'new')}</div>
+        <div class="msg-meta"><strong>${esc(m.name)}</strong><span>${esc(m.email)}</span>${m.phone?`<span>${esc(m.phone)}</span>`:''}<span>${formatDateTime(m.createdAt)}</span></div>
+        <div class="msg-preview">${esc(m.message)}</div>
+      </div>`;
+    }
+    html+='</div>';
+    el('messagesContent').innerHTML=html;
+    el('messagesContent').querySelectorAll('.msg-card').forEach(card=>{
+      card.addEventListener('click',()=>openMsgModal(allMessages.find(m=>m.id===parseInt(card.dataset.id))));
+    });
+  }
+
+  function openMsgModal(msg){
+    if(!msg)return;
+    currentMsgId=msg.id;
+    el('msgModalSubject').textContent=msg.subject||'(No subject)';
+    const statusMap={new:'pill-red New',read:'pill-amber Read',replied:'pill-green Replied'};
+    const[cls,lbl]=(statusMap[msg.status||'new']||'pill-gray Unknown').split(' ');
+    el('msgModalBadge').className='pill '+cls;el('msgModalBadge').textContent=lbl;
+    el('msgModalFrom').textContent=msg.name;
+    el('msgModalContact').innerHTML=esc(msg.email)+(msg.phone?' · '+esc(msg.phone):'');
+    el('msgModalDate').textContent=formatDateTime(msg.createdAt);
+    el('msgModalBody').textContent=msg.message;
+    const ft=el('msgModalFt');
+    ft.innerHTML='';
+    if(msg.status==='new'){ft.innerHTML+=`<button class="btn btn-warning btn-sm" onclick="updateMsgStatus(${msg.id},'read')">Mark as Read</button>`}
+    if(msg.status!=='replied'){ft.innerHTML+=`<button class="btn btn-success btn-sm" onclick="updateMsgStatus(${msg.id},'replied')">Mark as Replied</button>`}
+    ft.innerHTML+=`<a href="mailto:${esc(msg.email)}?subject=Re: ${encodeURIComponent(msg.subject||'')}" class="btn btn-primary btn-sm">Reply by Email</a>`;
+    openOverlay('msgModal');
+    if(msg.status==='new')updateMsgStatus(msg.id,'read',true);
+  }
+  el('msgModalClose').addEventListener('click',()=>closeOverlay('msgModal'));
+
+  window.updateMsgStatus=async function(id,status,silent){
+    try{
+      const r=await api('/api/contact/'+id+'/status',{method:'PATCH',body:JSON.stringify({status})});
+      if(!r.ok)return;
+      const idx=allMessages.findIndex(m=>m.id===id);
+      if(idx>=0)allMessages[idx].status=status;
+      if(!silent){closeOverlay('msgModal');toast('Status updated','success')}
+      renderMessages();
+      const newCount=allMessages.filter(m=>m.status==='new').length;
+      el('msgBadge').textContent=newCount;el('msgBadge').classList.toggle('hidden',newCount===0);
+    }catch(e){}
+  };
+
+  /* ── Staff Management ── */
+  let staffList=[];
+  async function loadStaff(){
+    el('staffContent').innerHTML='<div class="loading-state"><div class="spinner"></div>Loading staff…</div>';
+    try{
+      const r=await api('/api/staff/users');
+      if(!r.ok)throw new Error('Failed');
+      staffList=await r.json();
+      renderStaff();
+    }catch(e){el('staffContent').innerHTML='<div class="empty-state"><div class="empty-title">Failed to load staff</div></div>'}
+  }
+
+  function renderStaff(){
+    const isOwner=state.role==='owner';
+    if(!staffList.length){
+      el('staffContent').innerHTML='<div class="empty-state"><div class="empty-icon">👥</div><div class="empty-title">No staff accounts</div></div>';
+      return;
+    }
+    const roleColor={staff:'var(--green)',manager:'var(--purple)',owner:'var(--gold)'};
+    const roleBg={staff:'#16A34A',manager:'#7C3AED',owner:'#D4A843'};
+    let html='';
+    if(isOwner){
+      html+=`<div style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-secondary" onclick="openOverlay('resetPinModal');loadRpSelect()">Reset a Staff PIN</button>
+      </div>`;
+    }
+    html+='<div class="staff-grid">';
+    for(const u of staffList){
+      const isSelf=u.username===state.username;
+      const isLocked=!u.active;
+      const initials=(u.displayName||u.username||'?').substring(0,2).toUpperCase();
+      html+=`<div class="staff-card${isSelf?' self':''}${isLocked?' locked':''}">
+        <div class="staff-avatar" style="background:${isLocked?'#94A3B8':roleBg[u.role]||roleBg.staff}">${isLocked?'🔒':esc(initials)}</div>
+        <div class="staff-info">
+          <div class="staff-name-row">
+            <span class="staff-name">${esc(u.displayName||u.username)}</span>
+            ${isSelf?'<span class="pill pill-blue">You</span>':''}
+            ${isLocked?'<span class="pill pill-red">Locked</span>':''}
+            <span class="pill" style="background:${roleColor[u.role]}15;color:${roleColor[u.role]}">${cap(u.role)}</span>
+          </div>
+          <div class="staff-username">@${esc(u.username)}</div>
+          <div class="staff-joined">Joined ${new Date(u.createdAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</div>
+        </div>
+        ${isOwner&&!isSelf?`<div class="staff-actions">
+          <select class="role-select" onchange="changeRole('${esc(u.username)}',this.value,this)" title="Change role">
+            <option value="staff"${u.role==='staff'?' selected':''}>Staff</option>
+            <option value="manager"${u.role==='manager'?' selected':''}>Manager</option>
+            <option value="owner"${u.role==='owner'?' selected':''}>Owner</option>
+          </select>
+          <button class="btn btn-sm ${isLocked?'btn-success':'btn-warning'}" onclick="toggleLock(${u.id},'${esc(u.username)}',${isLocked})">${isLocked?'Unlock':'Lock'}</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteStaff(${u.id},'${esc(u.displayName||u.username)}')">Delete</button>
+        </div>`:''}
+      </div>`;
+    }
+    html+='</div>';
+    el('staffContent').innerHTML=html;
+  }
+
+  window.changeRole=async function(username,newRole,selectEl){
+    if(!confirm(`Change ${username}'s role to ${newRole}?`)){selectEl.value=staffList.find(u=>u.username===username)?.role||'staff';return}
+    try{
+      const r=await api('/api/staff/update-role',{method:'PATCH',body:JSON.stringify({username,role:newRole})});
+      if(!r.ok){const d=await r.json();toast(d.message||'Failed','error');selectEl.value=staffList.find(u=>u.username===username)?.role||'staff';return}
+      toast(`Role updated to ${newRole}`,'success');loadStaff();
+    }catch(e){if(e.message!=='Session expired')toast('Network error','error')}
+  };
+
+  window.toggleLock=async function(id,name,currentlyLocked){
+    if(!confirm(currentlyLocked?`Unlock ${name}'s account?`:`Lock ${name}'s account? They won't be able to sign in.`))return;
+    try{
+      const r=await api('/api/staff/toggle-active',{method:'PATCH',body:JSON.stringify({id,active:!!currentlyLocked})});
+      if(!r.ok){const d=await r.json();toast(d.message||'Failed','error');return}
+      toast(currentlyLocked?'Account unlocked':'Account locked','success');loadStaff();
+    }catch(e){if(e.message!=='Session expired')toast('Network error','error')}
+  };
+
+  window.deleteStaff=async function(id,name){
+    if(!confirm(`Permanently delete ${name}'s account? This cannot be undone.`))return;
+    try{
+      const r=await api('/api/staff/'+id,{method:'DELETE'});
+      if(!r.ok){const d=await r.json();toast(d.message||'Failed','error');return}
+      toast('Account deleted','success');loadStaff();
+    }catch(e){if(e.message!=='Session expired')toast('Network error','error')}
+  };
+
+  /* Reset PIN */
+  window.loadRpSelect=function(){
+    const sel=el('rpUsername');
+    sel.innerHTML='<option value="">Select staff member…</option>';
+    staffList.filter(u=>u.username!==state.username).forEach(u=>{
+      sel.innerHTML+=`<option value="${esc(u.username)}">${esc(u.displayName||u.username)} (@${esc(u.username)})</option>`;
+    });
+    el('rpNew').value='';el('rpConfirm').value='';el('rpErr').classList.remove('show');
+  };
+  el('rpSubmit').addEventListener('click',async()=>{
+    const err=el('rpErr');err.classList.remove('show');
+    const username=el('rpUsername').value;
+    const newPin=el('rpNew').value;
+    const confirmPin=el('rpConfirm').value;
+    if(!username){err.textContent='Select a staff member';err.classList.add('show');return}
+    if(!newPin||newPin.length<4||!/^\d+$/.test(newPin)){err.textContent='PIN must be 4–8 digits';err.classList.add('show');return}
+    if(newPin!==confirmPin){err.textContent='PINs do not match';err.classList.add('show');return}
+    el('rpSubmit').disabled=true;
+    try{
+      const r=await api('/api/staff/reset-pin',{method:'POST',body:JSON.stringify({username,newPin})});
+      const d=await r.json();
+      if(!r.ok){err.textContent=d.message||'Failed';err.classList.add('show');return}
+      closeOverlay('resetPinModal');toast('PIN reset successfully','success');
+    }catch(e){if(e.message!=='Session expired'){err.textContent='Network error';err.classList.add('show')}}
+    finally{el('rpSubmit').disabled=false}
+  });
+
+  /* ── Change PIN ── */
+  el('changePinBtn').addEventListener('click',async()=>{
+    const errEl=el('changePinError');const sucEl=el('changePinSuccess');
+    errEl.classList.remove('show');sucEl.style.display='none';
+    const current=el('cpCurrent').value;const newPin=el('cpNew').value;const confirm=el('cpConfirm').value;
+    if(!current){errEl.textContent='Current PIN is required';errEl.classList.add('show');return}
+    if(!newPin||newPin.length<4||!/^\d+$/.test(newPin)){errEl.textContent='New PIN must be 4–8 digits';errEl.classList.add('show');return}
+    if(newPin!==confirm){errEl.textContent='PINs do not match';errEl.classList.add('show');return}
+    el('changePinBtn').disabled=true;
+    try{
+      const r=await api('/api/staff/change-pin',{method:'POST',body:JSON.stringify({currentPin:current,newPin})});
+      const d=await r.json();
+      if(!r.ok){errEl.textContent=d.message||'Failed';errEl.classList.add('show');return}
+      el('cpCurrent').value='';el('cpNew').value='';el('cpConfirm').value='';
+      sucEl.textContent='PIN changed successfully!';sucEl.style.display='block';
+      setTimeout(()=>sucEl.style.display='none',4000);
+    }catch(e){if(e.message!=='Session expired'){errEl.textContent='Network error';errEl.classList.add('show')}}
+    finally{el('changePinBtn').disabled=false}
+  });
+
+  /* ── Close overlays on backdrop click ── */
+  document.querySelectorAll('.overlay').forEach(o=>{
+    o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open')});
+  });
+
+  /* ── Init ── */
+  updateDateUI();
+  if(getToken()){bootApp()}else{showLogin()}
+
+})();
+</script>
 </body>
 </html>
