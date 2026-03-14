@@ -33,6 +33,22 @@ const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION = 15 * 60 * 1000;
 const ATTEMPT_WINDOW = 10 * 60 * 1000;
 
+// Rate limiter for sensitive/GDPR endpoints — 10 requests per 15 minutes per IP
+const sensitiveEndpointAttempts = new Map<string, { count: number; resetAt: number }>();
+const SENSITIVE_RATE_LIMIT = 10;
+const SENSITIVE_RATE_WINDOW = 15 * 60 * 1000;
+function checkSensitiveRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const record = sensitiveEndpointAttempts.get(ip);
+  if (!record || now > record.resetAt) {
+    sensitiveEndpointAttempts.set(ip, { count: 1, resetAt: now + SENSITIVE_RATE_WINDOW });
+    return true;
+  }
+  if (record.count >= SENSITIVE_RATE_LIMIT) return false;
+  record.count++;
+  return true;
+}
+
 const loyaltyOtps = new Map<string, { code: string; phone: string; expiresAt: number; attempts: number }>();
 const loyaltySessions = new Map<string, { phone: string; expiresAt: number }>();
 const OTP_EXPIRY = 5 * 60 * 1000;
@@ -897,7 +913,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(204).send();
   });
 
-  app.get("/api/gdpr/export", async (req, res) => {
+  // GDPR export — requires staff manager+ authentication (not public)
+  app.get("/api/gdpr/export", staffAuth, managerAuth, async (req, res) => {
+    const clientIp = getClientIp(req);
+    if (!checkSensitiveRateLimit(clientIp)) {
+      return res.status(429).json({ message: "Too many requests. Please try again later." });
+    }
     const { email } = req.query;
     if (!email || typeof email !== "string") {
       return res.status(400).json({ message: "Email address is required" });
@@ -934,7 +955,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(exportData);
   });
 
+  // Customer self-service data export (UK GDPR Article 15 - Right of Access)
+  app.get("/api/customers/me/export", customerAuth, async (req, res) => {
+    const clientIp = getClientIp(req);
+    if (!checkSensitiveRateLimit(clientIp)) {
+      return res.status(429).json({ message: "Too many requests. Please try again later." });
+    }
+    const customer = await storage.getCustomerById((req as any).customerId);
+    if (!customer) return res.status(404).json({ message: "Account not found" });
+    const bookings = await storage.getBookingsByEmail(customer.email);
+    const exportData = {
+      dataSubject: customer.email,
+      exportDate: new Date().toISOString(),
+      dataController: "The 147",
+      legalBasis: "UK GDPR Article 15 - Right of Access",
+      account: { name: customer.name, email: customer.email, phone: customer.phone, createdAt: customer.createdAt },
+      bookings: bookings.map((b) => ({
+        id: b.id, tableType: b.tableType, tableNumber: b.tableNumber,
+        date: b.date, startTime: b.startTime, duration: b.duration,
+        status: b.status, notes: b.notes, createdAt: b.createdAt,
+      })),
+      totalBookings: bookings.length,
+    };
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Content-Disposition", `attachment; filename="my-data-export-${Date.now()}.json"`);
+    res.json(exportData);
+  });
+
   app.delete("/api/gdpr/erase", staffAuth, managerAuth, async (req, res) => {
+    const clientIp = getClientIp(req);
+    if (!checkSensitiveRateLimit(clientIp)) {
+      return res.status(429).json({ message: "Too many requests. Please try again later." });
+    }
     const { email } = req.body;
     if (!email || typeof email !== "string") {
       return res.status(400).json({ message: "Email address is required" });
@@ -944,10 +996,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ message: "Invalid email format" });
     }
     const deletedCount = await storage.deleteBookingsByEmail(email);
+    // Also delete the customer account if one exists with this email
+    const customer = await storage.getCustomerByEmail(email);
+    if (customer) await storage.deleteCustomer(customer.id);
     res.json({
       message: `Erasure complete under UK GDPR Article 17`,
       recordsDeleted: deletedCount,
-      email,
+      customerAccountDeleted: !!customer,
       erasureDate: new Date().toISOString(),
     });
   });
@@ -1546,8 +1601,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/customers/me", customerAuth, async (req, res) => {
     const { name, phone } = req.body;
     const updates: Partial<{ name: string; phone: string }> = {};
-    if (name !== undefined) updates.name = name.trim();
-    if (phone !== undefined) updates.phone = phone.trim();
+    if (name !== undefined) {
+      const trimmed = String(name).trim();
+      if (!trimmed || trimmed.length < 2 || trimmed.length > 100) {
+        return res.status(400).json({ message: "Name must be 2–100 characters" });
+      }
+      updates.name = trimmed;
+    }
+    if (phone !== undefined) {
+      const trimmed = String(phone).trim();
+      if (trimmed && (trimmed.length < 7 || trimmed.length > 20 || !/^[+\d\s\-().]+$/.test(trimmed))) {
+        return res.status(400).json({ message: "Invalid phone number format" });
+      }
+      updates.phone = trimmed;
+    }
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: "No valid fields to update" });
+    }
     const updated = await storage.updateCustomer((req as any).customerId, updates);
     if (!updated) {
       return res.status(404).json({ message: "Account not found" });

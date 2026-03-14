@@ -53,11 +53,16 @@ function setupCors(app: express.Application) {
 }
 
 function setupSecurityHeaders(app: express.Application) {
+  const isProd = process.env.NODE_ENV === "production";
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-XSS-Protection", "1; mode=block");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
+    // HSTS — tell browsers to always use HTTPS (production only, 1 year)
+    if (isProd) {
+      res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    }
     if (req.path === "/staff") {
       res.setHeader("X-Frame-Options", "DENY");
       res.setHeader(
@@ -86,6 +91,24 @@ function setupSecurityHeaders(app: express.Application) {
     }
     next();
   });
+}
+
+// Fields whose values must never appear in logs
+const SENSITIVE_FIELDS = new Set([
+  "pin", "confirmPin", "masterPin", "newPin", "currentPin", "password",
+  "passwordHash", "pinHash", "pinSalt", "token", "authorization",
+  "customerName", "customerEmail", "customerPhone", "email", "phone",
+  "name", "code", "otp",
+]);
+
+function redactSensitive(obj: unknown, depth = 0): unknown {
+  if (depth > 4 || obj === null || typeof obj !== "object") return obj;
+  if (Array.isArray(obj)) return obj.map((v) => redactSensitive(v, depth + 1));
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    out[k] = SENSITIVE_FIELDS.has(k) ? "[REDACTED]" : redactSensitive(v, depth + 1);
+  }
+  return out;
 }
 
 function setupBodyParsing(app: express.Application) {
@@ -119,12 +142,11 @@ function setupRequestLogging(app: express.Application) {
       const duration = Date.now() - start;
 
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
+      // Only log response body for non-sensitive, non-2xx responses to avoid PII in logs
+      if (capturedJsonResponse && res.statusCode >= 400) {
+        const safe = redactSensitive(capturedJsonResponse);
+        const snippet = JSON.stringify(safe);
+        logLine += ` :: ${snippet.length > 120 ? snippet.slice(0, 119) + "…" : snippet}`;
       }
 
       log(logLine);
@@ -243,6 +265,7 @@ function configureExpoAndLanding(app: express.Application) {
 }
 
 function setupErrorHandler(app: express.Application) {
+  const isProd = process.env.NODE_ENV === "production";
   app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
     const error = err as {
       status?: number;
@@ -251,9 +274,13 @@ function setupErrorHandler(app: express.Application) {
     };
 
     const status = error.status || error.statusCode || 500;
-    const message = error.message || "Internal Server Error";
+    // In production, never expose raw error messages (could leak stack/DB info)
+    const message = isProd && status >= 500
+      ? "An unexpected error occurred. Please try again later."
+      : error.message || "Internal Server Error";
 
-    console.error("Internal Server Error:", err);
+    // Always log full error server-side for debugging
+    console.error(`[${new Date().toISOString()}] ${status} error:`, err);
 
     if (res.headersSent) {
       return next(err);
@@ -261,6 +288,26 @@ function setupErrorHandler(app: express.Application) {
 
     return res.status(status).json({ message });
   });
+}
+
+function scheduleRetentionCleanup() {
+  // Run data retention cleanup immediately on startup, then every 24 hours
+  // This ensures the 90-day anonymisation policy and session cleanup run automatically
+  async function runCleanup() {
+    try {
+      const { storage: store } = await import("./storage");
+      const anonymized = await store.anonymizeOldBookings(90);
+      const sessionsCleared = await store.cleanupExpiredSessions();
+      if (anonymized > 0 || sessionsCleared > 0) {
+        log(`[GDPR Retention] Anonymized ${anonymized} old bookings, cleared ${sessionsCleared} expired sessions`);
+      }
+    } catch (err) {
+      console.error("[GDPR Retention] Cleanup error:", err);
+    }
+  }
+  // Run shortly after startup (30 seconds), then every 24 hours
+  setTimeout(runCleanup, 30_000);
+  setInterval(runCleanup, 24 * 60 * 60 * 1000);
 }
 
 (async () => {
@@ -290,6 +337,9 @@ function setupErrorHandler(app: express.Application) {
   const server = await registerRoutes(app);
 
   setupErrorHandler(app);
+
+  // Automatically enforce GDPR data retention (90-day anonymisation + session cleanup)
+  scheduleRetentionCleanup();
 
   const port = parseInt(process.env.PORT || "5000", 10);
   server.listen(

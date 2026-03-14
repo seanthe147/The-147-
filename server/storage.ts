@@ -297,6 +297,23 @@ export class DatabaseStorage implements IStorage {
         count++;
       }
     }
+
+    // Also anonymize contact messages older than the retention period
+    const contactCutoff = new Date();
+    contactCutoff.setDate(contactCutoff.getDate() - retentionDays);
+    const oldMessages = await db.select().from(contactMessages).where(lt(contactMessages.createdAt, contactCutoff));
+    for (const msg of oldMessages) {
+      if (msg.name !== "ANONYMIZED") {
+        await db.update(contactMessages).set({
+          name: "ANONYMIZED",
+          email: "anonymized@removed.local",
+          phone: null,
+          message: "[Deleted after 90-day retention period]",
+        }).where(eq(contactMessages.id, msg.id));
+        count++;
+      }
+    }
+
     return count;
   }
 
