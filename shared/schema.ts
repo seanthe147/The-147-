@@ -28,6 +28,7 @@ export const staffUsers = pgTable("staff_users", {
   role: text("role").notNull().default("staff"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   active: boolean("active").notNull().default(true),
+  approvalStatus: text("approval_status").notNull().default("approved"),
 });
 
 export type StaffUser = typeof staffUsers.$inferSelect;
@@ -66,6 +67,7 @@ export const notifications = pgTable("notifications", {
   body: text("body").notNull(),
   sentAt: timestamp("sent_at").defaultNow().notNull(),
   recipientCount: serial("recipient_count"),
+  sentBy: text("sent_by"),
 });
 
 export type Notification = typeof notifications.$inferSelect;

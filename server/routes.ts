@@ -387,20 +387,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     const { hash, salt } = hashPin(pin);
+    const assignedRole = role || "staff";
+    const needsApproval = assignedRole === "manager" || assignedRole === "owner";
     const staffUser = await storage.createStaffUser(
       username.trim(),
       hash,
       salt,
       displayName?.trim() || undefined,
-      role || "staff"
+      assignedRole,
+      needsApproval ? "pending" : "approved"
     );
 
     clearFailedLogins(clientIp);
     res.status(201).json({
-      message: "Staff account created",
+      message: needsApproval
+        ? "Account created and awaiting manager approval before you can sign in."
+        : "Staff account created",
       username: staffUser.username,
       displayName: staffUser.displayName,
       role: staffUser.role,
+      approvalStatus: staffUser.approvalStatus,
     });
   });
 
@@ -429,6 +435,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!staffUser || !staffUser.active) {
         recordFailedLogin(clientIp);
         return res.status(401).json({ message: "Invalid credentials" });
+      }
+
+      if (staffUser.approvalStatus === "pending") {
+        return res.status(403).json({ message: "Your account is awaiting approval from an owner. Please contact your manager." });
+      }
+
+      if (staffUser.approvalStatus === "rejected") {
+        return res.status(403).json({ message: "Your account request was not approved. Please contact your manager." });
       }
 
       if (!verifyPin(pin, staffUser.pinHash, staffUser.pinSalt)) {
@@ -601,6 +615,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ message: "Staff account deleted" });
   });
 
+  app.patch("/api/staff/approve", staffAuth, ownerAuth, async (req, res) => {
+    const { id, approvalStatus } = req.body;
+    if (typeof id !== "number" || !["approved", "rejected"].includes(approvalStatus)) {
+      return res.status(400).json({ message: "id (number) and approvalStatus ('approved' or 'rejected') are required" });
+    }
+    const updated = await storage.updateStaffApproval(id, approvalStatus);
+    if (!updated) return res.status(404).json({ message: "Staff user not found" });
+    res.json({ message: `Account ${approvalStatus}`, user: { id: updated.id, username: updated.username, approvalStatus: updated.approvalStatus } });
+  });
+
   app.post("/api/staff/migrate-encryption", staffAuth, managerAuth, async (_req, res) => {
     try {
       const count = await storage.migrateEncryptExistingBookings();
@@ -680,29 +704,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(tokens);
   });
 
-  app.post("/api/notifications/send", staffAuth, managerAuth, async (req, res) => {
-    const { title, body } = req.body;
-    if (!title || !body) {
-      return res.status(400).json({ message: "Title and body are required" });
-    }
-
+  async function sendPushNotifications(title: string, body: string, sentBy?: string) {
     const tokens = await storage.getAllPushTokens();
-    if (tokens.length === 0) {
-      return res.status(400).json({ message: "No registered devices" });
-    }
-
     const messages = tokens.map((t) => ({
       to: t.token,
       sound: "default" as const,
       title,
       body,
     }));
-
     const chunks: typeof messages[] = [];
     for (let i = 0; i < messages.length; i += 100) {
       chunks.push(messages.slice(i, i + 100));
     }
-
     let successCount = 0;
     for (const chunk of chunks) {
       try {
@@ -711,21 +724,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(chunk),
         });
-        if (response.ok) {
-          successCount += chunk.length;
-        }
+        if (response.ok) successCount += chunk.length;
       } catch (err) {
         console.error("Push send error:", err);
       }
     }
+    return { tokens, successCount };
+  }
 
-    const notification = await storage.saveNotification(title, body, successCount);
+  app.post("/api/notifications/send", staffAuth, managerAuth, async (req: any, res) => {
+    const { title, body } = req.body;
+    if (!title || !body) return res.status(400).json({ message: "Title and body are required" });
+    const tokens = await storage.getAllPushTokens();
+    if (tokens.length === 0) return res.status(400).json({ message: "No registered devices" });
+    const sentBy = (req as any).staffUsername;
+    const { successCount } = await sendPushNotifications(title, body, sentBy);
+    const notification = await storage.saveNotification(title, body, successCount, sentBy);
     res.json({ sent: successCount, total: tokens.length, notification });
   });
 
   app.get("/api/notifications/history", staffAuth, managerAuth, async (_req, res) => {
     const history = await storage.getNotificationHistory();
     res.json(history);
+  });
+
+  // Staff portal push routes (used by web dashboard)
+  app.get("/api/push/device-count", staffAuth, managerAuth, async (_req, res) => {
+    const tokens = await storage.getAllPushTokens();
+    res.json({ count: tokens.length });
+  });
+
+  app.get("/api/push/history", staffAuth, managerAuth, async (_req, res) => {
+    const history = await storage.getNotificationHistory();
+    res.json(history);
+  });
+
+  app.post("/api/push/send", staffAuth, managerAuth, async (req: any, res) => {
+    const { title, body } = req.body;
+    if (!title || !body) return res.status(400).json({ message: "Title and body are required" });
+    const sentBy = (req as any).staffUsername;
+    const tokens = await storage.getAllPushTokens();
+    if (tokens.length === 0) {
+      const notification = await storage.saveNotification(title, body, 0, sentBy);
+      return res.json({ count: 0, notification });
+    }
+    const { successCount } = await sendPushNotifications(title, body, sentBy);
+    const notification = await storage.saveNotification(title, body, successCount, sentBy);
+    res.json({ count: successCount, notification });
   });
 
   app.post("/api/bookings", async (req, res) => {

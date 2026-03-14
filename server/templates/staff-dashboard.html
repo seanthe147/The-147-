@@ -260,6 +260,14 @@
           <label class="form-label" for="lDisplayName">Display Name (optional)</label>
           <input class="form-input" type="text" id="lDisplayName" placeholder="Your name" maxlength="50">
         </div>
+        <div class="form-group">
+          <label class="form-label" for="lRole">Role</label>
+          <select class="form-input" id="lRole">
+            <option value="staff">Staff</option>
+            <option value="manager">Manager (requires owner approval)</option>
+          </select>
+        </div>
+        <div id="approvalNotice" style="display:none;background:rgba(217,119,6,0.08);border:1px solid rgba(217,119,6,0.25);border-radius:var(--r);padding:10px 14px;font-size:12px;color:var(--amber);font-weight:600;margin-bottom:4px;">⚠ Manager accounts must be approved by an owner before you can sign in.</div>
       </div>
 
       <div class="form-group">
@@ -308,9 +316,14 @@
           Messages
           <span class="nav-badge hidden" id="msgBadge">0</span>
         </div>
+        <div class="nav-item hidden" data-page="notifications" id="navNotifications">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          Notifications
+        </div>
         <div class="nav-item hidden" data-page="staff" id="navStaff">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           Staff Accounts
+          <span class="nav-badge hidden" id="staffBadge">0</span>
         </div>
         <div class="nav-section" style="margin-top:8px">Account</div>
         <div class="nav-item" data-page="settings">
@@ -334,6 +347,10 @@
           <span class="topbar-sub" id="topbarSub"></span>
         </div>
         <div class="topbar-actions" id="topbarActions"></div>
+        <button class="btn btn-danger btn-sm" id="topbarLogoutBtn" style="margin-left:12px;display:flex;align-items:center;gap:6px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          Sign Out
+        </button>
       </div>
 
       <!-- BOOKINGS PAGE -->
@@ -380,6 +397,40 @@
             <button class="filter-pill" data-mfilter="replied">Replied</button>
           </div>
           <div id="messagesContent"></div>
+        </div>
+      </div>
+
+      <!-- NOTIFICATIONS PAGE -->
+      <div class="page" id="pageNotifications">
+        <div class="page-body">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start">
+            <div class="settings-section" style="max-width:none">
+              <div class="settings-title">Send Push Notification</div>
+              <div class="settings-desc">Send an instant notification to all customers who have the app installed. <span id="deviceCount" style="font-weight:700;color:var(--blue)"></span></div>
+              <div id="notifSendErr" class="modal-err"></div>
+              <div id="notifSendSuccess" style="display:none;color:var(--green);font-size:13px;font-weight:600;margin-bottom:14px;padding:10px 14px;background:var(--green-light);border-radius:var(--r)"></div>
+              <div class="form-group">
+                <label class="form-label">Title</label>
+                <input class="form-input" type="text" id="notifTitle" placeholder="e.g. Special Offer Tonight!" maxlength="100">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Message</label>
+                <textarea class="form-input" id="notifBody" placeholder="e.g. 50% off pool tables from 8pm — first come, first served." style="min-height:90px;resize:vertical" maxlength="300"></textarea>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px">
+                <button class="btn btn-primary" id="notifSendBtn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                  Send Now
+                </button>
+                <span id="notifSending" style="display:none;font-size:13px;color:var(--text-2)">Sending…</span>
+              </div>
+            </div>
+            <div class="settings-section" style="max-width:none">
+              <div class="settings-title">Notification History</div>
+              <div class="settings-desc">Previously sent notifications.</div>
+              <div id="notifHistory"></div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -615,6 +666,10 @@
     el('loginError').textContent='';el('loginSuccess').textContent='';
   });
 
+  el('lRole').addEventListener('change',()=>{
+    el('approvalNotice').style.display=el('lRole').value==='manager'?'block':'none';
+  });
+
   el('loginBtn').addEventListener('click',handleAuth);
   ['lUsername','lPin','lConfirmPin','lMasterPin'].forEach(id=>{
     const e=el(id);if(e)e.addEventListener('keydown',ev=>{if(ev.key==='Enter')handleAuth()});
@@ -632,13 +687,15 @@
         const confirmPin=el('lConfirmPin').value.trim();
         const masterPin=el('lMasterPin').value.trim();
         const displayName=el('lDisplayName').value.trim();
+        const role=el('lRole').value;
         if(pin!==confirmPin){el('loginError').textContent='PINs do not match';return}
-        const r=await fetch('/api/staff/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({masterPin,username,pin,displayName:displayName||undefined})});
+        const r=await fetch('/api/staff/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({masterPin,username,pin,displayName:displayName||undefined,role})});
         const d=await r.json();
         if(!r.ok){el('loginError').textContent=d.message||'Registration failed';return}
-        el('loginSuccess').textContent='Account created! You can now sign in.';
+        el('loginSuccess').textContent=d.message||'Account created! You can now sign in.';
         isRegister=false;
         ['registerFields','confirmPinGroup'].forEach(id=>el(id).classList.add('hidden-fields'));
+        el('approvalNotice').style.display='none';
         el('loginBtn').textContent='Sign In';el('toggleMode').textContent='New staff? Create an account';
         el('lPin').value='';el('lConfirmPin').value='';el('lMasterPin').value='';
       } else {
@@ -683,16 +740,18 @@
     el('sidebarName').textContent=state.displayName||state.username||'Staff';
     el('sidebarRole').textContent=state.role.charAt(0).toUpperCase()+state.role.slice(1);
     el('sidebarRole').className='sidebar-user-role role-'+state.role;
+    el('navNotifications').classList.toggle('hidden',!isManager);
     el('navStaff').classList.toggle('hidden',!isOwner);
-    // Topbar new booking button shown for all
     el('topbarActions').innerHTML=`<button class="btn btn-primary" id="newBookingBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Booking</button>`;
     el('newBookingBtn').addEventListener('click',()=>openBookingModal(null));
   }
 
-  el('logoutBtn').addEventListener('click',async()=>{
+  async function doLogout(){
     try{await api('/api/staff/logout',{method:'POST'})}catch(e){}
     clearToken();showLogin();
-  });
+  }
+  el('logoutBtn').addEventListener('click',doLogout);
+  el('topbarLogoutBtn').addEventListener('click',doLogout);
 
   /* ── Navigation ── */
   document.querySelectorAll('.nav-item[data-page]').forEach(item=>{
@@ -702,11 +761,13 @@
   function navigateTo(page){
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page'+cap(page)));
-    const titles={bookings:'Bookings',messages:'Messages',staff:'Staff Accounts',settings:'Settings'};
+    const titles={bookings:'Bookings',messages:'Messages',notifications:'Push Notifications',staff:'Staff Accounts',settings:'Settings'};
     el('topbarTitle').textContent=titles[page]||'';
+    el('topbarSub').textContent='';
     if(page==='bookings'){el('topbarActions').style.display='';loadBookings()}
     else{el('topbarActions').style.display='none'}
     if(page==='messages')loadMessages(true);
+    if(page==='notifications')loadNotifications();
     if(page==='staff')loadStaff();
   }
   function cap(s){return s.charAt(0).toUpperCase()+s.slice(1)}
@@ -1002,18 +1063,44 @@
         <button class="btn btn-secondary" onclick="openOverlay('resetPinModal');loadRpSelect()">Reset a Staff PIN</button>
       </div>`;
     }
+
+    // Pending approvals section (owner only)
+    const pending=staffList.filter(u=>u.approvalStatus==='pending');
+    if(isOwner&&pending.length){
+      html+=`<div class="settings-section" style="max-width:none;margin-bottom:24px;border:1.5px solid rgba(217,119,6,0.3);background:rgba(217,119,6,0.04)">
+        <div class="settings-title" style="color:var(--amber)">⏳ Pending Approvals (${pending.length})</div>
+        <div class="settings-desc">These manager accounts are waiting for your approval before they can sign in.</div>
+        <div style="display:flex;flex-direction:column;gap:10px">`;
+      for(const u of pending){
+        html+=`<div style="display:flex;align-items:center;gap:14px;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r)">
+          <div class="staff-avatar" style="background:#7C3AED;width:36px;height:36px;font-size:13px;flex-shrink:0">${(u.displayName||u.username||'?').substring(0,2).toUpperCase()}</div>
+          <div style="flex:1">
+            <div style="font-weight:700;font-size:14px">${esc(u.displayName||u.username)}</div>
+            <div style="font-size:12px;color:var(--text-2)">@${esc(u.username)} · Manager · Registered ${new Date(u.createdAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-success btn-sm" onclick="approveStaff(${u.id},'${esc(u.displayName||u.username)}','approved')">Approve</button>
+            <button class="btn btn-danger btn-sm" onclick="approveStaff(${u.id},'${esc(u.displayName||u.username)}','rejected')">Reject</button>
+          </div>
+        </div>`;
+      }
+      html+=`</div></div>`;
+    }
+
     html+='<div class="staff-grid">';
-    for(const u of staffList){
+    for(const u of staffList.filter(u=>u.approvalStatus!=='pending')){
       const isSelf=u.username===state.username;
       const isLocked=!u.active;
+      const isRejected=u.approvalStatus==='rejected';
       const initials=(u.displayName||u.username||'?').substring(0,2).toUpperCase();
       html+=`<div class="staff-card${isSelf?' self':''}${isLocked?' locked':''}">
-        <div class="staff-avatar" style="background:${isLocked?'#94A3B8':roleBg[u.role]||roleBg.staff}">${isLocked?'🔒':esc(initials)}</div>
+        <div class="staff-avatar" style="background:${isLocked||isRejected?'#94A3B8':roleBg[u.role]||roleBg.staff}">${isLocked?'🔒':esc(initials)}</div>
         <div class="staff-info">
           <div class="staff-name-row">
             <span class="staff-name">${esc(u.displayName||u.username)}</span>
             ${isSelf?'<span class="pill pill-blue">You</span>':''}
             ${isLocked?'<span class="pill pill-red">Locked</span>':''}
+            ${isRejected?'<span class="pill pill-red">Rejected</span>':''}
             <span class="pill" style="background:${roleColor[u.role]}15;color:${roleColor[u.role]}">${cap(u.role)}</span>
           </div>
           <div class="staff-username">@${esc(u.username)}</div>
@@ -1032,7 +1119,20 @@
     }
     html+='</div>';
     el('staffContent').innerHTML=html;
+    // Update staff badge
+    const badge=el('staffBadge');
+    if(pending.length){badge.textContent=pending.length;badge.classList.remove('hidden')}
+    else{badge.classList.add('hidden')}
   }
+
+  window.approveStaff=async function(id,name,status){
+    if(!confirm(status==='approved'?`Approve ${name}'s manager account?`:`Reject ${name}'s application? They will not be able to sign in.`))return;
+    try{
+      const r=await api('/api/staff/approve',{method:'PATCH',body:JSON.stringify({id,status})});
+      if(!r.ok){const d=await r.json();toast(d.message||'Failed','error');return}
+      toast(status==='approved'?`${name} approved`:`${name} rejected`,'success');loadStaff();
+    }catch(e){if(e.message!=='Session expired')toast('Network error','error')}
+  };
 
   window.changeRole=async function(username,newRole,selectEl){
     if(!confirm(`Change ${username}'s role to ${newRole}?`)){selectEl.value=staffList.find(u=>u.username===username)?.role||'staff';return}
@@ -1060,6 +1160,46 @@
       toast('Account deleted','success');loadStaff();
     }catch(e){if(e.message!=='Session expired')toast('Network error','error')}
   };
+
+  /* ── Notifications ── */
+  let notifHistory=[];
+  async function loadNotifications(){
+    el('notifHistory').innerHTML='<div class="loading-state"><div class="spinner"></div>Loading…</div>';
+    el('notifSendErr').classList.remove('show');el('notifSendSuccess').style.display='none';
+    try{
+      const [devRes,histRes]=await Promise.all([api('/api/push/device-count'),api('/api/push/history')]);
+      if(devRes.ok){const d=await devRes.json();el('deviceCount').textContent=`${d.count} device${d.count!==1?'s':''} registered.`}
+      if(histRes.ok){notifHistory=await histRes.json();renderNotifHistory()}
+      else{el('notifHistory').innerHTML='<div class="empty-state"><div class="empty-title">No history yet</div></div>'}
+    }catch(e){el('notifHistory').innerHTML='<div class="empty-state"><div class="empty-title">Failed to load</div></div>'}
+  }
+  function renderNotifHistory(){
+    if(!notifHistory.length){el('notifHistory').innerHTML='<div style="color:var(--text-2);font-size:13px">No notifications sent yet.</div>';return}
+    el('notifHistory').innerHTML=notifHistory.slice(0,20).map(n=>`
+      <div style="padding:12px 0;border-bottom:1px solid var(--border)">
+        <div style="font-weight:700;font-size:14px">${esc(n.title)}</div>
+        <div style="font-size:13px;color:var(--text-2);margin:3px 0 5px">${esc(n.body)}</div>
+        <div style="font-size:11px;color:var(--text-2)">Sent ${formatDateTime(n.sentAt)} · ${n.sentBy?`by @${esc(n.sentBy)}`:'system'} · ${n.recipientCount??'?'} recipient${n.recipientCount!==1?'s':''}</div>
+      </div>`).join('');
+  }
+  el('notifSendBtn').addEventListener('click',async()=>{
+    const title=el('notifTitle').value.trim();
+    const body=el('notifBody').value.trim();
+    const errEl=el('notifSendErr');const sucEl=el('notifSendSuccess');
+    errEl.classList.remove('show');sucEl.style.display='none';
+    if(!title){errEl.textContent='Title is required';errEl.classList.add('show');return}
+    if(!body){errEl.textContent='Message is required';errEl.classList.add('show');return}
+    el('notifSendBtn').disabled=true;el('notifSending').style.display='';
+    try{
+      const r=await api('/api/push/send',{method:'POST',body:JSON.stringify({title,body})});
+      const d=await r.json();
+      if(!r.ok){errEl.textContent=d.message||'Failed to send';errEl.classList.add('show');return}
+      sucEl.textContent=`Sent to ${d.count??0} device${d.count!==1?'s':''}!`;sucEl.style.display='block';
+      el('notifTitle').value='';el('notifBody').value='';
+      loadNotifications();
+    }catch(e){if(e.message!=='Session expired'){errEl.textContent='Network error';errEl.classList.add('show')}}
+    finally{el('notifSendBtn').disabled=false;el('notifSending').style.display='none'}
+  });
 
   /* Reset PIN */
   window.loadRpSelect=function(){

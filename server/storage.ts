@@ -87,7 +87,8 @@ export interface IStorage {
   deleteBookingsByEmail(email: string): Promise<number>;
   anonymizeOldBookings(retentionDays: number): Promise<number>;
   cleanupExpiredSessions(): Promise<number>;
-  createStaffUser(username: string, pinHash: string, pinSalt: string, displayName?: string, role?: string): Promise<StaffUser>;
+  createStaffUser(username: string, pinHash: string, pinSalt: string, displayName?: string, role?: string, approvalStatus?: string): Promise<StaffUser>;
+  updateStaffApproval(id: number, approvalStatus: string): Promise<StaffUser | undefined>;
   getStaffUserByUsername(username: string): Promise<StaffUser | undefined>;
   getAllStaffUsers(): Promise<StaffUser[]>;
   updateStaffPin(username: string, pinHash: string, pinSalt: string): Promise<StaffUser | undefined>;
@@ -158,8 +159,8 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
-  async saveNotification(title: string, body: string, recipientCount: number): Promise<Notification> {
-    const [created] = await db.insert(notifications).values({ title, body, recipientCount }).returning();
+  async saveNotification(title: string, body: string, recipientCount: number, sentBy?: string): Promise<Notification> {
+    const [created] = await db.insert(notifications).values({ title, body, recipientCount, sentBy }).returning();
     return created;
   }
 
@@ -306,15 +307,24 @@ export class DatabaseStorage implements IStorage {
     return result.length;
   }
 
-  async createStaffUser(username: string, pinHash: string, pinSalt: string, displayName?: string, role?: string): Promise<StaffUser> {
+  async createStaffUser(username: string, pinHash: string, pinSalt: string, displayName?: string, role?: string, approvalStatus?: string): Promise<StaffUser> {
     const [user] = await db.insert(staffUsers).values({
       username: username.toLowerCase().trim(),
       pinHash,
       pinSalt,
       displayName: displayName || null,
       role: role === "owner" ? "owner" : role === "manager" ? "manager" : "staff",
+      approvalStatus: approvalStatus || "approved",
     }).returning();
     return user;
+  }
+
+  async updateStaffApproval(id: number, approvalStatus: string): Promise<StaffUser | undefined> {
+    const [updated] = await db.update(staffUsers)
+      .set({ approvalStatus })
+      .where(eq(staffUsers.id, id))
+      .returning();
+    return updated;
   }
 
   async getStaffUserByUsername(username: string): Promise<StaffUser | undefined> {
