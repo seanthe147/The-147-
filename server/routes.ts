@@ -722,30 +722,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   async function sendPushNotifications(title: string, body: string, sentBy?: string) {
     const tokens = await storage.getAllPushTokens();
+    if (tokens.length === 0) return { tokens, successCount: 0, failureCount: 0 };
+
     const messages = tokens.map((t) => ({
       to: t.token,
       sound: "default" as const,
       title,
       body,
     }));
+
+    // Expo push API accepts up to 100 messages per request
     const chunks: typeof messages[] = [];
     for (let i = 0; i < messages.length; i += 100) {
       chunks.push(messages.slice(i, i + 100));
     }
+
     let successCount = 0;
+    let failureCount = 0;
+    const deadTokens: string[] = [];
+
     for (const chunk of chunks) {
       try {
         const response = await fetch("https://exp.host/--/api/v2/push/send", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip, deflate",
+          },
           body: JSON.stringify(chunk),
         });
-        if (response.ok) successCount += chunk.length;
+
+        // Expo ALWAYS returns HTTP 200 — must read the body to check actual delivery status
+        const responseData = await response.json() as {
+          data?: Array<{ status: string; message?: string; details?: { error?: string } }>;
+          errors?: Array<{ code: string; message: string }>;
+        };
+
+        if (!response.ok || responseData.errors) {
+          console.error("[Push] Expo API error:", JSON.stringify(responseData));
+          failureCount += chunk.length;
+          continue;
+        }
+
+        if (responseData.data) {
+          responseData.data.forEach((result, index) => {
+            const token = chunk[index]?.to;
+            if (result.status === "ok") {
+              successCount++;
+            } else {
+              failureCount++;
+              console.error(`[Push] Delivery failed for token ${token}: ${result.message} (error: ${result.details?.error})`);
+              // Auto-remove tokens that are no longer registered on the device
+              if (result.details?.error === "DeviceNotRegistered" && token) {
+                deadTokens.push(token);
+              }
+            }
+          });
+        } else {
+          console.error("[Push] Unexpected Expo response shape:", JSON.stringify(responseData));
+          failureCount += chunk.length;
+        }
       } catch (err) {
-        console.error("Push send error:", err);
+        console.error("[Push] Network error sending to Expo:", err);
+        failureCount += chunk.length;
       }
     }
-    return { tokens, successCount };
+
+    // Clean up tokens for devices that have uninstalled the app
+    for (const deadToken of deadTokens) {
+      try {
+        await storage.removePushToken(deadToken);
+        console.log(`[Push] Removed unregistered token: ${deadToken}`);
+      } catch (err) {
+        console.error(`[Push] Failed to remove dead token ${deadToken}:`, err);
+      }
+    }
+
+    if (failureCount > 0) {
+      console.error(`[Push] Summary: ${successCount} delivered, ${failureCount} failed, ${deadTokens.length} dead tokens removed`);
+    } else {
+      console.log(`[Push] Summary: ${successCount} delivered successfully`);
+    }
+
+    return { tokens, successCount, failureCount };
   }
 
   app.post("/api/notifications/send", staffAuth, managerAuth, async (req: any, res) => {
@@ -754,9 +814,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const tokens = await storage.getAllPushTokens();
     if (tokens.length === 0) return res.status(400).json({ message: "No registered devices" });
     const sentBy = (req as any).staffUsername;
-    const { successCount } = await sendPushNotifications(title, body, sentBy);
+    const { successCount, failureCount } = await sendPushNotifications(title, body, sentBy);
     const notification = await storage.saveNotification(title, body, successCount, sentBy);
-    res.json({ sent: successCount, total: tokens.length, notification });
+    res.json({ sent: successCount, failed: failureCount, total: tokens.length, notification });
   });
 
   app.get("/api/notifications/history", staffAuth, managerAuth, async (_req, res) => {
@@ -782,11 +842,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const tokens = await storage.getAllPushTokens();
     if (tokens.length === 0) {
       const notification = await storage.saveNotification(title, body, 0, sentBy);
-      return res.json({ count: 0, notification });
+      return res.json({ count: 0, failed: 0, notification });
     }
-    const { successCount } = await sendPushNotifications(title, body, sentBy);
+    const { successCount, failureCount } = await sendPushNotifications(title, body, sentBy);
     const notification = await storage.saveNotification(title, body, successCount, sentBy);
-    res.json({ count: successCount, notification });
+    res.json({ count: successCount, failed: failureCount, total: tokens.length, notification });
   });
 
   app.post("/api/bookings", async (req, res) => {

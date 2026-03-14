@@ -1194,7 +1194,18 @@
       const r=await api('/api/push/send',{method:'POST',body:JSON.stringify({title,body})});
       const d=await r.json();
       if(!r.ok){errEl.textContent=d.message||'Failed to send';errEl.classList.add('show');return}
-      sucEl.textContent=`Sent to ${d.count??0} device${d.count!==1?'s':''}!`;sucEl.style.display='block';
+      const count=d.count??0;const failed=d.failed??0;
+      if(count===0&&failed>0){
+        sucEl.textContent=`Sent — but all ${failed} device${failed!==1?'s':''} rejected delivery. Tokens may be stale.`;
+        sucEl.style.color='#e67e22';
+      }else if(failed>0){
+        sucEl.textContent=`Delivered to ${count} device${count!==1?'s':''} (${failed} failed).`;
+        sucEl.style.color='#e67e22';
+      }else{
+        sucEl.textContent=`Sent to ${count} device${count!==1?'s':''}!`;
+        sucEl.style.color='';
+      }
+      sucEl.style.display='block';
       el('notifTitle').value='';el('notifBody').value='';
       loadNotifications();
     }catch(e){if(e.message!=='Session expired'){errEl.textContent='Network error';errEl.classList.add('show')}}

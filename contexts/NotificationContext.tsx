@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState, useMemo,
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
+import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { EventSubscription } from "expo-modules-core";
 import { apiRequest } from "@/lib/query-client";
@@ -70,19 +71,27 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       });
     }
 
-    const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: undefined,
-    });
-    const token = tokenData.data;
-    setExpoPushToken(token);
+    let token: string | null = null;
+    try {
+      // Use EAS projectId from app config if available, otherwise let Expo infer it
+      const projectId = Constants.expoConfig?.extra?.eas?.projectId as string | undefined;
+      const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+      token = tokenData.data;
+      setExpoPushToken(token);
+      console.log("[Push] Got token:", token?.slice(0, 30) + "...");
+    } catch (err) {
+      console.error("[Push] getExpoPushTokenAsync failed:", err);
+      return null;
+    }
 
     try {
       await apiRequest("POST", "/api/push-tokens", {
         token,
         deviceName: Device.deviceName ?? "Unknown Device",
       });
+      console.log("[Push] Token registered with server");
     } catch (err) {
-      console.log("Token registration error:", err);
+      console.error("[Push] Token registration error:", err);
     }
 
     return token;
