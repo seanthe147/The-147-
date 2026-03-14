@@ -96,7 +96,7 @@ export default function PrivacyPolicyScreen() {
               Table bookings: When you book a table, we collect your name,
               email address, and phone number. This data is stored securely on
               our servers and is necessary to manage your reservation. Booking
-              data is automatically anonymised after 90 days.
+              data is automatically anonymised after 12 months.
             </Text>
             <Text style={styles.bulletItem}>
               Push notifications: If you opt in, your device token is stored to
@@ -229,7 +229,7 @@ export default function PrivacyPolicyScreen() {
             retained until you reset them or uninstall the app.
           </Text>
           <Text style={styles.bodyText}>
-            Booking data (name, email, phone number) is retained for 90 days
+            Booking data (name, email, phone number) is retained for 12 months
             after the booking date, after which it is automatically anonymised.
             This retention period allows us to manage your reservation and
             handle any follow-up queries.

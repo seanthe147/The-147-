@@ -1008,13 +1008,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/gdpr/retention-cleanup", staffAuth, managerAuth, async (_req, res) => {
-    const anonymized = await storage.anonymizeOldBookings(90);
+    const anonymized = await storage.anonymizeOldBookings(365);
     const sessionsCleared = await storage.cleanupExpiredSessions();
     res.json({
       message: "Data retention policy applied",
       bookingsAnonymized: anonymized,
       expiredSessionsCleared: sessionsCleared,
-      retentionPeriodDays: 90,
+      retentionPeriodDays: 365,
     });
   });
 

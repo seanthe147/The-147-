@@ -292,14 +292,14 @@ function setupErrorHandler(app: express.Application) {
 
 function scheduleRetentionCleanup() {
   // Run data retention cleanup immediately on startup, then every 24 hours
-  // This ensures the 90-day anonymisation policy and session cleanup run automatically
+  // This ensures the 12-month anonymisation policy and session cleanup run automatically
   async function runCleanup() {
     try {
       const { storage: store } = await import("./storage");
-      const anonymized = await store.anonymizeOldBookings(90);
+      const anonymized = await store.anonymizeOldBookings(365);
       const sessionsCleared = await store.cleanupExpiredSessions();
       if (anonymized > 0 || sessionsCleared > 0) {
-        log(`[GDPR Retention] Anonymized ${anonymized} old bookings, cleared ${sessionsCleared} expired sessions`);
+        log(`[GDPR Retention] Anonymized ${anonymized} old records, cleared ${sessionsCleared} expired sessions`);
       }
     } catch (err) {
       console.error("[GDPR Retention] Cleanup error:", err);
