@@ -224,6 +224,19 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { eq, lt, lte, sql as sql2 } from "drizzle-orm";
 import { and, gt } from "drizzle-orm";
+function buildPoolConfig() {
+  const rawUrl = process.env.DATABASE_URL;
+  if (process.env.NODE_ENV !== "production") {
+    return { connectionString: rawUrl };
+  }
+  const url = new URL(rawUrl);
+  url.searchParams.delete("sslmode");
+  url.searchParams.delete("uselibpqcompat");
+  return {
+    connectionString: url.toString(),
+    ssl: { rejectUnauthorized: false }
+  };
+}
 function encryptBookingFields(booking) {
   return {
     ...booking,
@@ -247,10 +260,7 @@ var init_storage = __esm({
     "use strict";
     init_schema();
     init_encryption();
-    pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false
-    });
+    pool = new Pool(buildPoolConfig());
     db = drizzle(pool);
     DatabaseStorage = class {
       async getUser(id) {

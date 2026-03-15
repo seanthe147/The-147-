@@ -38,10 +38,21 @@ import {
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL!,
-  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
-});
+function buildPoolConfig() {
+  const rawUrl = process.env.DATABASE_URL!;
+  if (process.env.NODE_ENV !== "production") {
+    return { connectionString: rawUrl };
+  }
+  const url = new URL(rawUrl);
+  url.searchParams.delete("sslmode");
+  url.searchParams.delete("uselibpqcompat");
+  return {
+    connectionString: url.toString(),
+    ssl: { rejectUnauthorized: false },
+  };
+}
+
+const pool = new Pool(buildPoolConfig());
 
 const db = drizzle(pool);
 
