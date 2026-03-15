@@ -1,158 +1,157 @@
-// server/index.ts
-import express from "express";
-
-// server/routes.ts
-import { createServer } from "node:http";
-import { randomBytes as randomBytes2, timingSafeEqual } from "node:crypto";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import multer from "multer";
-
-// server/storage.ts
-import { drizzle } from "drizzle-orm/node-postgres";
-import { eq, lt, lte, sql as sql2 } from "drizzle-orm";
-import { and, gt } from "drizzle-orm";
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
 
 // shared/schema.ts
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, serial, timestamp, boolean, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-var users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull()
+var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema;
+var init_schema = __esm({
+  "shared/schema.ts"() {
+    "use strict";
+    users = pgTable("users", {
+      id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+      username: text("username").notNull().unique(),
+      password: text("password").notNull()
+    });
+    insertUserSchema = createInsertSchema(users).pick({
+      username: true,
+      password: true
+    });
+    staffUsers = pgTable("staff_users", {
+      id: serial("id").primaryKey(),
+      username: text("username").notNull().unique(),
+      pinHash: text("pin_hash").notNull(),
+      pinSalt: text("pin_salt").notNull(),
+      displayName: text("display_name"),
+      role: text("role").notNull().default("staff"),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+      active: boolean("active").notNull().default(true),
+      approvalStatus: text("approval_status").notNull().default("approved")
+    });
+    offers = pgTable("offers", {
+      id: serial("id").primaryKey(),
+      title: text("title").notNull(),
+      subtitle: text("subtitle").notNull(),
+      discount: text("discount").notNull(),
+      validUntil: text("valid_until").notNull(),
+      gradientStart: text("gradient_start").notNull().default("#0047AB"),
+      gradientEnd: text("gradient_end").notNull().default("#1E6FD9"),
+      icon: text("icon").notNull().default("pricetag")
+    });
+    insertOfferSchema = createInsertSchema(offers).omit({ id: true });
+    pushTokens = pgTable("push_tokens", {
+      id: serial("id").primaryKey(),
+      token: text("token").notNull().unique(),
+      deviceName: text("device_name"),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
+    insertPushTokenSchema = createInsertSchema(pushTokens).omit({ id: true, createdAt: true });
+    notifications = pgTable("notifications", {
+      id: serial("id").primaryKey(),
+      title: text("title").notNull(),
+      body: text("body").notNull(),
+      sentAt: timestamp("sent_at").defaultNow().notNull(),
+      recipientCount: serial("recipient_count"),
+      sentBy: text("sent_by")
+    });
+    bookings = pgTable("bookings", {
+      id: serial("id").primaryKey(),
+      customerName: text("customer_name").notNull(),
+      customerEmail: text("customer_email").notNull(),
+      customerPhone: text("customer_phone").notNull(),
+      emailHash: text("email_hash"),
+      tableType: text("table_type").notNull(),
+      tableNumber: text("table_number"),
+      date: text("date").notNull(),
+      startTime: text("start_time").notNull(),
+      duration: serial("duration").notNull(),
+      status: text("status").notNull().default("confirmed"),
+      notes: text("notes"),
+      gdprConsent: boolean("gdpr_consent").notNull().default(false),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
+    insertBookingSchema = createInsertSchema(bookings).omit({ id: true, createdAt: true });
+    staffSessions = pgTable("staff_sessions", {
+      id: serial("id").primaryKey(),
+      token: text("token").notNull().unique(),
+      staffUserId: integer("staff_user_id"),
+      staffUsername: text("staff_username"),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+      expiresAt: timestamp("expires_at").notNull(),
+      active: boolean("active").notNull().default(true)
+    });
+    contactMessages = pgTable("contact_messages", {
+      id: serial("id").primaryKey(),
+      name: text("name").notNull(),
+      email: text("email").notNull(),
+      phone: text("phone"),
+      subject: text("subject").notNull(),
+      message: text("message").notNull(),
+      status: text("status").notNull().default("new"),
+      gdprConsent: boolean("gdpr_consent").notNull().default(false),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
+    insertContactMessageSchema = createInsertSchema(contactMessages).omit({ id: true, createdAt: true, status: true });
+    events = pgTable("events", {
+      id: serial("id").primaryKey(),
+      title: text("title").notNull(),
+      description: text("description"),
+      date: text("date"),
+      time: text("time"),
+      endTime: text("end_time"),
+      ticketUrl: text("ticket_url"),
+      imageColor: text("image_color").notNull().default("#0047AB"),
+      active: boolean("active").notNull().default(true),
+      eventType: text("event_type").notNull().default("event"),
+      dayOfWeek: text("day_of_week"),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
+    insertEventSchema = createInsertSchema(events).omit({ id: true, createdAt: true });
+    siteSettings = pgTable("site_settings", {
+      key: text("key").primaryKey(),
+      value: text("value").notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    });
+    customers = pgTable("customers", {
+      id: serial("id").primaryKey(),
+      email: text("email").notNull().unique(),
+      name: text("name").notNull(),
+      phone: text("phone"),
+      passwordHash: text("password_hash").notNull(),
+      privacyConsentAt: timestamp("privacy_consent_at"),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
+    insertCustomerSchema = createInsertSchema(customers).omit({ id: true, createdAt: true });
+    customerSessions = pgTable("customer_sessions", {
+      id: serial("id").primaryKey(),
+      token: text("token").notNull().unique(),
+      customerId: integer("customer_id").notNull(),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+      expiresAt: timestamp("expires_at").notNull(),
+      active: boolean("active").notNull().default(true)
+    });
+    bannerImages = pgTable("banner_images", {
+      id: serial("id").primaryKey(),
+      imageUrl: text("image_url").notNull(),
+      title: text("title"),
+      sortOrder: integer("sort_order").notNull().default(0),
+      active: boolean("active").notNull().default(true),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
+    insertBannerImageSchema = createInsertSchema(bannerImages).omit({ id: true, createdAt: true });
+  }
 });
-var insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true
-});
-var staffUsers = pgTable("staff_users", {
-  id: serial("id").primaryKey(),
-  username: text("username").notNull().unique(),
-  pinHash: text("pin_hash").notNull(),
-  pinSalt: text("pin_salt").notNull(),
-  displayName: text("display_name"),
-  role: text("role").notNull().default("staff"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  active: boolean("active").notNull().default(true)
-});
-var offers = pgTable("offers", {
-  id: serial("id").primaryKey(),
-  title: text("title").notNull(),
-  subtitle: text("subtitle").notNull(),
-  discount: text("discount").notNull(),
-  validUntil: text("valid_until").notNull(),
-  gradientStart: text("gradient_start").notNull().default("#0047AB"),
-  gradientEnd: text("gradient_end").notNull().default("#1E6FD9"),
-  icon: text("icon").notNull().default("pricetag")
-});
-var insertOfferSchema = createInsertSchema(offers).omit({ id: true });
-var pushTokens = pgTable("push_tokens", {
-  id: serial("id").primaryKey(),
-  token: text("token").notNull().unique(),
-  deviceName: text("device_name"),
-  createdAt: timestamp("created_at").defaultNow().notNull()
-});
-var insertPushTokenSchema = createInsertSchema(pushTokens).omit({ id: true, createdAt: true });
-var notifications = pgTable("notifications", {
-  id: serial("id").primaryKey(),
-  title: text("title").notNull(),
-  body: text("body").notNull(),
-  sentAt: timestamp("sent_at").defaultNow().notNull(),
-  recipientCount: serial("recipient_count")
-});
-var bookings = pgTable("bookings", {
-  id: serial("id").primaryKey(),
-  customerName: text("customer_name").notNull(),
-  customerEmail: text("customer_email").notNull(),
-  customerPhone: text("customer_phone").notNull(),
-  emailHash: text("email_hash"),
-  tableType: text("table_type").notNull(),
-  tableNumber: text("table_number"),
-  date: text("date").notNull(),
-  startTime: text("start_time").notNull(),
-  duration: serial("duration").notNull(),
-  status: text("status").notNull().default("confirmed"),
-  notes: text("notes"),
-  gdprConsent: boolean("gdpr_consent").notNull().default(false),
-  createdAt: timestamp("created_at").defaultNow().notNull()
-});
-var insertBookingSchema = createInsertSchema(bookings).omit({ id: true, createdAt: true });
-var staffSessions = pgTable("staff_sessions", {
-  id: serial("id").primaryKey(),
-  token: text("token").notNull().unique(),
-  staffUserId: integer("staff_user_id"),
-  staffUsername: text("staff_username"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  expiresAt: timestamp("expires_at").notNull(),
-  active: boolean("active").notNull().default(true)
-});
-var contactMessages = pgTable("contact_messages", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  email: text("email").notNull(),
-  phone: text("phone"),
-  subject: text("subject").notNull(),
-  message: text("message").notNull(),
-  status: text("status").notNull().default("new"),
-  gdprConsent: boolean("gdpr_consent").notNull().default(false),
-  createdAt: timestamp("created_at").defaultNow().notNull()
-});
-var insertContactMessageSchema = createInsertSchema(contactMessages).omit({ id: true, createdAt: true, status: true });
-var events = pgTable("events", {
-  id: serial("id").primaryKey(),
-  title: text("title").notNull(),
-  description: text("description"),
-  date: text("date"),
-  time: text("time"),
-  endTime: text("end_time"),
-  ticketUrl: text("ticket_url"),
-  imageColor: text("image_color").notNull().default("#0047AB"),
-  active: boolean("active").notNull().default(true),
-  eventType: text("event_type").notNull().default("event"),
-  dayOfWeek: text("day_of_week"),
-  createdAt: timestamp("created_at").defaultNow().notNull()
-});
-var insertEventSchema = createInsertSchema(events).omit({ id: true, createdAt: true });
-var siteSettings = pgTable("site_settings", {
-  key: text("key").primaryKey(),
-  value: text("value").notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull()
-});
-var customers = pgTable("customers", {
-  id: serial("id").primaryKey(),
-  email: text("email").notNull().unique(),
-  name: text("name").notNull(),
-  phone: text("phone"),
-  passwordHash: text("password_hash").notNull(),
-  privacyConsentAt: timestamp("privacy_consent_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull()
-});
-var insertCustomerSchema = createInsertSchema(customers).omit({ id: true, createdAt: true });
-var customerSessions = pgTable("customer_sessions", {
-  id: serial("id").primaryKey(),
-  token: text("token").notNull().unique(),
-  customerId: integer("customer_id").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  expiresAt: timestamp("expires_at").notNull(),
-  active: boolean("active").notNull().default(true)
-});
-var bannerImages = pgTable("banner_images", {
-  id: serial("id").primaryKey(),
-  imageUrl: text("image_url").notNull(),
-  title: text("title"),
-  sortOrder: integer("sort_order").notNull().default(0),
-  active: boolean("active").notNull().default(true),
-  createdAt: timestamp("created_at").defaultNow().notNull()
-});
-var insertBannerImageSchema = createInsertSchema(bannerImages).omit({ id: true, createdAt: true });
 
 // server/encryption.ts
 import { createCipheriv, createDecipheriv, randomBytes, createHash, scryptSync } from "node:crypto";
-var ALGORITHM = "aes-256-gcm";
-var IV_LENGTH = 16;
-var AUTH_TAG_LENGTH = 16;
-var SALT_LENGTH = 16;
 function getEncryptionKey() {
   const key = process.env.ENCRYPTION_KEY;
   if (!key) {
@@ -204,9 +203,27 @@ function verifyPin(pin, storedHash, salt) {
   }
   return diff === 0;
 }
+var ALGORITHM, IV_LENGTH, AUTH_TAG_LENGTH, SALT_LENGTH;
+var init_encryption = __esm({
+  "server/encryption.ts"() {
+    "use strict";
+    ALGORITHM = "aes-256-gcm";
+    IV_LENGTH = 16;
+    AUTH_TAG_LENGTH = 16;
+    SALT_LENGTH = 16;
+  }
+});
 
 // server/storage.ts
-var db = drizzle(process.env.DATABASE_URL);
+var storage_exports = {};
+__export(storage_exports, {
+  DatabaseStorage: () => DatabaseStorage,
+  storage: () => storage
+});
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
+import { eq, lt, lte, sql as sql2 } from "drizzle-orm";
+import { and, gt } from "drizzle-orm";
 function encryptBookingFields(booking) {
   return {
     ...booking,
@@ -224,337 +241,391 @@ function decryptBookingFields(booking) {
     customerPhone: decrypt(booking.customerPhone)
   };
 }
-var DatabaseStorage = class {
-  async getUser(id) {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user;
-  }
-  async getUserByUsername(username) {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
-    return user;
-  }
-  async createUser(insertUser) {
-    const [user] = await db.insert(users).values(insertUser).returning();
-    return user;
-  }
-  async getOffers() {
-    return db.select().from(offers);
-  }
-  async getOffer(id) {
-    const [offer] = await db.select().from(offers).where(eq(offers.id, id));
-    return offer;
-  }
-  async createOffer(offer) {
-    const [created] = await db.insert(offers).values(offer).returning();
-    return created;
-  }
-  async updateOffer(id, data) {
-    const [updated] = await db.update(offers).set(data).where(eq(offers.id, id)).returning();
-    return updated;
-  }
-  async deleteOffer(id) {
-    const result = await db.delete(offers).where(eq(offers.id, id)).returning();
-    return result.length > 0;
-  }
-  async registerPushToken(data) {
-    const [existing] = await db.select().from(pushTokens).where(eq(pushTokens.token, data.token));
-    if (existing) return existing;
-    const [created] = await db.insert(pushTokens).values(data).returning();
-    return created;
-  }
-  async getAllPushTokens() {
-    return db.select().from(pushTokens);
-  }
-  async removePushToken(token) {
-    const result = await db.delete(pushTokens).where(eq(pushTokens.token, token)).returning();
-    return result.length > 0;
-  }
-  async saveNotification(title, body, recipientCount) {
-    const [created] = await db.insert(notifications).values({ title, body, recipientCount }).returning();
-    return created;
-  }
-  async getNotificationHistory() {
-    return db.select().from(notifications).orderBy(notifications.sentAt);
-  }
-  async createBooking(booking) {
-    const encrypted = encryptBookingFields(booking);
-    const [created] = await db.insert(bookings).values(encrypted).returning();
-    return decryptBookingFields(created);
-  }
-  async getBookings() {
-    const results = await db.select().from(bookings).orderBy(bookings.date, bookings.startTime);
-    return results.map(decryptBookingFields);
-  }
-  async getBookingsByDate(date) {
-    const results = await db.select().from(bookings).where(eq(bookings.date, date)).orderBy(bookings.startTime);
-    return results.map(decryptBookingFields);
-  }
-  async getBooking(id) {
-    const [booking] = await db.select().from(bookings).where(eq(bookings.id, id));
-    return booking ? decryptBookingFields(booking) : void 0;
-  }
-  async updateBookingStatus(id, status) {
-    const [updated] = await db.update(bookings).set({ status }).where(eq(bookings.id, id)).returning();
-    return updated ? decryptBookingFields(updated) : void 0;
-  }
-  async updateBooking(id, data) {
-    const encData = { ...data };
-    if (data.customerName) encData.customerName = encrypt(data.customerName);
-    if (data.customerEmail) {
-      encData.customerEmail = encrypt(data.customerEmail);
-      encData.emailHash = hashEmail(data.customerEmail);
-    }
-    if (data.customerPhone) encData.customerPhone = encrypt(data.customerPhone);
-    const [updated] = await db.update(bookings).set(encData).where(eq(bookings.id, id)).returning();
-    return updated ? decryptBookingFields(updated) : void 0;
-  }
-  async deleteBooking(id) {
-    const result = await db.delete(bookings).where(eq(bookings.id, id)).returning();
-    return result.length > 0;
-  }
-  async getBookedSlots(date, tableType, tableNumber) {
-    const conditions = [
-      eq(bookings.date, date),
-      eq(bookings.tableType, tableType),
-      eq(bookings.status, "confirmed")
-    ];
-    if (tableNumber) {
-      conditions.push(eq(bookings.tableNumber, tableNumber));
-    }
-    const results = await db.select({ startTime: bookings.startTime, duration: bookings.duration }).from(bookings).where(and(...conditions));
-    return results;
-  }
-  async createStaffSession(token, expiresAt, staffUserId, staffUsername) {
-    const [session] = await db.insert(staffSessions).values({
-      token,
-      expiresAt,
-      staffUserId: staffUserId ?? null,
-      staffUsername: staffUsername ?? null
-    }).returning();
-    return session;
-  }
-  async validateStaffSession(token) {
-    const [session] = await db.select().from(staffSessions).where(
-      and(
-        eq(staffSessions.token, token),
-        eq(staffSessions.active, true),
-        gt(staffSessions.expiresAt, /* @__PURE__ */ new Date())
-      )
-    );
-    return session;
-  }
-  async invalidateStaffSession(token) {
-    const result = await db.update(staffSessions).set({ active: false }).where(eq(staffSessions.token, token)).returning();
-    return result.length > 0;
-  }
-  async getBookingsByEmail(email) {
-    const hash = hashEmail(email);
-    const byHash = await db.select().from(bookings).where(eq(bookings.emailHash, hash)).orderBy(bookings.date);
-    if (byHash.length > 0) {
-      return byHash.map(decryptBookingFields);
-    }
-    const byPlain = await db.select().from(bookings).where(sql2`lower(${bookings.customerEmail}) = lower(${email})`).orderBy(bookings.date);
-    return byPlain.map(decryptBookingFields);
-  }
-  async deleteBookingsByEmail(email) {
-    const hash = hashEmail(email);
-    const byHash = await db.delete(bookings).where(eq(bookings.emailHash, hash)).returning();
-    if (byHash.length > 0) return byHash.length;
-    const byPlain = await db.delete(bookings).where(sql2`lower(${bookings.customerEmail}) = lower(${email})`).returning();
-    return byPlain.length;
-  }
-  async anonymizeOldBookings(retentionDays) {
-    const cutoffDate = /* @__PURE__ */ new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
-    const cutoffStr = cutoffDate.toISOString().split("T")[0];
-    const oldBookings = await db.select().from(bookings).where(lt(bookings.date, cutoffStr));
-    let count = 0;
-    for (const booking of oldBookings) {
-      const decryptedName = decrypt(booking.customerName);
-      if (decryptedName !== "ANONYMIZED") {
-        await db.update(bookings).set({
-          customerName: "ANONYMIZED",
-          customerEmail: "anonymized@removed.local",
-          customerPhone: "000000",
-          emailHash: null,
-          notes: null
-        }).where(eq(bookings.id, booking.id));
-        count++;
+var pool, db, DatabaseStorage, storage;
+var init_storage = __esm({
+  "server/storage.ts"() {
+    "use strict";
+    init_schema();
+    init_encryption();
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false
+    });
+    db = drizzle(pool);
+    DatabaseStorage = class {
+      async getUser(id) {
+        const [user] = await db.select().from(users).where(eq(users.id, id));
+        return user;
       }
-    }
-    return count;
+      async getUserByUsername(username) {
+        const [user] = await db.select().from(users).where(eq(users.username, username));
+        return user;
+      }
+      async createUser(insertUser) {
+        const [user] = await db.insert(users).values(insertUser).returning();
+        return user;
+      }
+      async getOffers() {
+        return db.select().from(offers);
+      }
+      async getOffer(id) {
+        const [offer] = await db.select().from(offers).where(eq(offers.id, id));
+        return offer;
+      }
+      async createOffer(offer) {
+        const [created] = await db.insert(offers).values(offer).returning();
+        return created;
+      }
+      async updateOffer(id, data) {
+        const [updated] = await db.update(offers).set(data).where(eq(offers.id, id)).returning();
+        return updated;
+      }
+      async deleteOffer(id) {
+        const result = await db.delete(offers).where(eq(offers.id, id)).returning();
+        return result.length > 0;
+      }
+      async registerPushToken(data) {
+        const [existing] = await db.select().from(pushTokens).where(eq(pushTokens.token, data.token));
+        if (existing) return existing;
+        const [created] = await db.insert(pushTokens).values(data).returning();
+        return created;
+      }
+      async getAllPushTokens() {
+        return db.select().from(pushTokens);
+      }
+      async removePushToken(token) {
+        const result = await db.delete(pushTokens).where(eq(pushTokens.token, token)).returning();
+        return result.length > 0;
+      }
+      async saveNotification(title, body, recipientCount, sentBy) {
+        const [created] = await db.insert(notifications).values({ title, body, recipientCount, sentBy }).returning();
+        return created;
+      }
+      async getNotificationHistory() {
+        return db.select().from(notifications).orderBy(notifications.sentAt);
+      }
+      async createBooking(booking) {
+        const encrypted = encryptBookingFields(booking);
+        const [created] = await db.insert(bookings).values(encrypted).returning();
+        return decryptBookingFields(created);
+      }
+      async getBookings() {
+        const results = await db.select().from(bookings).orderBy(bookings.date, bookings.startTime);
+        return results.map(decryptBookingFields);
+      }
+      async getBookingsByDate(date) {
+        const results = await db.select().from(bookings).where(eq(bookings.date, date)).orderBy(bookings.startTime);
+        return results.map(decryptBookingFields);
+      }
+      async getBooking(id) {
+        const [booking] = await db.select().from(bookings).where(eq(bookings.id, id));
+        return booking ? decryptBookingFields(booking) : void 0;
+      }
+      async updateBookingStatus(id, status) {
+        const [updated] = await db.update(bookings).set({ status }).where(eq(bookings.id, id)).returning();
+        return updated ? decryptBookingFields(updated) : void 0;
+      }
+      async updateBooking(id, data) {
+        const encData = { ...data };
+        if (data.customerName) encData.customerName = encrypt(data.customerName);
+        if (data.customerEmail) {
+          encData.customerEmail = encrypt(data.customerEmail);
+          encData.emailHash = hashEmail(data.customerEmail);
+        }
+        if (data.customerPhone) encData.customerPhone = encrypt(data.customerPhone);
+        const [updated] = await db.update(bookings).set(encData).where(eq(bookings.id, id)).returning();
+        return updated ? decryptBookingFields(updated) : void 0;
+      }
+      async deleteBooking(id) {
+        const result = await db.delete(bookings).where(eq(bookings.id, id)).returning();
+        return result.length > 0;
+      }
+      async getBookedSlots(date, tableType, tableNumber) {
+        const conditions = [
+          eq(bookings.date, date),
+          eq(bookings.tableType, tableType),
+          eq(bookings.status, "confirmed")
+        ];
+        if (tableNumber) {
+          conditions.push(eq(bookings.tableNumber, tableNumber));
+        }
+        const results = await db.select({ startTime: bookings.startTime, duration: bookings.duration }).from(bookings).where(and(...conditions));
+        return results;
+      }
+      async createStaffSession(token, expiresAt, staffUserId, staffUsername) {
+        const [session] = await db.insert(staffSessions).values({
+          token,
+          expiresAt,
+          staffUserId: staffUserId ?? null,
+          staffUsername: staffUsername ?? null
+        }).returning();
+        return session;
+      }
+      async validateStaffSession(token) {
+        const [session] = await db.select().from(staffSessions).where(
+          and(
+            eq(staffSessions.token, token),
+            eq(staffSessions.active, true),
+            gt(staffSessions.expiresAt, /* @__PURE__ */ new Date())
+          )
+        );
+        return session;
+      }
+      async invalidateStaffSession(token) {
+        const result = await db.update(staffSessions).set({ active: false }).where(eq(staffSessions.token, token)).returning();
+        return result.length > 0;
+      }
+      async getBookingsByEmail(email) {
+        const hash = hashEmail(email);
+        const byHash = await db.select().from(bookings).where(eq(bookings.emailHash, hash)).orderBy(bookings.date);
+        if (byHash.length > 0) {
+          return byHash.map(decryptBookingFields);
+        }
+        const byPlain = await db.select().from(bookings).where(sql2`lower(${bookings.customerEmail}) = lower(${email})`).orderBy(bookings.date);
+        return byPlain.map(decryptBookingFields);
+      }
+      async deleteBookingsByEmail(email) {
+        const hash = hashEmail(email);
+        const byHash = await db.delete(bookings).where(eq(bookings.emailHash, hash)).returning();
+        if (byHash.length > 0) return byHash.length;
+        const byPlain = await db.delete(bookings).where(sql2`lower(${bookings.customerEmail}) = lower(${email})`).returning();
+        return byPlain.length;
+      }
+      async anonymizeOldBookings(retentionDays) {
+        const cutoffDate = /* @__PURE__ */ new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+        const cutoffStr = cutoffDate.toISOString().split("T")[0];
+        const oldBookings = await db.select().from(bookings).where(lt(bookings.date, cutoffStr));
+        let count = 0;
+        for (const booking of oldBookings) {
+          const decryptedName = decrypt(booking.customerName);
+          if (decryptedName !== "ANONYMIZED") {
+            await db.update(bookings).set({
+              customerName: "ANONYMIZED",
+              customerEmail: "anonymized@removed.local",
+              customerPhone: "000000",
+              emailHash: null,
+              notes: null
+            }).where(eq(bookings.id, booking.id));
+            count++;
+          }
+        }
+        const contactCutoff = /* @__PURE__ */ new Date();
+        contactCutoff.setDate(contactCutoff.getDate() - retentionDays);
+        const oldMessages = await db.select().from(contactMessages).where(lt(contactMessages.createdAt, contactCutoff));
+        for (const msg of oldMessages) {
+          if (msg.name !== "ANONYMIZED") {
+            await db.update(contactMessages).set({
+              name: "ANONYMIZED",
+              email: "anonymized@removed.local",
+              phone: null,
+              message: "[Deleted after 90-day retention period]"
+            }).where(eq(contactMessages.id, msg.id));
+            count++;
+          }
+        }
+        return count;
+      }
+      async cleanupExpiredSessions() {
+        const result = await db.delete(staffSessions).where(
+          lte(staffSessions.expiresAt, /* @__PURE__ */ new Date())
+        ).returning();
+        return result.length;
+      }
+      async createStaffUser(username, pinHash, pinSalt, displayName, role, approvalStatus) {
+        const [user] = await db.insert(staffUsers).values({
+          username: username.toLowerCase().trim(),
+          pinHash,
+          pinSalt,
+          displayName: displayName || null,
+          role: role === "owner" ? "owner" : role === "manager" ? "manager" : "staff",
+          approvalStatus: approvalStatus || "approved"
+        }).returning();
+        return user;
+      }
+      async updateStaffApproval(id, approvalStatus) {
+        const [updated] = await db.update(staffUsers).set({ approvalStatus }).where(eq(staffUsers.id, id)).returning();
+        return updated;
+      }
+      async getStaffUserByUsername(username) {
+        const [user] = await db.select().from(staffUsers).where(
+          eq(staffUsers.username, username.toLowerCase().trim())
+        );
+        return user;
+      }
+      async getAllStaffUsers() {
+        return db.select().from(staffUsers).orderBy(staffUsers.createdAt);
+      }
+      async setStaffActive(id, active) {
+        const [updated] = await db.update(staffUsers).set({ active }).where(eq(staffUsers.id, id)).returning();
+        return updated;
+      }
+      async deleteStaffUser(id) {
+        const [deleted] = await db.delete(staffUsers).where(eq(staffUsers.id, id)).returning();
+        return !!deleted;
+      }
+      async updateStaffRole(username, newRole) {
+        const [updated] = await db.update(staffUsers).set({ role: newRole }).where(eq(staffUsers.username, username.toLowerCase().trim())).returning();
+        return updated;
+      }
+      async updateStaffPin(username, pinHash, pinSalt) {
+        const [updated] = await db.update(staffUsers).set({ pinHash, pinSalt }).where(eq(staffUsers.username, username.toLowerCase().trim())).returning();
+        return updated;
+      }
+      async migrateEncryptExistingBookings() {
+        const allBookings = await db.select().from(bookings);
+        let migrated = 0;
+        for (const booking of allBookings) {
+          if (booking.customerName === "ANONYMIZED") continue;
+          if (booking.customerEmail.startsWith("enc:")) continue;
+          const encName = encrypt(booking.customerName);
+          const encEmail = encrypt(booking.customerEmail);
+          const encPhone = encrypt(booking.customerPhone);
+          const eHash = hashEmail(booking.customerEmail);
+          await db.update(bookings).set({
+            customerName: encName,
+            customerEmail: encEmail,
+            customerPhone: encPhone,
+            emailHash: eHash
+          }).where(eq(bookings.id, booking.id));
+          migrated++;
+        }
+        return migrated;
+      }
+      async getEvents() {
+        return db.select().from(events).orderBy(events.date);
+      }
+      async getActiveEvents(eventType) {
+        if (eventType) {
+          return db.select().from(events).where(and(eq(events.active, true), eq(events.eventType, eventType))).orderBy(events.date);
+        }
+        return db.select().from(events).where(eq(events.active, true)).orderBy(events.date);
+      }
+      async getEvent(id) {
+        const [event] = await db.select().from(events).where(eq(events.id, id));
+        return event;
+      }
+      async createEvent(data) {
+        const [created] = await db.insert(events).values(data).returning();
+        return created;
+      }
+      async updateEvent(id, data) {
+        const [updated] = await db.update(events).set(data).where(eq(events.id, id)).returning();
+        return updated;
+      }
+      async deleteEvent(id) {
+        const result = await db.delete(events).where(eq(events.id, id)).returning();
+        return result.length > 0;
+      }
+      async createContactMessage(data) {
+        const [created] = await db.insert(contactMessages).values(data).returning();
+        return created;
+      }
+      async getContactMessages() {
+        return db.select().from(contactMessages).orderBy(contactMessages.createdAt);
+      }
+      async updateContactMessageStatus(id, status) {
+        const [updated] = await db.update(contactMessages).set({ status }).where(eq(contactMessages.id, id)).returning();
+        return updated;
+      }
+      async getSetting(key) {
+        const [row] = await db.select().from(siteSettings).where(eq(siteSettings.key, key));
+        return row?.value ?? null;
+      }
+      async setSetting(key, value) {
+        await db.insert(siteSettings).values({ key, value, updatedAt: /* @__PURE__ */ new Date() }).onConflictDoUpdate({ target: siteSettings.key, set: { value, updatedAt: /* @__PURE__ */ new Date() } });
+      }
+      async getAllSettings() {
+        const rows = await db.select().from(siteSettings);
+        const result = {};
+        for (const row of rows) result[row.key] = row.value;
+        return result;
+      }
+      async getBannerImages() {
+        return db.select().from(bannerImages).where(eq(bannerImages.active, true)).orderBy(bannerImages.sortOrder);
+      }
+      async getAllBannerImages() {
+        return db.select().from(bannerImages).orderBy(bannerImages.sortOrder);
+      }
+      async createBannerImage(data) {
+        const [row] = await db.insert(bannerImages).values(data).returning();
+        return row;
+      }
+      async updateBannerImage(id, data) {
+        const [row] = await db.update(bannerImages).set(data).where(eq(bannerImages.id, id)).returning();
+        return row;
+      }
+      async deleteBannerImage(id) {
+        const [row] = await db.delete(bannerImages).where(eq(bannerImages.id, id)).returning();
+        return !!row;
+      }
+      async createCustomer(email, name, phone, passwordHash) {
+        const [customer] = await db.insert(customers).values({
+          email: email.toLowerCase().trim(),
+          name,
+          phone,
+          passwordHash,
+          privacyConsentAt: /* @__PURE__ */ new Date()
+        }).returning();
+        return customer;
+      }
+      async getCustomerByEmail(email) {
+        const [customer] = await db.select().from(customers).where(eq(customers.email, email.toLowerCase().trim()));
+        return customer;
+      }
+      async getCustomerById(id) {
+        const [customer] = await db.select().from(customers).where(eq(customers.id, id));
+        return customer;
+      }
+      async updateCustomer(id, data) {
+        const [updated] = await db.update(customers).set(data).where(eq(customers.id, id)).returning();
+        return updated;
+      }
+      async deleteCustomer(id) {
+        await db.delete(customerSessions).where(eq(customerSessions.customerId, id));
+        const result = await db.delete(customers).where(eq(customers.id, id)).returning();
+        return result.length > 0;
+      }
+      async createCustomerSession(token, customerId, expiresAt) {
+        const [session] = await db.insert(customerSessions).values({
+          token,
+          customerId,
+          expiresAt
+        }).returning();
+        return session;
+      }
+      async validateCustomerSession(token) {
+        const [session] = await db.select().from(customerSessions).where(
+          and(
+            eq(customerSessions.token, token),
+            eq(customerSessions.active, true),
+            gt(customerSessions.expiresAt, /* @__PURE__ */ new Date())
+          )
+        );
+        return session;
+      }
+      async invalidateCustomerSession(token) {
+        const result = await db.update(customerSessions).set({ active: false }).where(eq(customerSessions.token, token)).returning();
+        return result.length > 0;
+      }
+    };
+    storage = new DatabaseStorage();
   }
-  async cleanupExpiredSessions() {
-    const result = await db.delete(staffSessions).where(
-      lte(staffSessions.expiresAt, /* @__PURE__ */ new Date())
-    ).returning();
-    return result.length;
-  }
-  async createStaffUser(username, pinHash, pinSalt, displayName, role) {
-    const [user] = await db.insert(staffUsers).values({
-      username: username.toLowerCase().trim(),
-      pinHash,
-      pinSalt,
-      displayName: displayName || null,
-      role: role === "owner" ? "owner" : role === "manager" ? "manager" : "staff"
-    }).returning();
-    return user;
-  }
-  async getStaffUserByUsername(username) {
-    const [user] = await db.select().from(staffUsers).where(
-      eq(staffUsers.username, username.toLowerCase().trim())
-    );
-    return user;
-  }
-  async getAllStaffUsers() {
-    return db.select().from(staffUsers).where(eq(staffUsers.active, true));
-  }
-  async updateStaffRole(username, newRole) {
-    const [updated] = await db.update(staffUsers).set({ role: newRole }).where(eq(staffUsers.username, username.toLowerCase().trim())).returning();
-    return updated;
-  }
-  async updateStaffPin(username, pinHash, pinSalt) {
-    const [updated] = await db.update(staffUsers).set({ pinHash, pinSalt }).where(eq(staffUsers.username, username.toLowerCase().trim())).returning();
-    return updated;
-  }
-  async migrateEncryptExistingBookings() {
-    const allBookings = await db.select().from(bookings);
-    let migrated = 0;
-    for (const booking of allBookings) {
-      if (booking.customerName === "ANONYMIZED") continue;
-      if (booking.customerEmail.startsWith("enc:")) continue;
-      const encName = encrypt(booking.customerName);
-      const encEmail = encrypt(booking.customerEmail);
-      const encPhone = encrypt(booking.customerPhone);
-      const eHash = hashEmail(booking.customerEmail);
-      await db.update(bookings).set({
-        customerName: encName,
-        customerEmail: encEmail,
-        customerPhone: encPhone,
-        emailHash: eHash
-      }).where(eq(bookings.id, booking.id));
-      migrated++;
-    }
-    return migrated;
-  }
-  async getEvents() {
-    return db.select().from(events).orderBy(events.date);
-  }
-  async getActiveEvents(eventType) {
-    if (eventType) {
-      return db.select().from(events).where(and(eq(events.active, true), eq(events.eventType, eventType))).orderBy(events.date);
-    }
-    return db.select().from(events).where(eq(events.active, true)).orderBy(events.date);
-  }
-  async getEvent(id) {
-    const [event] = await db.select().from(events).where(eq(events.id, id));
-    return event;
-  }
-  async createEvent(data) {
-    const [created] = await db.insert(events).values(data).returning();
-    return created;
-  }
-  async updateEvent(id, data) {
-    const [updated] = await db.update(events).set(data).where(eq(events.id, id)).returning();
-    return updated;
-  }
-  async deleteEvent(id) {
-    const result = await db.delete(events).where(eq(events.id, id)).returning();
-    return result.length > 0;
-  }
-  async createContactMessage(data) {
-    const [created] = await db.insert(contactMessages).values(data).returning();
-    return created;
-  }
-  async getContactMessages() {
-    return db.select().from(contactMessages).orderBy(contactMessages.createdAt);
-  }
-  async updateContactMessageStatus(id, status) {
-    const [updated] = await db.update(contactMessages).set({ status }).where(eq(contactMessages.id, id)).returning();
-    return updated;
-  }
-  async getSetting(key) {
-    const [row] = await db.select().from(siteSettings).where(eq(siteSettings.key, key));
-    return row?.value ?? null;
-  }
-  async setSetting(key, value) {
-    await db.insert(siteSettings).values({ key, value, updatedAt: /* @__PURE__ */ new Date() }).onConflictDoUpdate({ target: siteSettings.key, set: { value, updatedAt: /* @__PURE__ */ new Date() } });
-  }
-  async getAllSettings() {
-    const rows = await db.select().from(siteSettings);
-    const result = {};
-    for (const row of rows) result[row.key] = row.value;
-    return result;
-  }
-  async getBannerImages() {
-    return db.select().from(bannerImages).where(eq(bannerImages.active, true)).orderBy(bannerImages.sortOrder);
-  }
-  async getAllBannerImages() {
-    return db.select().from(bannerImages).orderBy(bannerImages.sortOrder);
-  }
-  async createBannerImage(data) {
-    const [row] = await db.insert(bannerImages).values(data).returning();
-    return row;
-  }
-  async updateBannerImage(id, data) {
-    const [row] = await db.update(bannerImages).set(data).where(eq(bannerImages.id, id)).returning();
-    return row;
-  }
-  async deleteBannerImage(id) {
-    const [row] = await db.delete(bannerImages).where(eq(bannerImages.id, id)).returning();
-    return !!row;
-  }
-  async createCustomer(email, name, phone, passwordHash) {
-    const [customer] = await db.insert(customers).values({
-      email: email.toLowerCase().trim(),
-      name,
-      phone,
-      passwordHash,
-      privacyConsentAt: /* @__PURE__ */ new Date()
-    }).returning();
-    return customer;
-  }
-  async getCustomerByEmail(email) {
-    const [customer] = await db.select().from(customers).where(eq(customers.email, email.toLowerCase().trim()));
-    return customer;
-  }
-  async getCustomerById(id) {
-    const [customer] = await db.select().from(customers).where(eq(customers.id, id));
-    return customer;
-  }
-  async updateCustomer(id, data) {
-    const [updated] = await db.update(customers).set(data).where(eq(customers.id, id)).returning();
-    return updated;
-  }
-  async deleteCustomer(id) {
-    await db.delete(customerSessions).where(eq(customerSessions.customerId, id));
-    const result = await db.delete(customers).where(eq(customers.id, id)).returning();
-    return result.length > 0;
-  }
-  async createCustomerSession(token, customerId, expiresAt) {
-    const [session] = await db.insert(customerSessions).values({
-      token,
-      customerId,
-      expiresAt
-    }).returning();
-    return session;
-  }
-  async validateCustomerSession(token) {
-    const [session] = await db.select().from(customerSessions).where(
-      and(
-        eq(customerSessions.token, token),
-        eq(customerSessions.active, true),
-        gt(customerSessions.expiresAt, /* @__PURE__ */ new Date())
-      )
-    );
-    return session;
-  }
-  async invalidateCustomerSession(token) {
-    const result = await db.update(customerSessions).set({ active: false }).where(eq(customerSessions.token, token)).returning();
-    return result.length > 0;
-  }
-};
-var storage = new DatabaseStorage();
+});
+
+// server/index.ts
+import express from "express";
+
+// server/routes.ts
+init_storage();
+init_schema();
+init_encryption();
+import { createServer } from "node:http";
+import { randomBytes as randomBytes2, timingSafeEqual } from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import multer from "multer";
+import sharp from "sharp";
 
 // server/square.ts
 var SQUARE_BASE_URL = process.env.SQUARE_ENVIRONMENT === "production" ? "https://connect.squareup.com" : "https://connect.squareupsandbox.com";
@@ -665,14 +736,7 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 var upload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, uploadsDir),
-    filename: (_req, file, cb) => {
-      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-      const ext = path.extname(file.originalname) || ".jpg";
-      cb(null, `banner-${uniqueSuffix}${ext}`);
-    }
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
@@ -687,6 +751,20 @@ var loginAttempts = /* @__PURE__ */ new Map();
 var MAX_LOGIN_ATTEMPTS = 5;
 var LOCKOUT_DURATION = 15 * 60 * 1e3;
 var ATTEMPT_WINDOW = 10 * 60 * 1e3;
+var sensitiveEndpointAttempts = /* @__PURE__ */ new Map();
+var SENSITIVE_RATE_LIMIT = 10;
+var SENSITIVE_RATE_WINDOW = 15 * 60 * 1e3;
+function checkSensitiveRateLimit(ip) {
+  const now = Date.now();
+  const record = sensitiveEndpointAttempts.get(ip);
+  if (!record || now > record.resetAt) {
+    sensitiveEndpointAttempts.set(ip, { count: 1, resetAt: now + SENSITIVE_RATE_WINDOW });
+    return true;
+  }
+  if (record.count >= SENSITIVE_RATE_LIMIT) return false;
+  record.count++;
+  return true;
+}
 var loyaltyOtps = /* @__PURE__ */ new Map();
 var loyaltySessions = /* @__PURE__ */ new Map();
 var OTP_EXPIRY = 5 * 60 * 1e3;
@@ -720,41 +798,46 @@ function validateLoyaltySession(token) {
 }
 async function sendOtpEmail(email, code) {
   const resendKey = process.env.RESEND_API_KEY;
-  if (resendKey) {
-    try {
-      const response = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${resendKey}`
-        },
-        body: JSON.stringify({
-          from: "The 147 <onboarding@resend.dev>",
-          to: email,
-          subject: "Your Loyalty Verification Code",
-          html: `<div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
-            <h2 style="color: #0A1628; margin-bottom: 8px;">The 147 Loyalty</h2>
-            <p style="color: #555; font-size: 15px;">Your verification code is:</p>
-            <div style="background: #F5F5F5; border-radius: 12px; padding: 24px; text-align: center; margin: 20px 0;">
-              <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #0047AB;">${code}</span>
-            </div>
-            <p style="color: #555; font-size: 14px;">This code expires in 5 minutes. If you didn't request this, you can safely ignore this email.</p>
-            <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
-            <p style="color: #999; font-size: 12px;">The 147 &mdash; Snooker, Bar &amp; Restaurant</p>
-          </div>`
-        })
-      });
-      if (response.ok) {
-        console.log(`[LOYALTY OTP] Email sent to ${email}`);
-        return true;
-      }
-      console.error("Resend email error:", await response.text());
-    } catch (err) {
-      console.error("Resend email send error:", err);
-    }
+  if (!resendKey) {
+    console.log(`[LOYALTY OTP] RESEND_API_KEY not configured. Email: ${email} | Code: ${code}`);
+    return false;
   }
-  console.log(`[LOYALTY OTP] Email: ${email} | Code: ${code} (RESEND_API_KEY not configured)`);
-  return true;
+  const fromEmail = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+  const fromName = process.env.RESEND_FROM_NAME || "The 147";
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${resendKey}`
+      },
+      body: JSON.stringify({
+        from: `${fromName} <${fromEmail}>`,
+        to: email,
+        subject: "Your Loyalty Verification Code \u2014 The 147",
+        html: `<div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+          <h2 style="color: #0A1628; margin-bottom: 8px;">The 147 Loyalty</h2>
+          <p style="color: #555; font-size: 15px;">Your verification code is:</p>
+          <div style="background: #F5F5F5; border-radius: 12px; padding: 24px; text-align: center; margin: 20px 0;">
+            <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #0047AB;">${code}</span>
+          </div>
+          <p style="color: #555; font-size: 14px;">This code expires in 5 minutes. If you didn't request this, you can safely ignore this email.</p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+          <p style="color: #999; font-size: 12px;">The 147 &mdash; Snooker, Bar &amp; Restaurant</p>
+        </div>`
+      })
+    });
+    if (response.ok) {
+      console.log(`[LOYALTY OTP] Email sent to ${email}`);
+      return true;
+    }
+    const errorText = await response.text();
+    console.error(`[LOYALTY OTP] Resend API error (${response.status}): ${errorText}`);
+    return false;
+  } catch (err) {
+    console.error("[LOYALTY OTP] Email send exception:", err);
+    return false;
+  }
 }
 async function sendBookingConfirmationEmail(booking) {
   const resendKey = process.env.RESEND_API_KEY;
@@ -987,19 +1070,23 @@ async function registerRoutes(app2) {
       return res.status(400).json({ message: "Role must be 'staff', 'manager', or 'owner'" });
     }
     const { hash, salt } = hashPin(pin);
+    const assignedRole = role || "staff";
+    const needsApproval = assignedRole === "manager" || assignedRole === "owner";
     const staffUser = await storage.createStaffUser(
       username.trim(),
       hash,
       salt,
       displayName?.trim() || void 0,
-      role || "staff"
+      assignedRole,
+      needsApproval ? "pending" : "approved"
     );
     clearFailedLogins(clientIp);
     res.status(201).json({
-      message: "Staff account created",
+      message: needsApproval ? "Account created and awaiting manager approval before you can sign in." : "Staff account created",
       username: staffUser.username,
       displayName: staffUser.displayName,
-      role: staffUser.role
+      role: staffUser.role,
+      approvalStatus: staffUser.approvalStatus
     });
   });
   app2.post("/api/staff/login", async (req, res) => {
@@ -1024,6 +1111,12 @@ async function registerRoutes(app2) {
       if (!staffUser || !staffUser.active) {
         recordFailedLogin(clientIp);
         return res.status(401).json({ message: "Invalid credentials" });
+      }
+      if (staffUser.approvalStatus === "pending") {
+        return res.status(403).json({ message: "Your account is awaiting approval from an owner. Please contact your manager." });
+      }
+      if (staffUser.approvalStatus === "rejected") {
+        return res.status(403).json({ message: "Your account request was not approved. Please contact your manager." });
       }
       if (!verifyPin(pin, staffUser.pinHash, staffUser.pinSalt)) {
         recordFailedLogin(clientIp);
@@ -1144,6 +1237,41 @@ async function registerRoutes(app2) {
     }
     res.json({ message: `Role updated to ${role} for ${updated.username}` });
   });
+  app2.patch("/api/staff/toggle-active", staffAuth, ownerAuth, async (req, res) => {
+    const { id, active } = req.body;
+    if (typeof id !== "number" || typeof active !== "boolean") {
+      return res.status(400).json({ message: "id (number) and active (boolean) are required" });
+    }
+    const currentUser = req.staffUsername;
+    const currentUserRecord = currentUser ? await storage.getStaffUserByUsername(currentUser) : null;
+    if (currentUserRecord && currentUserRecord.id === id) {
+      return res.status(400).json({ message: "You cannot lock your own account" });
+    }
+    const updated = await storage.setStaffActive(id, active);
+    if (!updated) return res.status(404).json({ message: "Staff user not found" });
+    res.json({ message: `Account ${active ? "unlocked" : "locked"} successfully`, user: { id: updated.id, username: updated.username, active: updated.active } });
+  });
+  app2.delete("/api/staff/:id", staffAuth, ownerAuth, async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const currentUser = req.staffUsername;
+    const currentUserRecord = currentUser ? await storage.getStaffUserByUsername(currentUser) : null;
+    if (currentUserRecord && currentUserRecord.id === id) {
+      return res.status(400).json({ message: "You cannot delete your own account" });
+    }
+    const deleted = await storage.deleteStaffUser(id);
+    if (!deleted) return res.status(404).json({ message: "Staff user not found" });
+    res.json({ message: "Staff account deleted" });
+  });
+  app2.patch("/api/staff/approve", staffAuth, ownerAuth, async (req, res) => {
+    const { id, approvalStatus } = req.body;
+    if (typeof id !== "number" || !["approved", "rejected"].includes(approvalStatus)) {
+      return res.status(400).json({ message: "id (number) and approvalStatus ('approved' or 'rejected') are required" });
+    }
+    const updated = await storage.updateStaffApproval(id, approvalStatus);
+    if (!updated) return res.status(404).json({ message: "Staff user not found" });
+    res.json({ message: `Account ${approvalStatus}`, user: { id: updated.id, username: updated.username, approvalStatus: updated.approvalStatus } });
+  });
   app2.post("/api/staff/migrate-encryption", staffAuth, managerAuth, async (_req, res) => {
     try {
       const count = await storage.migrateEncryptExistingBookings();
@@ -1213,15 +1341,9 @@ async function registerRoutes(app2) {
     const tokens = await storage.getAllPushTokens();
     res.json(tokens);
   });
-  app2.post("/api/notifications/send", staffAuth, managerAuth, async (req, res) => {
-    const { title, body } = req.body;
-    if (!title || !body) {
-      return res.status(400).json({ message: "Title and body are required" });
-    }
+  async function sendPushNotifications(title, body, sentBy) {
     const tokens = await storage.getAllPushTokens();
-    if (tokens.length === 0) {
-      return res.status(400).json({ message: "No registered devices" });
-    }
+    if (tokens.length === 0) return { tokens, successCount: 0, failureCount: 0 };
     const messages = tokens.map((t) => ({
       to: t.token,
       sound: "default",
@@ -1233,26 +1355,96 @@ async function registerRoutes(app2) {
       chunks.push(messages.slice(i, i + 100));
     }
     let successCount = 0;
+    let failureCount = 0;
+    const deadTokens = [];
     for (const chunk of chunks) {
       try {
         const response = await fetch("https://exp.host/--/api/v2/push/send", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip, deflate"
+          },
           body: JSON.stringify(chunk)
         });
-        if (response.ok) {
-          successCount += chunk.length;
+        const responseData = await response.json();
+        if (!response.ok || responseData.errors) {
+          console.error("[Push] Expo API error:", JSON.stringify(responseData));
+          failureCount += chunk.length;
+          continue;
+        }
+        if (responseData.data) {
+          responseData.data.forEach((result, index) => {
+            const token = chunk[index]?.to;
+            if (result.status === "ok") {
+              successCount++;
+            } else {
+              failureCount++;
+              console.error(`[Push] Delivery failed for token ${token}: ${result.message} (error: ${result.details?.error})`);
+              if (result.details?.error === "DeviceNotRegistered" && token) {
+                deadTokens.push(token);
+              }
+            }
+          });
+        } else {
+          console.error("[Push] Unexpected Expo response shape:", JSON.stringify(responseData));
+          failureCount += chunk.length;
         }
       } catch (err) {
-        console.error("Push send error:", err);
+        console.error("[Push] Network error sending to Expo:", err);
+        failureCount += chunk.length;
       }
     }
-    const notification = await storage.saveNotification(title, body, successCount);
-    res.json({ sent: successCount, total: tokens.length, notification });
+    for (const deadToken of deadTokens) {
+      try {
+        await storage.removePushToken(deadToken);
+        console.log(`[Push] Removed unregistered token: ${deadToken}`);
+      } catch (err) {
+        console.error(`[Push] Failed to remove dead token ${deadToken}:`, err);
+      }
+    }
+    if (failureCount > 0) {
+      console.error(`[Push] Summary: ${successCount} delivered, ${failureCount} failed, ${deadTokens.length} dead tokens removed`);
+    } else {
+      console.log(`[Push] Summary: ${successCount} delivered successfully`);
+    }
+    return { tokens, successCount, failureCount };
+  }
+  app2.post("/api/notifications/send", staffAuth, managerAuth, async (req, res) => {
+    const { title, body } = req.body;
+    if (!title || !body) return res.status(400).json({ message: "Title and body are required" });
+    const tokens = await storage.getAllPushTokens();
+    if (tokens.length === 0) return res.status(400).json({ message: "No registered devices" });
+    const sentBy = req.staffUsername;
+    const { successCount, failureCount } = await sendPushNotifications(title, body, sentBy);
+    const notification = await storage.saveNotification(title, body, successCount, sentBy);
+    res.json({ sent: successCount, failed: failureCount, total: tokens.length, notification });
   });
   app2.get("/api/notifications/history", staffAuth, managerAuth, async (_req, res) => {
     const history = await storage.getNotificationHistory();
     res.json(history);
+  });
+  app2.get("/api/push/device-count", staffAuth, managerAuth, async (_req, res) => {
+    const tokens = await storage.getAllPushTokens();
+    res.json({ count: tokens.length });
+  });
+  app2.get("/api/push/history", staffAuth, managerAuth, async (_req, res) => {
+    const history = await storage.getNotificationHistory();
+    res.json(history);
+  });
+  app2.post("/api/push/send", staffAuth, managerAuth, async (req, res) => {
+    const { title, body } = req.body;
+    if (!title || !body) return res.status(400).json({ message: "Title and body are required" });
+    const sentBy = req.staffUsername;
+    const tokens = await storage.getAllPushTokens();
+    if (tokens.length === 0) {
+      const notification2 = await storage.saveNotification(title, body, 0, sentBy);
+      return res.json({ count: 0, failed: 0, notification: notification2 });
+    }
+    const { successCount, failureCount } = await sendPushNotifications(title, body, sentBy);
+    const notification = await storage.saveNotification(title, body, successCount, sentBy);
+    res.json({ count: successCount, failed: failureCount, total: tokens.length, notification });
   });
   app2.post("/api/bookings", async (req, res) => {
     const parsed = insertBookingSchema.safeParse(req.body);
@@ -1369,7 +1561,11 @@ async function registerRoutes(app2) {
     if (!deleted) return res.status(404).json({ message: "Booking not found" });
     res.status(204).send();
   });
-  app2.get("/api/gdpr/export", async (req, res) => {
+  app2.get("/api/gdpr/export", staffAuth, managerAuth, async (req, res) => {
+    const clientIp = getClientIp(req);
+    if (!checkSensitiveRateLimit(clientIp)) {
+      return res.status(429).json({ message: "Too many requests. Please try again later." });
+    }
     const { email } = req.query;
     if (!email || typeof email !== "string") {
       return res.status(400).json({ message: "Email address is required" });
@@ -1405,7 +1601,42 @@ async function registerRoutes(app2) {
     res.setHeader("Content-Disposition", `attachment; filename="gdpr-export-${Date.now()}.json"`);
     res.json(exportData);
   });
+  app2.get("/api/customers/me/export", customerAuth, async (req, res) => {
+    const clientIp = getClientIp(req);
+    if (!checkSensitiveRateLimit(clientIp)) {
+      return res.status(429).json({ message: "Too many requests. Please try again later." });
+    }
+    const customer = await storage.getCustomerById(req.customerId);
+    if (!customer) return res.status(404).json({ message: "Account not found" });
+    const bookings2 = await storage.getBookingsByEmail(customer.email);
+    const exportData = {
+      dataSubject: customer.email,
+      exportDate: (/* @__PURE__ */ new Date()).toISOString(),
+      dataController: "The 147",
+      legalBasis: "UK GDPR Article 15 - Right of Access",
+      account: { name: customer.name, email: customer.email, phone: customer.phone, createdAt: customer.createdAt },
+      bookings: bookings2.map((b) => ({
+        id: b.id,
+        tableType: b.tableType,
+        tableNumber: b.tableNumber,
+        date: b.date,
+        startTime: b.startTime,
+        duration: b.duration,
+        status: b.status,
+        notes: b.notes,
+        createdAt: b.createdAt
+      })),
+      totalBookings: bookings2.length
+    };
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Content-Disposition", `attachment; filename="my-data-export-${Date.now()}.json"`);
+    res.json(exportData);
+  });
   app2.delete("/api/gdpr/erase", staffAuth, managerAuth, async (req, res) => {
+    const clientIp = getClientIp(req);
+    if (!checkSensitiveRateLimit(clientIp)) {
+      return res.status(429).json({ message: "Too many requests. Please try again later." });
+    }
     const { email } = req.body;
     if (!email || typeof email !== "string") {
       return res.status(400).json({ message: "Email address is required" });
@@ -1415,21 +1646,23 @@ async function registerRoutes(app2) {
       return res.status(400).json({ message: "Invalid email format" });
     }
     const deletedCount = await storage.deleteBookingsByEmail(email);
+    const customer = await storage.getCustomerByEmail(email);
+    if (customer) await storage.deleteCustomer(customer.id);
     res.json({
       message: `Erasure complete under UK GDPR Article 17`,
       recordsDeleted: deletedCount,
-      email,
+      customerAccountDeleted: !!customer,
       erasureDate: (/* @__PURE__ */ new Date()).toISOString()
     });
   });
   app2.post("/api/gdpr/retention-cleanup", staffAuth, managerAuth, async (_req, res) => {
-    const anonymized = await storage.anonymizeOldBookings(90);
+    const anonymized = await storage.anonymizeOldBookings(365);
     const sessionsCleared = await storage.cleanupExpiredSessions();
     res.json({
       message: "Data retention policy applied",
       bookingsAnonymized: anonymized,
       expiredSessionsCleared: sessionsCleared,
-      retentionPeriodDays: 90
+      retentionPeriodDays: 365
     });
   });
   app2.get("/api/events", async (req, res) => {
@@ -1492,14 +1725,37 @@ async function registerRoutes(app2) {
     const images = await storage.getAllBannerImages();
     res.json(images);
   });
-  app2.post("/api/upload/banner", staffAuth, managerAuth, upload.single("image"), (req, res) => {
+  app2.post("/api/upload/banner", staffAuth, managerAuth, upload.single("image"), async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ message: "No image file provided" });
     }
-    const imageUrl = `/uploads/${req.file.filename}`;
-    res.json({ imageUrl });
+    try {
+      const compressed = await sharp(req.file.buffer).resize({ width: 1e3, withoutEnlargement: true }).jpeg({ quality: 72, mozjpeg: true }).toBuffer();
+      const imageUrl = `data:image/jpeg;base64,${compressed.toString("base64")}`;
+      res.json({ imageUrl });
+    } catch {
+      const base64 = req.file.buffer.toString("base64");
+      res.json({ imageUrl: `data:${req.file.mimetype};base64,${base64}` });
+    }
   });
-  app2.post("/api/banner-images", staffAuth, managerAuth, async (req, res) => {
+  app2.post("/api/banner-images", staffAuth, managerAuth, upload.single("image"), async (req, res) => {
+    if (req.file) {
+      try {
+        const compressed = await sharp(req.file.buffer).resize({ width: 1e3, withoutEnlargement: true }).jpeg({ quality: 72, mozjpeg: true }).toBuffer();
+        const imageUrl = `data:image/jpeg;base64,${compressed.toString("base64")}`;
+        const sortOrder = parseInt(req.body.sortOrder ?? "0");
+        const active = req.body.active !== "false";
+        const image2 = await storage.createBannerImage({
+          imageUrl,
+          title: req.body.title?.trim() || null,
+          sortOrder: isNaN(sortOrder) ? 0 : sortOrder,
+          active
+        });
+        return res.status(201).json(image2);
+      } catch (err) {
+        return res.status(500).json({ message: "Image processing failed" });
+      }
+    }
     const parsed = insertBannerImageSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid banner image data", errors: parsed.error.flatten() });
@@ -1610,7 +1866,11 @@ async function registerRoutes(app2) {
     }
     const code = generateOtp();
     loyaltyOtps.set(otpKey, { code, phone: phoneCleaned, expiresAt: Date.now() + OTP_EXPIRY, attempts: 0 });
-    await sendOtpEmail(emailClean, code);
+    const emailSent = await sendOtpEmail(emailClean, code);
+    if (!emailSent) {
+      loyaltyOtps.delete(otpKey);
+      return res.status(503).json({ message: "Unable to send verification email. Please check your email address and try again, or contact the venue directly." });
+    }
     res.json({ sent: true, expiresIn: OTP_EXPIRY / 1e3 });
   });
   app2.post("/api/loyalty/verify-code", async (req, res) => {
@@ -1945,8 +2205,23 @@ async function registerRoutes(app2) {
   app2.patch("/api/customers/me", customerAuth, async (req, res) => {
     const { name, phone } = req.body;
     const updates = {};
-    if (name !== void 0) updates.name = name.trim();
-    if (phone !== void 0) updates.phone = phone.trim();
+    if (name !== void 0) {
+      const trimmed = String(name).trim();
+      if (!trimmed || trimmed.length < 2 || trimmed.length > 100) {
+        return res.status(400).json({ message: "Name must be 2\u2013100 characters" });
+      }
+      updates.name = trimmed;
+    }
+    if (phone !== void 0) {
+      const trimmed = String(phone).trim();
+      if (trimmed && (trimmed.length < 7 || trimmed.length > 20 || !/^[+\d\s\-().]+$/.test(trimmed))) {
+        return res.status(400).json({ message: "Invalid phone number format" });
+      }
+      updates.phone = trimmed;
+    }
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: "No valid fields to update" });
+    }
     const updated = await storage.updateCustomer(req.customerId, updates);
     if (!updated) {
       return res.status(404).json({ message: "Account not found" });
@@ -2049,11 +2324,15 @@ function setupCors(app2) {
   });
 }
 function setupSecurityHeaders(app2) {
+  const isProd = process.env.NODE_ENV === "production";
   app2.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-XSS-Protection", "1; mode=block");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
+    if (isProd) {
+      res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    }
     if (req.path === "/staff") {
       res.setHeader("X-Frame-Options", "DENY");
       res.setHeader(
@@ -2082,6 +2361,36 @@ function setupSecurityHeaders(app2) {
     next();
   });
 }
+var SENSITIVE_FIELDS = /* @__PURE__ */ new Set([
+  "pin",
+  "confirmPin",
+  "masterPin",
+  "newPin",
+  "currentPin",
+  "password",
+  "passwordHash",
+  "pinHash",
+  "pinSalt",
+  "token",
+  "authorization",
+  "customerName",
+  "customerEmail",
+  "customerPhone",
+  "email",
+  "phone",
+  "name",
+  "code",
+  "otp"
+]);
+function redactSensitive(obj, depth = 0) {
+  if (depth > 4 || obj === null || typeof obj !== "object") return obj;
+  if (Array.isArray(obj)) return obj.map((v) => redactSensitive(v, depth + 1));
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    out[k] = SENSITIVE_FIELDS.has(k) ? "[REDACTED]" : redactSensitive(v, depth + 1);
+  }
+  return out;
+}
 function setupBodyParsing(app2) {
   app2.use(
     express.json({
@@ -2107,11 +2416,10 @@ function setupRequestLogging(app2) {
       if (!path3.startsWith("/api")) return;
       const duration = Date.now() - start;
       let logLine = `${req.method} ${path3} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "\u2026";
+      if (capturedJsonResponse && res.statusCode >= 400) {
+        const safe = redactSensitive(capturedJsonResponse);
+        const snippet = JSON.stringify(safe);
+        logLine += ` :: ${snippet.length > 120 ? snippet.slice(0, 119) + "\u2026" : snippet}`;
       }
       log(logLine);
     });
@@ -2199,16 +2507,33 @@ function configureExpoAndLanding(app2) {
   log("Expo routing: Checking expo-platform header on / and /manifest");
 }
 function setupErrorHandler(app2) {
+  const isProd = process.env.NODE_ENV === "production";
   app2.use((err, _req, res, next) => {
     const error = err;
     const status = error.status || error.statusCode || 500;
-    const message = error.message || "Internal Server Error";
-    console.error("Internal Server Error:", err);
+    const message = isProd && status >= 500 ? "An unexpected error occurred. Please try again later." : error.message || "Internal Server Error";
+    console.error(`[${(/* @__PURE__ */ new Date()).toISOString()}] ${status} error:`, err);
     if (res.headersSent) {
       return next(err);
     }
     return res.status(status).json({ message });
   });
+}
+function scheduleRetentionCleanup() {
+  async function runCleanup() {
+    try {
+      const { storage: store } = await Promise.resolve().then(() => (init_storage(), storage_exports));
+      const anonymized = await store.anonymizeOldBookings(365);
+      const sessionsCleared = await store.cleanupExpiredSessions();
+      if (anonymized > 0 || sessionsCleared > 0) {
+        log(`[GDPR Retention] Anonymized ${anonymized} old records, cleared ${sessionsCleared} expired sessions`);
+      }
+    } catch (err) {
+      console.error("[GDPR Retention] Cleanup error:", err);
+    }
+  }
+  setTimeout(runCleanup, 3e4);
+  setInterval(runCleanup, 24 * 60 * 60 * 1e3);
 }
 (async () => {
   setupCors(app);
@@ -2221,9 +2546,16 @@ function setupErrorHandler(app2) {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.status(200).send(widgetHtml);
   });
+  const privacyPolicyHtmlPath = path2.resolve(process.cwd(), "server", "templates", "privacy-policy.html");
+  const privacyPolicyHtml = fs2.readFileSync(privacyPolicyHtmlPath, "utf-8");
+  app.get("/privacy-policy", (_req, res) => {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.status(200).send(privacyPolicyHtml);
+  });
   configureExpoAndLanding(app);
   const server = await registerRoutes(app);
   setupErrorHandler(app);
+  scheduleRetentionCleanup();
   const port = parseInt(process.env.PORT || "5000", 10);
   server.listen(
     {
