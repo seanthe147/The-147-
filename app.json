@@ -18,7 +18,6 @@
       "bundleIdentifier": "com.the147.app",
       "buildNumber": "1",
       "infoPlist": {
-        "NSUserTrackingUsageDescription": "This allows us to provide personalised offers and improve your experience at The 147.",
         "ITSAppUsesNonExemptEncryption": false
       },
       "privacyManifests": {
