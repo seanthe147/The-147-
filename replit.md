@@ -28,7 +28,7 @@ The application features a mobile frontend built with Expo React Native, utilizi
 **Technical Implementations:**
 - **State Management:** React Query for server-side data fetching and caching, `AsyncStorage` for local state persistence.
 - **Database Schema:** Defined using Drizzle ORM.
-- **Push Notifications:** Device token registration and admin-controlled notification sending.
+- **Push Notifications:** Device token registration and admin-controlled notification sending via Expo's push service. Requires a proper EAS standalone build — push does NOT work in the Replit-wrapped Expo environment due to missing APNs credentials for `app.replit.the147`. See EAS Build Setup section below.
 - **GDPR:** Consent mechanisms, data export/erasure APIs, and automated data retention policies.
 - **Image Uploads:** Supports `multipart/form-data` uploads for banner images with file type and size validation.
 
@@ -39,6 +39,34 @@ The application features a mobile frontend built with Expo React Native, utilizi
 - **Square POS Loyalty API:** Used for customer loyalty program management (account lookup, enrollment, points, rewards).
 - **Resend:** Email service for sending OTP verification codes for loyalty program authentication and booking confirmation emails.
 - **Google Fonts:** For the Montserrat typeface.
+
+## EAS Build Setup (Required for Push Notifications)
+
+Push notifications require a native standalone build via EAS (Expo Application Services). The `eas.json` build profiles are already configured. Follow these steps from your own computer (any OS — EAS builds in the cloud):
+
+### One-time setup
+1. **Install EAS CLI**: `npm install -g eas-cli`
+2. **Create a free Expo account** at https://expo.dev and login: `eas login`
+3. **Link this project**: In the project directory run `eas init` — this will print a `projectId` UUID
+4. **Add the projectId to app.json**: Replace `"YOUR_EAS_PROJECT_ID"` in the `extra.eas.projectId` field with the UUID from step 3
+
+### Android push notifications (free — no Apple account needed)
+5. **Create a Firebase project** at https://console.firebase.google.com
+6. Add an Android app with package name `com.the147.app`
+7. Download `google-services.json` and place it in the project root
+8. Run: `eas build --platform android --profile preview` → generates a direct-install APK
+
+### iOS push notifications (requires Apple Developer account, £99/year)
+9. **Connect your Apple Developer account** to EAS: `eas credentials --platform ios`
+10. EAS will automatically handle the APNs certificate
+11. Run: `eas build --platform ios --profile preview` → generates a TestFlight build
+
+### Distributing to club members
+- **Android**: EAS gives a QR code / download link for the APK — members tap to install
+- **iOS**: Upload to TestFlight and send members an invitation link
+
+### After setup
+Once members install the standalone build, their push tokens will use `com.the147.app` (with valid credentials) instead of Replit's bundle ID. Notifications will then deliver correctly.
 
 ## QA & Pre-Launch Notes
 - **Booking confirmation emails**: Sent automatically via Resend API when a booking is created. Email includes venue name, table details, date/time, duration, and booking reference (format: 147-XXXXX). Non-blocking — booking succeeds even if email fails.
