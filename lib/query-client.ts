@@ -1,7 +1,12 @@
 import { fetch } from "expo/fetch";
+import { Platform } from "react-native";
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 export function getApiUrl(): string {
+  if (Platform.OS === "web" && typeof window !== "undefined" && !__DEV__) {
+    return window.location.origin;
+  }
+
   let host = process.env.EXPO_PUBLIC_DOMAIN;
 
   if (!host) {
