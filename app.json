@@ -24,7 +24,9 @@
         "NSPrivacyAccessedAPITypes": [
           {
             "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
-            "NSPrivacyAccessedAPITypeReasons": ["CA92.1"]
+            "NSPrivacyAccessedAPITypeReasons": [
+              "CA92.1"
+            ]
           }
         ],
         "NSPrivacyCollectedDataTypes": [],
@@ -67,9 +69,13 @@
       "reactCompiler": true
     },
     "extra": {
+      "router": {
+        "origin": "https://replit.com/"
+      },
       "eas": {
-        "projectId": "YOUR_EAS_PROJECT_ID"
+        "projectId": "3f31dfb1-b149-43ca-ab9a-91b6d7cb230a"
       }
-    }
+    },
+    "owner": "the-147"
   }
 }
