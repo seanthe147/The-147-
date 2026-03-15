@@ -31,7 +31,8 @@
   "submit": {
     "production": {
       "ios": {
-        "ascAppId": "6759579882"
+        "ascAppId": "6759579882",
+        "appleId": "sean@qgardensbradford.co.uk"
       }
     }
   }
