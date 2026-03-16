@@ -780,7 +780,7 @@
 
   function startBookingsPolling(){
     if(bookingsPollInterval)return;
-    bookingsPollInterval=setInterval(()=>silentRefreshBookings(),30000);
+    bookingsPollInterval=setInterval(()=>silentRefreshBookings(),300000);
   }
 
   function stopBookingsPolling(){
