@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.the147.app",
+      "bundleIdentifier": "com.the147bradford.app",
       "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
@@ -34,7 +34,7 @@
       }
     },
     "android": {
-      "package": "com.the147.app",
+      "package": "com.the147bradford.app",
       "permissions": [],
       "adaptiveIcon": {
         "backgroundColor": "#0A1628",
@@ -42,7 +42,7 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "versionCode": 2
+      "versionCode": 1
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
