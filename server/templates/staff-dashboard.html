@@ -132,12 +132,23 @@
     .stat-value{font-size:28px;font-weight:800;color:var(--text);line-height:1}
     .stat-sub{font-size:12px;color:var(--text-3);margin-top:4px}
 
+    /* ── Live indicator ── */
+    .live-bar{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:8px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);font-size:12px;color:var(--text-2)}
+    .live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0;animation:pulse-dot 2s ease-in-out infinite}
+    @keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.75)}}
+    .live-label{font-weight:700;color:var(--green);text-transform:uppercase;font-size:11px;letter-spacing:.5px}
+    .live-updated{color:var(--text-3);margin-left:4px}
+    .new-booking-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(100px);background:#1a2e1a;color:#4ade80;border:1px solid #4ade80;border-radius:var(--r-lg);padding:12px 24px;font-size:14px;font-weight:700;z-index:9999;transition:transform .35s cubic-bezier(.34,1.56,.64,1),opacity .35s;opacity:0;pointer-events:none;white-space:nowrap}
+    .new-booking-toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+
     /* ── Bookings list ── */
     .bookings-list{display:flex;flex-direction:column;gap:10px}
     .booking-card{background:var(--surface);border-radius:var(--r-lg);border:1px solid var(--border);border-left:4px solid var(--blue);box-shadow:var(--shadow);padding:16px 20px;display:grid;grid-template-columns:90px 1fr auto;gap:16px;align-items:center;transition:box-shadow .2s,transform .1s}
     .booking-card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
     .booking-card.cancelled{border-left-color:var(--text-3);opacity:.65}
     .booking-card.pending{border-left-color:var(--amber)}
+    @keyframes newBookingFlash{0%{background:#d1fae5;border-color:#4ade80}60%{background:#d1fae5;border-color:#4ade80}100%{background:var(--surface);border-color:var(--border)}}
+    .booking-card.new-flash{animation:newBookingFlash 2s ease-out forwards}
     .booking-time-col{text-align:center}
     .b-time{font-size:20px;font-weight:800;color:var(--text)}
     .b-duration{font-size:11px;font-weight:600;color:var(--text-2);margin-top:2px}
@@ -383,9 +394,16 @@
               <button class="filter-pill" data-type="dining">Dining</button>
             </div>
           </div>
+          <div class="live-bar">
+            <div class="live-dot"></div>
+            <span class="live-label">Live</span>
+            <span class="live-updated" id="liveUpdatedText">Updating…</span>
+          </div>
           <div id="bookingsContent"></div>
         </div>
       </div>
+
+      <div class="new-booking-toast" id="newBookingToast"></div>
 
       <!-- MESSAGES PAGE -->
       <div class="page" id="pageMessages">
@@ -758,14 +776,61 @@
     item.addEventListener('click',()=>navigateTo(item.dataset.page));
   });
 
+  let bookingsPollInterval=null;
+
+  function startBookingsPolling(){
+    if(bookingsPollInterval)return;
+    bookingsPollInterval=setInterval(()=>silentRefreshBookings(),30000);
+  }
+
+  function stopBookingsPolling(){
+    if(bookingsPollInterval){clearInterval(bookingsPollInterval);bookingsPollInterval=null;}
+  }
+
+  function formatUpdatedTime(d){
+    const h=d.getHours(),m=d.getMinutes(),s=d.getSeconds();
+    return 'Updated at '+pad(h)+':'+pad(m)+':'+pad(s);
+  }
+
+  function showNewBookingToast(count){
+    const t=el('newBookingToast');
+    t.textContent=count===1?'🔔 1 new booking arrived!':'🔔 '+count+' new bookings arrived!';
+    t.classList.add('show');
+    setTimeout(()=>t.classList.remove('show'),4000);
+  }
+
+  async function silentRefreshBookings(){
+    try{
+      const r=await api('/api/bookings?date='+state.currentDate);
+      if(!r.ok)return;
+      const fresh=await r.json();
+      const oldIds=new Set(state.bookings.map(b=>b.id));
+      const newIds=fresh.filter(b=>!oldIds.has(b.id));
+      const newCount=newIds.length;
+      state.bookings=fresh;
+      renderBookings();
+      el('liveUpdatedText').textContent=formatUpdatedTime(new Date());
+      if(newCount>0){
+        showNewBookingToast(newCount);
+        // Flash the new cards after render
+        setTimeout(()=>{
+          newIds.forEach(b=>{
+            const card=el('bookingsContent').querySelector('[data-id="'+b.id+'"]');
+            if(card){const bc=card.closest('.booking-card');if(bc)bc.classList.add('new-flash');}
+          });
+        },50);
+      }
+    }catch(e){/* silent fail */}
+  }
+
   function navigateTo(page){
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page'+cap(page)));
     const titles={bookings:'Bookings',messages:'Messages',notifications:'Push Notifications',staff:'Staff Accounts',settings:'Settings'};
     el('topbarTitle').textContent=titles[page]||'';
     el('topbarSub').textContent='';
-    if(page==='bookings'){el('topbarActions').style.display='';loadBookings()}
-    else{el('topbarActions').style.display='none'}
+    if(page==='bookings'){el('topbarActions').style.display='';loadBookings();startBookingsPolling();}
+    else{el('topbarActions').style.display='none';stopBookingsPolling();}
     if(page==='messages')loadMessages(true);
     if(page==='notifications')loadNotifications();
     if(page==='staff')loadStaff();
@@ -807,6 +872,7 @@
       if(!r.ok)throw new Error('Failed');
       state.bookings=await r.json();
       renderBookings();
+      el('liveUpdatedText').textContent=formatUpdatedTime(new Date());
     }catch(e){
       if(e.message==='Session expired')return;
       el('bookingsContent').innerHTML='<div class="empty-state"><div class="empty-title">Failed to load bookings</div><div class="empty-desc">'+esc(e.message)+'</div></div>';
