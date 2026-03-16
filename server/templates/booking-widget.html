@@ -724,7 +724,7 @@
       tableType: null, tableNumber: null,
       date: null, duration: 1, time: null,
       name: '', email: '', phone: '', notes: '',
-      bookedSlots: [], loadingSlots: false
+      bookedSlots: [], loadingSlots: false, totalTables: 1
     };
   }
 
@@ -856,6 +856,7 @@
     const container = document.getElementById('timeContainer');
     container.innerHTML = '<div class="avail-loading"><span class="spinner-sm"></span>Checking availability…</div>';
     state.bookedSlots = [];
+    state.totalTables = 1;
     state.loadingSlots = true;
 
     try {
@@ -863,7 +864,15 @@
       if (state.tableNumber) url += `&tableNumber=${state.tableNumber}`;
       const res = await fetch(url);
       if (res.ok) {
-        state.bookedSlots = await res.json();
+        const data = await res.json();
+        // Pool returns { slots, totalTables }; everything else returns an array
+        if (data && data.totalTables) {
+          state.bookedSlots = data.slots || [];
+          state.totalTables = data.totalTables;
+        } else {
+          state.bookedSlots = Array.isArray(data) ? data : [];
+          state.totalTables = 1;
+        }
       }
     } catch(e) {}
 
@@ -874,12 +883,13 @@
   function isSlotBooked(time, duration) {
     const start = toMins(time);
     const end = start + duration * 60;
+    let count = 0;
     for (const slot of state.bookedSlots) {
       const sStart = toMins(slot.startTime);
       const sEnd = sStart + (slot.duration || 1) * 60;
-      if (start < sEnd && end > sStart) return true;
+      if (start < sEnd && end > sStart) count++;
     }
-    return false;
+    return count >= (state.totalTables || 1);
   }
 
   function toMins(t) {

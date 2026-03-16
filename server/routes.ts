@@ -857,17 +857,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!parsed.data.gdprConsent) {
       return res.status(400).json({ message: "GDPR consent is required to process your booking" });
     }
-    const bookedSlots = await storage.getBookedSlots(parsed.data.date, parsed.data.tableType, parsed.data.tableNumber ?? undefined);
-    const requestedStart = parseInt(parsed.data.startTime.replace(":", ""));
-    const requestedEnd = requestedStart + (parsed.data.duration ?? 1) * 100;
-    for (const slot of bookedSlots) {
-      const slotStart = parseInt(slot.startTime.replace(":", ""));
-      const slotEnd = slotStart + slot.duration * 100;
-      if (requestedStart < slotEnd && requestedEnd > slotStart) {
-        return res.status(409).json({ message: "This time slot is already booked" });
+
+    const toSlotMins = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + (m || 0); };
+    const POOL_TABLE_COUNT = 6;
+    let finalTableNumber = parsed.data.tableNumber ?? null;
+
+    if (parsed.data.tableType === "pool" && !parsed.data.tableNumber) {
+      // Auto-assign the lowest available pool table (1–6)
+      const allPoolBookings = await storage.getBookingsByDate(parsed.data.date);
+      const confirmedPool = allPoolBookings.filter(b => b.tableType === "pool" && b.status === "confirmed" && b.tableNumber);
+      const reqStart = toSlotMins(parsed.data.startTime);
+      const reqEnd = reqStart + (parsed.data.duration ?? 1) * 60;
+      const occupiedTables = new Set<string>();
+      for (const b of confirmedPool) {
+        const bStart = toSlotMins(b.startTime);
+        const bEnd = bStart + (b.duration ?? 1) * 60;
+        if (reqStart < bEnd && reqEnd > bStart && b.tableNumber) {
+          occupiedTables.add(b.tableNumber);
+        }
+      }
+      let assigned: string | null = null;
+      for (let i = 1; i <= POOL_TABLE_COUNT; i++) {
+        if (!occupiedTables.has(String(i))) { assigned = String(i); break; }
+      }
+      if (!assigned) {
+        return res.status(409).json({ message: "All pool tables are fully booked for this time slot" });
+      }
+      finalTableNumber = assigned;
+    } else {
+      // Standard conflict check for snooker and explicit table numbers
+      const bookedSlots = await storage.getBookedSlots(parsed.data.date, parsed.data.tableType, finalTableNumber ?? undefined);
+      const requestedStart = parseInt(parsed.data.startTime.replace(":", ""));
+      const requestedEnd = requestedStart + (parsed.data.duration ?? 1) * 100;
+      for (const slot of bookedSlots) {
+        const slotStart = parseInt(slot.startTime.replace(":", ""));
+        const slotEnd = slotStart + slot.duration * 100;
+        if (requestedStart < slotEnd && requestedEnd > slotStart) {
+          return res.status(409).json({ message: "This time slot is already booked" });
+        }
       }
     }
-    const booking = await storage.createBooking(parsed.data);
+
+    const booking = await storage.createBooking({ ...parsed.data, tableNumber: finalTableNumber ?? undefined });
 
     sendBookingConfirmationEmail({
       customerName: parsed.data.customerName,
@@ -887,6 +918,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const { date, tableType, tableNumber } = req.query;
     if (!date || !tableType) {
       return res.status(400).json({ message: "date and tableType are required" });
+    }
+    const POOL_TABLE_COUNT = 6;
+    // For pool without a specific table number, return all individual bookings
+    // so the frontend can count concurrent usage and only block when all tables are full
+    if (String(tableType) === "pool" && !tableNumber) {
+      const bookedSlots = await storage.getBookedSlots(String(date), "pool");
+      return res.json({ slots: bookedSlots, totalTables: POOL_TABLE_COUNT });
     }
     const bookedSlots = await storage.getBookedSlots(String(date), String(tableType), tableNumber ? String(tableNumber) : undefined);
     res.json(bookedSlots);
