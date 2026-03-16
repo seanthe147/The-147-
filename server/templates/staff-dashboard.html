@@ -597,6 +597,13 @@
         <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-bottom:6px">Message</div>
         <div id="msgModalBody" style="background:#F8FAFC;border:1px solid var(--border);border-radius:var(--r);padding:14px;font-size:14px;white-space:pre-wrap;word-break:break-word;line-height:1.7"></div>
       </div>
+      <!-- Reply section -->
+      <div id="msgReplySection" style="display:none;margin-top:18px">
+        <div id="msgPrevReply" style="display:none;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:var(--r);padding:12px;margin-bottom:12px"></div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-bottom:6px">Send In-App Reply</div>
+        <textarea id="msgReplyInput" rows="3" placeholder="Type your reply here — it will be sent as a push notification to the customer's device…" style="width:100%;box-sizing:border-box;background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;font-size:13px;font-family:inherit;resize:vertical;outline:none;color:var(--text)"></textarea>
+        <button id="msgSendReplyBtn" class="btn btn-primary btn-sm" style="margin-top:8px;width:100%" onclick="sendReply()">Send Reply &amp; Push Notification</button>
+      </div>
     </div>
     <div class="modal-ft" id="msgModalFt"></div>
   </div>
@@ -1083,8 +1090,20 @@
     const ft=el('msgModalFt');
     ft.innerHTML='';
     if(msg.status==='new'){ft.innerHTML+=`<button class="btn btn-warning btn-sm" onclick="updateMsgStatus(${msg.id},'read')">Mark as Read</button>`}
-    if(msg.status!=='replied'){ft.innerHTML+=`<button class="btn btn-success btn-sm" onclick="updateMsgStatus(${msg.id},'replied')">Mark as Replied</button>`}
-    ft.innerHTML+=`<a href="mailto:${esc(msg.email)}?subject=Re: ${encodeURIComponent(msg.subject||'')}" class="btn btn-primary btn-sm">Reply by Email</a>`;
+    ft.innerHTML+=`<a href="mailto:${esc(msg.email)}?subject=Re: ${encodeURIComponent(msg.subject||'')}" class="btn btn-ghost btn-sm">Reply by Email</a>`;
+
+    // Show previous reply if exists
+    const replySection=el('msgReplySection');
+    const prevReply=el('msgPrevReply');
+    const replyInput=el('msgReplyInput');
+    replyInput.value='';
+    if(msg.staffReply){
+      prevReply.style.display='block';
+      prevReply.innerHTML=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--green);margin-bottom:6px">Previous Reply</div><div style="font-size:13px;color:var(--text)">${esc(msg.staffReply)}</div>`;
+    }else{
+      prevReply.style.display='none';
+    }
+    replySection.style.display='block';
     openOverlay('msgModal');
     if(msg.status==='new')updateMsgStatus(msg.id,'read',true);
   }
@@ -1101,6 +1120,32 @@
       const newCount=allMessages.filter(m=>m.status==='new').length;
       el('msgBadge').textContent=newCount;el('msgBadge').classList.toggle('hidden',newCount===0);
     }catch(e){}
+  };
+
+  window.sendReply=async function(){
+    const replyText=el('msgReplyInput').value.trim();
+    if(!replyText){toast('Please type a reply first','error');return;}
+    if(!currentMsgId){return;}
+    const btn=el('msgSendReplyBtn');
+    btn.disabled=true;btn.textContent='Sending…';
+    try{
+      const r=await api('/api/contact/'+currentMsgId+'/reply',{method:'POST',body:JSON.stringify({replyText})});
+      const data=await r.json();
+      if(!r.ok){toast(data.message||'Failed to send reply','error');return;}
+      // Update local state
+      const idx=allMessages.findIndex(m=>m.id===currentMsgId);
+      if(idx>=0){allMessages[idx].status='replied';allMessages[idx].staffReply=replyText;}
+      // Show sent reply in modal
+      const prevReply=el('msgPrevReply');
+      prevReply.style.display='block';
+      prevReply.innerHTML=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--green);margin-bottom:6px">Reply Sent</div><div style="font-size:13px;color:var(--text)">${esc(replyText)}</div>`;
+      el('msgReplyInput').value='';
+      const pushMsg=data.pushed?' Push notification sent to customer.':' (No push token — customer may not have the app installed.)';
+      toast('Reply sent!'+pushMsg,'success');
+      renderMessages();
+      const newCount=allMessages.filter(m=>m.status==='new').length;
+      el('msgBadge').textContent=newCount;el('msgBadge').classList.toggle('hidden',newCount===0);
+    }catch(e){toast('Error sending reply','error');}finally{btn.disabled=false;btn.textContent='Send Reply & Push Notification';}
   };
 
   /* ── Staff Management ── */

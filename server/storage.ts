@@ -88,6 +88,7 @@ export interface IStorage {
   registerPushToken(token: InsertPushToken): Promise<PushToken>;
   getAllPushTokens(): Promise<PushToken[]>;
   removePushToken(token: string): Promise<boolean>;
+  getPushTokensByEmail(email: string): Promise<PushToken[]>;
   saveNotification(title: string, body: string, recipientCount: number): Promise<Notification>;
   getNotificationHistory(): Promise<Notification[]>;
   createBooking(booking: InsertBooking): Promise<Booking>;
@@ -163,7 +164,14 @@ export class DatabaseStorage implements IStorage {
 
   async registerPushToken(data: InsertPushToken): Promise<PushToken> {
     const [existing] = await db.select().from(pushTokens).where(eq(pushTokens.token, data.token));
-    if (existing) return existing;
+    if (existing) {
+      // Update email if newly provided
+      if (data.customerEmail && existing.customerEmail !== data.customerEmail) {
+        const [updated] = await db.update(pushTokens).set({ customerEmail: data.customerEmail }).where(eq(pushTokens.token, data.token)).returning();
+        return updated;
+      }
+      return existing;
+    }
     const [created] = await db.insert(pushTokens).values(data).returning();
     return created;
   }
@@ -175,6 +183,10 @@ export class DatabaseStorage implements IStorage {
   async removePushToken(token: string): Promise<boolean> {
     const result = await db.delete(pushTokens).where(eq(pushTokens.token, token)).returning();
     return result.length > 0;
+  }
+
+  async getPushTokensByEmail(email: string): Promise<PushToken[]> {
+    return db.select().from(pushTokens).where(sql`lower(${pushTokens.customerEmail}) = lower(${email})`);
   }
 
   async saveNotification(title: string, body: string, recipientCount: number, sentBy?: string): Promise<Notification> {
@@ -466,6 +478,19 @@ export class DatabaseStorage implements IStorage {
   async updateContactMessageStatus(id: number, status: string): Promise<ContactMessage | undefined> {
     const [updated] = await db.update(contactMessages).set({ status }).where(eq(contactMessages.id, id)).returning();
     return updated;
+  }
+
+  async replyToContactMessage(id: number, replyText: string): Promise<ContactMessage | undefined> {
+    const [updated] = await db.update(contactMessages)
+      .set({ staffReply: replyText, repliedAt: new Date(), status: "replied" })
+      .where(eq(contactMessages.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getContactMessage(id: number): Promise<ContactMessage | undefined> {
+    const [msg] = await db.select().from(contactMessages).where(eq(contactMessages.id, id));
+    return msg;
   }
 
   async getSetting(key: string): Promise<string | null> {

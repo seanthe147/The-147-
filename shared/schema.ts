@@ -53,6 +53,7 @@ export const pushTokens = pgTable("push_tokens", {
   id: serial("id").primaryKey(),
   token: text("token").notNull().unique(),
   deviceName: text("device_name"),
+  customerEmail: text("customer_email"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -115,6 +116,9 @@ export const contactMessages = pgTable("contact_messages", {
   message: text("message").notNull(),
   status: text("status").notNull().default("new"),
   gdprConsent: boolean("gdpr_consent").notNull().default(false),
+  pushToken: text("push_token"),
+  staffReply: text("staff_reply"),
+  repliedAt: timestamp("replied_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

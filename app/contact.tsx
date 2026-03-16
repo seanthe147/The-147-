@@ -17,6 +17,7 @@ import { router } from "expo-router";
 import Colors from "@/constants/colors";
 import { getApiUrl } from "@/lib/query-client";
 import { fetch } from "expo/fetch";
+import { useNotifications } from "@/contexts/NotificationContext";
 
 const SUBJECTS = [
   "General Enquiry",
@@ -30,6 +31,7 @@ const SUBJECTS = [
 export default function ContactScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
+  const { expoPushToken } = useNotifications();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -83,6 +85,7 @@ export default function ContactScreen() {
           subject,
           message: message.trim(),
           gdprConsent: true,
+          pushToken: expoPushToken ?? undefined,
         }),
       });
 

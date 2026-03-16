@@ -720,6 +720,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(tokens);
   });
 
+  async function sendTargetedPush(tokens: string[], title: string, body: string) {
+    if (!tokens.length) return { successCount: 0, failureCount: 0 };
+    const messages = tokens.map(to => ({ to, sound: "default" as const, title, body }));
+    let successCount = 0, failureCount = 0;
+    try {
+      const response = await fetch("https://exp.host/--/api/v2/push/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify(messages),
+      });
+      const data = await response.json() as { data?: Array<{ status: string; details?: { error?: string } }>; errors?: unknown[] };
+      if (data.data) {
+        for (const r of data.data) {
+          if (r.status === "ok") successCount++;
+          else { failureCount++; if (r.details?.error === "DeviceNotRegistered") { /* handled by broadcast cleanup */ } }
+        }
+      } else failureCount += tokens.length;
+    } catch { failureCount += tokens.length; }
+    return { successCount, failureCount };
+  }
+
   async function sendPushNotifications(title: string, body: string, sentBy?: string) {
     const tokens = await storage.getAllPushTokens();
     if (tokens.length === 0) return { tokens, successCount: 0, failureCount: 0 };
@@ -957,6 +978,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     const booking = await storage.updateBookingStatus(id, status);
     if (!booking) return res.status(404).json({ message: "Booking not found" });
+
+    // Send targeted push notification to the customer
+    try {
+      const customerTokens = await storage.getPushTokensByEmail(booking.customerEmail);
+      if (customerTokens.length) {
+        const tableLabel = booking.tableType.charAt(0).toUpperCase() + booking.tableType.slice(1);
+        const dateLabel = booking.date ? `on ${booking.date}` : "";
+        const title = status === "confirmed" ? "Booking Confirmed ✅" : "Booking Cancelled";
+        const body = status === "confirmed"
+          ? `Your ${tableLabel} table booking at ${booking.startTime} ${dateLabel} has been confirmed. See you soon!`
+          : `Your ${tableLabel} table booking at ${booking.startTime} ${dateLabel} has been cancelled. Contact us if this is a mistake.`;
+        await sendTargetedPush(customerTokens.map(t => t.token), title, body);
+      }
+    } catch (err) {
+      console.error("[Push] Booking status notification error:", err);
+    }
+
     res.json(booking);
   });
 
@@ -1249,7 +1287,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/contact", async (req, res) => {
-    const parsed = insertContactMessageSchema.safeParse(req.body);
+    const { pushToken: incomingPushToken, ...bodyRest } = req.body;
+    const parsed = insertContactMessageSchema.safeParse(bodyRest);
     if (!parsed.success) {
       return res.status(400).json({ message: "Please fill in all required fields", errors: parsed.error.flatten() });
     }
@@ -1263,7 +1302,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ message: "You must consent to data processing to send a message" });
     }
 
-    const contact = await storage.createContactMessage(parsed.data);
+    // Link push token to the customer's email for future targeted notifications
+    if (incomingPushToken && typeof incomingPushToken === "string") {
+      await storage.registerPushToken({ token: incomingPushToken, customerEmail: parsed.data.email }).catch(() => {});
+    }
+
+    const contact = await storage.createContactMessage({
+      ...parsed.data,
+      pushToken: incomingPushToken ?? null,
+    } as any);
 
     try {
       const resendKey = process.env.RESEND_API_KEY;
@@ -1312,6 +1359,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const updated = await storage.updateContactMessageStatus(id, status);
     if (!updated) return res.status(404).json({ message: "Message not found" });
     res.json(updated);
+  });
+
+  app.post("/api/contact/:id/reply", staffAuth, async (req: any, res) => {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const { replyText } = req.body;
+    if (!replyText?.trim()) return res.status(400).json({ message: "Reply text is required" });
+
+    const msg = await storage.getContactMessage(id);
+    if (!msg) return res.status(404).json({ message: "Message not found" });
+
+    const updated = await storage.replyToContactMessage(id, replyText.trim());
+
+    // Send push notification to the customer's device(s)
+    let pushed = false;
+    const tokenSources: string[] = [];
+    if (msg.pushToken) tokenSources.push(msg.pushToken);
+    const emailTokens = await storage.getPushTokensByEmail(msg.email);
+    emailTokens.forEach(t => { if (!tokenSources.includes(t.token)) tokenSources.push(t.token); });
+    if (tokenSources.length) {
+      await sendTargetedPush(tokenSources, "The 147 – Reply to your message", replyText.trim().slice(0, 200));
+      pushed = true;
+    }
+
+    res.json({ updated, pushed });
   });
 
   app.post("/api/loyalty/send-code", async (req, res) => {
