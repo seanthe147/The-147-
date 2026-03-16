@@ -40,12 +40,13 @@ import { encrypt, decrypt, hashEmail } from "./encryption";
 
 function buildPoolConfig() {
   const rawUrl = process.env.DATABASE_URL!;
-  if (process.env.NODE_ENV !== "production") {
-    return { connectionString: rawUrl };
-  }
   const url = new URL(rawUrl);
+  const sslmode = url.searchParams.get("sslmode");
   url.searchParams.delete("sslmode");
   url.searchParams.delete("uselibpqcompat");
+  if (sslmode === "disable" || sslmode === null) {
+    return { connectionString: url.toString() };
+  }
   return {
     connectionString: url.toString(),
     ssl: { rejectUnauthorized: false },
