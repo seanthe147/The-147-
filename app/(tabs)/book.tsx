@@ -10,6 +10,7 @@ import {
   Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
+  Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -63,17 +64,60 @@ export default function BookScreen() {
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
   const [gdprConsent, setGdprConsent] = useState(false);
-  const { isAuthenticated, customer } = useCustomerAuth();
+  const { isAuthenticated, customer, login, register } = useCustomerAuth();
   const [autoFilled, setAutoFilled] = useState(false);
 
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginMode, setLoginMode] = useState<"login" | "register">("login");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginName, setLoginName] = useState("");
+  const [loginPhone, setLoginPhone] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+
   useEffect(() => {
-    if (isAuthenticated && customer && !autoFilled && !name && !email && !phone) {
+    if (isAuthenticated && customer && !autoFilled) {
       setName(customer.name || "");
       setEmail(customer.email || "");
       setPhone(customer.phone || "");
       setAutoFilled(true);
     }
-  }, [isAuthenticated, customer, autoFilled, name, email, phone]);
+  }, [isAuthenticated, customer, autoFilled]);
+
+  const handleModalLogin = async () => {
+    if (!loginEmail.trim() || !loginPassword.trim()) {
+      setLoginError("Please enter your email and password.");
+      return;
+    }
+    setLoginLoading(true);
+    setLoginError("");
+    const result = await login(loginEmail.trim(), loginPassword);
+    setLoginLoading(false);
+    if (result.success) {
+      setAutoFilled(false);
+      setShowLoginModal(false);
+    } else {
+      setLoginError(result.error || "Login failed. Please try again.");
+    }
+  };
+
+  const handleModalRegister = async () => {
+    if (!loginName.trim() || !loginEmail.trim() || !loginPhone.trim() || !loginPassword.trim()) {
+      setLoginError("Please fill in all fields.");
+      return;
+    }
+    setLoginLoading(true);
+    setLoginError("");
+    const result = await register(loginName.trim(), loginEmail.trim(), loginPhone.trim(), loginPassword);
+    setLoginLoading(false);
+    if (result.success) {
+      setAutoFilled(false);
+      setShowLoginModal(false);
+    } else {
+      setLoginError(result.error || "Registration failed. Please try again.");
+    }
+  };
 
   const days = useMemo(() => getNext7Days(), []);
 
@@ -365,6 +409,31 @@ export default function BookScreen() {
               <Text style={styles.stepTitle}>Your Details</Text>
               <Text style={styles.stepSubtitle}>We need your details to confirm the booking</Text>
 
+              {!isAuthenticated && (
+                <Pressable
+                  onPress={() => {
+                    setLoginMode("login");
+                    setLoginError("");
+                    setShowLoginModal(true);
+                  }}
+                  style={styles.loginBanner}
+                >
+                  <Ionicons name="person-circle-outline" size={22} color={Colors.brand.blue} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.loginBannerTitle}>Have an account?</Text>
+                    <Text style={styles.loginBannerSub}>Log in to auto-fill your details</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={Colors.brand.blue} />
+                </Pressable>
+              )}
+
+              {isAuthenticated && customer && (
+                <View style={styles.autoFilledBanner}>
+                  <Ionicons name="checkmark-circle" size={18} color={Colors.brand.green} />
+                  <Text style={styles.autoFilledText}>Details filled from your account</Text>
+                </View>
+              )}
+
               <View style={styles.formGroup}>
                 <Text style={styles.formLabel}>Full Name *</Text>
                 <TextInput
@@ -598,6 +667,116 @@ export default function BookScreen() {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={showLoginModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowLoginModal(false)}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {loginMode === "login" ? "Sign In" : "Create Account"}
+              </Text>
+              <Pressable onPress={() => setShowLoginModal(false)} style={styles.modalClose}>
+                <Ionicons name="close" size={22} color={Colors.light.text} />
+              </Pressable>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
+              <Text style={styles.modalSubtitle}>
+                {loginMode === "login"
+                  ? "Sign in and your details will be filled in automatically."
+                  : "Create an account and your details will be filled in automatically."}
+              </Text>
+
+              <View style={styles.modalToggleRow}>
+                <Pressable
+                  onPress={() => { setLoginMode("login"); setLoginError(""); }}
+                  style={[styles.modalToggleBtn, loginMode === "login" && styles.modalToggleBtnActive]}
+                >
+                  <Text style={[styles.modalToggleText, loginMode === "login" && styles.modalToggleTextActive]}>Sign In</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => { setLoginMode("register"); setLoginError(""); }}
+                  style={[styles.modalToggleBtn, loginMode === "register" && styles.modalToggleBtnActive]}
+                >
+                  <Text style={[styles.modalToggleText, loginMode === "register" && styles.modalToggleTextActive]}>Create Account</Text>
+                </Pressable>
+              </View>
+
+              {loginMode === "register" && (
+                <>
+                  <Text style={styles.modalLabel}>Full Name *</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    value={loginName}
+                    onChangeText={setLoginName}
+                    placeholder="John Smith"
+                    placeholderTextColor={Colors.light.textSecondary}
+                    autoCapitalize="words"
+                  />
+                  <Text style={styles.modalLabel}>Phone *</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    value={loginPhone}
+                    onChangeText={setLoginPhone}
+                    placeholder="07700 900000"
+                    placeholderTextColor={Colors.light.textSecondary}
+                    keyboardType="phone-pad"
+                  />
+                </>
+              )}
+
+              <Text style={styles.modalLabel}>Email *</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={loginEmail}
+                onChangeText={setLoginEmail}
+                placeholder="john@example.com"
+                placeholderTextColor={Colors.light.textSecondary}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+
+              <Text style={styles.modalLabel}>Password *</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={loginPassword}
+                onChangeText={setLoginPassword}
+                placeholder="••••••••"
+                placeholderTextColor={Colors.light.textSecondary}
+                secureTextEntry
+                onSubmitEditing={loginMode === "login" ? handleModalLogin : handleModalRegister}
+              />
+
+              {loginError ? (
+                <Text style={styles.modalError}>{loginError}</Text>
+              ) : null}
+
+              <Pressable
+                onPress={loginMode === "login" ? handleModalLogin : handleModalRegister}
+                disabled={loginLoading}
+                style={[styles.modalSubmitBtn, loginLoading && { opacity: 0.6 }]}
+              >
+                {loginLoading ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalSubmitText}>
+                    {loginMode === "login" ? "Sign In & Auto-Fill" : "Create Account & Auto-Fill"}
+                  </Text>
+                )}
+              </Pressable>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -1026,5 +1205,143 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 14,
     color: Colors.brand.blue,
+  },
+  loginBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: Colors.brand.blue + "12",
+    borderWidth: 1,
+    borderColor: Colors.brand.blue + "30",
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 20,
+  },
+  loginBannerTitle: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: Colors.brand.blue,
+  },
+  loginBannerSub: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginTop: 1,
+  },
+  autoFilledBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: Colors.brand.green + "15",
+    borderWidth: 1,
+    borderColor: Colors.brand.green + "30",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 20,
+  },
+  autoFilledText: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 13,
+    color: Colors.brand.green,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: Colors.light.background,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
+  },
+  modalTitle: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 18,
+    color: Colors.light.text,
+  },
+  modalClose: {
+    padding: 4,
+  },
+  modalBody: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 40,
+  },
+  modalSubtitle: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  modalToggleRow: {
+    flexDirection: "row",
+    backgroundColor: Colors.light.surface,
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+  },
+  modalToggleBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  modalToggleBtnActive: {
+    backgroundColor: Colors.brand.blue,
+  },
+  modalToggleText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+  },
+  modalToggleTextActive: {
+    color: "#FFFFFF",
+  },
+  modalLabel: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: Colors.light.text,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  modalInput: {
+    backgroundColor: Colors.light.surface,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.light.border,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 15,
+    color: Colors.light.text,
+    marginBottom: 16,
+  },
+  modalError: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 13,
+    color: "#EF4444",
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  modalSubmitBtn: {
+    backgroundColor: Colors.brand.blue,
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+  },
+  modalSubmitText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 15,
+    color: "#FFFFFF",
   },
 });
