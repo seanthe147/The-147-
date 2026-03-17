@@ -657,7 +657,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/offers/:id", async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const offer = await storage.getOffer(id);
     if (!offer) return res.status(404).json({ message: "Offer not found" });
@@ -948,7 +948,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.json({ slots: bookedSlots, totalTables: POOL_TABLE_COUNT });
     }
     const bookedSlots = await storage.getBookedSlots(String(date), String(tableType), tableNumber ? String(tableNumber) : undefined);
-    res.json(bookedSlots);
+    res.json({ slots: bookedSlots, totalTables: 1 });
   });
 
   app.get("/api/bookings", staffAuth, async (req, res) => {
