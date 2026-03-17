@@ -216,7 +216,7 @@ export default function AdminNotificationsScreen() {
                 <Text style={styles.emptySubtext}>Compose your first notification above</Text>
               </View>
             ) : (
-              [...historyQuery.data].reverse().map((n) => (
+              [...(historyQuery.data ?? [])].reverse().map((n) => (
                 <View key={n.id} style={styles.historyCard}>
                   <View style={styles.historyHeader}>
                     <Ionicons name="notifications" size={16} color={Colors.brand.blue} />
