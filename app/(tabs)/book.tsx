@@ -81,12 +81,12 @@ export default function BookScreen() {
   const availabilityQueryStr = isSnooker && selectedTableNumber
     ? `?date=${selectedDate}&tableType=${selectedTable}&tableNumber=${selectedTableNumber}`
     : `?date=${selectedDate}&tableType=${selectedTable}`;
-  const availabilityQuery = useQuery<Array<{ startTime: string; duration: number }>>({
+  const availabilityQuery = useQuery<{ slots: Array<{ startTime: string; duration: number }>; totalTables: number }>({
     queryKey: ["/api/bookings/availability", availabilityQueryStr],
     enabled: !!selectedDate && !!selectedTable && (!isSnooker || !!selectedTableNumber),
   });
 
-  const bookedSlots = availabilityQuery.data ?? [];
+  const bookedSlots = availabilityQuery.data?.slots ?? [];
 
   const isSlotBooked = (time: string, dur: number) => {
     const reqStart = parseInt(time.replace(":", ""));
