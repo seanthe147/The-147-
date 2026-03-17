@@ -1828,7 +1828,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.patch("/api/customers/bookings/:id/cancel", customerAuth, async (req, res) => {
-    const bookingId = parseInt(req.params.id);
+    const bookingId = parseInt(req.params.id as string);
     if (isNaN(bookingId)) {
       return res.status(400).json({ message: "Invalid booking ID" });
     }

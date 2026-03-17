@@ -70,8 +70,11 @@ Once members install the standalone build, their push tokens will use `com.the14
 
 ## QA & Pre-Launch Notes
 - **Booking confirmation emails**: Sent automatically via Resend API when a booking is created. Email includes venue name, table details, date/time, duration, and booking reference (format: 147-XXXXX). Non-blocking — booking succeeds even if email fails.
-- **Shadow deprecation fixes**: All `shadow*` style props replaced with `boxShadow` string format; `textShadow*` props replaced with `textShadow` string format across component files.
+- **Text shadow styles**: `textShadowColor/Offset/Radius` native props used for iOS/Android text shadows. These show a deprecation warning on web only — not relevant for Apple review.
+- **Snooker availability fix**: `/api/bookings/availability` now returns consistent `{slots, totalTables}` shape for all table types (previously returned bare array for snooker, causing double-booking risk).
+- **TypeScript**: `@types/pg` missing but non-breaking (tsx handles it at runtime). EAS builds use Babel, not tsc.
 - **Package versions**: expo@~54.0.33, expo-glass-effect@~0.1.9, expo-router@~6.0.23.
 - **pointerEvents deprecation**: Fixed via patch-package patches for `@react-navigation/elements@2.9.10` and `@react-navigation/bottom-tabs@7.15.5`. The patches move `pointerEvents` from View props to `style.pointerEvents`. Patches are in `patches/` directory and applied automatically via postinstall.
 - **Metro watcher crash fix**: `metro.config.js` updated to exclude `.local/state/workflow-logs` from Metro's file watcher blockList, preventing ENOENT crashes when temporary workflow-log directories are created/deleted.
 - **STAFF_PIN**: Environment variable required for staff master PIN login (POST /api/staff/login).
+- **Apple compliance**: Account deletion at /account → Delete Account. Privacy policy at /privacy-policy and https://the147bradford.replit.app/privacy-policy. Push notification permission requested after 3s delay. GDPR consent banner on first launch. ITSAppUsesNonExemptEncryption=false set.
