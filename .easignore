@@ -15,3 +15,10 @@ yarn-error.*
 *.key
 *.mobileprovision
 .local/
+.cache/
+the-147/
+static-build/
+server_dist/
+.config/
+uploads/
+/tmp/
