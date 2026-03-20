@@ -550,6 +550,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(404).json({ message: "Account not found" });
     }
 
+    const displayNameUpper = (staffUser.displayName || "").toUpperCase().trim();
+    if (displayNameUpper === "THE 147" || username.toLowerCase() === "the147") {
+      return res.status(403).json({ message: "PIN changes are not allowed for this account" });
+    }
+
     if (!verifyPin(currentPin, staffUser.pinHash, staffUser.pinSalt)) {
       return res.status(401).json({ message: "Current PIN is incorrect" });
     }
