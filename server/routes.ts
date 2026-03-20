@@ -956,6 +956,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ slots: bookedSlots, totalTables: 1 });
   });
 
+  // Staff notices
+  app.get("/api/staff-notices", staffAuth, async (_req, res) => {
+    const notices = await storage.getStaffNotices();
+    res.json(notices);
+  });
+
+  app.post("/api/staff-notices", staffAuth, managerAuth, async (req: any, res) => {
+    const { message } = req.body;
+    if (!message || typeof message !== "string" || !message.trim()) {
+      return res.status(400).json({ message: "Notice message is required" });
+    }
+    const createdBy = (req as any).staffUsername || "Manager";
+    const notice = await storage.createStaffNotice(message.trim(), createdBy);
+    res.status(201).json(notice);
+  });
+
+  app.delete("/api/staff-notices/:id", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid notice ID" });
+    const deleted = await storage.deleteStaffNotice(id);
+    if (!deleted) return res.status(404).json({ message: "Notice not found" });
+    res.status(204).send();
+  });
+
   app.get("/api/bookings", staffAuth, async (req, res) => {
     const { date } = req.query;
     if (date) {

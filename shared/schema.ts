@@ -192,3 +192,15 @@ export const insertBannerImageSchema = createInsertSchema(bannerImages).omit({ i
 
 export type InsertBannerImage = z.infer<typeof insertBannerImageSchema>;
 export type BannerImage = typeof bannerImages.$inferSelect;
+
+export const staffNotices = pgTable("staff_notices", {
+  id: serial("id").primaryKey(),
+  message: text("message").notNull(),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertStaffNoticeSchema = createInsertSchema(staffNotices).omit({ id: true, createdAt: true });
+
+export type InsertStaffNotice = z.infer<typeof insertStaffNoticeSchema>;
+export type StaffNotice = typeof staffNotices.$inferSelect;

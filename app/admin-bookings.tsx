@@ -8,6 +8,7 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  TextInput,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -16,7 +17,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import Colors from "@/constants/colors";
-import type { Booking } from "@shared/schema";
+import type { Booking, StaffNotice } from "@shared/schema";
 
 const TABLE_LABELS: Record<string, string> = {
   snooker: "Snooker",
@@ -55,13 +56,59 @@ function getWeekDays(startDate: Date): Array<{ date: string; dayName: string; da
 export default function AdminBookingsScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const { isAuthenticated, isLoading: authLoading } = useStaffAuth();
+  const { isAuthenticated, isManager, username, isLoading: authLoading } = useStaffAuth();
+  const [showAddNotice, setShowAddNotice] = useState(false);
+  const [newNoticeText, setNewNoticeText] = useState("");
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       router.replace("/staff-portal");
     }
   }, [authLoading, isAuthenticated]);
+
+  const noticesQuery = useQuery<StaffNotice[]>({
+    queryKey: ["/api/staff-notices"],
+    enabled: isAuthenticated,
+    refetchOnMount: "always",
+  });
+
+  const addNoticeMutation = useMutation({
+    mutationFn: async (message: string) => {
+      const res = await apiRequest("POST", "/api/staff-notices", { message });
+      return res.json();
+    },
+    onSuccess: () => {
+      setNewNoticeText("");
+      setShowAddNotice(false);
+      queryClient.refetchQueries({ queryKey: ["/api/staff-notices"] });
+    },
+  });
+
+  const deleteNoticeMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/staff-notices/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.refetchQueries({ queryKey: ["/api/staff-notices"] });
+    },
+  });
+
+  const handleAddNotice = () => {
+    if (!newNoticeText.trim()) return;
+    addNoticeMutation.mutate(newNoticeText.trim());
+  };
+
+  const handleDeleteNotice = (notice: StaffNotice) => {
+    const msg = "Remove this notice?";
+    if (Platform.OS === "web") {
+      if (window.confirm(msg)) deleteNoticeMutation.mutate(notice.id);
+    } else {
+      Alert.alert("Remove Notice", msg, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Remove", style: "destructive", onPress: () => deleteNoticeMutation.mutate(notice.id) },
+      ]);
+    }
+  };
 
   const [weekStart, setWeekStart] = useState(() => {
     const today = new Date();
@@ -152,6 +199,75 @@ export default function AdminBookingsScreen() {
         <Pressable onPress={goToToday} hitSlop={12}>
           <Text style={styles.todayBtn}>Today</Text>
         </Pressable>
+      </View>
+
+      {/* NOTICES SECTION */}
+      <View style={styles.noticesSection}>
+        <View style={styles.noticesHeader}>
+          <View style={styles.noticesTitleRow}>
+            <Ionicons name="warning" size={16} color="#92400E" />
+            <Text style={styles.noticesTitle}>NOTICES</Text>
+          </View>
+          {isManager && (
+            <Pressable
+              onPress={() => setShowAddNotice(!showAddNotice)}
+              style={styles.addNoticeBtn}
+              hitSlop={8}
+            >
+              <Ionicons name={showAddNotice ? "close" : "add"} size={18} color="#92400E" />
+            </Pressable>
+          )}
+        </View>
+
+        {showAddNotice && isManager && (
+          <View style={styles.addNoticeForm}>
+            <TextInput
+              style={styles.noticeInput}
+              value={newNoticeText}
+              onChangeText={setNewNoticeText}
+              placeholder="Type a notice for staff..."
+              placeholderTextColor="#A16207"
+              multiline
+              maxLength={300}
+              autoFocus
+            />
+            <Pressable
+              onPress={handleAddNotice}
+              disabled={!newNoticeText.trim() || addNoticeMutation.isPending}
+              style={({ pressed }) => [
+                styles.postNoticeBtn,
+                (!newNoticeText.trim() || addNoticeMutation.isPending) && { opacity: 0.5 },
+                { opacity: pressed ? 0.8 : 1 },
+              ]}
+            >
+              {addNoticeMutation.isPending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.postNoticeBtnText}>Post Notice</Text>
+              )}
+            </Pressable>
+          </View>
+        )}
+
+        {noticesQuery.data && noticesQuery.data.length === 0 && !showAddNotice && (
+          <Text style={styles.noNoticesText}>No notices at this time</Text>
+        )}
+
+        {noticesQuery.data?.map((notice) => (
+          <View key={notice.id} style={styles.noticeCard}>
+            <View style={styles.noticeCardContent}>
+              <Text style={styles.noticeMessage}>{notice.message}</Text>
+              <Text style={styles.noticeMeta}>
+                Posted by {notice.createdBy} · {new Date(notice.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+              </Text>
+            </View>
+            {isManager && (
+              <Pressable onPress={() => handleDeleteNotice(notice)} hitSlop={8}>
+                <Ionicons name="trash-outline" size={16} color="#B45309" />
+              </Pressable>
+            )}
+          </View>
+        ))}
       </View>
 
       <View style={styles.weekNav}>
@@ -522,5 +638,93 @@ const styles = StyleSheet.create({
   actionText: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 12,
+  },
+  noticesSection: {
+    backgroundColor: "#FEF3C7",
+    borderBottomWidth: 1,
+    borderBottomColor: "#FDE68A",
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
+  },
+  noticesHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  noticesTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  noticesTitle: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 11,
+    color: "#92400E",
+    letterSpacing: 1,
+  },
+  addNoticeBtn: {
+    padding: 2,
+  },
+  addNoticeForm: {
+    gap: 8,
+    marginBottom: 8,
+  },
+  noticeInput: {
+    backgroundColor: "#FFFBEB",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#FCD34D",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 14,
+    color: "#78350F",
+    minHeight: 70,
+    textAlignVertical: "top",
+  },
+  postNoticeBtn: {
+    backgroundColor: "#D97706",
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  postNoticeBtnText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 14,
+    color: "#fff",
+  },
+  noNoticesText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 13,
+    color: "#A16207",
+    fontStyle: "italic",
+  },
+  noticeCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: "#FFFBEB",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#FCD34D",
+    padding: 10,
+    marginBottom: 6,
+  },
+  noticeCardContent: {
+    flex: 1,
+    gap: 4,
+  },
+  noticeMessage: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 13,
+    color: "#78350F",
+    lineHeight: 18,
+  },
+  noticeMeta: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 11,
+    color: "#A16207",
   },
 });

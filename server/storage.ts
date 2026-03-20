@@ -22,6 +22,7 @@ import {
   type InsertBannerImage,
   type Customer,
   type CustomerSession,
+  type StaffNotice,
   users,
   offers,
   pushTokens,
@@ -35,6 +36,7 @@ import {
   bannerImages,
   customers,
   customerSessions,
+  staffNotices,
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
 
@@ -594,6 +596,20 @@ export class DatabaseStorage implements IStorage {
       .set({ active: false })
       .where(eq(customerSessions.token, token))
       .returning();
+    return result.length > 0;
+  }
+
+  async getStaffNotices(): Promise<StaffNotice[]> {
+    return db.select().from(staffNotices).orderBy(staffNotices.createdAt);
+  }
+
+  async createStaffNotice(message: string, createdBy: string): Promise<StaffNotice> {
+    const [notice] = await db.insert(staffNotices).values({ message, createdBy }).returning();
+    return notice;
+  }
+
+  async deleteStaffNotice(id: number): Promise<boolean> {
+    const result = await db.delete(staffNotices).where(eq(staffNotices.id, id)).returning();
     return result.length > 0;
   }
 }
