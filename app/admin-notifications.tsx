@@ -22,15 +22,15 @@ import type { PushToken, Notification } from "@shared/schema";
 export default function AdminNotificationsScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const { isAuthenticated, isLoading: authLoading } = useStaffAuth();
+  const { isAuthenticated, isOwner, isLoading: authLoading } = useStaffAuth();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
 
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
+    if (!authLoading && (!isAuthenticated || !isOwner)) {
       router.replace("/staff-portal");
     }
-  }, [authLoading, isAuthenticated]);
+  }, [authLoading, isAuthenticated, isOwner]);
   const [activeTab, setActiveTab] = useState<"compose" | "history" | "devices">("compose");
 
   const tokensQuery = useQuery<PushToken[]>({

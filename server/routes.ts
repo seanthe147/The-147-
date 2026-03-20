@@ -709,13 +709,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(201).json(token);
   });
 
-  app.delete("/api/push-tokens/:token", staffAuth, managerAuth, async (req, res) => {
+  app.delete("/api/push-tokens/:token", staffAuth, ownerAuth, async (req, res) => {
     const deleted = await storage.removePushToken(req.params.token as string);
     if (!deleted) return res.status(404).json({ message: "Token not found" });
     res.status(204).send();
   });
 
-  app.get("/api/push-tokens", staffAuth, managerAuth, async (_req, res) => {
+  app.get("/api/push-tokens", staffAuth, ownerAuth, async (_req, res) => {
     const tokens = await storage.getAllPushTokens();
     res.json(tokens);
   });
@@ -829,7 +829,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return { tokens, successCount, failureCount };
   }
 
-  app.post("/api/notifications/send", staffAuth, managerAuth, async (req: any, res) => {
+  app.post("/api/notifications/send", staffAuth, ownerAuth, async (req: any, res) => {
     const { title, body } = req.body;
     if (!title || !body) return res.status(400).json({ message: "Title and body are required" });
     const tokens = await storage.getAllPushTokens();
@@ -840,23 +840,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ sent: successCount, failed: failureCount, total: tokens.length, notification });
   });
 
-  app.get("/api/notifications/history", staffAuth, managerAuth, async (_req, res) => {
+  app.get("/api/notifications/history", staffAuth, ownerAuth, async (_req, res) => {
     const history = await storage.getNotificationHistory();
     res.json(history);
   });
 
   // Staff portal push routes (used by web dashboard)
-  app.get("/api/push/device-count", staffAuth, managerAuth, async (_req, res) => {
+  app.get("/api/push/device-count", staffAuth, ownerAuth, async (_req, res) => {
     const tokens = await storage.getAllPushTokens();
     res.json({ count: tokens.length });
   });
 
-  app.get("/api/push/history", staffAuth, managerAuth, async (_req, res) => {
+  app.get("/api/push/history", staffAuth, ownerAuth, async (_req, res) => {
     const history = await storage.getNotificationHistory();
     res.json(history);
   });
 
-  app.post("/api/push/send", staffAuth, managerAuth, async (req: any, res) => {
+  app.post("/api/push/send", staffAuth, ownerAuth, async (req: any, res) => {
     const { title, body } = req.body;
     if (!title || !body) return res.status(400).json({ message: "Title and body are required" });
     const sentBy = (req as any).staffUsername;
