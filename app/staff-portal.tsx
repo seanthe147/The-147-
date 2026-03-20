@@ -13,8 +13,10 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import Colors from "@/constants/colors";
+import type { StaffNotice } from "@shared/schema";
 
 function LoginScreen() {
   const insets = useSafeAreaInsets();
@@ -335,6 +337,14 @@ function DashboardScreen() {
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { logout, username, displayName, role, isManager, isOwner } = useStaffAuth();
 
+  const noticesQuery = useQuery<StaffNotice[]>({
+    queryKey: ["/api/staff-notices"],
+    refetchOnMount: "always",
+    refetchInterval: 60000,
+  });
+
+  const notices = noticesQuery.data ?? [];
+
   return (
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
       <View style={styles.header}>
@@ -365,6 +375,23 @@ function DashboardScreen() {
             {isOwner ? "Full venue owner access" : isManager ? "Full venue management access" : "Bookings management"}
           </Text>
         </View>
+
+        {notices.length > 0 && (
+          <View style={styles.noticesSection}>
+            <View style={styles.noticesTitleRow}>
+              <Ionicons name="warning" size={15} color="#92400E" />
+              <Text style={styles.noticesTitle}>NOTICES</Text>
+            </View>
+            {notices.map((notice) => (
+              <View key={notice.id} style={styles.noticeCard}>
+                <Text style={styles.noticeMessage}>{notice.message}</Text>
+                <Text style={styles.noticeMeta}>
+                  Posted by {notice.createdBy} · {new Date(notice.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         <Text style={styles.sectionLabel}>
           {isManager ? "ADMIN TOOLS" : "YOUR TOOLS"}
@@ -660,6 +687,47 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_400Regular",
     fontSize: 14,
     color: Colors.light.textSecondary,
+  },
+  noticesSection: {
+    backgroundColor: "#FEF3C7",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 20,
+    gap: 8,
+  },
+  noticesTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 4,
+  },
+  noticesTitle: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 11,
+    color: "#92400E",
+    letterSpacing: 1,
+  },
+  noticeCard: {
+    backgroundColor: "#FFFBEB",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#FCD34D",
+    padding: 10,
+    gap: 4,
+  },
+  noticeMessage: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 13,
+    color: "#78350F",
+    lineHeight: 18,
+  },
+  noticeMeta: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 11,
+    color: "#A16207",
   },
   sectionLabel: {
     fontFamily: "Montserrat_700Bold",
