@@ -398,6 +398,14 @@ function DashboardScreen() {
                 testID="portal-manage-events"
               />
               <AdminTool
+                icon="notifications"
+                title="Push Notifications"
+                description="Send notifications to app users"
+                color={Colors.brand.gold}
+                onPress={() => router.push("/admin-notifications")}
+                testID="portal-push-notifications"
+              />
+              <AdminTool
                 icon="images"
                 title="Banner Images"
                 description="Manage home screen banner photos"
@@ -408,24 +416,14 @@ function DashboardScreen() {
             </>
           )}
           {isOwner && (
-            <>
-              <AdminTool
-                icon="notifications"
-                title="Push Notifications"
-                description="Send notifications to app users"
-                color={Colors.brand.gold}
-                onPress={() => router.push("/admin-notifications")}
-                testID="portal-push-notifications"
-              />
-              <AdminTool
-                icon="people"
-                title="Staff Accounts"
-                description="View accounts, manage roles and permissions"
-                color="#F59E0B"
-                onPress={() => router.push("/admin-staff")}
-                testID="portal-staff-accounts"
-              />
-            </>
+            <AdminTool
+              icon="people"
+              title="Staff Accounts"
+              description="View accounts, manage roles and permissions"
+              color="#F59E0B"
+              onPress={() => router.push("/admin-staff")}
+              testID="portal-staff-accounts"
+            />
           )}
         </View>
 
