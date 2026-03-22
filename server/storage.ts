@@ -1,7 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { eq, lt, lte, sql } from "drizzle-orm";
-import { and, gt } from "drizzle-orm";
+import { eq, lt, lte, sql, and, gt, isNull, isNotNull, gte, desc } from "drizzle-orm";
 import {
   type User,
   type InsertUser,
@@ -600,7 +599,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getStaffNotices(): Promise<StaffNotice[]> {
-    return db.select().from(staffNotices).orderBy(staffNotices.createdAt);
+    return db.select().from(staffNotices)
+      .where(isNull(staffNotices.deletedAt))
+      .orderBy(staffNotices.createdAt);
+  }
+
+  async getDeletedStaffNotices(): Promise<StaffNotice[]> {
+    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    return db.select().from(staffNotices)
+      .where(and(isNotNull(staffNotices.deletedAt), gte(staffNotices.deletedAt, cutoff)))
+      .orderBy(desc(staffNotices.deletedAt));
   }
 
   async createStaffNotice(message: string, createdBy: string): Promise<StaffNotice> {
@@ -608,8 +616,11 @@ export class DatabaseStorage implements IStorage {
     return notice;
   }
 
-  async deleteStaffNotice(id: number): Promise<boolean> {
-    const result = await db.delete(staffNotices).where(eq(staffNotices.id, id)).returning();
+  async deleteStaffNotice(id: number, deletedBy: string): Promise<boolean> {
+    const result = await db.update(staffNotices)
+      .set({ deletedAt: new Date(), deletedBy })
+      .where(and(eq(staffNotices.id, id), isNull(staffNotices.deletedAt)))
+      .returning();
     return result.length > 0;
   }
 }

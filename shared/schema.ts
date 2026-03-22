@@ -198,6 +198,8 @@ export const staffNotices = pgTable("staff_notices", {
   message: text("message").notNull(),
   createdBy: text("created_by").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  deletedAt: timestamp("deleted_at"),
+  deletedBy: text("deleted_by"),
 });
 
 export const insertStaffNoticeSchema = createInsertSchema(staffNotices).omit({ id: true, createdAt: true });

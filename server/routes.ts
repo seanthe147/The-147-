@@ -972,10 +972,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(201).json(notice);
   });
 
-  app.delete("/api/staff-notices/:id", staffAuth, managerAuth, async (req, res) => {
+  app.get("/api/staff-notices/history", staffAuth, managerAuth, async (_req, res) => {
+    const notices = await storage.getDeletedStaffNotices();
+    res.json(notices);
+  });
+
+  app.delete("/api/staff-notices/:id", staffAuth, managerAuth, async (req: any, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid notice ID" });
-    const deleted = await storage.deleteStaffNotice(id);
+    const deletedBy = (req as any).staffUsername || "Manager";
+    const deleted = await storage.deleteStaffNotice(id, deletedBy);
     if (!deleted) return res.status(404).json({ message: "Notice not found" });
     res.status(204).send();
   });
