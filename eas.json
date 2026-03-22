@@ -19,6 +19,9 @@
       },
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_DOMAIN": "the147bradford.replit.app"
       }
     },
     "production": {
