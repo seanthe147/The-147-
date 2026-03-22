@@ -372,6 +372,7 @@
       <!-- BOOKINGS PAGE -->
       <div class="page active" id="pageBookings">
         <div class="page-body">
+          <div id="dashboardNotices" style="display:none;margin-bottom:16px"></div>
           <div class="summary-row" id="summaryRow">
             <div class="stat-card"><div class="stat-label">Total Today</div><div class="stat-value" id="statTotal">—</div><div class="stat-sub">bookings</div></div>
             <div class="stat-card"><div class="stat-label">Confirmed</div><div class="stat-value" id="statConfirmed" style="color:var(--green)">—</div><div class="stat-sub">active</div></div>
@@ -869,7 +870,7 @@
     const titles={bookings:'Bookings',messages:'Messages',notifications:'Push Notifications',notices:'Staff Notices',staff:'Staff Accounts',settings:'Settings'};
     el('topbarTitle').textContent=titles[page]||'';
     el('topbarSub').textContent='';
-    if(page==='bookings'){el('topbarActions').style.display='';loadBookings();startBookingsPolling();}
+    if(page==='bookings'){el('topbarActions').style.display='';loadBookings();loadDashboardNotices();startBookingsPolling();}
     else{el('topbarActions').style.display='none';stopBookingsPolling();}
     if(page==='messages')loadMessages(true);
     if(page==='notifications')loadNotifications();
@@ -904,6 +905,46 @@
     el('dateDayLabel').textContent=formatDateLabel(state.currentDate);
     el('topbarSub').textContent='— '+formatDateLabel(state.currentDate);
   }
+
+  /* ── Dashboard Notices Banner ── */
+  async function loadDashboardNotices(){
+    try{
+      const r=await api('/api/staff-notices');
+      if(!r.ok)return;
+      const notices=await r.json();
+      const wrap=el('dashboardNotices');
+      if(!notices||!notices.length){wrap.style.display='none';wrap.innerHTML='';return}
+      const isManager=state.role==='manager'||state.role==='owner';
+      let html='<div style="display:flex;flex-direction:column;gap:8px">';
+      for(const n of notices){
+        html+=`<div style="display:flex;align-items:flex-start;gap:12px;padding:12px 16px;background:var(--amber-light);border:1px solid rgba(217,119,6,0.25);border-left:4px solid var(--amber);border-radius:var(--r)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2.5" style="flex-shrink:0;margin-top:1px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.5">${esc(n.message)}</div>
+            <div style="font-size:11px;color:var(--amber);font-weight:600;margin-top:3px">Posted by ${esc(n.createdBy||'Manager')} · ${formatDateTime(n.createdAt)}</div>
+          </div>
+          ${isManager?`<button class="btn btn-sm" style="flex-shrink:0;padding:4px 10px;font-size:11px;border:1px solid rgba(217,119,6,0.3);color:var(--amber);background:transparent;border-radius:var(--r);cursor:pointer" onclick="dismissDashboardNotice(${n.id},this)">Dismiss</button>`:''}
+        </div>`;
+      }
+      html+='</div>';
+      wrap.innerHTML=html;
+      wrap.style.display='block';
+    }catch(e){/* silent fail — notices are non-critical */}
+  }
+
+  window.dismissDashboardNotice=async function(id,btn){
+    if(!confirm('Delete this notice for all staff?'))return;
+    btn.disabled=true;
+    try{
+      const r=await api('/api/staff-notices/'+id,{method:'DELETE'});
+      if(!r.ok&&r.status!==204){toast('Failed to delete notice','error');btn.disabled=false;return}
+      toast('Notice dismissed','success');
+      loadDashboardNotices();
+      // Also refresh the notices badge if on that page
+      const badge=el('noticesBadge');
+      if(badge){const c=parseInt(badge.textContent||'0')-1;if(c<=0)badge.classList.add('hidden');else badge.textContent=c;}
+    }catch(e){btn.disabled=false;if(e.message!=='Session expired')toast('Network error','error')}
+  };
 
   /* ── Bookings ── */
   async function loadBookings(){
