@@ -7,7 +7,7 @@ import { useConsent } from "@/contexts/ConsentContext";
 import Colors from "@/constants/colors";
 
 export function ConsentBanner() {
-  const { consent, isLoading, acceptAll, acceptEssentialOnly } = useConsent();
+  const { consent, isLoading, acceptEssentialOnly } = useConsent();
   const insets = useSafeAreaInsets();
 
   if (isLoading || consent.hasConsented !== null) return null;
@@ -24,47 +24,34 @@ export function ConsentBanner() {
           <View style={styles.iconWrap}>
             <Ionicons name="shield-checkmark" size={22} color={Colors.brand.blue} />
           </View>
-          <Text style={styles.heading}>Your Privacy Matters</Text>
+          <Text style={styles.heading}>Your Privacy</Text>
         </View>
 
         <Text style={styles.description}>
-          We use essential data processing to make this app work. You can also
-          choose to allow analytics and marketing to help us improve your
-          experience. View our{" "}
+          We only collect the information you provide — such as your name, email
+          and phone number — to manage your bookings and account. We do not
+          track your activity, use cookies, or share your data with third
+          parties. View our{" "}
           <Text
             style={styles.link}
             onPress={() => router.push("/privacy-policy")}
           >
             Privacy Policy
           </Text>{" "}
-          for full details on how we handle your data under UK GDPR.
+          for full details.
         </Text>
 
-        <View style={styles.buttonRow}>
-          <Pressable
-            onPress={acceptEssentialOnly}
-            style={({ pressed }) => [
-              styles.button,
-              styles.essentialButton,
-              { opacity: pressed ? 0.8 : 1 },
-            ]}
-            testID="consent-essential-only"
-          >
-            <Text style={styles.essentialButtonText}>Essential Only</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={acceptAll}
-            style={({ pressed }) => [
-              styles.button,
-              styles.acceptButton,
-              { opacity: pressed ? 0.8 : 1 },
-            ]}
-            testID="consent-accept-all"
-          >
-            <Text style={styles.acceptButtonText}>Accept All</Text>
-          </Pressable>
-        </View>
+        <Pressable
+          onPress={acceptEssentialOnly}
+          style={({ pressed }) => [
+            styles.button,
+            styles.acceptButton,
+            { opacity: pressed ? 0.8 : 1 },
+          ]}
+          testID="consent-accept-all"
+        >
+          <Text style={styles.acceptButtonText}>Accept & Continue</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -121,26 +108,11 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_600SemiBold",
     textDecorationLine: "underline",
   },
-  buttonRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
   button: {
-    flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-  },
-  essentialButton: {
-    backgroundColor: Colors.light.surfaceElevated,
-    borderWidth: 1,
-    borderColor: Colors.light.border,
-  },
-  essentialButtonText: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 14,
-    color: Colors.light.text,
   },
   acceptButton: {
     backgroundColor: Colors.brand.blue,
