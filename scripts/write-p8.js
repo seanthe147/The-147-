@@ -1,5 +1,5 @@
 const fs = require('fs');
-const path = '/tmp/AuthKey_PRH75PPG5Z.p8';
+const path = '/tmp/AuthKey_7Q6GZ9HT5V.p8';
 
 let content = process.env.ASC_KEY_P8 || '';
 
