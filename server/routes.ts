@@ -901,16 +901,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const toSlotMins = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + (m || 0); };
     const POOL_TABLE_COUNT = 6;
+    const DINING_TABLE_COUNT = 25;
+    const DINING_TABLE_START = 18;
     let finalTableNumber = parsed.data.tableNumber ?? null;
 
-    if (parsed.data.tableType === "pool" && !parsed.data.tableNumber) {
-      // Auto-assign the lowest available pool table (1–6)
-      const allPoolBookings = await storage.getBookingsByDate(parsed.data.date);
-      const confirmedPool = allPoolBookings.filter(b => b.tableType === "pool" && b.status === "confirmed" && b.tableNumber);
+    if (parsed.data.tableType === "dining") {
+      // Auto-assign the lowest available dining table (18–42)
+      const allDiningBookings = await storage.getBookingsByDate(parsed.data.date);
+      const confirmedDining = allDiningBookings.filter(b => b.tableType === "dining" && b.status === "confirmed" && b.tableNumber);
       const reqStart = toSlotMins(parsed.data.startTime);
       const reqEnd = reqStart + (parsed.data.duration ?? 1) * 60;
       const occupiedTables = new Set<string>();
-      for (const b of confirmedPool) {
+      for (const b of confirmedDining) {
         const bStart = toSlotMins(b.startTime);
         const bEnd = bStart + (b.duration ?? 1) * 60;
         if (reqStart < bEnd && reqEnd > bStart && b.tableNumber) {
@@ -918,15 +920,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       let assigned: string | null = null;
-      for (let i = 1; i <= POOL_TABLE_COUNT; i++) {
+      for (let i = DINING_TABLE_START; i < DINING_TABLE_START + DINING_TABLE_COUNT; i++) {
         if (!occupiedTables.has(String(i))) { assigned = String(i); break; }
       }
       if (!assigned) {
-        return res.status(409).json({ message: "All pool tables are fully booked for this time slot" });
+        return res.status(409).json({ message: "All dining tables are fully booked for this time slot" });
       }
       finalTableNumber = assigned;
+    } else if (parsed.data.tableType === "pool") {
+      // Pool: customer selects table number (1–6), require it
+      if (!parsed.data.tableNumber) {
+        return res.status(400).json({ message: "Please select a pool table number (1–6)" });
+      }
+      const poolNum = parseInt(parsed.data.tableNumber);
+      if (poolNum < 1 || poolNum > POOL_TABLE_COUNT) {
+        return res.status(400).json({ message: "Invalid pool table number. Choose between 1 and 6." });
+      }
+      // Per-table conflict check
+      const bookedSlots = await storage.getBookedSlots(parsed.data.date, "pool", parsed.data.tableNumber);
+      const requestedStart = parseInt(parsed.data.startTime.replace(":", ""));
+      const requestedEnd = requestedStart + (parsed.data.duration ?? 1) * 100;
+      for (const slot of bookedSlots) {
+        const slotStart = parseInt(slot.startTime.replace(":", ""));
+        const slotEnd = slotStart + slot.duration * 100;
+        if (requestedStart < slotEnd && requestedEnd > slotStart) {
+          return res.status(409).json({ message: `Pool table ${parsed.data.tableNumber} is already booked for this time slot` });
+        }
+      }
     } else {
-      // Standard conflict check for snooker and explicit table numbers
+      // Standard per-table conflict check for snooker and any other table type
       const bookedSlots = await storage.getBookedSlots(parsed.data.date, parsed.data.tableType, finalTableNumber ?? undefined);
       const requestedStart = parseInt(parsed.data.startTime.replace(":", ""));
       const requestedEnd = requestedStart + (parsed.data.duration ?? 1) * 100;
@@ -961,14 +983,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ message: "date and tableType are required" });
     }
     const POOL_TABLE_COUNT = 6;
-    // For pool without a specific table number, return all individual bookings
-    // so the frontend can count concurrent usage and only block when all tables are full
-    if (String(tableType) === "pool" && !tableNumber) {
-      const bookedSlots = await storage.getBookedSlots(String(date), "pool");
-      return res.json({ slots: bookedSlots, totalTables: POOL_TABLE_COUNT });
+    const DINING_TABLE_COUNT = 25;
+    // For dining: return all dining bookings so the frontend can count concurrent usage
+    if (String(tableType) === "dining") {
+      const bookedSlots = await storage.getBookedSlots(String(date), "dining");
+      return res.json({ slots: bookedSlots, totalTables: DINING_TABLE_COUNT });
     }
+    // For pool/snooker: per-table availability check requires a table number
     const bookedSlots = await storage.getBookedSlots(String(date), String(tableType), tableNumber ? String(tableNumber) : undefined);
-    res.json({ slots: bookedSlots, totalTables: 1 });
+    res.json({ slots: bookedSlots, totalTables: tableNumber ? 1 : POOL_TABLE_COUNT });
   });
 
   // Staff notices
@@ -1053,13 +1076,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const existing = await storage.getBooking(id);
     if (!existing) return res.status(404).json({ message: "Booking not found" });
-    const { customerName, customerEmail, customerPhone, tableType, tableNumber, date, startTime, duration, notes, status } = req.body;
+    const { customerName, customerEmail, customerPhone, tableType, tableNumber, guestCount, date, startTime, duration, notes, status } = req.body;
     const updateData: any = {};
     if (customerName !== undefined) updateData.customerName = customerName;
     if (customerEmail !== undefined) updateData.customerEmail = customerEmail;
     if (customerPhone !== undefined) updateData.customerPhone = customerPhone;
     if (tableType !== undefined) updateData.tableType = tableType;
     if (tableNumber !== undefined) updateData.tableNumber = tableNumber;
+    if (guestCount !== undefined) updateData.guestCount = guestCount;
     if (date !== undefined) updateData.date = date;
     if (startTime !== undefined) updateData.startTime = startTime;
     if (duration !== undefined) updateData.duration = duration;

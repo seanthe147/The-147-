@@ -30,6 +30,8 @@ const BOOKING_HOURS = [
 const DURATION_OPTIONS = [1, 2, 3];
 
 const SNOOKER_TABLES = Array.from({ length: 10 }, (_, i) => (i + 1).toString());
+const POOL_TABLES = Array.from({ length: 6 }, (_, i) => (i + 1).toString());
+const GUEST_COUNT_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
 
 function getNext7Days(): Array<{ label: string; date: string; dayName: string; dayNum: string }> {
   const days: Array<{ label: string; date: string; dayName: string; dayNum: string }> = [];
@@ -59,6 +61,7 @@ export default function BookScreen() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [duration, setDuration] = useState(1);
+  const [guestCount, setGuestCount] = useState(2);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -122,19 +125,35 @@ export default function BookScreen() {
   const days = useMemo(() => getNext7Days(), []);
 
   const isSnooker = selectedTable === "snooker";
-  const availabilityQueryStr = isSnooker && selectedTableNumber
+  const isPool = selectedTable === "pool";
+  const isDining = selectedTable === "dining";
+  const needsTableNumber = isSnooker || isPool;
+
+  const availabilityQueryStr = needsTableNumber && selectedTableNumber
     ? `?date=${selectedDate}&tableType=${selectedTable}&tableNumber=${selectedTableNumber}`
     : `?date=${selectedDate}&tableType=${selectedTable}`;
   const availabilityQuery = useQuery<{ slots: Array<{ startTime: string; duration: number }>; totalTables: number }>({
     queryKey: ["/api/bookings/availability", availabilityQueryStr],
-    enabled: !!selectedDate && !!selectedTable && (!isSnooker || !!selectedTableNumber),
+    enabled: !!selectedDate && !!selectedTable && (!needsTableNumber || !!selectedTableNumber),
   });
 
   const bookedSlots = availabilityQuery.data?.slots ?? [];
+  const totalTables = availabilityQuery.data?.totalTables ?? 1;
 
   const isSlotBooked = (time: string, dur: number) => {
     const reqStart = parseInt(time.replace(":", ""));
     const reqEnd = reqStart + dur * 100;
+    if (isDining) {
+      // Count concurrent bookings; block if all 25 tables occupied
+      let count = 0;
+      for (const slot of bookedSlots) {
+        const slotStart = parseInt(slot.startTime.replace(":", ""));
+        const slotEnd = slotStart + slot.duration * 100;
+        if (reqStart < slotEnd && reqEnd > slotStart) count++;
+      }
+      return count >= totalTables;
+    }
+    // Per-table: any overlap = booked
     for (const slot of bookedSlots) {
       const slotStart = parseInt(slot.startTime.replace(":", ""));
       const slotEnd = slotStart + slot.duration * 100;
@@ -179,6 +198,7 @@ export default function BookScreen() {
       customerPhone: phone.trim(),
       tableType: selectedTable,
       tableNumber: selectedTableNumber || null,
+      guestCount: isDining ? guestCount : null,
       date: selectedDate,
       startTime: selectedTime,
       duration,
@@ -195,6 +215,7 @@ export default function BookScreen() {
     setSelectedDate(null);
     setSelectedTime(null);
     setDuration(1);
+    setGuestCount(2);
     setName("");
     setEmail("");
     setPhone("");
@@ -248,7 +269,7 @@ export default function BookScreen() {
                   return (
                     <Pressable
                       key={table.id}
-                      onPress={() => { setSelectedTable(table.id); if (table.id !== "snooker") setSelectedTableNumber(null); }}
+                      onPress={() => { setSelectedTable(table.id); setSelectedTableNumber(null); }}
                       style={[styles.tableCard, isSelected && styles.tableCardSelected]}
                       testID={`table-${table.id}`}
                     >
@@ -274,15 +295,15 @@ export default function BookScreen() {
                   <Text style={styles.stepSubtitle}>Choose from our 10 full-size snooker tables</Text>
                   <View style={styles.tableNumberGrid}>
                     {SNOOKER_TABLES.map((num) => {
-                      const isSelected = selectedTableNumber === num;
+                      const isSel = selectedTableNumber === num;
                       return (
                         <Pressable
                           key={num}
                           onPress={() => setSelectedTableNumber(num)}
-                          style={[styles.tableNumberChip, isSelected && styles.tableNumberChipSelected]}
+                          style={[styles.tableNumberChip, isSel && styles.tableNumberChipSelected]}
                           testID={`snooker-table-${num}`}
                         >
-                          <Text style={[styles.tableNumberText, isSelected && styles.tableNumberTextSelected]}>{num}</Text>
+                          <Text style={[styles.tableNumberText, isSel && styles.tableNumberTextSelected]}>{num}</Text>
                         </Pressable>
                       );
                     })}
@@ -290,10 +311,56 @@ export default function BookScreen() {
                 </>
               )}
 
+              {isPool && selectedTable && (
+                <>
+                  <Text style={[styles.stepTitle, { marginTop: 24 }]}>Select Table Number</Text>
+                  <Text style={styles.stepSubtitle}>Choose from our 6 pool tables</Text>
+                  <View style={styles.tableNumberGrid}>
+                    {POOL_TABLES.map((num) => {
+                      const isSel = selectedTableNumber === num;
+                      return (
+                        <Pressable
+                          key={num}
+                          onPress={() => setSelectedTableNumber(num)}
+                          style={[styles.tableNumberChip, isSel && styles.tableNumberChipSelected]}
+                          testID={`pool-table-${num}`}
+                        >
+                          <Text style={[styles.tableNumberText, isSel && styles.tableNumberTextSelected]}>{num}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </>
+              )}
+
+              {isDining && selectedTable && (
+                <>
+                  <Text style={[styles.stepTitle, { marginTop: 24 }]}>Party Size</Text>
+                  <Text style={styles.stepSubtitle}>How many guests are in your party?</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
+                    <View style={{ flexDirection: "row", gap: 8, paddingVertical: 4 }}>
+                      {GUEST_COUNT_OPTIONS.map((count) => {
+                        const isSel = guestCount === count;
+                        return (
+                          <Pressable
+                            key={count}
+                            onPress={() => setGuestCount(count)}
+                            style={[styles.tableNumberChip, isSel && styles.tableNumberChipSelected, { width: 52 }]}
+                            testID={`guest-count-${count}`}
+                          >
+                            <Text style={[styles.tableNumberText, isSel && styles.tableNumberTextSelected]}>{count}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </ScrollView>
+                </>
+              )}
+
               <Pressable
-                onPress={() => { if (selectedTable && (!isSnooker || selectedTableNumber)) setStep("datetime"); }}
-                disabled={!selectedTable || (isSnooker && !selectedTableNumber)}
-                style={[styles.nextButton, (!selectedTable || (isSnooker && !selectedTableNumber)) && styles.nextButtonDisabled]}
+                onPress={() => { if (selectedTable && (!needsTableNumber || selectedTableNumber)) setStep("datetime"); }}
+                disabled={!selectedTable || (needsTableNumber && !selectedTableNumber)}
+                style={[styles.nextButton, (!selectedTable || (needsTableNumber && !selectedTableNumber)) && styles.nextButtonDisabled]}
                 testID="book-next-step-1"
               >
                 <Text style={styles.nextButtonText}>Continue</Text>
@@ -595,6 +662,18 @@ export default function BookScreen() {
                     <Text style={styles.summaryValue}>{phone}</Text>
                   </View>
                 </View>
+                {isDining && (
+                  <>
+                    <View style={styles.divider} />
+                    <View style={styles.summaryRow}>
+                      <Ionicons name="people" size={20} color={Colors.brand.blue} />
+                      <View style={styles.summaryInfo}>
+                        <Text style={styles.summaryLabel}>Party Size</Text>
+                        <Text style={styles.summaryValue}>{guestCount} {guestCount === 1 ? "guest" : "guests"}</Text>
+                      </View>
+                    </View>
+                  </>
+                )}
                 {notes.trim() ? (
                   <>
                     <View style={styles.divider} />

@@ -166,6 +166,7 @@
     .pill-amber{background:var(--amber-light);color:var(--amber)}
     .pill-gray{background:#F1F5F9;color:var(--text-2)}
     .pill-purple{background:var(--purple-light);color:var(--purple)}
+    .pill-teal{background:#ccf5f0;color:#0d7a6e}
     .b-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
 
     /* ── Empty / loading ── */
@@ -544,12 +545,24 @@
           </select>
         </div>
         <div class="form-group" id="tableNumGroup">
-          <label class="form-label">Table Number</label>
+          <label class="form-label">Table # (1–10)</label>
           <select class="form-input" id="fTableNum">
             <option value="1">Table 1</option><option value="2">Table 2</option><option value="3">Table 3</option>
             <option value="4">Table 4</option><option value="5">Table 5</option><option value="6">Table 6</option>
             <option value="7">Table 7</option><option value="8">Table 8</option><option value="9">Table 9</option>
             <option value="10">Table 10</option>
+          </select>
+        </div>
+        <div class="form-group" id="guestCountGroup" style="display:none">
+          <label class="form-label">Party Size</label>
+          <select class="form-input" id="fGuestCount">
+            <option value="1">1 guest</option><option value="2">2 guests</option><option value="3">3 guests</option>
+            <option value="4">4 guests</option><option value="5">5 guests</option><option value="6">6 guests</option>
+            <option value="7">7 guests</option><option value="8">8 guests</option><option value="9">9 guests</option>
+            <option value="10">10 guests</option><option value="11">11 guests</option><option value="12">12 guests</option>
+            <option value="13">13 guests</option><option value="14">14 guests</option><option value="15">15 guests</option>
+            <option value="16">16 guests</option><option value="17">17 guests</option><option value="18">18 guests</option>
+            <option value="19">19 guests</option><option value="20">20 guests</option>
           </select>
         </div>
       </div>
@@ -994,7 +1007,7 @@
       const cardClass='booking-card'+(isCanc?' cancelled':isPend?' pending':'');
       const statusPill=isCanc?'<span class="pill pill-gray">Cancelled</span>':isPend?'<span class="pill pill-amber">Pending</span>':'<span class="pill pill-green">Confirmed</span>';
       const typePill=b.tableType==='snooker'?'pill-blue':b.tableType==='pool'?'pill-purple':'pill-gold';
-      const tableLabel=cap(b.tableType)+(b.tableType==='snooker'&&b.tableNumber?' #'+b.tableNumber:'');
+      const tableLabel=cap(b.tableType)+((b.tableType==='snooker'||b.tableType==='pool')&&b.tableNumber?' #'+b.tableNumber:'');
       html+=`<div class="${cardClass}">
         <div class="booking-time-col"><div class="b-time">${esc(b.startTime)}</div><div class="b-duration">${b.duration}h</div></div>
         <div class="b-main">
@@ -1002,6 +1015,7 @@
             <span class="b-customer">${esc(b.customerName)}</span>
             ${statusPill}
             <span class="pill ${typePill}">${esc(tableLabel)}</span>
+            ${b.tableType==='dining'&&b.guestCount?`<span class="pill pill-teal">👥 ${b.guestCount} guests</span>`:''}
           </div>
           <div class="b-contact">
             ${b.customerPhone?`<span class="b-detail">📞 ${esc(b.customerPhone)}</span>`:''}
@@ -1056,7 +1070,11 @@
     el('modalErr').classList.remove('show');
     el('fTableType').value=booking?booking.tableType:'snooker';
     el('fTableNum').value=booking&&booking.tableNumber?String(booking.tableNumber):'1';
-    el('tableNumGroup').style.display=(booking?booking.tableType:'snooker')==='snooker'?'':'none';
+    const initType=booking?booking.tableType:'snooker';
+    el('tableNumGroup').style.display=(initType==='snooker'||initType==='pool')?'':'none';
+    el('tableNumGroup').querySelector('label').textContent=initType==='pool'?'Pool Table # (1–6)':'Table # (1–10)';
+    el('fGuestCount').value=booking&&booking.guestCount?String(booking.guestCount):'2';
+    el('guestCountGroup').style.display=initType==='dining'?'':'none';
     el('fDate').value=booking?booking.date:state.currentDate;
     el('fStartTime').value=booking?booking.startTime:'10:00';
     el('fDuration').value=booking?String(booking.duration):'1';
@@ -1069,7 +1087,12 @@
     setTimeout(()=>el('fName').focus(),100);
   }
 
-  el('fTableType').addEventListener('change',()=>{el('tableNumGroup').style.display=el('fTableType').value==='snooker'?'':'none'});
+  el('fTableType').addEventListener('change',()=>{
+    const t=el('fTableType').value;
+    el('tableNumGroup').style.display=(t==='snooker'||t==='pool')?'':'none';
+    el('tableNumGroup').querySelector('label').textContent=t==='pool'?'Pool Table # (1–6)':'Table # (1–10)';
+    el('guestCountGroup').style.display=t==='dining'?'':'none';
+  });
   el('modalClose').addEventListener('click',()=>closeOverlay('bookingModal'));
   el('modalCancelBtn').addEventListener('click',()=>closeOverlay('bookingModal'));
   el('modalSaveBtn').addEventListener('click',submitBooking);
@@ -1088,7 +1111,8 @@
     const tableType=el('fTableType').value;
     const payload={
       tableType,
-      tableNumber:tableType==='snooker'?parseInt(el('fTableNum').value):null,
+      tableNumber:(tableType==='snooker'||tableType==='pool')?parseInt(el('fTableNum').value):null,
+      guestCount:tableType==='dining'?parseInt(el('fGuestCount').value)||null:null,
       date:el('fDate').value,
       startTime:el('fStartTime').value,
       duration:parseInt(el('fDuration').value),

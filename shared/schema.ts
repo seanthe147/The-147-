@@ -81,6 +81,7 @@ export const bookings = pgTable("bookings", {
   emailHash: text("email_hash"),
   tableType: text("table_type").notNull(),
   tableNumber: text("table_number"),
+  guestCount: integer("guest_count"),
   date: text("date").notNull(),
   startTime: text("start_time").notNull(),
   duration: serial("duration").notNull(),
