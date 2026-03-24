@@ -750,24 +750,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const tokens = await storage.getAllPushTokens();
     if (tokens.length === 0) return { tokens, successCount: 0, failureCount: 0 };
 
-    const messages = tokens.map((t) => ({
+    type PushMessage = { to: string; sound: "default"; title: string; body: string };
+
+    const allMessages: PushMessage[] = tokens.map((t) => ({
       to: t.token,
       sound: "default" as const,
       title,
       body,
     }));
 
-    // Expo push API accepts up to 100 messages per request
-    const chunks: typeof messages[] = [];
-    for (let i = 0; i < messages.length; i += 100) {
-      chunks.push(messages.slice(i, i + 100));
-    }
-
     let successCount = 0;
     let failureCount = 0;
     const deadTokens: string[] = [];
 
-    for (const chunk of chunks) {
+    // Sends a batch where all tokens belong to the same Expo project.
+    // If Expo rejects due to mixed experience IDs, it splits and retries per group.
+    async function sendSingleProjectBatch(batch: PushMessage[]): Promise<void> {
+      let responseData: {
+        data?: Array<{ status: string; message?: string; details?: { error?: string } }>;
+        errors?: Array<{ code: string; message: string; details?: Record<string, string[]> }>;
+      };
       try {
         const response = await fetch("https://exp.host/--/api/v2/push/send", {
           method: "POST",
@@ -776,46 +778,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
             "Accept": "application/json",
             "Accept-Encoding": "gzip, deflate",
           },
-          body: JSON.stringify(chunk),
+          body: JSON.stringify(batch),
         });
-
-        // Expo ALWAYS returns HTTP 200 — must read the body to check actual delivery status
-        const responseData = await response.json() as {
-          data?: Array<{ status: string; message?: string; details?: { error?: string } }>;
-          errors?: Array<{ code: string; message: string }>;
-        };
-
-        if (!response.ok || responseData.errors) {
-          console.error("[Push] Expo API error:", JSON.stringify(responseData));
-          failureCount += chunk.length;
-          continue;
-        }
-
-        if (responseData.data) {
-          responseData.data.forEach((result, index) => {
-            const token = chunk[index]?.to;
-            if (result.status === "ok") {
-              successCount++;
-            } else {
-              failureCount++;
-              console.error(`[Push] Delivery failed for token ${token}: ${result.message} (error: ${result.details?.error})`);
-              // Auto-remove tokens that are no longer registered on the device
-              if (result.details?.error === "DeviceNotRegistered" && token) {
-                deadTokens.push(token);
-              }
-            }
-          });
-        } else {
-          console.error("[Push] Unexpected Expo response shape:", JSON.stringify(responseData));
-          failureCount += chunk.length;
-        }
+        responseData = await response.json();
       } catch (err) {
         console.error("[Push] Network error sending to Expo:", err);
-        failureCount += chunk.length;
+        failureCount += batch.length;
+        return;
+      }
+
+      // Expo rejects batches mixing tokens from different projects — split and retry each group
+      if (responseData.errors?.some(e => e.code === "PUSH_TOO_MANY_EXPERIENCE_IDS")) {
+        const details = responseData.errors.find(e => e.code === "PUSH_TOO_MANY_EXPERIENCE_IDS")?.details ?? {};
+        console.log(`[Push] Mixed experience IDs — splitting into ${Object.keys(details).length} groups`);
+        for (const [experienceId, groupTokens] of Object.entries(details)) {
+          const groupBatch = batch.filter(m => groupTokens.includes(m.to));
+          if (!groupBatch.length) continue;
+          console.log(`[Push] Retrying ${groupBatch.length} tokens for ${experienceId}`);
+          await sendSingleProjectBatch(groupBatch);
+        }
+        return;
+      }
+
+      if (responseData.errors) {
+        console.error("[Push] Expo API error:", JSON.stringify(responseData));
+        failureCount += batch.length;
+        return;
+      }
+
+      if (responseData.data) {
+        responseData.data.forEach((result, index) => {
+          const token = batch[index]?.to;
+          if (result.status === "ok") {
+            successCount++;
+          } else {
+            failureCount++;
+            console.error(`[Push] Failed for token ${token}: ${result.message} (${result.details?.error})`);
+            if (result.details?.error === "DeviceNotRegistered" && token) {
+              deadTokens.push(token);
+            }
+          }
+        });
+      } else {
+        console.error("[Push] Unexpected Expo response:", JSON.stringify(responseData));
+        failureCount += batch.length;
       }
     }
 
-    // Clean up tokens for devices that have uninstalled the app
+    // Expo accepts up to 100 messages per request
+    for (let i = 0; i < allMessages.length; i += 100) {
+      await sendSingleProjectBatch(allMessages.slice(i, i + 100));
+    }
+
+    // Remove tokens for devices that have uninstalled the app
     for (const deadToken of deadTokens) {
       try {
         await storage.removePushToken(deadToken);
