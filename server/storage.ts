@@ -100,6 +100,8 @@ export interface IStorage {
   updateBooking(id: number, data: Partial<InsertBooking>): Promise<Booking | undefined>;
   deleteBooking(id: number): Promise<boolean>;
   getBookedSlots(date: string, tableType: string, tableNumber?: string): Promise<Array<{ startTime: string; duration: number }>>;
+  getBookingsDueReminder(windowStartMins: number, windowEndMins: number): Promise<Booking[]>;
+  markReminderSent(id: number): Promise<void>;
   createStaffSession(token: string, expiresAt: Date, staffUserId?: number, staffUsername?: string): Promise<StaffSession>;
   validateStaffSession(token: string): Promise<StaffSession | undefined>;
   invalidateStaffSession(token: string): Promise<boolean>;
@@ -256,6 +258,32 @@ export class DatabaseStorage implements IStorage {
       .from(bookings)
       .where(and(...conditions));
     return results;
+  }
+
+  async getBookingsDueReminder(windowStartMins: number, windowEndMins: number): Promise<Booking[]> {
+    const now = new Date();
+    const today = now.toISOString().split("T")[0];
+    const fmt = (d: Date) =>
+      `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+    const startStr = fmt(new Date(now.getTime() + windowStartMins * 60_000));
+    const endStr   = fmt(new Date(now.getTime() + windowEndMins   * 60_000));
+    const results = await db
+      .select()
+      .from(bookings)
+      .where(
+        and(
+          eq(bookings.date, today),
+          eq(bookings.status, "confirmed"),
+          eq(bookings.reminderSent, false),
+          gte(bookings.startTime, startStr),
+          lte(bookings.startTime, endStr),
+        ),
+      );
+    return results.map(decryptBookingFields);
+  }
+
+  async markReminderSent(id: number): Promise<void> {
+    await db.update(bookings).set({ reminderSent: true }).where(eq(bookings.id, id));
   }
 
   async createStaffSession(token: string, expiresAt: Date, staffUserId?: number, staffUsername?: string): Promise<StaffSession> {

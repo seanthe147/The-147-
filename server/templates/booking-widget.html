@@ -403,7 +403,7 @@
         <div class="table-card" data-type="pool" onclick="selectTableType(this)">
           <div class="table-icon">🟢</div>
           <div class="table-name">Pool</div>
-          <div class="table-price">£1/game</div>
+          <div class="table-price">£5/hr</div>
         </div>
         <div class="table-card" data-type="dining" onclick="selectTableType(this)">
           <div class="table-icon">🍽️</div>
@@ -413,7 +413,7 @@
         <div class="table-card" data-type="darts" onclick="selectTableType(this)">
           <div class="table-icon">🎯</div>
           <div class="table-name">Darts</div>
-          <div class="table-price">By the hour</div>
+          <div class="table-price">£6/hr</div>
         </div>
       </div>
     </div>
@@ -455,6 +455,7 @@
           <div class="dur-btn" data-dur="2" onclick="selectDuration(this)">2 hours</div>
           <div class="dur-btn" data-dur="3" onclick="selectDuration(this)">3 hours</div>
         </div>
+        <div id="priceEstimate" style="display:none;margin-top:10px;text-align:center;font-size:13px;font-weight:600;color:var(--blue);background:#eef3ff;border-radius:8px;padding:7px 12px;"></div>
       </div>
 
       <div class="card-title" style="margin-bottom:10px">Available Times</div>
@@ -539,6 +540,10 @@
         <span class="summary-label">Duration</span>
         <span class="summary-value" id="sumDuration">–</span>
       </div>
+      <div class="summary-row" id="sumCostRow" style="display:none">
+        <span class="summary-label">Est. Cost</span>
+        <span class="summary-value" id="sumCost" style="color:var(--blue);font-weight:700">–</span>
+      </div>
       <div class="summary-row">
         <span class="summary-label">Name</span>
         <span class="summary-value" id="sumName">–</span>
@@ -582,6 +587,18 @@
   const API_BASE = 'https://the147bradford.replit.app';
   const TABLE_HOURS = ['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00'];
   const TABLE_NAMES = { snooker: 'Snooker', pool: 'Pool', dining: 'Dining', darts: 'Darts', shuffleboard: 'Shuffleboard' };
+  // Hourly rates (£) — update these to match actual pricing
+  const HOURLY_RATES = { snooker: 7.95, pool: 5.00, darts: 6.00, dining: 0 };
+
+  function updatePriceEstimate() {
+    const el = document.getElementById('priceEstimate');
+    if (!el) return;
+    const rate = HOURLY_RATES[state.tableType];
+    if (rate == null || rate === 0) { el.style.display = 'none'; return; }
+    const total = (rate * state.duration).toFixed(2);
+    el.textContent = `Estimated cost: £${total} (${state.duration} hr × £${rate.toFixed(2)}/hr)`;
+    el.style.display = 'block';
+  }
 
   let state = freshState();
 
@@ -649,6 +666,7 @@
     } else {
       document.getElementById('step1Next').disabled = false;
     }
+    updatePriceEstimate();
   }
 
   function buildSnookerGrid() {
@@ -751,6 +769,7 @@
     document.querySelectorAll('.dur-btn').forEach(b => b.classList.remove('selected'));
     el.classList.add('selected');
     state.duration = parseInt(el.dataset.dur);
+    updatePriceEstimate();
     if (state.date) {
       state.time = null;
       document.getElementById('step2Next').disabled = true;
@@ -886,6 +905,15 @@
     document.getElementById('sumDate').textContent = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
     document.getElementById('sumTime').textContent = state.time;
     document.getElementById('sumDuration').textContent = state.duration + ' hour' + (state.duration > 1 ? 's' : '');
+    const rate = HOURLY_RATES[state.tableType];
+    const costRow = document.getElementById('sumCostRow');
+    if (rate != null && rate > 0) {
+      const total = (rate * state.duration).toFixed(2);
+      document.getElementById('sumCost').textContent = `~£${total}`;
+      costRow.style.display = 'flex';
+    } else {
+      costRow.style.display = 'none';
+    }
     document.getElementById('sumName').textContent = state.name;
     document.getElementById('sumEmail').textContent = state.email;
     document.getElementById('sumPhone').textContent = state.phone;

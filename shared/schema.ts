@@ -88,6 +88,7 @@ export const bookings = pgTable("bookings", {
   status: text("status").notNull().default("confirmed"),
   notes: text("notes"),
   gdprConsent: boolean("gdpr_consent").notNull().default(false),
+  reminderSent: boolean("reminder_sent").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

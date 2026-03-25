@@ -300,6 +300,47 @@ function setupErrorHandler(app: express.Application) {
   });
 }
 
+function scheduleBookingReminders() {
+  async function runReminders() {
+    try {
+      const { storage: store } = await import("./storage");
+      // Find bookings starting in 55–65 minutes that haven't had a reminder sent yet
+      const due = await store.getBookingsDueReminder(55, 65);
+      if (!due.length) return;
+      for (const booking of due) {
+        try {
+          const tokens = await store.getPushTokensByEmail(booking.customerEmail);
+          if (tokens.length) {
+            const tableLabel =
+              booking.tableType === "dining"
+                ? "dining area"
+                : `${booking.tableType} table ${booking.tableNumber ?? ""}`.trim();
+            const messages = tokens.map(t => ({
+              to: t.token,
+              sound: "default" as const,
+              title: "Your booking starts soon ⏰",
+              body: `Reminder: your ${tableLabel} booking at The 147 starts in about 1 hour (${booking.startTime}).`,
+            }));
+            await fetch("https://exp.host/--/api/v2/push/send", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Accept": "application/json" },
+              body: JSON.stringify(messages),
+            });
+          }
+          await store.markReminderSent(booking.id);
+          log(`[Reminder] Sent push reminder for booking #${booking.id} (${booking.startTime})`);
+        } catch (err) {
+          console.error(`[Reminder] Failed for booking #${booking.id}:`, err);
+        }
+      }
+    } catch (err) {
+      console.error("[Reminder] Scheduler error:", err);
+    }
+  }
+  // Check every 5 minutes
+  setInterval(runReminders, 5 * 60 * 1000);
+}
+
 function scheduleRetentionCleanup() {
   // Run data retention cleanup immediately on startup, then every 24 hours
   // This ensures the 12-month anonymisation policy and session cleanup run automatically
@@ -326,12 +367,15 @@ function scheduleRetentionCleanup() {
   setupBodyParsing(app);
   setupRequestLogging(app);
 
-  // Widget route registered FIRST — before static file serving — so nothing intercepts it
+  // Widget route — reads fresh from disk on every request so deploys take effect immediately
   const widgetHtmlPath = path.resolve(process.cwd(), "server", "templates", "booking-widget.html");
-  const widgetHtml = fs.readFileSync(widgetHtmlPath, "utf-8");
   app.get("/widget/booking", (_req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.status(200).send(widgetHtml);
+    res.setHeader("X-Frame-Options", "ALLOWALL");
+    res.setHeader("Content-Security-Policy", "frame-ancestors *");
+    res.setHeader("Cache-Control", "no-store");
+    const html = fs.readFileSync(widgetHtmlPath, "utf-8");
+    res.status(200).send(html);
   });
 
   // Privacy policy — public web page required for App Store listing
@@ -350,6 +394,8 @@ function scheduleRetentionCleanup() {
 
   // Automatically enforce GDPR data retention (90-day anonymisation + session cleanup)
   scheduleRetentionCleanup();
+  // Send push reminders ~1 hour before bookings
+  scheduleBookingReminders();
 
   const port = parseInt(process.env.PORT || "5000", 10);
   server.listen(
