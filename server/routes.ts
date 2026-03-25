@@ -968,8 +968,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(409).json({ message: `Pool table ${parsed.data.tableNumber} is already booked for this time slot` });
         }
       }
+    } else if (parsed.data.tableType === "snooker") {
+      // Snooker: customer must select a specific table (1–10)
+      if (!parsed.data.tableNumber) {
+        return res.status(400).json({ message: "Please select a snooker table number (1–10)" });
+      }
+      const snookerNum = parseInt(parsed.data.tableNumber);
+      if (snookerNum < 1 || snookerNum > 10) {
+        return res.status(400).json({ message: "Invalid snooker table number. Choose between 1 and 10." });
+      }
+      finalTableNumber = parsed.data.tableNumber;
+      // Per-table conflict check
+      const bookedSlots = await storage.getBookedSlots(parsed.data.date, "snooker", parsed.data.tableNumber);
+      const requestedStart = parseInt(parsed.data.startTime.replace(":", ""));
+      const requestedEnd = requestedStart + (parsed.data.duration ?? 1) * 100;
+      for (const slot of bookedSlots) {
+        const slotStart = parseInt(slot.startTime.replace(":", ""));
+        const slotEnd = slotStart + slot.duration * 100;
+        if (requestedStart < slotEnd && requestedEnd > slotStart) {
+          return res.status(409).json({ message: `Snooker table ${parsed.data.tableNumber} is already booked for this time slot` });
+        }
+      }
     } else {
-      // Standard per-table conflict check for snooker and any other table type
+      // Standard per-table conflict check for darts and any other table type
       const bookedSlots = await storage.getBookedSlots(parsed.data.date, parsed.data.tableType, finalTableNumber ?? undefined);
       const requestedStart = parseInt(parsed.data.startTime.replace(":", ""));
       const requestedEnd = requestedStart + (parsed.data.duration ?? 1) * 100;

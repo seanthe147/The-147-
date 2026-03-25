@@ -1665,6 +1665,25 @@ async function registerRoutes(app2) {
           return res.status(409).json({ message: `Pool table ${parsed.data.tableNumber} is already booked for this time slot` });
         }
       }
+    } else if (parsed.data.tableType === "snooker") {
+      if (!parsed.data.tableNumber) {
+        return res.status(400).json({ message: "Please select a snooker table number (1\u201310)" });
+      }
+      const snookerNum = parseInt(parsed.data.tableNumber);
+      if (snookerNum < 1 || snookerNum > 10) {
+        return res.status(400).json({ message: "Invalid snooker table number. Choose between 1 and 10." });
+      }
+      finalTableNumber = parsed.data.tableNumber;
+      const bookedSlots = await storage.getBookedSlots(parsed.data.date, "snooker", parsed.data.tableNumber);
+      const requestedStart = parseInt(parsed.data.startTime.replace(":", ""));
+      const requestedEnd = requestedStart + (parsed.data.duration ?? 1) * 100;
+      for (const slot of bookedSlots) {
+        const slotStart = parseInt(slot.startTime.replace(":", ""));
+        const slotEnd = slotStart + slot.duration * 100;
+        if (requestedStart < slotEnd && requestedEnd > slotStart) {
+          return res.status(409).json({ message: `Snooker table ${parsed.data.tableNumber} is already booked for this time slot` });
+        }
+      }
     } else {
       const bookedSlots = await storage.getBookedSlots(parsed.data.date, parsed.data.tableType, finalTableNumber ?? void 0);
       const requestedStart = parseInt(parsed.data.startTime.replace(":", ""));

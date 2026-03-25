@@ -205,6 +205,12 @@ export default function BookScreen() {
       else Alert.alert("Table Required", msg);
       return;
     }
+    if (isSnooker && !selectedTableNumber) {
+      const msg = "Please select a snooker table number (1–10) before confirming.";
+      if (Platform.OS === "web") window.alert(msg);
+      else Alert.alert("Table Required", msg);
+      return;
+    }
     if (!gdprConsent) {
       const msg = "You must consent to data processing to make a booking.";
       if (Platform.OS === "web") window.alert(msg);
