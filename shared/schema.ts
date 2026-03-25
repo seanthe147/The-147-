@@ -92,7 +92,14 @@ export const bookings = pgTable("bookings", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertBookingSchema = createInsertSchema(bookings).omit({ id: true, createdAt: true });
+export const insertBookingSchema = createInsertSchema(bookings)
+  .omit({ id: true, createdAt: true })
+  .extend({
+    tableNumber: z.string().nullable().optional(),
+    guestCount: z.number().int().nullable().optional(),
+    notes: z.string().nullable().optional(),
+    emailHash: z.string().nullable().optional(),
+  });
 
 export type InsertBooking = z.infer<typeof insertBookingSchema>;
 export type Booking = typeof bookings.$inferSelect;
