@@ -905,16 +905,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/bookings", async (req, res) => {
-    // Convert null to undefined for optional fields so Zod's .optional() accepts them
-    const body = {
-      ...req.body,
-      tableNumber: req.body.tableNumber ?? undefined,
-      guestCount: req.body.guestCount ?? undefined,
-      notes: req.body.notes ?? undefined,
-      emailHash: req.body.emailHash ?? undefined,
-    };
-    const parsed = insertBookingSchema.safeParse(body);
+    // Strip null optional fields so Zod treats them as absent
+    const raw = { ...req.body };
+    for (const key of ["tableNumber", "guestCount", "notes", "emailHash"] as const) {
+      if (raw[key] === null || raw[key] === undefined) delete raw[key];
+    }
+    console.log("[booking] raw body keys:", Object.keys(req.body), "tableNumber type:", typeof req.body.tableNumber, "value:", req.body.tableNumber);
+    const parsed = insertBookingSchema.safeParse(raw);
     if (!parsed.success) {
+      console.log("[booking] validation failed:", JSON.stringify(parsed.error.flatten()));
       return res.status(400).json({ message: "Invalid booking data", errors: parsed.error.flatten() });
     }
     if (!parsed.data.gdprConsent) {

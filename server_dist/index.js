@@ -1602,15 +1602,14 @@ async function registerRoutes(app2) {
     res.json({ count: successCount, failed: failureCount, total: tokens.length, notification });
   });
   app2.post("/api/bookings", async (req, res) => {
-    const body = {
-      ...req.body,
-      tableNumber: req.body.tableNumber ?? void 0,
-      guestCount: req.body.guestCount ?? void 0,
-      notes: req.body.notes ?? void 0,
-      emailHash: req.body.emailHash ?? void 0
-    };
-    const parsed = insertBookingSchema.safeParse(body);
+    const raw = { ...req.body };
+    for (const key of ["tableNumber", "guestCount", "notes", "emailHash"]) {
+      if (raw[key] === null || raw[key] === void 0) delete raw[key];
+    }
+    console.log("[booking] raw body keys:", Object.keys(req.body), "tableNumber type:", typeof req.body.tableNumber, "value:", req.body.tableNumber);
+    const parsed = insertBookingSchema.safeParse(raw);
     if (!parsed.success) {
+      console.log("[booking] validation failed:", JSON.stringify(parsed.error.flatten()));
       return res.status(400).json({ message: "Invalid booking data", errors: parsed.error.flatten() });
     }
     if (!parsed.data.gdprConsent) {
