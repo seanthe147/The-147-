@@ -5,6 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import multer from "multer";
 import sharp from "sharp";
+import nodemailer from "nodemailer";
 import { storage } from "./storage";
 import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema } from "@shared/schema";
 import { hashPin, verifyPin } from "./encryption";
@@ -85,51 +86,67 @@ function validateLoyaltySession(token: string): string | null {
   return session.phone;
 }
 
-async function sendOtpEmail(email: string, code: string): Promise<boolean> {
-  const resendKey = process.env.RESEND_API_KEY;
+const OTP_HTML = (code: string) => `<div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+  <h2 style="color: #0A1628; margin-bottom: 8px;">The 147 Loyalty</h2>
+  <p style="color: #555; font-size: 15px;">Your verification code is:</p>
+  <div style="background: #F5F5F5; border-radius: 12px; padding: 24px; text-align: center; margin: 20px 0;">
+    <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #0047AB;">${code}</span>
+  </div>
+  <p style="color: #555; font-size: 14px;">This code expires in 5 minutes. If you didn't request this, you can safely ignore this email.</p>
+  <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+  <p style="color: #999; font-size: 12px;">The 147 &mdash; Snooker, Bar &amp; Restaurant</p>
+</div>`;
 
-  if (!resendKey) {
-    console.log(`[LOYALTY OTP] RESEND_API_KEY not configured. Email: ${email} | Code: ${code}`);
+async function sendEmailViaSMTP(to: string, subject: string, html: string): Promise<boolean> {
+  const host = process.env.SMTP_HOST;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  const port = parseInt(process.env.SMTP_PORT || "587");
+  if (!host || !user || !pass) return false;
+  try {
+    const transporter = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
+    await transporter.sendMail({ from: `"The 147" <${user}>`, to, subject, html });
+    console.log(`[EMAIL SMTP] Sent to ${to}`);
+    return true;
+  } catch (err) {
+    console.error("[EMAIL SMTP] Error:", err);
     return false;
   }
+}
 
+async function sendOtpEmail(email: string, code: string): Promise<boolean> {
+  const subject = "Your Loyalty Verification Code — The 147";
+  const html = OTP_HTML(code);
   const fromEmail = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
   const fromName = process.env.RESEND_FROM_NAME || "The 147";
+  const resendKey = process.env.RESEND_API_KEY;
 
-  try {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${resendKey}`,
-      },
-      body: JSON.stringify({
-        from: `${fromName} <${fromEmail}>`,
-        to: email,
-        subject: "Your Loyalty Verification Code — The 147",
-        html: `<div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
-          <h2 style="color: #0A1628; margin-bottom: 8px;">The 147 Loyalty</h2>
-          <p style="color: #555; font-size: 15px;">Your verification code is:</p>
-          <div style="background: #F5F5F5; border-radius: 12px; padding: 24px; text-align: center; margin: 20px 0;">
-            <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #0047AB;">${code}</span>
-          </div>
-          <p style="color: #555; font-size: 14px;">This code expires in 5 minutes. If you didn't request this, you can safely ignore this email.</p>
-          <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
-          <p style="color: #999; font-size: 12px;">The 147 &mdash; Snooker, Bar &amp; Restaurant</p>
-        </div>`,
-      }),
-    });
-    if (response.ok) {
-      console.log(`[LOYALTY OTP] Email sent to ${email}`);
-      return true;
+  // Try Resend first
+  if (resendKey) {
+    try {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+        body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: email, subject, html }),
+      });
+      if (response.ok) {
+        console.log(`[LOYALTY OTP] Email sent via Resend to ${email}`);
+        return true;
+      }
+      const errorText = await response.text();
+      console.warn(`[LOYALTY OTP] Resend failed (${response.status}): ${errorText} — trying SMTP fallback`);
+    } catch (err) {
+      console.warn("[LOYALTY OTP] Resend exception — trying SMTP fallback:", err);
     }
-    const errorText = await response.text();
-    console.error(`[LOYALTY OTP] Resend API error (${response.status}): ${errorText}`);
-    return false;
-  } catch (err) {
-    console.error("[LOYALTY OTP] Email send exception:", err);
-    return false;
   }
+
+  // SMTP fallback
+  const smtpSent = await sendEmailViaSMTP(email, subject, html);
+  if (smtpSent) return true;
+
+  // Both failed — log code so staff can manually provide it
+  console.warn(`[LOYALTY OTP] All email methods failed. Manual code for ${email}: ${code}`);
+  return false;
 }
 
 async function sendBookingConfirmationEmail(booking: {
@@ -193,34 +210,31 @@ async function sendBookingConfirmationEmail(booking: {
     <p style="color: #9ca3af; font-size: 12px; text-align: center;">The 147 &mdash; Snooker, Bar &amp; Restaurant<br/>www.the147.co.uk</p>
   </div>`;
 
+  const subject = `Booking Confirmed - ${tableDisplay} on ${dateFormatted}`;
+  const fromEmail = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+  const fromName = process.env.RESEND_FROM_NAME || "The 147";
+
   if (resendKey) {
     try {
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${resendKey}`,
-        },
-        body: JSON.stringify({
-          from: "The 147 <onboarding@resend.dev>",
-          to: booking.customerEmail,
-          subject: `Booking Confirmed - ${tableDisplay} on ${dateFormatted}`,
-          html,
-        }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+        body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: booking.customerEmail, subject, html }),
       });
       if (response.ok) {
         console.log(`[BOOKING] Confirmation email sent to ${booking.customerEmail} for booking #${booking.id}`);
         return true;
       }
-      console.error("[BOOKING] Resend email error:", await response.text());
-      return false;
+      console.warn("[BOOKING] Resend failed, trying SMTP:", await response.text());
     } catch (err) {
-      console.error("[BOOKING] Resend email send error:", err);
-      return false;
+      console.warn("[BOOKING] Resend exception, trying SMTP:", err);
     }
   }
 
-  console.warn(`[BOOKING] Confirmation email skipped for booking #${booking.id} to ${booking.customerEmail} — RESEND_API_KEY not configured`);
+  const smtpSent = await sendEmailViaSMTP(booking.customerEmail, subject, html);
+  if (smtpSent) return true;
+
+  console.warn(`[BOOKING] Confirmation email could not be sent for booking #${booking.id} to ${booking.customerEmail}`);
   return false;
 }
 
@@ -1493,8 +1507,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     loyaltyOtps.set(otpKey, { code, phone: phoneCleaned, expiresAt: Date.now() + OTP_EXPIRY, attempts: 0 });
     const emailSent = await sendOtpEmail(emailClean, code);
     if (!emailSent) {
-      loyaltyOtps.delete(otpKey);
-      return res.status(503).json({ message: "Unable to send verification email. Please check your email address and try again, or contact the venue directly." });
+      // Keep the OTP stored so staff can manually provide the code from server logs
+      return res.status(503).json({
+        message: "We couldn't send the verification email right now. Please ask a staff member for your code, or try again later.",
+        manualCode: true,
+      });
     }
     res.json({ sent: true, expiresIn: OTP_EXPIRY / 1000 });
   });
@@ -1934,7 +1951,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     res.setHeader("Pragma", "no-cache");
-    res.sendFile(widgetPath);
+    res.setHeader("Expires", "0");
+    // Read file dynamically (no ETag generation) so cached versions are always invalidated
+    try {
+      const html = fs.readFileSync(widgetPath, "utf-8");
+      res.send(html);
+    } catch (err) {
+      res.status(500).send("Widget unavailable");
+    }
   });
 
   // CORS preflight for API routes used by the booking widget embedded on external sites
