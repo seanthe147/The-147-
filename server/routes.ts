@@ -1929,7 +1929,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/widget/booking", (_req, res) => {
     const widgetPath = path.resolve(process.cwd(), "server", "templates", "booking-widget.html");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("X-Frame-Options", "ALLOWALL");
+    res.setHeader("Content-Security-Policy", "frame-ancestors *");
+    res.setHeader("Access-Control-Allow-Origin", "*");
     res.sendFile(widgetPath);
+  });
+
+  // CORS preflight for API routes used by the booking widget embedded on external sites
+  app.options("/api/bookings", (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.sendStatus(204);
+  });
+  app.options("/api/bookings/availability", (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.sendStatus(204);
   });
 
   const httpServer = createServer(app);

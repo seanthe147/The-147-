@@ -34,6 +34,12 @@ function setupCors(app: express.Application) {
       origin?.startsWith("http://localhost:") ||
       origin?.startsWith("http://127.0.0.1:");
 
+    // Public booking API routes — allow any origin (no credentials needed)
+    const isPublicBookingRoute =
+      (req.path === "/api/bookings" && req.method === "POST") ||
+      req.path === "/api/bookings/availability" ||
+      req.method === "OPTIONS";
+
     if (origin && (origins.has(origin) || isLocalhost)) {
       res.header("Access-Control-Allow-Origin", origin);
       res.header(
@@ -42,6 +48,10 @@ function setupCors(app: express.Application) {
       );
       res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
       res.header("Access-Control-Allow-Credentials", "true");
+    } else if (isPublicBookingRoute) {
+      res.header("Access-Control-Allow-Origin", "*");
+      res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.header("Access-Control-Allow-Headers", "Content-Type");
     }
 
     if (req.method === "OPTIONS") {

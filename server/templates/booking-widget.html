@@ -64,7 +64,6 @@
       margin-top: 1px;
     }
 
-    /* Steps indicator */
     .steps {
       display: flex;
       align-items: center;
@@ -96,40 +95,16 @@
       z-index: 1;
     }
 
-    .step-circle.active {
-      border-color: var(--blue);
-      background: var(--blue);
-      color: var(--white);
-    }
+    .step-circle.active { border-color: var(--blue); background: var(--blue); color: var(--white); }
+    .step-circle.done { border-color: var(--green); background: var(--green); color: var(--white); }
 
-    .step-circle.done {
-      border-color: var(--green);
-      background: var(--green);
-      color: var(--white);
-    }
-
-    .step-label {
-      font-size: 10px;
-      font-weight: 600;
-      color: var(--text-sub);
-      margin-top: 4px;
-      white-space: nowrap;
-    }
-
+    .step-label { font-size: 10px; font-weight: 600; color: var(--text-sub); margin-top: 4px; white-space: nowrap; }
     .step-label.active { color: var(--blue); }
     .step-label.done { color: var(--green); }
 
-    .step-line {
-      flex: 1;
-      height: 2px;
-      background: var(--border);
-      margin-top: -18px;
-      transition: background 0.2s;
-    }
-
+    .step-line { flex: 1; height: 2px; background: var(--border); margin-top: -18px; transition: background 0.2s; }
     .step-line.done { background: var(--green); }
 
-    /* Cards */
     .card {
       background: var(--white);
       border: 1px solid var(--border);
@@ -138,25 +113,10 @@
       margin-bottom: 16px;
     }
 
-    .card-title {
-      font-size: 16px;
-      font-weight: 700;
-      color: var(--navy);
-      margin-bottom: 4px;
-    }
+    .card-title { font-size: 16px; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
+    .card-sub { font-size: 12px; color: var(--text-sub); margin-bottom: 16px; }
 
-    .card-sub {
-      font-size: 12px;
-      color: var(--text-sub);
-      margin-bottom: 16px;
-    }
-
-    /* Table type grid */
-    .table-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
+    .table-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
     .table-card {
       border: 2px solid var(--border);
@@ -172,26 +132,10 @@
     .table-card.selected { border-color: var(--blue); background: #eef3ff; }
 
     .table-icon { font-size: 28px; margin-bottom: 6px; }
+    .table-name { font-size: 14px; font-weight: 700; color: var(--navy); }
+    .table-price { font-size: 11px; font-weight: 600; color: var(--text-sub); margin-top: 2px; }
 
-    .table-name {
-      font-size: 14px;
-      font-weight: 700;
-      color: var(--navy);
-    }
-
-    .table-price {
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-sub);
-      margin-top: 2px;
-    }
-
-    /* Table number grid for snooker */
-    .table-num-grid {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 8px;
-    }
+    .table-num-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
 
     .num-btn {
       border: 2px solid var(--border);
@@ -209,7 +153,8 @@
     .num-btn:hover { border-color: var(--blue); }
     .num-btn.selected { border-color: var(--blue); background: var(--blue); color: var(--white); }
 
-    /* Date tabs */
+    .guest-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+
     .date-scroll {
       display: flex;
       gap: 8px;
@@ -240,12 +185,7 @@
     .date-num { font-size: 20px; font-weight: 700; }
     .date-mon { font-size: 10px; font-weight: 600; opacity: 0.8; }
 
-    /* Duration */
-    .duration-row {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 16px;
-    }
+    .duration-row { display: flex; gap: 8px; margin-bottom: 16px; }
 
     .dur-btn {
       flex: 1;
@@ -264,12 +204,7 @@
     .dur-btn:hover { border-color: var(--blue); }
     .dur-btn.selected { border-color: var(--blue); background: var(--blue); color: var(--white); }
 
-    /* Time slots */
-    .time-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
-    }
+    .time-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 
     .time-btn {
       border: 2px solid var(--border);
@@ -288,12 +223,7 @@
     .time-btn.selected { border-color: var(--blue); background: var(--blue); color: var(--white); }
     .time-btn.unavailable { opacity: 0.35; cursor: not-allowed; background: var(--bg); }
 
-    .avail-loading {
-      text-align: center;
-      padding: 20px;
-      color: var(--text-sub);
-      font-size: 13px;
-    }
+    .avail-loading { text-align: center; padding: 20px; color: var(--text-sub); font-size: 13px; }
 
     .spinner-sm {
       display: inline-block;
@@ -309,17 +239,9 @@
 
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* Form fields */
     .field { margin-bottom: 14px; }
 
-    .field label {
-      display: block;
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text);
-      margin-bottom: 6px;
-    }
-
+    .field label { display: block; font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
     .field label .req { color: var(--red); margin-left: 2px; }
 
     .field input, .field textarea, .field select {
@@ -335,13 +257,9 @@
       transition: border-color 0.15s;
     }
 
-    .field input:focus, .field textarea:focus {
-      border-color: var(--blue);
-    }
-
+    .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--blue); }
     .field textarea { resize: vertical; min-height: 80px; }
 
-    /* GDPR consent */
     .consent-row {
       display: flex;
       gap: 12px;
@@ -355,27 +273,13 @@
     }
 
     .consent-row input[type="checkbox"] {
-      width: 18px;
-      height: 18px;
-      flex-shrink: 0;
-      cursor: pointer;
-      accent-color: var(--blue);
-      margin-top: 2px;
+      width: 18px; height: 18px; flex-shrink: 0; cursor: pointer;
+      accent-color: var(--blue); margin-top: 2px;
     }
 
-    .consent-text {
-      font-size: 12px;
-      color: var(--text-sub);
-      line-height: 1.5;
-    }
+    .consent-text { font-size: 12px; color: var(--text-sub); line-height: 1.5; }
+    .consent-text a { color: var(--blue); text-decoration: none; font-weight: 600; }
 
-    .consent-text a {
-      color: var(--blue);
-      text-decoration: none;
-      font-weight: 600;
-    }
-
-    /* Confirmation summary */
     .summary-row {
       display: flex;
       justify-content: space-between;
@@ -385,21 +289,9 @@
     }
 
     .summary-row:last-child { border-bottom: none; }
+    .summary-label { font-size: 12px; color: var(--text-sub); font-weight: 600; }
+    .summary-value { font-size: 13px; font-weight: 700; color: var(--navy); text-align: right; }
 
-    .summary-label {
-      font-size: 12px;
-      color: var(--text-sub);
-      font-weight: 600;
-    }
-
-    .summary-value {
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--navy);
-      text-align: right;
-    }
-
-    /* Buttons */
     .btn {
       display: block;
       width: 100%;
@@ -416,21 +308,13 @@
 
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn:not(:disabled):hover { opacity: 0.88; }
-
     .btn-primary { background: var(--blue); color: var(--white); }
     .btn-navy { background: var(--navy); color: var(--white); }
-    .btn-outline {
-      background: transparent;
-      color: var(--text-sub);
-      border: 1.5px solid var(--border);
-      font-size: 14px;
-      margin-top: 10px;
-    }
+    .btn-outline { background: transparent; color: var(--text-sub); border: 1.5px solid var(--border); font-size: 14px; margin-top: 10px; }
 
     .btn-row { display: flex; gap: 10px; margin-top: 4px; }
     .btn-row .btn { flex: 1; }
 
-    /* Error */
     .error-box {
       background: #fef2f2;
       border: 1px solid #fecaca;
@@ -443,64 +327,27 @@
       display: none;
     }
 
-    /* Success screen */
-    .success-screen {
-      text-align: center;
-      padding: 20px 10px;
-    }
+    .success-screen { text-align: center; padding: 20px 10px; }
 
     .success-icon {
-      width: 72px;
-      height: 72px;
-      border-radius: 50%;
-      background: #dcfce7;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0 auto 20px;
-      font-size: 36px;
+      width: 72px; height: 72px; border-radius: 50%;
+      background: #dcfce7; display: flex; align-items: center;
+      justify-content: center; margin: 0 auto 20px; font-size: 36px;
     }
 
-    .success-title {
-      font-size: 22px;
-      font-weight: 700;
-      color: var(--navy);
-      margin-bottom: 10px;
-    }
-
-    .success-sub {
-      font-size: 14px;
-      color: var(--text-sub);
-      line-height: 1.6;
-      margin-bottom: 24px;
-    }
+    .success-title { font-size: 22px; font-weight: 700; color: var(--navy); margin-bottom: 10px; }
+    .success-sub { font-size: 14px; color: var(--text-sub); line-height: 1.6; margin-bottom: 24px; }
 
     .booking-ref {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 14px;
-      margin-bottom: 24px;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px; margin-bottom: 24px;
     }
 
-    .booking-ref-label {
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-sub);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 4px;
-    }
-
-    .booking-ref-num {
-      font-size: 20px;
-      font-weight: 700;
-      color: var(--blue);
-    }
+    .booking-ref-label { font-size: 11px; font-weight: 600; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .booking-ref-num { font-size: 20px; font-weight: 700; color: var(--blue); }
 
     .hide { display: none !important; }
 
-    /* Responsive */
     @media (max-width: 380px) {
       .table-grid { grid-template-columns: 1fr 1fr; }
       .time-grid { grid-template-columns: repeat(3, 1fr); }
@@ -514,7 +361,7 @@
   <div class="brand-header">
     <div class="brand-dot"></div>
     <div>
-      <div class="brand-title">The 147</div>
+      <div class="brand-title">THE 147</div>
       <div class="brand-sub">Snooker · Bar · Restaurant</div>
     </div>
   </div>
@@ -558,14 +405,14 @@
           <div class="table-name">Pool</div>
           <div class="table-price">£1/game</div>
         </div>
+        <div class="table-card" data-type="dining" onclick="selectTableType(this)">
+          <div class="table-icon">🍽️</div>
+          <div class="table-name">Dining</div>
+          <div class="table-price">Restaurant</div>
+        </div>
         <div class="table-card" data-type="darts" onclick="selectTableType(this)">
           <div class="table-icon">🎯</div>
           <div class="table-name">Darts</div>
-          <div class="table-price">By the hour</div>
-        </div>
-        <div class="table-card" data-type="shuffleboard" onclick="selectTableType(this)">
-          <div class="table-icon">🏒</div>
-          <div class="table-name">Shuffleboard</div>
           <div class="table-price">By the hour</div>
         </div>
       </div>
@@ -573,9 +420,23 @@
 
     <!-- Snooker table number -->
     <div class="card hide" id="tableNumCard">
-      <div class="card-title">Which Table?</div>
-      <div class="card-sub">Select your preferred snooker table (1–10)</div>
+      <div class="card-title">Which Snooker Table?</div>
+      <div class="card-sub">Select your preferred table (1–10)</div>
       <div class="table-num-grid" id="tableNumGrid"></div>
+    </div>
+
+    <!-- Pool table number -->
+    <div class="card hide" id="poolTableCard">
+      <div class="card-title">Which Pool Table?</div>
+      <div class="card-sub">Select your preferred table (1–6)</div>
+      <div class="table-num-grid" id="poolTableGrid"></div>
+    </div>
+
+    <!-- Dining guest count -->
+    <div class="card hide" id="diningGuestCard">
+      <div class="card-title">Party Size</div>
+      <div class="card-sub">How many guests are dining?</div>
+      <div class="guest-grid" id="guestGrid"></div>
     </div>
 
     <button class="btn btn-primary" id="step1Next" disabled onclick="goToStep2()">Next: Choose Date &amp; Time →</button>
@@ -639,7 +500,7 @@
           I consent to The 147 processing my personal data for the purpose of this booking.
           Your data will be retained for 90 days then automatically deleted.
           You can request deletion at any time.
-          See our <a href="https://www.the147.co.uk" target="_blank">Privacy Policy</a> for full details.
+          See our <a href="https://the147bradford.replit.app/privacy-policy" target="_blank">Privacy Policy</a> for full details.
         </span>
       </label>
     </div>
@@ -661,6 +522,10 @@
       <div class="summary-row">
         <span class="summary-label">Table</span>
         <span class="summary-value" id="sumTable">–</span>
+      </div>
+      <div class="summary-row" id="sumGuestRow" style="display:none">
+        <span class="summary-label">Guests</span>
+        <span class="summary-value" id="sumGuests">–</span>
       </div>
       <div class="summary-row">
         <span class="summary-label">Date</span>
@@ -711,24 +576,24 @@
     </div>
   </div>
 
-</div><!-- /widget -->
+</div>
 
 <script>
-  // ── State ──────────────────────────────────────────────────────────────────
+  const API_BASE = 'https://the147bradford.replit.app';
   const TABLE_HOURS = ['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00'];
-  const TABLE_NAMES = { snooker: 'Snooker', pool: 'Pool', darts: 'Darts', shuffleboard: 'Shuffleboard' };
+  const TABLE_NAMES = { snooker: 'Snooker', pool: 'Pool', dining: 'Dining', darts: 'Darts', shuffleboard: 'Shuffleboard' };
+
   let state = freshState();
 
   function freshState() {
     return {
-      tableType: null, tableNumber: null,
+      tableType: null, tableNumber: null, guestCount: null,
       date: null, duration: 1, time: null,
       name: '', email: '', phone: '', notes: '',
-      bookedSlots: [], loadingSlots: false, totalTables: 1
+      bookedSlots: [], totalTables: 1
     };
   }
 
-  // ── Step navigation ────────────────────────────────────────────────────────
   function goToStep(n) {
     [1,2,3,4,5].forEach(i => {
       document.getElementById('step'+i).classList.toggle('hide', i !== n);
@@ -755,47 +620,89 @@
         document.getElementById('line'+i).className = 'step-line' + (i < current ? ' done' : '');
       }
     });
-    const stepsEl = document.getElementById('steps');
-    stepsEl.classList.toggle('hide', current === 5);
+    document.getElementById('steps').classList.toggle('hide', current === 5);
   }
 
-  // ── Step 1: Table type ─────────────────────────────────────────────────────
+  // ── Step 1 ──────────────────────────────────────────────────────────────────
   function selectTableType(el) {
     document.querySelectorAll('.table-card').forEach(c => c.classList.remove('selected'));
     el.classList.add('selected');
     state.tableType = el.dataset.type;
     state.tableNumber = null;
+    state.guestCount = null;
     state.time = null;
 
-    const numCard = document.getElementById('tableNumCard');
+    document.getElementById('tableNumCard').classList.add('hide');
+    document.getElementById('poolTableCard').classList.add('hide');
+    document.getElementById('diningGuestCard').classList.add('hide');
+    document.getElementById('step1Next').disabled = true;
+
     if (state.tableType === 'snooker') {
-      numCard.classList.remove('hide');
-      buildTableNumGrid();
-      document.getElementById('step1Next').disabled = true;
+      document.getElementById('tableNumCard').classList.remove('hide');
+      buildSnookerGrid();
+    } else if (state.tableType === 'pool') {
+      document.getElementById('poolTableCard').classList.remove('hide');
+      buildPoolGrid();
+    } else if (state.tableType === 'dining') {
+      document.getElementById('diningGuestCard').classList.remove('hide');
+      buildGuestGrid();
     } else {
-      numCard.classList.add('hide');
       document.getElementById('step1Next').disabled = false;
     }
   }
 
-  function buildTableNumGrid() {
+  function buildSnookerGrid() {
     const grid = document.getElementById('tableNumGrid');
     grid.innerHTML = '';
     for (let i = 1; i <= 10; i++) {
       const btn = document.createElement('div');
-      btn.className = 'num-btn' + (state.tableNumber === String(i) ? ' selected' : '');
+      btn.className = 'num-btn';
       btn.textContent = String(i);
       btn.dataset.num = String(i);
-      btn.onclick = () => selectTableNum(btn);
+      btn.onclick = () => {
+        document.querySelectorAll('#tableNumGrid .num-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        state.tableNumber = btn.dataset.num;
+        document.getElementById('step1Next').disabled = false;
+      };
       grid.appendChild(btn);
     }
   }
 
-  function selectTableNum(el) {
-    document.querySelectorAll('.num-btn').forEach(b => b.classList.remove('selected'));
-    el.classList.add('selected');
-    state.tableNumber = el.dataset.num;
-    document.getElementById('step1Next').disabled = false;
+  function buildPoolGrid() {
+    const grid = document.getElementById('poolTableGrid');
+    grid.innerHTML = '';
+    for (let i = 1; i <= 6; i++) {
+      const btn = document.createElement('div');
+      btn.className = 'num-btn';
+      btn.textContent = String(i);
+      btn.dataset.num = String(i);
+      btn.onclick = () => {
+        document.querySelectorAll('#poolTableGrid .num-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        state.tableNumber = btn.dataset.num;
+        document.getElementById('step1Next').disabled = false;
+      };
+      grid.appendChild(btn);
+    }
+  }
+
+  function buildGuestGrid() {
+    const grid = document.getElementById('guestGrid');
+    grid.innerHTML = '';
+    for (let i = 1; i <= 20; i++) {
+      const btn = document.createElement('div');
+      btn.className = 'num-btn';
+      btn.textContent = String(i);
+      btn.dataset.num = String(i);
+      btn.onclick = () => {
+        document.querySelectorAll('#guestGrid .num-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        state.guestCount = parseInt(btn.dataset.num);
+        document.getElementById('step1Next').disabled = false;
+      };
+      grid.appendChild(btn);
+    }
   }
 
   function goToStep2() {
@@ -803,11 +710,11 @@
     goToStep(2);
   }
 
-  // ── Step 2: Date & Time ────────────────────────────────────────────────────
-  function getNext7Days() {
+  // ── Step 2 ──────────────────────────────────────────────────────────────────
+  function getNext14Days() {
     const days = [];
     const today = new Date();
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 14; i++) {
       const d = new Date(today);
       d.setDate(today.getDate() + i);
       days.push(d);
@@ -818,9 +725,9 @@
   function buildDateScroll() {
     const scroll = document.getElementById('dateScroll');
     scroll.innerHTML = '';
-    getNext7Days().forEach((d, i) => {
+    getNext14Days().forEach((d) => {
       const btn = document.createElement('div');
-      btn.className = 'date-btn' + (i === 0 ? '' : '');
+      btn.className = 'date-btn';
       const day = d.toLocaleDateString('en-GB', { weekday: 'short' });
       const num = d.getDate();
       const mon = d.toLocaleDateString('en-GB', { month: 'short' });
@@ -857,15 +764,13 @@
     container.innerHTML = '<div class="avail-loading"><span class="spinner-sm"></span>Checking availability…</div>';
     state.bookedSlots = [];
     state.totalTables = 1;
-    state.loadingSlots = true;
 
     try {
-      let url = `/api/bookings/availability?date=${state.date}&tableType=${state.tableType}`;
+      let url = `${API_BASE}/api/bookings/availability?date=${state.date}&tableType=${state.tableType}`;
       if (state.tableNumber) url += `&tableNumber=${state.tableNumber}`;
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
-        // Pool returns { slots, totalTables }; everything else returns an array
         if (data && data.totalTables) {
           state.bookedSlots = data.slots || [];
           state.totalTables = data.totalTables;
@@ -874,9 +779,10 @@
           state.totalTables = 1;
         }
       }
-    } catch(e) {}
+    } catch(e) {
+      console.error('Availability fetch failed:', e);
+    }
 
-    state.loadingSlots = false;
     renderTimeSlots();
   }
 
@@ -904,9 +810,8 @@
 
     let anyAvail = false;
     TABLE_HOURS.forEach(t => {
-      const maxEnd = toMins('22:00');
       const slotEnd = toMins(t) + state.duration * 60;
-      if (slotEnd > maxEnd) return;
+      if (slotEnd > toMins('22:00')) return;
 
       const booked = isSlotBooked(t, state.duration);
       if (!booked) anyAvail = true;
@@ -933,9 +838,9 @@
     }
   }
 
-  // ── Step 3: Details ────────────────────────────────────────────────────────
   function goToStep3() { goToStep(3); }
 
+  // ── Step 3 ──────────────────────────────────────────────────────────────────
   function goToStep4() {
     const name = document.getElementById('custName').value.trim();
     const email = document.getElementById('custEmail').value.trim();
@@ -963,11 +868,19 @@
     goToStep(4);
   }
 
-  // ── Step 4: Confirm ────────────────────────────────────────────────────────
+  // ── Step 4 ──────────────────────────────────────────────────────────────────
   function populateSummary() {
     const tableLabel = TABLE_NAMES[state.tableType] || state.tableType;
     const tableNum = state.tableNumber ? ` #${state.tableNumber}` : '';
     document.getElementById('sumTable').textContent = tableLabel + tableNum;
+
+    const guestRow = document.getElementById('sumGuestRow');
+    if (state.tableType === 'dining' && state.guestCount) {
+      document.getElementById('sumGuests').textContent = state.guestCount + ' guest' + (state.guestCount > 1 ? 's' : '');
+      guestRow.style.display = 'flex';
+    } else {
+      guestRow.style.display = 'none';
+    }
 
     const d = new Date(state.date + 'T00:00:00');
     document.getElementById('sumDate').textContent = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -987,7 +900,8 @@
 
     const payload = {
       tableType: state.tableType,
-      tableNumber: state.tableNumber || null,
+      tableNumber: state.tableNumber ? parseInt(state.tableNumber) : null,
+      guestCount: state.guestCount || null,
       date: state.date,
       startTime: state.time,
       duration: state.duration,
@@ -1000,7 +914,7 @@
     };
 
     try {
-      const res = await fetch('/api/bookings', {
+      const res = await fetch(`${API_BASE}/api/bookings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -1012,8 +926,10 @@
       }
 
       document.getElementById('successRef').textContent = '#' + String(data.id).padStart(4, '0');
+      const tableLabel = TABLE_NAMES[state.tableType] || state.tableType;
+      const dateStr = new Date(state.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' });
       document.getElementById('successMessage').textContent =
-        `Your ${TABLE_NAMES[state.tableType]} table has been reserved for ${state.time} on ${new Date(state.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' })}. A confirmation has been sent to ${state.email}. Please arrive 5 minutes before your slot.`;
+        `Your ${tableLabel} booking has been confirmed for ${state.time} on ${dateStr}. A confirmation has been sent to ${state.email}. Please arrive 5 minutes before your slot.`;
       goToStep(5);
 
     } catch(err) {
@@ -1024,13 +940,14 @@
     }
   }
 
-  // ── Reset ──────────────────────────────────────────────────────────────────
   function resetWidget() {
     state = freshState();
     document.querySelectorAll('.table-card').forEach(c => c.classList.remove('selected'));
     document.getElementById('tableNumCard').classList.add('hide');
+    document.getElementById('poolTableCard').classList.add('hide');
+    document.getElementById('diningGuestCard').classList.add('hide');
     document.getElementById('step1Next').disabled = true;
-    document.getElementById('step2Next').disabled = false;
+    document.getElementById('step2Next').disabled = true;
     document.getElementById('custName').value = '';
     document.getElementById('custEmail').value = '';
     document.getElementById('custPhone').value = '';
