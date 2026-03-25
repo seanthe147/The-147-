@@ -1949,6 +1949,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.sendStatus(204);
   });
 
+  // Blocked periods — public GET (widget uses it), protected POST/DELETE
+  app.get("/api/blocked-periods", async (_req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    const periods = await storage.getBlockedPeriods();
+    res.json(periods);
+  });
+  app.options("/api/blocked-periods", (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.sendStatus(204);
+  });
+  app.post("/api/blocked-periods", staffAuth, managerAuth, async (req: any, res) => {
+    const { label, tableType, date, dayOfWeek, startTime, endTime } = req.body;
+    if (!date && dayOfWeek == null) {
+      return res.status(400).json({ message: "Either date or dayOfWeek is required" });
+    }
+    const created = await storage.createBlockedPeriod({
+      label: label || null,
+      tableType: tableType || null,
+      date: date || null,
+      dayOfWeek: dayOfWeek != null ? Number(dayOfWeek) : null,
+      startTime: startTime || null,
+      endTime: endTime || null,
+      createdBy: req.staffSession?.staffUsername ?? "manager",
+    });
+    res.status(201).json(created);
+  });
+  app.delete("/api/blocked-periods/:id", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id as string);
+    const ok = await storage.deleteBlockedPeriod(id);
+    if (!ok) return res.status(404).json({ message: "Not found" });
+    res.status(204).send();
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

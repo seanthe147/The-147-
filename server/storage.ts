@@ -22,6 +22,8 @@ import {
   type Customer,
   type CustomerSession,
   type StaffNotice,
+  type BlockedPeriod,
+  type InsertBlockedPeriod,
   users,
   offers,
   pushTokens,
@@ -36,6 +38,7 @@ import {
   customers,
   customerSessions,
   staffNotices,
+  blockedPeriods,
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
 
@@ -123,6 +126,9 @@ export interface IStorage {
   createCustomerSession(token: string, customerId: number, expiresAt: Date): Promise<CustomerSession>;
   validateCustomerSession(token: string): Promise<CustomerSession | undefined>;
   invalidateCustomerSession(token: string): Promise<boolean>;
+  getBlockedPeriods(): Promise<BlockedPeriod[]>;
+  createBlockedPeriod(data: InsertBlockedPeriod): Promise<BlockedPeriod>;
+  deleteBlockedPeriod(id: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -649,6 +655,20 @@ export class DatabaseStorage implements IStorage {
       .set({ deletedAt: new Date(), deletedBy })
       .where(and(eq(staffNotices.id, id), isNull(staffNotices.deletedAt)))
       .returning();
+    return result.length > 0;
+  }
+
+  async getBlockedPeriods(): Promise<BlockedPeriod[]> {
+    return db.select().from(blockedPeriods).orderBy(blockedPeriods.createdAt);
+  }
+
+  async createBlockedPeriod(data: InsertBlockedPeriod): Promise<BlockedPeriod> {
+    const [created] = await db.insert(blockedPeriods).values(data).returning();
+    return created;
+  }
+
+  async deleteBlockedPeriod(id: number): Promise<boolean> {
+    const result = await db.delete(blockedPeriods).where(eq(blockedPeriods.id, id)).returning();
     return result.length > 0;
   }
 }

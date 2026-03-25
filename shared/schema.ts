@@ -208,3 +208,20 @@ export const insertStaffNoticeSchema = createInsertSchema(staffNotices).omit({ i
 
 export type InsertStaffNotice = z.infer<typeof insertStaffNoticeSchema>;
 export type StaffNotice = typeof staffNotices.$inferSelect;
+
+export const blockedPeriods = pgTable("blocked_periods", {
+  id: serial("id").primaryKey(),
+  label: text("label"),
+  tableType: text("table_type"),
+  date: text("date"),
+  dayOfWeek: integer("day_of_week"),
+  startTime: text("start_time"),
+  endTime: text("end_time"),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertBlockedPeriodSchema = createInsertSchema(blockedPeriods).omit({ id: true, createdAt: true });
+
+export type InsertBlockedPeriod = z.infer<typeof insertBlockedPeriodSchema>;
+export type BlockedPeriod = typeof blockedPeriods.$inferSelect;

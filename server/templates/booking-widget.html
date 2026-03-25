@@ -607,7 +607,7 @@
       tableType: null, tableNumber: null, guestCount: null,
       date: null, duration: 1, time: null,
       name: '', email: '', phone: '', notes: '',
-      bookedSlots: [], totalTables: 1
+      bookedSlots: [], totalTables: 1, blockedPeriodsList: []
     };
   }
 
@@ -783,13 +783,17 @@
     container.innerHTML = '<div class="avail-loading"><span class="spinner-sm"></span>Checking availability…</div>';
     state.bookedSlots = [];
     state.totalTables = 1;
+    state.blockedPeriodsList = [];
 
     try {
       let url = `${API_BASE}/api/bookings/availability?date=${state.date}&tableType=${state.tableType}`;
       if (state.tableNumber) url += `&tableNumber=${state.tableNumber}`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
+      const [availRes, blocksRes] = await Promise.all([
+        fetch(url),
+        fetch(`${API_BASE}/api/blocked-periods`),
+      ]);
+      if (availRes.ok) {
+        const data = await availRes.json();
         if (data && data.totalTables) {
           state.bookedSlots = data.slots || [];
           state.totalTables = data.totalTables;
@@ -798,11 +802,34 @@
           state.totalTables = 1;
         }
       }
+      if (blocksRes.ok) {
+        state.blockedPeriodsList = await blocksRes.json();
+      }
     } catch(e) {
       console.error('Availability fetch failed:', e);
     }
 
     renderTimeSlots();
+  }
+
+  function isSlotBlockedByManager(time) {
+    const dateObj = new Date(state.date + 'T00:00:00');
+    const dow = dateObj.getDay(); // 0=Sun...6=Sat
+    const slotStart = toMins(time);
+    const slotEnd = slotStart + state.duration * 60;
+    for (const b of state.blockedPeriodsList) {
+      // Table type filter
+      if (b.tableType && b.tableType !== state.tableType) continue;
+      // Date/day filter
+      const matchDate = b.date && b.date === state.date;
+      const matchDay  = b.dayOfWeek != null && b.dayOfWeek === dow;
+      if (!matchDate && !matchDay) continue;
+      // Time overlap check
+      const bStart = b.startTime ? toMins(b.startTime) : 0;
+      const bEnd   = b.endTime   ? toMins(b.endTime)   : 24 * 60;
+      if (slotStart < bEnd && slotEnd > bStart) return true;
+    }
+    return false;
   }
 
   function isSlotBooked(time, duration) {
@@ -831,13 +858,42 @@
     const isToday = state.date === todayStr;
     const now = new Date();
     const nowMins = now.getHours() * 60 + now.getMinutes();
+    const selectedDow = new Date(state.date + 'T00:00:00').getDay(); // 0=Sun...6=Sat
+    const isDiningDay = [0, 4, 5, 6].includes(selectedDow); // Thu=4, Fri=5, Sat=6, Sun=0
+
+    // Dining restriction: only Thu-Sun
+    if (state.tableType === 'dining' && !isDiningDay) {
+      container.innerHTML = '<div class="avail-loading" style="color:var(--red)">🍽️ Dining is only available Thursday to Sunday. Please choose a different date.</div>';
+      return;
+    }
+
+    const diningStart = toMins('12:00');
+    const diningEnd   = toMins('20:00'); // last slot must end by 20:00
 
     let anyAvail = false;
     TABLE_HOURS.forEach(t => {
-      const slotEnd = toMins(t) + state.duration * 60;
+      const slotStart = toMins(t);
+      const slotEnd   = slotStart + state.duration * 60;
+
+      // Standard closing: must end by 22:00
       if (slotEnd > toMins('22:00')) return;
-      // Hide slots that have already started (or start in less than 30 min) on today
-      if (isToday && toMins(t) < nowMins + 30) return;
+
+      // Dining hours: 12pm–8pm only
+      if (state.tableType === 'dining') {
+        if (slotStart < diningStart || slotEnd > diningEnd) return;
+      }
+
+      // Hide past/imminent slots on today
+      if (isToday && slotStart < nowMins + 30) return;
+
+      // Manager-blocked periods
+      if (isSlotBlockedByManager(t)) {
+        const btn = document.createElement('div');
+        btn.className = 'time-btn unavailable';
+        btn.innerHTML = `${t}<br><span style="font-size:10px;opacity:0.75">Closed</span>`;
+        grid.appendChild(btn);
+        return;
+      }
 
       const booked = isSlotBooked(t, state.duration);
       if (!booked) anyAvail = true;
@@ -857,8 +913,16 @@
     });
 
     container.innerHTML = '';
-    if (!anyAvail) {
+    if (!anyAvail && grid.childElementCount === 0) {
       container.innerHTML = '<div class="avail-loading" style="color:var(--red)">No availability for this date. Please try another day.</div>';
+    } else if (!anyAvail) {
+      container.appendChild(grid);
+      const msg = document.createElement('div');
+      msg.className = 'avail-loading';
+      msg.style.color = 'var(--red)';
+      msg.style.marginTop = '10px';
+      msg.textContent = 'All slots are fully booked or closed for this date.';
+      container.appendChild(msg);
     } else {
       container.appendChild(grid);
     }

@@ -468,6 +468,14 @@ function DashboardScreen() {
                 onPress={() => router.push("/admin-banner")}
                 testID="portal-banner-image"
               />
+              <AdminTool
+                icon="ban"
+                title="Availability Blocks"
+                description="Block dates or times from being booked"
+                color="#DC2626"
+                onPress={() => router.push("/admin-availability")}
+                testID="portal-availability-blocks"
+              />
             </>
           )}
           {isOwner && (
