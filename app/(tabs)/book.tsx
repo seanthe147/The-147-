@@ -169,10 +169,23 @@ export default function BookScreen() {
       queryClient.refetchQueries({ queryKey: ["/api/bookings/availability"] });
     },
     onError: (err: Error) => {
+      let msg = "Booking failed. Please try again.";
+      try {
+        const text = err.message || "";
+        const jsonStart = text.indexOf("{");
+        if (jsonStart !== -1) {
+          const parsed = JSON.parse(text.slice(jsonStart));
+          if (parsed.message) msg = parsed.message;
+        } else if (text) {
+          msg = text;
+        }
+      } catch {
+        msg = err.message || msg;
+      }
       if (Platform.OS === "web") {
-        window.alert(err.message || "Booking failed. Please try again.");
+        window.alert(msg);
       } else {
-        Alert.alert("Booking Error", err.message || "Booking failed. Please try again.");
+        Alert.alert("Booking Error", msg);
       }
     },
   });
@@ -184,6 +197,12 @@ export default function BookScreen() {
       const msg = "Please fill in all required fields.";
       if (Platform.OS === "web") window.alert(msg);
       else Alert.alert("Missing Information", msg);
+      return;
+    }
+    if (isPool && !selectedTableNumber) {
+      const msg = "Please select a pool table number (1–6) before confirming.";
+      if (Platform.OS === "web") window.alert(msg);
+      else Alert.alert("Table Required", msg);
       return;
     }
     if (!gdprConsent) {
