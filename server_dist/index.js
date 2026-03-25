@@ -12,7 +12,8 @@ var __export = (target, all) => {
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, serial, timestamp, boolean, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema;
+import { z } from "zod";
+var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, staffNotices, insertStaffNoticeSchema, blockedPeriods, insertBlockedPeriodSchema;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
@@ -51,6 +52,7 @@ var init_schema = __esm({
       id: serial("id").primaryKey(),
       token: text("token").notNull().unique(),
       deviceName: text("device_name"),
+      customerEmail: text("customer_email"),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     insertPushTokenSchema = createInsertSchema(pushTokens).omit({ id: true, createdAt: true });
@@ -70,15 +72,22 @@ var init_schema = __esm({
       emailHash: text("email_hash"),
       tableType: text("table_type").notNull(),
       tableNumber: text("table_number"),
+      guestCount: integer("guest_count"),
       date: text("date").notNull(),
       startTime: text("start_time").notNull(),
       duration: serial("duration").notNull(),
       status: text("status").notNull().default("confirmed"),
       notes: text("notes"),
       gdprConsent: boolean("gdpr_consent").notNull().default(false),
+      reminderSent: boolean("reminder_sent").default(false).notNull(),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
-    insertBookingSchema = createInsertSchema(bookings).omit({ id: true, createdAt: true });
+    insertBookingSchema = createInsertSchema(bookings).omit({ id: true, createdAt: true }).extend({
+      tableNumber: z.string().nullable().optional(),
+      guestCount: z.number().int().nullable().optional(),
+      notes: z.string().nullable().optional(),
+      emailHash: z.string().nullable().optional()
+    });
     staffSessions = pgTable("staff_sessions", {
       id: serial("id").primaryKey(),
       token: text("token").notNull().unique(),
@@ -97,6 +106,9 @@ var init_schema = __esm({
       message: text("message").notNull(),
       status: text("status").notNull().default("new"),
       gdprConsent: boolean("gdpr_consent").notNull().default(false),
+      pushToken: text("push_token"),
+      staffReply: text("staff_reply"),
+      repliedAt: timestamp("replied_at"),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     insertContactMessageSchema = createInsertSchema(contactMessages).omit({ id: true, createdAt: true, status: true });
@@ -147,6 +159,27 @@ var init_schema = __esm({
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     insertBannerImageSchema = createInsertSchema(bannerImages).omit({ id: true, createdAt: true });
+    staffNotices = pgTable("staff_notices", {
+      id: serial("id").primaryKey(),
+      message: text("message").notNull(),
+      createdBy: text("created_by").notNull(),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+      deletedAt: timestamp("deleted_at"),
+      deletedBy: text("deleted_by")
+    });
+    insertStaffNoticeSchema = createInsertSchema(staffNotices).omit({ id: true, createdAt: true });
+    blockedPeriods = pgTable("blocked_periods", {
+      id: serial("id").primaryKey(),
+      label: text("label"),
+      tableType: text("table_type"),
+      date: text("date"),
+      dayOfWeek: integer("day_of_week"),
+      startTime: text("start_time"),
+      endTime: text("end_time"),
+      createdBy: text("created_by").notNull(),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
+    insertBlockedPeriodSchema = createInsertSchema(blockedPeriods).omit({ id: true, createdAt: true });
   }
 });
 
@@ -222,16 +255,16 @@ __export(storage_exports, {
 });
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { eq, lt, lte, sql as sql2 } from "drizzle-orm";
-import { and, gt } from "drizzle-orm";
+import { eq, lt, lte, sql as sql2, and, gt, isNull, isNotNull, gte, desc } from "drizzle-orm";
 function buildPoolConfig() {
   const rawUrl = process.env.DATABASE_URL;
-  if (process.env.NODE_ENV !== "production") {
-    return { connectionString: rawUrl };
-  }
   const url = new URL(rawUrl);
+  const sslmode = url.searchParams.get("sslmode");
   url.searchParams.delete("sslmode");
   url.searchParams.delete("uselibpqcompat");
+  if (sslmode === "disable" || sslmode === null) {
+    return { connectionString: url.toString() };
+  }
   return {
     connectionString: url.toString(),
     ssl: { rejectUnauthorized: false }
@@ -296,7 +329,13 @@ var init_storage = __esm({
       }
       async registerPushToken(data) {
         const [existing] = await db.select().from(pushTokens).where(eq(pushTokens.token, data.token));
-        if (existing) return existing;
+        if (existing) {
+          if (data.customerEmail && existing.customerEmail !== data.customerEmail) {
+            const [updated] = await db.update(pushTokens).set({ customerEmail: data.customerEmail }).where(eq(pushTokens.token, data.token)).returning();
+            return updated;
+          }
+          return existing;
+        }
         const [created] = await db.insert(pushTokens).values(data).returning();
         return created;
       }
@@ -306,6 +345,9 @@ var init_storage = __esm({
       async removePushToken(token) {
         const result = await db.delete(pushTokens).where(eq(pushTokens.token, token)).returning();
         return result.length > 0;
+      }
+      async getPushTokensByEmail(email) {
+        return db.select().from(pushTokens).where(sql2`lower(${pushTokens.customerEmail}) = lower(${email})`);
       }
       async saveNotification(title, body, recipientCount, sentBy) {
         const [created] = await db.insert(notifications).values({ title, body, recipientCount, sentBy }).returning();
@@ -361,6 +403,26 @@ var init_storage = __esm({
         }
         const results = await db.select({ startTime: bookings.startTime, duration: bookings.duration }).from(bookings).where(and(...conditions));
         return results;
+      }
+      async getBookingsDueReminder(windowStartMins, windowEndMins) {
+        const now = /* @__PURE__ */ new Date();
+        const today = now.toISOString().split("T")[0];
+        const fmt = (d) => `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+        const startStr = fmt(new Date(now.getTime() + windowStartMins * 6e4));
+        const endStr = fmt(new Date(now.getTime() + windowEndMins * 6e4));
+        const results = await db.select().from(bookings).where(
+          and(
+            eq(bookings.date, today),
+            eq(bookings.status, "confirmed"),
+            eq(bookings.reminderSent, false),
+            gte(bookings.startTime, startStr),
+            lte(bookings.startTime, endStr)
+          )
+        );
+        return results.map(decryptBookingFields);
+      }
+      async markReminderSent(id) {
+        await db.update(bookings).set({ reminderSent: true }).where(eq(bookings.id, id));
       }
       async createStaffSession(token, expiresAt, staffUserId, staffUsername) {
         const [session] = await db.insert(staffSessions).values({
@@ -538,6 +600,14 @@ var init_storage = __esm({
         const [updated] = await db.update(contactMessages).set({ status }).where(eq(contactMessages.id, id)).returning();
         return updated;
       }
+      async replyToContactMessage(id, replyText) {
+        const [updated] = await db.update(contactMessages).set({ staffReply: replyText, repliedAt: /* @__PURE__ */ new Date(), status: "replied" }).where(eq(contactMessages.id, id)).returning();
+        return updated;
+      }
+      async getContactMessage(id) {
+        const [msg] = await db.select().from(contactMessages).where(eq(contactMessages.id, id));
+        return msg;
+      }
       async getSetting(key) {
         const [row] = await db.select().from(siteSettings).where(eq(siteSettings.key, key));
         return row?.value ?? null;
@@ -618,6 +688,32 @@ var init_storage = __esm({
         const result = await db.update(customerSessions).set({ active: false }).where(eq(customerSessions.token, token)).returning();
         return result.length > 0;
       }
+      async getStaffNotices() {
+        return db.select().from(staffNotices).where(isNull(staffNotices.deletedAt)).orderBy(staffNotices.createdAt);
+      }
+      async getDeletedStaffNotices() {
+        const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1e3);
+        return db.select().from(staffNotices).where(and(isNotNull(staffNotices.deletedAt), gte(staffNotices.deletedAt, cutoff))).orderBy(desc(staffNotices.deletedAt));
+      }
+      async createStaffNotice(message, createdBy) {
+        const [notice] = await db.insert(staffNotices).values({ message, createdBy }).returning();
+        return notice;
+      }
+      async deleteStaffNotice(id, deletedBy) {
+        const result = await db.update(staffNotices).set({ deletedAt: /* @__PURE__ */ new Date(), deletedBy }).where(and(eq(staffNotices.id, id), isNull(staffNotices.deletedAt))).returning();
+        return result.length > 0;
+      }
+      async getBlockedPeriods() {
+        return db.select().from(blockedPeriods).orderBy(blockedPeriods.createdAt);
+      }
+      async createBlockedPeriod(data) {
+        const [created] = await db.insert(blockedPeriods).values(data).returning();
+        return created;
+      }
+      async deleteBlockedPeriod(id) {
+        const result = await db.delete(blockedPeriods).where(eq(blockedPeriods.id, id)).returning();
+        return result.length > 0;
+      }
     };
     storage = new DatabaseStorage();
   }
@@ -636,6 +732,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import multer from "multer";
 import sharp from "sharp";
+import nodemailer from "nodemailer";
 
 // server/square.ts
 var SQUARE_BASE_URL = process.env.SQUARE_ENVIRONMENT === "production" ? "https://connect.squareup.com" : "https://connect.squareupsandbox.com";
@@ -806,48 +903,59 @@ function validateLoyaltySession(token) {
   }
   return session.phone;
 }
-async function sendOtpEmail(email, code) {
-  const resendKey = process.env.RESEND_API_KEY;
-  if (!resendKey) {
-    console.log(`[LOYALTY OTP] RESEND_API_KEY not configured. Email: ${email} | Code: ${code}`);
+var OTP_HTML = (code) => `<div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+  <h2 style="color: #0A1628; margin-bottom: 8px;">The 147 Loyalty</h2>
+  <p style="color: #555; font-size: 15px;">Your verification code is:</p>
+  <div style="background: #F5F5F5; border-radius: 12px; padding: 24px; text-align: center; margin: 20px 0;">
+    <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #0047AB;">${code}</span>
+  </div>
+  <p style="color: #555; font-size: 14px;">This code expires in 5 minutes. If you didn't request this, you can safely ignore this email.</p>
+  <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+  <p style="color: #999; font-size: 12px;">The 147 &mdash; Snooker, Bar &amp; Restaurant</p>
+</div>`;
+async function sendEmailViaSMTP(to, subject, html) {
+  const host = process.env.SMTP_HOST;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  const port = parseInt(process.env.SMTP_PORT || "587");
+  if (!host || !user || !pass) return false;
+  try {
+    const transporter = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
+    await transporter.sendMail({ from: `"The 147" <${user}>`, to, subject, html });
+    console.log(`[EMAIL SMTP] Sent to ${to}`);
+    return true;
+  } catch (err) {
+    console.error("[EMAIL SMTP] Error:", err);
     return false;
   }
+}
+async function sendOtpEmail(email, code) {
+  const subject = "Your Loyalty Verification Code \u2014 The 147";
+  const html = OTP_HTML(code);
   const fromEmail = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
   const fromName = process.env.RESEND_FROM_NAME || "The 147";
-  try {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${resendKey}`
-      },
-      body: JSON.stringify({
-        from: `${fromName} <${fromEmail}>`,
-        to: email,
-        subject: "Your Loyalty Verification Code \u2014 The 147",
-        html: `<div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
-          <h2 style="color: #0A1628; margin-bottom: 8px;">The 147 Loyalty</h2>
-          <p style="color: #555; font-size: 15px;">Your verification code is:</p>
-          <div style="background: #F5F5F5; border-radius: 12px; padding: 24px; text-align: center; margin: 20px 0;">
-            <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #0047AB;">${code}</span>
-          </div>
-          <p style="color: #555; font-size: 14px;">This code expires in 5 minutes. If you didn't request this, you can safely ignore this email.</p>
-          <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
-          <p style="color: #999; font-size: 12px;">The 147 &mdash; Snooker, Bar &amp; Restaurant</p>
-        </div>`
-      })
-    });
-    if (response.ok) {
-      console.log(`[LOYALTY OTP] Email sent to ${email}`);
-      return true;
+  const resendKey = process.env.RESEND_API_KEY;
+  if (resendKey) {
+    try {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+        body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: email, subject, html })
+      });
+      if (response.ok) {
+        console.log(`[LOYALTY OTP] Email sent via Resend to ${email}`);
+        return true;
+      }
+      const errorText = await response.text();
+      console.warn(`[LOYALTY OTP] Resend failed (${response.status}): ${errorText} \u2014 trying SMTP fallback`);
+    } catch (err) {
+      console.warn("[LOYALTY OTP] Resend exception \u2014 trying SMTP fallback:", err);
     }
-    const errorText = await response.text();
-    console.error(`[LOYALTY OTP] Resend API error (${response.status}): ${errorText}`);
-    return false;
-  } catch (err) {
-    console.error("[LOYALTY OTP] Email send exception:", err);
-    return false;
   }
+  const smtpSent = await sendEmailViaSMTP(email, subject, html);
+  if (smtpSent) return true;
+  console.warn(`[LOYALTY OTP] All email methods failed. Manual code for ${email}: ${code}`);
+  return false;
 }
 async function sendBookingConfirmationEmail(booking) {
   const resendKey = process.env.RESEND_API_KEY;
@@ -894,33 +1002,28 @@ async function sendBookingConfirmationEmail(booking) {
     <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
     <p style="color: #9ca3af; font-size: 12px; text-align: center;">The 147 &mdash; Snooker, Bar &amp; Restaurant<br/>www.the147.co.uk</p>
   </div>`;
+  const subject = `Booking Confirmed - ${tableDisplay} on ${dateFormatted}`;
+  const fromEmail = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+  const fromName = process.env.RESEND_FROM_NAME || "The 147";
   if (resendKey) {
     try {
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${resendKey}`
-        },
-        body: JSON.stringify({
-          from: "The 147 <onboarding@resend.dev>",
-          to: booking.customerEmail,
-          subject: `Booking Confirmed - ${tableDisplay} on ${dateFormatted}`,
-          html
-        })
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+        body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: booking.customerEmail, subject, html })
       });
       if (response.ok) {
         console.log(`[BOOKING] Confirmation email sent to ${booking.customerEmail} for booking #${booking.id}`);
         return true;
       }
-      console.error("[BOOKING] Resend email error:", await response.text());
-      return false;
+      console.warn("[BOOKING] Resend failed, trying SMTP:", await response.text());
     } catch (err) {
-      console.error("[BOOKING] Resend email send error:", err);
-      return false;
+      console.warn("[BOOKING] Resend exception, trying SMTP:", err);
     }
   }
-  console.warn(`[BOOKING] Confirmation email skipped for booking #${booking.id} to ${booking.customerEmail} \u2014 RESEND_API_KEY not configured`);
+  const smtpSent = await sendEmailViaSMTP(booking.customerEmail, subject, html);
+  if (smtpSent) return true;
+  console.warn(`[BOOKING] Confirmation email could not be sent for booking #${booking.id} to ${booking.customerEmail}`);
   return false;
 }
 function getClientIp(req) {
@@ -1202,6 +1305,10 @@ async function registerRoutes(app2) {
     if (!staffUser) {
       return res.status(404).json({ message: "Account not found" });
     }
+    const displayNameUpper = (staffUser.displayName || "").toUpperCase().trim();
+    if (displayNameUpper === "THE 147" || username.toLowerCase() === "the147") {
+      return res.status(403).json({ message: "PIN changes are not allowed for this account" });
+    }
     if (!verifyPin(currentPin, staffUser.pinHash, staffUser.pinSalt)) {
       return res.status(401).json({ message: "Current PIN is incorrect" });
     }
@@ -1351,23 +1458,46 @@ async function registerRoutes(app2) {
     const tokens = await storage.getAllPushTokens();
     res.json(tokens);
   });
+  async function sendTargetedPush(tokens, title, body) {
+    if (!tokens.length) return { successCount: 0, failureCount: 0 };
+    const messages = tokens.map((to) => ({ to, sound: "default", title, body }));
+    let successCount = 0, failureCount = 0;
+    try {
+      const response = await fetch("https://exp.host/--/api/v2/push/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify(messages)
+      });
+      const data = await response.json();
+      if (data.data) {
+        for (const r of data.data) {
+          if (r.status === "ok") successCount++;
+          else {
+            failureCount++;
+            if (r.details?.error === "DeviceNotRegistered") {
+            }
+          }
+        }
+      } else failureCount += tokens.length;
+    } catch {
+      failureCount += tokens.length;
+    }
+    return { successCount, failureCount };
+  }
   async function sendPushNotifications(title, body, sentBy) {
     const tokens = await storage.getAllPushTokens();
     if (tokens.length === 0) return { tokens, successCount: 0, failureCount: 0 };
-    const messages = tokens.map((t) => ({
+    const allMessages = tokens.map((t) => ({
       to: t.token,
       sound: "default",
       title,
       body
     }));
-    const chunks = [];
-    for (let i = 0; i < messages.length; i += 100) {
-      chunks.push(messages.slice(i, i + 100));
-    }
     let successCount = 0;
     let failureCount = 0;
     const deadTokens = [];
-    for (const chunk of chunks) {
+    async function sendSingleProjectBatch(batch) {
+      let responseData;
       try {
         const response = await fetch("https://exp.host/--/api/v2/push/send", {
           method: "POST",
@@ -1376,35 +1506,50 @@ async function registerRoutes(app2) {
             "Accept": "application/json",
             "Accept-Encoding": "gzip, deflate"
           },
-          body: JSON.stringify(chunk)
+          body: JSON.stringify(batch)
         });
-        const responseData = await response.json();
-        if (!response.ok || responseData.errors) {
-          console.error("[Push] Expo API error:", JSON.stringify(responseData));
-          failureCount += chunk.length;
-          continue;
-        }
-        if (responseData.data) {
-          responseData.data.forEach((result, index) => {
-            const token = chunk[index]?.to;
-            if (result.status === "ok") {
-              successCount++;
-            } else {
-              failureCount++;
-              console.error(`[Push] Delivery failed for token ${token}: ${result.message} (error: ${result.details?.error})`);
-              if (result.details?.error === "DeviceNotRegistered" && token) {
-                deadTokens.push(token);
-              }
-            }
-          });
-        } else {
-          console.error("[Push] Unexpected Expo response shape:", JSON.stringify(responseData));
-          failureCount += chunk.length;
-        }
+        responseData = await response.json();
       } catch (err) {
         console.error("[Push] Network error sending to Expo:", err);
-        failureCount += chunk.length;
+        failureCount += batch.length;
+        return;
       }
+      if (responseData.errors?.some((e) => e.code === "PUSH_TOO_MANY_EXPERIENCE_IDS")) {
+        const details = responseData.errors.find((e) => e.code === "PUSH_TOO_MANY_EXPERIENCE_IDS")?.details ?? {};
+        console.log(`[Push] Mixed experience IDs \u2014 splitting into ${Object.keys(details).length} groups`);
+        for (const [experienceId, groupTokens] of Object.entries(details)) {
+          const groupBatch = batch.filter((m) => groupTokens.includes(m.to));
+          if (!groupBatch.length) continue;
+          console.log(`[Push] Retrying ${groupBatch.length} tokens for ${experienceId}`);
+          await sendSingleProjectBatch(groupBatch);
+        }
+        return;
+      }
+      if (responseData.errors) {
+        console.error("[Push] Expo API error:", JSON.stringify(responseData));
+        failureCount += batch.length;
+        return;
+      }
+      if (responseData.data) {
+        responseData.data.forEach((result, index) => {
+          const token = batch[index]?.to;
+          if (result.status === "ok") {
+            successCount++;
+          } else {
+            failureCount++;
+            console.error(`[Push] Failed for token ${token}: ${result.message} (${result.details?.error})`);
+            if (result.details?.error === "DeviceNotRegistered" && token) {
+              deadTokens.push(token);
+            }
+          }
+        });
+      } else {
+        console.error("[Push] Unexpected Expo response:", JSON.stringify(responseData));
+        failureCount += batch.length;
+      }
+    }
+    for (let i = 0; i < allMessages.length; i += 100) {
+      await sendSingleProjectBatch(allMessages.slice(i, i + 100));
     }
     for (const deadToken of deadTokens) {
       try {
@@ -1457,24 +1602,83 @@ async function registerRoutes(app2) {
     res.json({ count: successCount, failed: failureCount, total: tokens.length, notification });
   });
   app2.post("/api/bookings", async (req, res) => {
-    const parsed = insertBookingSchema.safeParse(req.body);
+    const body = {
+      ...req.body,
+      tableNumber: req.body.tableNumber ?? void 0,
+      guestCount: req.body.guestCount ?? void 0,
+      notes: req.body.notes ?? void 0,
+      emailHash: req.body.emailHash ?? void 0
+    };
+    const parsed = insertBookingSchema.safeParse(body);
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid booking data", errors: parsed.error.flatten() });
     }
     if (!parsed.data.gdprConsent) {
       return res.status(400).json({ message: "GDPR consent is required to process your booking" });
     }
-    const bookedSlots = await storage.getBookedSlots(parsed.data.date, parsed.data.tableType, parsed.data.tableNumber ?? void 0);
-    const requestedStart = parseInt(parsed.data.startTime.replace(":", ""));
-    const requestedEnd = requestedStart + (parsed.data.duration ?? 1) * 100;
-    for (const slot of bookedSlots) {
-      const slotStart = parseInt(slot.startTime.replace(":", ""));
-      const slotEnd = slotStart + slot.duration * 100;
-      if (requestedStart < slotEnd && requestedEnd > slotStart) {
-        return res.status(409).json({ message: "This time slot is already booked" });
+    const toSlotMins = (t) => {
+      const [h, m] = t.split(":").map(Number);
+      return h * 60 + (m || 0);
+    };
+    const POOL_TABLE_COUNT = 6;
+    const DINING_TABLE_COUNT = 25;
+    const DINING_TABLE_START = 18;
+    let finalTableNumber = parsed.data.tableNumber ?? null;
+    if (parsed.data.tableType === "dining") {
+      const allDiningBookings = await storage.getBookingsByDate(parsed.data.date);
+      const confirmedDining = allDiningBookings.filter((b) => b.tableType === "dining" && b.status === "confirmed" && b.tableNumber);
+      const reqStart = toSlotMins(parsed.data.startTime);
+      const reqEnd = reqStart + (parsed.data.duration ?? 1) * 60;
+      const occupiedTables = /* @__PURE__ */ new Set();
+      for (const b of confirmedDining) {
+        const bStart = toSlotMins(b.startTime);
+        const bEnd = bStart + (b.duration ?? 1) * 60;
+        if (reqStart < bEnd && reqEnd > bStart && b.tableNumber) {
+          occupiedTables.add(b.tableNumber);
+        }
+      }
+      let assigned = null;
+      for (let i = DINING_TABLE_START; i < DINING_TABLE_START + DINING_TABLE_COUNT; i++) {
+        if (!occupiedTables.has(String(i))) {
+          assigned = String(i);
+          break;
+        }
+      }
+      if (!assigned) {
+        return res.status(409).json({ message: "All dining tables are fully booked for this time slot" });
+      }
+      finalTableNumber = assigned;
+    } else if (parsed.data.tableType === "pool") {
+      if (!parsed.data.tableNumber) {
+        return res.status(400).json({ message: "Please select a pool table number (1\u20136)" });
+      }
+      const poolNum = parseInt(parsed.data.tableNumber);
+      if (poolNum < 1 || poolNum > POOL_TABLE_COUNT) {
+        return res.status(400).json({ message: "Invalid pool table number. Choose between 1 and 6." });
+      }
+      const bookedSlots = await storage.getBookedSlots(parsed.data.date, "pool", parsed.data.tableNumber);
+      const requestedStart = parseInt(parsed.data.startTime.replace(":", ""));
+      const requestedEnd = requestedStart + (parsed.data.duration ?? 1) * 100;
+      for (const slot of bookedSlots) {
+        const slotStart = parseInt(slot.startTime.replace(":", ""));
+        const slotEnd = slotStart + slot.duration * 100;
+        if (requestedStart < slotEnd && requestedEnd > slotStart) {
+          return res.status(409).json({ message: `Pool table ${parsed.data.tableNumber} is already booked for this time slot` });
+        }
+      }
+    } else {
+      const bookedSlots = await storage.getBookedSlots(parsed.data.date, parsed.data.tableType, finalTableNumber ?? void 0);
+      const requestedStart = parseInt(parsed.data.startTime.replace(":", ""));
+      const requestedEnd = requestedStart + (parsed.data.duration ?? 1) * 100;
+      for (const slot of bookedSlots) {
+        const slotStart = parseInt(slot.startTime.replace(":", ""));
+        const slotEnd = slotStart + slot.duration * 100;
+        if (requestedStart < slotEnd && requestedEnd > slotStart) {
+          return res.status(409).json({ message: "This time slot is already booked" });
+        }
       }
     }
-    const booking = await storage.createBooking(parsed.data);
+    const booking = await storage.createBooking({ ...parsed.data, tableNumber: finalTableNumber ?? void 0 });
     sendBookingConfirmationEmail({
       customerName: parsed.data.customerName,
       customerEmail: parsed.data.customerEmail,
@@ -1492,8 +1696,39 @@ async function registerRoutes(app2) {
     if (!date || !tableType) {
       return res.status(400).json({ message: "date and tableType are required" });
     }
+    const POOL_TABLE_COUNT = 6;
+    const DINING_TABLE_COUNT = 25;
+    if (String(tableType) === "dining") {
+      const bookedSlots2 = await storage.getBookedSlots(String(date), "dining");
+      return res.json({ slots: bookedSlots2, totalTables: DINING_TABLE_COUNT });
+    }
     const bookedSlots = await storage.getBookedSlots(String(date), String(tableType), tableNumber ? String(tableNumber) : void 0);
-    res.json(bookedSlots);
+    res.json({ slots: bookedSlots, totalTables: tableNumber ? 1 : POOL_TABLE_COUNT });
+  });
+  app2.get("/api/staff-notices", staffAuth, async (_req, res) => {
+    const notices = await storage.getStaffNotices();
+    res.json(notices);
+  });
+  app2.post("/api/staff-notices", staffAuth, managerAuth, async (req, res) => {
+    const { message } = req.body;
+    if (!message || typeof message !== "string" || !message.trim()) {
+      return res.status(400).json({ message: "Notice message is required" });
+    }
+    const createdBy = req.staffUsername || "Manager";
+    const notice = await storage.createStaffNotice(message.trim(), createdBy);
+    res.status(201).json(notice);
+  });
+  app2.get("/api/staff-notices/history", staffAuth, managerAuth, async (_req, res) => {
+    const notices = await storage.getDeletedStaffNotices();
+    res.json(notices);
+  });
+  app2.delete("/api/staff-notices/:id", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid notice ID" });
+    const deletedBy = req.staffUsername || "Manager";
+    const deleted = await storage.deleteStaffNotice(id, deletedBy);
+    if (!deleted) return res.status(404).json({ message: "Notice not found" });
+    res.status(204).send();
   });
   app2.get("/api/bookings", staffAuth, async (req, res) => {
     const { date } = req.query;
@@ -1520,6 +1755,18 @@ async function registerRoutes(app2) {
     }
     const booking = await storage.updateBookingStatus(id, status);
     if (!booking) return res.status(404).json({ message: "Booking not found" });
+    try {
+      const customerTokens = await storage.getPushTokensByEmail(booking.customerEmail);
+      if (customerTokens.length) {
+        const tableLabel = booking.tableType.charAt(0).toUpperCase() + booking.tableType.slice(1);
+        const dateLabel = booking.date ? `on ${booking.date}` : "";
+        const title = status === "confirmed" ? "Booking Confirmed \u2705" : "Booking Cancelled";
+        const body = status === "confirmed" ? `Your ${tableLabel} table booking at ${booking.startTime} ${dateLabel} has been confirmed. See you soon!` : `Your ${tableLabel} table booking at ${booking.startTime} ${dateLabel} has been cancelled. Contact us if this is a mistake.`;
+        await sendTargetedPush(customerTokens.map((t) => t.token), title, body);
+      }
+    } catch (err) {
+      console.error("[Push] Booking status notification error:", err);
+    }
     res.json(booking);
   });
   app2.put("/api/bookings/:id", staffAuth, async (req, res) => {
@@ -1527,13 +1774,14 @@ async function registerRoutes(app2) {
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const existing = await storage.getBooking(id);
     if (!existing) return res.status(404).json({ message: "Booking not found" });
-    const { customerName, customerEmail, customerPhone, tableType, tableNumber, date, startTime, duration, notes, status } = req.body;
+    const { customerName, customerEmail, customerPhone, tableType, tableNumber, guestCount, date, startTime, duration, notes, status } = req.body;
     const updateData = {};
     if (customerName !== void 0) updateData.customerName = customerName;
     if (customerEmail !== void 0) updateData.customerEmail = customerEmail;
     if (customerPhone !== void 0) updateData.customerPhone = customerPhone;
     if (tableType !== void 0) updateData.tableType = tableType;
     if (tableNumber !== void 0) updateData.tableNumber = tableNumber;
+    if (guestCount !== void 0) updateData.guestCount = guestCount;
     if (date !== void 0) updateData.date = date;
     if (startTime !== void 0) updateData.startTime = startTime;
     if (duration !== void 0) updateData.duration = duration;
@@ -1788,7 +2036,8 @@ async function registerRoutes(app2) {
     res.json({ message: "Banner image deleted" });
   });
   app2.post("/api/contact", async (req, res) => {
-    const parsed = insertContactMessageSchema.safeParse(req.body);
+    const { pushToken: incomingPushToken, ...bodyRest } = req.body;
+    const parsed = insertContactMessageSchema.safeParse(bodyRest);
     if (!parsed.success) {
       return res.status(400).json({ message: "Please fill in all required fields", errors: parsed.error.flatten() });
     }
@@ -1799,7 +2048,14 @@ async function registerRoutes(app2) {
     if (!parsed.data.gdprConsent) {
       return res.status(400).json({ message: "You must consent to data processing to send a message" });
     }
-    const contact = await storage.createContactMessage(parsed.data);
+    if (incomingPushToken && typeof incomingPushToken === "string") {
+      await storage.registerPushToken({ token: incomingPushToken, customerEmail: parsed.data.email }).catch(() => {
+      });
+    }
+    const contact = await storage.createContactMessage({
+      ...parsed.data,
+      pushToken: incomingPushToken ?? null
+    });
     try {
       const resendKey = process.env.RESEND_API_KEY;
       if (resendKey) {
@@ -1845,6 +2101,27 @@ async function registerRoutes(app2) {
     if (!updated) return res.status(404).json({ message: "Message not found" });
     res.json(updated);
   });
+  app2.post("/api/contact/:id/reply", staffAuth, async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const { replyText } = req.body;
+    if (!replyText?.trim()) return res.status(400).json({ message: "Reply text is required" });
+    const msg = await storage.getContactMessage(id);
+    if (!msg) return res.status(404).json({ message: "Message not found" });
+    const updated = await storage.replyToContactMessage(id, replyText.trim());
+    let pushed = false;
+    const tokenSources = [];
+    if (msg.pushToken) tokenSources.push(msg.pushToken);
+    const emailTokens = await storage.getPushTokensByEmail(msg.email);
+    emailTokens.forEach((t) => {
+      if (!tokenSources.includes(t.token)) tokenSources.push(t.token);
+    });
+    if (tokenSources.length) {
+      await sendTargetedPush(tokenSources, "The 147 \u2013 Reply to your message", replyText.trim().slice(0, 200));
+      pushed = true;
+    }
+    res.json({ updated, pushed });
+  });
   app2.post("/api/loyalty/send-code", async (req, res) => {
     if (!isConfigured()) {
       return res.status(503).json({ message: "Loyalty program not configured" });
@@ -1878,8 +2155,10 @@ async function registerRoutes(app2) {
     loyaltyOtps.set(otpKey, { code, phone: phoneCleaned, expiresAt: Date.now() + OTP_EXPIRY, attempts: 0 });
     const emailSent = await sendOtpEmail(emailClean, code);
     if (!emailSent) {
-      loyaltyOtps.delete(otpKey);
-      return res.status(503).json({ message: "Unable to send verification email. Please check your email address and try again, or contact the venue directly." });
+      return res.status(503).json({
+        message: "We couldn't send the verification email right now. Please ask a staff member for your code, or try again later.",
+        manualCode: true
+      });
     }
     res.json({ sent: true, expiresIn: OTP_EXPIRY / 1e3 });
   });
@@ -2294,7 +2573,63 @@ async function registerRoutes(app2) {
   app2.get("/widget/booking", (_req, res) => {
     const widgetPath = path.resolve(process.cwd(), "server", "templates", "booking-widget.html");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.sendFile(widgetPath);
+    res.setHeader("X-Frame-Options", "ALLOWALL");
+    res.setHeader("Content-Security-Policy", "frame-ancestors *");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    try {
+      const html = fs.readFileSync(widgetPath, "utf-8");
+      res.send(html);
+    } catch (err) {
+      res.status(500).send("Widget unavailable");
+    }
+  });
+  app2.options("/api/bookings", (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.sendStatus(204);
+  });
+  app2.options("/api/bookings/availability", (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.sendStatus(204);
+  });
+  app2.get("/api/blocked-periods", async (_req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    const periods = await storage.getBlockedPeriods();
+    res.json(periods);
+  });
+  app2.options("/api/blocked-periods", (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.sendStatus(204);
+  });
+  app2.post("/api/blocked-periods", staffAuth, managerAuth, async (req, res) => {
+    const { label, tableType, date, dayOfWeek, startTime, endTime } = req.body;
+    if (!date && dayOfWeek == null) {
+      return res.status(400).json({ message: "Either date or dayOfWeek is required" });
+    }
+    const created = await storage.createBlockedPeriod({
+      label: label || null,
+      tableType: tableType || null,
+      date: date || null,
+      dayOfWeek: dayOfWeek != null ? Number(dayOfWeek) : null,
+      startTime: startTime || null,
+      endTime: endTime || null,
+      createdBy: req.staffSession?.staffUsername ?? "manager"
+    });
+    res.status(201).json(created);
+  });
+  app2.delete("/api/blocked-periods/:id", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const ok = await storage.deleteBlockedPeriod(id);
+    if (!ok) return res.status(404).json({ message: "Not found" });
+    res.status(204).send();
   });
   const httpServer = createServer(app2);
   return httpServer;
@@ -2318,6 +2653,7 @@ function setupCors(app2) {
     }
     const origin = req.header("origin");
     const isLocalhost = origin?.startsWith("http://localhost:") || origin?.startsWith("http://127.0.0.1:");
+    const isPublicBookingRoute = req.path === "/api/bookings" && req.method === "POST" || req.path === "/api/bookings/availability" || req.method === "OPTIONS";
     if (origin && (origins.has(origin) || isLocalhost)) {
       res.header("Access-Control-Allow-Origin", origin);
       res.header(
@@ -2326,6 +2662,10 @@ function setupCors(app2) {
       );
       res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
       res.header("Access-Control-Allow-Credentials", "true");
+    } else if (isPublicBookingRoute) {
+      res.header("Access-Control-Allow-Origin", "*");
+      res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.header("Access-Control-Allow-Headers", "Content-Type");
     }
     if (req.method === "OPTIONS") {
       return res.sendStatus(200);
@@ -2343,11 +2683,11 @@ function setupSecurityHeaders(app2) {
     if (isProd) {
       res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
     }
-    if (req.path === "/staff") {
+    if (req.path === "/staff" || req.path.startsWith("/staff-portal") || req.path.startsWith("/admin-")) {
       res.setHeader("X-Frame-Options", "DENY");
       res.setHeader(
         "Content-Security-Policy",
-        "default-src 'self'; script-src 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data: blob:; frame-ancestors 'none'"
+        "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data: blob: https:; frame-ancestors 'none'"
       );
     } else if (req.path === "/widget/booking") {
       res.removeHeader("X-Frame-Options");
@@ -2529,6 +2869,41 @@ function setupErrorHandler(app2) {
     return res.status(status).json({ message });
   });
 }
+function scheduleBookingReminders() {
+  async function runReminders() {
+    try {
+      const { storage: store } = await Promise.resolve().then(() => (init_storage(), storage_exports));
+      const due = await store.getBookingsDueReminder(55, 65);
+      if (!due.length) return;
+      for (const booking of due) {
+        try {
+          const tokens = await store.getPushTokensByEmail(booking.customerEmail);
+          if (tokens.length) {
+            const tableLabel = booking.tableType === "dining" ? "dining area" : `${booking.tableType} table ${booking.tableNumber ?? ""}`.trim();
+            const messages = tokens.map((t) => ({
+              to: t.token,
+              sound: "default",
+              title: "Your booking starts soon \u23F0",
+              body: `Reminder: your ${tableLabel} booking at The 147 starts in about 1 hour (${booking.startTime}).`
+            }));
+            await fetch("https://exp.host/--/api/v2/push/send", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Accept": "application/json" },
+              body: JSON.stringify(messages)
+            });
+          }
+          await store.markReminderSent(booking.id);
+          log(`[Reminder] Sent push reminder for booking #${booking.id} (${booking.startTime})`);
+        } catch (err) {
+          console.error(`[Reminder] Failed for booking #${booking.id}:`, err);
+        }
+      }
+    } catch (err) {
+      console.error("[Reminder] Scheduler error:", err);
+    }
+  }
+  setInterval(runReminders, 5 * 60 * 1e3);
+}
 function scheduleRetentionCleanup() {
   async function runCleanup() {
     try {
@@ -2551,10 +2926,13 @@ function scheduleRetentionCleanup() {
   setupBodyParsing(app);
   setupRequestLogging(app);
   const widgetHtmlPath = path2.resolve(process.cwd(), "server", "templates", "booking-widget.html");
-  const widgetHtml = fs2.readFileSync(widgetHtmlPath, "utf-8");
   app.get("/widget/booking", (_req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.status(200).send(widgetHtml);
+    res.setHeader("X-Frame-Options", "ALLOWALL");
+    res.setHeader("Content-Security-Policy", "frame-ancestors *");
+    res.setHeader("Cache-Control", "no-store");
+    const html = fs2.readFileSync(widgetHtmlPath, "utf-8");
+    res.status(200).send(html);
   });
   const privacyPolicyHtmlPath = path2.resolve(process.cwd(), "server", "templates", "privacy-policy.html");
   const privacyPolicyHtml = fs2.readFileSync(privacyPolicyHtmlPath, "utf-8");
@@ -2566,6 +2944,7 @@ function scheduleRetentionCleanup() {
   const server = await registerRoutes(app);
   setupErrorHandler(app);
   scheduleRetentionCleanup();
+  scheduleBookingReminders();
   const port = parseInt(process.env.PORT || "5000", 10);
   server.listen(
     {

@@ -905,7 +905,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/bookings", async (req, res) => {
-    const parsed = insertBookingSchema.safeParse(req.body);
+    // Convert null to undefined for optional fields so Zod's .optional() accepts them
+    const body = {
+      ...req.body,
+      tableNumber: req.body.tableNumber ?? undefined,
+      guestCount: req.body.guestCount ?? undefined,
+      notes: req.body.notes ?? undefined,
+      emailHash: req.body.emailHash ?? undefined,
+    };
+    const parsed = insertBookingSchema.safeParse(body);
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid booking data", errors: parsed.error.flatten() });
     }
