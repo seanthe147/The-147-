@@ -999,7 +999,7 @@
 
     const payload = {
       tableType: state.tableType,
-      tableNumber: state.tableNumber ? parseInt(state.tableNumber) : null,
+      tableNumber: state.tableNumber ? String(state.tableNumber) : null,
       guestCount: state.guestCount || null,
       date: state.date,
       startTime: state.time,
