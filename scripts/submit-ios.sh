@@ -14,8 +14,9 @@ node scripts/write-p8.js
 P8_PATH=/tmp/AuthKey_7Q6GZ9HT5V.p8
 chmod 600 "$P8_PATH"
 
-# Run EAS submit — ascAppId is explicitly passed to prevent
-# EAS from falling back to any cached credentials for a different app
+# Run EAS submit
+# ascAppId 6760673771 = "THE 147" (confirmed via App Store Connect API)
+# This is set in eas.json submit.production.ios.ascAppId
 EAS_NO_VCS=1 \
 EXPO_ASC_API_KEY_PATH="$P8_PATH" \
 EXPO_ASC_KEY_ID=7Q6GZ9HT5V \
@@ -26,7 +27,6 @@ npx eas-cli submit \
   --platform ios \
   --profile production \
   --non-interactive \
-  --latest \
-  --asc-app-id 6760673771
+  --latest
 
 echo "=== Submit complete ==="
