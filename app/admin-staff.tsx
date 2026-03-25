@@ -25,6 +25,7 @@ type StaffUser = {
   displayName: string | null;
   role: string;
   active: boolean;
+  approvalStatus: string;
   createdAt: string;
 };
 
@@ -157,6 +158,31 @@ export default function AdminStaffScreen() {
     }
   };
 
+  const handleApprove = (user: StaffUser, status: "approved" | "rejected") => {
+    const name = user.displayName || user.username;
+    const action = status === "approved" ? "Approve" : "Reject";
+    const doApprove = async () => {
+      setUpdatingUser(user.id);
+      try {
+        await apiRequest("PATCH", "/api/staff/approve", { id: user.id, approvalStatus: status });
+        await queryClient.refetchQueries({ queryKey: ["/api/staff/users"] });
+      } catch (e: any) {
+        const msg = e?.message || "Failed to update account";
+        Platform.OS === "web" ? window.alert(msg) : Alert.alert("Error", msg);
+      } finally {
+        setUpdatingUser(null);
+      }
+    };
+    if (Platform.OS === "web") {
+      if (window.confirm(`${action} ${name}'s account?`)) doApprove();
+    } else {
+      Alert.alert(`${action} Account`, `${action} ${name}'s account?`, [
+        { text: "Cancel", style: "cancel" },
+        { text: action, style: status === "rejected" ? "destructive" : "default", onPress: doApprove },
+      ]);
+    }
+  };
+
   const openResetPin = (user: StaffUser) => {
     setResetPinUserId(user.id);
     setNewPin("");
@@ -217,123 +243,190 @@ export default function AdminStaffScreen() {
             <Text style={styles.emptyText}>No staff accounts</Text>
           </View>
         ) : (
-          staffUsers.map((user) => {
-            const roleConfig = ROLES.find(r => r.value === user.role) || ROLES[0];
-            const isSelf = user.username === currentUsername;
-            const isBusy = updatingUser === user.id;
-            const isLocked = !user.active;
-
-            return (
-              <View key={user.id} style={[styles.userCard, isSelf && styles.userCardSelf, isLocked && styles.userCardLocked]}>
-                <View style={styles.userHeader}>
-                  <View style={[styles.userIconWrap, { backgroundColor: isLocked ? "#9CA3AF15" : roleConfig.color + "15" }]}>
-                    <Ionicons
-                      name={isLocked ? "lock-closed" : roleConfig.icon}
-                      size={22}
-                      color={isLocked ? "#9CA3AF" : roleConfig.color}
-                    />
-                  </View>
-                  <View style={styles.userInfo}>
-                    <View style={styles.userNameRow}>
-                      <Text style={[styles.userName, isLocked && styles.lockedText]}>
-                        {user.displayName || user.username}
-                      </Text>
-                      {isSelf && (
-                        <View style={styles.youBadge}>
-                          <Text style={styles.youBadgeText}>You</Text>
-                        </View>
-                      )}
-                      {isLocked && (
-                        <View style={styles.lockedBadge}>
-                          <Text style={styles.lockedBadgeText}>Locked</Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={styles.userUsername}>@{user.username}</Text>
-                    <Text style={styles.userJoined}>
-                      Joined {new Date(user.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.roleSection}>
-                  <Text style={styles.roleLabel}>ROLE</Text>
-                  <View style={styles.roleButtons}>
-                    {ROLES.map((r) => {
-                      const isActive = user.role === r.value;
-                      return (
-                        <Pressable
-                          key={r.value}
-                          onPress={() => !isSelf && !isActive && handleRoleChange(user, r.value)}
-                          disabled={isSelf || isActive || isBusy}
-                          style={({ pressed }) => [
-                            styles.roleButton,
-                            isActive && { backgroundColor: r.color + "15", borderColor: r.color },
-                            (isSelf && !isActive) && { opacity: 0.4 },
-                            pressed && !isSelf && !isActive ? { opacity: 0.7 } : null,
-                          ]}
-                        >
-                          {isBusy && !isActive ? (
-                            <ActivityIndicator size="small" color={r.color} />
-                          ) : (
-                            <Ionicons name={r.icon} size={14} color={isActive ? r.color : Colors.light.textSecondary} />
-                          )}
-                          <Text style={[styles.roleButtonText, isActive && { color: r.color }]}>
-                            {r.label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-
-                {!isSelf && (
-                  <View style={styles.actionsRow}>
-                    <Pressable
-                      onPress={() => openResetPin(user)}
-                      disabled={isBusy}
-                      style={({ pressed }) => [styles.actionBtn, styles.actionBtnPrimary, { opacity: pressed ? 0.7 : 1 }]}
-                    >
-                      <Ionicons name="key-outline" size={15} color={Colors.brand.blue} />
-                      <Text style={[styles.actionBtnText, { color: Colors.brand.blue }]}>Reset PIN</Text>
-                    </Pressable>
-
-                    <Pressable
-                      onPress={() => handleToggleLock(user)}
-                      disabled={isBusy}
-                      style={({ pressed }) => [
-                        styles.actionBtn,
-                        isLocked ? styles.actionBtnSuccess : styles.actionBtnWarning,
-                        { opacity: pressed ? 0.7 : 1 },
-                      ]}
-                    >
-                      {isBusy ? (
-                        <ActivityIndicator size="small" color={isLocked ? Colors.brand.green : "#D97706"} />
-                      ) : (
-                        <Ionicons
-                          name={isLocked ? "lock-open-outline" : "lock-closed-outline"}
-                          size={15}
-                          color={isLocked ? Colors.brand.green : "#D97706"}
-                        />
-                      )}
-                      <Text style={[styles.actionBtnText, { color: isLocked ? Colors.brand.green : "#D97706" }]}>
-                        {isLocked ? "Unlock" : "Lock"}
-                      </Text>
-                    </Pressable>
-
-                    <Pressable
-                      onPress={() => handleDelete(user)}
-                      disabled={isBusy}
-                      style={({ pressed }) => [styles.actionBtn, styles.actionBtnDanger, { opacity: pressed ? 0.7 : 1 }]}
-                    >
-                      <Ionicons name="trash-outline" size={15} color={Colors.brand.red} />
-                      <Text style={[styles.actionBtnText, { color: Colors.brand.red }]}>Delete</Text>
-                    </Pressable>
-                  </View>
-                )}
+          <>
+            {/* Pending approvals banner */}
+            {staffUsers.filter(u => u.approvalStatus === "pending").length > 0 && (
+              <View style={styles.pendingBanner}>
+                <Ionicons name="time" size={18} color="#92400E" style={{ marginRight: 8 }} />
+                <Text style={styles.pendingBannerText}>
+                  {staffUsers.filter(u => u.approvalStatus === "pending").length} account{staffUsers.filter(u => u.approvalStatus === "pending").length > 1 ? "s" : ""} awaiting your approval
+                </Text>
               </View>
-            );
-          })
+            )}
+
+            {staffUsers.map((user) => {
+              const roleConfig = ROLES.find(r => r.value === user.role) || ROLES[0];
+              const isSelf = user.username === currentUsername;
+              const isBusy = updatingUser === user.id;
+              const isLocked = !user.active;
+              const isPending = user.approvalStatus === "pending";
+              const isRejected = user.approvalStatus === "rejected";
+
+              return (
+                <View key={user.id} style={[
+                  styles.userCard,
+                  isSelf && styles.userCardSelf,
+                  isLocked && styles.userCardLocked,
+                  isPending && styles.userCardPending,
+                ]}>
+                  <View style={styles.userHeader}>
+                    <View style={[styles.userIconWrap, { backgroundColor: isPending ? "#FEF3C715" : isLocked ? "#9CA3AF15" : roleConfig.color + "15" }]}>
+                      <Ionicons
+                        name={isPending ? "time-outline" : isLocked ? "lock-closed" : roleConfig.icon}
+                        size={22}
+                        color={isPending ? "#D97706" : isLocked ? "#9CA3AF" : roleConfig.color}
+                      />
+                    </View>
+                    <View style={styles.userInfo}>
+                      <View style={styles.userNameRow}>
+                        <Text style={[styles.userName, isLocked && styles.lockedText]}>
+                          {user.displayName || user.username}
+                        </Text>
+                        {isSelf && (
+                          <View style={styles.youBadge}>
+                            <Text style={styles.youBadgeText}>You</Text>
+                          </View>
+                        )}
+                        {isPending && (
+                          <View style={styles.pendingBadge}>
+                            <Text style={styles.pendingBadgeText}>Pending</Text>
+                          </View>
+                        )}
+                        {isRejected && (
+                          <View style={styles.rejectedBadge}>
+                            <Text style={styles.rejectedBadgeText}>Rejected</Text>
+                          </View>
+                        )}
+                        {isLocked && !isPending && (
+                          <View style={styles.lockedBadge}>
+                            <Text style={styles.lockedBadgeText}>Locked</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.userUsername}>@{user.username}</Text>
+                      <Text style={styles.userJoined}>
+                        Joined {new Date(user.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Approve / Reject row for pending accounts */}
+                  {isPending && isOwner && (
+                    <View style={styles.approvalRow}>
+                      <Pressable
+                        onPress={() => handleApprove(user, "approved")}
+                        disabled={isBusy}
+                        style={({ pressed }) => [styles.approveBtn, { opacity: pressed ? 0.7 : 1 }]}
+                      >
+                        {isBusy ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <>
+                            <Ionicons name="checkmark-circle" size={16} color="#fff" />
+                            <Text style={styles.approveBtnText}>Approve</Text>
+                          </>
+                        )}
+                      </Pressable>
+                      <Pressable
+                        onPress={() => handleApprove(user, "rejected")}
+                        disabled={isBusy}
+                        style={({ pressed }) => [styles.rejectBtn, { opacity: pressed ? 0.7 : 1 }]}
+                      >
+                        {isBusy ? (
+                          <ActivityIndicator size="small" color="#DC2626" />
+                        ) : (
+                          <>
+                            <Ionicons name="close-circle" size={16} color="#DC2626" />
+                            <Text style={styles.rejectBtnText}>Reject</Text>
+                          </>
+                        )}
+                      </Pressable>
+                    </View>
+                  )}
+
+                  {!isPending && (
+                    <>
+                      <View style={styles.roleSection}>
+                        <Text style={styles.roleLabel}>ROLE</Text>
+                        <View style={styles.roleButtons}>
+                          {ROLES.map((r) => {
+                            const isActive = user.role === r.value;
+                            return (
+                              <Pressable
+                                key={r.value}
+                                onPress={() => !isSelf && !isActive && handleRoleChange(user, r.value)}
+                                disabled={isSelf || isActive || isBusy}
+                                style={({ pressed }) => [
+                                  styles.roleButton,
+                                  isActive && { backgroundColor: r.color + "15", borderColor: r.color },
+                                  (isSelf && !isActive) && { opacity: 0.4 },
+                                  pressed && !isSelf && !isActive ? { opacity: 0.7 } : null,
+                                ]}
+                              >
+                                {isBusy && !isActive ? (
+                                  <ActivityIndicator size="small" color={r.color} />
+                                ) : (
+                                  <Ionicons name={r.icon} size={14} color={isActive ? r.color : Colors.light.textSecondary} />
+                                )}
+                                <Text style={[styles.roleButtonText, isActive && { color: r.color }]}>
+                                  {r.label}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      </View>
+
+                      {!isSelf && (
+                        <View style={styles.actionsRow}>
+                          <Pressable
+                            onPress={() => openResetPin(user)}
+                            disabled={isBusy}
+                            style={({ pressed }) => [styles.actionBtn, styles.actionBtnPrimary, { opacity: pressed ? 0.7 : 1 }]}
+                          >
+                            <Ionicons name="key-outline" size={15} color={Colors.brand.blue} />
+                            <Text style={[styles.actionBtnText, { color: Colors.brand.blue }]}>Reset PIN</Text>
+                          </Pressable>
+
+                          <Pressable
+                            onPress={() => handleToggleLock(user)}
+                            disabled={isBusy}
+                            style={({ pressed }) => [
+                              styles.actionBtn,
+                              isLocked ? styles.actionBtnSuccess : styles.actionBtnWarning,
+                              { opacity: pressed ? 0.7 : 1 },
+                            ]}
+                          >
+                            {isBusy ? (
+                              <ActivityIndicator size="small" color={isLocked ? Colors.brand.green : "#D97706"} />
+                            ) : (
+                              <Ionicons
+                                name={isLocked ? "lock-open-outline" : "lock-closed-outline"}
+                                size={15}
+                                color={isLocked ? Colors.brand.green : "#D97706"}
+                              />
+                            )}
+                            <Text style={[styles.actionBtnText, { color: isLocked ? Colors.brand.green : "#D97706" }]}>
+                              {isLocked ? "Unlock" : "Lock"}
+                            </Text>
+                          </Pressable>
+
+                          <Pressable
+                            onPress={() => handleDelete(user)}
+                            disabled={isBusy}
+                            style={({ pressed }) => [styles.actionBtn, styles.actionBtnDanger, { opacity: pressed ? 0.7 : 1 }]}
+                          >
+                            <Ionicons name="trash-outline" size={15} color={Colors.brand.red} />
+                            <Text style={[styles.actionBtnText, { color: Colors.brand.red }]}>Delete</Text>
+                          </Pressable>
+                        </View>
+                      )}
+                    </>
+                  )}
+                </View>
+              );
+            })}
+          </>
         )}
 
         <View style={{ height: Platform.OS === "web" ? 50 : insets.bottom + 20 }} />
@@ -553,4 +646,87 @@ const styles = StyleSheet.create({
   managerBadge: { backgroundColor: "#7C3AED15" },
   ownerBadgeText: { color: Colors.brand.gold },
   managerBadgeText: { color: "#7C3AED" },
+  pendingBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEF3C7",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#FCD34D",
+  },
+  pendingBannerText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: "#92400E",
+    flex: 1,
+  },
+  userCardPending: {
+    borderColor: "#FCD34D",
+    borderWidth: 2,
+    backgroundColor: "#FFFBEB",
+  },
+  pendingBadge: {
+    backgroundColor: "#FEF3C7",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  pendingBadgeText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 10,
+    color: "#D97706",
+  },
+  rejectedBadge: {
+    backgroundColor: "#FEE2E2",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  rejectedBadgeText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 10,
+    color: "#DC2626",
+  },
+  approvalRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#FCD34D",
+  },
+  approveBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 11,
+    borderRadius: 10,
+    backgroundColor: Colors.brand.green,
+  },
+  approveBtnText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 14,
+    color: "#fff",
+  },
+  rejectBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 11,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: "#DC2626",
+    backgroundColor: "#FEF2F2",
+  },
+  rejectBtnText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 14,
+    color: "#DC2626",
+  },
 });
