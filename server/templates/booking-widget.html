@@ -729,10 +729,10 @@
   }
 
   // ── Step 2 ──────────────────────────────────────────────────────────────────
-  function getNext14Days() {
+  function getBookingDays() {
     const days = [];
     const today = new Date();
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 182; i++) {
       const d = new Date(today);
       d.setDate(today.getDate() + i);
       days.push(d);
@@ -743,7 +743,7 @@
   function buildDateScroll() {
     const scroll = document.getElementById('dateScroll');
     scroll.innerHTML = '';
-    getNext14Days().forEach((d) => {
+    getBookingDays().forEach((d) => {
       const btn = document.createElement('div');
       btn.className = 'date-btn';
       const day = d.toLocaleDateString('en-GB', { weekday: 'short' });
@@ -827,10 +827,17 @@
     const grid = document.createElement('div');
     grid.className = 'time-grid';
 
+    const todayStr = new Date().toISOString().split('T')[0];
+    const isToday = state.date === todayStr;
+    const now = new Date();
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+
     let anyAvail = false;
     TABLE_HOURS.forEach(t => {
       const slotEnd = toMins(t) + state.duration * 60;
       if (slotEnd > toMins('22:00')) return;
+      // Hide slots that have already started (or start in less than 30 min) on today
+      if (isToday && toMins(t) < nowMins + 30) return;
 
       const booked = isSlotBooked(t, state.duration);
       if (!booked) anyAvail = true;
