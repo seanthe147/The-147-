@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Delete My Data — The 147</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f7;
+      color: #1d1d1f;
+      line-height: 1.7;
+      min-height: 100vh;
+    }
+    header {
+      background: #0b1120;
+      color: #fff;
+      padding: 28px 24px;
+      text-align: center;
+    }
+    header img {
+      height: 48px;
+      margin-bottom: 10px;
+      display: block;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    header h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: 0.5px; }
+    header p { font-size: 0.85rem; opacity: 0.65; margin-top: 4px; }
+    main {
+      max-width: 560px;
+      margin: 48px auto;
+      padding: 0 20px 60px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 36px 32px;
+      box-shadow: 0 2px 20px rgba(0,0,0,0.07);
+    }
+    h2 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: #0b1120;
+    }
+    p {
+      font-size: 0.95rem;
+      color: #444;
+      margin-bottom: 20px;
+    }
+    .warning-box {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      border-radius: 10px;
+      padding: 14px 16px;
+      font-size: 0.875rem;
+      color: #7a5c00;
+      margin-bottom: 24px;
+    }
+    label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 6px;
+    }
+    input[type="email"] {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1.5px solid #d1d1d6;
+      border-radius: 10px;
+      font-size: 1rem;
+      color: #1d1d1f;
+      outline: none;
+      transition: border-color 0.2s;
+      margin-bottom: 20px;
+    }
+    input[type="email"]:focus { border-color: #8B0000; }
+    .checkbox-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+    .checkbox-row input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      margin-top: 2px;
+      flex-shrink: 0;
+      accent-color: #8B0000;
+    }
+    .checkbox-row span {
+      font-size: 0.875rem;
+      color: #555;
+    }
+    button[type="submit"] {
+      width: 100%;
+      padding: 14px;
+      background: #8B0000;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    button[type="submit"]:hover { opacity: 0.85; }
+    button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .success-state {
+      display: none;
+      text-align: center;
+      padding: 16px 0 8px;
+    }
+    .success-icon {
+      font-size: 3rem;
+      margin-bottom: 16px;
+    }
+    .success-state h2 { color: #1a7c3e; margin-bottom: 10px; }
+    .success-state p { color: #555; }
+
+    .error-msg {
+      display: none;
+      background: #fee2e2;
+      border: 1px solid #f87171;
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 0.875rem;
+      color: #7f1d1d;
+      margin-bottom: 16px;
+    }
+
+    .data-list {
+      background: #f5f5f7;
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 20px;
+    }
+    .data-list p { margin-bottom: 4px; font-size: 0.875rem; color: #333; }
+    .data-list p:last-child { margin-bottom: 0; }
+
+    footer {
+      text-align: center;
+      padding: 24px;
+      font-size: 0.8rem;
+      color: #999;
+    }
+    footer a { color: #8B0000; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>The 147</h1>
+    <p>Bradford's Premier Snooker Club</p>
+  </header>
+
+  <main>
+    <div class="card">
+      <div id="form-state">
+        <h2>Delete My Account &amp; Data</h2>
+        <p>Enter the email address associated with your account. All of your personal data will be permanently deleted immediately.</p>
+
+        <div class="data-list">
+          <p><strong>What will be deleted:</strong></p>
+          <p>• Your account &amp; profile information</p>
+          <p>• All booking history</p>
+          <p>• Any loyalty points or rewards linked to this account</p>
+          <p>• Push notification preferences</p>
+        </div>
+
+        <div class="warning-box">
+          ⚠️ This action is permanent and cannot be undone. You will not be able to recover your account or booking history.
+        </div>
+
+        <div class="error-msg" id="error-msg"></div>
+
+        <form id="delete-form">
+          <label for="email">Your email address</label>
+          <input type="email" id="email" name="email" placeholder="you@example.com" required autocomplete="email" />
+
+          <div class="checkbox-row">
+            <input type="checkbox" id="confirm-check" required />
+            <span>I understand this will permanently delete my account and all associated data. This cannot be undone.</span>
+          </div>
+
+          <button type="submit" id="submit-btn">Delete My Account &amp; Data</button>
+        </form>
+      </div>
+
+      <div class="success-state" id="success-state">
+        <div class="success-icon">✅</div>
+        <h2>Data Deleted</h2>
+        <p>If an account existed for that email address, all associated data has been permanently deleted from our systems.</p>
+        <p style="margin-top:12px; font-size:0.85rem; color:#888;">This complies with your rights under the UK GDPR (Article 17).</p>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <a href="/privacy-policy">Privacy Policy</a> &nbsp;·&nbsp; The 147 Snooker Club, Bradford
+  </footer>
+
+  <script>
+    const form = document.getElementById('delete-form');
+    const formState = document.getElementById('form-state');
+    const successState = document.getElementById('success-state');
+    const errorMsg = document.getElementById('error-msg');
+    const submitBtn = document.getElementById('submit-btn');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorMsg.style.display = 'none';
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Deleting…';
+
+      const email = document.getElementById('email').value.trim();
+
+      try {
+        const res = await fetch('/api/request-deletion', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+
+        if (res.ok || res.status === 404) {
+          formState.style.display = 'none';
+          successState.style.display = 'block';
+        } else {
+          const data = await res.json().catch(() => ({}));
+          errorMsg.textContent = data.message || 'Something went wrong. Please try again.';
+          errorMsg.style.display = 'block';
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Delete My Account & Data';
+        }
+      } catch (err) {
+        errorMsg.textContent = 'Network error. Please check your connection and try again.';
+        errorMsg.style.display = 'block';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Delete My Account & Data';
+      }
+    });
+  </script>
+</body>
+</html>

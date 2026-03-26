@@ -2071,6 +2071,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(204).send();
   });
 
+  // Data deletion page — required by Apple App Store & Google Play
+  app.get("/delete-account", (_req, res) => {
+    const pagePath = path.resolve(process.cwd(), "server", "templates", "delete-account.html");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    try {
+      const html = fs.readFileSync(pagePath, "utf-8");
+      res.send(html);
+    } catch (err) {
+      res.status(500).send("Page unavailable");
+    }
+  });
+
+  // Public API endpoint — deletes all data for a given email address
+  app.post("/api/request-deletion", async (req, res) => {
+    const { email } = req.body ?? {};
+    if (!email || typeof email !== "string" || !email.includes("@")) {
+      return res.status(400).json({ message: "A valid email address is required." });
+    }
+    const normalised = email.trim().toLowerCase();
+    // Delete bookings first, then customer account
+    await storage.deleteBookingsByEmail(normalised);
+    const customer = await storage.getCustomerByEmail(normalised);
+    if (customer) await storage.deleteCustomer(customer.id);
+    // Always return success — don't reveal whether an account existed
+    res.json({ success: true, message: "If an account existed for that email, all data has been permanently deleted." });
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
