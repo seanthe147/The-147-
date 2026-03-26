@@ -666,15 +666,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/staff/approve", staffAuth, ownerAuth, async (req, res) => {
     console.log("[approve] req.body:", JSON.stringify(req.body));
-    const { username, approvalStatus } = req.body;
-    if (!username || typeof username !== "string" || !["approved", "rejected"].includes(approvalStatus)) {
-      return res.status(400).json({ message: "username and approvalStatus ('approved' or 'rejected') are required" });
+    // Accept both formats: {username, approvalStatus} (new) and {id, status} (legacy)
+    const username = req.body.username;
+    const id = req.body.id;
+    const finalStatus: string = req.body.approvalStatus || req.body.status || "";
+    if (!["approved", "rejected"].includes(finalStatus)) {
+      return res.status(400).json({ message: "approvalStatus ('approved' or 'rejected') is required" });
     }
-    const staffUser = await storage.getStaffUserByUsername(username.trim());
+    let staffUser: import("@shared/schema").StaffUser | undefined;
+    if (username && typeof username === "string") {
+      staffUser = await storage.getStaffUserByUsername(username.trim());
+    } else if (id !== undefined && id !== null) {
+      const numId = typeof id === "number" ? id : parseInt(String(id), 10);
+      if (!isNaN(numId)) {
+        const allUsers = await storage.getAllStaffUsers();
+        staffUser = allUsers.find(u => u.id === numId);
+      }
+    }
     if (!staffUser) return res.status(404).json({ message: "Staff user not found" });
-    const updated = await storage.updateStaffApproval(staffUser.id, approvalStatus);
+    const updated = await storage.updateStaffApproval(staffUser.id, finalStatus);
     if (!updated) return res.status(404).json({ message: "Staff user not found" });
-    res.json({ message: `Account ${approvalStatus}`, user: { id: updated.id, username: updated.username, approvalStatus: updated.approvalStatus } });
+    res.json({ message: `Account ${finalStatus}`, user: { id: updated.id, username: updated.username, approvalStatus: updated.approvalStatus } });
   });
 
   app.post("/api/staff/migrate-encryption", staffAuth, managerAuth, async (_req, res) => {
@@ -927,7 +939,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     for (const key of ["tableNumber", "guestCount", "notes", "emailHash"] as const) {
       if (raw[key] === null || raw[key] === undefined) delete raw[key];
     }
-    console.log("[booking] raw body keys:", Object.keys(req.body), "tableNumber type:", typeof req.body.tableNumber, "value:", req.body.tableNumber);
+    // Coerce tableNumber to string (may arrive as number from some clients)
+    if (raw.tableNumber !== undefined) raw.tableNumber = String(raw.tableNumber);
+    // Coerce duration to number
+    if (raw.duration !== undefined) raw.duration = Number(raw.duration);
+    console.log("[booking] raw body keys:", Object.keys(req.body), "tableNumber type:", typeof raw.tableNumber, "value:", raw.tableNumber);
     const parsed = insertBookingSchema.safeParse(raw);
     if (!parsed.success) {
       console.log("[booking] validation failed:", JSON.stringify(parsed.error.flatten()));
