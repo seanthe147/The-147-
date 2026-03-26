@@ -29,6 +29,48 @@ const upload = multer({
   },
 });
 
+// ── HTML escaping for email templates ──────────────────────────────────────────
+function escHtml(str: string | null | undefined): string {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+// ── Simple in-memory rate limiter ─────────────────────────────────────────────
+interface RateEntry { count: number; windowStart: number; }
+const rateLimitStore = new Map<string, RateEntry>();
+function checkRateLimit(
+  key: string, maxRequests: number, windowMs: number
+): { allowed: boolean; retryAfter: number } {
+  const now = Date.now();
+  const entry = rateLimitStore.get(key) || { count: 0, windowStart: now };
+  if (now - entry.windowStart > windowMs) {
+    // Reset window
+    entry.count = 1;
+    entry.windowStart = now;
+    rateLimitStore.set(key, entry);
+    return { allowed: true, retryAfter: 0 };
+  }
+  entry.count++;
+  rateLimitStore.set(key, entry);
+  if (entry.count > maxRequests) {
+    const retryAfter = Math.ceil((windowMs - (now - entry.windowStart)) / 1000);
+    return { allowed: false, retryAfter };
+  }
+  return { allowed: true, retryAfter: 0 };
+}
+// Clean up rate limit store every 15 minutes to prevent memory leaks
+setInterval(() => {
+  const cutoff = Date.now() - 30 * 60 * 1000;
+  for (const [k, v] of rateLimitStore) {
+    if (v.windowStart < cutoff) rateLimitStore.delete(k);
+  }
+}, 15 * 60 * 1000);
+
 const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION = 15 * 60 * 1000;
@@ -195,14 +237,14 @@ async function sendBookingConfirmationEmail(booking: {
       <span style="font-size: 28px;">&#10003;</span>
       <h2 style="color: #16A34A; font-size: 18px; margin: 8px 0 0;">Booking Confirmed</h2>
     </div>
-    <p style="color: #374151; font-size: 15px;">Hi ${booking.customerName},</p>
+    <p style="color: #374151; font-size: 15px;">Hi ${escHtml(booking.customerName)},</p>
     <p style="color: #374151; font-size: 15px;">Your booking at The 147 has been confirmed. Here are your details:</p>
     <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; margin: 20px 0;">
       <table style="width: 100%; border-collapse: collapse;">
-        <tr><td style="padding: 8px 0; color: #6b7280; font-size: 13px; font-weight: 600;">Booking Ref</td><td style="padding: 8px 0; color: #0047AB; font-size: 15px; font-weight: 700; text-align: right;">${bookingRef}</td></tr>
-        <tr><td style="padding: 8px 0; color: #6b7280; font-size: 13px; font-weight: 600;">Table</td><td style="padding: 8px 0; color: #0A1628; font-size: 14px; font-weight: 600; text-align: right;">${tableDisplay}</td></tr>
-        <tr><td style="padding: 8px 0; color: #6b7280; font-size: 13px; font-weight: 600;">Date</td><td style="padding: 8px 0; color: #0A1628; font-size: 14px; font-weight: 600; text-align: right;">${dateFormatted}</td></tr>
-        <tr><td style="padding: 8px 0; color: #6b7280; font-size: 13px; font-weight: 600;">Time</td><td style="padding: 8px 0; color: #0A1628; font-size: 14px; font-weight: 600; text-align: right;">${booking.startTime} - ${endTime} (${durationLabel})</td></tr>
+        <tr><td style="padding: 8px 0; color: #6b7280; font-size: 13px; font-weight: 600;">Booking Ref</td><td style="padding: 8px 0; color: #0047AB; font-size: 15px; font-weight: 700; text-align: right;">${escHtml(bookingRef)}</td></tr>
+        <tr><td style="padding: 8px 0; color: #6b7280; font-size: 13px; font-weight: 600;">Table</td><td style="padding: 8px 0; color: #0A1628; font-size: 14px; font-weight: 600; text-align: right;">${escHtml(tableDisplay)}</td></tr>
+        <tr><td style="padding: 8px 0; color: #6b7280; font-size: 13px; font-weight: 600;">Date</td><td style="padding: 8px 0; color: #0A1628; font-size: 14px; font-weight: 600; text-align: right;">${escHtml(dateFormatted)}</td></tr>
+        <tr><td style="padding: 8px 0; color: #6b7280; font-size: 13px; font-weight: 600;">Time</td><td style="padding: 8px 0; color: #0A1628; font-size: 14px; font-weight: 600; text-align: right;">${escHtml(booking.startTime)} - ${escHtml(endTime)} (${escHtml(durationLabel)})</td></tr>
       </table>
     </div>
     <p style="color: #374151; font-size: 14px;">Please arrive 5 minutes before your slot. If you need to cancel or change your booking, please contact us.</p>
@@ -242,7 +284,7 @@ function getClientIp(req: Request): string {
   return (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown";
 }
 
-function checkRateLimit(ip: string): { allowed: boolean; retryAfter?: number } {
+function checkLoginRateLimit(ip: string): { allowed: boolean; retryAfter?: number } {
   const entry = loginAttempts.get(ip);
   if (!entry) return { allowed: true };
   if (entry.blockedUntil > Date.now()) {
@@ -371,7 +413,7 @@ async function customerAuth(req: Request, res: Response, next: NextFunction) {
 export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/staff/register", async (req, res) => {
     const clientIp = getClientIp(req);
-    const rateCheck = checkRateLimit(clientIp);
+    const rateCheck = checkLoginRateLimit(clientIp);
     if (!rateCheck.allowed) {
       res.setHeader("Retry-After", String(rateCheck.retryAfter));
       return res.status(429).json({
@@ -442,7 +484,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/staff/login", async (req, res) => {
     const clientIp = getClientIp(req);
-    const rateCheck = checkRateLimit(clientIp);
+    const rateCheck = checkLoginRateLimit(clientIp);
     if (!rateCheck.allowed) {
       res.setHeader("Retry-After", String(rateCheck.retryAfter));
       return res.status(429).json({
@@ -934,6 +976,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/bookings", async (req, res) => {
+    const ip = (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+    const rl = checkRateLimit(`booking:${ip}`, 10, 15 * 60 * 1000);
+    if (!rl.allowed) {
+      res.setHeader("Retry-After", String(rl.retryAfter));
+      return res.status(429).json({ message: "Too many booking requests. Please wait before trying again." });
+    }
     // Strip null optional fields so Zod treats them as absent
     const raw = { ...req.body };
     for (const key of ["tableNumber", "guestCount", "notes", "emailHash"] as const) {
@@ -1540,6 +1588,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/contact", async (req, res) => {
+    const ip = (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+    const rl = checkRateLimit(`contact:${ip}`, 5, 15 * 60 * 1000);
+    if (!rl.allowed) {
+      res.setHeader("Retry-After", String(rl.retryAfter));
+      return res.status(429).json({ message: "Too many contact requests. Please wait before trying again." });
+    }
     const { pushToken: incomingPushToken, ...bodyRest } = req.body;
     const parsed = insertContactMessageSchema.safeParse(bodyRest);
     if (!parsed.success) {
@@ -1579,12 +1633,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             to: "info@the147.co.uk",
             subject: `Contact Form: ${parsed.data.subject}`,
             html: `<h2>New Contact Form Submission</h2>
-<p><strong>Name:</strong> ${parsed.data.name}</p>
-<p><strong>Email:</strong> ${parsed.data.email}</p>
-<p><strong>Phone:</strong> ${parsed.data.phone || "Not provided"}</p>
-<p><strong>Subject:</strong> ${parsed.data.subject}</p>
+<p><strong>Name:</strong> ${escHtml(parsed.data.name)}</p>
+<p><strong>Email:</strong> ${escHtml(parsed.data.email)}</p>
+<p><strong>Phone:</strong> ${escHtml(parsed.data.phone || "Not provided")}</p>
+<p><strong>Subject:</strong> ${escHtml(parsed.data.subject)}</p>
 <p><strong>Message:</strong></p>
-<p>${parsed.data.message.replace(/\n/g, "<br>")}</p>
+<p>${escHtml(parsed.data.message).replace(/\n/g, "<br>")}</p>
 <hr>
 <p><small>Sent via The 147 App contact form</small></p>`,
           }),
@@ -1640,6 +1694,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/loyalty/send-code", async (req, res) => {
+    const ip = (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+    const rl = checkRateLimit(`otp:${ip}`, 10, 15 * 60 * 1000);
+    if (!rl.allowed) {
+      res.setHeader("Retry-After", String(rl.retryAfter));
+      return res.status(429).json({ message: "Too many requests. Please wait before trying again." });
+    }
     if (!square.isConfigured()) {
       return res.status(503).json({ message: "Loyalty program not configured" });
     }

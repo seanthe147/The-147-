@@ -23,7 +23,7 @@ The application features a mobile frontend built with Expo React Native, utilizi
 **Backend:**
 - **API:** RESTful API endpoints for managing offers, push tokens, notifications, bookings, customer accounts, and loyalty programs.
 - **Staff Web Dashboard:** A self-contained HTML application served by the Express backend for desktop-based staff management of bookings and customer messages.
-- **Security:** AES-256-GCM encryption for Personally Identifiable Information (PII), scrypt-hashed PINs for staff authentication, rate limiting, secure HTTP headers, and session management.
+- **Security:** AES-256-GCM encryption for Personally Identifiable Information (PII), scrypt-hashed PINs for staff authentication, in-memory rate limiting on public endpoints (bookings: 10/15min, contact: 5/15min, OTP: 10/15min), brute-force lockout on staff login (5 attempts → 15min block), HTML escaping for all user input in email templates, Subresource Integrity (SRI) on external scripts, comprehensive secure HTTP headers (CSP, HSTS, X-Frame-Options, nosniff, Referrer-Policy), and session management.
 
 **Technical Implementations:**
 - **State Management:** React Query for server-side data fetching and caching, `AsyncStorage` for local state persistence.
