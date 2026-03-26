@@ -1356,8 +1356,9 @@ async function registerRoutes(app2) {
     res.json({ message: `Role updated to ${role} for ${updated.username}` });
   });
   app2.patch("/api/staff/toggle-active", staffAuth, ownerAuth, async (req, res) => {
-    const { id, active } = req.body;
-    if (typeof id !== "number" || typeof active !== "boolean") {
+    const id = parseInt(req.body.id, 10);
+    const active = req.body.active;
+    if (isNaN(id) || typeof active !== "boolean") {
       return res.status(400).json({ message: "id (number) and active (boolean) are required" });
     }
     const currentUser = req.staffUsername;
@@ -1382,9 +1383,10 @@ async function registerRoutes(app2) {
     res.json({ message: "Staff account deleted" });
   });
   app2.patch("/api/staff/approve", staffAuth, ownerAuth, async (req, res) => {
-    const { id, approvalStatus } = req.body;
-    if (typeof id !== "number" || !["approved", "rejected"].includes(approvalStatus)) {
-      return res.status(400).json({ message: "id (number) and approvalStatus ('approved' or 'rejected') are required" });
+    const id = parseInt(req.body.id, 10);
+    const { approvalStatus } = req.body;
+    if (isNaN(id) || !["approved", "rejected"].includes(approvalStatus)) {
+      return res.status(400).json({ message: "id and approvalStatus ('approved' or 'rejected') are required" });
     }
     const updated = await storage.updateStaffApproval(id, approvalStatus);
     if (!updated) return res.status(404).json({ message: "Staff user not found" });
