@@ -491,9 +491,10 @@ export class DatabaseStorage implements IStorage {
         const nameLower = name.toLowerCase();
         const phoneLower = phone.toLowerCase().replace(/\s/g, "");
         const qClean = q.replace(/\s/g, "");
+        const emailMatch = email.toLowerCase().includes(q);
         const nameMatch = nameLower.includes(q);
         const phoneMatch = phoneLower.includes(qClean);
-        if (nameMatch || phoneMatch) {
+        if (nameMatch || phoneMatch || emailMatch) {
           seen.add(dedupeKey);
           const score = (nameLower.startsWith(q) ? 2 : 0) + (phoneMatch ? 1 : 0);
           matches.push({ name, phone, email, score });

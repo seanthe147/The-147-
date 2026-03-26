@@ -243,6 +243,17 @@
     @keyframes tIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
     @keyframes tOut{from{opacity:1;transform:none}to{opacity:0;transform:translateX(30px)}}
     .divider{height:1px;background:var(--border);margin:16px 0}
+    .customer-search-wrap{position:relative}
+    .customer-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1.5px solid var(--blue);border-radius:var(--r);box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:900;overflow:hidden;display:none}
+    .customer-dropdown.open{display:block}
+    .customer-result{display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;transition:background .12s;border-bottom:1px solid var(--border)}
+    .customer-result:last-child{border-bottom:none}
+    .customer-result:hover,.customer-result.active{background:var(--blue-light,#EFF6FF)}
+    .customer-result-info{flex:1;min-width:0}
+    .customer-result-name{font-size:14px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .customer-result-sub{font-size:12px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+    .customer-result-icon{width:32px;height:32px;border-radius:50%;background:var(--blue);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;font-weight:700;color:#fff}
+    .customer-search-empty{padding:12px 14px;font-size:13px;color:var(--text-3);text-align:center}
     select.form-input option{font-family:'Montserrat',sans-serif}
   </style>
 </head>
@@ -653,6 +664,18 @@
         </select>
       </div>
       <div class="divider"></div>
+      <!-- Customer lookup — staff portal only, hidden on edit -->
+      <div id="customerLookupGroup" class="form-group" style="margin-bottom:20px">
+        <label class="form-label" style="display:flex;align-items:center;gap:6px">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Look Up Returning Customer
+        </label>
+        <div class="customer-search-wrap">
+          <input class="form-input" type="text" id="customerSearch" placeholder="Search by name, email or phone…" autocomplete="off">
+          <div class="customer-dropdown" id="customerDropdown"></div>
+        </div>
+        <div style="font-size:11px;color:var(--text-3);margin-top:5px">Select a returning customer to auto-fill their details below.</div>
+      </div>
       <div class="form-group">
         <label class="form-label">Customer Name</label>
         <input class="form-input" type="text" id="fName" placeholder="Full name">
@@ -1217,8 +1240,13 @@
     el('repeatOptions').style.display='none';
     el('fRepeatCount').value='4';
     el('fRepeatType').value='weekly';
+    // Customer lookup — only for new bookings
+    el('customerLookupGroup').style.display=isNew?'':'none';
+    el('customerSearch').value='';
+    el('customerDropdown').classList.remove('open');
+    el('customerDropdown').innerHTML='';
     openOverlay('bookingModal');
-    setTimeout(()=>el('fName').focus(),100);
+    setTimeout(()=>isNew?el('customerSearch').focus():el('fName').focus(),100);
   }
 
   el('fTableType').addEventListener('change',()=>{
@@ -1227,6 +1255,103 @@
     el('tableNumGroup').querySelector('label').textContent=t==='pool'?'Pool Table # (1–6)':'Table # (1–10)';
     el('guestCountGroup').style.display=t==='dining'?'':'none';
   });
+
+  /* ── Customer Lookup Autocomplete ── */
+  (function(){
+    const searchInput=el('customerSearch');
+    const dropdown=el('customerDropdown');
+    let searchTimer=null;
+    let activeIdx=-1;
+    let currentResults=[];
+
+    function closeDropdown(){dropdown.classList.remove('open');activeIdx=-1;}
+    function highlight(str,q){
+      if(!q)return esc(str);
+      const i=str.toLowerCase().indexOf(q.toLowerCase());
+      if(i<0)return esc(str);
+      return esc(str.slice(0,i))+'<mark style="background:rgba(59,130,246,.15);color:inherit;border-radius:2px;padding:0 1px">'+esc(str.slice(i,i+q.length))+'</mark>'+esc(str.slice(i+q.length));
+    }
+    function initials(name){return name.split(' ').filter(Boolean).map(w=>w[0]).join('').slice(0,2).toUpperCase();}
+
+    function renderResults(results,q){
+      if(!results.length){
+        dropdown.innerHTML='<div class="customer-search-empty">No matching customers found</div>';
+        dropdown.classList.add('open');return;
+      }
+      currentResults=results;activeIdx=-1;
+      let html='';
+      for(let i=0;i<results.length;i++){
+        const r=results[i];
+        html+=`<div class="customer-result" data-idx="${i}">
+          <div class="customer-result-icon">${esc(initials(r.name))}</div>
+          <div class="customer-result-info">
+            <div class="customer-result-name">${highlight(r.name,q)}</div>
+            <div class="customer-result-sub">${highlight(r.email,q)} · ${highlight(r.phone,q)}</div>
+          </div>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2.5" style="flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>`;
+      }
+      dropdown.innerHTML=html;
+      dropdown.classList.add('open');
+      dropdown.querySelectorAll('.customer-result').forEach(row=>{
+        row.addEventListener('mousedown',e=>{
+          e.preventDefault();
+          selectCustomer(parseInt(row.dataset.idx));
+        });
+      });
+    }
+
+    function selectCustomer(idx){
+      const c=currentResults[idx];
+      if(!c)return;
+      el('fName').value=c.name;
+      el('fEmail').value=c.email;
+      el('fPhone').value=c.phone;
+      el('fGdpr').checked=true;
+      searchInput.value='';
+      closeDropdown();
+      // Visual flash to confirm autofill
+      [el('fName'),el('fEmail'),el('fPhone')].forEach(inp=>{
+        inp.style.transition='background .3s';
+        inp.style.background='rgba(59,130,246,.08)';
+        setTimeout(()=>{inp.style.background='';},700);
+      });
+      toast('Customer details filled in','success');
+      el('fNotes').focus();
+    }
+
+    function setActive(newIdx){
+      const rows=dropdown.querySelectorAll('.customer-result');
+      rows.forEach(r=>r.classList.remove('active'));
+      if(newIdx>=0&&newIdx<rows.length){rows[newIdx].classList.add('active');activeIdx=newIdx;}
+      else activeIdx=-1;
+    }
+
+    searchInput.addEventListener('input',()=>{
+      clearTimeout(searchTimer);
+      const q=searchInput.value.trim();
+      if(q.length<2){closeDropdown();return;}
+      searchTimer=setTimeout(async()=>{
+        try{
+          const r=await api('/api/staff/customers/search?q='+encodeURIComponent(q));
+          if(!r.ok)return;
+          const data=await r.json();
+          renderResults(data,q);
+        }catch(e){/* non-critical */}
+      },200);
+    });
+
+    searchInput.addEventListener('keydown',e=>{
+      const rows=dropdown.querySelectorAll('.customer-result');
+      if(!dropdown.classList.contains('open')||!rows.length)return;
+      if(e.key==='ArrowDown'){e.preventDefault();setActive(Math.min(activeIdx+1,rows.length-1));}
+      else if(e.key==='ArrowUp'){e.preventDefault();setActive(Math.max(activeIdx-1,0));}
+      else if(e.key==='Enter'&&activeIdx>=0){e.preventDefault();selectCustomer(activeIdx);}
+      else if(e.key==='Escape'){closeDropdown();}
+    });
+
+    searchInput.addEventListener('blur',()=>setTimeout(closeDropdown,150));
+  })();
   el('fRepeat').addEventListener('change',()=>{
     el('repeatOptions').style.display=el('fRepeat').checked?'':'none';
     el('modalSaveBtn').textContent=el('fRepeat').checked?'Create Repeat Bookings':'Create Booking';
