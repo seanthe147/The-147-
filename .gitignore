@@ -39,3 +39,7 @@ yarn-error.*
 .vercel
 
 .env
+
+# iOS build credentials (sensitive - do not commit)
+ios-creds/
+credentials.json
