@@ -652,6 +652,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ message: "Staff account deleted" });
   });
 
+  app.get("/api/staff/customers/search", staffAuth, async (req, res) => {
+    const q = String(req.query.q || "").trim();
+    if (q.length < 2) return res.json([]);
+    try {
+      const results = await storage.searchCustomers(q, 6);
+      res.json(results);
+    } catch (err) {
+      console.error("[customer-search] error:", err);
+      res.json([]);
+    }
+  });
+
   app.patch("/api/staff/approve", staffAuth, ownerAuth, async (req, res) => {
     console.log("[approve] req.body:", JSON.stringify(req.body));
     const { username, approvalStatus } = req.body;

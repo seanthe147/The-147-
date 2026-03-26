@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -91,10 +91,44 @@ export default function AdminBookingsScreen() {
   const [wiNotes, setWiNotes] = useState("");
   const [wiError, setWiError] = useState("");
 
+  // Customer lookup autocomplete
+  type CustomerSuggestion = { name: string; phone: string; email: string };
+  const [suggestions, setSuggestions] = useState<CustomerSuggestion[]>([]);
+  const [suggestionsFor, setSuggestionsFor] = useState<"name" | "phone" | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const searchCustomers = useCallback((q: string, field: "name" | "phone") => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (q.trim().length < 2) { setSuggestions([]); setSuggestionsFor(null); return; }
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const { getApiUrl } = await import("@/lib/query-client");
+        const url = new URL("/api/staff/customers/search", getApiUrl());
+        url.searchParams.set("q", q.trim());
+        const res = await fetch(url.toString(), { credentials: "include" });
+        if (res.ok) {
+          const data: CustomerSuggestion[] = await res.json();
+          setSuggestions(data);
+          setSuggestionsFor(data.length > 0 ? field : null);
+        }
+      } catch { /* silently ignore */ }
+    }, 300);
+  }, []);
+
+  const applyCustomerSuggestion = (s: CustomerSuggestion) => {
+    setWiName(s.name);
+    setWiPhone(s.phone);
+    // Don't auto-fill the email if it looks like a generated walk-in placeholder
+    if (s.email && !s.email.includes("@the147.co.uk")) setWiEmail(s.email);
+    setSuggestions([]);
+    setSuggestionsFor(null);
+  };
+
   const resetWalkIn = () => {
     setWiSource("walkin"); setWiName(""); setWiPhone(""); setWiEmail("");
     setWiTableType("snooker"); setWiTableNumber(""); setWiTime("10:00");
     setWiDuration(1); setWiGuestCount(2); setWiNotes(""); setWiError("");
+    setSuggestions([]); setSuggestionsFor(null);
   };
 
   useEffect(() => {
@@ -539,26 +573,66 @@ export default function AdminBookingsScreen() {
 
               {/* Customer Details */}
               <Text style={styles.fieldLabel}>CUSTOMER NAME *</Text>
-              <TextInput
-                style={styles.fieldInput}
-                value={wiName}
-                onChangeText={setWiName}
-                placeholder="Full name"
-                placeholderTextColor={Colors.light.textSecondary}
-                autoCapitalize="words"
-                testID="wi-name"
-              />
+              <View style={styles.autocompleteWrap}>
+                <TextInput
+                  style={styles.fieldInput}
+                  value={wiName}
+                  onChangeText={(v) => { setWiName(v); searchCustomers(v, "name"); }}
+                  placeholder="Full name"
+                  placeholderTextColor={Colors.light.textSecondary}
+                  autoCapitalize="words"
+                  testID="wi-name"
+                />
+                {suggestionsFor === "name" && suggestions.length > 0 && (
+                  <View style={styles.suggestionsList}>
+                    {suggestions.map((s, i) => (
+                      <Pressable
+                        key={i}
+                        onPress={() => applyCustomerSuggestion(s)}
+                        style={({ pressed }) => [styles.suggestionItem, pressed && styles.suggestionItemPressed, i < suggestions.length - 1 && styles.suggestionItemBorder]}
+                      >
+                        <Ionicons name="person-outline" size={14} color={Colors.brand.blue} style={{ marginTop: 1 }} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.suggestionName}>{s.name}</Text>
+                          <Text style={styles.suggestionSub}>{s.phone}{s.email && !s.email.includes("@the147.co.uk") ? `  ·  ${s.email}` : ""}</Text>
+                        </View>
+                        <Ionicons name="arrow-forward-outline" size={13} color={Colors.light.textSecondary} />
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+              </View>
 
               <Text style={styles.fieldLabel}>PHONE *</Text>
-              <TextInput
-                style={styles.fieldInput}
-                value={wiPhone}
-                onChangeText={setWiPhone}
-                placeholder="Phone number"
-                placeholderTextColor={Colors.light.textSecondary}
-                keyboardType="phone-pad"
-                testID="wi-phone"
-              />
+              <View style={styles.autocompleteWrap}>
+                <TextInput
+                  style={styles.fieldInput}
+                  value={wiPhone}
+                  onChangeText={(v) => { setWiPhone(v); searchCustomers(v, "phone"); }}
+                  placeholder="Phone number"
+                  placeholderTextColor={Colors.light.textSecondary}
+                  keyboardType="phone-pad"
+                  testID="wi-phone"
+                />
+                {suggestionsFor === "phone" && suggestions.length > 0 && (
+                  <View style={styles.suggestionsList}>
+                    {suggestions.map((s, i) => (
+                      <Pressable
+                        key={i}
+                        onPress={() => applyCustomerSuggestion(s)}
+                        style={({ pressed }) => [styles.suggestionItem, pressed && styles.suggestionItemPressed, i < suggestions.length - 1 && styles.suggestionItemBorder]}
+                      >
+                        <Ionicons name="call-outline" size={14} color={Colors.brand.blue} style={{ marginTop: 1 }} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.suggestionName}>{s.name}</Text>
+                          <Text style={styles.suggestionSub}>{s.phone}</Text>
+                        </View>
+                        <Ionicons name="arrow-forward-outline" size={13} color={Colors.light.textSecondary} />
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+              </View>
 
               <Text style={styles.fieldLabel}>EMAIL (OPTIONAL)</Text>
               <TextInput
@@ -1005,6 +1079,50 @@ const styles = StyleSheet.create({
     padding: 5,
     alignItems: "center",
     justifyContent: "center",
+  },
+  autocompleteWrap: {
+    position: "relative",
+    zIndex: 10,
+    marginBottom: 0,
+  },
+  suggestionsList: {
+    backgroundColor: Colors.light.background,
+    borderWidth: 1,
+    borderColor: Colors.brand.blue + "40",
+    borderRadius: 10,
+    marginTop: 4,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  suggestionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: Colors.light.background,
+  },
+  suggestionItemPressed: {
+    backgroundColor: Colors.brand.blue + "10",
+  },
+  suggestionItemBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
+  },
+  suggestionName: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: Colors.light.text,
+  },
+  suggestionSub: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginTop: 1,
   },
   sourceRow: {
     flexDirection: "row",

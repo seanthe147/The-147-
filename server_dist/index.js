@@ -564,6 +564,38 @@ var init_storage = __esm({
         }
         return migrated;
       }
+      async searchCustomers(query, limit = 6) {
+        if (!query || query.trim().length < 2) return [];
+        const q = query.trim().toLowerCase();
+        const allBookings = await db.select().from(bookings).orderBy(bookings.createdAt);
+        const seen = /* @__PURE__ */ new Set();
+        const matches = [];
+        for (const raw of allBookings) {
+          try {
+            const name = decrypt(raw.customerName);
+            const email = decrypt(raw.customerEmail);
+            const phone = decrypt(raw.customerPhone);
+            if (name === "ANONYMIZED" || email.includes("@removed.local")) continue;
+            const dedupeKey = email.toLowerCase();
+            if (seen.has(dedupeKey)) continue;
+            const nameLower = name.toLowerCase();
+            const phoneLower = phone.toLowerCase().replace(/\s/g, "");
+            const qClean = q.replace(/\s/g, "");
+            const nameMatch = nameLower.includes(q);
+            const phoneMatch = phoneLower.includes(qClean);
+            if (nameMatch || phoneMatch) {
+              seen.add(dedupeKey);
+              const score = (nameLower.startsWith(q) ? 2 : 0) + (phoneMatch ? 1 : 0);
+              matches.push({ name, phone, email, score });
+              if (matches.length >= limit * 3) break;
+            }
+          } catch {
+            continue;
+          }
+        }
+        matches.sort((a, b) => b.score - a.score);
+        return matches.slice(0, limit).map(({ name, phone, email }) => ({ name, phone, email }));
+      }
       async getEvents() {
         return db.select().from(events).orderBy(events.date);
       }
@@ -1381,6 +1413,17 @@ async function registerRoutes(app2) {
     const deleted = await storage.deleteStaffUser(id);
     if (!deleted) return res.status(404).json({ message: "Staff user not found" });
     res.json({ message: "Staff account deleted" });
+  });
+  app2.get("/api/staff/customers/search", staffAuth, async (req, res) => {
+    const q = String(req.query.q || "").trim();
+    if (q.length < 2) return res.json([]);
+    try {
+      const results = await storage.searchCustomers(q, 6);
+      res.json(results);
+    } catch (err) {
+      console.error("[customer-search] error:", err);
+      res.json([]);
+    }
   });
   app2.patch("/api/staff/approve", staffAuth, ownerAuth, async (req, res) => {
     console.log("[approve] req.body:", JSON.stringify(req.body));

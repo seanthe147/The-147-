@@ -118,6 +118,7 @@ export interface IStorage {
   getAllStaffUsers(): Promise<StaffUser[]>;
   updateStaffPin(username: string, pinHash: string, pinSalt: string): Promise<StaffUser | undefined>;
   migrateEncryptExistingBookings(): Promise<number>;
+  searchCustomers(query: string, limit?: number): Promise<Array<{ name: string; phone: string; email: string }>>;
   createCustomer(email: string, name: string, phone: string | null, passwordHash: string): Promise<Customer>;
   getCustomerByEmail(email: string): Promise<Customer | undefined>;
   getCustomerById(id: number): Promise<Customer | undefined>;
@@ -468,6 +469,38 @@ export class DatabaseStorage implements IStorage {
       migrated++;
     }
     return migrated;
+  }
+
+  async searchCustomers(query: string, limit = 6): Promise<Array<{ name: string; phone: string; email: string }>> {
+    if (!query || query.trim().length < 2) return [];
+    const q = query.trim().toLowerCase();
+    // Fetch all bookings (decrypted) and search in-memory (data is encrypted at rest)
+    const allBookings = await db.select().from(bookings).orderBy(bookings.createdAt);
+    const seen = new Set<string>();
+    const matches: Array<{ name: string; phone: string; email: string; score: number }> = [];
+    for (const raw of allBookings) {
+      try {
+        const name = decrypt(raw.customerName);
+        const email = decrypt(raw.customerEmail);
+        const phone = decrypt(raw.customerPhone);
+        if (name === "ANONYMIZED" || email.includes("@removed.local")) continue;
+        const dedupeKey = email.toLowerCase();
+        if (seen.has(dedupeKey)) continue;
+        const nameLower = name.toLowerCase();
+        const phoneLower = phone.toLowerCase().replace(/\s/g, "");
+        const qClean = q.replace(/\s/g, "");
+        const nameMatch = nameLower.includes(q);
+        const phoneMatch = phoneLower.includes(qClean);
+        if (nameMatch || phoneMatch) {
+          seen.add(dedupeKey);
+          const score = (nameLower.startsWith(q) ? 2 : 0) + (phoneMatch ? 1 : 0);
+          matches.push({ name, phone, email, score });
+          if (matches.length >= limit * 3) break; // collect enough to sort then trim
+        }
+      } catch { continue; }
+    }
+    matches.sort((a, b) => b.score - a.score);
+    return matches.slice(0, limit).map(({ name, phone, email }) => ({ name, phone, email }));
   }
 
   async getEvents(): Promise<Event[]> {
