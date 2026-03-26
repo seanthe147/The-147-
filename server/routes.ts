@@ -1052,6 +1052,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(201).json(booking);
   });
 
+  // Staff-only: create repeat bookings (daily or weekly) — NOT available to customers or widget
+  app.post("/api/staff/bookings/repeat", staffAuth, async (req, res) => {
+    const { repeatType, repeatCount, ...bookingData } = req.body ?? {};
+    if (!repeatType || !["daily", "weekly"].includes(repeatType)) {
+      return res.status(400).json({ message: "repeatType must be 'daily' or 'weekly'" });
+    }
+    const count = Number(repeatCount);
+    if (!count || count < 2 || count > 52) {
+      return res.status(400).json({ message: "repeatCount must be between 2 and 52" });
+    }
+    const raw = { ...bookingData };
+    for (const key of ["tableNumber", "guestCount", "notes", "emailHash"] as const) {
+      if (raw[key] === null || raw[key] === undefined) delete raw[key];
+    }
+    if (raw.tableNumber !== undefined) raw.tableNumber = String(raw.tableNumber);
+    if (raw.duration !== undefined) raw.duration = Number(raw.duration);
+    const parsed = insertBookingSchema.safeParse({ ...raw, gdprConsent: true });
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid booking data", errors: parsed.error.flatten() });
+    }
+    const intervalDays = repeatType === "daily" ? 1 : 7;
+    const toSlotMins = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + (m || 0); };
+    const DINING_TABLE_COUNT = 25;
+    const DINING_TABLE_START = 18;
+    const createdBookings: any[] = [];
+    const skippedDates: string[] = [];
+    const startDate = new Date(parsed.data.date + "T12:00:00Z");
+
+    for (let i = 0; i < count; i++) {
+      const d = new Date(startDate);
+      d.setUTCDate(startDate.getUTCDate() + i * intervalDays);
+      const dateStr = d.toISOString().split("T")[0];
+      try {
+        let finalTableNumber = parsed.data.tableNumber ?? null;
+        if (parsed.data.tableType === "dining") {
+          const allBookings = await storage.getBookingsByDate(dateStr);
+          const confirmedDining = allBookings.filter(b => b.tableType === "dining" && b.status === "confirmed" && b.tableNumber);
+          const reqStart = toSlotMins(parsed.data.startTime);
+          const reqEnd = reqStart + (parsed.data.duration ?? 1) * 60;
+          const occupied = new Set<string>();
+          for (const b of confirmedDining) {
+            const bStart = toSlotMins(b.startTime);
+            const bEnd = bStart + (b.duration ?? 1) * 60;
+            if (reqStart < bEnd && reqEnd > bStart && b.tableNumber) occupied.add(b.tableNumber);
+          }
+          let assigned: string | null = null;
+          for (let t = DINING_TABLE_START; t < DINING_TABLE_START + DINING_TABLE_COUNT; t++) {
+            if (!occupied.has(String(t))) { assigned = String(t); break; }
+          }
+          if (!assigned) { skippedDates.push(dateStr); continue; }
+          finalTableNumber = assigned;
+        } else {
+          const bookedSlots = await storage.getBookedSlots(dateStr, parsed.data.tableType, finalTableNumber ?? undefined);
+          const reqStart = parseInt(parsed.data.startTime.replace(":", ""));
+          const reqEnd = reqStart + (parsed.data.duration ?? 1) * 100;
+          let conflict = false;
+          for (const slot of bookedSlots) {
+            const sStart = parseInt(slot.startTime.replace(":", ""));
+            const sEnd = sStart + slot.duration * 100;
+            if (reqStart < sEnd && reqEnd > sStart) { conflict = true; break; }
+          }
+          if (conflict) { skippedDates.push(dateStr); continue; }
+        }
+        const booking = await storage.createBooking({ ...parsed.data, date: dateStr, tableNumber: finalTableNumber ?? undefined });
+        createdBookings.push(booking);
+      } catch (err) {
+        console.error(`[repeat-booking] Error for date ${dateStr}:`, err);
+        skippedDates.push(dateStr);
+      }
+    }
+    res.status(201).json({ created: createdBookings.length, skipped: skippedDates.length, skippedDates, bookings: createdBookings });
+  });
+
   app.get("/api/bookings/availability", async (req, res) => {
     const { date, tableType, tableNumber } = req.query;
     if (!date || !tableType) {

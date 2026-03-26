@@ -613,6 +613,32 @@
         <input type="checkbox" id="fGdpr">
         <label for="fGdpr">Customer consents to data processing</label>
       </div>
+      <!-- REPEAT BOOKING — staff portal only, hidden in edit mode -->
+      <div class="divider" id="repeatDivider"></div>
+      <div id="repeatSection">
+        <div class="checkbox-row">
+          <input type="checkbox" id="fRepeat">
+          <label for="fRepeat" style="font-weight:600">Set as repeat booking</label>
+        </div>
+        <div id="repeatOptions" style="display:none;margin-top:14px">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Repeat every</label>
+              <select class="form-input" id="fRepeatType">
+                <option value="weekly">Week</option>
+                <option value="daily">Day</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Number of occurrences</label>
+              <input class="form-input" type="number" id="fRepeatCount" min="2" max="52" value="4" style="max-width:120px">
+            </div>
+          </div>
+          <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px 14px;font-size:12px;color:#1E40AF;line-height:1.5">
+            The first booking will be on the selected date. Each subsequent booking follows at the chosen interval. Any dates with a conflict will be skipped automatically.
+          </div>
+        </div>
+      </div>
     </div>
     <div class="modal-ft">
       <button class="btn btn-secondary" id="modalCancelBtn">Cancel</button>
@@ -1065,8 +1091,9 @@
   /* ── Booking Modal ── */
   function openBookingModal(booking){
     editingId=booking?booking.id:null;
-    el('modalTitle').textContent=booking?'Edit Booking':'New Booking';
-    el('modalSaveBtn').textContent=booking?'Save Changes':'Create Booking';
+    const isNew=!booking;
+    el('modalTitle').textContent=isNew?'New Booking':'Edit Booking';
+    el('modalSaveBtn').textContent=isNew?'Create Booking':'Save Changes';
     el('modalErr').classList.remove('show');
     el('fTableType').value=booking?booking.tableType:'snooker';
     el('fTableNum').value=booking&&booking.tableNumber?String(booking.tableNumber):'1';
@@ -1083,6 +1110,13 @@
     el('fPhone').value=booking?booking.customerPhone||'':'';
     el('fNotes').value=booking?booking.notes||'':'';
     el('fGdpr').checked=!!booking;
+    // Repeat section: only available for new bookings
+    el('repeatDivider').style.display=isNew?'':'none';
+    el('repeatSection').style.display=isNew?'':'none';
+    el('fRepeat').checked=false;
+    el('repeatOptions').style.display='none';
+    el('fRepeatCount').value='4';
+    el('fRepeatType').value='weekly';
     openOverlay('bookingModal');
     setTimeout(()=>el('fName').focus(),100);
   }
@@ -1092,6 +1126,10 @@
     el('tableNumGroup').style.display=(t==='snooker'||t==='pool')?'':'none';
     el('tableNumGroup').querySelector('label').textContent=t==='pool'?'Pool Table # (1–6)':'Table # (1–10)';
     el('guestCountGroup').style.display=t==='dining'?'':'none';
+  });
+  el('fRepeat').addEventListener('change',()=>{
+    el('repeatOptions').style.display=el('fRepeat').checked?'':'none';
+    el('modalSaveBtn').textContent=el('fRepeat').checked?'Create Repeat Bookings':'Create Booking';
   });
   el('modalClose').addEventListener('click',()=>closeOverlay('bookingModal'));
   el('modalCancelBtn').addEventListener('click',()=>closeOverlay('bookingModal'));
@@ -1122,6 +1160,23 @@
     };
     el('modalSaveBtn').disabled=true;
     try{
+      // Repeat booking (new bookings only)
+      if(!editingId&&el('fRepeat').checked){
+        const repeatType=el('fRepeatType').value;
+        const repeatCount=parseInt(el('fRepeatCount').value);
+        if(isNaN(repeatCount)||repeatCount<2||repeatCount>52){
+          err.textContent='Number of occurrences must be between 2 and 52';err.classList.add('show');return;
+        }
+        const r=await api('/api/staff/bookings/repeat',{method:'POST',body:JSON.stringify({...payload,repeatType,repeatCount})});
+        const d=await r.json();
+        if(!r.ok){err.textContent=d.message||'Failed to create repeat bookings';err.classList.add('show');return}
+        closeOverlay('bookingModal');
+        const skippedMsg=d.skipped>0?`, ${d.skipped} skipped (conflicts)`:'';
+        toast(`${d.created} booking${d.created!==1?'s':''} created${skippedMsg}`,'success');
+        loadBookings();
+        return;
+      }
+      // Single booking (new or edit)
       const url=editingId?'/api/bookings/'+editingId:'/api/bookings';
       const method=editingId?'PUT':'POST';
       const r=await api(url,{method,body:JSON.stringify(payload)});
