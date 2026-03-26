@@ -1827,6 +1827,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/loyalty/history", async (req, res) => {
+    if (!square.isConfigured()) return res.status(503).json({ message: "Not configured" });
+    const sessionToken = req.headers["x-loyalty-session"] as string;
+    const sessionPhone = sessionToken ? validateLoyaltySession(sessionToken) : null;
+    if (!sessionPhone) return res.status(401).json({ message: "Unauthorised" });
+    try {
+      const account = await square.searchLoyaltyAccount(sessionPhone);
+      if (!account) return res.json({ events: [], rewards: [] });
+      const [events, rewards] = await Promise.all([
+        square.searchLoyaltyEvents(account.id, 15),
+        square.searchIssuedRewards(account.id),
+      ]);
+      res.json({ events, rewards });
+    } catch (err: any) {
+      console.error("Square loyalty history error:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/loyalty/lookup", async (req, res) => {
     if (!square.isConfigured()) {
       return res.status(503).json({ message: "Loyalty program not configured" });

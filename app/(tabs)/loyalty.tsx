@@ -45,6 +45,25 @@ interface LoyaltyProgram {
   accrual_rules: { accrual_type: string; points: number; spend_data?: { amount: number; currency: string } }[];
 }
 
+interface LoyaltyEvent {
+  id: string;
+  type: string;
+  created_at: string;
+  accumulate_points?: { points: number };
+  adjust_points?: { points: number; reason?: string };
+  expire_points?: { points: number };
+  create_reward?: { reward_tier_id: string };
+  redeem_reward?: { reward_tier_id?: string };
+  delete_reward?: { reward_tier_id?: string };
+}
+
+interface IssuedReward {
+  id: string;
+  reward_tier_id: string;
+  status: string;
+  created_at: string;
+}
+
 type AuthStep = "loading" | "phone" | "code" | "authenticated";
 
 function PointsDisplay({ balance, terminology }: { balance: number; terminology?: { one: string; other: string } }) {
@@ -65,6 +84,56 @@ function PointsDisplay({ balance, terminology }: { balance: number; terminology?
   );
 }
 
+function ActiveRewardsSection({
+  rewards,
+  program,
+}: {
+  rewards: IssuedReward[];
+  program: LoyaltyProgram | null;
+}) {
+  if (!rewards.length) return null;
+  return (
+    <View style={styles.activeRewardsSection}>
+      <View style={styles.sectionTitleRow}>
+        <Ionicons name="gift" size={18} color={Colors.brand.gold} />
+        <Text style={styles.sectionTitle}>Your Active Rewards</Text>
+      </View>
+      <Text style={styles.activeRewardsSubtitle}>
+        You have {rewards.length} reward{rewards.length !== 1 ? "s" : ""} ready to use — show this screen to a member of staff.
+      </Text>
+      {rewards.map((reward) => {
+        const tier = program?.reward_tiers?.find((t) => t.id === reward.reward_tier_id);
+        const earned = new Date(reward.created_at).toLocaleDateString("en-GB", {
+          day: "numeric", month: "short", year: "numeric",
+        });
+        return (
+          <View key={reward.id} style={styles.activeRewardCard}>
+            <LinearGradient
+              colors={["#FFF9E6", "#FFF3CC"]}
+              style={styles.activeRewardInner}
+            >
+              <View style={styles.activeRewardIconWrap}>
+                <Ionicons name="gift" size={28} color={Colors.brand.gold} />
+              </View>
+              <View style={styles.activeRewardText}>
+                <Text style={styles.activeRewardName}>{tier?.name ?? "Reward"}</Text>
+                <Text style={styles.activeRewardDate}>Issued {earned}</Text>
+              </View>
+              <View style={styles.activeRewardBadge}>
+                <Text style={styles.activeRewardBadgeText}>READY</Text>
+              </View>
+            </LinearGradient>
+            <View style={styles.showToStaffBanner}>
+              <Ionicons name="people" size={14} color={Colors.brand.blue} />
+              <Text style={styles.showToStaffText}>Show this to a member of staff to redeem</Text>
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 function RewardTierCard({
   tier,
   balance,
@@ -77,6 +146,7 @@ function RewardTierCard({
   const canRedeem = balance >= tier.points;
   const progress = Math.min(balance / tier.points, 1);
   const pointsLabel = terminology ? terminology.other : "points";
+  const remaining = tier.points - balance;
 
   return (
     <View style={[styles.tierCard, canRedeem && styles.tierCardRedeemable]}>
@@ -102,8 +172,117 @@ function RewardTierCard({
         <View style={[styles.progressBarFill, { width: `${progress * 100}%` }]} />
       </View>
       <Text style={styles.progressText}>
-        {canRedeem ? "You have enough points!" : `${tier.points - balance} more ${pointsLabel} needed`}
+        {canRedeem
+          ? "Ask a member of staff to redeem this reward"
+          : `${remaining} more ${pointsLabel} needed`}
       </Text>
+    </View>
+  );
+}
+
+function ActivityFeed({
+  events,
+  program,
+}: {
+  events: LoyaltyEvent[];
+  program: LoyaltyProgram | null;
+}) {
+  if (!events.length) return null;
+
+  function describeEvent(event: LoyaltyEvent): { label: string; sub: string; icon: React.ComponentProps<typeof Ionicons>["name"]; color: string; points?: number } {
+    const tierName = (tierId?: string) =>
+      tierId ? (program?.reward_tiers?.find((t) => t.id === tierId)?.name ?? "reward") : "reward";
+
+    switch (event.type) {
+      case "ACCUMULATE_POINTS":
+        return {
+          label: `Earned ${event.accumulate_points?.points ?? 0} points`,
+          sub: "Points added to your account",
+          icon: "arrow-up-circle",
+          color: "#16A34A",
+          points: event.accumulate_points?.points,
+        };
+      case "ADJUST_POINTS": {
+        const pts = event.adjust_points?.points ?? 0;
+        return {
+          label: pts >= 0 ? `Points added (+${pts})` : `Points deducted (${pts})`,
+          sub: event.adjust_points?.reason ?? "Manual adjustment",
+          icon: pts >= 0 ? "add-circle" : "remove-circle",
+          color: pts >= 0 ? "#16A34A" : "#DC2626",
+          points: pts,
+        };
+      }
+      case "CREATE_REWARD":
+        return {
+          label: `Reward issued`,
+          sub: tierName(event.create_reward?.reward_tier_id),
+          icon: "gift",
+          color: Colors.brand.gold,
+        };
+      case "REDEEM_REWARD":
+        return {
+          label: `Reward redeemed`,
+          sub: tierName(event.redeem_reward?.reward_tier_id),
+          icon: "checkmark-circle",
+          color: Colors.brand.blue,
+        };
+      case "DELETE_REWARD":
+        return {
+          label: `Reward cancelled`,
+          sub: tierName(event.delete_reward?.reward_tier_id),
+          icon: "close-circle",
+          color: "#9CA3AF",
+        };
+      case "EXPIRE_POINTS":
+        return {
+          label: `Points expired (-${event.expire_points?.points ?? 0})`,
+          sub: "Unused points have expired",
+          icon: "time-outline",
+          color: "#9CA3AF",
+          points: -(event.expire_points?.points ?? 0),
+        };
+      case "CREATE_ACCOUNT":
+        return {
+          label: "Joined The 147 Rewards",
+          sub: "Welcome to our loyalty programme!",
+          icon: "star",
+          color: Colors.brand.gold,
+        };
+      default:
+        return {
+          label: event.type.replace(/_/g, " ").toLowerCase(),
+          sub: "",
+          icon: "ellipse-outline",
+          color: "#9CA3AF",
+        };
+    }
+  }
+
+  return (
+    <View style={styles.activitySection}>
+      <View style={styles.sectionTitleRow}>
+        <Ionicons name="time" size={18} color={Colors.brand.blue} />
+        <Text style={styles.sectionTitle}>Recent Activity</Text>
+      </View>
+      {events.map((event, idx) => {
+        const info = describeEvent(event);
+        const date = new Date(event.created_at);
+        const dateStr = date.toLocaleDateString("en-GB", {
+          day: "numeric", month: "short", year: "numeric",
+        });
+        return (
+          <View key={event.id} style={[styles.activityRow, idx < events.length - 1 && styles.activityRowBorder]}>
+            <View style={[styles.activityIconWrap, { backgroundColor: `${info.color}18` }]}>
+              <Ionicons name={info.icon} size={20} color={info.color} />
+            </View>
+            <View style={styles.activityText}>
+              <Text style={styles.activityLabel}>{info.label}</Text>
+              {info.sub ? <Text style={styles.activitySub}>{info.sub}</Text> : null}
+            </View>
+            <Text style={styles.activityDate}>{dateStr}</Text>
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -179,6 +358,21 @@ export default function LoyaltyScreen() {
       return res.json();
     },
     staleTime: 5 * 60 * 1000,
+  });
+
+  const historyQuery = useQuery({
+    queryKey: ["loyalty-history", sessionToken],
+    queryFn: async () => {
+      if (!sessionToken) return { events: [], rewards: [] };
+      const res = await fetch(`${API_BASE}/api/loyalty/history`, {
+        headers: { "x-loyalty-session": sessionToken },
+      });
+      if (!res.ok) return { events: [], rewards: [] };
+      return res.json() as Promise<{ events: LoyaltyEvent[]; rewards: IssuedReward[] }>;
+    },
+    enabled: step === "authenticated" && !!sessionToken && !!account,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 
   const sendCodeMutation = useMutation({
@@ -312,6 +506,7 @@ export default function LoyaltyScreen() {
     if (sessionToken) {
       setLookupDone(false);
       lookupMutation.mutate(sessionToken);
+      historyQuery.refetch();
     }
   }, [sessionToken]);
 
@@ -344,6 +539,8 @@ export default function LoyaltyScreen() {
   const program: LoyaltyProgram | null = programData?.program || null;
   const programActive = programData?.active === true;
   const isLoading = sendCodeMutation.isPending || verifyCodeMutation.isPending || lookupMutation.isPending || enrollMutation.isPending;
+  const historyEvents: LoyaltyEvent[] = historyQuery.data?.events ?? [];
+  const issuedRewards: IssuedReward[] = historyQuery.data?.rewards ?? [];
 
   return (
     <KeyboardAvoidingView
@@ -591,9 +788,16 @@ export default function LoyaltyScreen() {
                   </View>
                 </View>
 
+                {issuedRewards.length > 0 && (
+                  <ActiveRewardsSection rewards={issuedRewards} program={program} />
+                )}
+
                 {program?.reward_tiers && program.reward_tiers.length > 0 && (
                   <View style={styles.rewardsSection}>
-                    <Text style={styles.sectionTitle}>Available Rewards</Text>
+                    <View style={styles.sectionTitleRow}>
+                      <Ionicons name="ribbon" size={18} color={Colors.brand.gold} />
+                      <Text style={styles.sectionTitle}>Reward Tiers</Text>
+                    </View>
                     {program.reward_tiers
                       .sort((a, b) => a.points - b.points)
                       .map((tier) => (
@@ -607,10 +811,21 @@ export default function LoyaltyScreen() {
                   </View>
                 )}
 
+                {historyEvents.length > 0 && (
+                  <ActivityFeed events={historyEvents} program={program} />
+                )}
+
+                {historyQuery.isFetching && (
+                  <View style={styles.historyLoadingRow}>
+                    <ActivityIndicator size="small" color={Colors.brand.blue} />
+                    <Text style={styles.historyLoadingText}>Loading activity…</Text>
+                  </View>
+                )}
+
                 <View style={styles.actionRow}>
                   <Pressable
                     onPress={handleRefresh}
-                    disabled={isLoading}
+                    disabled={isLoading || historyQuery.isFetching}
                     style={({ pressed }) => [
                       styles.refreshButton,
                       { opacity: pressed ? 0.85 : 1 },
@@ -718,11 +933,16 @@ const styles = StyleSheet.create({
     boxShadow: "0px 2px 8px rgba(0,0,0,0.06)",
     elevation: 2,
   },
+  sectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
   sectionTitle: {
     fontSize: 16,
     fontWeight: "700",
     color: Colors.light.text,
-    marginBottom: 12,
     fontFamily: "Montserrat_700Bold",
   },
   ruleRow: {
@@ -923,9 +1143,87 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontFamily: "Montserrat_400Regular",
   },
+  activeRewardsSection: {
+    marginHorizontal: 20,
+    marginTop: 20,
+  },
+  activeRewardsSubtitle: {
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+    marginBottom: 12,
+    fontFamily: "Montserrat_400Regular",
+    lineHeight: 18,
+  },
+  activeRewardCard: {
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: Colors.brand.gold,
+    overflow: "hidden",
+    marginBottom: 10,
+    boxShadow: "0px 2px 10px rgba(212,168,67,0.2)",
+    elevation: 3,
+  },
+  activeRewardInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    gap: 14,
+  },
+  activeRewardIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "rgba(212,168,67,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  activeRewardText: {
+    flex: 1,
+  },
+  activeRewardName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: Colors.light.text,
+    fontFamily: "Montserrat_700Bold",
+  },
+  activeRewardDate: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginTop: 2,
+    fontFamily: "Montserrat_400Regular",
+  },
+  activeRewardBadge: {
+    backgroundColor: Colors.brand.gold,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  activeRewardBadgeText: {
+    color: "#FFF",
+    fontSize: 11,
+    fontWeight: "700",
+    fontFamily: "Montserrat_700Bold",
+    letterSpacing: 0.5,
+  },
+  showToStaffBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: "#EFF6FF",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(212,168,67,0.2)",
+  },
+  showToStaffText: {
+    fontSize: 12,
+    color: Colors.brand.blue,
+    fontWeight: "600",
+    fontFamily: "Montserrat_600SemiBold",
+  },
   rewardsSection: {
-    margin: 20,
-    marginBottom: 0,
+    marginHorizontal: 20,
+    marginTop: 20,
   },
   tierCard: {
     backgroundColor: Colors.light.surface,
@@ -986,6 +1284,67 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.light.textSecondary,
     marginTop: 6,
+    fontFamily: "Montserrat_400Regular",
+  },
+  activitySection: {
+    marginHorizontal: 20,
+    marginTop: 20,
+    backgroundColor: Colors.light.surface,
+    borderRadius: 16,
+    padding: 16,
+    boxShadow: "0px 1px 4px rgba(0,0,0,0.04)",
+    elevation: 1,
+  },
+  activityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 10,
+  },
+  activityRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
+  },
+  activityIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  activityText: {
+    flex: 1,
+  },
+  activityLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: Colors.light.text,
+    fontFamily: "Montserrat_600SemiBold",
+  },
+  activitySub: {
+    fontSize: 11,
+    color: Colors.light.textSecondary,
+    marginTop: 2,
+    fontFamily: "Montserrat_400Regular",
+  },
+  activityDate: {
+    fontSize: 11,
+    color: Colors.light.textSecondary,
+    fontFamily: "Montserrat_400Regular",
+    textAlign: "right",
+    flexShrink: 0,
+  },
+  historyLoadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 12,
+  },
+  historyLoadingText: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
     fontFamily: "Montserrat_400Regular",
   },
   actionRow: {

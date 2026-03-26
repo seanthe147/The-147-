@@ -119,6 +119,36 @@ export async function deleteLoyaltyReward(rewardId: string) {
   await squareRequest("DELETE", `/v2/loyalty/rewards/${rewardId}`);
 }
 
+export async function searchLoyaltyEvents(accountId: string, limit = 10): Promise<any[]> {
+  try {
+    const data = await squareRequest("POST", "/v2/loyalty/events/search", {
+      query: {
+        filter: {
+          loyalty_account_filter: { loyalty_account_id: accountId },
+        },
+      },
+      limit,
+    });
+    return data.events || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function searchIssuedRewards(accountId: string): Promise<any[]> {
+  try {
+    const data = await squareRequest("POST", "/v2/loyalty/rewards/search", {
+      query: {
+        loyalty_account_id: accountId,
+        status: "ISSUED",
+      },
+    });
+    return data.rewards || [];
+  } catch {
+    return [];
+  }
+}
+
 export function isConfigured(): boolean {
   return !!(process.env.SQUARE_ACCESS_TOKEN && process.env.SQUARE_LOCATION_ID);
 }
