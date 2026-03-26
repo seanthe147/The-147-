@@ -33,17 +33,24 @@ const SNOOKER_TABLES = Array.from({ length: 10 }, (_, i) => (i + 1).toString());
 const POOL_TABLES = Array.from({ length: 6 }, (_, i) => (i + 1).toString());
 const GUEST_COUNT_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
 
-function getNext7Days(): Array<{ label: string; date: string; dayName: string; dayNum: string }> {
-  const days: Array<{ label: string; date: string; dayName: string; dayNum: string }> = [];
-  const now = new Date();
+const MAX_WEEKS_AHEAD = 26;
+
+function getWeekDays(weekOffset: number): Array<{ label: string; date: string; dayName: string; dayNum: string; monthLabel: string }> {
+  const days: Array<{ label: string; date: string; dayName: string; dayNum: string; monthLabel: string }> = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const startDate = new Date(today);
+  startDate.setDate(startDate.getDate() + weekOffset * 7);
   for (let i = 0; i < 7; i++) {
-    const d = new Date(now);
+    const d = new Date(startDate);
     d.setDate(d.getDate() + i);
     const date = d.toISOString().slice(0, 10);
     const dayName = d.toLocaleDateString("en-GB", { weekday: "short" });
     const dayNum = d.getDate().toString();
-    const label = i === 0 ? "Today" : i === 1 ? "Tomorrow" : dayName;
-    days.push({ label, date, dayName, dayNum });
+    const monthLabel = d.toLocaleDateString("en-GB", { month: "short" });
+    const diffDays = Math.round((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const label = diffDays === 0 ? "Today" : diffDays === 1 ? "Tmrw" : dayName;
+    days.push({ label, date, dayName, dayNum, monthLabel });
   }
   return days;
 }
@@ -67,6 +74,7 @@ export default function BookScreen() {
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
   const [gdprConsent, setGdprConsent] = useState(false);
+  const [weekOffset, setWeekOffset] = useState(0);
   const { isAuthenticated, customer, login, register } = useCustomerAuth();
   const [autoFilled, setAutoFilled] = useState(false);
 
@@ -122,7 +130,7 @@ export default function BookScreen() {
     }
   };
 
-  const days = useMemo(() => getNext7Days(), []);
+  const days = useMemo(() => getWeekDays(weekOffset), [weekOffset]);
 
   const isSnooker = selectedTable === "snooker";
   const isPool = selectedTable === "pool";
@@ -404,6 +412,44 @@ export default function BookScreen() {
               </Pressable>
 
               <Text style={styles.stepTitle}>Pick a Date</Text>
+
+              <View style={styles.weekNavRow}>
+                <Pressable
+                  onPress={() => {
+                    const next = weekOffset - 1;
+                    setWeekOffset(next);
+                    if (selectedDate && !getWeekDays(next).some((d) => d.date === selectedDate)) {
+                      setSelectedDate(null);
+                      setSelectedTime(null);
+                    }
+                  }}
+                  disabled={weekOffset === 0}
+                  style={[styles.weekNavBtn, weekOffset === 0 && { opacity: 0.3 }]}
+                  testID="week-prev"
+                >
+                  <Ionicons name="chevron-back" size={20} color={Colors.brand.blue} />
+                </Pressable>
+                <Text style={styles.weekNavLabel}>
+                  {days[0].monthLabel} {days[0].dayNum} – {days[6].monthLabel} {days[6].dayNum}
+                  {weekOffset === 0 ? "  (This week)" : ""}
+                </Text>
+                <Pressable
+                  onPress={() => {
+                    const next = weekOffset + 1;
+                    setWeekOffset(next);
+                    if (selectedDate && !getWeekDays(next).some((d) => d.date === selectedDate)) {
+                      setSelectedDate(null);
+                      setSelectedTime(null);
+                    }
+                  }}
+                  disabled={weekOffset >= MAX_WEEKS_AHEAD}
+                  style={[styles.weekNavBtn, weekOffset >= MAX_WEEKS_AHEAD && { opacity: 0.3 }]}
+                  testID="week-next"
+                >
+                  <Ionicons name="chevron-forward" size={20} color={Colors.brand.blue} />
+                </Pressable>
+              </View>
+
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.daysRow}>
                 {days.map((day) => {
                   const isSelected = selectedDate === day.date;
@@ -443,7 +489,14 @@ export default function BookScreen() {
                     <ActivityIndicator color={Colors.brand.blue} style={{ marginTop: 16 }} />
                   ) : (
                     <View style={styles.timeGrid}>
-                      {BOOKING_HOURS.map((time) => {
+                      {BOOKING_HOURS.filter((time) => {
+                        if (!selectedDate) return true;
+                        const todayStr = new Date().toISOString().slice(0, 10);
+                        if (selectedDate !== todayStr) return true;
+                        const now = new Date();
+                        const slotHour = parseInt(time.split(":")[0]);
+                        return slotHour > now.getHours() + 1;
+                      }).map((time) => {
                         const booked = isSlotBooked(time, duration);
                         const isSelected = selectedTime === time;
                         const timeHour = parseInt(time.split(":")[0]);
@@ -1073,6 +1126,25 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_700Bold",
     fontSize: 16,
     color: "#FFFFFF",
+  },
+  weekNavRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  weekNavBtn: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: Colors.light.surface,
+  },
+  weekNavLabel: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: Colors.light.text,
+    flex: 1,
+    textAlign: "center",
   },
   daysRow: {
     marginBottom: 4,
