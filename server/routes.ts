@@ -1693,6 +1693,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ updated, pushed });
   });
 
+  app.post("/api/loyalty/phone-auth", async (req, res) => {
+    const ip = (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+    const rl = checkRateLimit(`phone-auth:${ip}`, 10, 15 * 60 * 1000);
+    if (!rl.allowed) {
+      res.setHeader("Retry-After", String(rl.retryAfter));
+      return res.status(429).json({ message: "Too many requests. Please wait before trying again." });
+    }
+    if (!square.isConfigured()) {
+      return res.status(503).json({ message: "Loyalty program not configured" });
+    }
+    const { phone } = req.body;
+    if (!phone || typeof phone !== "string") {
+      return res.status(400).json({ message: "Phone number is required" });
+    }
+    const phoneCleaned = phone.replace(/\s/g, "");
+    if (phoneCleaned.length < 10) {
+      return res.status(400).json({ message: "Please enter a valid UK phone number" });
+    }
+    try {
+      cleanupExpiredLoyaltySessions();
+      const sessionToken = randomBytes(32).toString("hex");
+      loyaltySessions.set(sessionToken, { phone: phoneCleaned, expiresAt: Date.now() + LOYALTY_SESSION_EXPIRY });
+      const account = await square.searchLoyaltyAccount(phoneCleaned);
+      if (!account) {
+        return res.json({ sessionToken, found: false, account: null });
+      }
+      res.json({
+        sessionToken,
+        found: true,
+        account: {
+          id: account.id,
+          balance: account.balance,
+          lifetime_points: account.lifetime_points,
+          enrolled_at: account.enrolled_at,
+          phone: account.mapping?.phone_number,
+        },
+      });
+    } catch (err: any) {
+      console.error("Square loyalty phone-auth error:", err.message);
+      res.status(err.statusCode || 500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/loyalty/send-code", async (req, res) => {
     const ip = (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "unknown").split(",")[0].trim();
     const rl = checkRateLimit(`otp:${ip}`, 10, 15 * 60 * 1000);
