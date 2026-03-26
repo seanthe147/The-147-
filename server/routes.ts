@@ -1150,12 +1150,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/staff-notices", staffAuth, managerAuth, async (req: any, res) => {
-    const { message } = req.body;
+    const { message, colour } = req.body;
     if (!message || typeof message !== "string" || !message.trim()) {
       return res.status(400).json({ message: "Notice message is required" });
     }
+    const validColour = ["amber", "red", "green"].includes(colour) ? colour : "amber";
     const createdBy = (req as any).staffUsername || "Manager";
-    const notice = await storage.createStaffNotice(message.trim(), createdBy);
+    const notice = await storage.createStaffNotice(message.trim(), createdBy, validColour);
     res.status(201).json(notice);
   });
 
@@ -1170,6 +1171,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const deletedBy = (req as any).staffUsername || "Manager";
     const deleted = await storage.deleteStaffNotice(id, deletedBy);
     if (!deleted) return res.status(404).json({ message: "Notice not found" });
+    res.status(204).send();
+  });
+
+  // Staff login pop-up notifications
+  app.get("/api/staff-popups", staffAuth, async (_req, res) => {
+    const popups = await storage.getStaffPopups();
+    res.json(popups);
+  });
+
+  app.post("/api/staff-popups", staffAuth, managerAuth, async (req: any, res) => {
+    const { title, message, colour } = req.body;
+    if (!title || typeof title !== "string" || !title.trim()) {
+      return res.status(400).json({ message: "Popup title is required" });
+    }
+    if (!message || typeof message !== "string" || !message.trim()) {
+      return res.status(400).json({ message: "Popup message is required" });
+    }
+    const validColour = ["amber", "red", "green"].includes(colour) ? colour : "amber";
+    const createdBy = (req as any).staffUsername || "Manager";
+    const popup = await storage.createStaffPopup(title.trim(), message.trim(), validColour, createdBy);
+    res.status(201).json(popup);
+  });
+
+  app.delete("/api/staff-popups/:id", staffAuth, managerAuth, async (req: any, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid popup ID" });
+    const deletedBy = (req as any).staffUsername || "Manager";
+    const deleted = await storage.deleteStaffPopup(id, deletedBy);
+    if (!deleted) return res.status(404).json({ message: "Popup not found" });
     res.status(204).send();
   });
 

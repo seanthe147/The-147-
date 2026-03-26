@@ -472,12 +472,32 @@
           <div style="max-width:700px">
             <div class="settings-section" style="max-width:none;margin-bottom:20px">
               <div class="settings-title">Post a Staff Notice</div>
-              <div class="settings-desc">Notices appear on every staff member's dashboard when they sign in to the app or web portal.</div>
+              <div class="settings-desc">Notices appear on every staff member's dashboard when they sign in. Choose a colour to indicate importance.</div>
               <div id="noticePostErr" class="modal-err"></div>
               <div class="form-group" style="margin-bottom:8px">
                 <label class="form-label">Message</label>
                 <textarea class="form-input" id="noticeMsg" placeholder="e.g. Doors close at midnight tonight — last orders 11:30pm." style="min-height:90px;resize:vertical" maxlength="300"></textarea>
                 <div style="text-align:right;font-size:11px;color:var(--text-3);margin-top:4px" id="noticeMsgCount">0 / 300</div>
+              </div>
+              <div class="form-group" style="margin-bottom:16px">
+                <label class="form-label">Importance</label>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 16px;border-radius:var(--r);border:2px solid var(--border);background:var(--amber-light);font-size:13px;font-weight:600;color:var(--amber);transition:border-color .15s">
+                    <input type="radio" name="noticeColour" value="amber" checked style="display:none">
+                    <span style="width:12px;height:12px;border-radius:50%;background:var(--amber);display:inline-block;flex-shrink:0"></span>
+                    Amber — General
+                  </label>
+                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 16px;border-radius:var(--r);border:2px solid var(--border);background:#FFF1F2;font-size:13px;font-weight:600;color:var(--red);transition:border-color .15s">
+                    <input type="radio" name="noticeColour" value="red" style="display:none">
+                    <span style="width:12px;height:12px;border-radius:50%;background:var(--red);display:inline-block;flex-shrink:0"></span>
+                    Red — Urgent
+                  </label>
+                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 16px;border-radius:var(--r);border:2px solid var(--border);background:var(--green-light);font-size:13px;font-weight:600;color:var(--green);transition:border-color .15s">
+                    <input type="radio" name="noticeColour" value="green" style="display:none">
+                    <span style="width:12px;height:12px;border-radius:50%;background:var(--green);display:inline-block;flex-shrink:0"></span>
+                    Green — Info
+                  </label>
+                </div>
               </div>
               <button class="btn btn-warning" id="noticePostBtn">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -493,6 +513,48 @@
               <div class="settings-title" style="color:var(--text-2)">Deletion History — Last 7 Days</div>
               <div class="settings-desc">A record of notices that were removed. Entries expire automatically after 7 days.</div>
               <div id="noticesHistory"><div class="loading-state"><div class="spinner"></div>Loading history…</div></div>
+            </div>
+            <!-- Login Pop-ups — managers & owners only -->
+            <div class="settings-section" style="max-width:none;margin-top:20px" id="popupSection">
+              <div class="settings-title">Login Pop-up Notifications</div>
+              <div class="settings-desc">Pop-ups appear as a modal alert the moment staff sign in. Use these for critical announcements that must be seen. Each pop-up is shown every login until removed.</div>
+              <div id="popupPostErr" class="modal-err"></div>
+              <div class="form-group" style="margin-bottom:8px">
+                <label class="form-label">Title</label>
+                <input class="form-input" type="text" id="popupTitle" placeholder="e.g. URGENT: Health &amp; Safety Update" maxlength="80">
+              </div>
+              <div class="form-group" style="margin-bottom:8px">
+                <label class="form-label">Message</label>
+                <textarea class="form-input" id="popupMsg" placeholder="Enter the full message staff must read…" style="min-height:80px;resize:vertical" maxlength="500"></textarea>
+              </div>
+              <div class="form-group" style="margin-bottom:16px">
+                <label class="form-label">Importance</label>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 16px;border-radius:var(--r);border:2px solid var(--border);background:var(--amber-light);font-size:13px;font-weight:600;color:var(--amber)">
+                    <input type="radio" name="popupColour" value="amber" checked style="display:none">
+                    <span style="width:12px;height:12px;border-radius:50%;background:var(--amber);display:inline-block;flex-shrink:0"></span>
+                    Amber — General
+                  </label>
+                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 16px;border-radius:var(--r);border:2px solid var(--border);background:#FFF1F2;font-size:13px;font-weight:600;color:var(--red)">
+                    <input type="radio" name="popupColour" value="red" style="display:none">
+                    <span style="width:12px;height:12px;border-radius:50%;background:var(--red);display:inline-block;flex-shrink:0"></span>
+                    Red — Urgent
+                  </label>
+                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 16px;border-radius:var(--r);border:2px solid var(--border);background:var(--green-light);font-size:13px;font-weight:600;color:var(--green)">
+                    <input type="radio" name="popupColour" value="green" style="display:none">
+                    <span style="width:12px;height:12px;border-radius:50%;background:var(--green);display:inline-block;flex-shrink:0"></span>
+                    Green — Info
+                  </label>
+                </div>
+              </div>
+              <button class="btn btn-primary" id="popupPostBtn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/></svg>
+                Add Pop-up
+              </button>
+              <div style="margin-top:20px">
+                <div style="font-size:13px;font-weight:600;color:var(--text-2);margin-bottom:10px">Active Pop-ups</div>
+                <div id="popupsContent"><div class="loading-state"><div class="spinner"></div>Loading…</div></div>
+              </div>
             </div>
           </div>
         </div>
@@ -715,6 +777,27 @@
   </div>
 </div>
 
+<!-- LOGIN POPUP MODAL -->
+<div class="overlay" id="loginPopupModal" style="z-index:600">
+  <div class="modal modal-sm" id="loginPopupModalInner" style="max-width:480px">
+    <div class="modal-hd" id="loginPopupHd" style="border-bottom:3px solid var(--amber)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <svg id="loginPopupIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2.5" style="flex-shrink:0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <div class="modal-hd-title" id="loginPopupTitle">Staff Notification</div>
+      </div>
+      <span id="loginPopupCounter" style="font-size:11px;color:var(--text-3);margin-left:auto;font-weight:600"></span>
+    </div>
+    <div class="modal-bd">
+      <div id="loginPopupBody" style="font-size:14px;color:var(--text);line-height:1.65;white-space:pre-wrap"></div>
+      <div id="loginPopupMeta" style="font-size:11px;color:var(--text-3);margin-top:14px;font-weight:600"></div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn btn-secondary" id="loginPopupPrev" style="display:none">← Previous</button>
+      <button class="btn btn-primary" id="loginPopupNext">Acknowledge</button>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST CONTAINER -->
 <div class="toast-wrap" id="toastWrap"></div>
 
@@ -834,6 +917,8 @@
     setupUI();
     navigateTo('bookings');
     loadMessages();
+    // Show any active login pop-ups after a short delay
+    setTimeout(checkLoginPopups, 600);
   }
 
   function setupUI(){
@@ -845,6 +930,7 @@
     el('navNotifications').classList.toggle('hidden',!isManager);
     el('navNotices').classList.toggle('hidden',!isManager);
     el('navStaff').classList.toggle('hidden',!isOwner);
+    el('popupSection').style.display=isManager?'':'none';
     el('topbarActions').innerHTML=`<button class="btn btn-primary" id="newBookingBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Booking</button>`;
     el('newBookingBtn').addEventListener('click',()=>openBookingModal(null));
   }
@@ -918,7 +1004,7 @@
     else{el('topbarActions').style.display='none';stopBookingsPolling();}
     if(page==='messages')loadMessages(true);
     if(page==='notifications')loadNotifications();
-    if(page==='notices')loadNotices();
+    if(page==='notices'){loadNotices();loadPopups();}
     if(page==='staff')loadStaff();
   }
   function cap(s){return s.charAt(0).toUpperCase()+s.slice(1)}
@@ -950,6 +1036,19 @@
     el('topbarSub').textContent='— '+formatDateLabel(state.currentDate);
   }
 
+  /* ── Colour helpers ── */
+  function noticeColour(c){
+    if(c==='red')return{bg:'#FFF1F2',border:'rgba(220,38,38,0.25)',accent:'var(--red)',icon:'var(--red)',dismiss:'rgba(220,38,38,0.3)'};
+    if(c==='green')return{bg:'var(--green-light)',border:'rgba(22,163,74,0.25)',accent:'var(--green)',icon:'var(--green)',dismiss:'rgba(22,163,74,0.3)'};
+    return{bg:'var(--amber-light)',border:'rgba(217,119,6,0.25)',accent:'var(--amber)',icon:'var(--amber)',dismiss:'rgba(217,119,6,0.3)'};
+  }
+  function noticeIcon(c){
+    if(c==='red')return`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2.5" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
+    if(c==='green')return`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></svg>`;
+    return`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2.5" style="flex-shrink:0;margin-top:1px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+  }
+  function popupColourLabel(c){return c==='red'?'Urgent':c==='green'?'Info':'General';}
+
   /* ── Dashboard Notices Banner ── */
   async function loadDashboardNotices(){
     try{
@@ -961,13 +1060,14 @@
       const isManager=state.role==='manager'||state.role==='owner';
       let html='<div style="display:flex;flex-direction:column;gap:8px">';
       for(const n of notices){
-        html+=`<div style="display:flex;align-items:flex-start;gap:12px;padding:12px 16px;background:var(--amber-light);border:1px solid rgba(217,119,6,0.25);border-left:4px solid var(--amber);border-radius:var(--r)">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2.5" style="flex-shrink:0;margin-top:1px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        const clr=noticeColour(n.colour||'amber');
+        html+=`<div style="display:flex;align-items:flex-start;gap:12px;padding:12px 16px;background:${clr.bg};border:1px solid ${clr.border};border-left:4px solid ${clr.accent};border-radius:var(--r)">
+          ${noticeIcon(n.colour||'amber')}
           <div style="flex:1;min-width:0">
             <div style="font-size:13px;font-weight:700;color:var(--text);line-height:1.5">${esc(n.message)}</div>
-            <div style="font-size:11px;color:var(--amber);font-weight:600;margin-top:3px">Posted by ${esc(n.createdBy||'Manager')} · ${formatDateTime(n.createdAt)}</div>
+            <div style="font-size:11px;color:${clr.accent};font-weight:600;margin-top:3px">Posted by ${esc(n.createdBy||'Manager')} · ${formatDateTime(n.createdAt)}</div>
           </div>
-          ${isManager?`<button class="btn btn-sm" style="flex-shrink:0;padding:4px 10px;font-size:11px;border:1px solid rgba(217,119,6,0.3);color:var(--amber);background:transparent;border-radius:var(--r);cursor:pointer" onclick="dismissDashboardNotice(${n.id},this)">Dismiss</button>`:''}
+          ${isManager?`<button class="btn btn-sm" style="flex-shrink:0;padding:4px 10px;font-size:11px;border:1px solid ${clr.dismiss};color:${clr.accent};background:transparent;border-radius:var(--r);cursor:pointer" onclick="dismissDashboardNotice(${n.id},this)">Dismiss</button>`:''}
         </div>`;
       }
       html+='</div>';
@@ -1318,6 +1418,24 @@
   /* ── Notices ── */
   let allNotices=[];
 
+  // Colour radio button visual highlight
+  function setupColourRadios(name){
+    document.querySelectorAll(`input[name="${name}"]`).forEach(inp=>{
+      const updateLabels=()=>{
+        document.querySelectorAll(`input[name="${name}"]`).forEach(r=>{
+          const lbl=r.closest('label');
+          if(lbl)lbl.style.borderColor=r.checked?'currentColor':'var(--border)';
+        });
+      };
+      inp.addEventListener('change',updateLabels);
+    });
+    // Set initial state
+    const checked=document.querySelector(`input[name="${name}"]:checked`);
+    if(checked){const lbl=checked.closest('label');if(lbl)lbl.style.borderColor='currentColor';}
+  }
+  setupColourRadios('noticeColour');
+  setupColourRadios('popupColour');
+
   el('noticeMsg').addEventListener('input',()=>{
     const len=el('noticeMsg').value.length;
     el('noticeMsgCount').textContent=len+' / 300';
@@ -1378,11 +1496,16 @@
     }
     let html='<div style="display:flex;flex-direction:column;gap:10px">';
     for(const n of allNotices){
-      html+=`<div style="display:flex;align-items:flex-start;gap:14px;padding:14px 16px;background:var(--amber-light);border:1px solid rgba(217,119,6,0.2);border-left:4px solid var(--amber);border-radius:var(--r)">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2" style="flex-shrink:0;margin-top:1px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      const clr=noticeColour(n.colour||'amber');
+      const lbl=n.colour==='red'?'Urgent':n.colour==='green'?'Info':'General';
+      html+=`<div style="display:flex;align-items:flex-start;gap:14px;padding:14px 16px;background:${clr.bg};border:1px solid ${clr.border};border-left:4px solid ${clr.accent};border-radius:var(--r)">
+        ${noticeIcon(n.colour||'amber').replace('width="16" height="16"','width="18" height="18"')}
         <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;background:${clr.accent};color:#fff">${lbl}</span>
+          </div>
           <div style="font-size:14px;color:var(--text);font-weight:600;line-height:1.5;word-break:break-word">${esc(n.message)}</div>
-          <div style="font-size:11px;color:var(--amber);font-weight:600;margin-top:6px">
+          <div style="font-size:11px;color:${clr.accent};font-weight:600;margin-top:6px">
             Posted by ${esc(n.createdBy||'Manager')} · ${formatDateTime(n.createdAt)}
           </div>
         </div>
@@ -1398,10 +1521,11 @@
     const errEl=el('noticePostErr');
     errEl.classList.remove('show');
     if(!msg){errEl.textContent='Please enter a notice message.';errEl.classList.add('show');return}
+    const colour=(document.querySelector('input[name="noticeColour"]:checked')||{value:'amber'}).value;
     const btn=el('noticePostBtn');
     btn.disabled=true;btn.textContent='Posting…';
     try{
-      const r=await api('/api/staff-notices',{method:'POST',body:JSON.stringify({message:msg})});
+      const r=await api('/api/staff-notices',{method:'POST',body:JSON.stringify({message:msg,colour})});
       const d=await r.json();
       if(!r.ok){errEl.textContent=d.message||'Failed to post notice';errEl.classList.add('show');return}
       el('noticeMsg').value='';
@@ -1409,8 +1533,120 @@
       toast('Notice posted','success');
       loadNotices();
     }catch(e){if(e.message!=='Session expired'){errEl.textContent='Network error';errEl.classList.add('show')}}
-    finally{btn.disabled=false;btn.textContent='Post Notice';const svg='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';btn.innerHTML=svg+' Post Notice';}
+    finally{btn.disabled=false;const svg='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';btn.innerHTML=svg+' Post Notice';}
   }
+
+  /* ── Login Pop-ups ── */
+  let loginPopups=[];let loginPopupIdx=0;
+
+  async function checkLoginPopups(){
+    try{
+      const r=await api('/api/staff-popups');
+      if(!r.ok)return;
+      const data=await r.json();
+      if(!data||!data.length)return;
+      loginPopups=data;loginPopupIdx=0;
+      showLoginPopup(0);
+    }catch(e){/* non-critical */}
+  }
+
+  function showLoginPopup(idx){
+    const p=loginPopups[idx];
+    if(!p)return;
+    const clr=noticeColour(p.colour||'amber');
+    const hd=el('loginPopupHd');
+    hd.style.borderBottomColor=clr.accent;
+    const icon=el('loginPopupIcon');
+    // Swap icon based on colour
+    if(p.colour==='red'){icon.innerHTML='<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>';icon.setAttribute('stroke','var(--red)');}
+    else if(p.colour==='green'){icon.innerHTML='<circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/>';icon.setAttribute('stroke','var(--green)');}
+    else{icon.innerHTML='<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>';icon.setAttribute('stroke','var(--amber)');}
+    el('loginPopupTitle').textContent=p.title;
+    el('loginPopupBody').textContent=p.message;
+    el('loginPopupMeta').textContent='Posted by '+esc(p.createdBy||'Manager')+' · '+formatDateTime(p.createdAt);
+    const total=loginPopups.length;
+    el('loginPopupCounter').textContent=total>1?`${idx+1} of ${total}`:'';
+    el('loginPopupPrev').style.display=(idx>0)?'':'none';
+    el('loginPopupNext').textContent=(idx<total-1)?'Next →':'Acknowledge';
+    openOverlay('loginPopupModal');
+  }
+
+  el('loginPopupNext').addEventListener('click',()=>{
+    if(loginPopupIdx<loginPopups.length-1){loginPopupIdx++;showLoginPopup(loginPopupIdx);}
+    else closeOverlay('loginPopupModal');
+  });
+  el('loginPopupPrev').addEventListener('click',()=>{
+    if(loginPopupIdx>0){loginPopupIdx--;showLoginPopup(loginPopupIdx);}
+  });
+
+  /* ── Popup Management (managers/owners) ── */
+  let allPopups=[];
+
+  async function loadPopups(){
+    el('popupsContent').innerHTML='<div class="loading-state"><div class="spinner"></div>Loading…</div>';
+    try{
+      const r=await api('/api/staff-popups');
+      if(!r.ok)throw new Error('Failed');
+      allPopups=await r.json();
+      renderPopups();
+    }catch(e){el('popupsContent').innerHTML='<div style="padding:14px;font-size:13px;color:var(--text-3)">Failed to load pop-ups.</div>';}
+  }
+
+  function renderPopups(){
+    if(!allPopups.length){
+      el('popupsContent').innerHTML='<div style="padding:14px;font-size:13px;color:var(--text-3)">No active pop-ups. Add one above.</div>';
+      return;
+    }
+    let html='<div style="display:flex;flex-direction:column;gap:10px">';
+    for(const p of allPopups){
+      const clr=noticeColour(p.colour||'amber');
+      const lbl=popupColourLabel(p.colour);
+      html+=`<div style="display:flex;align-items:flex-start;gap:14px;padding:14px 16px;background:${clr.bg};border:1px solid ${clr.border};border-left:4px solid ${clr.accent};border-radius:var(--r)">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+            <span style="font-size:14px;font-weight:700;color:var(--text)">${esc(p.title)}</span>
+            <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;background:${clr.accent};color:#fff">${lbl}</span>
+          </div>
+          <div style="font-size:13px;color:var(--text-2);line-height:1.55;word-break:break-word;white-space:pre-wrap">${esc(p.message)}</div>
+          <div style="font-size:11px;color:${clr.accent};font-weight:600;margin-top:6px">Posted by ${esc(p.createdBy||'Manager')} · ${formatDateTime(p.createdAt)}</div>
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="deletePopup(${p.id})" style="flex-shrink:0">Remove</button>
+      </div>`;
+    }
+    html+='</div>';
+    el('popupsContent').innerHTML=html;
+  }
+
+  el('popupPostBtn').addEventListener('click',postPopup);
+
+  async function postPopup(){
+    const title=el('popupTitle').value.trim();
+    const msg=el('popupMsg').value.trim();
+    const errEl=el('popupPostErr');
+    errEl.classList.remove('show');
+    if(!title){errEl.textContent='Title is required.';errEl.classList.add('show');return}
+    if(!msg){errEl.textContent='Message is required.';errEl.classList.add('show');return}
+    const colour=(document.querySelector('input[name="popupColour"]:checked')||{value:'amber'}).value;
+    const btn=el('popupPostBtn');btn.disabled=true;btn.textContent='Adding…';
+    try{
+      const r=await api('/api/staff-popups',{method:'POST',body:JSON.stringify({title,message:msg,colour})});
+      const d=await r.json();
+      if(!r.ok){errEl.textContent=d.message||'Failed to add pop-up';errEl.classList.add('show');return}
+      el('popupTitle').value='';el('popupMsg').value='';
+      toast('Pop-up added — staff will see it next login','success');
+      loadPopups();
+    }catch(e){if(e.message!=='Session expired'){errEl.textContent='Network error';errEl.classList.add('show')}}
+    finally{btn.disabled=false;btn.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/></svg> Add Pop-up';}
+  }
+
+  window.deletePopup=async function(id){
+    if(!confirm('Remove this pop-up? Staff will no longer see it on login.'))return;
+    try{
+      const r=await api('/api/staff-popups/'+id,{method:'DELETE'});
+      if(!r.ok&&r.status!==204){const d=await r.json();toast(d.message||'Failed','error');return}
+      toast('Pop-up removed','success');loadPopups();
+    }catch(e){if(e.message!=='Session expired')toast('Network error','error')}
+  };
 
   window.deleteNotice=async function(id){
     if(!confirm('Delete this notice?'))return;

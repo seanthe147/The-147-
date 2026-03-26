@@ -205,6 +205,7 @@ export type BannerImage = typeof bannerImages.$inferSelect;
 export const staffNotices = pgTable("staff_notices", {
   id: serial("id").primaryKey(),
   message: text("message").notNull(),
+  colour: text("colour").notNull().default("amber"),
   createdBy: text("created_by").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   deletedAt: timestamp("deleted_at"),
@@ -215,6 +216,22 @@ export const insertStaffNoticeSchema = createInsertSchema(staffNotices).omit({ i
 
 export type InsertStaffNotice = z.infer<typeof insertStaffNoticeSchema>;
 export type StaffNotice = typeof staffNotices.$inferSelect;
+
+export const staffPopups = pgTable("staff_popups", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  colour: text("colour").notNull().default("amber"),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  deletedAt: timestamp("deleted_at"),
+  deletedBy: text("deleted_by"),
+});
+
+export const insertStaffPopupSchema = createInsertSchema(staffPopups).omit({ id: true, createdAt: true });
+
+export type InsertStaffPopup = z.infer<typeof insertStaffPopupSchema>;
+export type StaffPopup = typeof staffPopups.$inferSelect;
 
 export const blockedPeriods = pgTable("blocked_periods", {
   id: serial("id").primaryKey(),

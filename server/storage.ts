@@ -22,6 +22,7 @@ import {
   type Customer,
   type CustomerSession,
   type StaffNotice,
+  type StaffPopup,
   type BlockedPeriod,
   type InsertBlockedPeriod,
   users,
@@ -38,6 +39,7 @@ import {
   customers,
   customerSessions,
   staffNotices,
+  staffPopups,
   blockedPeriods,
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
@@ -678,8 +680,8 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(staffNotices.deletedAt));
   }
 
-  async createStaffNotice(message: string, createdBy: string): Promise<StaffNotice> {
-    const [notice] = await db.insert(staffNotices).values({ message, createdBy }).returning();
+  async createStaffNotice(message: string, createdBy: string, colour: string = "amber"): Promise<StaffNotice> {
+    const [notice] = await db.insert(staffNotices).values({ message, createdBy, colour }).returning();
     return notice;
   }
 
@@ -687,6 +689,25 @@ export class DatabaseStorage implements IStorage {
     const result = await db.update(staffNotices)
       .set({ deletedAt: new Date(), deletedBy })
       .where(and(eq(staffNotices.id, id), isNull(staffNotices.deletedAt)))
+      .returning();
+    return result.length > 0;
+  }
+
+  async getStaffPopups(): Promise<StaffPopup[]> {
+    return db.select().from(staffPopups)
+      .where(isNull(staffPopups.deletedAt))
+      .orderBy(staffPopups.createdAt);
+  }
+
+  async createStaffPopup(title: string, message: string, colour: string, createdBy: string): Promise<StaffPopup> {
+    const [popup] = await db.insert(staffPopups).values({ title, message, colour, createdBy }).returning();
+    return popup;
+  }
+
+  async deleteStaffPopup(id: number, deletedBy: string): Promise<boolean> {
+    const result = await db.update(staffPopups)
+      .set({ deletedAt: new Date(), deletedBy })
+      .where(and(eq(staffPopups.id, id), isNull(staffPopups.deletedAt)))
       .returning();
     return result.length > 0;
   }
