@@ -128,6 +128,8 @@ export default function BookScreen() {
   const isPool = selectedTable === "pool";
   const isDining = selectedTable === "dining";
   const needsTableNumber = isSnooker || isPool;
+  const canSubmit = !!(name.trim() && email.trim() && phone.trim() && gdprConsent &&
+    (!needsTableNumber || selectedTableNumber));
 
   const availabilityQueryStr = needsTableNumber && selectedTableNumber
     ? `?date=${selectedDate}&tableType=${selectedTable}&tableNumber=${selectedTableNumber}`
@@ -731,10 +733,15 @@ export default function BookScreen() {
                 )}
               </View>
 
+              {needsTableNumber && !selectedTableNumber && (
+                <Text style={styles.tableNumberHint}>
+                  ← Please select a table number above before confirming
+                </Text>
+              )}
               <Pressable
                 onPress={handleSubmit}
-                disabled={bookMutation.isPending}
-                style={[styles.confirmButton, bookMutation.isPending && { opacity: 0.6 }]}
+                disabled={bookMutation.isPending || !canSubmit}
+                style={[styles.confirmButton, (bookMutation.isPending || !canSubmit) && { opacity: 0.4 }]}
                 testID="book-confirm-button"
               >
                 {bookMutation.isPending ? (
@@ -1264,6 +1271,13 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_700Bold",
     fontSize: 16,
     color: "#FFFFFF",
+  },
+  tableNumberHint: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 13,
+    color: Colors.brand.red,
+    textAlign: "center",
+    marginBottom: 8,
   },
   successSection: {
     alignItems: "center",
