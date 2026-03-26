@@ -478,11 +478,11 @@ function DashboardScreen() {
               />
             </>
           )}
-          {isOwner && (
+          {isManager && (
             <AdminTool
               icon="people"
               title="Staff Accounts"
-              description="View accounts, manage roles and permissions"
+              description={isOwner ? "Approve accounts, manage roles, reset PINs" : "View accounts and reset PINs"}
               color="#F59E0B"
               onPress={() => router.push("/admin-staff")}
               testID="portal-staff-accounts"

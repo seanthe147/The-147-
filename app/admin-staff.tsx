@@ -38,7 +38,7 @@ const ROLES = [
 export default function AdminStaffScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const { isAuthenticated, isLoading: authLoading, username: currentUsername, isOwner } = useStaffAuth();
+  const { isAuthenticated, isLoading: authLoading, username: currentUsername, isManager, isOwner } = useStaffAuth();
 
   const [updatingUser, setUpdatingUser] = useState<number | null>(null);
   const [resetPinUserId, setResetPinUserId] = useState<number | null>(null);
@@ -59,7 +59,7 @@ export default function AdminStaffScreen() {
     );
   }
 
-  if (!isAuthenticated || !isOwner) {
+  if (!isAuthenticated || !isManager) {
     router.replace("/staff-portal");
     return null;
   }
@@ -231,7 +231,9 @@ export default function AdminStaffScreen() {
           <Ionicons name="people" size={32} color="#F59E0B" />
           <Text style={styles.sectionTitle}>Manage Team</Text>
           <Text style={styles.sectionDesc}>
-            View all staff accounts, change roles, reset PINs, lock or delete accounts.
+            {isOwner
+              ? "Approve accounts, change roles, reset PINs, lock or delete accounts."
+              : "View staff accounts and reset PINs."}
           </Text>
         </View>
 
@@ -346,36 +348,46 @@ export default function AdminStaffScreen() {
 
                   {!isPending && (
                     <>
-                      <View style={styles.roleSection}>
-                        <Text style={styles.roleLabel}>ROLE</Text>
-                        <View style={styles.roleButtons}>
-                          {ROLES.map((r) => {
-                            const isActive = user.role === r.value;
-                            return (
-                              <Pressable
-                                key={r.value}
-                                onPress={() => !isSelf && !isActive && handleRoleChange(user, r.value)}
-                                disabled={isSelf || isActive || isBusy}
-                                style={({ pressed }) => [
-                                  styles.roleButton,
-                                  isActive && { backgroundColor: r.color + "15", borderColor: r.color },
-                                  (isSelf && !isActive) && { opacity: 0.4 },
-                                  pressed && !isSelf && !isActive ? { opacity: 0.7 } : null,
-                                ]}
-                              >
-                                {isBusy && !isActive ? (
-                                  <ActivityIndicator size="small" color={r.color} />
-                                ) : (
-                                  <Ionicons name={r.icon} size={14} color={isActive ? r.color : Colors.light.textSecondary} />
-                                )}
-                                <Text style={[styles.roleButtonText, isActive && { color: r.color }]}>
-                                  {r.label}
-                                </Text>
-                              </Pressable>
-                            );
-                          })}
+                      {isOwner ? (
+                        <View style={styles.roleSection}>
+                          <Text style={styles.roleLabel}>ROLE</Text>
+                          <View style={styles.roleButtons}>
+                            {ROLES.map((r) => {
+                              const isActive = user.role === r.value;
+                              return (
+                                <Pressable
+                                  key={r.value}
+                                  onPress={() => !isSelf && !isActive && handleRoleChange(user, r.value)}
+                                  disabled={isSelf || isActive || isBusy}
+                                  style={({ pressed }) => [
+                                    styles.roleButton,
+                                    isActive && { backgroundColor: r.color + "15", borderColor: r.color },
+                                    (isSelf && !isActive) && { opacity: 0.4 },
+                                    pressed && !isSelf && !isActive ? { opacity: 0.7 } : null,
+                                  ]}
+                                >
+                                  {isBusy && !isActive ? (
+                                    <ActivityIndicator size="small" color={r.color} />
+                                  ) : (
+                                    <Ionicons name={r.icon} size={14} color={isActive ? r.color : Colors.light.textSecondary} />
+                                  )}
+                                  <Text style={[styles.roleButtonText, isActive && { color: r.color }]}>
+                                    {r.label}
+                                  </Text>
+                                </Pressable>
+                              );
+                            })}
+                          </View>
                         </View>
-                      </View>
+                      ) : (
+                        <View style={styles.roleSection}>
+                          <Text style={styles.roleLabel}>ROLE</Text>
+                          <View style={[styles.roleButton, { backgroundColor: roleConfig.color + "15", borderColor: roleConfig.color, alignSelf: "flex-start" }]}>
+                            <Ionicons name={roleConfig.icon} size={14} color={roleConfig.color} />
+                            <Text style={[styles.roleButtonText, { color: roleConfig.color }]}>{roleConfig.label}</Text>
+                          </View>
+                        </View>
+                      )}
 
                       {!isSelf && (
                         <View style={styles.actionsRow}>
@@ -388,37 +400,41 @@ export default function AdminStaffScreen() {
                             <Text style={[styles.actionBtnText, { color: Colors.brand.blue }]}>Reset PIN</Text>
                           </Pressable>
 
-                          <Pressable
-                            onPress={() => handleToggleLock(user)}
-                            disabled={isBusy}
-                            style={({ pressed }) => [
-                              styles.actionBtn,
-                              isLocked ? styles.actionBtnSuccess : styles.actionBtnWarning,
-                              { opacity: pressed ? 0.7 : 1 },
-                            ]}
-                          >
-                            {isBusy ? (
-                              <ActivityIndicator size="small" color={isLocked ? Colors.brand.green : "#D97706"} />
-                            ) : (
-                              <Ionicons
-                                name={isLocked ? "lock-open-outline" : "lock-closed-outline"}
-                                size={15}
-                                color={isLocked ? Colors.brand.green : "#D97706"}
-                              />
-                            )}
-                            <Text style={[styles.actionBtnText, { color: isLocked ? Colors.brand.green : "#D97706" }]}>
-                              {isLocked ? "Unlock" : "Lock"}
-                            </Text>
-                          </Pressable>
+                          {isOwner && (
+                            <Pressable
+                              onPress={() => handleToggleLock(user)}
+                              disabled={isBusy}
+                              style={({ pressed }) => [
+                                styles.actionBtn,
+                                isLocked ? styles.actionBtnSuccess : styles.actionBtnWarning,
+                                { opacity: pressed ? 0.7 : 1 },
+                              ]}
+                            >
+                              {isBusy ? (
+                                <ActivityIndicator size="small" color={isLocked ? Colors.brand.green : "#D97706"} />
+                              ) : (
+                                <Ionicons
+                                  name={isLocked ? "lock-open-outline" : "lock-closed-outline"}
+                                  size={15}
+                                  color={isLocked ? Colors.brand.green : "#D97706"}
+                                />
+                              )}
+                              <Text style={[styles.actionBtnText, { color: isLocked ? Colors.brand.green : "#D97706" }]}>
+                                {isLocked ? "Unlock" : "Lock"}
+                              </Text>
+                            </Pressable>
+                          )}
 
-                          <Pressable
-                            onPress={() => handleDelete(user)}
-                            disabled={isBusy}
-                            style={({ pressed }) => [styles.actionBtn, styles.actionBtnDanger, { opacity: pressed ? 0.7 : 1 }]}
-                          >
-                            <Ionicons name="trash-outline" size={15} color={Colors.brand.red} />
-                            <Text style={[styles.actionBtnText, { color: Colors.brand.red }]}>Delete</Text>
-                          </Pressable>
+                          {isOwner && (
+                            <Pressable
+                              onPress={() => handleDelete(user)}
+                              disabled={isBusy}
+                              style={({ pressed }) => [styles.actionBtn, styles.actionBtnDanger, { opacity: pressed ? 0.7 : 1 }]}
+                            >
+                              <Ionicons name="trash-outline" size={15} color={Colors.brand.red} />
+                              <Text style={[styles.actionBtnText, { color: Colors.brand.red }]}>Delete</Text>
+                            </Pressable>
+                          )}
                         </View>
                       )}
                     </>

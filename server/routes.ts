@@ -536,6 +536,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       role: u.role,
       createdAt: u.createdAt,
       active: u.active,
+      approvalStatus: u.approvalStatus,
     })));
   });
 

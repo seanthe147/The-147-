@@ -1283,7 +1283,8 @@ async function registerRoutes(app2) {
       displayName: u.displayName,
       role: u.role,
       createdAt: u.createdAt,
-      active: u.active
+      active: u.active,
+      approvalStatus: u.approvalStatus
     })));
   });
   app2.post("/api/staff/change-pin", staffAuth, async (req, res) => {
