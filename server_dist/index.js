@@ -2923,6 +2923,25 @@ function scheduleBookingReminders() {
   }
   setInterval(runReminders, 5 * 60 * 1e3);
 }
+async function bootstrapOwner() {
+  try {
+    const { storage: store } = await Promise.resolve().then(() => (init_storage(), storage_exports));
+    const allUsers = await store.getAllStaffUsers();
+    const hasOwner = allUsers.some((u) => u.role === "owner");
+    if (!hasOwner) {
+      const targets = ["seanclowe", "seanlowe"];
+      for (const username of targets) {
+        const user = allUsers.find((u) => u.username === username);
+        if (user) {
+          await store.updateStaffRole(username, "owner");
+          log(`[Bootstrap] Promoted '${username}' to owner (no owner account existed)`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[Bootstrap] Owner bootstrap error:", err);
+  }
+}
 function scheduleRetentionCleanup() {
   async function runCleanup() {
     try {
@@ -2962,6 +2981,7 @@ function scheduleRetentionCleanup() {
   configureExpoAndLanding(app);
   const server = await registerRoutes(app);
   setupErrorHandler(app);
+  await bootstrapOwner();
   scheduleRetentionCleanup();
   scheduleBookingReminders();
   const port = parseInt(process.env.PORT || "5000", 10);

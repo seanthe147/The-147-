@@ -341,6 +341,26 @@ function scheduleBookingReminders() {
   setInterval(runReminders, 5 * 60 * 1000);
 }
 
+async function bootstrapOwner() {
+  try {
+    const { storage: store } = await import("./storage");
+    const allUsers = await store.getAllStaffUsers();
+    const hasOwner = allUsers.some(u => u.role === "owner");
+    if (!hasOwner) {
+      const targets = ["seanclowe", "seanlowe"];
+      for (const username of targets) {
+        const user = allUsers.find(u => u.username === username);
+        if (user) {
+          await store.updateStaffRole(username, "owner");
+          log(`[Bootstrap] Promoted '${username}' to owner (no owner account existed)`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[Bootstrap] Owner bootstrap error:", err);
+  }
+}
+
 function scheduleRetentionCleanup() {
   // Run data retention cleanup immediately on startup, then every 24 hours
   // This ensures the 12-month anonymisation policy and session cleanup run automatically
@@ -392,6 +412,8 @@ function scheduleRetentionCleanup() {
 
   setupErrorHandler(app);
 
+  // Promote seanclowe/seanlowe to owner if no owner account exists (one-time bootstrap)
+  await bootstrapOwner();
   // Automatically enforce GDPR data retention (90-day anonymisation + session cleanup)
   scheduleRetentionCleanup();
   // Send push reminders ~1 hour before bookings
