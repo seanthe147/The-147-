@@ -60,3 +60,9 @@ id = "Y8LaBJnUV0aryxxoSHhSc"
 uri = "file://attached_assets/generated_images/play-store-feature-1024x500.png"
 type = "image"
 title = "Google Play Feature Graphic (1024×500)"
+
+[[outputs]]
+id = "_cdlrRwC1CakxkHq4wBjO"
+uri = "file://attached_assets/generated_images/play-store-feature-blue-1024x500.png"
+type = "image"
+title = "Google Play Feature Graphic — Blue Edition (1024×500)"
