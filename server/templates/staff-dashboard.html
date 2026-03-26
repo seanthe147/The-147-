@@ -630,8 +630,8 @@
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label">Number of occurrences</label>
-              <input class="form-input" type="number" id="fRepeatCount" min="2" max="52" value="4" style="max-width:120px">
+              <label class="form-label" id="fRepeatCountLabel">Number of weeks</label>
+              <input class="form-input" type="number" id="fRepeatCount" min="2" max="6" value="4" style="max-width:120px">
             </div>
           </div>
           <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px 14px;font-size:12px;color:#1E40AF;line-height:1.5">
@@ -1131,6 +1131,13 @@
     el('repeatOptions').style.display=el('fRepeat').checked?'':'none';
     el('modalSaveBtn').textContent=el('fRepeat').checked?'Create Repeat Bookings':'Create Booking';
   });
+  function updateRepeatCountConfig(){
+    const isWeekly=el('fRepeatType').value==='weekly';
+    el('fRepeatCountLabel').textContent=isWeekly?'Number of weeks (max 6)':'Number of days (max 42)';
+    el('fRepeatCount').max=isWeekly?6:42;
+    if(parseInt(el('fRepeatCount').value)>(isWeekly?6:42))el('fRepeatCount').value=isWeekly?6:42;
+  }
+  el('fRepeatType').addEventListener('change',updateRepeatCountConfig);
   el('modalClose').addEventListener('click',()=>closeOverlay('bookingModal'));
   el('modalCancelBtn').addEventListener('click',()=>closeOverlay('bookingModal'));
   el('modalSaveBtn').addEventListener('click',submitBooking);
@@ -1164,8 +1171,9 @@
       if(!editingId&&el('fRepeat').checked){
         const repeatType=el('fRepeatType').value;
         const repeatCount=parseInt(el('fRepeatCount').value);
-        if(isNaN(repeatCount)||repeatCount<2||repeatCount>52){
-          err.textContent='Number of occurrences must be between 2 and 52';err.classList.add('show');return;
+        const maxCount=repeatType==='weekly'?6:42;
+        if(isNaN(repeatCount)||repeatCount<2||repeatCount>maxCount){
+          err.textContent=`Number of ${repeatType==='weekly'?'weeks':'days'} must be between 2 and ${maxCount}`;err.classList.add('show');return;
         }
         const r=await api('/api/staff/bookings/repeat',{method:'POST',body:JSON.stringify({...payload,repeatType,repeatCount})});
         const d=await r.json();

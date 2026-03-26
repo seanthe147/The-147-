@@ -1059,8 +1059,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ message: "repeatType must be 'daily' or 'weekly'" });
     }
     const count = Number(repeatCount);
-    if (!count || count < 2 || count > 52) {
-      return res.status(400).json({ message: "repeatCount must be between 2 and 52" });
+    const maxCount = repeatType === "weekly" ? 6 : 42;
+    if (!count || count < 2 || count > maxCount) {
+      return res.status(400).json({ message: `repeatCount must be between 2 and ${maxCount} for ${repeatType} repeats` });
     }
     const raw = { ...bookingData };
     for (const key of ["tableNumber", "guestCount", "notes", "emailHash"] as const) {
