@@ -77,8 +77,9 @@ export default function AdminBookingsScreen() {
   const [showAddNotice, setShowAddNotice] = useState(false);
   const [newNoticeText, setNewNoticeText] = useState("");
 
-  // Walk-in booking modal state
+  // Staff booking modal state
   const [showWalkIn, setShowWalkIn] = useState(false);
+  const [wiSource, setWiSource] = useState<"walkin" | "telephone">("walkin");
   const [wiName, setWiName] = useState("");
   const [wiPhone, setWiPhone] = useState("");
   const [wiEmail, setWiEmail] = useState("");
@@ -91,9 +92,9 @@ export default function AdminBookingsScreen() {
   const [wiError, setWiError] = useState("");
 
   const resetWalkIn = () => {
-    setWiName(""); setWiPhone(""); setWiEmail(""); setWiTableType("snooker");
-    setWiTableNumber(""); setWiTime("10:00"); setWiDuration(1);
-    setWiGuestCount(2); setWiNotes(""); setWiError("");
+    setWiSource("walkin"); setWiName(""); setWiPhone(""); setWiEmail("");
+    setWiTableType("snooker"); setWiTableNumber(""); setWiTime("10:00");
+    setWiDuration(1); setWiGuestCount(2); setWiNotes(""); setWiError("");
   };
 
   useEffect(() => {
@@ -206,17 +207,19 @@ export default function AdminBookingsScreen() {
       setWiError(`Please select a ${wiTableType} table number`);
       return;
     }
+    const sourcePrefix = wiSource === "telephone" ? "[TEL] " : "[WALK-IN] ";
+    const finalNotes = wiNotes.trim() ? `${sourcePrefix}${wiNotes.trim()}` : sourcePrefix.trim();
     walkInMutation.mutate({
       customerName: wiName.trim(),
       customerPhone: wiPhone.trim(),
-      customerEmail: wiEmail.trim() || `walkin-${Date.now()}@the147.co.uk`,
+      customerEmail: wiEmail.trim() || `${wiSource}-${Date.now()}@the147.co.uk`,
       tableType: wiTableType,
       tableNumber: (wiTableType === "snooker" || wiTableType === "pool") ? wiTableNumber : undefined,
       guestCount: wiTableType === "dining" ? wiGuestCount : undefined,
       date: selectedDate,
       startTime: wiTime,
       duration: wiDuration,
-      notes: wiNotes.trim() || undefined,
+      notes: finalNotes,
       gdprConsent: true,
       status: "confirmed",
     });
@@ -509,12 +512,31 @@ export default function AdminBookingsScreen() {
               <Pressable onPress={() => setShowWalkIn(false)} hitSlop={12}>
                 <Ionicons name="close" size={26} color={Colors.light.text} />
               </Pressable>
-              <Text style={styles.modalTitle}>Walk-in Booking</Text>
+              <Text style={styles.modalTitle}>New Booking</Text>
               <View style={{ width: 26 }} />
             </View>
             <Text style={styles.modalSubtitle}>{formatDateLabel(selectedDate)}</Text>
 
             <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} keyboardShouldPersistTaps="handled">
+              {/* Booking Source */}
+              <Text style={styles.fieldLabel}>BOOKING TYPE</Text>
+              <View style={[styles.sourceRow, { marginBottom: 18 }]}>
+                <Pressable
+                  onPress={() => setWiSource("walkin")}
+                  style={[styles.sourceBtn, wiSource === "walkin" && styles.sourceBtnSelected]}
+                >
+                  <Ionicons name="walk-outline" size={18} color={wiSource === "walkin" ? "#fff" : Colors.brand.blue} />
+                  <Text style={[styles.sourceBtnText, wiSource === "walkin" && styles.sourceBtnTextSelected]}>Walk-in</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setWiSource("telephone")}
+                  style={[styles.sourceBtn, wiSource === "telephone" && styles.sourceBtnSelected]}
+                >
+                  <Ionicons name="call-outline" size={18} color={wiSource === "telephone" ? "#fff" : Colors.brand.blue} />
+                  <Text style={[styles.sourceBtnText, wiSource === "telephone" && styles.sourceBtnTextSelected]}>Telephone</Text>
+                </Pressable>
+              </View>
+
               {/* Customer Details */}
               <Text style={styles.fieldLabel}>CUSTOMER NAME *</Text>
               <TextInput
@@ -983,6 +1005,34 @@ const styles = StyleSheet.create({
     padding: 5,
     alignItems: "center",
     justifyContent: "center",
+  },
+  sourceRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  sourceBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: Colors.light.surface,
+    borderWidth: 2,
+    borderColor: Colors.brand.blue + "40",
+  },
+  sourceBtnSelected: {
+    backgroundColor: Colors.brand.blue,
+    borderColor: Colors.brand.blue,
+  },
+  sourceBtnText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 14,
+    color: Colors.brand.blue,
+  },
+  sourceBtnTextSelected: {
+    color: "#fff",
   },
   modalContainer: {
     flex: 1,
