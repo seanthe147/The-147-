@@ -653,12 +653,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.patch("/api/staff/approve", staffAuth, ownerAuth, async (req, res) => {
-    const id = parseInt(req.body.id, 10);
-    const { approvalStatus } = req.body;
-    if (isNaN(id) || !["approved", "rejected"].includes(approvalStatus)) {
-      return res.status(400).json({ message: "id and approvalStatus ('approved' or 'rejected') are required" });
+    console.log("[approve] req.body:", JSON.stringify(req.body));
+    const { username, approvalStatus } = req.body;
+    if (!username || typeof username !== "string" || !["approved", "rejected"].includes(approvalStatus)) {
+      return res.status(400).json({ message: "username and approvalStatus ('approved' or 'rejected') are required" });
     }
-    const updated = await storage.updateStaffApproval(id, approvalStatus);
+    const staffUser = await storage.getStaffUserByUsername(username.trim());
+    if (!staffUser) return res.status(404).json({ message: "Staff user not found" });
+    const updated = await storage.updateStaffApproval(staffUser.id, approvalStatus);
     if (!updated) return res.status(404).json({ message: "Staff user not found" });
     res.json({ message: `Account ${approvalStatus}`, user: { id: updated.id, username: updated.username, approvalStatus: updated.approvalStatus } });
   });

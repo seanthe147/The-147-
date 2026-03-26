@@ -164,7 +164,7 @@ export default function AdminStaffScreen() {
     const doApprove = async () => {
       setUpdatingUser(user.id);
       try {
-        await apiRequest("PATCH", "/api/staff/approve", { id: user.id, approvalStatus: status });
+        await apiRequest("PATCH", "/api/staff/approve", { username: user.username, approvalStatus: status });
         await queryClient.refetchQueries({ queryKey: ["/api/staff/users"] });
       } catch (e: any) {
         const msg = e?.message || "Failed to update account";
