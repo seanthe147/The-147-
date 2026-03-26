@@ -843,6 +843,8 @@
   function formatDateTime(s){try{return new Date(s).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}catch{return s}}
   function openOverlay(id){el(id).classList.add('open')}
   function closeOverlay(id){el(id).classList.remove('open')}
+  window.openOverlay=openOverlay;
+  window.closeOverlay=closeOverlay;
 
   function toast(msg,type){
     const w=el('toastWrap');
