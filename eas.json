@@ -34,6 +34,16 @@
       "env": {
         "EXPO_PUBLIC_DOMAIN": "the147bradford.replit.app"
       }
+    },
+    "production-android": {
+      "autoIncrement": true,
+      "distribution": "store",
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_DOMAIN": "the147bradford.replit.app"
+      }
     }
   },
   "submit": {
