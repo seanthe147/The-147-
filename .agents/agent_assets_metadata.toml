@@ -54,3 +54,9 @@ id = "rj7FnhheAWH6qSb6lSuYr"
 uri = "file://attached_assets/generated_images/final-3-events-1284x2778.png"
 type = "image"
 title = "Screenshot 3 — Events (1284 × 2778px)"
+
+[[outputs]]
+id = "Y8LaBJnUV0aryxxoSHhSc"
+uri = "file://attached_assets/generated_images/play-store-feature-1024x500.png"
+type = "image"
+title = "Google Play Feature Graphic (1024×500)"
