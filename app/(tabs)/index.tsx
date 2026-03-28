@@ -109,25 +109,72 @@ const BannerCarousel = memo(function BannerCarousel({ images }: { images: Banner
         scrollEventThrottle={16}
         removeClippedSubviews
       >
-        {images.map((item) => (
-          <View key={item.id} style={styles.bannerSlide}>
-            <ExpoImage
-              source={{ uri: resolveImageUrl(item.imageUrl) }}
-              style={styles.bannerImage}
-              contentFit="cover"
-              transition={250}
-              cachePolicy="memory-disk"
-            />
-            {item.title ? (
-              <LinearGradient
-                colors={["transparent", "rgba(0,0,0,0.6)"]}
-                style={styles.bannerOverlay}
-              >
-                <Text style={styles.bannerCaption} numberOfLines={2}>{item.title}</Text>
-              </LinearGradient>
-            ) : null}
-          </View>
-        ))}
+        {images.map((item) => {
+          const hasLink = !!item.linkType;
+          const handleBannerPress = () => {
+            if (!item.linkType) return;
+            if (item.linkType === "event") {
+              router.push("/(tabs)/events");
+            } else if (item.linkType === "order") {
+              router.push("/(tabs)/order");
+            } else if (item.linkType === "url" && item.linkValue) {
+              Linking.openURL(item.linkValue);
+            }
+          };
+          return (
+            <Pressable
+              key={item.id}
+              style={({ pressed }) => [
+                styles.bannerSlide,
+                hasLink && { opacity: pressed ? 0.88 : 1 },
+              ]}
+              onPress={hasLink ? handleBannerPress : undefined}
+            >
+              <ExpoImage
+                source={{ uri: resolveImageUrl(item.imageUrl) }}
+                style={styles.bannerImage}
+                contentFit="cover"
+                transition={250}
+                cachePolicy="memory-disk"
+              />
+              {item.title ? (
+                <LinearGradient
+                  colors={["transparent", "rgba(0,0,0,0.6)"]}
+                  style={styles.bannerOverlay}
+                >
+                  <Text style={styles.bannerCaption} numberOfLines={2}>{item.title}</Text>
+                  {hasLink ? (
+                    <View style={styles.bannerLinkBadge}>
+                      <Ionicons
+                        name={item.linkType === "event" ? "ticket-outline" : item.linkType === "order" ? "restaurant-outline" : "open-outline"}
+                        size={11}
+                        color="rgba(255,255,255,0.9)"
+                      />
+                      <Text style={styles.bannerLinkText}>
+                        {item.linkType === "event" ? "View Events" : item.linkType === "order" ? "Order Now" : "Learn More"}
+                      </Text>
+                      <Ionicons name="chevron-forward" size={11} color="rgba(255,255,255,0.9)" />
+                    </View>
+                  ) : null}
+                </LinearGradient>
+              ) : hasLink ? (
+                <View style={styles.bannerOverlayMinimal}>
+                  <View style={styles.bannerLinkBadge}>
+                    <Ionicons
+                      name={item.linkType === "event" ? "ticket-outline" : item.linkType === "order" ? "restaurant-outline" : "open-outline"}
+                      size={11}
+                      color="rgba(255,255,255,0.9)"
+                    />
+                    <Text style={styles.bannerLinkText}>
+                      {item.linkType === "event" ? "View Events" : item.linkType === "order" ? "Order Now" : "Learn More"}
+                    </Text>
+                    <Ionicons name="chevron-forward" size={11} color="rgba(255,255,255,0.9)" />
+                  </View>
+                </View>
+              ) : null}
+            </Pressable>
+          );
+        })}
       </ScrollView>
       {images.length > 1 && (
         <View style={styles.dotRow}>
@@ -625,6 +672,28 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(0,0,0,0.3)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
+  },
+  bannerOverlayMinimal: {
+    position: "absolute",
+    bottom: 10,
+    right: 12,
+  },
+  bannerLinkBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginTop: 6,
+    alignSelf: "flex-start",
+  },
+  bannerLinkText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 11,
+    color: "rgba(255,255,255,0.95)",
+    letterSpacing: 0.3,
   },
   dotRow: {
     flexDirection: "row",

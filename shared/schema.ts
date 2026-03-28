@@ -194,6 +194,8 @@ export const bannerImages = pgTable("banner_images", {
   title: text("title"),
   sortOrder: integer("sort_order").notNull().default(0),
   active: boolean("active").notNull().default(true),
+  linkType: text("link_type"),
+  linkValue: text("link_value"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

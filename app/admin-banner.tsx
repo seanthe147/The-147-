@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Image,
   Alert,
+  Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -30,6 +31,11 @@ export default function AdminBannerScreen() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [linkType, setLinkType] = useState<"" | "event" | "order" | "url">("");
+  const [linkUrl, setLinkUrl] = useState("");
+  const [editingLinkId, setEditingLinkId] = useState<number | null>(null);
+  const [editLinkType, setEditLinkType] = useState<"" | "event" | "order" | "url">("");
+  const [editLinkUrl, setEditLinkUrl] = useState("");
 
   const { data: bannerImages, isLoading } = useQuery<BannerImage[]>({
     queryKey: ["/api/banner-images/all"],
@@ -153,6 +159,12 @@ export default function AdminBannerScreen() {
       formData.append("title", title.trim());
       formData.append("sortOrder", String(maxOrder));
       formData.append("active", "true");
+      if (linkType) {
+        formData.append("linkType", linkType);
+        if (linkType === "url" && linkUrl.trim()) {
+          formData.append("linkValue", linkUrl.trim());
+        }
+      }
 
       const baseUrl = getApiUrl();
       const url = new URL("/api/banner-images", baseUrl).toString();
@@ -169,6 +181,8 @@ export default function AdminBannerScreen() {
       setSelectedImage(null);
       setSelectedFile(null);
       setTitle("");
+      setLinkType("");
+      setLinkUrl("");
       if (Platform.OS === "web" && fileInputRef.current) fileInputRef.current.value = "";
       await queryClient.refetchQueries({ queryKey: ["/api/banner-images/all"] });
       await queryClient.refetchQueries({ queryKey: ["/api/banner-images"] });
@@ -209,6 +223,33 @@ export default function AdminBannerScreen() {
       await queryClient.refetchQueries({ queryKey: ["/api/banner-images"] });
     } catch {
       const msg = "Failed to update banner image";
+      Platform.OS === "web" ? window.alert(msg) : Alert.alert("Error", msg);
+    }
+  };
+
+  const openEditLink = (img: BannerImage) => {
+    setEditingLinkId(img.id);
+    setEditLinkType((img.linkType as any) || "");
+    setEditLinkUrl(img.linkValue || "");
+  };
+
+  const handleSaveLink = async () => {
+    if (!editingLinkId) return;
+    if (editLinkType === "url" && !editLinkUrl.trim()) {
+      const msg = "Please enter a URL";
+      Platform.OS === "web" ? window.alert(msg) : Alert.alert("Error", msg);
+      return;
+    }
+    try {
+      await apiRequest("PUT", `/api/banner-images/${editingLinkId}`, {
+        linkType: editLinkType || null,
+        linkValue: editLinkType === "url" ? editLinkUrl.trim() : null,
+      });
+      await queryClient.refetchQueries({ queryKey: ["/api/banner-images/all"] });
+      await queryClient.refetchQueries({ queryKey: ["/api/banner-images"] });
+      setEditingLinkId(null);
+    } catch {
+      const msg = "Failed to update link";
       Platform.OS === "web" ? window.alert(msg) : Alert.alert("Error", msg);
     }
   };
@@ -300,6 +341,47 @@ export default function AdminBannerScreen() {
             testID="banner-title-input"
           />
 
+          <Text style={[styles.inputLabel, { marginTop: 14 }]}>LINK TO (OPTIONAL)</Text>
+          <View style={styles.linkTypeRow}>
+            {([
+              { value: "", label: "None" },
+              { value: "event", label: "Events", icon: "ticket-outline" },
+              { value: "order", label: "Order & Pay", icon: "restaurant-outline" },
+              { value: "url", label: "URL", icon: "open-outline" },
+            ] as const).map((opt) => (
+              <Pressable
+                key={opt.value}
+                onPress={() => setLinkType(opt.value)}
+                style={[styles.linkTypeBtn, linkType === opt.value && styles.linkTypeBtnActive]}
+              >
+                {"icon" in opt ? (
+                  <Ionicons
+                    name={opt.icon}
+                    size={13}
+                    color={linkType === opt.value ? "#FFFFFF" : Colors.light.textSecondary}
+                  />
+                ) : null}
+                <Text style={[styles.linkTypeBtnText, linkType === opt.value && styles.linkTypeBtnTextActive]}>
+                  {opt.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          {linkType === "url" ? (
+            <>
+              <Text style={[styles.inputLabel, { marginTop: 10 }]}>EXTERNAL URL</Text>
+              <TextInput
+                style={styles.textInput}
+                value={linkUrl}
+                onChangeText={setLinkUrl}
+                placeholder="https://example.com/offer"
+                placeholderTextColor={Colors.light.textSecondary}
+                autoCapitalize="none"
+                keyboardType="url"
+              />
+            </>
+          ) : null}
+
           {selectedImage ? (
             <View style={styles.previewContainer}>
               <Text style={styles.previewLabel}>PREVIEW</Text>
@@ -358,6 +440,18 @@ export default function AdminBannerScreen() {
                   <View style={styles.cardStatus}>
                     <View style={[styles.statusDot, { backgroundColor: img.active ? "#4ADE80" : "#9CA3AF" }]} />
                     <Text style={styles.statusText}>{img.active ? "Active" : "Hidden"}</Text>
+                    {img.linkType ? (
+                      <View style={styles.linkBadge}>
+                        <Ionicons
+                          name={img.linkType === "event" ? "ticket-outline" : img.linkType === "order" ? "restaurant-outline" : "open-outline"}
+                          size={10}
+                          color={Colors.brand.blue}
+                        />
+                        <Text style={styles.linkBadgeText}>
+                          {img.linkType === "event" ? "→ Events" : img.linkType === "order" ? "→ Order" : "→ URL"}
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
                 </View>
                 <View style={styles.cardActions}>
@@ -377,6 +471,12 @@ export default function AdminBannerScreen() {
                       <Ionicons name="chevron-down" size={18} color={Colors.light.text} />
                     </Pressable>
                   </View>
+                  <Pressable
+                    onPress={() => openEditLink(img)}
+                    style={({ pressed }) => [styles.iconBtn, { opacity: pressed ? 0.6 : 1 }]}
+                  >
+                    <Ionicons name="link-outline" size={18} color={img.linkType ? Colors.brand.blue : Colors.light.textSecondary} />
+                  </Pressable>
                   <Pressable
                     onPress={() => handleToggle(img.id, img.active)}
                     style={({ pressed }) => [styles.iconBtn, { opacity: pressed ? 0.6 : 1 }]}
@@ -400,12 +500,85 @@ export default function AdminBannerScreen() {
           <Text style={styles.tipText}>Use wide landscape images (at least 800px wide) for best results.</Text>
           <Text style={styles.tipText}>Max file size: 10MB. Supported formats: JPEG, PNG, WebP, GIF.</Text>
           <Text style={styles.tipText}>Add a caption to display text over the image.</Text>
+          <Text style={styles.tipText}>Set a link so tapping a banner opens Events, Order & Pay, or an external URL.</Text>
+          <Text style={styles.tipText}>Tap the link icon on any existing banner to add or change its link.</Text>
           <Text style={styles.tipText}>Reorder banners with the up/down arrows.</Text>
           <Text style={styles.tipText}>Toggle visibility with the eye icon without deleting.</Text>
         </View>
 
         <View style={{ height: Platform.OS === "web" ? 50 : insets.bottom + 20 }} />
       </ScrollView>
+
+      <Modal
+        visible={editingLinkId !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditingLinkId(null)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setEditingLinkId(null)}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>Set Banner Link</Text>
+            <Text style={styles.modalSubtitle}>When tapped, this banner will navigate to:</Text>
+
+            <View style={[styles.linkTypeRow, { marginBottom: 16 }]}>
+              {([
+                { value: "", label: "None" },
+                { value: "event", label: "Events", icon: "ticket-outline" },
+                { value: "order", label: "Order & Pay", icon: "restaurant-outline" },
+                { value: "url", label: "URL", icon: "open-outline" },
+              ] as const).map((opt) => (
+                <Pressable
+                  key={opt.value}
+                  onPress={() => setEditLinkType(opt.value)}
+                  style={[styles.linkTypeBtn, editLinkType === opt.value && styles.linkTypeBtnActive]}
+                >
+                  {"icon" in opt ? (
+                    <Ionicons
+                      name={opt.icon}
+                      size={13}
+                      color={editLinkType === opt.value ? "#FFFFFF" : Colors.light.textSecondary}
+                    />
+                  ) : null}
+                  <Text style={[styles.linkTypeBtnText, editLinkType === opt.value && styles.linkTypeBtnTextActive]}>
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {editLinkType === "url" ? (
+              <>
+                <Text style={[styles.inputLabel, { marginBottom: 6 }]}>EXTERNAL URL</Text>
+                <TextInput
+                  style={[styles.textInput, { marginBottom: 16 }]}
+                  value={editLinkUrl}
+                  onChangeText={setEditLinkUrl}
+                  placeholder="https://example.com/offer"
+                  placeholderTextColor={Colors.light.textSecondary}
+                  autoCapitalize="none"
+                  keyboardType="url"
+                  autoFocus
+                />
+              </>
+            ) : null}
+
+            <View style={styles.modalButtons}>
+              <Pressable
+                onPress={() => setEditingLinkId(null)}
+                style={({ pressed }) => [styles.modalCancelBtn, { opacity: pressed ? 0.7 : 1 }]}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleSaveLink}
+                style={({ pressed }) => [styles.modalSaveBtn, { opacity: pressed ? 0.8 : 1 }]}
+              >
+                <Text style={styles.modalSaveText}>Save Link</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -641,5 +814,102 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.light.textSecondary,
     lineHeight: 18,
+  },
+  linkTypeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 4,
+  },
+  linkTypeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: Colors.light.border,
+    backgroundColor: Colors.light.surface,
+  },
+  linkTypeBtnActive: {
+    backgroundColor: Colors.brand.blue,
+    borderColor: Colors.brand.blue,
+  },
+  linkTypeBtnText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+  },
+  linkTypeBtnTextActive: {
+    color: "#FFFFFF",
+  },
+  linkBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    marginLeft: 6,
+  },
+  linkBadgeText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 10,
+    color: Colors.brand.blue,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  modalCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 24,
+    width: "100%",
+    maxWidth: 420,
+  },
+  modalTitle: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 18,
+    color: Colors.light.text,
+    marginBottom: 6,
+  },
+  modalSubtitle: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  modalButtons: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 4,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.light.border,
+    alignItems: "center",
+  },
+  modalCancelText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+  },
+  modalSaveBtn: {
+    flex: 2,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: Colors.brand.blue,
+    alignItems: "center",
+  },
+  modalSaveText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 14,
+    color: "#FFFFFF",
   },
 });

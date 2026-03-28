@@ -1552,11 +1552,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const imageUrl = `data:image/jpeg;base64,${compressed.toString("base64")}`;
         const sortOrder = parseInt(req.body.sortOrder ?? "0");
         const active = req.body.active !== "false";
+        const linkType = req.body.linkType?.trim() || null;
+        const linkValue = req.body.linkValue?.trim() || null;
         const image = await storage.createBannerImage({
           imageUrl,
           title: req.body.title?.trim() || null,
           sortOrder: isNaN(sortOrder) ? 0 : sortOrder,
           active,
+          linkType,
+          linkValue,
         });
         return res.status(201).json(image);
       } catch (err) {
