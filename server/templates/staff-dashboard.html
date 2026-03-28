@@ -623,6 +623,98 @@
   </div>
 </div>
 
+<!-- EDIT PLAN MODAL -->
+<div class="overlay" id="editPlanModal">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-hd">
+      <div class="modal-hd-title" id="epTitle">Edit Plan</div>
+      <button class="modal-close" onclick="closeOverlay('editPlanModal')">&times;</button>
+    </div>
+    <div class="modal-bd">
+
+      <!-- Name & colour -->
+      <div style="display:grid;grid-template-columns:1fr auto;gap:12px;margin-bottom:14px;align-items:end">
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Plan Name</label>
+          <input class="form-input" type="text" id="epName" maxlength="60" placeholder="e.g. Century">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Colour</label>
+          <input type="color" id="epColor" style="height:40px;width:56px;border:1.5px solid var(--border);border-radius:var(--r);padding:2px;cursor:pointer;background:none">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Description <span style="color:var(--text-3);font-weight:400">(optional)</span></label>
+        <textarea class="form-input" id="epDescription" rows="2" placeholder="Short description shown to customers…" style="resize:vertical" maxlength="200"></textarea>
+      </div>
+
+      <!-- Pricing -->
+      <div style="background:var(--surface-2,#F8F9FB);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-bottom:10px">Pricing</div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Monthly Price (£)</label>
+          <input class="form-input" type="number" id="epPrice" min="0" step="0.01" placeholder="19.99">
+          <div style="font-size:11px;color:var(--text-3);margin-top:4px">Enter in pounds (e.g. 19.99). Stored internally in pence.</div>
+        </div>
+      </div>
+
+      <!-- Perks -->
+      <div style="background:var(--surface-2,#F8F9FB);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-bottom:10px">Perks</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Hours Included / Month</label>
+            <input class="form-input" type="number" id="epHours" min="0" step="1" placeholder="Leave blank for unlimited">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Food &amp; Drink Discount (%)</label>
+            <input class="form-input" type="number" id="epDiscount" min="0" max="100" step="1" placeholder="0">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Guest Passes / Month</label>
+            <input class="form-input" type="number" id="epGuestPasses" min="0" step="1" placeholder="0">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Loyalty Multiplier</label>
+            <input class="form-input" type="number" id="epLoyaltyMult" min="1" max="10" step="1" placeholder="1">
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <input type="checkbox" id="epPriorityBooking" style="width:16px;height:16px;cursor:pointer">
+          <label for="epPriorityBooking" style="font-size:13px;color:var(--text);cursor:pointer">Priority table booking access</label>
+        </div>
+      </div>
+
+      <!-- Square integration -->
+      <div style="background:var(--surface-2,#F8F9FB);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-bottom:10px">Square Integration</div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Square Plan Variation ID</label>
+          <input class="form-input" type="text" id="epSquareId" placeholder="Leave blank if not using Square billing" style="font-family:monospace;font-size:13px">
+        </div>
+        <div style="font-size:11px;color:var(--text-3);margin-top:6px;line-height:1.5">
+          Required to activate Square-managed billing for this plan. Find this in your Square Dashboard → Subscriptions.
+        </div>
+      </div>
+
+      <!-- Active toggle -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <input type="checkbox" id="epActive" style="width:16px;height:16px;cursor:pointer">
+        <label for="epActive" style="font-size:13px;color:var(--text);cursor:pointer">Plan is active (visible for new subscriptions)</label>
+      </div>
+
+      <div class="modal-err" id="epErr"></div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn btn-secondary" onclick="closeOverlay('editPlanModal')">Cancel</button>
+      <button class="btn btn-primary" id="epSaveBtn">Save Plan</button>
+    </div>
+  </div>
+</div>
+
 <!-- MANAGE SUBSCRIPTION MODAL -->
 <div class="overlay" id="manageSubModal">
   <div class="modal" style="max-width:520px">
@@ -2350,16 +2442,40 @@
     }
 
     if(plans.length>0){
-      html+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:24px">`;
+      html+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:24px">`;
       plans.forEach(p=>{
-        const active=subs.filter(s=>s.planId===p.id&&s.status==='active').length;
-        html+=`<div class="settings-section" style="margin:0;padding:18px 20px;border-top:4px solid ${esc(p.color)}">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-            <div style="font-size:16px;font-weight:800;color:var(--text)">${esc(p.name)}</div>
-            <span class="pill pill-blue">${active} active</span>
+        const activeCnt=subs.filter(s=>s.planId===p.id&&s.status==='active').length;
+        const pausedCnt=subs.filter(s=>s.planId===p.id&&s.status==='paused').length;
+        const perks=[];
+        if(p.hoursIncluded)perks.push(p.hoursIncluded+' hrs/mo');
+        else perks.push('Unlimited');
+        if(p.foodDrinkDiscount)perks.push(p.foodDrinkDiscount+'% F&D discount');
+        if(p.priorityBooking)perks.push('Priority booking');
+        if(p.guestPassesMonthly)perks.push(p.guestPassesMonthly+' guest pass'+(p.guestPassesMonthly>1?'es':''));
+        if(p.loyaltyMultiplier>1)perks.push(p.loyaltyMultiplier+'× loyalty pts');
+        html+=`<div class="settings-section" style="margin:0;padding:0;border-top:4px solid ${esc(p.color)};overflow:hidden">
+          <div style="padding:16px 18px 14px">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px">
+              <div>
+                <div style="font-size:16px;font-weight:800;color:var(--text)">${esc(p.name)}</div>
+                ${p.description?`<div style="font-size:11px;color:var(--text-2);margin-top:2px;line-height:1.4">${esc(p.description)}</div>`:''}
+              </div>
+              <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+                <span class="pill pill-green">${activeCnt} active</span>
+                ${pausedCnt?`<span class="pill pill-amber">${pausedCnt} paused</span>`:''}
+              </div>
+            </div>
+            <div style="font-size:24px;font-weight:800;color:${esc(p.color)}">£${(p.priceMonthly/100).toFixed(2)}<span style="font-size:13px;font-weight:600;color:var(--text-2)">/mo</span></div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
+              ${perks.map(pk=>`<span style="font-size:11px;background:${esc(p.color)}18;color:${esc(p.color)};padding:3px 8px;border-radius:6px;font-weight:600">${esc(pk)}</span>`).join('')}
+            </div>
+            ${p.squarePlanVariationId?`<div style="margin-top:8px;font-size:11px;color:var(--text-3,#9CA3AF)">Square ID: <code style="font-size:10px">${esc(p.squarePlanVariationId)}</code></div>`
+              :isManager?`<div style="margin-top:8px;font-size:11px;color:var(--amber)">⚠ No Square plan variation ID set — billing inactive</div>`:''}
           </div>
-          <div style="font-size:22px;font-weight:800;color:${esc(p.color)}">£${(p.priceMonthly/100).toFixed(2)}<span style="font-size:13px;font-weight:600;color:var(--text-2)">/mo</span></div>
-          <div style="font-size:12px;color:var(--text-2);margin-top:6px;line-height:1.5">${esc(p.description||'')}</div>
+          ${isManager?`<div style="border-top:1px solid var(--border);padding:10px 18px;display:flex;justify-content:flex-end;gap:8px">
+            <span class="pill ${p.active?'pill-green':'pill-gray'}" style="flex:1">${p.active?'Active':'Inactive'}</span>
+            <button class="btn btn-secondary btn-sm" onclick="window.openEditPlanModal(${p.id})">Edit Plan</button>
+          </div>`:''}
         </div>`;
       });
       html+=`</div>`;
@@ -2415,6 +2531,61 @@
     }
     el('membershipsContent').innerHTML=html;
   }
+
+  /* ── Edit Plan ── */
+  window.openEditPlanModal=function(planId){
+    const plan=membershipsData.plans.find(p=>p.id===planId);
+    if(!plan)return;
+    el('epTitle').textContent='Edit Plan — '+plan.name;
+    el('epName').value=plan.name;
+    el('epColor').value=plan.color||'#0047AB';
+    el('epDescription').value=plan.description||'';
+    el('epPrice').value=(plan.priceMonthly/100).toFixed(2);
+    el('epHours').value=plan.hoursIncluded!=null?plan.hoursIncluded:'';
+    el('epDiscount').value=plan.foodDrinkDiscount||0;
+    el('epGuestPasses').value=plan.guestPassesMonthly||0;
+    el('epLoyaltyMult').value=plan.loyaltyMultiplier||1;
+    el('epPriorityBooking').checked=!!plan.priorityBooking;
+    el('epSquareId').value=plan.squarePlanVariationId||'';
+    el('epActive').checked=plan.active!==false;
+    el('epErr').classList.remove('show');
+    el('editPlanModal').dataset.planId=planId;
+    openOverlay('editPlanModal');
+    setTimeout(()=>el('epName').focus(),100);
+  };
+
+  el('epSaveBtn').addEventListener('click',async()=>{
+    const err=el('epErr');err.classList.remove('show');
+    const planId=parseInt(el('editPlanModal').dataset.planId);
+    const name=el('epName').value.trim();
+    const priceStr=el('epPrice').value;
+    if(!name){err.textContent='Plan name is required';err.classList.add('show');return}
+    const priceVal=parseFloat(priceStr);
+    if(isNaN(priceVal)||priceVal<0){err.textContent='Enter a valid price (e.g. 19.99)';err.classList.add('show');return}
+    const hoursRaw=el('epHours').value;
+    const payload={
+      name,
+      color:el('epColor').value,
+      description:el('epDescription').value.trim()||null,
+      priceMonthly:Math.round(priceVal*100),
+      hoursIncluded:hoursRaw!==''?parseInt(hoursRaw):null,
+      foodDrinkDiscount:parseInt(el('epDiscount').value)||0,
+      guestPassesMonthly:parseInt(el('epGuestPasses').value)||0,
+      loyaltyMultiplier:parseInt(el('epLoyaltyMult').value)||1,
+      priorityBooking:el('epPriorityBooking').checked,
+      squarePlanVariationId:el('epSquareId').value.trim()||null,
+      active:el('epActive').checked,
+    };
+    el('epSaveBtn').disabled=true;
+    try{
+      const r=await api('/api/staff/membership/plans/'+planId,{method:'PUT',body:JSON.stringify(payload)});
+      if(!r.ok){const d=await r.json();err.textContent=d.message||'Failed to save plan';err.classList.add('show');return}
+      closeOverlay('editPlanModal');
+      toast('Plan updated','success');
+      loadMemberships();
+    }catch(e){if(e.message!=='Session expired'){err.textContent='Network error';err.classList.add('show')}}
+    finally{el('epSaveBtn').disabled=false}
+  });
 
   window.seedMembershipPlans=async function(){
     try{
