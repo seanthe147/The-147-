@@ -2301,6 +2301,140 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(204).send();
   });
 
+  // ── Membership — public plan listing (gated - not shown in app yet) ───────
+  app.get("/api/membership/plans", async (_req, res) => {
+    const plans = await storage.getMembershipPlans(true);
+    res.json(plans);
+  });
+
+  // ── Membership — Square webhook ──────────────────────────────────────────
+  app.post("/api/membership/webhook", async (req, res) => {
+    try {
+      const event = req.body;
+      const type: string = event?.type ?? "";
+      const sub = event?.data?.object?.subscription;
+      if (!sub?.id) return res.status(200).send("ok");
+      const existingSubs = await storage.getMembershipSubscriptions();
+      const local = existingSubs.find(s => s.squareSubscriptionId === sub.id);
+      if (!local) return res.status(200).send("ok");
+      if (type === "subscription.updated" || type === "subscription.activated") {
+        const status = sub.status === "ACTIVE" ? "active"
+          : sub.status === "PAUSED" ? "paused"
+          : sub.status === "CANCELED" ? "cancelled"
+          : sub.status === "PENDING" ? "pending" : "active";
+        await storage.updateMembershipSubscription(local.id, {
+          status,
+          currentPeriodStart: sub.charged_through_date ? sub.start_date : local.currentPeriodStart ?? undefined,
+          currentPeriodEnd: sub.charged_through_date ?? undefined,
+        });
+      }
+      res.status(200).send("ok");
+    } catch {
+      res.status(200).send("ok");
+    }
+  });
+
+  // ── Membership — staff management ───────────────────────────────────────
+  app.get("/api/staff/membership/stats", staffAuth, async (_req, res) => {
+    const stats = await storage.getMembershipStats();
+    res.json(stats);
+  });
+
+  app.get("/api/staff/membership/plans", staffAuth, async (_req, res) => {
+    const plans = await storage.getMembershipPlans();
+    res.json(plans);
+  });
+
+  app.put("/api/staff/membership/plans/:id", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id as string);
+    const plan = await storage.updateMembershipPlan(id, req.body);
+    if (!plan) return res.status(404).json({ message: "Plan not found" });
+    res.json(plan);
+  });
+
+  app.post("/api/staff/membership/plans/seed", staffAuth, managerAuth, async (_req, res) => {
+    const defaults = [
+      { name: "Rack", tier: "rack", priceMonthly: 1999, hoursIncluded: 4, foodDrinkDiscount: 5, priorityBooking: false, loyaltyMultiplier: 1, guestPassesMonthly: 0, color: "#0047AB", sortOrder: 0, description: "4 hrs snooker per month, 5% food & drink discount", active: true },
+      { name: "Century", tier: "century", priceMonthly: 3499, hoursIncluded: 8, foodDrinkDiscount: 10, priorityBooking: true, loyaltyMultiplier: 1, guestPassesMonthly: 0, color: "#D4A843", sortOrder: 1, description: "8 hrs snooker per month, 10% food & drink, priority booking", active: true },
+      { name: "Maximum", tier: "maximum", priceMonthly: 5499, hoursIncluded: null, foodDrinkDiscount: 15, priorityBooking: true, loyaltyMultiplier: 2, guestPassesMonthly: 1, color: "#10B981", sortOrder: 2, description: "Unlimited snooker, 15% food & drink, 2× loyalty points, 1 guest pass/month", active: true },
+    ];
+    const created = await Promise.all(defaults.map(d => storage.upsertMembershipPlan(d)));
+    res.json(created);
+  });
+
+  app.get("/api/staff/membership/subscriptions", staffAuth, async (_req, res) => {
+    const subs = await storage.getMembershipSubscriptions();
+    res.json(subs);
+  });
+
+  app.post("/api/staff/membership/subscriptions", staffAuth, async (req, res) => {
+    const { customerId, planId, status = "active", staffNotes, source = "staff" } = req.body ?? {};
+    if (!customerId || !planId) return res.status(400).json({ message: "customerId and planId are required" });
+    const today = new Date().toISOString().slice(0, 10);
+    const nextMonth = new Date();
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+    const sub = await storage.createMembershipSubscription({
+      customerId: parseInt(customerId),
+      planId: parseInt(planId),
+      status,
+      currentPeriodStart: today,
+      currentPeriodEnd: nextMonth.toISOString().slice(0, 10),
+      hoursUsedThisPeriod: 0,
+      guestPassesUsed: 0,
+      staffNotes: staffNotes || null,
+      source,
+    });
+    // Optionally create Square subscription if configured and plan has a Square plan variation ID
+    if (square.isConfigured()) {
+      try {
+        const plan = await storage.getMembershipPlan(parseInt(planId));
+        const customer = await storage.getCustomerById(parseInt(customerId));
+        if (plan?.squarePlanVariationId && customer) {
+          let sqCustomer = await square.findSquareCustomerByEmail(customer.email).catch(() => null);
+          if (!sqCustomer) sqCustomer = await square.createSquareCustomer(customer.name, customer.email, customer.phone || undefined);
+          if (sqCustomer) {
+            const locationId = process.env.SQUARE_LOCATION_ID!;
+            const sqSub = await square.createSquareSubscription(sqCustomer.id, plan.squarePlanVariationId, locationId).catch(() => null);
+            if (sqSub) {
+              await storage.updateMembershipSubscription(sub.id, {
+                squareSubscriptionId: sqSub.id,
+                squareCustomerId: sqCustomer.id,
+                currentPeriodEnd: sqSub.charged_through_date ?? sub.currentPeriodEnd,
+              });
+            }
+          }
+        }
+      } catch { /* Square not set up yet — subscription saved locally */ }
+    }
+    res.status(201).json(sub);
+  });
+
+  app.patch("/api/staff/membership/subscriptions/:id", staffAuth, async (req, res) => {
+    const id = parseInt(req.params.id as string);
+    const sub = await storage.getMembershipSubscription(id);
+    if (!sub) return res.status(404).json({ message: "Subscription not found" });
+    const { status, staffNotes, planId, hoursUsedThisPeriod, guestPassesUsed } = req.body ?? {};
+    const updates: Record<string, unknown> = {};
+    if (staffNotes !== undefined) updates.staffNotes = staffNotes;
+    if (planId !== undefined) updates.planId = parseInt(planId);
+    if (hoursUsedThisPeriod !== undefined) updates.hoursUsedThisPeriod = parseInt(hoursUsedThisPeriod);
+    if (guestPassesUsed !== undefined) updates.guestPassesUsed = parseInt(guestPassesUsed);
+    if (status !== undefined) {
+      updates.status = status;
+      if (status === "cancelled") updates.cancelledAt = new Date();
+      // Mirror to Square if possible
+      if (sub.squareSubscriptionId && square.isConfigured()) {
+        try {
+          if (status === "cancelled") await square.cancelSquareSubscription(sub.squareSubscriptionId);
+          else if (status === "paused") await square.pauseSquareSubscription(sub.squareSubscriptionId);
+          else if (status === "active" && sub.status === "paused") await square.resumeSquareSubscription(sub.squareSubscriptionId);
+        } catch { /* Square call failed — local update still applied */ }
+      }
+    }
+    const updated = await storage.updateMembershipSubscription(id, updates as any);
+    res.json(updated);
+  });
+
   // Data deletion page — required by Apple App Store & Google Play
   app.get("/delete-account", (_req, res) => {
     const pagePath = path.resolve(process.cwd(), "server", "templates", "delete-account.html");

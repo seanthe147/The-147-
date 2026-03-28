@@ -365,6 +365,11 @@
           Staff Accounts
           <span class="nav-badge hidden" id="staffBadge">0</span>
         </div>
+        <div class="nav-item hidden" data-page="memberships" id="navMemberships">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          Memberships
+          <span class="nav-badge hidden" id="membersBadge">0</span>
+        </div>
         <div class="nav-section" style="margin-top:8px">Account</div>
         <div class="nav-item" data-page="settings">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -489,6 +494,13 @@
         </div>
       </div>
 
+      <!-- MEMBERSHIPS PAGE -->
+      <div class="page" id="pageMemberships">
+        <div class="page-body">
+          <div id="membershipsContent"><div class="loading-state"><div class="spinner"></div>Loading…</div></div>
+        </div>
+      </div>
+
       <!-- NOTICES PAGE -->
       <div class="page" id="pageNotices">
         <div class="page-body">
@@ -608,6 +620,63 @@
         </div>
       </div>
     </main>
+  </div>
+</div>
+
+<!-- ADD MEMBER MODAL -->
+<div class="overlay" id="addMemberModal">
+  <div class="modal modal-sm">
+    <div class="modal-hd">
+      <div class="modal-hd-title">Add Member</div>
+      <button class="modal-close" onclick="closeOverlay('addMemberModal')">&times;</button>
+    </div>
+    <div class="modal-bd">
+      <div class="modal-err" id="amErr"></div>
+      <input type="hidden" id="amCustomerId">
+      <div class="form-group">
+        <label class="form-label">Customer</label>
+        <div class="customer-search-wrap">
+          <input class="form-input" type="text" id="amCustomerSearch" placeholder="Search by name or email…" autocomplete="off">
+          <div class="customer-dropdown" id="amCustomerDropdown"></div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Membership Plan</label>
+        <select class="form-input" id="amPlanId"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Staff Notes (optional)</label>
+        <textarea class="form-input" id="amNotes" placeholder="e.g. Comp'd for opening month" style="min-height:60px;resize:vertical"></textarea>
+      </div>
+      <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px 14px;font-size:12px;color:#1E40AF;line-height:1.5;margin-bottom:4px">
+        If Square is configured and the plan has a Square plan variation ID, billing will start automatically. Otherwise the subscription is recorded manually.
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn btn-secondary" onclick="closeOverlay('addMemberModal')">Cancel</button>
+      <button class="btn btn-primary" id="amSaveBtn">Add Member</button>
+    </div>
+  </div>
+</div>
+
+<!-- MEMBER NOTE MODAL -->
+<div class="overlay" id="memberNoteModal">
+  <div class="modal modal-sm">
+    <div class="modal-hd">
+      <div class="modal-hd-title">Staff Note</div>
+      <button class="modal-close" onclick="closeOverlay('memberNoteModal')">&times;</button>
+    </div>
+    <div class="modal-bd">
+      <input type="hidden" id="mnSubId">
+      <div class="form-group">
+        <label class="form-label">Note</label>
+        <textarea class="form-input" id="mnNote" placeholder="Internal staff note about this member…" style="min-height:80px;resize:vertical" maxlength="500"></textarea>
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn btn-secondary" onclick="closeOverlay('memberNoteModal')">Cancel</button>
+      <button class="btn btn-primary" id="mnSaveBtn">Save Note</button>
+    </div>
   </div>
 </div>
 
@@ -1001,6 +1070,7 @@
     el('navNotifications').classList.toggle('hidden',!isManager);
     el('navNotices').classList.toggle('hidden',!isManager);
     el('navStaff').classList.toggle('hidden',!isOwner);
+    el('navMemberships').classList.toggle('hidden',!isManager);
     el('popupSection').style.display=isManager?'':'none';
     el('topbarActions').innerHTML=`<button class="btn btn-primary" id="newBookingBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Booking</button>`;
     el('newBookingBtn').addEventListener('click',()=>openBookingModal(null));
@@ -1068,7 +1138,7 @@
   function navigateTo(page){
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page'+cap(page)));
-    const titles={bookings:'Bookings',messages:'Messages',notifications:'Push Notifications',notices:'Staff Notices',staff:'Staff Accounts',settings:'Settings'};
+    const titles={bookings:'Bookings',messages:'Messages',notifications:'Push Notifications',notices:'Staff Notices',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships'};
     el('topbarTitle').textContent=titles[page]||'';
     el('topbarSub').textContent='';
     if(page==='bookings'){el('topbarActions').style.display='';loadBookings();loadDashboardNotices();startBookingsPolling();}
@@ -1077,6 +1147,7 @@
     if(page==='notifications')loadNotifications();
     if(page==='notices'){loadNotices();loadPopups();}
     if(page==='staff')loadStaff();
+    if(page==='memberships')loadMemberships();
   }
   function cap(s){return s.charAt(0).toUpperCase()+s.slice(1)}
 
@@ -2121,6 +2192,241 @@
       setTimeout(()=>sucEl.style.display='none',4000);
     }catch(e){if(e.message!=='Session expired'){errEl.textContent='Network error';errEl.classList.add('show')}}
     finally{el('changePinBtn').disabled=false}
+  });
+
+  /* ── Memberships ── */
+  let membershipsData={plans:[],subs:[]};
+
+  const TIER_COLORS={rack:'var(--blue)',century:'var(--gold)',maximum:'var(--green)'};
+  const TIER_LABELS={rack:'Rack',century:'Century',maximum:'Maximum'};
+  const STATUS_COLORS={active:'pill-green',paused:'pill-amber',cancelled:'pill-red',pending:'pill-blue',past_due:'pill-red'};
+
+  async function loadMemberships(){
+    el('membershipsContent').innerHTML='<div class="loading-state"><div class="spinner"></div>Loading memberships…</div>';
+    try{
+      const [statsR,plansR,subsR]=await Promise.all([
+        api('/api/staff/membership/stats'),
+        api('/api/staff/membership/plans'),
+        api('/api/staff/membership/subscriptions'),
+      ]);
+      const stats=await statsR.json();
+      const plans=await plansR.json();
+      const subs=await subsR.json();
+      membershipsData={plans,subs};
+      renderMemberships(stats,plans,subs);
+    }catch(e){
+      if(e.message!=='Session expired')el('membershipsContent').innerHTML='<div class="empty-state"><div class="empty-title">Failed to load memberships</div></div>';
+    }
+  }
+
+  function renderMemberships(stats,plans,subs){
+    const isManager=state.role==='manager'||state.role==='owner';
+    const mrr=(stats.mrr/100).toFixed(2);
+    const needsSeed=plans.length===0;
+    let html=`
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px">
+        <div class="settings-section" style="margin:0;padding:18px 20px;text-align:center">
+          <div style="font-size:26px;font-weight:800;color:var(--green)">£${mrr}</div>
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-top:4px">MRR</div>
+        </div>
+        <div class="settings-section" style="margin:0;padding:18px 20px;text-align:center">
+          <div style="font-size:26px;font-weight:800;color:var(--blue)">${stats.active}</div>
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-top:4px">Active</div>
+        </div>
+        <div class="settings-section" style="margin:0;padding:18px 20px;text-align:center">
+          <div style="font-size:26px;font-weight:800;color:var(--amber)">${stats.paused}</div>
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-top:4px">Paused</div>
+        </div>
+        <div class="settings-section" style="margin:0;padding:18px 20px;text-align:center">
+          <div style="font-size:26px;font-weight:800;color:var(--red)">${stats.cancelled}</div>
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-top:4px">Cancelled</div>
+        </div>
+      </div>`;
+
+    if(needsSeed&&isManager){
+      html+=`<div class="settings-section" style="margin-bottom:24px">
+        <div class="settings-title">First-Time Setup</div>
+        <div class="settings-desc">No membership plans exist yet. Seed the three default plans (Rack / Century / Maximum) to get started. You can then edit them from this page.</div>
+        <button class="btn btn-primary" onclick="window.seedMembershipPlans()">Seed Default Plans</button>
+      </div>`;
+    }
+
+    if(plans.length>0){
+      html+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:24px">`;
+      plans.forEach(p=>{
+        const active=subs.filter(s=>s.planId===p.id&&s.status==='active').length;
+        html+=`<div class="settings-section" style="margin:0;padding:18px 20px;border-top:4px solid ${esc(p.color)}">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div style="font-size:16px;font-weight:800;color:var(--text)">${esc(p.name)}</div>
+            <span class="pill pill-blue">${active} active</span>
+          </div>
+          <div style="font-size:22px;font-weight:800;color:${esc(p.color)}">£${(p.priceMonthly/100).toFixed(2)}<span style="font-size:13px;font-weight:600;color:var(--text-2)">/mo</span></div>
+          <div style="font-size:12px;color:var(--text-2);margin-top:6px;line-height:1.5">${esc(p.description||'')}</div>
+        </div>`;
+      });
+      html+=`</div>`;
+    }
+
+    html+=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div style="font-size:16px;font-weight:800;color:var(--text)">All Members (${subs.length})</div>`;
+    if(isManager&&plans.length>0){
+      html+=`<button class="btn btn-primary btn-sm" onclick="window.openAddMemberModal()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Member
+      </button>`;
+    }
+    html+=`</div>`;
+
+    if(subs.length===0){
+      html+=`<div class="empty-state"><div class="empty-icon">🪙</div><div class="empty-title">No members yet</div><div class="empty-desc">Members added here will appear in this list. The subscription service is not yet live for customers.</div></div>`;
+    }else{
+      html+=`<div class="staff-grid">`;
+      subs.forEach(sub=>{
+        const cust=sub.customer;
+        const plan=sub.plan;
+        const initials=cust?cust.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase():'?';
+        const planColor=plan?plan.color:'#888';
+        const statusClass=STATUS_COLORS[sub.status]||'pill-gray';
+        html+=`<div class="staff-card">
+          <div class="staff-avatar" style="background:${esc(planColor)}">${esc(initials)}</div>
+          <div class="staff-info">
+            <div class="staff-name-row">
+              <span class="staff-name">${esc(cust?cust.name:'Unknown')}</span>
+              <span class="pill ${statusClass}">${esc(sub.status)}</span>
+              ${plan?`<span class="pill" style="background:${esc(plan.color)}22;color:${esc(plan.color)}">${esc(plan.name)}</span>`:''}
+            </div>
+            <div class="staff-username">${esc(cust?cust.email:'')} ${cust&&cust.phone?'· '+esc(cust.phone):''}</div>
+            <div class="staff-joined">Joined ${new Date(sub.createdAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}
+              ${sub.currentPeriodEnd?' · Renews '+new Date(sub.currentPeriodEnd).toLocaleDateString('en-GB',{day:'numeric',month:'short'}):''}
+              ${plan&&plan.hoursIncluded?' · '+sub.hoursUsedThisPeriod+'/'+plan.hoursIncluded+' hrs used':''}
+              ${sub.staffNotes?'<br><em style="color:var(--text-2)">'+esc(sub.staffNotes)+'</em>':''}
+            </div>
+          </div>
+          <div class="staff-actions">
+            ${sub.status==='active'?`<button class="btn btn-secondary btn-sm" onclick="window.pauseMember(${sub.id})">Pause</button>`:''}
+            ${sub.status==='paused'?`<button class="btn btn-secondary btn-sm" onclick="window.resumeMember(${sub.id})">Resume</button>`:''}
+            ${sub.status!=='cancelled'?`<button class="btn btn-danger btn-sm" onclick="window.cancelMember(${sub.id})">Cancel</button>`:''}
+            <button class="btn btn-secondary btn-sm" onclick="window.openMemberNoteModal(${sub.id})">Note</button>
+          </div>
+        </div>`;
+      });
+      html+=`</div>`;
+    }
+    el('membershipsContent').innerHTML=html;
+  }
+
+  window.seedMembershipPlans=async function(){
+    try{
+      const r=await api('/api/staff/membership/plans/seed',{method:'POST'});
+      if(!r.ok){toast('Failed to seed plans','error');return}
+      toast('Default plans created','success');
+      loadMemberships();
+    }catch(e){if(e.message!=='Session expired')toast('Network error','error')}
+  };
+
+  window.pauseMember=async function(id){
+    if(!confirm('Pause this membership?'))return;
+    try{
+      const r=await api('/api/staff/membership/subscriptions/'+id,{method:'PATCH',body:JSON.stringify({status:'paused'})});
+      if(!r.ok){const d=await r.json();toast(d.message||'Failed','error');return}
+      toast('Membership paused','success');loadMemberships();
+    }catch(e){if(e.message!=='Session expired')toast('Network error','error')}
+  };
+
+  window.resumeMember=async function(id){
+    try{
+      const r=await api('/api/staff/membership/subscriptions/'+id,{method:'PATCH',body:JSON.stringify({status:'active'})});
+      if(!r.ok){const d=await r.json();toast(d.message||'Failed','error');return}
+      toast('Membership resumed','success');loadMemberships();
+    }catch(e){if(e.message!=='Session expired')toast('Network error','error')}
+  };
+
+  window.cancelMember=async function(id){
+    if(!confirm('Cancel this membership? This cannot be undone.'))return;
+    try{
+      const r=await api('/api/staff/membership/subscriptions/'+id,{method:'PATCH',body:JSON.stringify({status:'cancelled'})});
+      if(!r.ok){const d=await r.json();toast(d.message||'Failed','error');return}
+      toast('Membership cancelled','success');loadMemberships();
+    }catch(e){if(e.message!=='Session expired')toast('Network error','error')}
+  };
+
+  window.openMemberNoteModal=function(id){
+    const sub=membershipsData.subs.find(s=>s.id===id);
+    if(!sub)return;
+    el('mnSubId').value=id;
+    el('mnNote').value=sub.staffNotes||'';
+    openOverlay('memberNoteModal');
+    setTimeout(()=>el('mnNote').focus(),100);
+  };
+
+  window.openAddMemberModal=function(){
+    el('amCustomerId').value='';
+    el('amPlanId').innerHTML=membershipsData.plans.map(p=>`<option value="${p.id}">£${(p.priceMonthly/100).toFixed(2)}/mo — ${esc(p.name)}</option>`).join('');
+    el('amCustomerSearch').value='';
+    el('amCustomerDropdown').classList.remove('open');
+    el('amCustomerDropdown').innerHTML='';
+    el('amErr').classList.remove('show');
+    openOverlay('addMemberModal');
+    setTimeout(()=>el('amCustomerSearch').focus(),100);
+  };
+
+  // Customer search for add member modal
+  (function(){
+    let amTimer=null;
+    el('amCustomerSearch').addEventListener('input',function(){
+      clearTimeout(amTimer);
+      const q=this.value.trim();
+      if(q.length<2){el('amCustomerDropdown').classList.remove('open');return}
+      amTimer=setTimeout(async()=>{
+        try{
+          const r=await api('/api/staff/customers/search?q='+encodeURIComponent(q));
+          const customers=await r.json();
+          const dd=el('amCustomerDropdown');
+          if(!customers.length){dd.innerHTML='<div class="customer-search-empty">No customers found</div>';dd.classList.add('open');return}
+          dd.innerHTML=customers.slice(0,6).map(c=>`<div class="customer-result" onclick="window.selectAmCustomer(${c.id},'${esc(c.name)}','${esc(c.email)}')">
+            <div class="customer-result-icon">${c.name[0].toUpperCase()}</div>
+            <div class="customer-result-info"><div class="customer-result-name">${esc(c.name)}</div><div class="customer-result-sub">${esc(c.email)}</div></div>
+          </div>`).join('');
+          dd.classList.add('open');
+        }catch{}
+      },300);
+    });
+  })();
+
+  window.selectAmCustomer=function(id,name,email){
+    el('amCustomerId').value=id;
+    el('amCustomerSearch').value=name+' ('+email+')';
+    el('amCustomerDropdown').classList.remove('open');
+  };
+
+  el('amSaveBtn').addEventListener('click',async()=>{
+    const err=el('amErr');err.classList.remove('show');
+    const customerId=el('amCustomerId').value;
+    const planId=el('amPlanId').value;
+    const notes=el('amNotes').value.trim();
+    if(!customerId){err.textContent='Select a customer first';err.classList.add('show');return}
+    if(!planId){err.textContent='Select a plan';err.classList.add('show');return}
+    el('amSaveBtn').disabled=true;
+    try{
+      const r=await api('/api/staff/membership/subscriptions',{method:'POST',body:JSON.stringify({customerId,planId,staffNotes:notes||null,source:'staff'})});
+      if(!r.ok){const d=await r.json();err.textContent=d.message||'Failed';err.classList.add('show');return}
+      closeOverlay('addMemberModal');
+      toast('Member added successfully','success');
+      loadMemberships();
+    }catch(e){if(e.message!=='Session expired'){err.textContent='Network error';err.classList.add('show')}}
+    finally{el('amSaveBtn').disabled=false}
+  });
+
+  el('mnSaveBtn').addEventListener('click',async()=>{
+    const id=parseInt(el('mnSubId').value);
+    const notes=el('mnNote').value.trim();
+    try{
+      const r=await api('/api/staff/membership/subscriptions/'+id,{method:'PATCH',body:JSON.stringify({staffNotes:notes||null})});
+      if(!r.ok){toast('Failed to save note','error');return}
+      closeOverlay('memberNoteModal');
+      toast('Note saved','success');
+      loadMemberships();
+    }catch(e){if(e.message!=='Session expired')toast('Network error','error')}
   });
 
   /* ── Close overlays on backdrop click ── */

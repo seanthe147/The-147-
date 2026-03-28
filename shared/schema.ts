@@ -251,3 +251,47 @@ export const insertBlockedPeriodSchema = createInsertSchema(blockedPeriods).omit
 
 export type InsertBlockedPeriod = z.infer<typeof insertBlockedPeriodSchema>;
 export type BlockedPeriod = typeof blockedPeriods.$inferSelect;
+
+export const membershipPlans = pgTable("membership_plans", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  tier: text("tier").notNull().unique(),
+  priceMonthly: integer("price_monthly").notNull(),
+  hoursIncluded: integer("hours_included"),
+  foodDrinkDiscount: integer("food_drink_discount").notNull().default(0),
+  priorityBooking: boolean("priority_booking").notNull().default(false),
+  loyaltyMultiplier: integer("loyalty_multiplier").notNull().default(1),
+  guestPassesMonthly: integer("guest_passes_monthly").notNull().default(0),
+  squarePlanVariationId: text("square_plan_variation_id"),
+  active: boolean("active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  color: text("color").notNull().default("#0047AB"),
+  description: text("description"),
+});
+
+export const insertMembershipPlanSchema = createInsertSchema(membershipPlans).omit({ id: true });
+
+export type InsertMembershipPlan = z.infer<typeof insertMembershipPlanSchema>;
+export type MembershipPlan = typeof membershipPlans.$inferSelect;
+
+export const membershipSubscriptions = pgTable("membership_subscriptions", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull(),
+  planId: integer("plan_id").notNull(),
+  squareSubscriptionId: text("square_subscription_id"),
+  squareCustomerId: text("square_customer_id"),
+  status: text("status").notNull().default("active"),
+  currentPeriodStart: text("current_period_start"),
+  currentPeriodEnd: text("current_period_end"),
+  hoursUsedThisPeriod: integer("hours_used_this_period").notNull().default(0),
+  guestPassesUsed: integer("guest_passes_used").notNull().default(0),
+  cancelledAt: timestamp("cancelled_at"),
+  staffNotes: text("staff_notes"),
+  source: text("source").notNull().default("staff"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertMembershipSubscriptionSchema = createInsertSchema(membershipSubscriptions).omit({ id: true, createdAt: true });
+
+export type InsertMembershipSubscription = z.infer<typeof insertMembershipSubscriptionSchema>;
+export type MembershipSubscription = typeof membershipSubscriptions.$inferSelect;

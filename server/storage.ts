@@ -25,6 +25,10 @@ import {
   type StaffPopup,
   type BlockedPeriod,
   type InsertBlockedPeriod,
+  type MembershipPlan,
+  type InsertMembershipPlan,
+  type MembershipSubscription,
+  type InsertMembershipSubscription,
   users,
   offers,
   pushTokens,
@@ -41,6 +45,8 @@ import {
   staffNotices,
   staffPopups,
   blockedPeriods,
+  membershipPlans,
+  membershipSubscriptions,
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
 
@@ -725,6 +731,83 @@ export class DatabaseStorage implements IStorage {
   async deleteBlockedPeriod(id: number): Promise<boolean> {
     const result = await db.delete(blockedPeriods).where(eq(blockedPeriods.id, id)).returning();
     return result.length > 0;
+  }
+
+  // ── Membership Plans ────────────────────────────────────────────────────────
+
+  async getMembershipPlans(activeOnly = false): Promise<MembershipPlan[]> {
+    const query = db.select().from(membershipPlans);
+    if (activeOnly) {
+      return query.where(eq(membershipPlans.active, true)).orderBy(membershipPlans.sortOrder);
+    }
+    return query.orderBy(membershipPlans.sortOrder);
+  }
+
+  async getMembershipPlan(id: number): Promise<MembershipPlan | undefined> {
+    const [plan] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, id));
+    return plan;
+  }
+
+  async upsertMembershipPlan(data: InsertMembershipPlan): Promise<MembershipPlan> {
+    const [plan] = await db.insert(membershipPlans).values(data)
+      .onConflictDoUpdate({ target: membershipPlans.tier, set: { ...data } })
+      .returning();
+    return plan;
+  }
+
+  async updateMembershipPlan(id: number, data: Partial<InsertMembershipPlan>): Promise<MembershipPlan | undefined> {
+    const [plan] = await db.update(membershipPlans).set(data).where(eq(membershipPlans.id, id)).returning();
+    return plan;
+  }
+
+  // ── Membership Subscriptions ────────────────────────────────────────────────
+
+  async getMembershipSubscriptions(): Promise<(MembershipSubscription & { customer: Customer | null; plan: MembershipPlan | null })[]> {
+    const rows = await db.select().from(membershipSubscriptions)
+      .orderBy(desc(membershipSubscriptions.createdAt));
+    const result = await Promise.all(rows.map(async (sub) => {
+      const [customer] = await db.select().from(customers).where(eq(customers.id, sub.customerId));
+      const [plan] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, sub.planId));
+      return { ...sub, customer: customer || null, plan: plan || null };
+    }));
+    return result;
+  }
+
+  async getMembershipSubscriptionByCustomer(customerId: number): Promise<(MembershipSubscription & { plan: MembershipPlan | null }) | null> {
+    const [sub] = await db.select().from(membershipSubscriptions)
+      .where(and(eq(membershipSubscriptions.customerId, customerId), eq(membershipSubscriptions.status, "active")))
+      .orderBy(desc(membershipSubscriptions.createdAt));
+    if (!sub) return null;
+    const [plan] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, sub.planId));
+    return { ...sub, plan: plan || null };
+  }
+
+  async getMembershipSubscription(id: number): Promise<MembershipSubscription | undefined> {
+    const [sub] = await db.select().from(membershipSubscriptions).where(eq(membershipSubscriptions.id, id));
+    return sub;
+  }
+
+  async createMembershipSubscription(data: InsertMembershipSubscription): Promise<MembershipSubscription> {
+    const [sub] = await db.insert(membershipSubscriptions).values(data).returning();
+    return sub;
+  }
+
+  async updateMembershipSubscription(id: number, data: Partial<InsertMembershipSubscription>): Promise<MembershipSubscription | undefined> {
+    const [sub] = await db.update(membershipSubscriptions).set(data).where(eq(membershipSubscriptions.id, id)).returning();
+    return sub;
+  }
+
+  async getMembershipStats(): Promise<{ total: number; active: number; paused: number; cancelled: number; mrr: number }> {
+    const all = await db.select().from(membershipSubscriptions);
+    const active = all.filter(s => s.status === "active");
+    const paused = all.filter(s => s.status === "paused");
+    const cancelled = all.filter(s => s.status === "cancelled");
+    let mrr = 0;
+    for (const sub of active) {
+      const [plan] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, sub.planId));
+      if (plan) mrr += plan.priceMonthly;
+    }
+    return { total: all.length, active: active.length, paused: paused.length, cancelled: cancelled.length, mrr };
   }
 }
 

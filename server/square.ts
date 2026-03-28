@@ -152,3 +152,74 @@ export async function searchIssuedRewards(accountId: string): Promise<any[]> {
 export function isConfigured(): boolean {
   return !!(process.env.SQUARE_ACCESS_TOKEN && process.env.SQUARE_LOCATION_ID);
 }
+
+// ── Subscription helpers ──────────────────────────────────────────────────────
+
+export async function createSquareCustomer(name: string, email: string, phone?: string) {
+  const data = await squareRequest("POST", "/v2/customers", {
+    given_name: name.split(" ")[0],
+    family_name: name.split(" ").slice(1).join(" ") || "",
+    email_address: email,
+    phone_number: phone ? toE164(phone) : undefined,
+    idempotency_key: `cust-${email}-${Date.now()}`,
+  });
+  return data.customer;
+}
+
+export async function findSquareCustomerByEmail(email: string) {
+  const data = await squareRequest("POST", "/v2/customers/search", {
+    query: { filter: { email_address: { fuzzy: email } } },
+    limit: 1,
+  });
+  return data.customers?.[0] || null;
+}
+
+export async function createSquareSubscription(
+  squareCustomerId: string,
+  planVariationId: string,
+  locationId: string,
+  cardId?: string
+) {
+  const today = new Date().toISOString().slice(0, 10);
+  const body: Record<string, unknown> = {
+    idempotency_key: `sub-${squareCustomerId}-${Date.now()}`,
+    location_id: locationId,
+    plan_variation_id: planVariationId,
+    customer_id: squareCustomerId,
+    start_date: today,
+  };
+  if (cardId) body.card_id = cardId;
+  const data = await squareRequest("POST", "/v2/subscriptions", body);
+  return data.subscription;
+}
+
+export async function cancelSquareSubscription(subscriptionId: string) {
+  const data = await squareRequest("POST", `/v2/subscriptions/${subscriptionId}/cancel`, {});
+  return data.subscription;
+}
+
+export async function pauseSquareSubscription(subscriptionId: string) {
+  const data = await squareRequest("POST", `/v2/subscriptions/${subscriptionId}/pause`, {
+    pause_subscription_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+  });
+  return data.subscription;
+}
+
+export async function resumeSquareSubscription(subscriptionId: string) {
+  const data = await squareRequest("POST", `/v2/subscriptions/${subscriptionId}/resume`, {
+    resume_change_timing: "IMMEDIATE",
+  });
+  return data.subscription;
+}
+
+export async function getSquareSubscription(subscriptionId: string) {
+  const data = await squareRequest("GET", `/v2/subscriptions/${subscriptionId}`);
+  return data.subscription;
+}
+
+export async function listSquareSubscriptionsForCustomer(squareCustomerId: string) {
+  const data = await squareRequest("POST", "/v2/subscriptions/search", {
+    query: { filter: { customer_ids: [squareCustomerId] } },
+  });
+  return data.subscriptions || [];
+}
