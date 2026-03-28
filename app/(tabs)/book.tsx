@@ -22,9 +22,11 @@ import Colors from "@/constants/colors";
 import { TABLE_TYPES } from "@/lib/data";
 
 const BOOKING_HOURS = [
-  "10:00", "11:00", "12:00", "13:00", "14:00", "15:00",
-  "16:00", "17:00", "18:00", "19:00", "20:00", "21:00",
-  "22:00", "23:00",
+  "10:00", "10:30", "11:00", "11:30", "12:00", "12:30",
+  "13:00", "13:30", "14:00", "14:30", "15:00", "15:30",
+  "16:00", "16:30", "17:00", "17:30", "18:00", "18:30",
+  "19:00", "19:30", "20:00", "20:30", "21:00", "21:30",
+  "22:00", "22:30", "23:00",
 ];
 
 const DURATION_OPTIONS = [1, 2, 3];
@@ -494,14 +496,16 @@ export default function BookScreen() {
                         const todayStr = new Date().toISOString().slice(0, 10);
                         if (selectedDate !== todayStr) return true;
                         const now = new Date();
-                        const slotHour = parseInt(time.split(":")[0]);
-                        return slotHour > now.getHours() + 1;
+                        const [slotH, slotM] = time.split(":").map(Number);
+                        const slotMins = slotH * 60 + slotM;
+                        const nowMins = now.getHours() * 60 + now.getMinutes();
+                        return slotMins > nowMins + 60;
                       }).map((time) => {
                         const booked = isSlotBooked(time, duration);
                         const isSelected = selectedTime === time;
-                        const timeHour = parseInt(time.split(":")[0]);
-                        const endHour = timeHour + duration;
-                        const tooLate = endHour > 24;
+                        const [tH, tM] = time.split(":").map(Number);
+                        const endMins = tH * 60 + tM + duration * 60;
+                        const tooLate = endMins > 24 * 60;
                         const disabled = booked || tooLate;
                         return (
                           <Pressable
@@ -714,7 +718,7 @@ export default function BookScreen() {
                   <View style={styles.summaryInfo}>
                     <Text style={styles.summaryLabel}>Time</Text>
                     <Text style={styles.summaryValue}>
-                      {selectedTime} - {selectedTime ? `${(parseInt(selectedTime.split(":")[0]) + duration).toString().padStart(2, "0")}:00` : ""} ({duration} {duration === 1 ? "hour" : "hours"})
+                      {selectedTime} - {selectedTime ? (() => { const [h, m] = selectedTime.split(":").map(Number); const e = h * 60 + m + duration * 60; return `${Math.floor(e / 60).toString().padStart(2, "0")}:${(e % 60).toString().padStart(2, "0")}`; })() : ""} ({duration} {duration === 1 ? "hour" : "hours"})
                     </Text>
                   </View>
                 </View>
