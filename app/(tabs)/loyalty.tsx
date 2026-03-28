@@ -727,10 +727,106 @@ export default function LoyaltyScreen() {
             </View>
           </>
         )}
+
+        {/* ── Membership Section (always visible) ── */}
+        <View style={styles.membershipSection}>
+          <View style={styles.membershipDivider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerLabel}>MEMBERSHIP</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <View style={styles.membershipHero}>
+            <View style={styles.membershipHeroIcon}>
+              <Ionicons name="card" size={24} color={Colors.brand.gold} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.membershipHeroTitle}>The 147 Membership</Text>
+              <Text style={styles.membershipHeroSub}>Exclusive perks, priority booking & more</Text>
+            </View>
+            <View style={styles.comingSoonPill}>
+              <Ionicons name="time-outline" size={11} color="#92680a" />
+              <Text style={styles.comingSoonPillText}>Soon</Text>
+            </View>
+          </View>
+
+          {MEMBERSHIP_PLANS.map((plan, idx) => (
+            <View key={plan.id} style={[styles.membershipPlanCard, idx < MEMBERSHIP_PLANS.length - 1 && styles.membershipPlanCardBorder]}>
+              <View style={[styles.planColorBar, { backgroundColor: plan.color }]} />
+              <View style={styles.planCardContent}>
+                <View style={styles.planCardTop}>
+                  <View style={[styles.planBadge, { backgroundColor: plan.color + "22" }]}>
+                    <Ionicons name={plan.icon as any} size={16} color={plan.color} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.planCardName}>{plan.name}</Text>
+                    <Text style={styles.planCardTagline}>{plan.tagline}</Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text style={[styles.planCardPrice, { color: plan.color }]}>£{plan.price.toFixed(2)}</Text>
+                    <Text style={styles.planCardPeriod}>/month</Text>
+                  </View>
+                </View>
+                <View style={styles.planFeatureList}>
+                  {plan.features.map((f, i) => (
+                    <View key={i} style={styles.planFeatureRow}>
+                      <Ionicons name="checkmark-circle" size={13} color={plan.color} />
+                      <Text style={styles.planFeatureText}>{f}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+              <View style={styles.planLockOverlay} pointerEvents="none">
+                <View style={styles.planLockBadge}>
+                  <Ionicons name="lock-closed" size={11} color="#fff" />
+                  <Text style={styles.planLockText}>Coming Soon</Text>
+                </View>
+              </View>
+            </View>
+          ))}
+
+          <View style={styles.membershipCta}>
+            <Ionicons name="chatbubble-ellipses-outline" size={16} color={Colors.light.textSecondary} />
+            <Text style={styles.membershipCtaText}>
+              Speak to a member of staff or visit us at the club to register your interest.
+            </Text>
+          </View>
+        </View>
+
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
+
+const MEMBERSHIP_PLANS = [
+  {
+    id: "rack",
+    name: "Rack",
+    price: 19.99,
+    color: Colors.brand.blue,
+    icon: "ellipse",
+    tagline: "Casual players",
+    features: ["4 hrs snooker/month", "5% food & drink discount", "Loyalty points"],
+  },
+  {
+    id: "century",
+    name: "Century",
+    price: 34.99,
+    color: Colors.brand.gold,
+    icon: "trophy",
+    tagline: "Most popular",
+    features: ["8 hrs snooker/month", "10% food & drink discount", "Priority booking", "Loyalty points"],
+  },
+  {
+    id: "maximum",
+    name: "Maximum",
+    price: 54.99,
+    color: "#10B981",
+    icon: "diamond",
+    tagline: "The full experience",
+    features: ["Unlimited snooker", "15% food & drink discount", "Priority booking", "1 guest pass/month", "2× loyalty points"],
+  },
+];
 
 const styles = StyleSheet.create({
   container: {
@@ -1222,5 +1318,189 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 18,
     fontFamily: "Montserrat_400Regular",
+  },
+
+  /* ── Membership section ── */
+  membershipSection: {
+    marginTop: 8,
+    paddingBottom: 4,
+  },
+  membershipDivider: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 20,
+    marginBottom: 16,
+    gap: 10,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: Colors.light.border,
+  },
+  dividerLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1.5,
+    color: Colors.light.textSecondary,
+    fontFamily: "Montserrat_700Bold",
+  },
+  membershipHero: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginHorizontal: 20,
+    marginBottom: 14,
+    backgroundColor: Colors.light.surface,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+  },
+  membershipHeroIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: Colors.brand.gold + "18",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  membershipHeroTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: Colors.light.text,
+    fontFamily: "Montserrat_700Bold",
+  },
+  membershipHeroSub: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    fontFamily: "Montserrat_400Regular",
+    marginTop: 2,
+  },
+  comingSoonPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#FEF3C7",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 20,
+    flexShrink: 0,
+  },
+  comingSoonPillText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#92680a",
+    fontFamily: "Montserrat_700Bold",
+  },
+  membershipPlanCard: {
+    marginHorizontal: 20,
+    backgroundColor: Colors.light.surface,
+    borderRadius: 14,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    marginBottom: 10,
+    position: "relative",
+  },
+  membershipPlanCardBorder: {
+    // kept for potential future use — currently each card has its own margin
+  },
+  planColorBar: {
+    height: 4,
+    width: "100%",
+  },
+  planCardContent: {
+    padding: 14,
+  },
+  planCardTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 10,
+  },
+  planBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  planCardName: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: Colors.light.text,
+    fontFamily: "Montserrat_700Bold",
+  },
+  planCardTagline: {
+    fontSize: 11,
+    color: Colors.light.textSecondary,
+    fontFamily: "Montserrat_400Regular",
+    marginTop: 1,
+  },
+  planCardPrice: {
+    fontSize: 18,
+    fontWeight: "800",
+    fontFamily: "Montserrat_700Bold",
+  },
+  planCardPeriod: {
+    fontSize: 11,
+    color: Colors.light.textSecondary,
+    fontFamily: "Montserrat_400Regular",
+    textAlign: "right",
+  },
+  planFeatureList: {
+    gap: 5,
+  },
+  planFeatureRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  planFeatureText: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    fontFamily: "Montserrat_400Regular",
+    flex: 1,
+  },
+  planLockOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(248,249,251,0.55)",
+    alignItems: "flex-end",
+    justifyContent: "flex-start",
+    padding: 10,
+  },
+  planLockBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  planLockText: {
+    fontSize: 10,
+    color: "#fff",
+    fontWeight: "700",
+    fontFamily: "Montserrat_700Bold",
+    letterSpacing: 0.3,
+  },
+  membershipCta: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginHorizontal: 20,
+    marginTop: 4,
+    padding: 14,
+    backgroundColor: Colors.light.surfaceElevated,
+    borderRadius: 12,
+  },
+  membershipCtaText: {
+    flex: 1,
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    fontFamily: "Montserrat_400Regular",
+    lineHeight: 18,
   },
 });
