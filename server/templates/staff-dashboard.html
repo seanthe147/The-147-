@@ -664,8 +664,14 @@
         <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-bottom:10px">Perks</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
           <div class="form-group" style="margin:0">
-            <label class="form-label">Hours Included / Month</label>
-            <input class="form-input" type="number" id="epHours" min="0" step="1" placeholder="Leave blank for unlimited">
+            <label class="form-label">Hours Included</label>
+            <div style="display:flex;gap:6px">
+              <input class="form-input" type="number" id="epHours" min="0" step="1" placeholder="Leave blank for unlimited" style="flex:1">
+              <select class="form-input" id="epHoursUnit" style="width:100px;flex-shrink:0">
+                <option value="month">/ Month</option>
+                <option value="year">/ Year</option>
+              </select>
+            </div>
           </div>
           <div class="form-group" style="margin:0">
             <label class="form-label">Food &amp; Drink Discount (%)</label>
@@ -2447,7 +2453,7 @@
         const activeCnt=subs.filter(s=>s.planId===p.id&&s.status==='active').length;
         const pausedCnt=subs.filter(s=>s.planId===p.id&&s.status==='paused').length;
         const perks=[];
-        if(p.hoursIncluded)perks.push(p.hoursIncluded+' hrs/mo');
+        if(p.hoursIncluded)perks.push(p.hoursIncluded+' hrs/'+(p.hoursUnit==='year'?'yr':'mo'));
         else perks.push('Unlimited');
         if(p.foodDrinkDiscount)perks.push(p.foodDrinkDiscount+'% F&D discount');
         if(p.priorityBooking)perks.push('Priority booking');
@@ -2512,7 +2518,7 @@
             <div class="staff-username">${esc(cust?cust.email:'')} ${cust&&cust.phone?'· '+esc(cust.phone):''}</div>
             <div class="staff-joined">Joined ${new Date(sub.createdAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}
               ${sub.currentPeriodEnd?' · Renews '+new Date(sub.currentPeriodEnd).toLocaleDateString('en-GB',{day:'numeric',month:'short'}):''}
-              ${plan&&plan.hoursIncluded?' · '+sub.hoursUsedThisPeriod+'/'+plan.hoursIncluded+' hrs used':''}
+              ${plan&&plan.hoursIncluded?' · '+sub.hoursUsedThisPeriod+'/'+plan.hoursIncluded+' hrs used ('+(plan.hoursUnit==='year'?'yr':'mo')+')':''}
               ${sub.staffNotes?'<br><em style="color:var(--text-2)">'+esc(sub.staffNotes)+'</em>':''}
             </div>
           </div>
@@ -2542,6 +2548,7 @@
     el('epDescription').value=plan.description||'';
     el('epPrice').value=(plan.priceMonthly/100).toFixed(2);
     el('epHours').value=plan.hoursIncluded!=null?plan.hoursIncluded:'';
+    el('epHoursUnit').value=plan.hoursUnit||'month';
     el('epDiscount').value=plan.foodDrinkDiscount||0;
     el('epGuestPasses').value=plan.guestPassesMonthly||0;
     el('epLoyaltyMult').value=plan.loyaltyMultiplier||1;
@@ -2569,6 +2576,7 @@
       description:el('epDescription').value.trim()||null,
       priceMonthly:Math.round(priceVal*100),
       hoursIncluded:hoursRaw!==''?parseInt(hoursRaw):null,
+      hoursUnit:el('epHoursUnit').value||'month',
       foodDrinkDiscount:parseInt(el('epDiscount').value)||0,
       guestPassesMonthly:parseInt(el('epGuestPasses').value)||0,
       loyaltyMultiplier:parseInt(el('epLoyaltyMult').value)||1,

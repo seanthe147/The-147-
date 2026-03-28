@@ -681,7 +681,10 @@
 
     function buildFeatures(plan) {
       const features = [];
-      if (plan.hoursIncluded) features.push(`${plan.hoursIncluded} hours snooker per month`);
+      if (plan.hoursIncluded) {
+        const unit = plan.hoursUnit === 'year' ? 'per year' : 'per month';
+        features.push(`${plan.hoursIncluded} hours snooker ${unit}`);
+      }
       else features.push('Unlimited snooker');
       if (plan.foodDrinkDiscount) features.push(`${plan.foodDrinkDiscount}% food & drink discount`);
       if (plan.priorityBooking) features.push('Priority table booking');

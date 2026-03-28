@@ -258,6 +258,7 @@ export const membershipPlans = pgTable("membership_plans", {
   tier: text("tier").notNull().unique(),
   priceMonthly: integer("price_monthly").notNull(),
   hoursIncluded: integer("hours_included"),
+  hoursUnit: text("hours_unit").notNull().default("month"),
   foodDrinkDiscount: integer("food_drink_discount").notNull().default(0),
   priorityBooking: boolean("priority_booking").notNull().default(false),
   loyaltyMultiplier: integer("loyalty_multiplier").notNull().default(1),
