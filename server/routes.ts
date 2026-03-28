@@ -2413,12 +2413,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const id = parseInt(req.params.id as string);
     const sub = await storage.getMembershipSubscription(id);
     if (!sub) return res.status(404).json({ message: "Subscription not found" });
-    const { status, staffNotes, planId, hoursUsedThisPeriod, guestPassesUsed } = req.body ?? {};
+    const { status, staffNotes, planId, hoursUsedThisPeriod, guestPassesUsed, currentPeriodStart, currentPeriodEnd } = req.body ?? {};
     const updates: Record<string, unknown> = {};
     if (staffNotes !== undefined) updates.staffNotes = staffNotes;
     if (planId !== undefined) updates.planId = parseInt(planId);
     if (hoursUsedThisPeriod !== undefined) updates.hoursUsedThisPeriod = parseInt(hoursUsedThisPeriod);
     if (guestPassesUsed !== undefined) updates.guestPassesUsed = parseInt(guestPassesUsed);
+    if (currentPeriodStart !== undefined) updates.currentPeriodStart = currentPeriodStart || null;
+    if (currentPeriodEnd !== undefined) updates.currentPeriodEnd = currentPeriodEnd || null;
     if (status !== undefined) {
       updates.status = status;
       if (status === "cancelled") updates.cancelledAt = new Date();
