@@ -623,6 +623,104 @@
   </div>
 </div>
 
+<!-- MANAGE SUBSCRIPTION MODAL -->
+<div class="overlay" id="manageSubModal">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-hd">
+      <div>
+        <div class="modal-hd-title" id="msTitle">Manage Membership</div>
+        <div style="font-size:12px;color:var(--text-2);margin-top:2px" id="msSubtitle"></div>
+      </div>
+      <button class="modal-close" onclick="closeOverlay('manageSubModal')">&times;</button>
+    </div>
+    <div class="modal-bd" style="display:flex;flex-direction:column;gap:0">
+
+      <!-- Status & Plan row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Status</label>
+          <select class="form-input" id="msStatus">
+            <option value="active">Active</option>
+            <option value="paused">Paused</option>
+            <option value="past_due">Past Due</option>
+            <option value="pending">Pending</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Plan</label>
+          <select class="form-input" id="msPlanId"></select>
+        </div>
+      </div>
+
+      <!-- Billing cycle -->
+      <div style="background:var(--surface-2,#F8F9FB);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-bottom:10px">Billing Period / Expiry</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Period Start</label>
+            <input class="form-input" type="date" id="msPeriodStart">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Period End / Expires</label>
+            <input class="form-input" type="date" id="msPeriodEnd">
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text-3,#9CA3AF);margin-top:8px;line-height:1.5">
+          Setting an expiry date lets you manually control when access ends, regardless of Square billing. Leave blank for open-ended access.
+        </div>
+      </div>
+
+      <!-- Usage this period -->
+      <div style="background:var(--surface-2,#F8F9FB);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-bottom:10px">Usage This Period</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Hours Used</label>
+            <input class="form-input" type="number" id="msHoursUsed" min="0" max="999" step="0.5">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Guest Passes Used</label>
+            <input class="form-input" type="number" id="msGuestPasses" min="0" max="99" step="1">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn btn-secondary btn-sm" onclick="window.msResetHours()">Reset Hours to 0</button>
+          <button class="btn btn-secondary btn-sm" onclick="window.msResetGuests()">Reset Guest Passes</button>
+        </div>
+      </div>
+
+      <!-- Staff notes -->
+      <div class="form-group" style="margin:0 0 14px">
+        <label class="form-label">Staff Notes</label>
+        <textarea class="form-input" id="msNotes" placeholder="Internal note about this member…" style="min-height:60px;resize:vertical" maxlength="500"></textarea>
+      </div>
+
+      <!-- Square info -->
+      <div id="msSquareRow" style="display:none;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px 14px;font-size:12px;color:#1E40AF;line-height:1.5;margin-bottom:14px">
+        <div style="font-weight:700;margin-bottom:2px">Square Subscription</div>
+        <div id="msSquareId" style="font-family:monospace;word-break:break-all"></div>
+        <div style="margin-top:4px;color:#3B82F6">Status changes are mirrored to Square automatically.</div>
+      </div>
+
+      <!-- Danger zone -->
+      <div style="border:1px solid var(--red-light,#FEE2E2);border-radius:10px;padding:12px 16px">
+        <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Danger Zone</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="flex:1;font-size:12px;color:var(--text-2);line-height:1.5">Permanently cancel this membership. Cannot be undone.</div>
+          <button class="btn btn-danger btn-sm" id="msCancelBtn" onclick="window.msCancelSubscription()">Cancel Membership</button>
+        </div>
+      </div>
+
+      <div class="modal-err" id="msErr" style="margin-top:12px"></div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn btn-secondary" onclick="closeOverlay('manageSubModal')">Close</button>
+      <button class="btn btn-primary" id="msSaveBtn" onclick="window.saveManageSub()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
 <!-- ADD MEMBER MODAL -->
 <div class="overlay" id="addMemberModal">
   <div class="modal modal-sm">
@@ -2303,10 +2401,13 @@
             </div>
           </div>
           <div class="staff-actions">
-            ${sub.status==='active'?`<button class="btn btn-secondary btn-sm" onclick="window.pauseMember(${sub.id})">Pause</button>`:''}
-            ${sub.status==='paused'?`<button class="btn btn-secondary btn-sm" onclick="window.resumeMember(${sub.id})">Resume</button>`:''}
-            ${sub.status!=='cancelled'?`<button class="btn btn-danger btn-sm" onclick="window.cancelMember(${sub.id})">Cancel</button>`:''}
-            <button class="btn btn-secondary btn-sm" onclick="window.openMemberNoteModal(${sub.id})">Note</button>
+            ${isManager
+              ? `<button class="btn btn-primary btn-sm" onclick="window.openManageSubModal(${sub.id})">Manage</button>`
+              : `${sub.status==='active'?`<button class="btn btn-secondary btn-sm" onclick="window.pauseMember(${sub.id})">Pause</button>`:''}
+                 ${sub.status==='paused'?`<button class="btn btn-secondary btn-sm" onclick="window.resumeMember(${sub.id})">Resume</button>`:''}
+                 ${sub.status!=='cancelled'?`<button class="btn btn-danger btn-sm" onclick="window.cancelMember(${sub.id})">Cancel</button>`:''}
+                 <button class="btn btn-secondary btn-sm" onclick="window.openMemberNoteModal(${sub.id})">Note</button>`
+            }
           </div>
         </div>`;
       });
@@ -2348,6 +2449,106 @@
       if(!r.ok){const d=await r.json();toast(d.message||'Failed','error');return}
       toast('Membership cancelled','success');loadMemberships();
     }catch(e){if(e.message!=='Session expired')toast('Network error','error')}
+  };
+
+  /* helpers: convert ISO/date-string to yyyy-mm-dd for <input type=date> */
+  function toDateInput(v){
+    if(!v)return '';
+    const d=new Date(v);
+    if(isNaN(d))return '';
+    return d.toISOString().slice(0,10);
+  }
+
+  window.openManageSubModal=function(id){
+    const sub=membershipsData.subs.find(s=>s.id===id);
+    if(!sub)return;
+    const cust=sub.customer;
+    const plan=sub.plan;
+
+    // Header
+    el('msTitle').textContent=(cust?cust.name:'Member')+' — Membership';
+    el('msSubtitle').textContent=(plan?plan.name+' plan':'Unknown plan')+(cust?' · '+cust.email:'');
+
+    // Status
+    el('msStatus').value=sub.status||'active';
+
+    // Plan selector
+    el('msPlanId').innerHTML=membershipsData.plans.map(p=>`<option value="${p.id}"${p.id===sub.planId?' selected':''}>£${(p.priceMonthly/100).toFixed(2)}/mo — ${esc(p.name)}</option>`).join('');
+
+    // Billing period
+    el('msPeriodStart').value=toDateInput(sub.currentPeriodStart);
+    el('msPeriodEnd').value=toDateInput(sub.currentPeriodEnd);
+
+    // Usage
+    el('msHoursUsed').value=sub.hoursUsedThisPeriod||0;
+    el('msGuestPasses').value=sub.guestPassesUsed||0;
+
+    // Notes
+    el('msNotes').value=sub.staffNotes||'';
+
+    // Square info
+    if(sub.squareSubscriptionId){
+      el('msSquareRow').style.display='';
+      el('msSquareId').textContent=sub.squareSubscriptionId;
+    }else{
+      el('msSquareRow').style.display='none';
+    }
+
+    // Disable cancel btn if already cancelled
+    el('msCancelBtn').disabled=sub.status==='cancelled';
+
+    // Store current sub id
+    el('manageSubModal').dataset.subId=id;
+    el('msErr').classList.remove('show');
+    openOverlay('manageSubModal');
+  };
+
+  window.msResetHours=function(){ el('msHoursUsed').value=0; };
+  window.msResetGuests=function(){ el('msGuestPasses').value=0; };
+
+  window.msCancelSubscription=async function(){
+    const id=parseInt(el('manageSubModal').dataset.subId);
+    if(!confirm('Cancel this membership permanently? This cannot be undone.'))return;
+    el('msCancelBtn').disabled=true;
+    try{
+      const r=await api('/api/staff/membership/subscriptions/'+id,{method:'PATCH',body:JSON.stringify({status:'cancelled'})});
+      if(!r.ok){const d=await r.json();toast(d.message||'Failed to cancel','error');el('msCancelBtn').disabled=false;return}
+      closeOverlay('manageSubModal');
+      toast('Membership cancelled','success');
+      loadMemberships();
+    }catch(e){if(e.message!=='Session expired'){toast('Network error','error');el('msCancelBtn').disabled=false;}}
+  };
+
+  window.saveManageSub=async function(){
+    const err=el('msErr');err.classList.remove('show');
+    const id=parseInt(el('manageSubModal').dataset.subId);
+    const status=el('msStatus').value;
+    const planId=parseInt(el('msPlanId').value);
+    const periodStart=el('msPeriodStart').value||null;
+    const periodEnd=el('msPeriodEnd').value||null;
+    const hoursUsed=parseFloat(el('msHoursUsed').value)||0;
+    const guestPasses=parseInt(el('msGuestPasses').value)||0;
+    const notes=el('msNotes').value.trim()||null;
+
+    // Validate: if active, end date must be blank or in the future
+    if(periodEnd){
+      const endDate=new Date(periodEnd);
+      if(status==='active'&&endDate<new Date()){
+        err.textContent='Expiry date is in the past — update status to "Cancelled" or set a future date';
+        err.classList.add('show');return;
+      }
+    }
+
+    el('msSaveBtn').disabled=true;
+    try{
+      const payload={status,planId,currentPeriodStart:periodStart,currentPeriodEnd:periodEnd,hoursUsedThisPeriod:hoursUsed,guestPassesUsed:guestPasses,staffNotes:notes};
+      const r=await api('/api/staff/membership/subscriptions/'+id,{method:'PATCH',body:JSON.stringify(payload)});
+      if(!r.ok){const d=await r.json();err.textContent=d.message||'Failed to save';err.classList.add('show');return}
+      closeOverlay('manageSubModal');
+      toast('Membership updated','success');
+      loadMemberships();
+    }catch(e){if(e.message!=='Session expired'){err.textContent='Network error';err.classList.add('show')}}
+    finally{el('msSaveBtn').disabled=false}
   };
 
   window.openMemberNoteModal=function(id){
