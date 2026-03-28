@@ -2233,6 +2233,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ success: true, booking: updated });
   });
 
+  // Membership landing page — standalone + embeddable in Wix / other sites
+  const membershipPageHeaders = (res: Response) => {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("X-Frame-Options", "ALLOWALL");
+    res.setHeader("Content-Security-Policy", "frame-ancestors *");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+  };
+  const serveMembershipPage = (_req: Request, res: Response) => {
+    const pagePath = path.resolve(process.cwd(), "server", "templates", "membership-page.html");
+    membershipPageHeaders(res);
+    try {
+      const html = fs.readFileSync(pagePath, "utf-8");
+      res.send(html);
+    } catch {
+      res.status(500).send("Page unavailable");
+    }
+  };
+  app.get("/membership", serveMembershipPage);
+  app.get("/widget/membership", serveMembershipPage);
+
+  // Membership interest form — stores interest from the public landing page
+  app.post("/api/membership/interest", async (req, res) => {
+    const { name, email, phone, plan, planName } = req.body ?? {};
+    if (!name || !email) return res.status(400).json({ message: "Name and email are required" });
+    // Store as a contact message so staff see it in the Messages tab
+    try {
+      await storage.createContactMessage({
+        name: String(name),
+        email: String(email),
+        phone: phone ? String(phone) : undefined,
+        subject: `Membership Interest — ${planName || plan || "General"}`,
+        message: `This person registered interest in the ${planName || plan || ""} membership plan via the membership landing page.${phone ? `\n\nPhone: ${phone}` : ""}`,
+        gdprConsent: true,
+      });
+    } catch {
+      // If message storage fails, still return success (interest received)
+    }
+    res.json({ ok: true });
+  });
+
   // Booking widget — embeddable iframe for Wix and other websites
   app.get("/widget/booking", (_req, res) => {
     const widgetPath = path.resolve(process.cwd(), "server", "templates", "booking-widget.html");
