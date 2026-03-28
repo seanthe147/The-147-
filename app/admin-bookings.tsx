@@ -654,7 +654,7 @@ export default function AdminBookingsScreen() {
                 {TABLE_TYPES_LIST.map((t) => (
                   <Pressable
                     key={t.id}
-                    onPress={() => { setWiTableType(t.id); setWiTableNumber(""); }}
+                    onPress={() => { setWiTableType(t.id); setWiTableNumber(""); if (t.id !== "snooker" && wiDuration > 3) setWiDuration(3); }}
                     style={[styles.chip, wiTableType === t.id && styles.chipSelected]}
                   >
                     <Ionicons name={t.icon} size={14} color={wiTableType === t.id ? "#fff" : Colors.brand.blue} />
@@ -718,7 +718,7 @@ export default function AdminBookingsScreen() {
               {/* Duration */}
               <Text style={styles.fieldLabel}>DURATION</Text>
               <View style={[styles.chipRow, { marginBottom: 16 }]}>
-                {[1, 2, 3].map((d) => (
+                {(wiTableType === "snooker" ? [1, 2, 3, 4] : [1, 2, 3]).map((d) => (
                   <Pressable key={d} onPress={() => setWiDuration(d)} style={[styles.chip, wiDuration === d && styles.chipSelected]}>
                     <Text style={[styles.chipText, wiDuration === d && styles.chipTextSelected]}>{d} {d === 1 ? "hour" : "hours"}</Text>
                   </Pressable>

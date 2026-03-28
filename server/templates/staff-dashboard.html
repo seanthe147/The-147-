@@ -704,6 +704,7 @@
           <button class="chip-btn" data-chip="duration" data-value="1" onclick="selectChip('duration','1')">1 hour</button>
           <button class="chip-btn" data-chip="duration" data-value="2" onclick="selectChip('duration','2')">2 hours</button>
           <button class="chip-btn" data-chip="duration" data-value="3" onclick="selectChip('duration','3')">3 hours</button>
+          <button class="chip-btn" id="dur4Chip" data-chip="duration" data-value="4" onclick="selectChip('duration','4')" style="display:none">4 hours</button>
         </div>
       </div>
 
@@ -1361,6 +1362,10 @@
     el('tableNumSection').style.display=hasTable?'':'none';
     el('guestCountSection').style.display=type==='dining'?'':'none';
     if(hasTable) buildTableNumChips(type);
+    // 4-hour option only for snooker
+    const dur4=el('dur4Chip');
+    if(dur4) dur4.style.display=type==='snooker'?'':'none';
+    if(type!=='snooker'&&chipState.duration==='4') selectChip('duration','3');
   }
   // Initialise on load
   buildTableNumChips('snooker');

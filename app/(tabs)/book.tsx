@@ -29,7 +29,8 @@ const BOOKING_HOURS = [
   "22:00", "22:30", "23:00",
 ];
 
-const DURATION_OPTIONS = [1, 2, 3];
+const ALL_DURATION_OPTIONS = [1, 2, 3, 4];
+const STANDARD_DURATION_OPTIONS = [1, 2, 3];
 
 const SNOOKER_TABLES = Array.from({ length: 10 }, (_, i) => (i + 1).toString());
 const POOL_TABLES = Array.from({ length: 6 }, (_, i) => (i + 1).toString());
@@ -306,7 +307,7 @@ export default function BookScreen() {
                   return (
                     <Pressable
                       key={table.id}
-                      onPress={() => { setSelectedTable(table.id); setSelectedTableNumber(null); }}
+                      onPress={() => { setSelectedTable(table.id); setSelectedTableNumber(null); if (table.id !== "snooker" && duration > 3) setDuration(3); }}
                       style={[styles.tableCard, isSelected && styles.tableCardSelected]}
                       testID={`table-${table.id}`}
                     >
@@ -473,7 +474,7 @@ export default function BookScreen() {
                 <>
                   <Text style={[styles.stepTitle, { marginTop: 24 }]}>Duration</Text>
                   <View style={styles.durationRow}>
-                    {DURATION_OPTIONS.map((d) => (
+                    {(isSnooker ? ALL_DURATION_OPTIONS : STANDARD_DURATION_OPTIONS).map((d) => (
                       <Pressable
                         key={d}
                         onPress={() => { setDuration(d); setSelectedTime(null); }}
