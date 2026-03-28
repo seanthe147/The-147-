@@ -1,4 +1,4 @@
-import React, { useState, useContext } from "react";
+import React, { useState, useContext, memo, useCallback } from "react";
 import {
   StyleSheet,
   View,
@@ -39,7 +39,7 @@ function formatTime(timeStr: string): string {
   return m === "00" ? `${displayHour}${suffix}` : `${displayHour}:${m}${suffix}`;
 }
 
-function EventCard({ event }: { event: Event }) {
+const EventCard = memo(function EventCard({ event }: { event: Event }) {
   const color = event.imageColor || "#0047AB";
   const isWeekly = event.eventType === "weekly";
 
@@ -113,7 +113,7 @@ function EventCard({ event }: { event: Event }) {
       </LinearGradient>
     </Pressable>
   );
-}
+});
 
 function UpcomingEventsTab() {
   const { data: events, isLoading, isError } = useQuery<Event[]>({

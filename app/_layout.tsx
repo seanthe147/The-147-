@@ -11,7 +11,7 @@ import { ConsentProvider } from "@/contexts/ConsentContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { StaffAuthProvider } from "@/contexts/StaffAuthContext";
 import { CustomerAuthProvider } from "@/contexts/CustomerAuthContext";
-import { queryClient } from "@/lib/query-client";
+import { queryClient, prefetchAppData } from "@/lib/query-client";
 import {
   useFonts,
   Montserrat_400Regular,
@@ -56,6 +56,7 @@ export default function RootLayout() {
   useEffect(() => {
     if (fontsLoaded || fontError) {
       SplashScreen.hideAsync();
+      prefetchAppData();
     }
   }, [fontsLoaded, fontError]);
 

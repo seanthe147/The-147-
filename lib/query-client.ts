@@ -98,11 +98,20 @@ export const queryClient = new QueryClient({
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
       refetchOnWindowFocus: false,
-      staleTime: Infinity,
-      retry: false,
+      staleTime: 5 * 60 * 1000,
+      gcTime: 30 * 60 * 1000,
+      retry: 1,
+      retryDelay: 1000,
     },
     mutations: {
       retry: false,
     },
   },
 });
+
+export function prefetchAppData() {
+  queryClient.prefetchQuery({ queryKey: ["/api/settings"] });
+  queryClient.prefetchQuery({ queryKey: ["/api/banner-images"] });
+  queryClient.prefetchQuery({ queryKey: ["/api/events?type=event"] });
+  queryClient.prefetchQuery({ queryKey: ["/api/events"] });
+}

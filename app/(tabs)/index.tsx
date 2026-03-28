@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback, useContext } from "react";
+import React, { useRef, useState, useEffect, useCallback, useContext, useMemo, memo } from "react";
 import {
   StyleSheet,
   Text,
@@ -8,12 +8,11 @@ import {
   Platform,
   Linking,
   ActivityIndicator,
-  Image,
-  ImageBackground,
   Dimensions,
   NativeScrollEvent,
   NativeSyntheticEvent,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -36,7 +35,7 @@ function resolveImageUrl(path: string): string {
   return new URL(path, base).toString();
 }
 
-function QuickActionPill({
+const QuickActionPill = memo(function QuickActionPill({
   icon,
   label,
   onPress,
@@ -61,13 +60,13 @@ function QuickActionPill({
       <Ionicons name="chevron-forward" size={14} color={Colors.light.textSecondary} />
     </Pressable>
   );
-}
+});
 
 const BANNER_WIDTH = SCREEN_WIDTH - 40;
 const BANNER_HEIGHT = 180;
 const AUTO_SCROLL_INTERVAL = 5000;
 
-function BannerCarousel({ images }: { images: BannerImage[] }) {
+const BannerCarousel = memo(function BannerCarousel({ images }: { images: BannerImage[] }) {
   const scrollRef = useRef<ScrollView>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -107,10 +106,18 @@ function BannerCarousel({ images }: { images: BannerImage[] }) {
         contentContainerStyle={{ paddingHorizontal: 20 }}
         onMomentumScrollEnd={onScrollEnd}
         scrollEnabled={images.length > 1}
+        scrollEventThrottle={16}
+        removeClippedSubviews
       >
         {images.map((item) => (
           <View key={item.id} style={styles.bannerSlide}>
-            <Image source={{ uri: resolveImageUrl(item.imageUrl) }} style={styles.bannerImage} resizeMode="cover" />
+            <ExpoImage
+              source={{ uri: resolveImageUrl(item.imageUrl) }}
+              style={styles.bannerImage}
+              contentFit="cover"
+              transition={250}
+              cachePolicy="memory-disk"
+            />
             {item.title ? (
               <LinearGradient
                 colors={["transparent", "rgba(0,0,0,0.6)"]}
@@ -134,21 +141,23 @@ function BannerCarousel({ images }: { images: BannerImage[] }) {
       )}
     </View>
   );
-}
+});
 
-function EventPreview() {
+const EventPreview = memo(function EventPreview() {
   const { data: events } = useQuery<Event[]>({
     queryKey: ["/api/events?type=event"],
   });
 
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const upcoming = (events || [])
-    .filter((e) => {
-      if (!e.date) return true;
-      return new Date(e.date + "T23:59:59") >= now;
-    })
-    .slice(0, 3);
+  const upcoming = useMemo(() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return (events || [])
+      .filter((e) => {
+        if (!e.date) return true;
+        return new Date(e.date + "T23:59:59") >= now;
+      })
+      .slice(0, 3);
+  }, [events]);
 
   if (upcoming.length === 0) return null;
 
@@ -204,7 +213,7 @@ function EventPreview() {
       })}
     </View>
   );
-}
+});
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
@@ -221,7 +230,12 @@ export default function HomeScreen() {
   });
 
   const bannerImageUrl = settings?.banner_image;
-  const todayHours = getOpeningHoursToday();
+  const todayHours = useMemo(() => getOpeningHoursToday(), []);
+
+  const goToBook = useCallback(() => router.push("/(tabs)/book"), []);
+  const goToEvents = useCallback(() => router.push("/(tabs)/events"), []);
+  const goToOrder = useCallback(() => router.push("/(tabs)/order"), []);
+  const goToContact = useCallback(() => router.push("/contact"), []);
 
   const heroOverlay = (
     <LinearGradient
@@ -238,7 +252,7 @@ export default function HomeScreen() {
   const heroContent = (
     <View style={[styles.heroContent, { paddingTop: insets.top + 10 + webTopInset }]}>
       <View style={styles.heroTopBar}>
-        <Image source={logoImage} style={styles.logoImage} resizeMode="contain" />
+        <ExpoImage source={logoImage} style={styles.logoImage} contentFit="contain" cachePolicy="memory" />
         <View style={styles.heroTopRight}>
           <Pressable
             onPress={() => router.push("/about")}
@@ -308,44 +322,44 @@ export default function HomeScreen() {
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        removeClippedSubviews={Platform.OS === "android"}
       >
-        {bannerImageUrl ? (
-          <ImageBackground
-            source={{ uri: resolveImageUrl(bannerImageUrl) }}
-            style={styles.heroBanner}
-            resizeMode="cover"
-          >
-            {heroOverlay}
-            {heroContent}
-          </ImageBackground>
-        ) : (
-          <View style={styles.heroBanner}>
-            {heroOverlay}
-            {heroContent}
-          </View>
-        )}
+        <View style={styles.heroBanner}>
+          {bannerImageUrl ? (
+            <ExpoImage
+              source={{ uri: resolveImageUrl(bannerImageUrl) }}
+              style={StyleSheet.absoluteFillObject}
+              contentFit="cover"
+              transition={300}
+              cachePolicy="memory-disk"
+            />
+          ) : null}
+          {heroOverlay}
+          {heroContent}
+        </View>
 
         <View style={styles.body}>
           <View style={styles.quickNav}>
             <QuickActionPill
               icon="calendar-outline"
               label="Book a Table"
-              onPress={() => router.push("/(tabs)/book")}
+              onPress={goToBook}
             />
             <QuickActionPill
               icon="ticket-outline"
               label="Events & Tickets"
-              onPress={() => router.push("/(tabs)/events")}
+              onPress={goToEvents}
             />
             <QuickActionPill
               icon="restaurant-outline"
               label="Food & Drinks Menu"
-              onPress={() => router.push("/(tabs)/order")}
+              onPress={goToOrder}
             />
             <QuickActionPill
               icon="mail-outline"
               label="Contact Us"
-              onPress={() => router.push("/contact")}
+              onPress={goToContact}
             />
           </View>
 
