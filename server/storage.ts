@@ -59,9 +59,12 @@ function buildPoolConfig() {
   if (sslmode === "disable" || sslmode === null) {
     return { connectionString: url.toString() };
   }
+  // Verify TLS certificates unless explicitly opted out via env var.
+  // Set DATABASE_SSL_NO_VERIFY=true only for local dev with self-signed certs.
+  const skipVerify = process.env.DATABASE_SSL_NO_VERIFY === "true";
   return {
     connectionString: url.toString(),
-    ssl: { rejectUnauthorized: false },
+    ssl: { rejectUnauthorized: !skipVerify },
   };
 }
 

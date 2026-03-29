@@ -63,6 +63,8 @@ function setupCors(app: express.Application) {
 }
 
 function setupSecurityHeaders(app: express.Application) {
+  // Remove the X-Powered-By header so the server technology is not fingerprinted
+  app.disable("x-powered-by");
   const isProd = process.env.NODE_ENV === "production";
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");

@@ -2351,9 +2351,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Membership — Square webhook ──────────────────────────────────────────
-  app.post("/api/membership/webhook", async (req, res) => {
+  // Middleware to capture raw body for Square webhook signature verification
+  const captureRawBody = (req: Request, res: Response, next: NextFunction) => {
+    let raw = "";
+    req.on("data", (chunk: Buffer | string) => { raw += chunk.toString("utf8"); });
+    req.on("end", () => { (req as any)._rawBody = raw; next(); });
+    req.on("error", next);
+  };
+
+  app.post("/api/membership/webhook", captureRawBody, async (req, res) => {
     try {
-      const event = req.body;
+      // Parse raw body first (needed for both signature check and event handling)
+      const bodyStr: string = (req as any)._rawBody || JSON.stringify(req.body);
+
+      // Verify Square webhook signature when the key is configured
+      const sigKey = process.env.SQUARE_WEBHOOK_SIGNATURE_KEY;
+      if (sigKey) {
+        const sig = req.headers["x-square-hmacsha256-signature"] as string | undefined;
+        if (!sig) return res.status(401).send("Missing signature");
+        const notificationUrl = `https://${req.headers.host}${req.originalUrl}`;
+        const { createHmac, timingSafeEqual } = await import("node:crypto");
+        const expected = createHmac("sha256", sigKey).update(notificationUrl + bodyStr).digest("base64");
+        const sigBuf = Buffer.from(sig, "base64");
+        const expBuf = Buffer.from(expected, "base64");
+        if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
+          log("Square webhook: invalid signature — rejected");
+          return res.status(401).send("Invalid signature");
+        }
+      }
+      const event = JSON.parse(bodyStr);
       const type: string = event?.type ?? "";
       const sub = event?.data?.object?.subscription;
       if (!sub?.id) return res.status(200).send("ok");
