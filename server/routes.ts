@@ -1309,7 +1309,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (customerEmail !== undefined) updateData.customerEmail = customerEmail;
     if (customerPhone !== undefined) updateData.customerPhone = customerPhone;
     if (tableType !== undefined) updateData.tableType = tableType;
-    if (tableNumber !== undefined) updateData.tableNumber = tableNumber;
+    // Only update tableNumber when explicitly provided (non-null).
+    // For dining, the server assigns table numbers internally — a null from the
+    // client means "no change", not "clear it".
+    if (tableNumber != null) updateData.tableNumber = tableNumber;
     if (guestCount !== undefined) updateData.guestCount = guestCount;
     if (date !== undefined) updateData.date = date;
     if (startTime !== undefined) updateData.startTime = startTime;
