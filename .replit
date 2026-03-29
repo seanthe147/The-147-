@@ -88,6 +88,8 @@ EXPO_ASC_ISSUER_ID = "7cdddb46-b377-45c0-9cbe-e07c358d3cc5"
 EXPO_APPLE_TEAM_ID = "94LW5H4828"
 EXPO_APPLE_TEAM_TYPE = "COMPANY_OR_ORGANIZATION"
 EXPO_ASC_API_KEY_PATH = "/tmp/AuthKey_PRH75PPG5Z.p8"
+SMTP_HOST = "smtp.gmail.com"
+SMTP_PORT = "587"
 
 [postMerge]
 path = "scripts/post-merge.sh"
