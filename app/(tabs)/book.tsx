@@ -38,6 +38,13 @@ const GUEST_COUNT_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 
 
 const MAX_WEEKS_AHEAD = 26;
 
+function localDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function getWeekDays(weekOffset: number): Array<{ label: string; date: string; dayName: string; dayNum: string; monthLabel: string }> {
   const days: Array<{ label: string; date: string; dayName: string; dayNum: string; monthLabel: string }> = [];
   const today = new Date();
@@ -47,7 +54,7 @@ function getWeekDays(weekOffset: number): Array<{ label: string; date: string; d
   for (let i = 0; i < 7; i++) {
     const d = new Date(startDate);
     d.setDate(d.getDate() + i);
-    const date = d.toISOString().slice(0, 10);
+    const date = localDateStr(d);
     const dayName = d.toLocaleDateString("en-GB", { weekday: "short" });
     const dayNum = d.getDate().toString();
     const monthLabel = d.toLocaleDateString("en-GB", { month: "short" });
@@ -494,7 +501,7 @@ export default function BookScreen() {
                     <View style={styles.timeGrid}>
                       {BOOKING_HOURS.filter((time) => {
                         if (!selectedDate) return true;
-                        const todayStr = new Date().toISOString().slice(0, 10);
+                        const todayStr = localDateStr(new Date());
                         if (selectedDate !== todayStr) return true;
                         const now = new Date();
                         const [slotH, slotM] = time.split(":").map(Number);
