@@ -51,6 +51,13 @@ const TABLE_TYPES_LIST = [
   { id: "darts", label: "Darts", icon: "disc" as const },
 ];
 
+function localDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function formatDateLabel(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
   return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
@@ -58,11 +65,11 @@ function formatDateLabel(dateStr: string): string {
 
 function getWeekDays(startDate: Date): Array<{ date: string; dayName: string; dayNum: string; isToday: boolean }> {
   const days: Array<{ date: string; dayName: string; dayNum: string; isToday: boolean }> = [];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateStr(new Date());
   for (let i = 0; i < 7; i++) {
     const d = new Date(startDate);
     d.setDate(d.getDate() + i);
-    const date = d.toISOString().slice(0, 10);
+    const date = localDateStr(d);
     days.push({
       date,
       dayName: d.toLocaleDateString("en-GB", { weekday: "short" }),
@@ -190,7 +197,7 @@ export default function AdminBookingsScreen() {
     const diff = today.getDate() - day + (day === 0 ? -6 : 1);
     return new Date(today.getFullYear(), today.getMonth(), diff);
   });
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
+  const [selectedDate, setSelectedDate] = useState(localDateStr(new Date()));
 
   const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart.toISOString()]);
 
@@ -303,7 +310,7 @@ export default function AdminBookingsScreen() {
     const day = today.getDay();
     const diff = today.getDate() - day + (day === 0 ? -6 : 1);
     setWeekStart(new Date(today.getFullYear(), today.getMonth(), diff));
-    setSelectedDate(today.toISOString().slice(0, 10));
+    setSelectedDate(localDateStr(today));
   };
 
   const allBookings = bookingsQuery.data ?? [];

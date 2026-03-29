@@ -728,6 +728,14 @@
     goToStep(2);
   }
 
+  // ── Date helpers (use local time to avoid UTC/BST off-by-one) ───────────────
+  function localDateStr(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
   // ── Step 2 ──────────────────────────────────────────────────────────────────
   function getBookingDays() {
     const days = [];
@@ -750,8 +758,8 @@
       const num = d.getDate();
       const mon = d.toLocaleDateString('en-GB', { month: 'short' });
       btn.innerHTML = `<div class="date-day">${day}</div><div class="date-num">${num}</div><div class="date-mon">${mon}</div>`;
-      btn.dataset.date = d.toISOString().split('T')[0];
-      btn.onclick = () => selectDate(btn, d.toISOString().split('T')[0]);
+      btn.dataset.date = localDateStr(d);
+      btn.onclick = () => selectDate(btn, localDateStr(d));
       scroll.appendChild(btn);
     });
   }
@@ -854,7 +862,7 @@
     const grid = document.createElement('div');
     grid.className = 'time-grid';
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = localDateStr(new Date());
     const isToday = state.date === todayStr;
     const now = new Date();
     const nowMins = now.getHours() * 60 + now.getMinutes();

@@ -315,7 +315,7 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount }: {
     queryClient.removeQueries({ queryKey: ["/api/customers/bookings"] });
   };
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })();
   const upcomingBookings = (bookingsQuery.data || [])
     .filter((b) => b.date >= today && b.status === "confirmed")
     .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));

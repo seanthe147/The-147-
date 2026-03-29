@@ -2641,7 +2641,11 @@
     if(!v)return '';
     const d=new Date(v);
     if(isNaN(d))return '';
-    return d.toISOString().slice(0,10);
+    // Use local date components to avoid UTC→BST shift producing the wrong day
+    const y=d.getFullYear();
+    const m=String(d.getMonth()+1).padStart(2,'0');
+    const day=String(d.getDate()).padStart(2,'0');
+    return y+'-'+m+'-'+day;
   }
 
   window.openManageSubModal=function(id){
