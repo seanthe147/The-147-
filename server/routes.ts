@@ -159,12 +159,16 @@ async function sendEmailViaSMTP(to: string, subject: string, html: string): Prom
 async function sendOtpEmail(email: string, code: string): Promise<boolean> {
   const subject = "Your Loyalty Verification Code — The 147";
   const html = OTP_HTML(code);
-  const fromEmail = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
-  const fromName = process.env.RESEND_FROM_NAME || "The 147";
   const resendKey = process.env.RESEND_API_KEY;
 
-  // Try Resend first
+  // SMTP first — works with Gmail/Outlook without any domain verification
+  const smtpSent = await sendEmailViaSMTP(email, subject, html);
+  if (smtpSent) return true;
+
+  // Resend fallback (requires verified domain for non-owner addresses)
   if (resendKey) {
+    const fromEmail = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+    const fromName = process.env.RESEND_FROM_NAME || "The 147";
     try {
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
@@ -176,15 +180,11 @@ async function sendOtpEmail(email: string, code: string): Promise<boolean> {
         return true;
       }
       const errorText = await response.text();
-      console.warn(`[LOYALTY OTP] Resend failed (${response.status}): ${errorText} — trying SMTP fallback`);
+      console.warn(`[LOYALTY OTP] Resend also failed (${response.status}): ${errorText}`);
     } catch (err) {
-      console.warn("[LOYALTY OTP] Resend exception — trying SMTP fallback:", err);
+      console.warn("[LOYALTY OTP] Resend exception:", err);
     }
   }
-
-  // SMTP fallback
-  const smtpSent = await sendEmailViaSMTP(email, subject, html);
-  if (smtpSent) return true;
 
   // Both failed — log code so staff can manually provide it
   console.warn(`[LOYALTY OTP] All email methods failed. Manual code for ${email}: ${code}`);
@@ -253,10 +253,18 @@ async function sendBookingConfirmationEmail(booking: {
   </div>`;
 
   const subject = `Booking Confirmed - ${tableDisplay} on ${dateFormatted}`;
-  const fromEmail = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
-  const fromName = process.env.RESEND_FROM_NAME || "The 147";
 
+  // SMTP first — works with Gmail/Outlook without any domain verification
+  const smtpSent = await sendEmailViaSMTP(booking.customerEmail, subject, html);
+  if (smtpSent) {
+    console.log(`[BOOKING] Confirmation email sent via SMTP to ${booking.customerEmail} for booking #${booking.id}`);
+    return true;
+  }
+
+  // Resend fallback (requires verified domain for non-owner addresses)
   if (resendKey) {
+    const fromEmail = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+    const fromName = process.env.RESEND_FROM_NAME || "The 147";
     try {
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
@@ -264,17 +272,14 @@ async function sendBookingConfirmationEmail(booking: {
         body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: booking.customerEmail, subject, html }),
       });
       if (response.ok) {
-        console.log(`[BOOKING] Confirmation email sent to ${booking.customerEmail} for booking #${booking.id}`);
+        console.log(`[BOOKING] Confirmation email sent via Resend to ${booking.customerEmail} for booking #${booking.id}`);
         return true;
       }
-      console.warn("[BOOKING] Resend failed, trying SMTP:", await response.text());
+      console.warn("[BOOKING] Resend also failed:", await response.text());
     } catch (err) {
-      console.warn("[BOOKING] Resend exception, trying SMTP:", err);
+      console.warn("[BOOKING] Resend exception:", err);
     }
   }
-
-  const smtpSent = await sendEmailViaSMTP(booking.customerEmail, subject, html);
-  if (smtpSent) return true;
 
   console.warn(`[BOOKING] Confirmation email could not be sent for booking #${booking.id} to ${booking.customerEmail}`);
   return false;
