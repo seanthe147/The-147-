@@ -359,23 +359,43 @@ export class DatabaseStorage implements IStorage {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
     const cutoffStr = cutoffDate.toISOString().split("T")[0];
+
+    // Build a set of emailHashes that are still "active":
+    // 1. Any customer who has a booking on or after the cutoff date
+    // 2. Any customer who has a registered account in the customers table
+    const recentBookings = await db.select({ emailHash: bookings.emailHash })
+      .from(bookings)
+      .where(gte(bookings.date, cutoffStr));
+    const activeHashes = new Set<string>(
+      recentBookings.map(b => b.emailHash).filter(Boolean) as string[]
+    );
+
+    // Add hashes of all registered customer accounts — they are always active
+    const allCustomers = await db.select({ email: customers.email }).from(customers);
+    for (const c of allCustomers) {
+      if (c.email) activeHashes.add(hashEmail(c.email));
+    }
+
+    // Anonymise old bookings only for customers with no recent activity and no account
     const oldBookings = await db.select().from(bookings).where(lt(bookings.date, cutoffStr));
     let count = 0;
     for (const booking of oldBookings) {
       const decryptedName = decrypt(booking.customerName);
-      if (decryptedName !== "ANONYMIZED") {
-        await db.update(bookings).set({
-          customerName: "ANONYMIZED",
-          customerEmail: "anonymized@removed.local",
-          customerPhone: "000000",
-          emailHash: null,
-          notes: null,
-        }).where(eq(bookings.id, booking.id));
-        count++;
-      }
+      if (decryptedName === "ANONYMIZED") continue;
+      // Skip if this customer is still active (recent booking or registered account)
+      if (booking.emailHash && activeHashes.has(booking.emailHash)) continue;
+      await db.update(bookings).set({
+        customerName: "ANONYMIZED",
+        customerEmail: "anonymized@removed.local",
+        customerPhone: "000000",
+        emailHash: null,
+        notes: null,
+      }).where(eq(bookings.id, booking.id));
+      count++;
     }
 
-    // Also anonymize contact messages older than the retention period
+    // Also anonymise contact messages older than the retention period
+    // (no "still active" exemption here — messages are one-off enquiries)
     const contactCutoff = new Date();
     contactCutoff.setDate(contactCutoff.getDate() - retentionDays);
     const oldMessages = await db.select().from(contactMessages).where(lt(contactMessages.createdAt, contactCutoff));
