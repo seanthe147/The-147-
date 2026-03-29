@@ -2378,7 +2378,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const sigBuf = Buffer.from(sig, "base64");
         const expBuf = Buffer.from(expected, "base64");
         if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
-          log("Square webhook: invalid signature — rejected");
+          console.warn("[Square webhook] Invalid signature — rejected");
           return res.status(401).send("Invalid signature");
         }
       }
