@@ -890,15 +890,15 @@
       <div class="bm-section" id="sourceSection">
         <div class="bm-label">Booking Type</div>
         <div class="chip-group">
-          <button class="chip-btn" data-chip="source" data-value="walkin" onclick="selectChip('source','walkin')">
+          <button class="chip-btn" data-chip="source" data-value="walkin">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="7" r="4"/><path d="M5.5 21c0-4 6.5-7 6.5-7s6.5 3 6.5 7"/></svg>
             Walk-in
           </button>
-          <button class="chip-btn" data-chip="source" data-value="telephone" onclick="selectChip('source','telephone')">
+          <button class="chip-btn" data-chip="source" data-value="telephone">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.63A2 2 0 012 0h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.896.295 1.843.49 2.81.7A2 2 0 0122 14.92z"/></svg>
             Telephone
           </button>
-          <button class="chip-btn" data-chip="source" data-value="online" onclick="selectChip('source','online')">
+          <button class="chip-btn" data-chip="source" data-value="online">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20"/></svg>
             Online
           </button>
@@ -909,19 +909,19 @@
       <div class="bm-section">
         <div class="bm-label">Table Type</div>
         <div class="chip-group">
-          <button class="chip-btn" data-chip="tableType" data-value="snooker" onclick="selectChip('tableType','snooker')">
+          <button class="chip-btn" data-chip="tableType" data-value="snooker">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
             Snooker
           </button>
-          <button class="chip-btn" data-chip="tableType" data-value="pool" onclick="selectChip('tableType','pool')">
+          <button class="chip-btn" data-chip="tableType" data-value="pool">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/></svg>
             Pool
           </button>
-          <button class="chip-btn" data-chip="tableType" data-value="dining" onclick="selectChip('tableType','dining')">
+          <button class="chip-btn" data-chip="tableType" data-value="dining">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 8h1a4 4 0 010 8h-1M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8zM6 1v3M10 1v3M14 1v3"/></svg>
             Dining
           </button>
-          <button class="chip-btn" data-chip="tableType" data-value="darts" onclick="selectChip('tableType','darts')">
+          <button class="chip-btn" data-chip="tableType" data-value="darts">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
             Darts
           </button>
@@ -966,10 +966,10 @@
       <div class="bm-section">
         <div class="bm-label">Duration</div>
         <div class="chip-group">
-          <button class="chip-btn" data-chip="duration" data-value="1" onclick="selectChip('duration','1')">1 hour</button>
-          <button class="chip-btn" data-chip="duration" data-value="2" onclick="selectChip('duration','2')">2 hours</button>
-          <button class="chip-btn" data-chip="duration" data-value="3" onclick="selectChip('duration','3')">3 hours</button>
-          <button class="chip-btn" id="dur4Chip" data-chip="duration" data-value="4" onclick="selectChip('duration','4')" style="display:none">4 hours</button>
+          <button class="chip-btn" data-chip="duration" data-value="1">1 hour</button>
+          <button class="chip-btn" data-chip="duration" data-value="2">2 hours</button>
+          <button class="chip-btn" data-chip="duration" data-value="3">3 hours</button>
+          <button class="chip-btn" id="dur4Chip" data-chip="duration" data-value="4" style="display:none">4 hours</button>
         </div>
       </div>
 
@@ -1623,6 +1623,12 @@
     });
   }
   buildGuestCountChips();
+
+  // Wire static chip buttons — they live inside the IIFE so inline onclick attrs
+  // can't reach selectChip. Use event listeners instead.
+  document.querySelectorAll('.chip-btn:not(.chip-num)').forEach(function(btn){
+    btn.addEventListener('click', function(){ selectChip(btn.dataset.chip, btn.dataset.value); });
+  });
 
   function handleTableTypeChange(type){
     const hasTable=type==='snooker'||type==='pool';
