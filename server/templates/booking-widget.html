@@ -328,6 +328,16 @@
     }
 
     .success-screen { text-align: center; padding: 20px 10px; }
+    .deposit-notice { background: #FFF7E6; border: 1.5px solid #FCD34D; border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; display: flex; align-items: flex-start; gap: 10px; }
+    .deposit-notice-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+    .deposit-notice-text { font-size: 13px; color: #92400E; line-height: 1.5; }
+    .deposit-screen { text-align: center; padding: 20px 10px; }
+    .deposit-icon { font-size: 52px; margin-bottom: 12px; }
+    .deposit-title { font-size: 22px; font-weight: 700; color: var(--navy); margin-bottom: 10px; }
+    .deposit-sub { font-size: 14px; color: var(--text-sub); line-height: 1.6; margin-bottom: 24px; }
+    .deposit-amount { display: inline-block; background: var(--blue); color: #fff; font-size: 28px; font-weight: 700; border-radius: 12px; padding: 10px 28px; margin-bottom: 20px; }
+    .btn-pay { background: #16A34A; color: #fff; font-size: 16px; font-weight: 700; padding: 14px 28px; border-radius: 12px; border: none; cursor: pointer; width: 100%; margin-bottom: 10px; }
+    .btn-pay:hover { background: #15803d; }
 
     .success-icon {
       width: 72px; height: 72px; border-radius: 50%;
@@ -544,6 +554,10 @@
         <span class="summary-label">Est. Cost</span>
         <span class="summary-value" id="sumCost" style="color:var(--blue);font-weight:700">–</span>
       </div>
+      <div class="summary-row" id="sumDepositRow" style="display:none">
+        <span class="summary-label">Deposit</span>
+        <span class="summary-value" style="color:#D97706;font-weight:700">£5.00 required</span>
+      </div>
       <div class="summary-row">
         <span class="summary-label">Name</span>
         <span class="summary-value" id="sumName">–</span>
@@ -558,9 +572,36 @@
       </div>
     </div>
 
+    <div id="depositNotice" class="deposit-notice" style="display:none">
+      <div class="deposit-notice-icon">💳</div>
+      <div class="deposit-notice-text">
+        A <strong>£5.00 deposit</strong> is required for dining bookings of 7 or more guests.
+        You'll be taken to a secure Square payment page after confirming.
+      </div>
+    </div>
+
     <div class="btn-row">
       <button class="btn btn-outline" onclick="goToStep(3)">← Edit</button>
       <button class="btn btn-navy" id="confirmBtn" onclick="submitBooking()">Confirm Booking ✓</button>
+    </div>
+  </div>
+
+  <!-- STEP: Deposit Payment -->
+  <div id="stepDeposit" class="hide">
+    <div class="card deposit-screen">
+      <div class="deposit-icon">💳</div>
+      <div class="deposit-title">Deposit Required</div>
+      <div class="deposit-sub">
+        A deposit is required to secure your dining booking for <strong id="depositGuestCount">7</strong> guests.
+        You'll be taken to a secure Square payment page.
+      </div>
+      <div class="deposit-amount">£5.00</div>
+      <button class="btn-pay" id="depositPayBtn" onclick="openDepositPayment()">Pay £5.00 Deposit →</button>
+      <div class="booking-ref" style="margin-bottom:16px">
+        <div class="booking-ref-label">Booking Reference</div>
+        <div class="booking-ref-num" id="depositRef">#000</div>
+      </div>
+      <button class="btn btn-outline" onclick="resetWidget()" style="width:100%;margin-top:4px">Cancel Booking</button>
     </div>
   </div>
 
@@ -611,12 +652,30 @@
     };
   }
 
+  const DEPOSIT_THRESHOLD = 7;
+  let depositPaymentUrl = null;
+
   function goToStep(n) {
     [1,2,3,4,5].forEach(i => {
       document.getElementById('step'+i).classList.toggle('hide', i !== n);
     });
+    document.getElementById('stepDeposit').classList.add('hide');
     updateStepIndicator(n);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function showDepositStep(bookingId, paymentUrl, guestCount) {
+    depositPaymentUrl = paymentUrl;
+    [1,2,3,4,5].forEach(i => document.getElementById('step'+i).classList.add('hide'));
+    document.getElementById('stepDeposit').classList.remove('hide');
+    document.getElementById('depositRef').textContent = '#' + String(bookingId).padStart(4, '0');
+    document.getElementById('depositGuestCount').textContent = guestCount;
+    updateStepIndicator(4);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function openDepositPayment() {
+    if (depositPaymentUrl) window.open(depositPaymentUrl, '_blank');
   }
 
   function updateStepIndicator(current) {
@@ -996,6 +1055,13 @@
     document.getElementById('sumName').textContent = state.name;
     document.getElementById('sumEmail').textContent = state.email;
     document.getElementById('sumPhone').textContent = state.phone;
+
+    // Deposit logic
+    const needsDeposit = state.tableType === 'dining' && state.guestCount >= DEPOSIT_THRESHOLD;
+    document.getElementById('sumDepositRow').style.display = needsDeposit ? 'flex' : 'none';
+    document.getElementById('depositNotice').style.display = needsDeposit ? 'flex' : 'none';
+    const btn = document.getElementById('confirmBtn');
+    btn.textContent = needsDeposit ? 'Confirm & Pay Deposit ✓' : 'Confirm Booking ✓';
   }
 
   async function submitBooking() {
@@ -1032,6 +1098,13 @@
         throw new Error(data.message || 'Booking failed. Please try again.');
       }
 
+      // Deposit required — show deposit payment step
+      if (data.depositRequired && data.depositPaymentUrl) {
+        showDepositStep(data.id, data.depositPaymentUrl, state.guestCount);
+        return;
+      }
+
+      // Standard confirmation
       document.getElementById('successRef').textContent = '#' + String(data.id).padStart(4, '0');
       const tableLabel = TABLE_NAMES[state.tableType] || state.tableType;
       const dateStr = new Date(state.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' });
@@ -1043,12 +1116,15 @@
       errBox.textContent = err.message || 'Something went wrong. Please try again.';
       errBox.style.display = 'block';
       btn.disabled = false;
-      btn.textContent = 'Confirm Booking ✓';
+      const needsDeposit = state.tableType === 'dining' && state.guestCount >= DEPOSIT_THRESHOLD;
+      btn.textContent = needsDeposit ? 'Confirm & Pay Deposit ✓' : 'Confirm Booking ✓';
     }
   }
 
   function resetWidget() {
     state = freshState();
+    depositPaymentUrl = null;
+    document.getElementById('stepDeposit').classList.add('hide');
     document.querySelectorAll('.table-card').forEach(c => c.classList.remove('selected'));
     document.getElementById('tableNumCard').classList.add('hide');
     document.getElementById('poolTableCard').classList.add('hide');
