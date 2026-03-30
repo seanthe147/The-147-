@@ -1225,8 +1225,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(201).json({ ...booking, depositRequired: true, depositPaymentUrl: paymentLink.url });
       } catch (err) {
         console.error("[BOOKING] Deposit link error:", err);
-        // Fall through: confirm without deposit if Square link fails
-        await storage.updateBooking(booking.id, { status: "confirmed", depositRequired: false });
+        // Keep booking as pending_deposit — do NOT silently confirm.
+        // Return a specific error so the customer knows to call.
+        const bookingRef = `147-${booking.id.toString().padStart(5, "0")}`;
+        return res.status(503).json({
+          message: "payment_link_failed",
+          bookingRef,
+          bookingId: booking.id,
+        });
       }
     }
 

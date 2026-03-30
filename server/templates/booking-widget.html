@@ -609,7 +609,7 @@
   <div id="step5" class="hide">
     <div class="card success-screen">
       <div class="success-icon">✓</div>
-      <div class="success-title">Booking Confirmed!</div>
+      <div class="success-title" id="successTitle">Booking Confirmed!</div>
       <div class="success-sub" id="successMessage">
         Your table has been reserved. A confirmation has been sent to your email address.
         Please arrive 5 minutes before your slot.
@@ -1094,6 +1094,17 @@
       });
       const data = await res.json();
 
+      // Payment link generation failed — booking is held, customer should call
+      if (res.status === 503 && data.message === 'payment_link_failed') {
+        document.getElementById('successTitle').textContent = 'Booking Reserved';
+        document.getElementById('successRef').textContent = data.bookingRef || ('#' + String(data.bookingId).padStart(4, '0'));
+        document.getElementById('successMessage').textContent =
+          `Your table has been reserved (ref: ${data.bookingRef}) but our online payment system is temporarily unavailable. ` +
+          `Please call us to pay the £5 deposit and confirm your booking. We apologise for the inconvenience.`;
+        goToStep(5);
+        return;
+      }
+
       if (!res.ok) {
         throw new Error(data.message || 'Booking failed. Please try again.');
       }
@@ -1105,6 +1116,7 @@
       }
 
       // Standard confirmation
+      document.getElementById('successTitle').textContent = 'Booking Confirmed!';
       document.getElementById('successRef').textContent = '#' + String(data.id).padStart(4, '0');
       const tableLabel = TABLE_NAMES[state.tableType] || state.tableType;
       const dateStr = new Date(state.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' });
