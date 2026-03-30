@@ -1194,11 +1194,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
 
     if (requiresDeposit) {
+      const staticDepositUrl = process.env.SQUARE_DEPOSIT_LINK_URL;
+      const bookingRef = `147-${booking.id.toString().padStart(5, "0")}`;
+
+      // Use pre-created static Square link when available (avoids API link-creation issues)
+      if (staticDepositUrl) {
+        if (depositHandling === "send_link") {
+          sendDepositLinkEmail({
+            customerName: parsed.data.customerName,
+            customerEmail: parsed.data.customerEmail,
+            guestCount,
+            date: parsed.data.date,
+            startTime: parsed.data.startTime,
+            id: booking.id,
+            depositPaymentUrl: staticDepositUrl,
+          }).catch((err) => console.error("[BOOKING] Deposit email error:", err));
+          return res.status(201).json({ ...booking, depositRequired: true, depositHandled: "send_link" });
+        }
+        // Widget default
+        return res.status(201).json({ ...booking, depositRequired: true, depositPaymentUrl: staticDepositUrl });
+      }
+
+      // Fallback: attempt dynamic Square payment link creation
       try {
         const appDomain = process.env.EXPO_PUBLIC_DOMAIN || req.get("host") || "localhost:5000";
         const protocol = appDomain.includes("localhost") ? "http" : "https";
         const redirectUrl = `${protocol}://${appDomain}/api/bookings/${booking.id}/deposit-return`;
-        const bookingRef = `147-${booking.id.toString().padStart(5, "0")}`;
         const paymentLink = await square.createDepositPaymentLink({
           amountPence: DEPOSIT_AMOUNT_PENCE,
           description: `Dining Deposit – Booking ${bookingRef} (${guestCount} guests)`,
@@ -1207,7 +1228,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         await storage.updateBooking(booking.id, { depositPaymentId: paymentLink.paymentLinkId });
 
-        // Staff sending link via email — auto-send and return booking
         if (depositHandling === "send_link") {
           sendDepositLinkEmail({
             customerName: parsed.data.customerName,
@@ -1221,13 +1241,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(201).json({ ...booking, depositRequired: true, depositHandled: "send_link" });
         }
 
-        // Widget default — return URL for client-side redirect
         return res.status(201).json({ ...booking, depositRequired: true, depositPaymentUrl: paymentLink.url });
       } catch (err: any) {
         console.error("[BOOKING] Deposit link error — Square code:", err?.code, "| message:", err?.message, "| status:", err?.statusCode);
         // Keep booking as pending_deposit — do NOT silently confirm.
-        // Return a specific error so the customer knows to call.
-        const bookingRef = `147-${booking.id.toString().padStart(5, "0")}`;
         return res.status(503).json({
           message: "payment_link_failed",
           bookingRef,
