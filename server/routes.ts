@@ -1223,8 +1223,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Widget default — return URL for client-side redirect
         return res.status(201).json({ ...booking, depositRequired: true, depositPaymentUrl: paymentLink.url });
-      } catch (err) {
-        console.error("[BOOKING] Deposit link error:", err);
+      } catch (err: any) {
+        console.error("[BOOKING] Deposit link error — Square code:", err?.code, "| message:", err?.message, "| status:", err?.statusCode);
         // Keep booking as pending_deposit — do NOT silently confirm.
         // Return a specific error so the customer knows to call.
         const bookingRef = `147-${booking.id.toString().padStart(5, "0")}`;
