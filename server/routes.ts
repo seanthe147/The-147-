@@ -1436,6 +1436,104 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(booking);
   });
 
+  // ── Square Webhook — auto-confirm deposit bookings on payment ────────────────
+  app.post("/api/webhooks/square", async (req, res) => {
+    // Verify signature if key is configured
+    const sigKey = process.env.SQUARE_WEBHOOK_SIGNATURE_KEY;
+    if (sigKey) {
+      const signature = req.headers["x-square-hmacsha256-signature"] as string | undefined;
+      if (!signature) {
+        console.warn("[WEBHOOK] Missing Square signature header");
+        return res.status(401).json({ message: "Missing signature" });
+      }
+      try {
+        const { createHmac } = await import("node:crypto");
+        const notificationUrl = process.env.SQUARE_WEBHOOK_URL ||
+          `https://${process.env.EXPO_PUBLIC_DOMAIN || req.get("host")}/api/webhooks/square`;
+        const rawBody = (req as any).rawBody?.toString("utf8") ?? JSON.stringify(req.body);
+        const hmac = createHmac("sha256", sigKey);
+        hmac.update(notificationUrl + rawBody);
+        const expected = hmac.digest("base64");
+        if (signature !== expected) {
+          console.warn("[WEBHOOK] Square signature mismatch");
+          return res.status(403).json({ message: "Invalid signature" });
+        }
+      } catch (sigErr) {
+        console.error("[WEBHOOK] Signature check error:", sigErr);
+        return res.status(500).json({ message: "Signature check failed" });
+      }
+    }
+
+    const event = req.body;
+    console.log("[WEBHOOK] Square event received:", event?.type);
+
+    // Only process completed payments of exactly £5.00
+    if (event?.type !== "payment.updated") return res.sendStatus(200);
+    const payment = event?.data?.object?.payment;
+    if (!payment) return res.sendStatus(200);
+    if (payment.status !== "COMPLETED") return res.sendStatus(200);
+    const amountPence = payment.amount_money?.amount;
+    const currency = payment.amount_money?.currency;
+    if (amountPence !== 500 || currency !== "GBP") return res.sendStatus(200);
+
+    console.log(`[WEBHOOK] £5 deposit payment completed — payment ID: ${payment.id}`);
+
+    try {
+      // Strategy 1: match by buyer email (most reliable)
+      const buyerEmail = payment.buyer_email_address as string | undefined;
+      let booking: Awaited<ReturnType<typeof storage.getBooking>> | undefined;
+
+      if (buyerEmail) {
+        const byEmail = await storage.getBookingsByEmail(buyerEmail);
+        const pending = byEmail.filter(b => b.status === "pending_deposit");
+        if (pending.length > 0) {
+          // Take the most recently created pending deposit booking for this email
+          booking = pending.sort((a, b) => b.id - a.id)[0];
+          console.log(`[WEBHOOK] Matched booking #${booking.id} by email: ${buyerEmail}`);
+        }
+      }
+
+      // Strategy 2: time-proximity fallback (most recent pending deposit within 4 hours)
+      if (!booking) {
+        const all = await storage.getBookings();
+        const cutoff = Date.now() - 4 * 60 * 60 * 1000;
+        const recent = all
+          .filter(b => b.status === "pending_deposit" && new Date(b.createdAt ?? 0).getTime() > cutoff)
+          .sort((a, b) => b.id - a.id);
+        if (recent.length > 0) {
+          booking = recent[0];
+          console.log(`[WEBHOOK] Matched booking #${booking.id} by time proximity (no email match)`);
+        }
+      }
+
+      if (!booking) {
+        console.warn("[WEBHOOK] No pending_deposit booking found for this payment");
+        return res.sendStatus(200);
+      }
+
+      // Confirm the booking
+      await storage.updateBooking(booking.id, { depositPaid: true, status: "confirmed" });
+      console.log(`[WEBHOOK] Booking #${booking.id} confirmed automatically after deposit payment`);
+
+      // Send confirmation email
+      sendBookingConfirmationEmail({
+        customerName: booking.customerName,
+        customerEmail: booking.customerEmail,
+        tableType: booking.tableType,
+        tableNumber: booking.tableNumber,
+        date: booking.date,
+        startTime: booking.startTime,
+        duration: booking.duration,
+        id: booking.id,
+      }).catch(() => {});
+
+    } catch (err) {
+      console.error("[WEBHOOK] Error processing Square webhook:", err);
+    }
+
+    res.sendStatus(200);
+  });
+
   // Deposit return — Square redirects here after payment
   app.get("/api/bookings/:id/deposit-return", async (req, res) => {
     const id = parseInt(req.params.id as string);
