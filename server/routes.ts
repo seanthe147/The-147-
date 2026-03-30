@@ -191,6 +191,71 @@ async function sendOtpEmail(email: string, code: string): Promise<boolean> {
   return false;
 }
 
+async function sendDepositLinkEmail(booking: {
+  customerName: string;
+  customerEmail: string;
+  guestCount: number;
+  date: string;
+  startTime: string;
+  id: number;
+  depositPaymentUrl: string;
+}): Promise<boolean> {
+  const dateObj = new Date(booking.date + "T00:00:00");
+  const dateFormatted = dateObj.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const bookingRef = `147-${booking.id.toString().padStart(5, "0")}`;
+  const subject = `Deposit Required – Dining Booking ${bookingRef} on ${dateFormatted}`;
+
+  const html = `<div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px; background: #ffffff;">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="color: #0A1628; font-size: 24px; margin: 0;">The 147</h1>
+      <p style="color: #6b7280; font-size: 13px; margin: 4px 0 0;">Snooker, Bar &amp; Restaurant</p>
+    </div>
+    <div style="background: #FFF7E6; border: 1.5px solid #FCD34D; border-radius: 12px; padding: 16px; text-align: center; margin-bottom: 24px;">
+      <span style="font-size: 28px;">💳</span>
+      <h2 style="color: #92400E; font-size: 18px; margin: 8px 0 0;">Deposit Required</h2>
+    </div>
+    <p style="color: #374151; font-size: 15px;">Hi ${escHtml(booking.customerName)},</p>
+    <p style="color: #374151; font-size: 15px;">Thank you for your dining booking at The 147 for <strong>${booking.guestCount} guests</strong> on ${escHtml(dateFormatted)} at ${escHtml(booking.startTime)}.</p>
+    <p style="color: #374151; font-size: 15px;">A <strong>£5.00 deposit</strong> is required to confirm your booking. Please click the button below to pay securely.</p>
+    <div style="text-align: center; margin: 28px 0;">
+      <a href="${booking.depositPaymentUrl}" style="display: inline-block; background: #16A34A; color: #fff; font-size: 16px; font-weight: 700; padding: 14px 32px; border-radius: 12px; text-decoration: none;">Pay £5.00 Deposit →</a>
+    </div>
+    <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; margin: 20px 0;">
+      <table style="width: 100%; border-collapse: collapse;">
+        <tr><td style="padding: 8px 0; color: #6b7280; font-size: 13px; font-weight: 600;">Booking Ref</td><td style="padding: 8px 0; color: #0047AB; font-size: 15px; font-weight: 700; text-align: right;">${escHtml(bookingRef)}</td></tr>
+        <tr><td style="padding: 8px 0; color: #6b7280; font-size: 13px; font-weight: 600;">Date</td><td style="padding: 8px 0; color: #0A1628; font-size: 14px; font-weight: 600; text-align: right;">${escHtml(dateFormatted)}</td></tr>
+        <tr><td style="padding: 8px 0; color: #6b7280; font-size: 13px; font-weight: 600;">Time</td><td style="padding: 8px 0; color: #0A1628; font-size: 14px; font-weight: 600; text-align: right;">${escHtml(booking.startTime)}</td></tr>
+        <tr><td style="padding: 8px 0; color: #6b7280; font-size: 13px; font-weight: 600;">Guests</td><td style="padding: 8px 0; color: #0A1628; font-size: 14px; font-weight: 600; text-align: right;">${booking.guestCount} guests</td></tr>
+        <tr><td style="padding: 8px 0; color: #6b7280; font-size: 13px; font-weight: 600;">Deposit</td><td style="padding: 8px 0; color: #D97706; font-size: 14px; font-weight: 700; text-align: right;">£5.00 due</td></tr>
+      </table>
+    </div>
+    <p style="color: #374151; font-size: 13px; line-height: 1.6;">Your booking will be confirmed once the deposit is received. If you have any questions, please contact us.</p>
+    <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 12px; text-align: center;">The 147 &mdash; Snooker, Bar &amp; Restaurant<br/>www.the147.co.uk</p>
+  </div>`;
+
+  const smtpSent = await sendEmailViaSMTP(booking.customerEmail, subject, html);
+  if (smtpSent) {
+    console.log(`[BOOKING] Deposit link email sent via SMTP to ${booking.customerEmail} for booking #${booking.id}`);
+    return true;
+  }
+  const resendKey = process.env.RESEND_API_KEY;
+  if (resendKey) {
+    const fromEmail = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+    const fromName = process.env.RESEND_FROM_NAME || "The 147";
+    try {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+        body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: booking.customerEmail, subject, html }),
+      });
+      if (response.ok) return true;
+    } catch (_) {}
+  }
+  console.warn(`[BOOKING] Deposit link email failed for booking #${booking.id}`);
+  return false;
+}
+
 async function sendBookingConfirmationEmail(booking: {
   customerName: string;
   customerEmail: string;
@@ -1091,10 +1156,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const DEPOSIT_GUEST_THRESHOLD = 7;
     const DEPOSIT_AMOUNT_PENCE = 500; // £5
-    const requiresDeposit =
-      parsed.data.tableType === "dining" &&
-      (parsed.data.guestCount ?? 0) >= DEPOSIT_GUEST_THRESHOLD &&
-      square.isConfigured();
+    // depositHandling (staff-only): 'mark_paid' | 'send_link' | undefined (widget default)
+    const depositHandling = (req.body as { depositHandling?: string }).depositHandling;
+    const guestCount = parsed.data.guestCount ?? 0;
+    const isLargeParty = parsed.data.tableType === "dining" && guestCount >= DEPOSIT_GUEST_THRESHOLD;
+
+    // Staff marking deposit as taken in person — confirm immediately
+    if (isLargeParty && depositHandling === "mark_paid") {
+      const booking = await storage.createBooking({
+        ...parsed.data,
+        tableNumber: finalTableNumber ?? undefined,
+        status: "confirmed",
+        depositRequired: true,
+        depositPaid: true,
+      });
+      sendBookingConfirmationEmail({
+        customerName: parsed.data.customerName,
+        customerEmail: parsed.data.customerEmail,
+        tableType: parsed.data.tableType,
+        tableNumber: parsed.data.tableNumber,
+        date: parsed.data.date,
+        startTime: parsed.data.startTime,
+        duration: parsed.data.duration ?? 1,
+        id: booking.id,
+      }).catch((err) => console.error("[BOOKING] Email send error:", err));
+      return res.status(201).json({ ...booking, depositHandled: "mark_paid" });
+    }
+
+    const requiresDeposit = isLargeParty && square.isConfigured();
 
     const booking = await storage.createBooking({
       ...parsed.data,
@@ -1112,11 +1201,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const bookingRef = `147-${booking.id.toString().padStart(5, "0")}`;
         const paymentLink = await square.createDepositPaymentLink({
           amountPence: DEPOSIT_AMOUNT_PENCE,
-          description: `Dining Deposit – Booking ${bookingRef} (${parsed.data.guestCount} guests)`,
+          description: `Dining Deposit – Booking ${bookingRef} (${guestCount} guests)`,
           referenceId: bookingRef,
           redirectUrl,
         });
         await storage.updateBooking(booking.id, { depositPaymentId: paymentLink.paymentLinkId });
+
+        // Staff sending link via email — auto-send and return booking
+        if (depositHandling === "send_link") {
+          sendDepositLinkEmail({
+            customerName: parsed.data.customerName,
+            customerEmail: parsed.data.customerEmail,
+            guestCount,
+            date: parsed.data.date,
+            startTime: parsed.data.startTime,
+            id: booking.id,
+            depositPaymentUrl: paymentLink.url,
+          }).catch((err) => console.error("[BOOKING] Deposit email error:", err));
+          return res.status(201).json({ ...booking, depositRequired: true, depositHandled: "send_link" });
+        }
+
+        // Widget default — return URL for client-side redirect
         return res.status(201).json({ ...booking, depositRequired: true, depositPaymentUrl: paymentLink.url });
       } catch (err) {
         console.error("[BOOKING] Deposit link error:", err);

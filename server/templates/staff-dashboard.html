@@ -1036,6 +1036,24 @@
         </div>
       </div>
     </div>
+    <!-- Deposit action section — shown for new dining bookings with 7+ guests -->
+    <div id="depositActionSection" style="display:none;padding:16px 20px 0">
+      <div style="background:#FFF7E6;border:1.5px solid #FCD34D;border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:flex-start;gap:10px">
+        <span style="font-size:18px;flex-shrink:0;margin-top:1px">💳</span>
+        <span style="font-size:13px;color:#92400E;line-height:1.5">This dining booking requires a <strong>£5.00 deposit</strong> for 7+ guests. Choose how to handle it:</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:4px">
+        <button class="btn" style="background:#16A34A;color:#fff;font-size:13px;font-weight:700;padding:11px 8px;border:none;border-radius:10px;cursor:pointer" onclick="submitBooking('mark_paid')">
+          💳 Deposit Taken
+          <div style="font-size:10px;font-weight:400;margin-top:2px;opacity:.85">Paid in person — confirm now</div>
+        </button>
+        <button class="btn" style="background:#0047AB;color:#fff;font-size:13px;font-weight:700;padding:11px 8px;border:none;border-radius:10px;cursor:pointer" onclick="submitBooking('send_link')">
+          📧 Send Payment Link
+          <div style="font-size:10px;font-weight:400;margin-top:2px;opacity:.85">Email customer secure link</div>
+        </button>
+      </div>
+    </div>
+
     <div class="modal-ft">
       <button class="btn btn-secondary" id="modalCancelBtn">Cancel</button>
       <button class="btn btn-primary" id="modalSaveBtn">Create Booking</button>
@@ -1576,6 +1594,7 @@
     el('customerSearch').value='';
     el('customerDropdown').classList.remove('open');
     el('customerDropdown').innerHTML='';
+    updateDepositActionSection();
     openOverlay('bookingModal');
     setTimeout(()=>isNew?el('customerSearch').focus():el('fName').focus(),100);
   }
@@ -1589,6 +1608,7 @@
       btn.classList.toggle('selected',btn.dataset.value===String(value));
     });
     if(group==='tableType') handleTableTypeChange(value);
+    updateDepositActionSection();
   }
 
   function buildTableNumChips(type){
@@ -1758,7 +1778,21 @@
   el('modalCancelBtn').addEventListener('click',()=>closeOverlay('bookingModal'));
   el('modalSaveBtn').addEventListener('click',submitBooking);
 
-  async function submitBooking(){
+  const STAFF_DEPOSIT_THRESHOLD = 7;
+
+  function updateDepositActionSection(){
+    const isDining = chipState.tableType === 'dining';
+    const guests = parseInt(chipState.guestCount) || 0;
+    const isLargeParty = isDining && guests >= STAFF_DEPOSIT_THRESHOLD;
+    const section = el('depositActionSection');
+    const saveBtn = el('modalSaveBtn');
+    if(section){
+      section.style.display = (!editingId && isLargeParty) ? '' : 'none';
+      if(saveBtn) saveBtn.style.display = (!editingId && isLargeParty) ? 'none' : '';
+    }
+  }
+
+  async function submitBooking(depositHandling){
     const err=el('modalErr');
     err.classList.remove('show');
     const name=el('fName').value.trim();
@@ -1780,7 +1814,8 @@
       source:chipState.source||'walkin',
       customerName:name,customerEmail:email,customerPhone:phone,
       notes:el('fNotes').value.trim()||null,
-      gdprConsent:true
+      gdprConsent:true,
+      ...(depositHandling ? {depositHandling} : {})
     };
     el('modalSaveBtn').disabled=true;
     try{
@@ -1808,7 +1843,9 @@
       const d=await r.json();
       if(!r.ok){err.textContent=d.message||'Failed to save';err.classList.add('show');return}
       closeOverlay('bookingModal');
-      toast(editingId?'Booking updated':'Booking created','success');
+      if(depositHandling==='mark_paid') toast('Booking confirmed — deposit marked as taken','success');
+      else if(depositHandling==='send_link') toast('Booking created — deposit payment link sent to customer','success');
+      else toast(editingId?'Booking updated':'Booking created','success');
       loadBookings();
     }catch(e){if(e.message!=='Session expired'){err.textContent='Network error';err.classList.add('show')}}
     finally{el('modalSaveBtn').disabled=false}
