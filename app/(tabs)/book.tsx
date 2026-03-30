@@ -46,6 +46,12 @@ function localDateStr(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+function isDiningDay(dateStr: string): boolean {
+  const d = new Date(dateStr + "T00:00:00");
+  const dow = d.getDay(); // 0=Sun, 4=Thu, 5=Fri, 6=Sat
+  return [0, 4, 5, 6].includes(dow);
+}
+
 function getWeekDays(weekOffset: number): Array<{ label: string; date: string; dayName: string; dayNum: string; monthLabel: string }> {
   const days: Array<{ label: string; date: string; dayName: string; dayNum: string; monthLabel: string }> = [];
   const today = new Date();
@@ -324,7 +330,15 @@ export default function BookScreen() {
                   return (
                     <Pressable
                       key={table.id}
-                      onPress={() => { setSelectedTable(table.id); setSelectedTableNumber(null); if (table.id !== "snooker" && duration > 3) setDuration(3); }}
+                      onPress={() => {
+                      setSelectedTable(table.id);
+                      setSelectedTableNumber(null);
+                      if (table.id !== "snooker" && duration > 3) setDuration(3);
+                      if (table.id === "dining" && selectedDate && !isDiningDay(selectedDate)) {
+                        setSelectedDate(null);
+                        setSelectedTime(null);
+                      }
+                    }}
                       style={[styles.tableCard, isSelected && styles.tableCardSelected]}
                       testID={`table-${table.id}`}
                     >
@@ -433,6 +447,13 @@ export default function BookScreen() {
 
               <Text style={styles.stepTitle}>Pick a Date</Text>
 
+              {isDining && (
+                <View style={styles.diningNotice}>
+                  <Ionicons name="information-circle-outline" size={16} color="#92400e" />
+                  <Text style={styles.diningNoticeText}>Dining available Thursday–Sunday, 12pm–8pm only</Text>
+                </View>
+              )}
+
               <View style={styles.weekNavRow}>
                 <Pressable
                   onPress={() => {
@@ -473,15 +494,17 @@ export default function BookScreen() {
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.daysRow}>
                 {days.map((day) => {
                   const isSelected = selectedDate === day.date;
+                  const diningRestricted = isDining && !isDiningDay(day.date);
                   return (
                     <Pressable
                       key={day.date}
-                      onPress={() => { setSelectedDate(day.date); setSelectedTime(null); }}
-                      style={[styles.dayCard, isSelected && styles.dayCardSelected]}
+                      onPress={() => { if (!diningRestricted) { setSelectedDate(day.date); setSelectedTime(null); } }}
+                      disabled={diningRestricted}
+                      style={[styles.dayCard, isSelected && styles.dayCardSelected, diningRestricted && styles.dayCardDisabled]}
                       testID={`day-${day.date}`}
                     >
-                      <Text style={[styles.dayLabel, isSelected && styles.dayLabelSelected]}>{day.label}</Text>
-                      <Text style={[styles.dayNum, isSelected && styles.dayNumSelected]}>{day.dayNum}</Text>
+                      <Text style={[styles.dayLabel, isSelected && styles.dayLabelSelected, diningRestricted && styles.dayTextDisabled]}>{day.label}</Text>
+                      <Text style={[styles.dayNum, isSelected && styles.dayNumSelected, diningRestricted && styles.dayTextDisabled]}>{day.dayNum}</Text>
                     </Pressable>
                   );
                 })}
@@ -491,7 +514,11 @@ export default function BookScreen() {
                 <>
                   <Text style={[styles.stepTitle, { marginTop: 24 }]}>Duration</Text>
                   <View style={styles.durationRow}>
-                    {(isSnooker ? ALL_DURATION_OPTIONS : STANDARD_DURATION_OPTIONS).map((d) => (
+                    {(isSnooker ? ALL_DURATION_OPTIONS : STANDARD_DURATION_OPTIONS).filter((d) => {
+                      if (!isDining) return true;
+                      // For dining, only show durations where at least one slot fits within 12pm–8pm
+                      return d <= 8;
+                    }).map((d) => (
                       <Pressable
                         key={d}
                         onPress={() => { setDuration(d); setSelectedTime(null); }}
@@ -510,12 +537,18 @@ export default function BookScreen() {
                   ) : (
                     <View style={styles.timeGrid}>
                       {BOOKING_HOURS.filter((time) => {
+                        const [slotH, slotM] = time.split(":").map(Number);
+                        const slotMins = slotH * 60 + slotM;
+                        // Dining: only 12:00–20:00, slot must end by 20:00
+                        if (isDining) {
+                          const slotEndMins = slotMins + duration * 60;
+                          if (slotMins < 12 * 60 || slotEndMins > 20 * 60) return false;
+                        }
+                        // Past-time filter for today
                         if (!selectedDate) return true;
                         const todayStr = localDateStr(new Date());
                         if (selectedDate !== todayStr) return true;
                         const now = new Date();
-                        const [slotH, slotM] = time.split(":").map(Number);
-                        const slotMins = slotH * 60 + slotM;
                         const nowMins = now.getHours() * 60 + now.getMinutes();
                         return slotMins > nowMins + 60;
                       }).map((time) => {
@@ -523,7 +556,7 @@ export default function BookScreen() {
                         const isSelected = selectedTime === time;
                         const [tH, tM] = time.split(":").map(Number);
                         const endMins = tH * 60 + tM + duration * 60;
-                        const tooLate = endMins > 24 * 60;
+                        const tooLate = !isDining && endMins > 24 * 60;
                         const disabled = booked || tooLate;
                         return (
                           <Pressable
@@ -1238,6 +1271,30 @@ const styles = StyleSheet.create({
   },
   dayNumSelected: {
     color: "#FFFFFF",
+  },
+  dayCardDisabled: {
+    opacity: 0.35,
+    backgroundColor: Colors.light.background,
+  },
+  dayTextDisabled: {
+    color: Colors.light.textSecondary,
+  },
+  diningNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FFF7ED",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#FDBA74",
+  },
+  diningNoticeText: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 13,
+    color: "#92400E",
+    flex: 1,
   },
   durationRow: {
     flexDirection: "row",
