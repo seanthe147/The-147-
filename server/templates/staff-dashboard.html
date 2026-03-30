@@ -1776,7 +1776,7 @@
   el('fRepeatType').addEventListener('change',updateRepeatCountConfig);
   el('modalClose').addEventListener('click',()=>closeOverlay('bookingModal'));
   el('modalCancelBtn').addEventListener('click',()=>closeOverlay('bookingModal'));
-  el('modalSaveBtn').addEventListener('click',submitBooking);
+  el('modalSaveBtn').addEventListener('click',()=>submitBooking());
 
   const STAFF_DEPOSIT_THRESHOLD = 7;
 
@@ -1850,6 +1850,7 @@
     }catch(e){if(e.message!=='Session expired'){err.textContent='Network error';err.classList.add('show')}}
     finally{el('modalSaveBtn').disabled=false}
   }
+  window.submitBooking = submitBooking;
 
   /* ── Messages ── */
   let allMessages=[];
