@@ -1089,7 +1089,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
 
-    const booking = await storage.createBooking({ ...parsed.data, tableNumber: finalTableNumber ?? undefined });
+    const DEPOSIT_GUEST_THRESHOLD = 7;
+    const DEPOSIT_AMOUNT_PENCE = 500; // £5
+    const requiresDeposit =
+      parsed.data.tableType === "dining" &&
+      (parsed.data.guestCount ?? 0) >= DEPOSIT_GUEST_THRESHOLD &&
+      square.isConfigured();
+
+    const booking = await storage.createBooking({
+      ...parsed.data,
+      tableNumber: finalTableNumber ?? undefined,
+      status: requiresDeposit ? "pending_deposit" : "confirmed",
+      depositRequired: requiresDeposit,
+      depositPaid: false,
+    });
+
+    if (requiresDeposit) {
+      try {
+        const appDomain = process.env.EXPO_PUBLIC_DOMAIN || req.get("host") || "localhost:5000";
+        const protocol = appDomain.includes("localhost") ? "http" : "https";
+        const redirectUrl = `${protocol}://${appDomain}/api/bookings/${booking.id}/deposit-return`;
+        const bookingRef = `147-${booking.id.toString().padStart(5, "0")}`;
+        const paymentLink = await square.createDepositPaymentLink({
+          amountPence: DEPOSIT_AMOUNT_PENCE,
+          description: `Dining Deposit – Booking ${bookingRef} (${parsed.data.guestCount} guests)`,
+          referenceId: bookingRef,
+          redirectUrl,
+        });
+        await storage.updateBooking(booking.id, { depositPaymentId: paymentLink.paymentLinkId });
+        return res.status(201).json({ ...booking, depositRequired: true, depositPaymentUrl: paymentLink.url });
+      } catch (err) {
+        console.error("[BOOKING] Deposit link error:", err);
+        // Fall through: confirm without deposit if Square link fails
+        await storage.updateBooking(booking.id, { status: "confirmed", depositRequired: false });
+      }
+    }
 
     sendBookingConfirmationEmail({
       customerName: parsed.data.customerName,
@@ -1272,6 +1306,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const booking = await storage.getBooking(id);
     if (!booking) return res.status(404).json({ message: "Booking not found" });
     res.json(booking);
+  });
+
+  // Deposit return — Square redirects here after payment
+  app.get("/api/bookings/:id/deposit-return", async (req, res) => {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) return res.status(400).send("Invalid booking ID");
+    const booking = await storage.getBooking(id);
+    if (!booking) return res.status(404).send("Booking not found");
+
+    if (booking.depositRequired && !booking.depositPaid) {
+      await storage.updateBooking(id, { depositPaid: true, status: "confirmed" });
+      sendBookingConfirmationEmail({
+        customerName: booking.customerName,
+        customerEmail: booking.customerEmail,
+        tableType: booking.tableType,
+        tableNumber: booking.tableNumber,
+        date: booking.date,
+        startTime: booking.startTime,
+        duration: booking.duration,
+        id: booking.id,
+      }).catch(() => {});
+    }
+
+    // Redirect to a simple success page (or deep-link back to app)
+    const bookingRef = `147-${id.toString().padStart(5, "0")}`;
+    res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Deposit Paid</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f9fafb}div{text-align:center;padding:32px}</style></head><body><div><div style="font-size:48px">&#10003;</div><h2 style="color:#16A34A">Deposit Paid</h2><p>Your booking <strong>${bookingRef}</strong> is confirmed.</p><p style="color:#6b7280;font-size:14px">You can close this window and return to The 147 app.</p></div></body></html>`);
   });
 
   app.patch("/api/bookings/:id/status", staffAuth, async (req, res) => {

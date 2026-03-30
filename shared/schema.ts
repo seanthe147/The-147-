@@ -89,6 +89,9 @@ export const bookings = pgTable("bookings", {
   notes: text("notes"),
   gdprConsent: boolean("gdpr_consent").notNull().default(false),
   reminderSent: boolean("reminder_sent").default(false).notNull(),
+  depositRequired: boolean("deposit_required").notNull().default(false),
+  depositPaid: boolean("deposit_paid").notNull().default(false),
+  depositPaymentId: text("deposit_payment_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

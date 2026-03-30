@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useContext, useEffect } from "react";
+import { Linking } from "react-native";
 import {
   StyleSheet,
   View,
@@ -65,7 +66,9 @@ function getWeekDays(weekOffset: number): Array<{ label: string; date: string; d
   return days;
 }
 
-type Step = "table" | "datetime" | "details" | "confirm" | "success";
+type Step = "table" | "datetime" | "details" | "confirm" | "success" | "deposit";
+
+const DEPOSIT_GUEST_THRESHOLD = 7;
 
 export default function BookScreen() {
   const insets = useSafeAreaInsets();
@@ -85,6 +88,7 @@ export default function BookScreen() {
   const [notes, setNotes] = useState("");
   const [gdprConsent, setGdprConsent] = useState(false);
   const [weekOffset, setWeekOffset] = useState(0);
+  const [depositPaymentUrl, setDepositPaymentUrl] = useState<string | null>(null);
   const { isAuthenticated, customer, login, register } = useCustomerAuth();
   const [autoFilled, setAutoFilled] = useState(false);
 
@@ -184,9 +188,14 @@ export default function BookScreen() {
 
   const bookMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/bookings", data),
-    onSuccess: () => {
-      setStep("success");
+    onSuccess: (response: any) => {
       queryClient.refetchQueries({ queryKey: ["/api/bookings/availability"] });
+      if (response?.depositRequired && response?.depositPaymentUrl) {
+        setDepositPaymentUrl(response.depositPaymentUrl);
+        setStep("deposit");
+      } else {
+        setStep("success");
+      }
     },
     onError: (err: Error) => {
       let msg = "Booking failed. Please try again.";
@@ -267,6 +276,7 @@ export default function BookScreen() {
     setNotes("");
     setGdprConsent(false);
     setAutoFilled(false);
+    setDepositPaymentUrl(null);
   };
 
   const stepIndex = ["table", "datetime", "details", "confirm", "success"].indexOf(step);
@@ -803,6 +813,16 @@ export default function BookScreen() {
                   ← Please select a table number above before confirming
                 </Text>
               )}
+
+              {isDining && guestCount >= DEPOSIT_GUEST_THRESHOLD && (
+                <View style={{ backgroundColor: "#FFF7E6", borderRadius: 10, padding: 12, marginBottom: 12, flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Ionicons name="card-outline" size={18} color="#D97706" />
+                  <Text style={{ color: "#92400E", fontSize: 13, flex: 1 }}>
+                    A £5 deposit is required for dining bookings of {DEPOSIT_GUEST_THRESHOLD}+ guests. You'll be redirected to a secure payment page after confirming.
+                  </Text>
+                </View>
+              )}
+
               <Pressable
                 onPress={handleSubmit}
                 disabled={bookMutation.isPending || !canSubmit}
@@ -817,6 +837,33 @@ export default function BookScreen() {
                     <Text style={styles.confirmButtonText}>Confirm Booking</Text>
                   </>
                 )}
+              </Pressable>
+            </View>
+          )}
+
+          {step === "deposit" && (
+            <View style={styles.successSection}>
+              <View style={styles.successIconWrap}>
+                <Ionicons name="card" size={64} color={Colors.brand.blue} />
+              </View>
+              <Text style={styles.successTitle}>Deposit Required</Text>
+              <Text style={styles.successSubtitle}>
+                A £5 deposit is required for dining bookings of {DEPOSIT_GUEST_THRESHOLD}+ guests. You'll be taken to a secure payment page.
+              </Text>
+              <Text style={styles.successNote}>
+                Your booking will be confirmed automatically once the deposit is paid.
+              </Text>
+              {depositPaymentUrl ? (
+                <Pressable
+                  onPress={() => Linking.openURL(depositPaymentUrl)}
+                  style={[styles.newBookingButton, { backgroundColor: Colors.brand.blue, borderRadius: 12, justifyContent: "center" }]}
+                >
+                  <Ionicons name="card" size={20} color="#fff" />
+                  <Text style={[styles.newBookingText, { color: "#fff", marginLeft: 8 }]}>Pay £5 Deposit</Text>
+                </Pressable>
+              ) : null}
+              <Pressable onPress={resetForm} style={[styles.newBookingButton, { marginTop: 12 }]}>
+                <Text style={[styles.newBookingText, { color: Colors.light.textSub }]}>Cancel Booking</Text>
               </Pressable>
             </View>
           )}

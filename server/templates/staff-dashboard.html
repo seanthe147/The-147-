@@ -1467,9 +1467,10 @@
     let html='<div class="bookings-list">';
     for(const b of list){
       const isCanc=b.status==='cancelled';
+      const isPendDeposit=b.status==='pending_deposit';
       const isPend=!b.status||b.status==='pending';
-      const cardClass='booking-card'+(isCanc?' cancelled':isPend?' pending':'');
-      const statusPill=isCanc?'<span class="pill pill-gray">Cancelled</span>':isPend?'<span class="pill pill-amber">Pending</span>':'<span class="pill pill-green">Confirmed</span>';
+      const cardClass='booking-card'+(isCanc?' cancelled':(isPend||isPendDeposit)?' pending':'');
+      const statusPill=isCanc?'<span class="pill pill-gray">Cancelled</span>':isPendDeposit?'<span class="pill pill-amber">⏳ Deposit Pending</span>':isPend?'<span class="pill pill-amber">Pending</span>':'<span class="pill pill-green">Confirmed</span>';
       const typePill=b.tableType==='snooker'?'pill-blue':b.tableType==='pool'?'pill-purple':'pill-gold';
       const tableLabel=cap(b.tableType)+((b.tableType==='snooker'||b.tableType==='pool')&&b.tableNumber?' #'+b.tableNumber:'');
       html+=`<div class="${cardClass}">

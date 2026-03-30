@@ -223,3 +223,35 @@ export async function listSquareSubscriptionsForCustomer(squareCustomerId: strin
   });
   return data.subscriptions || [];
 }
+
+export async function createDepositPaymentLink(opts: {
+  amountPence: number;
+  description: string;
+  referenceId: string;
+  redirectUrl: string;
+}): Promise<{ url: string; paymentLinkId: string }> {
+  const locationId = process.env.SQUARE_LOCATION_ID;
+  if (!locationId) throw new Error("SQUARE_LOCATION_ID not configured");
+
+  const data = await squareRequest("POST", "/v2/online-checkout/payment-links", {
+    idempotency_key: `deposit-${opts.referenceId}-${Date.now()}`,
+    quick_pay: {
+      name: opts.description,
+      price_money: {
+        amount: opts.amountPence,
+        currency: "GBP",
+      },
+      location_id: locationId,
+    },
+    checkout_options: {
+      redirect_url: opts.redirectUrl,
+    },
+    payment_note: opts.referenceId,
+  });
+
+  const link = data.payment_link;
+  return {
+    url: link.url,
+    paymentLinkId: link.id,
+  };
+}
