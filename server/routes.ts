@@ -1183,7 +1183,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(201).json({ ...booking, depositHandled: "mark_paid" });
     }
 
-    const requiresDeposit = isLargeParty && square.isConfigured();
+    const requiresDeposit = isLargeParty && (!!process.env.SQUARE_DEPOSIT_LINK_URL || square.isConfigured());
 
     const booking = await storage.createBooking({
       ...parsed.data,
