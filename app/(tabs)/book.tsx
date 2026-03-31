@@ -902,7 +902,7 @@ export default function BookScreen() {
                 </Pressable>
               ) : null}
               <Pressable onPress={resetForm} style={[styles.newBookingButton, { marginTop: 12 }]}>
-                <Text style={[styles.newBookingText, { color: Colors.light.textSub }]}>Cancel Booking</Text>
+                <Text style={[styles.newBookingText, { color: Colors.light.textSecondary }]}>Cancel Booking</Text>
               </Pressable>
             </View>
           )}
