@@ -422,8 +422,8 @@ function scheduleDepositAutoCancel() {
       console.error("[DepositAutoCancel] Scheduler error:", err);
     }
   }
-  // Check every 5 minutes
-  setInterval(runAutoCancel, 5 * 60 * 1000);
+  // Check every 30 minutes
+  setInterval(runAutoCancel, 30 * 60 * 1000);
 }
 
 function scheduleRetentionCleanup() {
