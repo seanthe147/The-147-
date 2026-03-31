@@ -476,7 +476,8 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount }: {
 function BookingCard({ booking, onCancel, showCancel }: { booking: CustomerBooking; onCancel?: () => void; showCancel: boolean }) {
   const tableData = TABLE_TYPES.find((t) => t.id === booking.tableType);
   const tableName = tableData?.name || booking.tableType;
-  const date = new Date(booking.date + "T00:00:00");
+  const [dy, dm, dd] = booking.date.split("-").map(Number);
+  const date = new Date(dy, dm - 1, dd);
   const dateStr = date.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
   const isCancelled = booking.status === "cancelled";
 

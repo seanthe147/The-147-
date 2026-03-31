@@ -59,8 +59,8 @@ function localDateStr(d: Date): string {
 }
 
 function formatDateLabel(dateStr: string): string {
-  const d = new Date(dateStr + "T00:00:00");
-  return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
 }
 
 function getWeekDays(startDate: Date): Array<{ date: string; dayName: string; dayNum: string; isToday: boolean }> {

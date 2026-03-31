@@ -46,8 +46,14 @@ function localDateStr(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+// Parses a YYYY-MM-DD string as LOCAL midnight — avoids iOS JSC timezone ambiguity
+function parseDateLocal(dateStr: string): Date {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 function isDiningDay(dateStr: string): boolean {
-  const d = new Date(dateStr + "T00:00:00");
+  const d = parseDateLocal(dateStr);
   const dow = d.getDay(); // 0=Sun, 4=Thu, 5=Fri, 6=Sat
   return [0, 4, 5, 6].includes(dow);
 }
@@ -757,7 +763,7 @@ export default function BookScreen() {
                   <View style={styles.summaryInfo}>
                     <Text style={styles.summaryLabel}>Date</Text>
                     <Text style={styles.summaryValue}>
-                      {selectedDate ? new Date(selectedDate + "T00:00:00").toLocaleDateString("en-GB", {
+                      {selectedDate ? parseDateLocal(selectedDate).toLocaleDateString("en-GB", {
                         weekday: "long", day: "numeric", month: "long", year: "numeric",
                       }) : ""}
                     </Text>
@@ -908,7 +914,7 @@ export default function BookScreen() {
               </View>
               <Text style={styles.successTitle}>Booking Confirmed!</Text>
               <Text style={styles.successSubtitle}>
-                Your {selectedTableData?.name?.toLowerCase()}{selectedTableNumber ? ` (Table ${selectedTableNumber})` : ""} has been booked for {selectedDate ? new Date(selectedDate + "T00:00:00").toLocaleDateString("en-GB", {
+                Your {selectedTableData?.name?.toLowerCase()}{selectedTableNumber ? ` (Table ${selectedTableNumber})` : ""} has been booked for {selectedDate ? parseDateLocal(selectedDate).toLocaleDateString("en-GB", {
                   weekday: "short", day: "numeric", month: "short",
                 }) : ""} at {selectedTime}.
               </Text>
