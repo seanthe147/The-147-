@@ -199,7 +199,7 @@ export default function BookScreen() {
   };
 
   const bookMutation = useMutation({
-    mutationFn: (data: any) => apiRequest("POST", "/api/bookings", data),
+    mutationFn: (data: any) => apiRequest("POST", "/api/bookings", data).then((res) => res.json()),
     onSuccess: (response: any) => {
       queryClient.refetchQueries({ queryKey: ["/api/bookings/availability"] });
       if (response?.depositRequired && response?.depositPaymentUrl) {
