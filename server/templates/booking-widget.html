@@ -593,11 +593,15 @@
       <div class="deposit-title">Deposit Required</div>
       <div class="deposit-sub">
         A deposit is required to secure your dining booking for <strong id="depositGuestCount">7</strong> guests.
-        You'll be taken to a secure Square payment page.
+        You'll be taken to a secure Square payment page — return here once you've paid.
       </div>
       <div class="deposit-amount">£5.00</div>
       <button class="btn-pay" id="depositPayBtn" onclick="openDepositPayment()">Pay £5.00 Deposit →</button>
-      <div class="booking-ref" style="margin-bottom:16px">
+      <div id="depositPaidSection" style="display:none;margin-top:12px;text-align:center">
+        <p style="color:#16A34A;font-size:14px;font-weight:600;margin-bottom:8px">✓ Payment completed? Click below to confirm your booking.</p>
+        <button class="btn btn-navy" onclick="completeDepositBooking()" style="width:100%;font-size:15px;padding:14px">My Booking is Confirmed ✓</button>
+      </div>
+      <div class="booking-ref" style="margin-bottom:16px;margin-top:16px">
         <div class="booking-ref-label">Booking Reference</div>
         <div class="booking-ref-num" id="depositRef">#000</div>
       </div>
@@ -670,12 +674,28 @@
     document.getElementById('stepDeposit').classList.remove('hide');
     document.getElementById('depositRef').textContent = '#' + String(bookingId).padStart(4, '0');
     document.getElementById('depositGuestCount').textContent = guestCount;
+    document.getElementById('depositPaidSection').style.display = 'none';
     updateStepIndicator(4);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function openDepositPayment() {
-    if (depositPaymentUrl) window.open(depositPaymentUrl, '_blank');
+    if (depositPaymentUrl) {
+      window.open(depositPaymentUrl, '_blank');
+      // After opening Square payment, show the "I've paid" confirmation section
+      setTimeout(() => {
+        document.getElementById('depositPaidSection').style.display = '';
+      }, 1500);
+    }
+  }
+
+  function completeDepositBooking() {
+    // Customer confirms they've paid — show success screen
+    document.getElementById('successTitle').textContent = 'Booking Pending Confirmation';
+    document.getElementById('successRef').textContent = document.getElementById('depositRef').textContent;
+    document.getElementById('successMessage').textContent =
+      'Your booking has been submitted. Once your £5.00 deposit payment is confirmed, your dining reservation will be fully confirmed. You should receive a confirmation email shortly.';
+    goToStep(5);
   }
 
   function updateStepIndicator(current) {

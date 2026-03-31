@@ -280,7 +280,9 @@ export class DatabaseStorage implements IStorage {
 
   async getBookingsDueReminder(windowStartMins: number, windowEndMins: number): Promise<Booking[]> {
     const now = new Date();
-    const today = now.toISOString().split("T")[0];
+    // Use LOCAL date (not UTC) so reminders fire correctly for UK timezone (BST/GMT)
+    const pad2 = (n: number) => String(n).padStart(2, "0");
+    const today = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
     const fmt = (d: Date) =>
       `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
     const startStr = fmt(new Date(now.getTime() + windowStartMins * 60_000));
@@ -358,7 +360,8 @@ export class DatabaseStorage implements IStorage {
   async anonymizeOldBookings(retentionDays: number): Promise<number> {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
-    const cutoffStr = cutoffDate.toISOString().split("T")[0];
+    const pad2 = (n: number) => String(n).padStart(2, "0");
+    const cutoffStr = `${cutoffDate.getFullYear()}-${pad2(cutoffDate.getMonth() + 1)}-${pad2(cutoffDate.getDate())}`;
 
     // Build a set of emailHashes that are still "active":
     // 1. Any customer who has a booking on or after the cutoff date

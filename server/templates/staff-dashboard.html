@@ -1175,13 +1175,14 @@
   window.openOverlay=openOverlay;
   window.closeOverlay=closeOverlay;
 
-  function toast(msg,type){
+  function toast(msg,type,duration){
     const w=el('toastWrap');
     const t=document.createElement('div');
     t.className='toast '+(type||'success');
     t.textContent=msg;
     w.appendChild(t);
-    setTimeout(()=>{t.classList.add('out');setTimeout(()=>t.remove(),250)},3200);
+    const ms=duration||(type==='error'?7000:3200);
+    setTimeout(()=>{t.classList.add('out');setTimeout(()=>t.remove(),250)},ms);
   }
 
   async function api(url,opts){
@@ -1844,7 +1845,20 @@
       if(!r.ok){err.textContent=d.message||'Failed to save';err.classList.add('show');return}
       closeOverlay('bookingModal');
       if(depositHandling==='mark_paid') toast('Booking confirmed — deposit marked as taken','success');
-      else if(depositHandling==='send_link') toast('Booking created — deposit payment link sent to customer','success');
+      else if(depositHandling==='send_link'){
+        if(d.emailSent===false){
+          toast('Booking created — email failed. Check SMTP settings or share the link below manually.','error');
+          // Show the deposit link in an alert so staff can copy/paste it
+          if(d.depositPaymentUrl){
+            setTimeout(()=>{
+              const ref='#'+String(d.id).padStart(4,'0');
+              alert('📋 Email failed to send.\n\nPlease share this deposit payment link with the customer manually:\n\n'+d.depositPaymentUrl+'\n\nBooking Ref: '+ref+'\nCustomer: '+d.customerName);
+            },100);
+          }
+        } else {
+          toast('Booking created — deposit payment link sent to customer','success');
+        }
+      }
       else toast(editingId?'Booking updated':'Booking created','success');
       loadBookings();
     }catch(e){if(e.message!=='Session expired'){err.textContent='Network error';err.classList.add('show')}}

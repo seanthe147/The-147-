@@ -142,11 +142,18 @@ const OTP_HTML = (code: string) => `<div style="font-family: Arial, sans-serif; 
 async function sendEmailViaSMTP(to: string, subject: string, html: string): Promise<boolean> {
   const host = process.env.SMTP_HOST;
   const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  // Google App Passwords are shown with spaces but work with or without — strip them to be safe
+  const pass = process.env.SMTP_PASS?.replace(/\s+/g, "");
   const port = parseInt(process.env.SMTP_PORT || "587");
   if (!host || !user || !pass) return false;
   try {
-    const transporter = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: { user, pass },
+      tls: { rejectUnauthorized: false },
+    });
     await transporter.sendMail({ from: `"The 147" <${user}>`, to, subject, html });
     console.log(`[EMAIL SMTP] Sent to ${to}`);
     return true;
@@ -1214,7 +1221,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Use pre-created static Square link when available (avoids API link-creation issues)
       if (staticDepositUrl) {
         if (depositHandling === "send_link") {
-          sendDepositLinkEmail({
+          const emailSent = await sendDepositLinkEmail({
             customerName: parsed.data.customerName,
             customerEmail: parsed.data.customerEmail,
             guestCount,
@@ -1222,8 +1229,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             startTime: parsed.data.startTime,
             id: booking.id,
             depositPaymentUrl: staticDepositUrl,
-          }).catch((err) => console.error("[BOOKING] Deposit email error:", err));
-          return res.status(201).json({ ...booking, depositRequired: true, depositHandled: "send_link" });
+          }).catch((err) => { console.error("[BOOKING] Deposit email error:", err); return false; });
+          if (!emailSent) console.warn(`[BOOKING] Deposit link email FAILED for booking #${booking.id} — SMTP credentials may be invalid`);
+          return res.status(201).json({ ...booking, depositRequired: true, depositHandled: "send_link", emailSent: emailSent === true, depositPaymentUrl: staticDepositUrl });
         }
         // Widget default
         return res.status(201).json({ ...booking, depositRequired: true, depositPaymentUrl: staticDepositUrl });
@@ -1243,7 +1251,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.updateBooking(booking.id, { depositPaymentId: paymentLink.paymentLinkId });
 
         if (depositHandling === "send_link") {
-          sendDepositLinkEmail({
+          const emailSent = await sendDepositLinkEmail({
             customerName: parsed.data.customerName,
             customerEmail: parsed.data.customerEmail,
             guestCount,
@@ -1251,8 +1259,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             startTime: parsed.data.startTime,
             id: booking.id,
             depositPaymentUrl: paymentLink.url,
-          }).catch((err) => console.error("[BOOKING] Deposit email error:", err));
-          return res.status(201).json({ ...booking, depositRequired: true, depositHandled: "send_link" });
+          }).catch((err) => { console.error("[BOOKING] Deposit email error:", err); return false; });
+          if (!emailSent) console.warn(`[BOOKING] Deposit link email FAILED for booking #${booking.id}`);
+          return res.status(201).json({ ...booking, depositRequired: true, depositHandled: "send_link", emailSent: emailSent === true });
         }
 
         return res.status(201).json({ ...booking, depositRequired: true, depositPaymentUrl: paymentLink.url });
