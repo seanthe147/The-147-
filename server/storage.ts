@@ -116,6 +116,7 @@ export interface IStorage {
   getBookedSlots(date: string, tableType: string, tableNumber?: string): Promise<Array<{ startTime: string; duration: number }>>;
   getBookingsDueReminder(windowStartMins: number, windowEndMins: number): Promise<Booking[]>;
   markReminderSent(id: number): Promise<void>;
+  getExpiredPendingDeposits(olderThanMinutes: number): Promise<Booking[]>;
   createStaffSession(token: string, expiresAt: Date, staffUserId?: number, staffUsername?: string): Promise<StaffSession>;
   validateStaffSession(token: string): Promise<StaffSession | undefined>;
   invalidateStaffSession(token: string): Promise<boolean>;
@@ -304,6 +305,17 @@ export class DatabaseStorage implements IStorage {
 
   async markReminderSent(id: number): Promise<void> {
     await db.update(bookings).set({ reminderSent: true }).where(eq(bookings.id, id));
+  }
+
+  async getExpiredPendingDeposits(olderThanMinutes: number): Promise<Booking[]> {
+    const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1000);
+    const rows = await db.select().from(bookings).where(
+      and(
+        eq(bookings.status, "pending_deposit"),
+        lt(bookings.createdAt, cutoff)
+      )
+    );
+    return rows.map(decryptBookingFields);
   }
 
   async createStaffSession(token: string, expiresAt: Date, staffUserId?: number, staffUsername?: string): Promise<StaffSession> {

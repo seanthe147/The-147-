@@ -3,6 +3,7 @@ import type { Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import * as fs from "fs";
 import * as path from "path";
+import nodemailer from "nodemailer";
 
 const app = express();
 const log = console.log;
@@ -363,6 +364,68 @@ async function bootstrapOwner() {
   }
 }
 
+function scheduleDepositAutoCancel() {
+  async function runAutoCancel() {
+    try {
+      const { storage: store } = await import("./storage");
+      const expired = await store.getExpiredPendingDeposits(60);
+      if (!expired.length) return;
+      for (const booking of expired) {
+        try {
+          await store.updateBookingStatus(booking.id, "cancelled");
+          log(`[DepositAutoCancel] Cancelled booking #${booking.id} — deposit not received within 1 hour`);
+
+          // Send cancellation email to customer
+          const smtpHost = process.env.SMTP_HOST;
+          const smtpUser = process.env.SMTP_USER;
+          const smtpPass = process.env.SMTP_PASS?.replace(/\s+/g, "");
+          const smtpPort = parseInt(process.env.SMTP_PORT || "587");
+          if (smtpHost && smtpUser && smtpPass && booking.customerEmail) {
+            try {
+              const transporter = nodemailer.createTransport({
+                host: smtpHost, port: smtpPort, secure: smtpPort === 465,
+                auth: { user: smtpUser, pass: smtpPass },
+                tls: { rejectUnauthorized: false },
+              });
+              const dateFormatted = new Date(booking.date + "T12:00:00").toLocaleDateString("en-GB", {
+                weekday: "long", day: "numeric", month: "long", year: "numeric",
+              });
+              const ref = "#" + String(booking.id).padStart(4, "0");
+              await transporter.sendMail({
+                from: `"The 147" <${smtpUser}>`,
+                to: booking.customerEmail,
+                subject: `Booking ${ref} Cancelled — Deposit Not Received`,
+                html: `
+                  <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
+                    <div style="background:#111827;padding:24px 32px;border-radius:8px 8px 0 0">
+                      <h1 style="color:#fff;margin:0;font-size:22px">The 147 Bradford</h1>
+                    </div>
+                    <div style="background:#fff;padding:32px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
+                      <h2 style="margin:0 0 16px;color:#DC2626">Booking Cancelled</h2>
+                      <p style="margin:0 0 12px">Hi ${booking.customerName},</p>
+                      <p style="margin:0 0 12px">Unfortunately your dining booking <strong>${ref}</strong> for <strong>${dateFormatted}</strong> at <strong>${booking.startTime}</strong> has been automatically cancelled because the £5.00 deposit was not received within 1 hour of booking.</p>
+                      <p style="margin:0 0 24px">If you'd still like to dine with us, please visit our website to make a new reservation.</p>
+                      <p style="margin:0;color:#6b7280;font-size:13px">The 147 Bradford &bull; Snooker &amp; Dining</p>
+                    </div>
+                  </div>`,
+              });
+              log(`[DepositAutoCancel] Cancellation email sent to ${booking.customerEmail} for booking #${booking.id}`);
+            } catch (emailErr) {
+              console.error(`[DepositAutoCancel] Email failed for booking #${booking.id}:`, emailErr);
+            }
+          }
+        } catch (err) {
+          console.error(`[DepositAutoCancel] Failed for booking #${booking.id}:`, err);
+        }
+      }
+    } catch (err) {
+      console.error("[DepositAutoCancel] Scheduler error:", err);
+    }
+  }
+  // Check every 5 minutes
+  setInterval(runAutoCancel, 5 * 60 * 1000);
+}
+
 function scheduleRetentionCleanup() {
   // Run data retention cleanup immediately on startup, then every 24 hours
   // This ensures the 12-month anonymisation policy and session cleanup run automatically
@@ -420,6 +483,8 @@ function scheduleRetentionCleanup() {
   scheduleRetentionCleanup();
   // Send push reminders ~1 hour before bookings
   scheduleBookingReminders();
+  // Auto-cancel pending deposit bookings older than 1 hour
+  scheduleDepositAutoCancel();
 
   const port = parseInt(process.env.PORT || "5000", 10);
   server.listen(
