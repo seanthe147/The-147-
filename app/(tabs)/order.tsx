@@ -67,10 +67,20 @@ export default function OrderScreen() {
     [animateProgress]
   );
 
-  const handleError = useCallback(() => {
-    setHasError(true);
-    setLoading(false);
-  }, []);
+  const handleError = useCallback(
+    ({ nativeEvent }: { nativeEvent: { url?: string; code?: number } }) => {
+      // Only show our error screen for network-level failures on the initial URL.
+      // HTTP errors (404, 500) from within the ordering site are handled by the
+      // site itself — triggering our screen for every sub-page error is wrong.
+      const url = nativeEvent?.url ?? "";
+      const isMainUrl = url === "" || url.startsWith("https://www.the147order.co.uk");
+      if (isMainUrl) {
+        setHasError(true);
+        setLoading(false);
+      }
+    },
+    []
+  );
 
   const handleRetry = useCallback(() => {
     setHasError(false);
@@ -226,12 +236,11 @@ export default function OrderScreen() {
           onLoadEnd={handleLoadEnd}
           onLoadProgress={handleLoadProgress}
           onError={handleError}
-          onHttpError={handleError}
           startInLoadingState={false}
           javaScriptEnabled
           domStorageEnabled
           cacheEnabled
-          cacheMode="LOAD_CACHE_ELSE_NETWORK"
+          cacheMode="LOAD_DEFAULT"
           sharedCookiesEnabled
           allowsLinkPreview
           allowsBackForwardNavigationGestures
