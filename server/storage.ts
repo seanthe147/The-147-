@@ -130,7 +130,7 @@ export interface IStorage {
   getAllStaffUsers(): Promise<StaffUser[]>;
   updateStaffPin(username: string, pinHash: string, pinSalt: string): Promise<StaffUser | undefined>;
   migrateEncryptExistingBookings(): Promise<number>;
-  searchCustomers(query: string, limit?: number): Promise<Array<{ name: string; phone: string; email: string }>>;
+  searchCustomers(query: string, limit?: number): Promise<Array<{ id?: number; name: string; phone: string; email: string }>>;
   createCustomer(email: string, name: string, phone: string | null, passwordHash: string): Promise<Customer>;
   getCustomerByEmail(email: string): Promise<Customer | undefined>;
   getCustomerById(id: number): Promise<Customer | undefined>;
@@ -517,7 +517,7 @@ export class DatabaseStorage implements IStorage {
     return migrated;
   }
 
-  async searchCustomers(query: string, limit = 6): Promise<Array<{ name: string; phone: string; email: string }>> {
+  async searchCustomers(query: string, limit = 6): Promise<Array<{ id?: number; name: string; phone: string; email: string }>> {
     if (!query || query.trim().length < 2) return [];
     const q = query.trim().toLowerCase();
     // Fetch all bookings (decrypted) and search in-memory (data is encrypted at rest)
@@ -547,7 +547,13 @@ export class DatabaseStorage implements IStorage {
       } catch { continue; }
     }
     matches.sort((a, b) => b.score - a.score);
-    return matches.slice(0, limit).map(({ name, phone, email }) => ({ name, phone, email }));
+    const top = matches.slice(0, limit);
+    // Enrich with customer account IDs (customers table stores plain lowercase email)
+    const enriched = await Promise.all(top.map(async ({ name, phone, email }) => {
+      const customer = await this.getCustomerByEmail(email).catch(() => undefined);
+      return { id: customer?.id, name, phone, email };
+    }));
+    return enriched;
   }
 
   async getEvents(): Promise<Event[]> {

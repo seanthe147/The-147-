@@ -2826,10 +2826,19 @@
           const customers=await r.json();
           const dd=el('amCustomerDropdown');
           if(!customers.length){dd.innerHTML='<div class="customer-search-empty">No customers found</div>';dd.classList.add('open');return}
-          dd.innerHTML=customers.slice(0,6).map(c=>`<div class="customer-result" onclick="window.selectAmCustomer(${c.id},'${esc(c.name)}','${esc(c.email)}')">
-            <div class="customer-result-icon">${c.name[0].toUpperCase()}</div>
-            <div class="customer-result-info"><div class="customer-result-name">${esc(c.name)}</div><div class="customer-result-sub">${esc(c.email)}</div></div>
-          </div>`).join('');
+          dd.innerHTML=customers.slice(0,6).map(c=>{
+            if(c.id){
+              return `<div class="customer-result" onclick="window.selectAmCustomer(${c.id},'${esc(c.name)}','${esc(c.email)}')">
+                <div class="customer-result-icon">${c.name[0].toUpperCase()}</div>
+                <div class="customer-result-info"><div class="customer-result-name">${esc(c.name)}</div><div class="customer-result-sub">${esc(c.email)}</div></div>
+              </div>`;
+            }else{
+              return `<div class="customer-result" style="opacity:.55;cursor:default">
+                <div class="customer-result-icon" style="background:var(--border)">${c.name[0].toUpperCase()}</div>
+                <div class="customer-result-info"><div class="customer-result-name">${esc(c.name)}</div><div class="customer-result-sub">${esc(c.email)} · <em>No app account</em></div></div>
+              </div>`;
+            }
+          }).join('');
           dd.classList.add('open');
         }catch{}
       },300);
@@ -2848,6 +2857,7 @@
     const planId=el('amPlanId').value;
     const notes=el('amNotes').value.trim();
     if(!customerId){err.textContent='Select a customer first';err.classList.add('show');return}
+    if(isNaN(parseInt(customerId))){err.textContent='That customer has no app account — they need to register in the app first';err.classList.add('show');return}
     if(!planId){err.textContent='Select a plan';err.classList.add('show');return}
     el('amSaveBtn').disabled=true;
     try{
