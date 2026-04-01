@@ -2661,10 +2661,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(204).send();
   });
 
-  // ── Membership — public plan listing (gated - not shown in app yet) ───────
+  // ── Membership — public plan listing ────────────────────────────────────────
   app.get("/api/membership/plans", async (_req, res) => {
     const plans = await storage.getMembershipPlans(true);
     res.json(plans);
+  });
+
+  // ── Membership — customer: get own subscription ──────────────────────────────
+  app.get("/api/membership/my-subscription", customerAuth, async (req, res) => {
+    const customerId = (req as any).customerId as number;
+    const sub = await storage.getMembershipSubscriptionByCustomer(customerId);
+    res.json(sub ?? null);
+  });
+
+  // ── Membership — customer: join a plan ──────────────────────────────────────
+  app.post("/api/membership/join", customerAuth, async (req, res) => {
+    try {
+      const customerId = (req as any).customerId as number;
+      const { planId } = req.body ?? {};
+      if (!planId) return res.status(400).json({ message: "planId is required" });
+
+      // Check if already an active member
+      const existing = await storage.getMembershipSubscriptionByCustomer(customerId);
+      if (existing) return res.status(409).json({ message: "You already have an active membership" });
+
+      const plan = await storage.getMembershipPlan(parseInt(planId));
+      if (!plan || !plan.active) return res.status(404).json({ message: "Plan not found" });
+
+      const today = new Date().toISOString().slice(0, 10);
+      const nextMonth = new Date();
+      nextMonth.setMonth(nextMonth.getMonth() + 1);
+
+      const sub = await storage.createMembershipSubscription({
+        customerId,
+        planId: plan.id,
+        status: "pending",
+        currentPeriodStart: today,
+        currentPeriodEnd: nextMonth.toISOString().slice(0, 10),
+        hoursUsedThisPeriod: 0,
+        guestPassesUsed: 0,
+        staffNotes: null,
+        source: "app",
+      });
+
+      // Optionally wire up Square subscription
+      if (square.isConfigured() && plan.squarePlanVariationId) {
+        try {
+          const customer = await storage.getCustomerById(customerId);
+          if (customer) {
+            let sqCustomer = await square.findSquareCustomerByEmail(customer.email).catch(() => null);
+            if (!sqCustomer) sqCustomer = await square.createSquareCustomer(customer.name, customer.email, customer.phone || undefined);
+            if (sqCustomer) {
+              const sqSub = await square.createSquareSubscription(sqCustomer.id, plan.squarePlanVariationId, process.env.SQUARE_LOCATION_ID!).catch(() => null);
+              if (sqSub) {
+                await storage.updateMembershipSubscription(sub.id, {
+                  squareSubscriptionId: sqSub.id,
+                  squareCustomerId: sqCustomer.id,
+                  status: "active",
+                  currentPeriodEnd: sqSub.charged_through_date ?? sub.currentPeriodEnd,
+                });
+              }
+            }
+          }
+        } catch { /* Square unavailable — subscription still saved locally */ }
+      } else {
+        // No Square billing configured — mark active immediately
+        await storage.updateMembershipSubscription(sub.id, { status: "active" });
+      }
+
+      const updated = await storage.getMembershipSubscriptionByCustomer(customerId);
+      res.status(201).json(updated ?? sub);
+    } catch (err: any) {
+      console.error("[membership/join]", err);
+      res.status(500).json({ message: "Failed to create membership" });
+    }
   });
 
   // ── Membership — Square webhook ──────────────────────────────────────────
