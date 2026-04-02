@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
@@ -744,14 +745,14 @@ export default function LoyaltyScreen() {
               <Text style={styles.membershipHeroTitle}>The 147 Membership</Text>
               <Text style={styles.membershipHeroSub}>Exclusive perks, priority booking & more</Text>
             </View>
-            <View style={styles.comingSoonPill}>
-              <Ionicons name="time-outline" size={11} color="#92680a" />
-              <Text style={styles.comingSoonPillText}>Soon</Text>
-            </View>
           </View>
 
           {MEMBERSHIP_PLANS.map((plan, idx) => (
-            <View key={plan.id} style={[styles.membershipPlanCard, idx < MEMBERSHIP_PLANS.length - 1 && styles.membershipPlanCardBorder]}>
+            <Pressable
+              key={plan.id}
+              onPress={() => router.push("/membership")}
+              style={[styles.membershipPlanCard, idx < MEMBERSHIP_PLANS.length - 1 && styles.membershipPlanCardBorder]}
+            >
               <View style={[styles.planColorBar, { backgroundColor: plan.color }]} />
               <View style={styles.planCardContent}>
                 <View style={styles.planCardTop}>
@@ -776,21 +777,17 @@ export default function LoyaltyScreen() {
                   ))}
                 </View>
               </View>
-              <View style={styles.planLockOverlay} pointerEvents="none">
-                <View style={styles.planLockBadge}>
-                  <Ionicons name="lock-closed" size={11} color="#fff" />
-                  <Text style={styles.planLockText}>Coming Soon</Text>
-                </View>
+              <View style={styles.planChevron}>
+                <Ionicons name="chevron-forward" size={16} color={Colors.light.textSecondary} />
               </View>
-            </View>
+            </Pressable>
           ))}
 
-          <View style={styles.membershipCta}>
-            <Ionicons name="chatbubble-ellipses-outline" size={16} color={Colors.light.textSecondary} />
-            <Text style={styles.membershipCtaText}>
-              Speak to a member of staff or visit us at the club to register your interest.
-            </Text>
-          </View>
+          <Pressable style={styles.membershipCtaBtn} onPress={() => router.push("/membership")}>
+            <Ionicons name="card-outline" size={16} color="#fff" />
+            <Text style={styles.membershipCtaBtnText}>View Plans & Join</Text>
+            <Ionicons name="chevron-forward" size={16} color="#fff" />
+          </Pressable>
         </View>
 
       </ScrollView>
@@ -1376,21 +1373,11 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_400Regular",
     marginTop: 2,
   },
-  comingSoonPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "#FEF3C7",
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 20,
-    flexShrink: 0,
-  },
-  comingSoonPillText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#92680a",
-    fontFamily: "Montserrat_700Bold",
+  planChevron: {
+    position: "absolute",
+    right: 12,
+    top: "50%",
+    marginTop: -8,
   },
   membershipPlanCard: {
     marginHorizontal: 20,
@@ -1463,44 +1450,21 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_400Regular",
     flex: 1,
   },
-  planLockOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(248,249,251,0.55)",
-    alignItems: "flex-end",
-    justifyContent: "flex-start",
-    padding: 10,
-  },
-  planLockBadge: {
+  membershipCtaBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
-  planLockText: {
-    fontSize: 10,
-    color: "#fff",
-    fontWeight: "700",
-    fontFamily: "Montserrat_700Bold",
-    letterSpacing: 0.3,
-  },
-  membershipCta: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
+    justifyContent: "center",
+    gap: 8,
     marginHorizontal: 20,
     marginTop: 4,
-    padding: 14,
-    backgroundColor: Colors.light.surfaceElevated,
+    paddingVertical: 14,
+    backgroundColor: Colors.brand.blue,
     borderRadius: 12,
   },
-  membershipCtaText: {
-    flex: 1,
-    fontSize: 12,
-    color: Colors.light.textSecondary,
-    fontFamily: "Montserrat_400Regular",
-    lineHeight: 18,
+  membershipCtaBtnText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#fff",
+    fontFamily: "Montserrat_700Bold",
   },
 });
