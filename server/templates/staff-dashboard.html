@@ -2498,11 +2498,13 @@
         </div>
       </div>`;
 
-    if(needsSeed&&isManager){
-      html+=`<div class="settings-section" style="margin-bottom:24px">
-        <div class="settings-title">First-Time Setup</div>
-        <div class="settings-desc">No membership plans exist yet. Seed the three default plans (Rack / Century / Maximum) to get started. You can then edit them from this page.</div>
-        <button class="btn btn-primary" onclick="window.seedMembershipPlans()">Seed Default Plans</button>
+    if(isManager){
+      html+=`<div class="settings-section" style="margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div>
+          <div class="settings-title" style="margin-bottom:2px">Membership Plans</div>
+          <div class="settings-desc" style="margin:0">${needsSeed?'No plans yet — seed the defaults to get started.':'Reset all plans to defaults (Rack / Century / Maximum) with correct prices. Existing Square IDs are preserved.'}</div>
+        </div>
+        <button class="btn btn-primary" style="flex-shrink:0" onclick="window.seedMembershipPlans()">${needsSeed?'Seed Default Plans':'Reset to Default Plans'}</button>
       </div>`;
     }
 
