@@ -793,9 +793,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertMembershipPlan(data: InsertMembershipPlan): Promise<MembershipPlan> {
-    const [plan] = await db.insert(membershipPlans).values(data)
-      .onConflictDoUpdate({ target: membershipPlans.tier, set: { ...data } })
-      .returning();
+    const [existing] = await db.select().from(membershipPlans).where(eq(membershipPlans.tier, data.tier));
+    if (existing) {
+      const [updated] = await db.update(membershipPlans)
+        .set({
+          name: data.name,
+          priceMonthly: data.priceMonthly,
+          hoursIncluded: data.hoursIncluded ?? null,
+          hoursUnit: data.hoursUnit ?? "month",
+          foodDrinkDiscount: data.foodDrinkDiscount ?? 0,
+          priorityBooking: data.priorityBooking ?? false,
+          loyaltyMultiplier: data.loyaltyMultiplier ?? 1,
+          guestPassesMonthly: data.guestPassesMonthly ?? 0,
+          active: data.active ?? true,
+          sortOrder: data.sortOrder ?? 0,
+          color: data.color ?? "#0047AB",
+          description: data.description ?? null,
+        })
+        .where(eq(membershipPlans.tier, data.tier))
+        .returning();
+      return updated;
+    }
+    const [plan] = await db.insert(membershipPlans).values(data).returning();
     return plan;
   }
 
