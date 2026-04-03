@@ -2372,6 +2372,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const templatePath = path.resolve(process.cwd(), "server", "templates", "staff-dashboard.html");
     const html = fs.readFileSync(templatePath, "utf-8");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
     res.status(200).send(html);
   });
 
