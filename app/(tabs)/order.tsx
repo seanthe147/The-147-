@@ -1,4 +1,4 @@
-import React, { useContext, useState, useRef, useCallback, useEffect } from "react";
+import React, { useContext, useState, useRef, useCallback } from "react";
 import {
   StyleSheet,
   View,
@@ -17,6 +17,8 @@ import Colors from "@/constants/colors";
 const MENU_URL =
   "https://www.the147order.co.uk/?location=11f07c84b040cae5b0923cecef6dbaf0&seat_select=true";
 
+const SHOW_AT_PROGRESS = 0.5;
+
 const CATEGORIES = [
   { icon: "beer-outline" as const, label: "Drinks" },
   { icon: "pizza-outline" as const, label: "Food" },
@@ -30,48 +32,50 @@ export default function OrderScreen() {
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
-  const [loadProgress, setLoadProgress] = useState(0);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
   const webviewRef = useRef<WebView>(null);
+  const hasRevealedRef = useRef(false);
+
+  const revealWebView = useCallback(() => {
+    if (hasRevealedRef.current) return;
+    hasRevealedRef.current = true;
+    setLoading(false);
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, [fadeAnim]);
 
   const animateProgress = useCallback(
     (toValue: number) => {
       Animated.timing(progressAnim, {
         toValue,
-        duration: 300,
+        duration: 200,
         useNativeDriver: false,
       }).start();
     },
     [progressAnim]
   );
 
-  const handleLoadEnd = useCallback(() => {
-    animateProgress(1);
-    setLoadProgress(1);
-    setTimeout(() => {
-      setLoading(false);
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 350,
-        useNativeDriver: true,
-      }).start();
-    }, 200);
-  }, [fadeAnim, animateProgress]);
-
   const handleLoadProgress = useCallback(
     ({ nativeEvent }: { nativeEvent: { progress: number } }) => {
       animateProgress(nativeEvent.progress);
-      setLoadProgress(nativeEvent.progress);
+      if (nativeEvent.progress >= SHOW_AT_PROGRESS) {
+        revealWebView();
+      }
     },
-    [animateProgress]
+    [animateProgress, revealWebView]
   );
+
+  const handleLoadEnd = useCallback(() => {
+    animateProgress(1);
+    revealWebView();
+  }, [animateProgress, revealWebView]);
 
   const handleError = useCallback(
     ({ nativeEvent }: { nativeEvent: { url?: string; code?: number } }) => {
-      // Only show our error screen for network-level failures on the initial URL.
-      // HTTP errors (404, 500) from within the ordering site are handled by the
-      // site itself — triggering our screen for every sub-page error is wrong.
       const url = nativeEvent?.url ?? "";
       const isMainUrl = url === "" || url.startsWith("https://www.the147order.co.uk");
       if (isMainUrl) {
@@ -83,6 +87,7 @@ export default function OrderScreen() {
   );
 
   const handleRetry = useCallback(() => {
+    hasRevealedRef.current = false;
     setHasError(false);
     setLoading(true);
     fadeAnim.setValue(0);
@@ -91,6 +96,7 @@ export default function OrderScreen() {
   }, [fadeAnim, progressAnim]);
 
   const handleReload = useCallback(() => {
+    hasRevealedRef.current = false;
     setLoading(true);
     fadeAnim.setValue(0);
     progressAnim.setValue(0);
@@ -240,8 +246,9 @@ export default function OrderScreen() {
           javaScriptEnabled
           domStorageEnabled
           cacheEnabled
-          cacheMode="LOAD_DEFAULT"
+          cacheMode="LOAD_CACHE_ELSE_NETWORK"
           sharedCookiesEnabled
+          thirdPartyCookiesEnabled
           allowsLinkPreview
           allowsBackForwardNavigationGestures
           renderToHardwareTextureAndroid
