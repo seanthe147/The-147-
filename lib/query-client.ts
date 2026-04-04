@@ -113,5 +113,6 @@ export function prefetchAppData() {
   queryClient.prefetchQuery({ queryKey: ["/api/settings"] });
   queryClient.prefetchQuery({ queryKey: ["/api/banner-images"] });
   queryClient.prefetchQuery({ queryKey: ["/api/events?type=event"] });
-  queryClient.prefetchQuery({ queryKey: ["/api/events"] });
+  queryClient.prefetchQuery({ queryKey: ["/api/events?type=weekly"] });
+  queryClient.prefetchQuery({ queryKey: ["/api/membership/plans"] });
 }

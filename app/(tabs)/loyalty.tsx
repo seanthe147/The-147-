@@ -20,9 +20,12 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
+import { getApiUrl } from "@/lib/query-client";
 
-const API_BASE = process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : "";
 const SESSION_KEY = "loyalty_session";
+function loyaltyUrl(path: string): string {
+  return new URL(path, getApiUrl()).toString();
+}
 
 interface LoyaltyAccount {
   id: string;
@@ -307,7 +310,7 @@ export default function LoyaltyScreen() {
         const stored = await AsyncStorage.getItem(SESSION_KEY);
         if (stored) {
           const { token, phone: storedPhone } = JSON.parse(stored);
-          const res = await fetch(`${API_BASE}/api/loyalty/session`, {
+          const res = await fetch(loyaltyUrl("/api/loyalty/session"), {
             headers: { "x-loyalty-session": token },
           });
           const data = await res.json();
@@ -327,7 +330,7 @@ export default function LoyaltyScreen() {
   const { data: programData, isLoading: programLoading } = useQuery({
     queryKey: ["loyalty-program"],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/api/loyalty/program`);
+      const res = await fetch(loyaltyUrl("/api/loyalty/program"));
       if (!res.ok) throw new Error("Failed to load loyalty program");
       return res.json();
     },
@@ -338,7 +341,7 @@ export default function LoyaltyScreen() {
     queryKey: ["loyalty-history", sessionToken],
     queryFn: async () => {
       if (!sessionToken) return { events: [], rewards: [] };
-      const res = await fetch(`${API_BASE}/api/loyalty/history`, {
+      const res = await fetch(loyaltyUrl("/api/loyalty/history"), {
         headers: { "x-loyalty-session": sessionToken },
       });
       if (!res.ok) return { events: [], rewards: [] };
@@ -351,7 +354,7 @@ export default function LoyaltyScreen() {
 
   const phoneAuthMutation = useMutation({
     mutationFn: async (phoneNumber: string) => {
-      const res = await fetch(`${API_BASE}/api/loyalty/phone-auth`, {
+      const res = await fetch(loyaltyUrl("/api/loyalty/phone-auth"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: phoneNumber }),
@@ -377,7 +380,7 @@ export default function LoyaltyScreen() {
 
   const lookupMutation = useMutation({
     mutationFn: async (token: string) => {
-      const res = await fetch(`${API_BASE}/api/loyalty/lookup`, {
+      const res = await fetch(loyaltyUrl("/api/loyalty/lookup"), {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-loyalty-session": token },
       });
@@ -398,7 +401,7 @@ export default function LoyaltyScreen() {
 
   const enrollMutation = useMutation({
     mutationFn: async (token: string) => {
-      const res = await fetch(`${API_BASE}/api/loyalty/enroll`, {
+      const res = await fetch(loyaltyUrl("/api/loyalty/enroll"), {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-loyalty-session": token },
       });
@@ -457,7 +460,7 @@ export default function LoyaltyScreen() {
   const handleLogout = useCallback(async () => {
     if (sessionToken) {
       try {
-        await fetch(`${API_BASE}/api/loyalty/logout`, {
+        await fetch(loyaltyUrl("/api/loyalty/logout"), {
           method: "POST",
           headers: { "x-loyalty-session": sessionToken },
         });

@@ -442,7 +442,7 @@ const styles = StyleSheet.create({
     color: Colors.light.text, textAlign: "center", marginBottom: 10,
   },
   heroSub: {
-    fontFamily: "Inter_400Regular", fontSize: 14,
+    fontFamily: "Montserrat_400Regular", fontSize: 14,
     color: Colors.light.textSecondary, textAlign: "center", lineHeight: 22,
   },
   planCard: {
@@ -462,12 +462,12 @@ const styles = StyleSheet.create({
   planIconWrap: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   planName: { fontFamily: "Montserrat_700Bold", fontSize: 18, color: Colors.light.text },
   planTagline: {
-    fontFamily: "Inter_400Regular", fontSize: 12,
+    fontFamily: "Montserrat_400Regular", fontSize: 12,
     color: Colors.light.textSecondary, marginTop: 2,
   },
   priceBlock: { alignItems: "flex-end" },
   planPrice: { fontFamily: "Montserrat_700Bold", fontSize: 22 },
-  planPeriod: { fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.light.textSecondary },
+  planPeriod: { fontFamily: "Montserrat_400Regular", fontSize: 11, color: Colors.light.textSecondary },
   featureList: { gap: 8 },
   featureRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   featureDot: {
@@ -475,7 +475,7 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center", flexShrink: 0,
   },
   featureText: {
-    fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.light.text, flex: 1,
+    fontFamily: "Montserrat_400Regular", fontSize: 13, color: Colors.light.text, flex: 1,
   },
   selectedCheck: {
     position: "absolute", top: 14, left: 14,
@@ -495,7 +495,7 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 8,
   },
   selectHintText: {
-    fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.light.textSecondary,
+    fontFamily: "Montserrat_400Regular", fontSize: 13, color: Colors.light.textSecondary,
   },
   loginPrompt: {
     backgroundColor: Colors.light.surface, borderRadius: 16,
@@ -506,7 +506,7 @@ const styles = StyleSheet.create({
     marginTop: 12, marginBottom: 8,
   },
   loginPromptSub: {
-    fontFamily: "Inter_400Regular", fontSize: 13, color: Colors.light.textSecondary,
+    fontFamily: "Montserrat_400Regular", fontSize: 13, color: Colors.light.textSecondary,
     textAlign: "center", lineHeight: 20, marginBottom: 16,
   },
   loginBtn: {
@@ -525,7 +525,7 @@ const styles = StyleSheet.create({
     width: 52, height: 52, borderRadius: 16, alignItems: "center", justifyContent: "center",
   },
   memberCardLabel: {
-    fontFamily: "Inter_600SemiBold", fontSize: 10,
+    fontFamily: "Montserrat_600SemiBold", fontSize: 10,
     color: Colors.light.textSecondary, letterSpacing: 1.2,
   },
   memberCardPlan: { fontFamily: "Montserrat_700Bold", fontSize: 20, marginTop: 2 },
@@ -534,19 +534,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12,
   },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
-  statusText: { fontFamily: "Inter_600SemiBold", fontSize: 12 },
+  statusText: { fontFamily: "Montserrat_600SemiBold", fontSize: 12 },
   memberCardDivider: {
     height: 1, backgroundColor: Colors.light.border, marginVertical: 14,
   },
   memberCardStats: { flexDirection: "row", gap: 20 },
   memberCardStat: {},
   memberCardStatLabel: {
-    fontFamily: "Inter_400Regular", fontSize: 11, color: Colors.light.textSecondary, marginBottom: 2,
+    fontFamily: "Montserrat_400Regular", fontSize: 11, color: Colors.light.textSecondary, marginBottom: 2,
   },
   memberCardStatValue: { fontFamily: "Montserrat_700Bold", fontSize: 16, color: Colors.light.text },
   memberCardDates: { flexDirection: "row", alignItems: "center", gap: 6 },
   memberCardDatesText: {
-    fontFamily: "Inter_400Regular", fontSize: 12, color: Colors.light.textSecondary,
+    fontFamily: "Montserrat_400Regular", fontSize: 12, color: Colors.light.textSecondary,
   },
   benefitsSection: {
     backgroundColor: Colors.light.surface, borderRadius: 16,
@@ -559,14 +559,14 @@ const styles = StyleSheet.create({
   benefitDot: {
     width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center", flexShrink: 0,
   },
-  benefitText: { fontFamily: "Inter_400Regular", fontSize: 14, color: Colors.light.text, flex: 1 },
+  benefitText: { fontFamily: "Montserrat_400Regular", fontSize: 14, color: Colors.light.text, flex: 1 },
   contactBox: {
     flexDirection: "row", gap: 10, alignItems: "flex-start",
     backgroundColor: Colors.light.surface, borderRadius: 12,
     padding: 14, borderWidth: 1, borderColor: Colors.light.border,
   },
   contactText: {
-    fontFamily: "Inter_400Regular", fontSize: 12,
+    fontFamily: "Montserrat_400Regular", fontSize: 12,
     color: Colors.light.textSecondary, flex: 1, lineHeight: 18,
   },
 });

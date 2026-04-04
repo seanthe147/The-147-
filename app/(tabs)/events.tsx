@@ -117,12 +117,7 @@ const EventCard = memo(function EventCard({ event }: { event: Event }) {
 
 function UpcomingEventsTab() {
   const { data: events, isLoading, isError } = useQuery<Event[]>({
-    queryKey: ["/api/events", { type: "event" }],
-    queryFn: async () => {
-      const res = await fetch(`${process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : ""}/api/events?type=event`);
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
-    },
+    queryKey: ["/api/events?type=event"],
   });
 
   const now = new Date();
@@ -175,12 +170,7 @@ function UpcomingEventsTab() {
 
 function WhatsOnTab() {
   const { data: events, isLoading, isError } = useQuery<Event[]>({
-    queryKey: ["/api/events", { type: "weekly" }],
-    queryFn: async () => {
-      const res = await fetch(`${process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : ""}/api/events?type=weekly`);
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
-    },
+    queryKey: ["/api/events?type=weekly"],
   });
 
   if (isLoading) {
