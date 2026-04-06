@@ -218,11 +218,19 @@ export default function AdminBookingsScreen() {
     onSuccess: (data: { depositRefunded?: boolean; refundError?: string }) => {
       queryClient.refetchQueries({ queryKey: ["/api/bookings"] });
       if (data?.depositRefunded) {
-        Alert.alert("Booking Completed", "Deposit of £5 has been refunded to the customer.");
+        Alert.alert("Showed Up", "Booking completed and £5 deposit refunded to the customer.");
+      } else if (data?.refundError) {
+        Alert.alert("Showed Up", `Booking completed. Note: deposit refund failed — ${data.refundError}`);
+      } else {
+        queryClient.refetchQueries({ queryKey: ["/api/bookings"] });
       }
-      if (data?.refundError) {
-        Alert.alert("Booking Completed", `Note: deposit refund failed — ${data.refundError}`);
-      }
+    },
+  });
+
+  const noShowMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("PATCH", `/api/bookings/${id}/noshow`, {}),
+    onSuccess: () => {
+      queryClient.refetchQueries({ queryKey: ["/api/bookings"] });
     },
   });
 
@@ -282,18 +290,33 @@ export default function AdminBookingsScreen() {
     });
   };
 
-  const handleComplete = (booking: Booking) => {
+  const handleShowedUp = (booking: Booking) => {
     const hasDeposit = (booking as Booking & { depositPaid?: boolean; squarePaymentId?: string; depositRefunded?: boolean }).depositPaid
       && (booking as Booking & { squarePaymentId?: string }).squarePaymentId
       && !(booking as Booking & { depositRefunded?: boolean }).depositRefunded;
     const depositNote = hasDeposit ? "\n\nThe £5 deposit will be refunded to the customer." : "";
-    const msg = `Mark booking for ${booking.customerName} as completed?${depositNote}`;
+    const msg = `Confirm ${booking.customerName} showed up?${depositNote}`;
     if (Platform.OS === "web") {
       if (window.confirm(msg)) completeMutation.mutate(booking.id);
     } else {
-      Alert.alert("Complete Booking", msg, [
+      Alert.alert("Customer Showed Up", msg, [
         { text: "Cancel", style: "cancel" },
-        { text: "Mark Complete", onPress: () => completeMutation.mutate(booking.id) },
+        { text: "Confirm", onPress: () => completeMutation.mutate(booking.id) },
+      ]);
+    }
+  };
+
+  const handleNoShow = (booking: Booking) => {
+    const hasDeposit = (booking as Booking & { depositPaid?: boolean; depositRefunded?: boolean }).depositPaid
+      && !(booking as Booking & { depositRefunded?: boolean }).depositRefunded;
+    const depositNote = hasDeposit ? "\n\nThe £5 deposit will be retained." : "";
+    const msg = `Mark ${booking.customerName} as a no-show?${depositNote}`;
+    if (Platform.OS === "web") {
+      if (window.confirm(msg)) noShowMutation.mutate(booking.id);
+    } else {
+      Alert.alert("No Show", msg, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Mark No-Show", style: "destructive", onPress: () => noShowMutation.mutate(booking.id) },
       ]);
     }
   };
@@ -528,11 +551,18 @@ export default function AdminBookingsScreen() {
                     </View>
                     <View style={styles.bookingActions}>
                       <Pressable
-                        onPress={() => handleComplete(booking)}
+                        onPress={() => handleShowedUp(booking)}
                         style={({ pressed }) => [styles.actionBtn, { backgroundColor: "#f0fdf4", borderColor: "#16a34a", borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, flexDirection: "row", alignItems: "center", gap: 4, opacity: pressed ? 0.7 : 1 }]}
                       >
                         <Ionicons name="checkmark-circle-outline" size={16} color="#16a34a" />
-                        <Text style={[styles.actionText, { color: "#16a34a" }]}>Complete</Text>
+                        <Text style={[styles.actionText, { color: "#16a34a" }]}>Showed Up</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => handleNoShow(booking)}
+                        style={({ pressed }) => [styles.actionBtn, { backgroundColor: "#fff7ed", borderColor: "#ea580c", borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, flexDirection: "row", alignItems: "center", gap: 4, opacity: pressed ? 0.7 : 1 }]}
+                      >
+                        <Ionicons name="person-remove-outline" size={16} color="#ea580c" />
+                        <Text style={[styles.actionText, { color: "#ea580c" }]}>No Show</Text>
                       </Pressable>
                       <Pressable
                         onPress={() => handleCancel(booking)}

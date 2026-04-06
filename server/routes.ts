@@ -1779,6 +1779,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ message: "Booking marked as completed", depositRefunded, refundId, refundError });
   });
 
+  // Staff: mark a booking as no-show — deposit is kept, no refund issued
+  app.patch("/api/bookings/:id/noshow", staffAuth, async (req, res) => {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const booking = await storage.getBooking(id);
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    await storage.updateBooking(id, { status: "no_show" } as Parameters<typeof storage.updateBooking>[1]);
+    console.log(`[NO-SHOW] Booking #${id} marked as no-show — deposit retained`);
+    res.json({ message: "Booking marked as no-show" });
+  });
+
   app.patch("/api/bookings/:id/status", staffAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
