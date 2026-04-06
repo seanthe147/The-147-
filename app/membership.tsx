@@ -304,24 +304,54 @@ function ActiveMembership({
   const planColor = plan?.color || Colors.brand.blue;
   const meta = plan ? getPlanMeta(plan.tier) : { name: "card" as const, tagline: "" };
 
+  const retryMutation = useMutation({
+    mutationFn: async () => {
+      const token = await getToken();
+      const url = new URL("/api/membership/retry-payment", getApiUrl());
+      const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to generate payment link");
+      return data as { checkoutUrl: string };
+    },
+    onSuccess: (data) => {
+      if (data.checkoutUrl) {
+        Linking.openURL(data.checkoutUrl).catch(() => {
+          Alert.alert("Payment", "Could not open payment page. Please try again.");
+        });
+      }
+    },
+    onError: (err: Error) => Alert.alert("Error", err.message),
+  });
+
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "—";
     return new Date(dateStr).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
   };
+
+  const isFrozen = subscription.status === "frozen";
+  const isPending = subscription.status === "pending";
+  const failedAttempts = (subscription as any).failedPaymentAttempts ?? 0;
 
   const statusColor =
     subscription.status === "active"
       ? "#10B981"
       : subscription.status === "paused"
       ? "#F59E0B"
-      : "#EF4444";
+      : subscription.status === "frozen"
+      ? "#EF4444"
+      : "#F59E0B";
   const statusLabel =
     subscription.status === "active"
       ? "Active"
       : subscription.status === "paused"
       ? "Paused"
       : subscription.status === "pending"
-      ? "Pending"
+      ? "Payment Pending"
+      : subscription.status === "frozen"
+      ? "Suspended"
       : "Cancelled";
 
   return (
@@ -387,6 +417,67 @@ function ActiveMembership({
           </View>
         </View>
       </View>
+
+      {isFrozen && (
+        <View style={styles.paymentBanner}>
+          <View style={styles.paymentBannerIconWrap}>
+            <Ionicons name="warning" size={22} color="#EF4444" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.paymentBannerTitle}>Benefits Suspended</Text>
+            <Text style={styles.paymentBannerBody}>
+              Your membership was suspended after 3 failed payments. Retry now to restore access.
+            </Text>
+          </View>
+          <Pressable
+            style={[styles.retryBtn, retryMutation.isPending && { opacity: 0.6 }]}
+            onPress={() => retryMutation.mutate()}
+            disabled={retryMutation.isPending}
+          >
+            {retryMutation.isPending ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.retryBtnText}>Retry</Text>
+            )}
+          </Pressable>
+        </View>
+      )}
+
+      {isPending && !isFrozen && (
+        <View style={[styles.paymentBanner, { borderColor: "#F59E0B44", backgroundColor: "#FFFBEB" }]}>
+          <View style={[styles.paymentBannerIconWrap, { backgroundColor: "#FEF3C7" }]}>
+            <Ionicons name="time-outline" size={22} color="#D97706" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.paymentBannerTitle, { color: "#92400E" }]}>Payment Pending</Text>
+            <Text style={[styles.paymentBannerBody, { color: "#92400E" }]}>
+              Complete your payment to activate your membership benefits.
+            </Text>
+          </View>
+          <Pressable
+            style={[styles.retryBtn, { backgroundColor: "#D97706" }, retryMutation.isPending && { opacity: 0.6 }]}
+            onPress={() => retryMutation.mutate()}
+            disabled={retryMutation.isPending}
+          >
+            {retryMutation.isPending ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.retryBtnText}>Pay Now</Text>
+            )}
+          </Pressable>
+        </View>
+      )}
+
+      {!isFrozen && !isPending && failedAttempts > 0 && (
+        <View style={[styles.paymentBanner, { borderColor: "#F59E0B44", backgroundColor: "#FFFBEB" }]}>
+          <Ionicons name="alert-circle-outline" size={20} color="#D97706" />
+          <Text style={[styles.paymentBannerBody, { color: "#92400E", marginLeft: 8, flex: 1 }]}>
+            {failedAttempts === 1
+              ? "A payment recently failed. Ensure your card details are up to date."
+              : `${failedAttempts}/3 payments have failed. One more failure will suspend your benefits.`}
+          </Text>
+        </View>
+      )}
 
       {plan && (
         <View style={styles.benefitsSection}>
@@ -575,4 +666,28 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_400Regular", fontSize: 12,
     color: Colors.light.textSecondary, flex: 1, lineHeight: 18,
   },
+  paymentBanner: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    backgroundColor: "#FEF2F2", borderRadius: 14,
+    borderWidth: 1, borderColor: "#FCA5A544",
+    padding: 14,
+  },
+  paymentBannerIconWrap: {
+    width: 38, height: 38, borderRadius: 10,
+    backgroundColor: "#FEE2E2",
+    alignItems: "center", justifyContent: "center", flexShrink: 0,
+  },
+  paymentBannerTitle: {
+    fontFamily: "Montserrat_700Bold", fontSize: 13, color: "#991B1B", marginBottom: 2,
+  },
+  paymentBannerBody: {
+    fontFamily: "Montserrat_400Regular", fontSize: 12, color: "#991B1B", lineHeight: 17,
+  },
+  retryBtn: {
+    backgroundColor: "#EF4444", borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 8,
+    alignItems: "center", justifyContent: "center", flexShrink: 0,
+    minWidth: 64,
+  },
+  retryBtnText: { fontFamily: "Montserrat_700Bold", fontSize: 12, color: "#fff" },
 });

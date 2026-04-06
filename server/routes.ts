@@ -1493,22 +1493,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (event?.type !== "payment.updated") return res.sendStatus(200);
     const payment = event?.data?.object?.payment;
     if (!payment) return res.sendStatus(200);
-    if (payment.status !== "COMPLETED") return res.sendStatus(200);
+
+    const paymentStatus: string = payment.status ?? "";
     const amountPence = payment.amount_money?.amount;
     const currency = payment.amount_money?.currency;
     const paymentNote: string = payment.note || payment.payment_note || "";
 
-    // ── Membership payment ──────────────────────────────────────────────────
+    // ── Membership payment (completed or failed) ────────────────────────────
     if (paymentNote.startsWith("MEMBERSHIP:")) {
       const subId = parseInt(paymentNote.split(":")[1] ?? "");
       if (!isNaN(subId)) {
         try {
           const sub = await storage.getMembershipSubscription(subId);
-          if (sub && sub.status === "pending") {
-            await storage.updateMembershipSubscription(subId, { status: "active" });
-            console.log(`[WEBHOOK] Membership subscription #${subId} activated after Square payment`);
+          if (!sub) return res.sendStatus(200);
 
-            // Also update the customer's Square group in case it wasn't set yet
+          if (paymentStatus === "COMPLETED") {
+            // Activate the subscription
+            await storage.updateMembershipSubscription(subId, {
+              status: "active",
+              failedPaymentAttempts: 0,
+            });
+            console.log(`[WEBHOOK] Membership #${subId} activated`);
+
+            // Sync Square customer group
             if (sub.squareCustomerId) {
               const plan = await storage.getMembershipPlan(sub.planId).catch(() => null);
               if (plan) {
@@ -1525,15 +1532,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 if (groupId) await square.addCustomerToGroup(sub.squareCustomerId, groupId).catch(() => {});
               }
             }
+          } else if (paymentStatus === "FAILED") {
+            const newAttempts = (sub.failedPaymentAttempts ?? 0) + 1;
+            const shouldFreeze = newAttempts >= 3;
+
+            await storage.updateMembershipSubscription(subId, {
+              failedPaymentAttempts: newAttempts,
+              ...(shouldFreeze ? { status: "frozen" } : {}),
+            });
+
+            console.log(`[WEBHOOK] Membership #${subId} payment failed (attempt ${newAttempts})${shouldFreeze ? " — FROZEN" : ""}`);
+
+            // Send push notification to the customer
+            const customer = await storage.getCustomerById(sub.customerId).catch(() => null);
+            if (customer?.email) {
+              const tokens = await storage.getPushTokensByEmail(customer.email).catch(() => [] as { token: string }[]);
+              if (tokens.length > 0) {
+                let title: string;
+                let body: string;
+                if (shouldFreeze) {
+                  title = "Membership Suspended";
+                  body = "Your membership benefits have been suspended after 3 failed payments. Please retry payment to restore access.";
+                } else if (newAttempts === 2) {
+                  title = "Payment Failed Again";
+                  body = `Your membership payment failed (attempt ${newAttempts}/3). One more failure will suspend your benefits. Please retry.`;
+                } else {
+                  title = "Membership Payment Failed";
+                  body = "Your membership payment failed. Please retry to keep your benefits active.";
+                }
+                await sendTargetedPush(tokens.map((t: { token: string }) => t.token), title, body).catch(() => {});
+              }
+            }
           }
         } catch (mErr) {
-          console.error("[WEBHOOK] Membership activation error:", mErr);
+          console.error("[WEBHOOK] Membership payment error:", mErr);
         }
       }
       return res.sendStatus(200);
     }
 
-    // ── Deposit payment (£5 only) ───────────────────────────────────────────
+    // ── Deposit payment (£5 completed only) ────────────────────────────────
+    if (paymentStatus !== "COMPLETED") return res.sendStatus(200);
     if (amountPence !== 500 || currency !== "GBP") return res.sendStatus(200);
     console.log(`[WEBHOOK] £5 deposit payment completed — payment ID: ${payment.id}`);
 
@@ -2832,8 +2871,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`[MEMBERSHIP] Subscription #${subId} activated via payment return redirect`);
       }
     }
-    // Redirect into the app deep link or a thank-you page
     res.redirect("https://the147bradford.replit.app/membership-success");
+  });
+
+  // Membership — retry payment (generates a fresh Square checkout link)
+  app.post("/api/membership/retry-payment", customerAuth, async (req, res) => {
+    try {
+      const customerId = (req as any).customerId as number;
+      const sub = await storage.getMembershipSubscriptionByCustomer(customerId);
+      if (!sub) return res.status(404).json({ message: "No membership found" });
+      if (!["pending", "frozen"].includes(sub.status)) {
+        return res.status(400).json({ message: "Membership does not require payment" });
+      }
+      if (!square.isConfigured()) {
+        return res.status(503).json({ message: "Payment system not configured" });
+      }
+
+      const plan = sub.plan ?? await storage.getMembershipPlan(sub.planId);
+      if (!plan) return res.status(404).json({ message: "Plan not found" });
+
+      const redirectUrl = `https://${process.env.EXPO_PUBLIC_DOMAIN || "the147bradford.replit.app"}/api/membership/${sub.id}/payment-return`;
+      const checkout = await square.createMembershipCheckoutLink({
+        planName: plan.name,
+        amountPence: plan.priceMonthly,
+        subscriptionId: sub.id,
+        redirectUrl,
+      });
+
+      res.json({ checkoutUrl: checkout.url });
+    } catch (err: any) {
+      console.error("[membership/retry-payment]", err);
+      res.status(500).json({ message: "Failed to generate payment link" });
+    }
   });
 
   // ── Membership — Square webhook ──────────────────────────────────────────
