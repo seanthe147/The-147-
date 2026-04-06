@@ -91,6 +91,7 @@ EXPO_ASC_API_KEY_PATH = "/tmp/AuthKey_PRH75PPG5Z.p8"
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = "587"
 SQUARE_DEPOSIT_LINK_URL = "https://square.link/u/tdsM4jUv"
+SQUARE_WEBHOOK_URL = "https://the147bradford.replit.app/api/webhooks/square"
 
 [postMerge]
 path = "scripts/post-merge.sh"
