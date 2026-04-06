@@ -89,6 +89,7 @@ export default function AdminBookingsScreen() {
 
   // Staff booking modal state
   const [showWalkIn, setShowWalkIn] = useState(false);
+  const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
   const [wiSource, setWiSource] = useState<"walkin" | "telephone">("walkin");
   const [wiName, setWiName] = useState("");
   const [wiPhone, setWiPhone] = useState("");
@@ -135,6 +136,7 @@ export default function AdminBookingsScreen() {
   };
 
   const resetWalkIn = () => {
+    setEditingBooking(null);
     setWiSource("walkin"); setWiName(""); setWiPhone(""); setWiEmail("");
     setWiTableType("snooker"); setWiTableNumber(""); setWiTime("10:00");
     setWiDuration(1); setWiGuestCount(2); setWiNotes(""); setWiError("");
@@ -262,6 +264,45 @@ export default function AdminBookingsScreen() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
+      apiRequest("PUT", `/api/bookings/${id}`, data),
+    onSuccess: () => {
+      queryClient.refetchQueries({ queryKey: ["/api/bookings"] });
+      setShowWalkIn(false);
+      resetWalkIn();
+    },
+    onError: (err: Error) => {
+      let msg = "Update failed. Please try again.";
+      try {
+        const text = err.message || "";
+        const jsonStart = text.indexOf("{");
+        if (jsonStart !== -1) {
+          const parsed = JSON.parse(text.slice(jsonStart));
+          if (parsed.message) msg = parsed.message;
+        } else if (text) msg = text;
+      } catch { msg = err.message || msg; }
+      setWiError(msg);
+    },
+  });
+
+  const handleEdit = (booking: Booking) => {
+    setEditingBooking(booking);
+    setWiSource("walkin");
+    setWiName(booking.customerName);
+    setWiPhone(booking.customerPhone);
+    setWiEmail(booking.customerEmail || "");
+    setWiTableType(booking.tableType);
+    setWiTableNumber(booking.tableNumber ? String(booking.tableNumber) : "");
+    setWiTime(booking.startTime);
+    setWiDuration(booking.duration);
+    setWiGuestCount((booking as any).guestCount ?? 2);
+    setWiNotes(booking.notes || "");
+    setWiError("");
+    setSuggestions([]); setSuggestionsFor(null);
+    setShowWalkIn(true);
+  };
+
   const handleWalkInSubmit = () => {
     setWiError("");
     if (!wiName.trim() || !wiPhone.trim()) {
@@ -272,6 +313,25 @@ export default function AdminBookingsScreen() {
       setWiError(`Please select a ${wiTableType} table number`);
       return;
     }
+
+    if (editingBooking) {
+      updateMutation.mutate({
+        id: editingBooking.id,
+        data: {
+          customerName: wiName.trim(),
+          customerPhone: wiPhone.trim(),
+          customerEmail: wiEmail.trim() || editingBooking.customerEmail,
+          tableType: wiTableType,
+          tableNumber: (wiTableType === "snooker" || wiTableType === "pool") ? wiTableNumber : undefined,
+          guestCount: wiTableType === "dining" ? wiGuestCount : undefined,
+          startTime: wiTime,
+          duration: wiDuration,
+          notes: wiNotes.trim(),
+        },
+      });
+      return;
+    }
+
     const sourcePrefix = wiSource === "telephone" ? "[TEL] " : "[WALK-IN] ";
     const finalNotes = wiNotes.trim() ? `${sourcePrefix}${wiNotes.trim()}` : sourcePrefix.trim();
     walkInMutation.mutate({
@@ -568,6 +628,13 @@ export default function AdminBookingsScreen() {
                       </View>
                       <View style={styles.adminRow}>
                         <Pressable
+                          onPress={() => handleEdit(booking)}
+                          style={({ pressed }) => [styles.actionBtn, styles.editBtn, { opacity: pressed ? 0.7 : 1 }]}
+                        >
+                          <Ionicons name="create-outline" size={16} color={Colors.brand.blue} />
+                          <Text style={[styles.actionText, { color: Colors.brand.blue }]}>Edit</Text>
+                        </Pressable>
+                        <Pressable
                           onPress={() => handleCancel(booking)}
                           style={({ pressed }) => [styles.actionBtn, styles.cancelBtn, { opacity: pressed ? 0.7 : 1 }]}
                         >
@@ -626,7 +693,7 @@ export default function AdminBookingsScreen() {
               <Pressable onPress={() => setShowWalkIn(false)} hitSlop={12}>
                 <Ionicons name="close" size={26} color={Colors.light.text} />
               </Pressable>
-              <Text style={styles.modalTitle}>New Booking</Text>
+              <Text style={styles.modalTitle}>{editingBooking ? "Edit Booking" : "New Booking"}</Text>
               <View style={{ width: 26 }} />
             </View>
             <Text style={styles.modalSubtitle}>{formatDateLabel(selectedDate)}</Text>
@@ -820,13 +887,13 @@ export default function AdminBookingsScreen() {
 
               <Pressable
                 onPress={handleWalkInSubmit}
-                disabled={walkInMutation.isPending}
-                style={({ pressed }) => [styles.submitBtn, { opacity: pressed || walkInMutation.isPending ? 0.7 : 1 }]}
+                disabled={walkInMutation.isPending || updateMutation.isPending}
+                style={({ pressed }) => [styles.submitBtn, { opacity: pressed || walkInMutation.isPending || updateMutation.isPending ? 0.7 : 1 }]}
                 testID="wi-submit"
               >
-                {walkInMutation.isPending
+                {(walkInMutation.isPending || updateMutation.isPending)
                   ? <ActivityIndicator size="small" color="#fff" />
-                  : <Text style={styles.submitBtnText}>Confirm Booking</Text>
+                  : <Text style={styles.submitBtnText}>{editingBooking ? "Save Changes" : "Confirm Booking"}</Text>
                 }
               </Pressable>
             </ScrollView>
@@ -1072,6 +1139,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
+  },
+  editBtn: {
+    backgroundColor: Colors.brand.blue + "15",
   },
   cancelBtn: {
     backgroundColor: Colors.brand.red + "10",
