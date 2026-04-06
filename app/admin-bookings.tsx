@@ -1036,6 +1036,7 @@ const styles = StyleSheet.create({
   },
   bookingActions: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "flex-end",
     gap: 8,
     marginTop: 10,
