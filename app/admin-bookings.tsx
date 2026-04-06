@@ -550,33 +550,37 @@ export default function AdminBookingsScreen() {
                       </View>
                     </View>
                     <View style={styles.bookingActions}>
-                      <Pressable
-                        onPress={() => handleShowedUp(booking)}
-                        style={({ pressed }) => [styles.actionBtn, { backgroundColor: "#f0fdf4", borderColor: "#16a34a", borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, flexDirection: "row", alignItems: "center", gap: 4, opacity: pressed ? 0.7 : 1 }]}
-                      >
-                        <Ionicons name="checkmark-circle-outline" size={16} color="#16a34a" />
-                        <Text style={[styles.actionText, { color: "#16a34a" }]}>Showed Up</Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={() => handleNoShow(booking)}
-                        style={({ pressed }) => [styles.actionBtn, { backgroundColor: "#fff7ed", borderColor: "#ea580c", borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, flexDirection: "row", alignItems: "center", gap: 4, opacity: pressed ? 0.7 : 1 }]}
-                      >
-                        <Ionicons name="person-remove-outline" size={16} color="#ea580c" />
-                        <Text style={[styles.actionText, { color: "#ea580c" }]}>No Show</Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={() => handleCancel(booking)}
-                        style={({ pressed }) => [styles.actionBtn, styles.cancelBtn, { opacity: pressed ? 0.7 : 1 }]}
-                      >
-                        <Ionicons name="close-circle-outline" size={16} color={Colors.brand.red} />
-                        <Text style={[styles.actionText, { color: Colors.brand.red }]}>Cancel</Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={() => handleDelete(booking)}
-                        style={({ pressed }) => [styles.actionBtn, styles.deleteBtn, { opacity: pressed ? 0.7 : 1 }]}
-                      >
-                        <Ionicons name="trash-outline" size={16} color={Colors.light.textSecondary} />
-                      </Pressable>
+                      <View style={styles.arrivalRow}>
+                        <Pressable
+                          onPress={() => handleShowedUp(booking)}
+                          style={({ pressed }) => [styles.arrivalBtn, { backgroundColor: "#f0fdf4", borderColor: "#16a34a", opacity: pressed ? 0.7 : 1 }]}
+                        >
+                          <Ionicons name="checkmark-circle-outline" size={15} color="#16a34a" />
+                          <Text style={[styles.actionText, { color: "#16a34a" }]}>Showed Up</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => handleNoShow(booking)}
+                          style={({ pressed }) => [styles.arrivalBtn, { backgroundColor: "#fff7ed", borderColor: "#ea580c", opacity: pressed ? 0.7 : 1 }]}
+                        >
+                          <Ionicons name="person-remove-outline" size={15} color="#ea580c" />
+                          <Text style={[styles.actionText, { color: "#ea580c" }]}>No Show</Text>
+                        </Pressable>
+                      </View>
+                      <View style={styles.adminRow}>
+                        <Pressable
+                          onPress={() => handleCancel(booking)}
+                          style={({ pressed }) => [styles.actionBtn, styles.cancelBtn, { opacity: pressed ? 0.7 : 1 }]}
+                        >
+                          <Ionicons name="close-circle-outline" size={16} color={Colors.brand.red} />
+                          <Text style={[styles.actionText, { color: Colors.brand.red }]}>Cancel</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => handleDelete(booking)}
+                          style={({ pressed }) => [styles.actionBtn, styles.deleteBtn, { opacity: pressed ? 0.7 : 1 }]}
+                        >
+                          <Ionicons name="trash-outline" size={16} color={Colors.light.textSecondary} />
+                        </Pressable>
+                      </View>
                     </View>
                   </View>
                 ))}
@@ -1035,14 +1039,31 @@ const styles = StyleSheet.create({
     color: Colors.light.textSecondary,
   },
   bookingActions: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
+    flexDirection: "column",
     gap: 8,
     marginTop: 10,
     borderTopWidth: 1,
     borderTopColor: Colors.light.border,
     paddingTop: 10,
+  },
+  arrivalRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  arrivalBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  adminRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
   },
   actionBtn: {
     flexDirection: "row",
