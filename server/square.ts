@@ -255,3 +255,70 @@ export async function createDepositPaymentLink(opts: {
     paymentLinkId: link.id,
   };
 }
+
+// ── Customer Groups ───────────────────────────────────────────────────────────
+
+export async function listCustomerGroups(): Promise<Array<{ id: string; name: string }>> {
+  const data = await squareRequest("GET", "/v2/customers/groups");
+  return data.groups || [];
+}
+
+export async function getOrCreateCustomerGroup(name: string): Promise<string> {
+  const groups = await listCustomerGroups();
+  const existing = groups.find((g: { id: string; name: string }) => g.name === name);
+  if (existing) return existing.id;
+  const data = await squareRequest("POST", "/v2/customers/groups", {
+    idempotency_key: `group-${name.replace(/\s+/g, "-").toLowerCase()}-${Date.now()}`,
+    group: { name },
+  });
+  return data.group.id;
+}
+
+export async function addCustomerToGroup(customerId: string, groupId: string): Promise<void> {
+  await squareRequest("PUT", `/v2/customers/${customerId}/groups/${groupId}`);
+}
+
+export async function removeCustomerFromGroup(customerId: string, groupId: string): Promise<void> {
+  await squareRequest("DELETE", `/v2/customers/${customerId}/groups/${groupId}`);
+}
+
+export async function getCustomerGroupIds(customerId: string): Promise<string[]> {
+  const data = await squareRequest("GET", `/v2/customers/${customerId}`);
+  return data.customer?.group_ids || [];
+}
+
+// ── Membership Checkout Link ──────────────────────────────────────────────────
+
+export async function createMembershipCheckoutLink(opts: {
+  planName: string;
+  amountPence: number;
+  subscriptionId: number;
+  redirectUrl: string;
+}): Promise<{ url: string; paymentLinkId: string }> {
+  const locationId = process.env.SQUARE_LOCATION_ID;
+  if (!locationId) throw new Error("SQUARE_LOCATION_ID not configured");
+
+  const data = await squareRequest("POST", "/v2/online-checkout/payment-links", {
+    idempotency_key: `membership-${opts.subscriptionId}-${Date.now()}`,
+    quick_pay: {
+      name: `${opts.planName} Membership`,
+      price_money: {
+        amount: opts.amountPence,
+        currency: "GBP",
+      },
+      location_id: locationId,
+    },
+    checkout_options: {
+      redirect_url: opts.redirectUrl,
+    },
+    payment_note: `MEMBERSHIP:${opts.subscriptionId}`,
+  });
+
+  const link = data.payment_link;
+  return { url: link.url, paymentLinkId: link.id };
+}
+
+// Group name used in Square for a given membership plan name
+export function membershipGroupName(planName: string): string {
+  return `147 Bradford — ${planName} Members`;
+}

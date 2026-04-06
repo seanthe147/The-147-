@@ -8,6 +8,7 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Linking,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -127,10 +128,15 @@ export default function MembershipScreen() {
       if (!res.ok) throw new Error(data.message || "Failed to join");
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/membership/my-subscription"] });
       setJoining(false);
       setSelectedPlanId(null);
+      if (data?.checkoutUrl) {
+        Linking.openURL(data.checkoutUrl).catch(() => {
+          Alert.alert("Payment", "Please complete your payment to activate your membership.", [{ text: "OK" }]);
+        });
+      }
     },
     onError: (err: Error) => {
       Alert.alert("Error", err.message);
@@ -143,11 +149,11 @@ export default function MembershipScreen() {
     if (!selectedPlanId || !selectedPlan) return;
     Alert.alert(
       "Confirm Membership",
-      `Join the ${selectedPlan.name} plan for £${(selectedPlan.priceMonthly / 100).toFixed(2)}/month?\n\nA member of staff will finalise your billing details.`,
+      `Join the ${selectedPlan.name} plan for £${(selectedPlan.priceMonthly / 100).toFixed(2)}/month?\n\nYou'll be taken to a secure payment page to complete your sign-up.`,
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Confirm",
+          text: "Continue to Payment",
           onPress: () => joinMutation.mutate(selectedPlanId),
         },
       ]

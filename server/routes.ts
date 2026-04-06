@@ -1490,15 +1490,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const event = req.body;
     console.log("[WEBHOOK] Square event received:", event?.type);
 
-    // Only process completed payments of exactly £5.00
     if (event?.type !== "payment.updated") return res.sendStatus(200);
     const payment = event?.data?.object?.payment;
     if (!payment) return res.sendStatus(200);
     if (payment.status !== "COMPLETED") return res.sendStatus(200);
     const amountPence = payment.amount_money?.amount;
     const currency = payment.amount_money?.currency;
-    if (amountPence !== 500 || currency !== "GBP") return res.sendStatus(200);
+    const paymentNote: string = payment.note || payment.payment_note || "";
 
+    // ── Membership payment ──────────────────────────────────────────────────
+    if (paymentNote.startsWith("MEMBERSHIP:")) {
+      const subId = parseInt(paymentNote.split(":")[1] ?? "");
+      if (!isNaN(subId)) {
+        try {
+          const sub = await storage.getMembershipSubscription(subId);
+          if (sub && sub.status === "pending") {
+            await storage.updateMembershipSubscription(subId, { status: "active" });
+            console.log(`[WEBHOOK] Membership subscription #${subId} activated after Square payment`);
+
+            // Also update the customer's Square group in case it wasn't set yet
+            if (sub.squareCustomerId) {
+              const plan = await storage.getMembershipPlan(sub.planId).catch(() => null);
+              if (plan) {
+                const allPlans = await storage.getMembershipPlans();
+                const allGroupNames = allPlans.map(p => square.membershipGroupName(p.name));
+                const currentGroupIds = await square.getCustomerGroupIds(sub.squareCustomerId).catch(() => [] as string[]);
+                const allGroups = await square.listCustomerGroups().catch(() => [] as { id: string; name: string }[]);
+                for (const group of allGroups) {
+                  if (allGroupNames.includes(group.name) && currentGroupIds.includes(group.id)) {
+                    await square.removeCustomerFromGroup(sub.squareCustomerId, group.id).catch(() => {});
+                  }
+                }
+                const groupId = await square.getOrCreateCustomerGroup(square.membershipGroupName(plan.name)).catch(() => null);
+                if (groupId) await square.addCustomerToGroup(sub.squareCustomerId, groupId).catch(() => {});
+              }
+            }
+          }
+        } catch (mErr) {
+          console.error("[WEBHOOK] Membership activation error:", mErr);
+        }
+      }
+      return res.sendStatus(200);
+    }
+
+    // ── Deposit payment (£5 only) ───────────────────────────────────────────
+    if (amountPence !== 500 || currency !== "GBP") return res.sendStatus(200);
     console.log(`[WEBHOOK] £5 deposit payment completed — payment ID: ${payment.id}`);
 
     try {
@@ -2683,9 +2719,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { planId } = req.body ?? {};
       if (!planId) return res.status(400).json({ message: "planId is required" });
 
-      // Check if already an active member
+      // Check if already an active member on this same plan
       const existing = await storage.getMembershipSubscriptionByCustomer(customerId);
-      if (existing) return res.status(409).json({ message: "You already have an active membership" });
+      if (existing && existing.planId === parseInt(planId) && existing.status === "active") {
+        return res.status(409).json({ message: "You already have an active membership on this plan" });
+      }
 
       const plan = await storage.getMembershipPlan(parseInt(planId));
       if (!plan || !plan.active) return res.status(404).json({ message: "Plan not found" });
@@ -2693,6 +2731,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const today = new Date().toISOString().slice(0, 10);
       const nextMonth = new Date();
       nextMonth.setMonth(nextMonth.getMonth() + 1);
+
+      // If upgrading (existing sub on a different plan), cancel the old one
+      if (existing && existing.id) {
+        await storage.updateMembershipSubscription(existing.id, {
+          status: "cancelled",
+          cancelledAt: new Date(),
+        });
+      }
 
       const sub = await storage.createMembershipSubscription({
         customerId,
@@ -2706,37 +2752,88 @@ export async function registerRoutes(app: Express): Promise<Server> {
         source: "app",
       });
 
-      // Optionally wire up Square subscription
-      if (square.isConfigured() && plan.squarePlanVariationId) {
+      let checkoutUrl: string | null = null;
+
+      // Wire up Square: create/find customer, manage groups, generate checkout link
+      if (square.isConfigured()) {
         try {
           const customer = await storage.getCustomerById(customerId);
           if (customer) {
+            // Create or find Square customer
             let sqCustomer = await square.findSquareCustomerByEmail(customer.email).catch(() => null);
-            if (!sqCustomer) sqCustomer = await square.createSquareCustomer(customer.name, customer.email, customer.phone || undefined);
+            if (!sqCustomer) {
+              sqCustomer = await square.createSquareCustomer(customer.name, customer.email, customer.phone || undefined).catch(() => null);
+            }
+
             if (sqCustomer) {
-              const sqSub = await square.createSquareSubscription(sqCustomer.id, plan.squarePlanVariationId, process.env.SQUARE_LOCATION_ID!).catch(() => null);
-              if (sqSub) {
-                await storage.updateMembershipSubscription(sub.id, {
-                  squareSubscriptionId: sqSub.id,
-                  squareCustomerId: sqCustomer.id,
-                  status: "active",
-                  currentPeriodEnd: sqSub.charged_through_date ?? sub.currentPeriodEnd,
-                });
+              await storage.updateMembershipSubscription(sub.id, { squareCustomerId: sqCustomer.id });
+
+              // ── Manage customer groups ──────────────────────────────────────
+              // All known membership tier group names
+              const allPlans = await storage.getMembershipPlans();
+              const allGroupNames = allPlans.map(p => square.membershipGroupName(p.name));
+
+              // Get the groups this customer currently belongs to
+              const currentGroupIds = await square.getCustomerGroupIds(sqCustomer.id).catch(() => [] as string[]);
+              const allGroups = await square.listCustomerGroups().catch(() => [] as { id: string; name: string }[]);
+
+              // Remove from any existing membership tier groups
+              for (const group of allGroups) {
+                if (allGroupNames.includes(group.name) && currentGroupIds.includes(group.id)) {
+                  await square.removeCustomerFromGroup(sqCustomer.id, group.id).catch(() => {});
+                }
+              }
+
+              // Add to the new plan's group
+              const newGroupId = await square.getOrCreateCustomerGroup(square.membershipGroupName(plan.name)).catch(() => null);
+              if (newGroupId) {
+                await square.addCustomerToGroup(sqCustomer.id, newGroupId).catch(() => {});
+              }
+
+              // ── Generate checkout payment link ──────────────────────────────
+              const redirectUrl = `https://${process.env.EXPO_PUBLIC_DOMAIN || "the147bradford.replit.app"}/api/membership/${sub.id}/payment-return`;
+              const checkout = await square.createMembershipCheckoutLink({
+                planName: plan.name,
+                amountPence: plan.priceMonthly,
+                subscriptionId: sub.id,
+                redirectUrl,
+              }).catch(() => null);
+
+              if (checkout) {
+                checkoutUrl = checkout.url;
               }
             }
           }
-        } catch { /* Square unavailable — subscription still saved locally */ }
-      } else {
-        // No Square billing configured — mark active immediately
+        } catch (sqErr) {
+          console.error("[membership/join] Square error (non-fatal):", sqErr);
+        }
+      }
+
+      // If no Square checkout URL was generated, activate immediately (staff-managed flow)
+      if (!checkoutUrl) {
         await storage.updateMembershipSubscription(sub.id, { status: "active" });
       }
 
       const updated = await storage.getMembershipSubscriptionByCustomer(customerId);
-      res.status(201).json(updated ?? sub);
+      res.status(201).json({ ...(updated ?? sub), checkoutUrl });
     } catch (err: any) {
       console.error("[membership/join]", err);
       res.status(500).json({ message: "Failed to create membership" });
     }
+  });
+
+  // Membership payment return — Square redirects here after checkout
+  app.get("/api/membership/:id/payment-return", async (req, res) => {
+    const subId = parseInt(req.params.id);
+    if (!isNaN(subId)) {
+      const sub = await storage.getMembershipSubscription(subId).catch(() => null);
+      if (sub && sub.status === "pending") {
+        await storage.updateMembershipSubscription(subId, { status: "active" }).catch(() => {});
+        console.log(`[MEMBERSHIP] Subscription #${subId} activated via payment return redirect`);
+      }
+    }
+    // Redirect into the app deep link or a thank-you page
+    res.redirect("https://the147bradford.replit.app/membership-success");
   });
 
   // ── Membership — Square webhook ──────────────────────────────────────────
