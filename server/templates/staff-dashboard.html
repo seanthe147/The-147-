@@ -168,6 +168,8 @@
     .pill-purple{background:var(--purple-light);color:var(--purple)}
     .pill-teal{background:#ccf5f0;color:#0d7a6e}
     .b-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
+    .b-actions-col{flex-direction:column;align-items:flex-end;gap:6px}
+    .b-arrival-row{display:flex;gap:6px}
 
     /* ── Empty / loading ── */
     .empty-state{text-align:center;padding:80px 20px}
@@ -1488,6 +1490,7 @@
       const isCanc=b.status==='cancelled';
       const isPendDeposit=b.status==='pending_deposit';
       const isPend=!b.status||b.status==='pending';
+      const isConf=!isCanc&&!isPend&&!isPendDeposit;
       const cardClass='booking-card'+(isCanc?' cancelled':(isPend||isPendDeposit)?' pending':'');
       const statusPill=isCanc?'<span class="pill pill-gray">Cancelled</span>':isPendDeposit?'<span class="pill pill-amber">⏳ Deposit Pending</span>':isPend?'<span class="pill pill-amber">Pending</span>':'<span class="pill pill-green">Confirmed</span>';
       const typePill=b.tableType==='snooker'?'pill-blue':b.tableType==='pool'?'pill-purple':'pill-gold';
@@ -1507,10 +1510,16 @@
           </div>
           ${b.notes?`<div class="b-notes">${esc(b.notes)}</div>`:''}
         </div>
-        <div class="b-actions">
-          <button class="btn btn-secondary btn-sm" data-id="${b.id}" data-action="edit">Edit</button>
-          ${!isCanc?`<button class="btn btn-warning btn-sm" data-id="${b.id}" data-action="cancel">Cancel</button>`:''}
-          ${isManager?`<button class="btn btn-danger btn-sm" data-id="${b.id}" data-action="delete">Delete</button>`:''}
+        <div class="b-actions${isConf?' b-actions-col':''}">
+          ${isConf?`<div class="b-arrival-row">
+            <button class="btn btn-success btn-sm" data-id="${b.id}" data-action="showed-up">✓ Showed Up</button>
+            <button class="btn btn-warning btn-sm" data-id="${b.id}" data-action="no-show">No Show</button>
+          </div>`:''}
+          <div class="b-arrival-row">
+            <button class="btn btn-secondary btn-sm" data-id="${b.id}" data-action="edit">Edit</button>
+            ${!isCanc?`<button class="btn btn-warning btn-sm" data-id="${b.id}" data-action="cancel">Cancel</button>`:''}
+            ${isManager?`<button class="btn btn-danger btn-sm" data-id="${b.id}" data-action="delete">Delete</button>`:''}
+          </div>
         </div>
       </div>`;
     }
@@ -1521,9 +1530,12 @@
       btn.addEventListener('click',()=>{
         const id=parseInt(btn.dataset.id);
         const action=btn.dataset.action;
-        if(action==='edit')openBookingModal(state.bookings.find(b=>b.id===id));
+        const booking=state.bookings.find(b=>b.id===id);
+        if(action==='edit')openBookingModal(booking);
         else if(action==='cancel')cancelBooking(id);
         else if(action==='delete')deleteBooking(id);
+        else if(action==='showed-up')showedUpBooking(id,booking);
+        else if(action==='no-show')noShowBooking(id,booking);
       });
     });
   }
@@ -1543,6 +1555,33 @@
       const r=await api('/api/bookings/'+id,{method:'DELETE'});
       if(r.status!==204&&!r.ok){const d=await r.json();toast(d.message||'Failed to delete','error');return}
       toast('Booking deleted','success');loadBookings();
+    }catch(e){if(e.message!=='Session expired')toast('Network error','error')}
+  }
+
+  async function showedUpBooking(id,booking){
+    const hasDeposit=booking&&booking.squarePaymentId;
+    const msg=hasDeposit?'Mark as Showed Up and refund the £5 deposit?':'Mark as Showed Up?';
+    if(!confirm(msg))return;
+    try{
+      const r=await api('/api/bookings/'+id+'/complete',{method:'PATCH',body:JSON.stringify({})});
+      if(!r.ok){const d=await r.json();toast(d.message||'Failed','error');return}
+      const d=await r.json();
+      if(d.refundError)toast('Showed Up — deposit refund failed: '+d.refundError,'warning');
+      else if(hasDeposit)toast('Showed Up — £5 deposit refunded ✓','success');
+      else toast('Marked as Showed Up','success');
+      loadBookings();
+    }catch(e){if(e.message!=='Session expired')toast('Network error','error')}
+  }
+
+  async function noShowBooking(id,booking){
+    const hasDeposit=booking&&booking.squarePaymentId;
+    const msg=hasDeposit?'Mark as No Show? The £5 deposit will NOT be refunded.':'Mark as No Show?';
+    if(!confirm(msg))return;
+    try{
+      const r=await api('/api/bookings/'+id+'/noshow',{method:'PATCH',body:JSON.stringify({})});
+      if(!r.ok){const d=await r.json();toast(d.message||'Failed','error');return}
+      toast(hasDeposit?'No Show — deposit retained':'Marked as No Show','success');
+      loadBookings();
     }catch(e){if(e.message!=='Session expired')toast('Network error','error')}
   }
 
