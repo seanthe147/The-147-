@@ -322,3 +322,23 @@ export async function createMembershipCheckoutLink(opts: {
 export function membershipGroupName(planName: string): string {
   return `147 Bradford — ${planName} Members`;
 }
+
+// ── Refunds ───────────────────────────────────────────────────────────────────
+
+export async function createRefund(opts: {
+  paymentId: string;
+  amountPence: number;
+  reason: string;
+  idempotencyKey: string;
+}): Promise<{ id: string; status: string }> {
+  const data = await squareRequest("POST", "/v2/refunds", {
+    idempotency_key: opts.idempotencyKey,
+    payment_id: opts.paymentId,
+    amount_money: {
+      amount: opts.amountPence,
+      currency: "GBP",
+    },
+    reason: opts.reason,
+  });
+  return data.refund;
+}

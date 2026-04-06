@@ -213,6 +213,19 @@ export default function AdminBookingsScreen() {
     },
   });
 
+  const completeMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("PATCH", `/api/bookings/${id}/complete`, {}),
+    onSuccess: (data: { depositRefunded?: boolean; refundError?: string }) => {
+      queryClient.refetchQueries({ queryKey: ["/api/bookings"] });
+      if (data?.depositRefunded) {
+        Alert.alert("Booking Completed", "Deposit of £5 has been refunded to the customer.");
+      }
+      if (data?.refundError) {
+        Alert.alert("Booking Completed", `Note: deposit refund failed — ${data.refundError}`);
+      }
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/bookings/${id}`),
     onSuccess: () => {
@@ -267,6 +280,22 @@ export default function AdminBookingsScreen() {
       gdprConsent: true,
       status: "confirmed",
     });
+  };
+
+  const handleComplete = (booking: Booking) => {
+    const hasDeposit = (booking as Booking & { depositPaid?: boolean; squarePaymentId?: string; depositRefunded?: boolean }).depositPaid
+      && (booking as Booking & { squarePaymentId?: string }).squarePaymentId
+      && !(booking as Booking & { depositRefunded?: boolean }).depositRefunded;
+    const depositNote = hasDeposit ? "\n\nThe £5 deposit will be refunded to the customer." : "";
+    const msg = `Mark booking for ${booking.customerName} as completed?${depositNote}`;
+    if (Platform.OS === "web") {
+      if (window.confirm(msg)) completeMutation.mutate(booking.id);
+    } else {
+      Alert.alert("Complete Booking", msg, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Mark Complete", onPress: () => completeMutation.mutate(booking.id) },
+      ]);
+    }
   };
 
   const handleCancel = (booking: Booking) => {
@@ -498,6 +527,13 @@ export default function AdminBookingsScreen() {
                       </View>
                     </View>
                     <View style={styles.bookingActions}>
+                      <Pressable
+                        onPress={() => handleComplete(booking)}
+                        style={({ pressed }) => [styles.actionBtn, { backgroundColor: "#f0fdf4", borderColor: "#16a34a", borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, flexDirection: "row", alignItems: "center", gap: 4, opacity: pressed ? 0.7 : 1 }]}
+                      >
+                        <Ionicons name="checkmark-circle-outline" size={16} color="#16a34a" />
+                        <Text style={[styles.actionText, { color: "#16a34a" }]}>Complete</Text>
+                      </Pressable>
                       <Pressable
                         onPress={() => handleCancel(booking)}
                         style={({ pressed }) => [styles.actionBtn, styles.cancelBtn, { opacity: pressed ? 0.7 : 1 }]}

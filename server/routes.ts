@@ -1488,9 +1488,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     const event = req.body;
-    console.log("[WEBHOOK] Square event received:", event?.type);
+    const eventType: string = event?.type ?? "";
+    console.log("[WEBHOOK] Square event received:", eventType);
 
-    if (event?.type !== "payment.updated") return res.sendStatus(200);
+    // ── subscription.updated / subscription.activated ───────────────────────
+    if (eventType === "subscription.updated" || eventType === "subscription.activated") {
+      try {
+        const sqSub = event?.data?.object?.subscription;
+        if (sqSub?.id) {
+          const allSubs = await storage.getMembershipSubscriptions();
+          const local = allSubs.find(s => s.squareSubscriptionId === sqSub.id);
+          if (local) {
+            const status = sqSub.status === "ACTIVE" ? "active"
+              : sqSub.status === "PAUSED" ? "paused"
+              : sqSub.status === "CANCELED" ? "cancelled"
+              : sqSub.status === "PENDING" ? "pending" : "active";
+            await storage.updateMembershipSubscription(local.id, {
+              status,
+              currentPeriodStart: sqSub.start_date ?? local.currentPeriodStart ?? undefined,
+              currentPeriodEnd: sqSub.charged_through_date ?? local.currentPeriodEnd ?? undefined,
+            });
+            console.log(`[WEBHOOK] Local membership #${local.id} synced from Square subscription status: ${status}`);
+          }
+        }
+      } catch (err) { console.error("[WEBHOOK] subscription.updated error:", err); }
+      return res.sendStatus(200);
+    }
+
+    // ── invoice.payment_failed (recurring subscription renewal failure) ──────
+    if (eventType === "invoice.payment_failed") {
+      try {
+        const invoice = event?.data?.object?.invoice;
+        const sqSubId: string | undefined = invoice?.subscription_id;
+        if (sqSubId) {
+          const allSubs = await storage.getMembershipSubscriptions();
+          const local = allSubs.find(s => s.squareSubscriptionId === sqSubId);
+          if (local) {
+            const newAttempts = (local.failedPaymentAttempts ?? 0) + 1;
+            const shouldFreeze = newAttempts >= 3;
+            await storage.updateMembershipSubscription(local.id, {
+              failedPaymentAttempts: newAttempts,
+              ...(shouldFreeze ? { status: "frozen" } : {}),
+            });
+            console.log(`[WEBHOOK] Membership #${local.id} renewal failed (attempt ${newAttempts})${shouldFreeze ? " — FROZEN" : ""}`);
+
+            const customer = await storage.getCustomerById(local.customerId).catch(() => null);
+            if (customer?.email) {
+              const tokens = await storage.getPushTokensByEmail(customer.email).catch(() => [] as { token: string }[]);
+              if (tokens.length > 0) {
+                const title = shouldFreeze ? "Membership Suspended" : newAttempts === 2 ? "Renewal Failed Again" : "Renewal Payment Failed";
+                const body = shouldFreeze
+                  ? "Your membership has been suspended after 3 failed renewal payments. Please update your payment details."
+                  : newAttempts === 2
+                  ? `Renewal failed (${newAttempts}/3). One more failure will suspend your membership.`
+                  : "Your monthly membership renewal payment failed. Please ensure your card is up to date.";
+                await sendTargetedPush(tokens.map((t: { token: string }) => t.token), title, body).catch(() => {});
+              }
+            }
+          }
+        }
+      } catch (err) { console.error("[WEBHOOK] invoice.payment_failed error:", err); }
+      return res.sendStatus(200);
+    }
+
+    if (eventType !== "payment.updated") return res.sendStatus(200);
     const payment = event?.data?.object?.payment;
     if (!payment) return res.sendStatus(200);
 
@@ -1508,7 +1569,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (!sub) return res.sendStatus(200);
 
           if (paymentStatus === "COMPLETED") {
-            // Activate the subscription
             await storage.updateMembershipSubscription(subId, {
               status: "active",
               failedPaymentAttempts: 0,
@@ -1530,36 +1590,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 }
                 const groupId = await square.getOrCreateCustomerGroup(square.membershipGroupName(plan.name)).catch(() => null);
                 if (groupId) await square.addCustomerToGroup(sub.squareCustomerId, groupId).catch(() => {});
+
+                // ── Set up recurring Square subscription ────────────────────
+                if (plan.squarePlanVariationId && !sub.squareSubscriptionId && process.env.SQUARE_LOCATION_ID) {
+                  const sqSub = await square.createSquareSubscription(
+                    sub.squareCustomerId,
+                    plan.squarePlanVariationId,
+                    process.env.SQUARE_LOCATION_ID
+                  ).catch((e) => { console.warn("[WEBHOOK] Recurring subscription setup failed:", e.message); return null; });
+                  if (sqSub) {
+                    await storage.updateMembershipSubscription(subId, {
+                      squareSubscriptionId: sqSub.id,
+                      currentPeriodEnd: sqSub.charged_through_date ?? undefined,
+                    });
+                    console.log(`[WEBHOOK] Recurring Square subscription ${sqSub.id} created for membership #${subId}`);
+                  }
+                }
               }
             }
           } else if (paymentStatus === "FAILED") {
             const newAttempts = (sub.failedPaymentAttempts ?? 0) + 1;
             const shouldFreeze = newAttempts >= 3;
-
             await storage.updateMembershipSubscription(subId, {
               failedPaymentAttempts: newAttempts,
               ...(shouldFreeze ? { status: "frozen" } : {}),
             });
-
             console.log(`[WEBHOOK] Membership #${subId} payment failed (attempt ${newAttempts})${shouldFreeze ? " — FROZEN" : ""}`);
 
-            // Send push notification to the customer
             const customer = await storage.getCustomerById(sub.customerId).catch(() => null);
             if (customer?.email) {
               const tokens = await storage.getPushTokensByEmail(customer.email).catch(() => [] as { token: string }[]);
               if (tokens.length > 0) {
-                let title: string;
-                let body: string;
-                if (shouldFreeze) {
-                  title = "Membership Suspended";
-                  body = "Your membership benefits have been suspended after 3 failed payments. Please retry payment to restore access.";
-                } else if (newAttempts === 2) {
-                  title = "Payment Failed Again";
-                  body = `Your membership payment failed (attempt ${newAttempts}/3). One more failure will suspend your benefits. Please retry.`;
-                } else {
-                  title = "Membership Payment Failed";
-                  body = "Your membership payment failed. Please retry to keep your benefits active.";
-                }
+                const title = shouldFreeze ? "Membership Suspended" : newAttempts === 2 ? "Payment Failed Again" : "Membership Payment Failed";
+                const body = shouldFreeze
+                  ? "Your membership benefits have been suspended after 3 failed payments. Please retry payment to restore access."
+                  : newAttempts === 2
+                  ? `Your membership payment failed (attempt ${newAttempts}/3). One more failure will suspend your benefits. Please retry.`
+                  : "Your membership payment failed. Please retry to keep your benefits active.";
                 await sendTargetedPush(tokens.map((t: { token: string }) => t.token), title, body).catch(() => {});
               }
             }
@@ -1577,17 +1644,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.log(`[WEBHOOK] £5 deposit payment completed — payment ID: ${payment.id}`);
 
     try {
-      // Strategy 1: match by buyer email (most reliable)
-      const buyerEmail = payment.buyer_email_address as string | undefined;
       let booking: Awaited<ReturnType<typeof storage.getBooking>> | undefined;
 
-      if (buyerEmail) {
-        const byEmail = await storage.getBookingsByEmail(buyerEmail);
-        const pending = byEmail.filter(b => b.status === "pending_deposit");
-        if (pending.length > 0) {
-          // Take the most recently created pending deposit booking for this email
-          booking = pending.sort((a, b) => b.id - a.id)[0];
-          console.log(`[WEBHOOK] Matched booking #${booking.id} by email: ${buyerEmail}`);
+      // Strategy 0: exact match via payment_note booking reference (most reliable)
+      if (paymentNote && paymentNote.startsWith("147-")) {
+        const bookingId = parseInt(paymentNote.replace("147-", "").replace(/^0+/, "") || "0");
+        if (!isNaN(bookingId) && bookingId > 0) {
+          const byRef = await storage.getBooking(bookingId).catch(() => undefined);
+          if (byRef && byRef.status === "pending_deposit") {
+            booking = byRef;
+            console.log(`[WEBHOOK] Matched booking #${booking.id} by reference: ${paymentNote}`);
+          }
+        }
+      }
+
+      // Strategy 1: match by buyer email
+      if (!booking) {
+        const buyerEmail = payment.buyer_email_address as string | undefined;
+        if (buyerEmail) {
+          const byEmail = await storage.getBookingsByEmail(buyerEmail);
+          const pending = byEmail.filter(b => b.status === "pending_deposit");
+          if (pending.length > 0) {
+            booking = pending.sort((a, b) => b.id - a.id)[0];
+            console.log(`[WEBHOOK] Matched booking #${booking.id} by email: ${buyerEmail}`);
+          }
         }
       }
 
@@ -1609,8 +1689,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.sendStatus(200);
       }
 
-      // Confirm the booking
-      await storage.updateBooking(booking.id, { depositPaid: true, status: "confirmed" });
+      // Confirm the booking and store the Square payment ID for future refunds
+      await storage.updateBooking(booking.id, {
+        depositPaid: true,
+        status: "confirmed",
+        squarePaymentId: payment.id ?? null,
+      });
       console.log(`[WEBHOOK] Booking #${booking.id} confirmed automatically after deposit payment`);
 
       // Send confirmation email
@@ -1656,6 +1740,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Redirect to a simple success page (or deep-link back to app)
     const bookingRef = `147-${id.toString().padStart(5, "0")}`;
     res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Deposit Paid</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f9fafb}div{text-align:center;padding:32px}</style></head><body><div><div style="font-size:48px">&#10003;</div><h2 style="color:#16A34A">Deposit Paid</h2><p>Your booking <strong>${bookingRef}</strong> is confirmed.</p><p style="color:#6b7280;font-size:14px">You can close this window and return to The 147 app.</p></div></body></html>`);
+  });
+
+  // Staff: mark a booking as completed and auto-refund any paid deposit
+  app.patch("/api/bookings/:id/complete", staffAuth, async (req, res) => {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const booking = await storage.getBooking(id);
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+
+    let depositRefunded = false;
+    let refundId: string | undefined;
+    let refundError: string | undefined;
+
+    if (booking.depositPaid && booking.squarePaymentId && !booking.depositRefunded) {
+      try {
+        const DEPOSIT_AMOUNT_PENCE = parseInt(process.env.DEPOSIT_AMOUNT_PENCE ?? "500", 10);
+        const refund = await square.createRefund({
+          paymentId: booking.squarePaymentId,
+          amountPence: DEPOSIT_AMOUNT_PENCE,
+          reason: `Booking ${"147-" + id.toString().padStart(5, "0")} completed — deposit returned`,
+          idempotencyKey: `deposit-refund-${id}-${Date.now()}`,
+        });
+        depositRefunded = true;
+        refundId = refund.id;
+        console.log(`[COMPLETE] Deposit refund ${refund.id} issued for booking #${id}`);
+      } catch (refErr: unknown) {
+        const msg = refErr instanceof Error ? refErr.message : String(refErr);
+        refundError = msg;
+        console.error(`[COMPLETE] Deposit refund FAILED for booking #${id}:`, msg);
+      }
+    }
+
+    await storage.updateBooking(id, {
+      status: "completed",
+      ...(depositRefunded ? { depositRefunded: true } : {}),
+    } as Parameters<typeof storage.updateBooking>[1]);
+    res.json({ message: "Booking marked as completed", depositRefunded, refundId, refundError });
   });
 
   app.patch("/api/bookings/:id/status", staffAuth, async (req, res) => {
@@ -2936,22 +3057,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const event = JSON.parse(bodyStr);
       const type: string = event?.type ?? "";
-      const sub = event?.data?.object?.subscription;
-      if (!sub?.id) return res.status(200).send("ok");
-      const existingSubs = await storage.getMembershipSubscriptions();
-      const local = existingSubs.find(s => s.squareSubscriptionId === sub.id);
-      if (!local) return res.status(200).send("ok");
+
+      // subscription.updated / subscription.activated
       if (type === "subscription.updated" || type === "subscription.activated") {
-        const status = sub.status === "ACTIVE" ? "active"
-          : sub.status === "PAUSED" ? "paused"
-          : sub.status === "CANCELED" ? "cancelled"
-          : sub.status === "PENDING" ? "pending" : "active";
-        await storage.updateMembershipSubscription(local.id, {
-          status,
-          currentPeriodStart: sub.charged_through_date ? sub.start_date : local.currentPeriodStart ?? undefined,
-          currentPeriodEnd: sub.charged_through_date ?? undefined,
-        });
+        const sqSub = event?.data?.object?.subscription;
+        if (sqSub?.id) {
+          const existingSubs = await storage.getMembershipSubscriptions();
+          const local = existingSubs.find(s => s.squareSubscriptionId === sqSub.id);
+          if (local) {
+            const status = sqSub.status === "ACTIVE" ? "active"
+              : sqSub.status === "PAUSED" ? "paused"
+              : sqSub.status === "CANCELED" ? "cancelled"
+              : sqSub.status === "PENDING" ? "pending" : "active";
+            await storage.updateMembershipSubscription(local.id, {
+              status,
+              currentPeriodStart: sqSub.start_date ?? local.currentPeriodStart ?? undefined,
+              currentPeriodEnd: sqSub.charged_through_date ?? local.currentPeriodEnd ?? undefined,
+            });
+            console.log(`[MEMBERSHIP WEBHOOK] Synced local #${local.id} → ${status}`);
+          }
+        }
       }
+
+      // invoice.payment_failed — recurring renewal failures
+      if (type === "invoice.payment_failed") {
+        const invoice = event?.data?.object?.invoice;
+        const sqSubId: string | undefined = invoice?.subscription_id;
+        if (sqSubId) {
+          const existingSubs = await storage.getMembershipSubscriptions();
+          const local = existingSubs.find(s => s.squareSubscriptionId === sqSubId);
+          if (local) {
+            const newAttempts = (local.failedPaymentAttempts ?? 0) + 1;
+            const shouldFreeze = newAttempts >= 3;
+            await storage.updateMembershipSubscription(local.id, {
+              failedPaymentAttempts: newAttempts,
+              ...(shouldFreeze ? { status: "frozen" } : {}),
+            });
+            console.log(`[MEMBERSHIP WEBHOOK] Renewal failed for #${local.id} (attempt ${newAttempts})`);
+            const customer = await storage.getCustomerById(local.customerId).catch(() => null);
+            if (customer?.email) {
+              const tokens = await storage.getPushTokensByEmail(customer.email).catch(() => [] as { token: string }[]);
+              if (tokens.length > 0) {
+                const title = shouldFreeze ? "Membership Suspended" : newAttempts === 2 ? "Renewal Failed Again" : "Renewal Payment Failed";
+                const body = shouldFreeze
+                  ? "Your membership has been suspended after 3 failed renewal payments. Please update your payment details."
+                  : newAttempts === 2
+                  ? `Renewal failed (${newAttempts}/3). One more failure will suspend your membership.`
+                  : "Your monthly membership renewal payment failed. Please ensure your card is up to date.";
+                await sendTargetedPush(tokens.map((t: { token: string }) => t.token), title, body).catch(() => {});
+              }
+            }
+          }
+        }
+      }
+
       res.status(200).send("ok");
     } catch {
       res.status(200).send("ok");

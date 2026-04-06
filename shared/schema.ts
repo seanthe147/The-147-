@@ -92,6 +92,8 @@ export const bookings = pgTable("bookings", {
   depositRequired: boolean("deposit_required").notNull().default(false),
   depositPaid: boolean("deposit_paid").notNull().default(false),
   depositPaymentId: text("deposit_payment_id"),
+  squarePaymentId: text("square_payment_id"),
+  depositRefunded: boolean("deposit_refunded").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
