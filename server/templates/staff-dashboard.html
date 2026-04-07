@@ -167,6 +167,14 @@
     .pill-gray{background:#F1F5F9;color:var(--text-2)}
     .pill-purple{background:var(--purple-light);color:var(--purple)}
     .pill-teal{background:#ccf5f0;color:#0d7a6e}
+    .av-day-btn{padding:7px 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;color:#6B7280;transition:all .15s}
+    .av-day-btn.av-day-active{background:var(--blue);border-color:var(--blue);color:#fff}
+    .av-type-btn{padding:7px 14px;border-radius:20px;border:1.5px solid var(--border);background:var(--bg);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;color:#6B7280;transition:all .15s}
+    .av-type-btn.av-type-active{background:var(--blue);border-color:var(--blue);color:#fff}
+    .av-block-row{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px}
+    .av-block-icon{width:36px;height:36px;border-radius:18px;background:#FEF2F2;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px}
+    .av-block-main{font-size:13px;font-weight:600;color:var(--text)}
+    .av-block-sub{font-size:12px;color:var(--text-2);margin-top:2px}
     .b-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
     .b-actions-col{flex-direction:column;align-items:flex-end;gap:6px}
     .b-arrival-row{display:flex;gap:6px}
@@ -371,6 +379,10 @@
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
           Memberships
           <span class="nav-badge hidden" id="membersBadge">0</span>
+        </div>
+        <div class="nav-item hidden" data-page="availability" id="navAvailability">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+          Availability
         </div>
         <div class="nav-section" style="margin-top:8px">Account</div>
         <div class="nav-item" data-page="settings">
@@ -592,6 +604,90 @@
                 <div style="font-size:13px;font-weight:600;color:var(--text-2);margin-bottom:10px">Active Pop-ups</div>
                 <div id="popupsContent"><div class="loading-state"><div class="spinner"></div>Loading…</div></div>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AVAILABILITY PAGE -->
+      <div class="page" id="pageAvailability">
+        <div class="page-body">
+          <div style="max-width:680px;margin:0 auto">
+
+            <div style="margin-bottom:20px">
+              <div class="section-label" style="font-size:11px;font-weight:700;color:#8B9AB0;letter-spacing:.8px;margin-bottom:12px">ADD NEW BLOCK</div>
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px">
+
+                <!-- Mode toggle -->
+                <div style="display:flex;background:#F1F5FB;border-radius:10px;padding:3px;margin-bottom:18px">
+                  <button id="avModeDate" onclick="avSetMode('date')" style="flex:1;padding:8px;border:none;background:#fff;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.08)">Specific Date</button>
+                  <button id="avModeRecur" onclick="avSetMode('recurring')" style="flex:1;padding:8px;border:none;background:transparent;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;color:var(--text-2)">Recurring Weekly</button>
+                </div>
+
+                <!-- Date input -->
+                <div id="avDateField" style="margin-bottom:14px">
+                  <label style="display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:6px">Date</label>
+                  <input type="date" id="avDate" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);box-sizing:border-box">
+                </div>
+
+                <!-- Day of week -->
+                <div id="avDayField" style="margin-bottom:14px;display:none">
+                  <label style="display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:8px">Day of Week</label>
+                  <div style="display:flex;flex-wrap:wrap;gap:6px" id="avDayBtns">
+                    <button onclick="avSelectDay(0)" data-day="0" class="av-day-btn">Sun</button>
+                    <button onclick="avSelectDay(1)" data-day="1" class="av-day-btn av-day-active">Mon</button>
+                    <button onclick="avSelectDay(2)" data-day="2" class="av-day-btn">Tue</button>
+                    <button onclick="avSelectDay(3)" data-day="3" class="av-day-btn">Wed</button>
+                    <button onclick="avSelectDay(4)" data-day="4" class="av-day-btn">Thu</button>
+                    <button onclick="avSelectDay(5)" data-day="5" class="av-day-btn">Fri</button>
+                    <button onclick="avSelectDay(6)" data-day="6" class="av-day-btn">Sat</button>
+                  </div>
+                </div>
+
+                <!-- Time row -->
+                <div style="display:flex;gap:12px;margin-bottom:14px">
+                  <div style="flex:1">
+                    <label style="display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:6px">Start Time <span style="font-weight:400">(optional)</span></label>
+                    <input type="time" id="avStart" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);box-sizing:border-box">
+                  </div>
+                  <div style="flex:1">
+                    <label style="display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:6px">End Time <span style="font-weight:400">(optional)</span></label>
+                    <input type="time" id="avEnd" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);box-sizing:border-box">
+                  </div>
+                </div>
+
+                <!-- Table type -->
+                <div style="margin-bottom:14px">
+                  <label style="display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:8px">Table Type</label>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap" id="avTypeBtns">
+                    <button onclick="avSelectType('')"  data-type=""        class="av-type-btn av-type-active">All Tables</button>
+                    <button onclick="avSelectType('snooker')" data-type="snooker" class="av-type-btn">Snooker</button>
+                    <button onclick="avSelectType('pool')"    data-type="pool"    class="av-type-btn">Pool</button>
+                    <button onclick="avSelectType('dining')"  data-type="dining"  class="av-type-btn">Dining</button>
+                    <button onclick="avSelectType('darts')"   data-type="darts"   class="av-type-btn">Darts</button>
+                  </div>
+                </div>
+
+                <!-- Label -->
+                <div style="margin-bottom:16px">
+                  <label style="display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:6px">Reason / Label <span style="font-weight:400">(optional)</span></label>
+                  <input type="text" id="avLabel" placeholder="e.g. Private event, Maintenance…" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);box-sizing:border-box">
+                </div>
+
+                <div id="avErr" style="display:none;background:#FEF2F2;border-radius:8px;padding:10px;color:#DC2626;font-size:13px;margin-bottom:12px"></div>
+
+                <button onclick="avCreate()" id="avSubmitBtn" class="btn btn-danger" style="width:100%">
+                  🚫 Block This Period
+                </button>
+              </div>
+            </div>
+
+            <div class="section-label" style="font-size:11px;font-weight:700;color:#8B9AB0;letter-spacing:.8px;margin-bottom:12px">ACTIVE BLOCKS</div>
+            <div id="avBlocksList"></div>
+
+            <div style="display:flex;align-items:flex-start;gap:10px;background:#EFF6FF;border-radius:12px;padding:14px;margin-top:8px">
+              <span style="font-size:16px;flex-shrink:0">ℹ️</span>
+              <span style="font-size:12px;color:var(--blue);line-height:1.6">Dining is automatically restricted to Thursday–Sunday, 12pm–8pm as a business rule. Use blocks above for additional closures or event days.</span>
             </div>
           </div>
         </div>
@@ -1288,6 +1384,7 @@
     el('navNotices').classList.toggle('hidden',!isManager);
     el('navStaff').classList.toggle('hidden',!isOwner);
     el('navMemberships').classList.toggle('hidden',!isManager);
+    el('navAvailability').classList.toggle('hidden',!isManager);
     el('popupSection').style.display=isManager?'':'none';
     el('topbarActions').innerHTML=`<button class="btn btn-primary" id="newBookingBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Booking</button>`;
     el('newBookingBtn').addEventListener('click',()=>openBookingModal(null));
@@ -1355,7 +1452,7 @@
   function navigateTo(page){
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page'+cap(page)));
-    const titles={bookings:'Bookings',messages:'Messages',notifications:'Push Notifications',notices:'Staff Notices',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships'};
+    const titles={bookings:'Bookings',messages:'Messages',notifications:'Push Notifications',notices:'Staff Notices',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',availability:'Availability'};
     el('topbarTitle').textContent=titles[page]||'';
     el('topbarSub').textContent='';
     if(page==='bookings'){el('topbarActions').style.display='';loadBookings();loadDashboardNotices();startBookingsPolling();}
@@ -1365,6 +1462,7 @@
     if(page==='notices'){loadNotices();loadPopups();}
     if(page==='staff')loadStaff();
     if(page==='memberships')loadMemberships();
+    if(page==='availability')loadAvailability();
   }
   function cap(s){return s.charAt(0).toUpperCase()+s.slice(1)}
 
@@ -2489,6 +2587,111 @@
   });
 
   /* ── Memberships ── */
+  /* ── Availability / Blocked Periods ── */
+  let avMode='date';
+  let avDay=1;
+  let avType='';
+
+  function avSetMode(m){
+    avMode=m;
+    el('avDateField').style.display=m==='date'?'':'none';
+    el('avDayField').style.display=m==='recurring'?'':'none';
+    el('avModeDate').style.background=m==='date'?'#fff':'transparent';
+    el('avModeDate').style.boxShadow=m==='date'?'0 1px 3px rgba(0,0,0,.08)':'none';
+    el('avModeDate').style.color=m==='date'?'var(--text)':'var(--text-2)';
+    el('avModeRecur').style.background=m==='recurring'?'#fff':'transparent';
+    el('avModeRecur').style.boxShadow=m==='recurring'?'0 1px 3px rgba(0,0,0,.08)':'none';
+    el('avModeRecur').style.color=m==='recurring'?'var(--text)':'var(--text-2)';
+  }
+
+  function avSelectDay(d){
+    avDay=d;
+    document.querySelectorAll('.av-day-btn').forEach(b=>b.classList.toggle('av-day-active',parseInt(b.dataset.day)===d));
+  }
+
+  function avSelectType(t){
+    avType=t;
+    document.querySelectorAll('.av-type-btn').forEach(b=>b.classList.toggle('av-type-active',b.dataset.type===t));
+  }
+
+  function avFormatLabel(b){
+    const DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const tableStr=b.tableType?b.tableType.charAt(0).toUpperCase()+b.tableType.slice(1):'All tables';
+    const timeStr=b.startTime&&b.endTime?` · ${b.startTime}–${b.endTime}`:b.startTime?` · from ${b.startTime}`:b.endTime?` · until ${b.endTime}`:' · All day';
+    if(b.date){
+      const d=new Date(b.date+'T00:00:00');
+      const ds=d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+      return ds+timeStr+' · '+tableStr;
+    }
+    if(b.dayOfWeek!=null)return'Every '+DAYS[b.dayOfWeek]+timeStr+' · '+tableStr;
+    return tableStr+timeStr;
+  }
+
+  async function loadAvailability(){
+    el('avBlocksList').innerHTML='<div class="loading-state"><div class="spinner"></div>Loading…</div>';
+    try{
+      const r=await api('/api/blocked-periods');
+      if(!r.ok){el('avBlocksList').innerHTML='<div class="empty-state">Failed to load</div>';return;}
+      const blocks=await r.json();
+      renderAvBlocks(blocks);
+    }catch(e){if(e.message!=='Session expired')el('avBlocksList').innerHTML='<div class="empty-state">Network error</div>';}
+  }
+
+  function renderAvBlocks(blocks){
+    if(!blocks.length){
+      el('avBlocksList').innerHTML='<div class="av-block-row" style="justify-content:center;color:var(--text-2);font-size:14px">✅ No blocks active — all times are open</div>';
+      return;
+    }
+    el('avBlocksList').innerHTML=blocks.map(b=>`
+      <div class="av-block-row">
+        <div class="av-block-icon">${b.dayOfWeek!=null?'🔁':'📅'}</div>
+        <div style="flex:1">
+          <div class="av-block-main">${esc(avFormatLabel(b))}</div>
+          ${b.label?`<div class="av-block-sub">${esc(b.label)}</div>`:''}
+        </div>
+        <button onclick="avDelete(${b.id},'${esc(avFormatLabel(b))}')" class="btn btn-danger btn-sm" style="flex-shrink:0">Remove</button>
+      </div>
+    `).join('');
+  }
+
+  async function avCreate(){
+    const errEl=el('avErr');
+    errEl.style.display='none';
+    const date=avMode==='date'?el('avDate').value:'';
+    const startTime=el('avStart').value;
+    const endTime=el('avEnd').value;
+    const label=el('avLabel').value.trim();
+    if(avMode==='date'&&!date){errEl.textContent='Please select a date.';errEl.style.display='';return;}
+    const body={
+      date:avMode==='date'?date:null,
+      dayOfWeek:avMode==='recurring'?avDay:null,
+      startTime:startTime||null,
+      endTime:endTime||null,
+      tableType:avType||null,
+      label:label||null,
+    };
+    el('avSubmitBtn').disabled=true;
+    el('avSubmitBtn').textContent='Saving…';
+    try{
+      const r=await api('/api/blocked-periods',{method:'POST',body:JSON.stringify(body)});
+      if(!r.ok){const d=await r.json();errEl.textContent=d.message||'Failed to save';errEl.style.display='';return;}
+      el('avDate').value='';el('avStart').value='';el('avEnd').value='';el('avLabel').value='';
+      avSelectType('');
+      toast('Block saved','success');
+      loadAvailability();
+    }catch(e){if(e.message!=='Session expired'){errEl.textContent='Network error';errEl.style.display='';}}
+    finally{el('avSubmitBtn').disabled=false;el('avSubmitBtn').textContent='🚫 Block This Period';}
+  }
+
+  async function avDelete(id,label){
+    if(!confirm('Remove this block?\n\n'+label))return;
+    try{
+      const r=await api('/api/blocked-periods/'+id,{method:'DELETE'});
+      if(!r.ok){toast('Failed to remove','error');return;}
+      toast('Block removed','success');loadAvailability();
+    }catch(e){if(e.message!=='Session expired')toast('Network error','error');}
+  }
+
   let membershipsData={plans:[],subs:[]};
 
   const TIER_COLORS={rack:'var(--blue)',century:'var(--gold)',maximum:'var(--green)'};
