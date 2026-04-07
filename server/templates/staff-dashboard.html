@@ -147,6 +147,9 @@
     .booking-card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
     .booking-card.cancelled{border-left-color:var(--text-3);opacity:.65}
     .booking-card.pending{border-left-color:var(--amber)}
+    .booking-card.arrived{border-left-color:var(--green);background:rgba(22,163,74,.04)}
+    .booking-card.noshow{border-left-color:var(--text-3);opacity:.6}
+    .b-arrived-label{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--green);background:rgba(22,163,74,.1);border:1px solid rgba(22,163,74,.2);padding:5px 11px;border-radius:var(--r);white-space:nowrap}
     @keyframes newBookingFlash{0%{background:#d1fae5;border-color:#4ade80}60%{background:#d1fae5;border-color:#4ade80}100%{background:var(--surface);border-color:var(--border)}}
     .booking-card.new-flash{animation:newBookingFlash 2s ease-out forwards}
     .booking-time-col{text-align:center}
@@ -1588,9 +1591,21 @@
       const isCanc=b.status==='cancelled';
       const isPendDeposit=b.status==='pending_deposit';
       const isPend=!b.status||b.status==='pending';
-      const isConf=!isCanc&&!isPend&&!isPendDeposit;
-      const cardClass='booking-card'+(isCanc?' cancelled':(isPend||isPendDeposit)?' pending':'');
-      const statusPill=isCanc?'<span class="pill pill-gray">Cancelled</span>':isPendDeposit?'<span class="pill pill-amber">⏳ Deposit Pending</span>':isPend?'<span class="pill pill-amber">Pending</span>':'<span class="pill pill-green">Confirmed</span>';
+      const isArrived=b.status==='completed';
+      const isNoShow=b.status==='noshow';
+      const isConf=!isCanc&&!isPend&&!isPendDeposit&&!isArrived&&!isNoShow;
+      const cardClass='booking-card'+(isCanc?' cancelled':isArrived?' arrived':isNoShow?' noshow':(isPend||isPendDeposit)?' pending':'');
+      const statusPill=isCanc
+        ?'<span class="pill pill-gray">Cancelled</span>'
+        :isArrived
+          ?'<span class="pill pill-green">✓ Arrived</span>'
+          :isNoShow
+            ?'<span class="pill pill-gray">No Show</span>'
+            :isPendDeposit
+              ?'<span class="pill pill-amber">⏳ Deposit Pending</span>'
+              :isPend
+                ?'<span class="pill pill-amber">Pending</span>'
+                :'<span class="pill pill-green">Confirmed</span>';
       const typePill=b.tableType==='snooker'?'pill-blue':b.tableType==='pool'?'pill-purple':'pill-gold';
       const tableLabel=cap(b.tableType)+((b.tableType==='snooker'||b.tableType==='pool')&&b.tableNumber?' #'+b.tableNumber:'');
       html+=`<div class="${cardClass}">
@@ -1608,14 +1623,16 @@
           </div>
           ${b.notes?`<div class="b-notes">${esc(b.notes)}</div>`:''}
         </div>
-        <div class="b-actions${isConf?' b-actions-col':''}">
+        <div class="b-actions${isConf||isArrived||isNoShow?' b-actions-col':''}">
           ${isConf?`<div class="b-arrival-row">
             <button class="btn btn-success btn-sm" data-id="${b.id}" data-action="showed-up">✓ Showed Up</button>
             <button class="btn btn-warning btn-sm" data-id="${b.id}" data-action="no-show">No Show</button>
           </div>`:''}
+          ${isArrived?`<div class="b-arrival-row"><span class="b-arrived-label">✓ Arrived</span></div>`:''}
+          ${isNoShow?`<div class="b-arrival-row"><span style="font-size:12px;color:var(--text-3);font-weight:600">No Show</span></div>`:''}
           <div class="b-arrival-row">
             <button class="btn btn-secondary btn-sm" data-id="${b.id}" data-action="edit">Edit</button>
-            ${!isCanc?`<button class="btn btn-warning btn-sm" data-id="${b.id}" data-action="cancel">Cancel</button>`:''}
+            ${!isCanc&&!isArrived&&!isNoShow?`<button class="btn btn-warning btn-sm" data-id="${b.id}" data-action="cancel">Cancel</button>`:''}
             ${isManager?`<button class="btn btn-danger btn-sm" data-id="${b.id}" data-action="delete">Delete</button>`:''}
           </div>
         </div>
