@@ -2692,6 +2692,13 @@
     }catch(e){if(e.message!=='Session expired')toast('Network error','error');}
   }
 
+  /* expose availability fns to global scope for onclick= attributes */
+  window.avSetMode=avSetMode;
+  window.avSelectDay=avSelectDay;
+  window.avSelectType=avSelectType;
+  window.avCreate=avCreate;
+  window.avDelete=avDelete;
+
   let membershipsData={plans:[],subs:[]};
 
   const TIER_COLORS={rack:'var(--blue)',century:'var(--gold)',maximum:'var(--green)'};
