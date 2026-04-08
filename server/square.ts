@@ -651,7 +651,10 @@ export async function createOrderCheckoutLink(
         quantity: String(item.quantity),
         base_price_money: { amount: item.price, currency: "GBP" },
       })),
-      ...(tableNote ? { note: `Table ${tableNote}` } : {}),
+      ...(tableNote ? {
+        note: `TABLE ${tableNote}`,
+        reference_id: `TABLE-${tableNote}`,
+      } : {}),
     },
     checkout_options: {
       allow_tipping: false,

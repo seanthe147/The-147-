@@ -13,7 +13,6 @@ import {
   Pressable,
   FlatList,
   ScrollView,
-  TextInput,
   ActivityIndicator,
   Modal,
   Linking,
@@ -33,6 +32,8 @@ const FOOD_CATEGORIES = new Set([
   "Loaded Fries Menu", "Pastas", "Panini", "Toasties", "Build Your Own Pizza",
   "Sides", "Kids Mains", "Kids Puddings", "Puddings",
 ]);
+
+const TABLE_NUMBERS = Array.from({ length: 20 }, (_, i) => i + 1);
 
 function formatPrice(pence: number) {
   return `£${(pence / 100).toFixed(2)}`;
@@ -193,18 +194,38 @@ function CartSheet({
               ItemSeparatorComponent={() => <View style={styles.cartDivider} />}
             />
 
-            <View style={styles.tableRow}>
-              <Ionicons name="location-outline" size={16} color={Colors.light.textSecondary} />
-              <TextInput
-                style={styles.tableInput}
-                placeholder="Table number (optional)"
-                placeholderTextColor={Colors.light.textSecondary}
-                value={tableNote}
-                onChangeText={setTableNote}
-                keyboardType="number-pad"
-                maxLength={3}
-                returnKeyType="done"
-              />
+            <View style={styles.tablePicker}>
+              <View style={styles.tablePickerHeader}>
+                <Ionicons name="grid-outline" size={15} color={Colors.light.textSecondary} />
+                <Text style={styles.tablePickerLabel}>
+                  {tableNote ? `Table ${tableNote} selected` : "Select your table (optional)"}
+                </Text>
+                {!!tableNote && (
+                  <Pressable onPress={() => setTableNote("")} hitSlop={8}>
+                    <Ionicons name="close-circle" size={16} color={Colors.light.textSecondary} />
+                  </Pressable>
+                )}
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.tableNumRow}
+              >
+                {TABLE_NUMBERS.map((n) => {
+                  const selected = tableNote === String(n);
+                  return (
+                    <Pressable
+                      key={n}
+                      onPress={() => setTableNote(selected ? "" : String(n))}
+                      style={[styles.tableNumBtn, selected && styles.tableNumBtnSelected]}
+                    >
+                      <Text style={[styles.tableNumText, selected && styles.tableNumTextSelected]}>
+                        {n}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
             </View>
 
             <View style={styles.cartTotal}>
@@ -742,22 +763,54 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: Colors.light.border,
   },
-  tableRow: {
-    flexDirection: "row",
-    alignItems: "center",
+  tablePicker: {
     marginHorizontal: 20,
     marginTop: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
     backgroundColor: Colors.light.surfaceElevated,
     borderRadius: 12,
-    gap: 8,
+    overflow: "hidden",
   },
-  tableInput: {
+  tablePickerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingTop: 11,
+    paddingBottom: 8,
+    gap: 7,
+  },
+  tablePickerLabel: {
     flex: 1,
-    fontFamily: "Montserrat_400Regular",
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+  },
+  tableNumRow: {
+    paddingHorizontal: 14,
+    paddingBottom: 12,
+    gap: 8,
+    flexDirection: "row",
+  },
+  tableNumBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: Colors.light.surface,
+    borderWidth: 1.5,
+    borderColor: Colors.light.border,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  tableNumBtnSelected: {
+    backgroundColor: Colors.brand.blue,
+    borderColor: Colors.brand.blue,
+  },
+  tableNumText: {
+    fontFamily: "Montserrat_700Bold",
     fontSize: 14,
     color: Colors.light.text,
+  },
+  tableNumTextSelected: {
+    color: "#fff",
   },
   cartTotal: {
     flexDirection: "row",
