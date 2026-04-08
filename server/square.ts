@@ -381,9 +381,12 @@ export async function createCatalogSubscriptionPlan(opts: {
                     phases: [
                       {
                         cadence: "MONTHLY",
-                        recurring_price_money: {
-                          amount: opts.amountPence,
-                          currency: "GBP",
+                        pricing: {
+                          type: "STATIC",
+                          price_money: {
+                            amount: opts.amountPence,
+                            currency: "GBP",
+                          },
                         },
                       },
                     ],
