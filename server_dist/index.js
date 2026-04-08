@@ -1197,7 +1197,138 @@ async function createRefund(opts) {
   return data.refund;
 }
 
+// server/ticketsource.ts
+var cachedEvents = [];
+var lastFetchTime = 0;
+var CACHE_DURATION_MS = 10 * 60 * 1e3;
+async function fetchTicketSourceEvents() {
+  const now = Date.now();
+  if (cachedEvents.length > 0 && now - lastFetchTime < CACHE_DURATION_MS) {
+    return cachedEvents;
+  }
+  const apiKey = process.env.TICKETSOURCE_API_KEY;
+  if (!apiKey) {
+    console.log("TICKETSOURCE_API_KEY not set, returning cached/empty events");
+    return cachedEvents;
+  }
+  try {
+    const eventsRes = await fetch("https://api.ticketsource.io/events?per_page=100", {
+      headers: { Authorization: `Bearer ${apiKey}` }
+    });
+    if (!eventsRes.ok) {
+      console.error("TicketSource events fetch failed:", eventsRes.status, await eventsRes.text());
+      return cachedEvents;
+    }
+    const eventsData = await eventsRes.json();
+    const tsEvents = eventsData.data || [];
+    const allAppEvents = [];
+    for (const event of tsEvents) {
+      if (event.attributes.status === "archived") continue;
+      try {
+        const datesRes = await fetch(
+          `https://api.ticketsource.io/events/${event.id}/dates?per_page=100`,
+          { headers: { Authorization: `Bearer ${apiKey}` } }
+        );
+        if (!datesRes.ok) continue;
+        const datesData = await datesRes.json();
+        const dates = datesData.data || [];
+        if (dates.length === 0) {
+          allAppEvents.push({
+            id: event.id,
+            title: event.attributes.name,
+            description: event.attributes.description || "",
+            date: "",
+            time: "",
+            endDate: null,
+            endTime: null,
+            status: event.attributes.status,
+            isSoldOut: false,
+            ticketUrl: event.attributes.url || `https://www.ticketsource.com/the147`,
+            capacity: null,
+            availableCapacity: null
+          });
+        } else {
+          for (const d of dates) {
+            allAppEvents.push({
+              id: `${event.id}_${d.id}`,
+              title: event.attributes.name,
+              description: event.attributes.description || "",
+              date: d.attributes.date || "",
+              time: d.attributes.time || "",
+              endDate: d.attributes.end_date || null,
+              endTime: d.attributes.end_time || null,
+              status: d.attributes.status || event.attributes.status,
+              isSoldOut: d.attributes.is_sold_out || false,
+              ticketUrl: event.attributes.url || `https://www.ticketsource.com/the147`,
+              capacity: d.attributes.total_capacity ?? null,
+              availableCapacity: d.attributes.available_capacity ?? null
+            });
+          }
+        }
+      } catch (err) {
+        console.error(`Error fetching dates for event ${event.id}:`, err);
+        allAppEvents.push({
+          id: event.id,
+          title: event.attributes.name,
+          description: event.attributes.description || "",
+          date: "",
+          time: "",
+          endDate: null,
+          endTime: null,
+          status: event.attributes.status,
+          isSoldOut: false,
+          ticketUrl: event.attributes.url || `https://www.ticketsource.com/the147`,
+          capacity: null,
+          availableCapacity: null
+        });
+      }
+    }
+    allAppEvents.sort((a, b) => {
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      const dateCompare = a.date.localeCompare(b.date);
+      if (dateCompare !== 0) return dateCompare;
+      return (a.time || "").localeCompare(b.time || "");
+    });
+    cachedEvents = allAppEvents;
+    lastFetchTime = now;
+    console.log(`TicketSource: fetched ${allAppEvents.length} event dates from ${tsEvents.length} events`);
+    return allAppEvents;
+  } catch (err) {
+    console.error("TicketSource fetch error:", err);
+    return cachedEvents;
+  }
+}
+
 // server/routes.ts
+function tsIdToNumber(tsId) {
+  let hash = 5381;
+  for (let i = 0; i < tsId.length; i++) {
+    hash = (hash << 5) + hash + tsId.charCodeAt(i);
+    hash = hash & hash;
+  }
+  return Math.abs(hash) + 1e6;
+}
+function mapTsEvent(e) {
+  return {
+    id: tsIdToNumber(e.id),
+    title: e.title,
+    description: e.description || null,
+    date: e.date || null,
+    time: e.time || null,
+    endTime: e.endTime || null,
+    ticketUrl: e.ticketUrl || null,
+    imageColor: "#0047AB",
+    active: true,
+    eventType: "event",
+    dayOfWeek: null,
+    isSoldOut: e.isSoldOut,
+    capacity: e.capacity,
+    availableCapacity: e.availableCapacity,
+    createdAt: /* @__PURE__ */ new Date(),
+    source: "ticketsource"
+  };
+}
 var uploadsDir = path.resolve(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
@@ -2929,6 +3060,24 @@ async function registerRoutes(app2) {
   app2.get("/api/events", async (req, res) => {
     try {
       const eventType = req.query.type;
+      if (eventType === "weekly") {
+        const weeklyEvents = await storage.getActiveEvents("weekly");
+        return res.json(weeklyEvents);
+      }
+      if (!eventType || eventType === "event") {
+        const tsEvents = await fetchTicketSourceEvents();
+        if (tsEvents.length > 0) {
+          const mapped = tsEvents.map(mapTsEvent);
+          mapped.sort((a, b) => {
+            if (!a.date) return 1;
+            if (!b.date) return -1;
+            return a.date.localeCompare(b.date) || (a.time || "").localeCompare(b.time || "");
+          });
+          return res.json(mapped);
+        }
+        const dbEvents = await storage.getActiveEvents(eventType);
+        return res.json(dbEvents);
+      }
       const allEvents = await storage.getActiveEvents(eventType);
       res.json(allEvents);
     } catch (err) {

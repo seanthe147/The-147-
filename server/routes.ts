@@ -10,6 +10,37 @@ import { storage } from "./storage";
 import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema } from "@shared/schema";
 import { hashPin, verifyPin } from "./encryption";
 import * as square from "./square";
+import { fetchTicketSourceEvents, type AppEvent } from "./ticketsource";
+
+function tsIdToNumber(tsId: string): number {
+  let hash = 5381;
+  for (let i = 0; i < tsId.length; i++) {
+    hash = ((hash << 5) + hash) + tsId.charCodeAt(i);
+    hash = hash & hash;
+  }
+  return Math.abs(hash) + 1_000_000;
+}
+
+function mapTsEvent(e: AppEvent) {
+  return {
+    id: tsIdToNumber(e.id),
+    title: e.title,
+    description: e.description || null,
+    date: e.date || null,
+    time: e.time || null,
+    endTime: e.endTime || null,
+    ticketUrl: e.ticketUrl || null,
+    imageColor: "#0047AB",
+    active: true,
+    eventType: "event",
+    dayOfWeek: null,
+    isSoldOut: e.isSoldOut,
+    capacity: e.capacity,
+    availableCapacity: e.availableCapacity,
+    createdAt: new Date(),
+    source: "ticketsource",
+  };
+}
 
 const uploadsDir = path.resolve(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) {
@@ -1982,6 +2013,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/events", async (req, res) => {
     try {
       const eventType = req.query.type as string | undefined;
+
+      // Weekly events always come from the DB (manually managed)
+      if (eventType === "weekly") {
+        const weeklyEvents = await storage.getActiveEvents("weekly");
+        return res.json(weeklyEvents);
+      }
+
+      // One-off events: try Ticket Source first, fall back to DB
+      if (!eventType || eventType === "event") {
+        const tsEvents = await fetchTicketSourceEvents();
+        if (tsEvents.length > 0) {
+          const mapped = tsEvents.map(mapTsEvent);
+          // Sort by date ascending, undated events last
+          mapped.sort((a, b) => {
+            if (!a.date) return 1;
+            if (!b.date) return -1;
+            return a.date.localeCompare(b.date) || (a.time || "").localeCompare(b.time || "");
+          });
+          return res.json(mapped);
+        }
+        // Ticket Source not configured or returned nothing — fall back to DB
+        const dbEvents = await storage.getActiveEvents(eventType);
+        return res.json(dbEvents);
+      }
+
       const allEvents = await storage.getActiveEvents(eventType);
       res.json(allEvents);
     } catch (err) {
