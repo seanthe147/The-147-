@@ -4,10 +4,15 @@ interface TicketSourceEvent {
   attributes: {
     name: string;
     description: string;
-    status: string;
-    url: string;
-    created_at: string;
-    updated_at: string;
+    status?: string;
+    archived: boolean;
+    activated: boolean;
+    url?: string;
+    images?: { type: string; src: string }[];
+  };
+  links: {
+    self: string;
+    dates: string;
   };
 }
 
@@ -15,14 +20,15 @@ interface TicketSourceDate {
   id: string;
   type: string;
   attributes: {
-    date: string;
-    time: string;
-    end_date: string | null;
-    end_time: string | null;
-    status: string;
-    is_sold_out: boolean;
-    total_capacity: number | null;
-    available_capacity: number | null;
+    start: string;
+    end: string | null;
+    on_sale: boolean;
+    cancelled: boolean;
+    public: boolean;
+  };
+  links: {
+    book_now?: string;
+    self?: string;
   };
 }
 
@@ -37,6 +43,7 @@ export interface AppEvent {
   status: string;
   isSoldOut: boolean;
   ticketUrl: string;
+  imageUrl: string | null;
   capacity: number | null;
   availableCapacity: number | null;
 }
@@ -44,6 +51,14 @@ export interface AppEvent {
 let cachedEvents: AppEvent[] = [];
 let lastFetchTime = 0;
 const CACHE_DURATION_MS = 10 * 60 * 1000;
+
+function parseIso(iso: string): { date: string; time: string } {
+  // "2026-10-03T18:00:00+00:00" → date="2026-10-03", time="18:00"
+  const d = new Date(iso);
+  const date = d.toISOString().slice(0, 10);
+  const time = d.toISOString().slice(11, 16);
+  return { date, time };
+}
 
 export async function fetchTicketSourceEvents(): Promise<AppEvent[]> {
   const now = Date.now();
@@ -73,7 +88,12 @@ export async function fetchTicketSourceEvents(): Promise<AppEvent[]> {
     const allAppEvents: AppEvent[] = [];
 
     for (const event of tsEvents) {
-      if (event.attributes.status === "archived") continue;
+      if (event.attributes.archived) continue;
+      if (!event.attributes.activated) continue;
+
+      const imageUrl = event.attributes.images?.find(i => i.type === "banner")?.src
+        ?? event.attributes.images?.[0]?.src
+        ?? null;
 
       try {
         const datesRes = await fetch(
@@ -86,7 +106,11 @@ export async function fetchTicketSourceEvents(): Promise<AppEvent[]> {
         const datesData = await datesRes.json();
         const dates: TicketSourceDate[] = datesData.data || [];
 
-        if (dates.length === 0) {
+        // Filter out cancelled/non-public dates
+        const activeDates = dates.filter(d => !d.attributes.cancelled && d.attributes.public);
+
+        if (activeDates.length === 0) {
+          // Event with no upcoming dates — skip (or include with no date)
           allAppEvents.push({
             id: event.id,
             title: event.attributes.name,
@@ -95,46 +119,38 @@ export async function fetchTicketSourceEvents(): Promise<AppEvent[]> {
             time: "",
             endDate: null,
             endTime: null,
-            status: event.attributes.status,
+            status: "on_sale",
             isSoldOut: false,
-            ticketUrl: event.attributes.url || `https://www.ticketsource.com/the147`,
+            ticketUrl: `https://www.ticketsource.com/the147`,
+            imageUrl,
             capacity: null,
             availableCapacity: null,
           });
         } else {
-          for (const d of dates) {
+          for (const d of activeDates) {
+            const { date, time } = parseIso(d.attributes.start);
+            const endParsed = d.attributes.end ? parseIso(d.attributes.end) : null;
+            const bookUrl = d.links?.book_now || `https://www.ticketsource.com/the147`;
+
             allAppEvents.push({
               id: `${event.id}_${d.id}`,
               title: event.attributes.name,
               description: event.attributes.description || "",
-              date: d.attributes.date || "",
-              time: d.attributes.time || "",
-              endDate: d.attributes.end_date || null,
-              endTime: d.attributes.end_time || null,
-              status: d.attributes.status || event.attributes.status,
-              isSoldOut: d.attributes.is_sold_out || false,
-              ticketUrl: event.attributes.url || `https://www.ticketsource.com/the147`,
-              capacity: d.attributes.total_capacity ?? null,
-              availableCapacity: d.attributes.available_capacity ?? null,
+              date,
+              time,
+              endDate: endParsed?.date ?? null,
+              endTime: endParsed?.time ?? null,
+              status: d.attributes.on_sale ? "on_sale" : "sold_out",
+              isSoldOut: !d.attributes.on_sale,
+              ticketUrl: bookUrl,
+              imageUrl,
+              capacity: null,
+              availableCapacity: null,
             });
           }
         }
       } catch (err) {
         console.error(`Error fetching dates for event ${event.id}:`, err);
-        allAppEvents.push({
-          id: event.id,
-          title: event.attributes.name,
-          description: event.attributes.description || "",
-          date: "",
-          time: "",
-          endDate: null,
-          endTime: null,
-          status: event.attributes.status,
-          isSoldOut: false,
-          ticketUrl: event.attributes.url || `https://www.ticketsource.com/the147`,
-          capacity: null,
-          availableCapacity: null,
-        });
       }
     }
 

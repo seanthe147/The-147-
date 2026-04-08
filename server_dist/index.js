@@ -1201,6 +1201,12 @@ async function createRefund(opts) {
 var cachedEvents = [];
 var lastFetchTime = 0;
 var CACHE_DURATION_MS = 10 * 60 * 1e3;
+function parseIso(iso) {
+  const d = new Date(iso);
+  const date = d.toISOString().slice(0, 10);
+  const time = d.toISOString().slice(11, 16);
+  return { date, time };
+}
 async function fetchTicketSourceEvents() {
   const now = Date.now();
   if (cachedEvents.length > 0 && now - lastFetchTime < CACHE_DURATION_MS) {
@@ -1223,7 +1229,9 @@ async function fetchTicketSourceEvents() {
     const tsEvents = eventsData.data || [];
     const allAppEvents = [];
     for (const event of tsEvents) {
-      if (event.attributes.status === "archived") continue;
+      if (event.attributes.archived) continue;
+      if (!event.attributes.activated) continue;
+      const imageUrl = event.attributes.images?.find((i) => i.type === "banner")?.src ?? event.attributes.images?.[0]?.src ?? null;
       try {
         const datesRes = await fetch(
           `https://api.ticketsource.io/events/${event.id}/dates?per_page=100`,
@@ -1232,7 +1240,8 @@ async function fetchTicketSourceEvents() {
         if (!datesRes.ok) continue;
         const datesData = await datesRes.json();
         const dates = datesData.data || [];
-        if (dates.length === 0) {
+        const activeDates = dates.filter((d) => !d.attributes.cancelled && d.attributes.public);
+        if (activeDates.length === 0) {
           allAppEvents.push({
             id: event.id,
             title: event.attributes.name,
@@ -1241,46 +1250,37 @@ async function fetchTicketSourceEvents() {
             time: "",
             endDate: null,
             endTime: null,
-            status: event.attributes.status,
+            status: "on_sale",
             isSoldOut: false,
-            ticketUrl: event.attributes.url || `https://www.ticketsource.com/the147`,
+            ticketUrl: `https://www.ticketsource.com/the147`,
+            imageUrl,
             capacity: null,
             availableCapacity: null
           });
         } else {
-          for (const d of dates) {
+          for (const d of activeDates) {
+            const { date, time } = parseIso(d.attributes.start);
+            const endParsed = d.attributes.end ? parseIso(d.attributes.end) : null;
+            const bookUrl = d.links?.book_now || `https://www.ticketsource.com/the147`;
             allAppEvents.push({
               id: `${event.id}_${d.id}`,
               title: event.attributes.name,
               description: event.attributes.description || "",
-              date: d.attributes.date || "",
-              time: d.attributes.time || "",
-              endDate: d.attributes.end_date || null,
-              endTime: d.attributes.end_time || null,
-              status: d.attributes.status || event.attributes.status,
-              isSoldOut: d.attributes.is_sold_out || false,
-              ticketUrl: event.attributes.url || `https://www.ticketsource.com/the147`,
-              capacity: d.attributes.total_capacity ?? null,
-              availableCapacity: d.attributes.available_capacity ?? null
+              date,
+              time,
+              endDate: endParsed?.date ?? null,
+              endTime: endParsed?.time ?? null,
+              status: d.attributes.on_sale ? "on_sale" : "sold_out",
+              isSoldOut: !d.attributes.on_sale,
+              ticketUrl: bookUrl,
+              imageUrl,
+              capacity: null,
+              availableCapacity: null
             });
           }
         }
       } catch (err) {
         console.error(`Error fetching dates for event ${event.id}:`, err);
-        allAppEvents.push({
-          id: event.id,
-          title: event.attributes.name,
-          description: event.attributes.description || "",
-          date: "",
-          time: "",
-          endDate: null,
-          endTime: null,
-          status: event.attributes.status,
-          isSoldOut: false,
-          ticketUrl: event.attributes.url || `https://www.ticketsource.com/the147`,
-          capacity: null,
-          availableCapacity: null
-        });
       }
     }
     allAppEvents.sort((a, b) => {
@@ -1319,6 +1319,7 @@ function mapTsEvent(e) {
     endTime: e.endTime || null,
     ticketUrl: e.ticketUrl || null,
     imageColor: "#0047AB",
+    imageUrl: e.imageUrl || null,
     active: true,
     eventType: "event",
     dayOfWeek: null,

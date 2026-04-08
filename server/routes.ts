@@ -31,6 +31,7 @@ function mapTsEvent(e: AppEvent) {
     endTime: e.endTime || null,
     ticketUrl: e.ticketUrl || null,
     imageColor: "#0047AB",
+    imageUrl: e.imageUrl || null,
     active: true,
     eventType: "event",
     dayOfWeek: null,
