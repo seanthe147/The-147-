@@ -3237,7 +3237,7 @@
           loadMemberships();
           return;
         }
-        const {url}=await lr.json();
+        const {url,emailSent}=await lr.json();
         // Show result in modal
         el('amFormFields').style.display='none';
         el('amPaymentGrid').style.display='none';
@@ -3246,6 +3246,10 @@
         el('amLinkUrl').value=url;
         el('amLinkOpen').href=url;
         el('amLinkQr').src=`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(url)}&size=200x200&margin=8&color=166534`;
+        // Update result title to show email status
+        el('amLinkResult').querySelector('div').textContent=emailSent
+          ?'✅ Member added — payment link sent to their email'
+          :'✅ Member added — share this payment link';
         el('amLinkResult').style.display='block';
         el('amSaveBtn').textContent='Done';
         el('amSaveBtn').disabled=false;

@@ -295,6 +295,66 @@ async function sendDepositLinkEmail(booking: {
   return false;
 }
 
+async function sendMembershipPaymentLinkEmail(opts: {
+  customerName: string;
+  customerEmail: string;
+  planName: string;
+  priceMonthly: number;
+  paymentUrl: string;
+}): Promise<boolean> {
+  const price = `£${(opts.priceMonthly / 100).toFixed(2)}`;
+  const subject = `Your ${opts.planName} Membership — Payment Required`;
+  const html = `<div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px; background: #ffffff;">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="color: #0A1628; font-size: 24px; margin: 0;">The 147</h1>
+      <p style="color: #6b7280; font-size: 13px; margin: 4px 0 0;">Snooker, Bar &amp; Restaurant</p>
+    </div>
+    <div style="background: #EFF6FF; border: 1.5px solid #BFDBFE; border-radius: 12px; padding: 16px; text-align: center; margin-bottom: 24px;">
+      <span style="font-size: 28px;">🎱</span>
+      <h2 style="color: #1E40AF; font-size: 18px; margin: 8px 0 0;">${escHtml(opts.planName)} Membership</h2>
+    </div>
+    <p style="color: #374151; font-size: 15px;">Hi ${escHtml(opts.customerName)},</p>
+    <p style="color: #374151; font-size: 15px;">Welcome to The 147! Your <strong>${escHtml(opts.planName)} Membership</strong> has been set up by our team.</p>
+    <p style="color: #374151; font-size: 15px;">To activate your membership, please complete your first payment of <strong>${price}/month</strong> using the secure link below.</p>
+    <div style="text-align: center; margin: 28px 0;">
+      <a href="${opts.paymentUrl}" style="display: inline-block; background: #0047AB; color: #fff; font-size: 16px; font-weight: 700; padding: 14px 32px; border-radius: 12px; text-decoration: none;">Pay ${price} &amp; Activate →</a>
+    </div>
+    <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; margin: 20px 0;">
+      <table style="width: 100%; border-collapse: collapse;">
+        <tr><td style="padding: 8px 0; color: #6b7280; font-size: 13px; font-weight: 600;">Membership</td><td style="padding: 8px 0; color: #0A1628; font-size: 14px; font-weight: 700; text-align: right;">${escHtml(opts.planName)}</td></tr>
+        <tr><td style="padding: 8px 0; color: #6b7280; font-size: 13px; font-weight: 600;">Monthly Price</td><td style="padding: 8px 0; color: #0047AB; font-size: 14px; font-weight: 700; text-align: right;">${price}/month</td></tr>
+      </table>
+    </div>
+    <p style="color: #374151; font-size: 13px; line-height: 1.6;">Your membership will be activated as soon as payment is received. If you have any questions please don't hesitate to get in touch.</p>
+    <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 12px; text-align: center;">The 147 &mdash; Snooker, Bar &amp; Restaurant<br/>www.the147.co.uk</p>
+  </div>`;
+
+  const smtpSent = await sendEmailViaSMTP(opts.customerEmail, subject, html);
+  if (smtpSent) {
+    console.log(`[MEMBERSHIP] Payment link email sent via SMTP to ${opts.customerEmail}`);
+    return true;
+  }
+  const resendKey = process.env.RESEND_API_KEY;
+  if (resendKey) {
+    const fromEmail = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+    const fromName = process.env.RESEND_FROM_NAME || "The 147";
+    try {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+        body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: opts.customerEmail, subject, html }),
+      });
+      if (response.ok) {
+        console.log(`[MEMBERSHIP] Payment link email sent via Resend to ${opts.customerEmail}`);
+        return true;
+      }
+    } catch (_) {}
+  }
+  console.warn(`[MEMBERSHIP] Payment link email failed for ${opts.customerEmail}`);
+  return false;
+}
+
 async function sendBookingConfirmationEmail(booking: {
   customerName: string;
   customerEmail: string;
@@ -3271,7 +3331,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!subscriptionId || !planId) return res.status(400).json({ message: "subscriptionId and planId required" });
     if (!square.isConfigured()) return res.status(503).json({ message: "Square is not configured" });
     try {
-      const plan = await storage.getMembershipPlan(parseInt(planId));
+      const [plan, sub] = await Promise.all([
+        storage.getMembershipPlan(parseInt(planId)),
+        storage.getMembershipSubscription(parseInt(subscriptionId)),
+      ]);
       if (!plan) return res.status(404).json({ message: "Plan not found" });
       const redirectUrl = `${process.env.REPLIT_INTERNAL_APP_DOMAIN ? `https://${process.env.REPLIT_INTERNAL_APP_DOMAIN}` : "https://the147bradford.replit.app"}/staff`;
       const link = await square.createMembershipCheckoutLink({
@@ -3280,7 +3343,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         subscriptionId: parseInt(subscriptionId),
         redirectUrl,
       });
-      res.json({ url: link.url, paymentLinkId: link.paymentLinkId });
+
+      // Email the payment link to the customer
+      let emailSent = false;
+      if (sub) {
+        const customer = await storage.getCustomerById(sub.customerId).catch(() => null);
+        if (customer?.email) {
+          emailSent = await sendMembershipPaymentLinkEmail({
+            customerName: customer.name,
+            customerEmail: customer.email,
+            planName: plan.name,
+            priceMonthly: plan.priceMonthly,
+            paymentUrl: link.url,
+          });
+        }
+      }
+
+      res.json({ url: link.url, paymentLinkId: link.paymentLinkId, emailSent });
     } catch (err: any) {
       console.error("[PAYMENT LINK]", err?.message);
       res.status(500).json({ message: err?.message || "Failed to create payment link" });
