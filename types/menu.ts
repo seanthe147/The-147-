@@ -4,6 +4,7 @@ export interface MenuItem {
   name: string;
   description: string;
   price: number;
+  soldOut?: boolean;
 }
 
 export interface MenuCategory {

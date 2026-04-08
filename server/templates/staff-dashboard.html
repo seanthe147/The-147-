@@ -284,6 +284,36 @@
     .chip-btn:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-light)}
     .chip-btn.selected{background:var(--blue);border-color:var(--blue);color:#fff}
     .chip-num{padding:7px 0;min-width:38px;justify-content:center}
+
+    /* ── Menu management ── */
+    .menu-cat{border:1px solid var(--border);border-radius:var(--r);margin-bottom:10px;overflow:hidden}
+    .menu-cat-header{display:flex;align-items:center;gap:10px;padding:13px 16px;background:var(--bg);cursor:pointer;user-select:none}
+    .menu-cat-header:hover{background:var(--blue-light)}
+    .menu-cat-chevron{transition:transform .2s;margin-right:2px;color:var(--text-2);flex-shrink:0}
+    .menu-cat.open .menu-cat-chevron{transform:rotate(90deg)}
+    .menu-cat-name{flex:1;font-size:14px;font-weight:700;color:var(--text)}
+    .menu-cat-count{font-size:12px;color:var(--text-2);font-weight:600}
+    .menu-cat-items{display:none;border-top:1px solid var(--border)}
+    .menu-cat.open .menu-cat-items{display:block}
+    .menu-item-row{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border-light);background:#fff}
+    .menu-item-row:last-child{border-bottom:none}
+    .menu-item-row.sold-out .menu-item-name{color:var(--text-2);text-decoration:line-through}
+    .menu-item-row.hidden-item{opacity:.5}
+    .menu-item-name{flex:1;font-size:13px;font-weight:600;color:var(--text)}
+    .menu-item-price{font-size:12px;color:var(--text-2);font-weight:600;min-width:52px;text-align:right}
+    .menu-toggle-group{display:flex;align-items:center;gap:16px}
+    .menu-toggle-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-2);display:flex;align-items:center;gap:6px}
+    .toggle-sw{position:relative;display:inline-block;width:38px;height:22px}
+    .toggle-sw input{opacity:0;width:0;height:0}
+    .toggle-sw-slider{position:absolute;cursor:pointer;inset:0;background:var(--border-dark);border-radius:22px;transition:.2s}
+    .toggle-sw-slider:before{content:'';position:absolute;height:16px;width:16px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.2s}
+    .toggle-sw input:checked+.toggle-sw-slider{background:var(--amber)}
+    .toggle-sw input:checked+.toggle-sw-slider:before{transform:translateX(16px)}
+    .toggle-sw.danger input:checked+.toggle-sw-slider{background:var(--red)}
+    .menu-refresh-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+    .menu-loading{text-align:center;padding:40px;color:var(--text-2);font-size:14px}
+    .badge-sold-out{display:inline-block;background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:1px 6px;border-radius:4px;border:1px solid #fcd34d;margin-left:6px}
+    .badge-hidden{display:inline-block;background:#fee2e2;color:#991b1b;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:1px 6px;border-radius:4px;border:1px solid #fca5a5;margin-left:6px}
   </style>
 </head>
 <body>
@@ -390,6 +420,10 @@
         <div class="nav-item hidden" data-page="availability" id="navAvailability">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
           Availability
+        </div>
+        <div class="nav-item" data-page="menu" id="navMenu">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+          Menu
         </div>
         <div class="nav-section" style="margin-top:8px">Account</div>
         <div class="nav-item" data-page="settings">
@@ -696,6 +730,22 @@
               <span style="font-size:16px;flex-shrink:0">ℹ️</span>
               <span style="font-size:12px;color:var(--blue);line-height:1.6">Dining is automatically restricted to Thursday–Sunday, 12pm–8pm as a business rule. Use blocks above for additional closures or event days.</span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MENU MANAGEMENT PAGE -->
+      <div class="page" id="pageMenu">
+        <div class="page-body">
+          <div class="menu-refresh-bar">
+            <p style="font-size:13px;color:var(--text-2);margin:0">Toggle items sold out or hide them from the app. Changes apply within seconds.</p>
+            <button class="btn btn-secondary btn-sm" onclick="loadMenuManagement(true)" id="menuRefreshBtn">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              Refresh from Square
+            </button>
+          </div>
+          <div id="menuCategoriesList">
+            <div class="menu-loading">Loading menu…</div>
           </div>
         </div>
       </div>
@@ -1489,7 +1539,7 @@
   function navigateTo(page){
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page'+cap(page)));
-    const titles={bookings:'Bookings',messages:'Messages',notifications:'Push Notifications',notices:'Staff Notices',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',availability:'Availability'};
+    const titles={bookings:'Bookings',messages:'Messages',notifications:'Push Notifications',notices:'Staff Notices',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',availability:'Availability',menu:'Menu Management'};
     el('topbarTitle').textContent=titles[page]||'';
     el('topbarSub').textContent='';
     if(page==='bookings'){el('topbarActions').style.display='';loadBookings();loadDashboardNotices();startBookingsPolling();}
@@ -1500,6 +1550,7 @@
     if(page==='staff')loadStaff();
     if(page==='memberships')loadMemberships();
     if(page==='availability')loadAvailability();
+    if(page==='menu')loadMenuManagement();
   }
   function cap(s){return s.charAt(0).toUpperCase()+s.slice(1)}
 
@@ -2749,6 +2800,85 @@
   window.avSelectType=avSelectType;
   window.avCreate=avCreate;
   window.avDelete=avDelete;
+
+  /* ── Menu Management ─────────────────────────────────────────────────────── */
+  let menuMgmtData=[];
+
+  async function loadMenuManagement(forceRefresh){
+    const list=el('menuCategoriesList');
+    list.innerHTML='<div class="menu-loading">Loading menu…</div>';
+    try{
+      const url='/api/staff/menu'+(forceRefresh?'?nocache=1':'');
+      const r=await api(url);
+      const cats=await r.json();
+      menuMgmtData=cats;
+      renderMenuManagement(cats);
+    }catch(e){
+      list.innerHTML='<div class="menu-loading" style="color:var(--red)">Failed to load menu. Try refreshing.</div>';
+    }
+  }
+
+  function renderMenuManagement(cats){
+    const isMgr=state.role==='manager'||state.role==='owner';
+    const list=el('menuCategoriesList');
+    if(!cats||!cats.length){list.innerHTML='<div class="menu-loading">No menu items found.</div>';return;}
+    list.innerHTML=cats.map((cat,ci)=>{
+      const totalItems=cat.items.length;
+      const hiddenCount=cat.items.filter(i=>i.hidden).length;
+      const soldOutCount=cat.items.filter(i=>i.soldOut).length;
+      let countParts=[totalItems+' item'+(totalItems!==1?'s':'')];
+      if(soldOutCount)countParts.push(soldOutCount+' sold out');
+      if(hiddenCount)countParts.push(hiddenCount+' hidden');
+      const catBadge=cat.hidden?'<span class="badge-hidden">hidden</span>':'';
+      const catHideToggle=isMgr?`<label class="menu-toggle-label" onclick="event.stopPropagation()">Hide cat<label class="toggle-sw danger"><input type="checkbox" ${cat.hidden?'checked':''} onchange="menuToggleCatHidden('${cat.id}',this.checked)"><span class="toggle-sw-slider"></span></label></label>`:'';
+      const itemsHtml=cat.items.map(item=>{
+        const rowCls=['menu-item-row',item.soldOut?'sold-out':'',item.hidden?'hidden-item':''].filter(Boolean).join(' ');
+        const price=item.price?'£'+(item.price/100).toFixed(2):'—';
+        const hideTgl=isMgr?`<label class="menu-toggle-label">Hide<label class="toggle-sw danger"><input type="checkbox" ${item.hidden?'checked':''} onchange="menuToggleItemHidden('${item.variationId}','${item.itemId}',${JSON.stringify(item.name)},this.checked)"><span class="toggle-sw-slider"></span></label></label>`:'';
+        return `<div class="${rowCls}"><span class="menu-item-name">${item.name}</span><span class="menu-item-price">${price}</span><div class="menu-toggle-group"><label class="menu-toggle-label">Sold out<label class="toggle-sw"><input type="checkbox" ${item.soldOut?'checked':''} onchange="menuToggleItemSoldOut('${item.variationId}','${item.itemId}',${JSON.stringify(item.name)},this.checked)"><span class="toggle-sw-slider"></span></label></label>${hideTgl}</div></div>`;
+      }).join('');
+      return `<div class="menu-cat" id="menuCat_${ci}"><div class="menu-cat-header" onclick="menuToggleCat(${ci})"><svg class="menu-cat-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg><span class="menu-cat-name">${cat.name}${catBadge}</span><span class="menu-cat-count">${countParts.join(' · ')}</span>${catHideToggle}</div><div class="menu-cat-items">${itemsHtml}</div></div>`;
+    }).join('');
+  }
+
+  function menuToggleCat(idx){
+    const node=document.getElementById('menuCat_'+idx);
+    if(node)node.classList.toggle('open');
+  }
+
+  async function menuToggleCatHidden(categoryId,hidden){
+    try{
+      const r=await api('/api/staff/menu/categories/'+categoryId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({hidden})});
+      if(!r.ok)throw new Error();
+      const cat=menuMgmtData.find(c=>c.id===categoryId);
+      if(cat)cat.hidden=hidden;
+      renderMenuManagement(menuMgmtData);
+    }catch(e){alert('Failed to update category. Please try again.');}
+  }
+
+  async function menuToggleItemSoldOut(variationId,itemId,name,soldOut){
+    try{
+      const r=await api('/api/staff/menu/items/'+variationId+'/sold-out',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({soldOut,itemId,name})});
+      if(!r.ok)throw new Error();
+      for(const cat of menuMgmtData){const item=cat.items.find(i=>i.variationId===variationId);if(item){item.soldOut=soldOut;break;}}
+      renderMenuManagement(menuMgmtData);
+    }catch(e){alert('Failed to update item. Please try again.');}
+  }
+
+  async function menuToggleItemHidden(variationId,itemId,name,hidden){
+    try{
+      const r=await api('/api/staff/menu/items/'+variationId+'/hidden',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({hidden,itemId,name})});
+      if(!r.ok)throw new Error();
+      for(const cat of menuMgmtData){const item=cat.items.find(i=>i.variationId===variationId);if(item){item.hidden=hidden;break;}}
+      renderMenuManagement(menuMgmtData);
+    }catch(e){alert('Failed to update item. Please try again.');}
+  }
+
+  window.menuToggleCat=menuToggleCat;
+  window.menuToggleCatHidden=menuToggleCatHidden;
+  window.menuToggleItemSoldOut=menuToggleItemSoldOut;
+  window.menuToggleItemHidden=menuToggleItemHidden;
+  window.loadMenuManagement=loadMenuManagement;
 
   let membershipsData={plans:[],subs:[]};
 

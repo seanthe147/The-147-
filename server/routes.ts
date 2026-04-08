@@ -2134,11 +2134,121 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ── Menu ──────────────────────────────────────────────────────────────────
   app.get("/api/menu", async (_req, res) => {
     try {
-      const categories = await square.getMenuFromSquare();
-      res.json(categories);
+      const [categories, categoryOverrides, itemOverrides] = await Promise.all([
+        square.getMenuFromSquare(),
+        storage.getMenuCategoryOverrides(),
+        storage.getMenuItemOverrides(),
+      ]);
+
+      const hiddenCategoryIds = new Set(categoryOverrides.filter(c => c.hidden).map(c => c.categoryId));
+      const itemOverrideMap = new Map(itemOverrides.map(o => [o.variationId, o]));
+
+      const filtered = categories
+        .filter(cat => !hiddenCategoryIds.has(cat.id))
+        .map(cat => ({
+          ...cat,
+          items: cat.items
+            .filter(item => {
+              const override = itemOverrideMap.get(item.variationId);
+              return !override?.hidden;
+            })
+            .map(item => {
+              const override = itemOverrideMap.get(item.variationId);
+              return override?.soldOut ? { ...item, soldOut: true } : item;
+            }),
+        }))
+        .filter(cat => cat.items.length > 0);
+
+      res.json(filtered);
     } catch (err: any) {
       console.error("[MENU] Failed to fetch menu:", err.message);
       res.status(500).json({ message: "Failed to load menu" });
+    }
+  });
+
+  // ── Staff Menu Management ──────────────────────────────────────────────────
+
+  // GET all categories with their current visibility states (staff view)
+  app.get("/api/staff/menu", staffAuth, async (req: any, res) => {
+    try {
+      if (req.query.nocache === "1") square.invalidateMenuCache();
+      const [categories, categoryOverrides, itemOverrides] = await Promise.all([
+        square.getMenuFromSquare(),
+        storage.getMenuCategoryOverrides(),
+        storage.getMenuItemOverrides(),
+      ]);
+
+      const categoryOverrideMap = new Map(categoryOverrides.map(o => [o.categoryId, o]));
+      const itemOverrideMap = new Map(itemOverrides.map(o => [o.variationId, o]));
+
+      const result = categories.map(cat => ({
+        id: cat.id,
+        name: cat.name,
+        hidden: categoryOverrideMap.get(cat.id)?.hidden ?? false,
+        items: cat.items.map(item => ({
+          variationId: item.variationId,
+          itemId: item.id,
+          name: item.name,
+          price: item.price,
+          soldOut: itemOverrideMap.get(item.variationId)?.soldOut ?? false,
+          hidden: itemOverrideMap.get(item.variationId)?.hidden ?? false,
+        })),
+      }));
+
+      res.json(result);
+    } catch (err: any) {
+      console.error("[STAFF MENU] Failed to fetch menu:", err.message);
+      res.status(500).json({ message: "Failed to load menu" });
+    }
+  });
+
+  // Toggle category hidden (manager/owner only)
+  app.put("/api/staff/menu/categories/:categoryId", staffAuth, managerAuth, async (req: any, res) => {
+    const { categoryId } = req.params;
+    const { hidden } = req.body;
+    if (typeof hidden !== "boolean") return res.status(400).json({ message: "hidden must be boolean" });
+    try {
+      const updatedBy = req.staffUser?.username ?? "staff";
+      await storage.setMenuCategoryHidden(categoryId, hidden, updatedBy);
+      square.invalidateMenuCache();
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[STAFF MENU] Category hide error:", err.message);
+      res.status(500).json({ message: "Failed to update category" });
+    }
+  });
+
+  // Toggle item sold-out (all staff)
+  app.put("/api/staff/menu/items/:variationId/sold-out", staffAuth, async (req: any, res) => {
+    const { variationId } = req.params;
+    const { soldOut, itemId, name } = req.body;
+    if (typeof soldOut !== "boolean") return res.status(400).json({ message: "soldOut must be boolean" });
+    if (!itemId || !name) return res.status(400).json({ message: "itemId and name required" });
+    try {
+      const updatedBy = req.staffUser?.username ?? "staff";
+      await storage.setMenuItemSoldOut(variationId, itemId, name, soldOut, updatedBy);
+      square.invalidateMenuCache();
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[STAFF MENU] Item sold-out error:", err.message);
+      res.status(500).json({ message: "Failed to update item" });
+    }
+  });
+
+  // Toggle item hidden (manager/owner only)
+  app.put("/api/staff/menu/items/:variationId/hidden", staffAuth, managerAuth, async (req: any, res) => {
+    const { variationId } = req.params;
+    const { hidden, itemId, name } = req.body;
+    if (typeof hidden !== "boolean") return res.status(400).json({ message: "hidden must be boolean" });
+    if (!itemId || !name) return res.status(400).json({ message: "itemId and name required" });
+    try {
+      const updatedBy = req.staffUser?.username ?? "staff";
+      await storage.setMenuItemHidden(variationId, itemId, name, hidden, updatedBy);
+      square.invalidateMenuCache();
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[STAFF MENU] Item hide error:", err.message);
+      res.status(500).json({ message: "Failed to update item" });
     }
   });
 

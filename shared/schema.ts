@@ -302,3 +302,26 @@ export const insertMembershipSubscriptionSchema = createInsertSchema(membershipS
 
 export type InsertMembershipSubscription = z.infer<typeof insertMembershipSubscriptionSchema>;
 export type MembershipSubscription = typeof membershipSubscriptions.$inferSelect;
+
+// ── Menu visibility overrides ─────────────────────────────────────────────────
+
+export const menuCategoryVisibility = pgTable("menu_category_visibility", {
+  categoryId: text("category_id").primaryKey(),
+  hidden: boolean("hidden").notNull().default(false),
+  updatedBy: text("updated_by").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type MenuCategoryVisibility = typeof menuCategoryVisibility.$inferSelect;
+
+export const menuItemOverrides = pgTable("menu_item_overrides", {
+  variationId: text("variation_id").primaryKey(),
+  itemId: text("item_id").notNull(),
+  name: text("name").notNull(),
+  soldOut: boolean("sold_out").notNull().default(false),
+  hidden: boolean("hidden").notNull().default(false),
+  updatedBy: text("updated_by").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type MenuItemOverride = typeof menuItemOverrides.$inferSelect;

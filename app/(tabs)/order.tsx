@@ -41,19 +41,31 @@ function formatPrice(pence: number) {
 function ItemCard({ item }: { item: MenuItem }) {
   const { addItem, updateQuantity, getQuantity } = useCart();
   const qty = getQuantity(item.variationId);
+  const soldOut = !!item.soldOut;
 
   return (
-    <View style={styles.itemCard}>
+    <View style={[styles.itemCard, soldOut && styles.itemCardSoldOut]}>
       <View style={styles.itemInfo}>
-        <Text style={styles.itemName}>{item.name}</Text>
+        <View style={styles.itemNameRow}>
+          <Text style={[styles.itemName, soldOut && styles.itemNameSoldOut]}>{item.name}</Text>
+          {soldOut && (
+            <View style={styles.soldOutBadge}>
+              <Text style={styles.soldOutText}>Sold Out</Text>
+            </View>
+          )}
+        </View>
         {!!item.description && (
-          <Text style={styles.itemDesc} numberOfLines={2}>{item.description}</Text>
+          <Text style={[styles.itemDesc, soldOut && { opacity: 0.4 }]} numberOfLines={2}>{item.description}</Text>
         )}
-        <Text style={styles.itemPrice}>{formatPrice(item.price)}</Text>
+        <Text style={[styles.itemPrice, soldOut && { opacity: 0.4 }]}>{formatPrice(item.price)}</Text>
       </View>
 
       <View style={styles.itemActions}>
-        {qty === 0 ? (
+        {soldOut ? (
+          <View style={styles.addBtnDisabled}>
+            <Ionicons name="close" size={18} color="rgba(255,255,255,0.5)" />
+          </View>
+        ) : qty === 0 ? (
           <Pressable
             onPress={() => addItem({ variationId: item.variationId, itemId: item.id, name: item.name, price: item.price })}
             style={({ pressed }) => [styles.addBtn, { opacity: pressed ? 0.7 : 1 }]}
@@ -499,15 +511,42 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.light.border,
   },
+  itemCardSoldOut: {
+    opacity: 0.65,
+  },
   itemInfo: {
     flex: 1,
     paddingRight: 12,
+  },
+  itemNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 3,
   },
   itemName: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 14,
     color: Colors.light.text,
-    marginBottom: 3,
+  },
+  itemNameSoldOut: {
+    color: Colors.light.textSecondary,
+  },
+  soldOutBadge: {
+    backgroundColor: "#ef444420",
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: "#ef4444",
+  },
+  soldOutText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 10,
+    color: "#ef4444",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   itemDesc: {
     fontFamily: "Montserrat_400Regular",
@@ -530,6 +569,14 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     backgroundColor: Colors.brand.blue,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  addBtnDisabled: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(0,0,0,0.12)",
     justifyContent: "center",
     alignItems: "center",
   },

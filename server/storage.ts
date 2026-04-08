@@ -29,6 +29,8 @@ import {
   type InsertMembershipPlan,
   type MembershipSubscription,
   type InsertMembershipSubscription,
+  type MenuCategoryVisibility,
+  type MenuItemOverride,
   users,
   offers,
   pushTokens,
@@ -47,6 +49,8 @@ import {
   blockedPeriods,
   membershipPlans,
   membershipSubscriptions,
+  menuCategoryVisibility,
+  menuItemOverrides,
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
 
@@ -871,6 +875,47 @@ export class DatabaseStorage implements IStorage {
       if (plan) mrr += plan.priceMonthly;
     }
     return { total: all.length, active: active.length, paused: paused.length, cancelled: cancelled.length, mrr };
+  }
+
+  // ── Menu visibility overrides ───────────────────────────────────────────────
+
+  async getMenuCategoryOverrides(): Promise<MenuCategoryVisibility[]> {
+    return db.select().from(menuCategoryVisibility);
+  }
+
+  async setMenuCategoryHidden(categoryId: string, hidden: boolean, updatedBy: string): Promise<void> {
+    await db.insert(menuCategoryVisibility)
+      .values({ categoryId, hidden, updatedBy, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: menuCategoryVisibility.categoryId,
+        set: { hidden, updatedBy, updatedAt: new Date() },
+      });
+  }
+
+  async getMenuItemOverrides(): Promise<MenuItemOverride[]> {
+    return db.select().from(menuItemOverrides);
+  }
+
+  async setMenuItemSoldOut(variationId: string, itemId: string, name: string, soldOut: boolean, updatedBy: string): Promise<void> {
+    const existing = await db.select().from(menuItemOverrides).where(eq(menuItemOverrides.variationId, variationId));
+    const currentHidden = existing[0]?.hidden ?? false;
+    await db.insert(menuItemOverrides)
+      .values({ variationId, itemId, name, soldOut, hidden: currentHidden, updatedBy, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: menuItemOverrides.variationId,
+        set: { soldOut, updatedBy, updatedAt: new Date() },
+      });
+  }
+
+  async setMenuItemHidden(variationId: string, itemId: string, name: string, hidden: boolean, updatedBy: string): Promise<void> {
+    const existing = await db.select().from(menuItemOverrides).where(eq(menuItemOverrides.variationId, variationId));
+    const currentSoldOut = existing[0]?.soldOut ?? false;
+    await db.insert(menuItemOverrides)
+      .values({ variationId, itemId, name, soldOut: currentSoldOut, hidden, updatedBy, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: menuItemOverrides.variationId,
+        set: { hidden, updatedBy, updatedAt: new Date() },
+      });
   }
 }
 
