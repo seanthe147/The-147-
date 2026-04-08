@@ -1253,6 +1253,43 @@ async function createCatalogSubscriptionPlan(opts) {
   }
   return { planId: opts.localPlanId, squarePlanId, squarePlanVariationId };
 }
+async function syncPlanToSquareCatalog(opts) {
+  let newVariationId = null;
+  if (opts.priceChanged) {
+    const result = await createCatalogSubscriptionPlan({
+      localPlanId: opts.localPlanId,
+      name: opts.planName,
+      amountPence: opts.newAmountPence
+    });
+    newVariationId = result.squarePlanVariationId;
+    return { newVariationId };
+  }
+  if (opts.nameChanged) {
+    const current = await squareRequest(
+      "GET",
+      `/v2/catalog/object/${opts.planVariationId}?include_related_objects=true`
+    ).catch(() => null);
+    const parentPlanId = current?.object?.subscription_plan_variation_data?.subscription_plan_id;
+    if (parentPlanId) {
+      const parentData = await squareRequest("GET", `/v2/catalog/object/${parentPlanId}`).catch(() => null);
+      if (parentData?.object) {
+        await squareRequest("POST", "/v2/catalog/object", {
+          idempotency_key: `update-plan-name-${parentPlanId}-${Date.now()}`,
+          object: {
+            type: "SUBSCRIPTION_PLAN",
+            id: parentPlanId,
+            version: parentData.object.version,
+            subscription_plan_data: {
+              name: `The 147 Bradford \u2014 ${opts.planName} Membership`
+            }
+          }
+        }).catch(() => {
+        });
+      }
+    }
+  }
+  return { newVariationId };
+}
 function membershipGroupName(planName) {
   return `147 Bradford \u2014 ${planName} Members`;
 }
@@ -4371,9 +4408,38 @@ Phone: ${phone}` : ""}`,
   });
   app2.put("/api/staff/membership/plans/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id);
-    const plan = await storage.updateMembershipPlan(id, req.body);
+    const oldPlan = await storage.getMembershipPlan(id);
+    let plan = await storage.updateMembershipPlan(id, req.body);
     if (!plan) return res.status(404).json({ message: "Plan not found" });
-    res.json(plan);
+    let squareSynced = false;
+    let squareSyncError = null;
+    if (plan.squarePlanVariationId && isConfigured() && oldPlan) {
+      const priceChanged = req.body.priceMonthly !== void 0 && req.body.priceMonthly !== oldPlan.priceMonthly;
+      const nameChanged = req.body.name !== void 0 && req.body.name !== oldPlan.name;
+      if (priceChanged || nameChanged) {
+        try {
+          const { newVariationId } = await syncPlanToSquareCatalog({
+            localPlanId: id,
+            planVariationId: plan.squarePlanVariationId,
+            planName: plan.name,
+            newAmountPence: plan.priceMonthly,
+            priceChanged,
+            nameChanged
+          });
+          if (newVariationId) {
+            await storage.updateMembershipPlan(id, { squarePlanVariationId: newVariationId });
+            plan = { ...plan, squarePlanVariationId: newVariationId };
+            console.log(`[PLAN EDIT] New Square plan created for price change: ${newVariationId}`);
+          }
+          squareSynced = true;
+          console.log(`[PLAN EDIT] Square synced \u2014 ${plan.name} price=\xA3${(plan.priceMonthly / 100).toFixed(2)}`);
+        } catch (sqErr) {
+          squareSyncError = sqErr?.message ?? "Square sync failed";
+          console.error("[PLAN EDIT] Square sync error:", sqErr?.message);
+        }
+      }
+    }
+    res.json({ ...plan, squareSynced, squareSyncError });
   });
   app2.post("/api/staff/membership/plans/seed", staffAuth, managerAuth, async (_req, res) => {
     const defaults = [

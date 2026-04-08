@@ -418,6 +418,61 @@ export async function createCatalogSubscriptionPlan(opts: {
   return { planId: opts.localPlanId, squarePlanId, squarePlanVariationId };
 }
 
+// ── Sync plan price/name to Square Catalog ────────────────────────────────────
+// Returns the variation ID that should be saved to the DB (may be new if price changed)
+
+export async function syncPlanToSquareCatalog(opts: {
+  localPlanId: number;
+  planVariationId: string;
+  planName: string;
+  newAmountPence: number;
+  priceChanged: boolean;
+  nameChanged: boolean;
+}): Promise<{ newVariationId: string | null }> {
+  let newVariationId: string | null = null;
+
+  if (opts.priceChanged) {
+    // Square does not allow editing the price of an existing plan variation (to protect
+    // existing subscribers). Create a new plan with the new price instead — existing
+    // subscribers automatically stay on the old plan at their original price.
+    const result = await createCatalogSubscriptionPlan({
+      localPlanId: opts.localPlanId,
+      name: opts.planName,
+      amountPence: opts.newAmountPence,
+    });
+    newVariationId = result.squarePlanVariationId;
+    return { newVariationId };
+  }
+
+  if (opts.nameChanged) {
+    // Name-only change: update the parent plan's display name in Square
+    const current = await squareRequest(
+      "GET",
+      `/v2/catalog/object/${opts.planVariationId}?include_related_objects=true`
+    ).catch(() => null);
+    const parentPlanId: string | undefined =
+      current?.object?.subscription_plan_variation_data?.subscription_plan_id;
+    if (parentPlanId) {
+      const parentData = await squareRequest("GET", `/v2/catalog/object/${parentPlanId}`).catch(() => null);
+      if (parentData?.object) {
+        await squareRequest("POST", "/v2/catalog/object", {
+          idempotency_key: `update-plan-name-${parentPlanId}-${Date.now()}`,
+          object: {
+            type: "SUBSCRIPTION_PLAN",
+            id: parentPlanId,
+            version: parentData.object.version,
+            subscription_plan_data: {
+              name: `The 147 Bradford — ${opts.planName} Membership`,
+            },
+          },
+        }).catch(() => {}); // best-effort
+      }
+    }
+  }
+
+  return { newVariationId };
+}
+
 // Group name used in Square for a given membership plan name
 export function membershipGroupName(planName: string): string {
   return `147 Bradford — ${planName} Members`;

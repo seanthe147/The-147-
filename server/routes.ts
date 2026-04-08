@@ -3399,9 +3399,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/staff/membership/plans/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
-    const plan = await storage.updateMembershipPlan(id, req.body);
+
+    // Capture old values before updating so we can detect changes
+    const oldPlan = await storage.getMembershipPlan(id);
+
+    let plan = await storage.updateMembershipPlan(id, req.body);
     if (!plan) return res.status(404).json({ message: "Plan not found" });
-    res.json(plan);
+
+    // Sync price or name changes to Square Catalog automatically
+    let squareSynced = false;
+    let squareSyncError: string | null = null;
+    if (plan.squarePlanVariationId && square.isConfigured() && oldPlan) {
+      const priceChanged = req.body.priceMonthly !== undefined && req.body.priceMonthly !== oldPlan.priceMonthly;
+      const nameChanged = req.body.name !== undefined && req.body.name !== oldPlan.name;
+      if (priceChanged || nameChanged) {
+        try {
+          const { newVariationId } = await square.syncPlanToSquareCatalog({
+            localPlanId: id,
+            planVariationId: plan.squarePlanVariationId,
+            planName: plan.name,
+            newAmountPence: plan.priceMonthly,
+            priceChanged,
+            nameChanged,
+          });
+          // Price change creates a new Square plan — save the new variation ID
+          if (newVariationId) {
+            await storage.updateMembershipPlan(id, { squarePlanVariationId: newVariationId });
+            plan = { ...plan, squarePlanVariationId: newVariationId };
+            console.log(`[PLAN EDIT] New Square plan created for price change: ${newVariationId}`);
+          }
+          squareSynced = true;
+          console.log(`[PLAN EDIT] Square synced — ${plan.name} price=£${(plan.priceMonthly / 100).toFixed(2)}`);
+        } catch (sqErr: any) {
+          squareSyncError = sqErr?.message ?? "Square sync failed";
+          console.error("[PLAN EDIT] Square sync error:", sqErr?.message);
+        }
+      }
+    }
+
+    res.json({ ...plan, squareSynced, squareSyncError });
   });
 
   app.post("/api/staff/membership/plans/seed", staffAuth, managerAuth, async (_req, res) => {

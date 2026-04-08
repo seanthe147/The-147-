@@ -2958,8 +2958,15 @@
     try{
       const r=await api('/api/staff/membership/plans/'+planId,{method:'PUT',body:JSON.stringify(payload)});
       if(!r.ok){const d=await r.json();err.textContent=d.message||'Failed to save plan';err.classList.add('show');return}
+      const d=await r.json();
       closeOverlay('editPlanModal');
-      toast('Plan updated','success');
+      if(d.squareSyncError){
+        toast('Plan saved — Square sync failed: '+d.squareSyncError,'error');
+      }else if(d.squareSynced){
+        toast('Plan saved & Square billing updated ✓','success');
+      }else{
+        toast('Plan updated','success');
+      }
       loadMemberships();
     }catch(e){if(e.message!=='Session expired'){err.textContent='Network error';err.classList.add('show')}}
     finally{el('epSaveBtn').disabled=false}
