@@ -256,6 +256,10 @@
     @keyframes tIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
     @keyframes tOut{from{opacity:1;transform:none}to{opacity:0;transform:translateX(30px)}}
     .divider{height:1px;background:var(--border);margin:16px 0}
+    .am-pay-option{cursor:pointer;display:block}
+    .am-pay-card{border:2px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;font-weight:600;text-align:center;transition:border-color .15s,background .15s;background:#fff;color:var(--text-1)}
+    .am-pay-option input:checked+.am-pay-card,.am-pay-option.selected .am-pay-card{border-color:var(--blue);background:#EFF6FF;color:var(--blue)}
+    .am-pay-card:hover{border-color:var(--blue);background:#F5F9FF}
     .customer-search-wrap{position:relative}
     .customer-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1.5px solid var(--blue);border-radius:var(--r);box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:900;overflow:hidden;display:none}
     .customer-dropdown.open{display:block}
@@ -930,6 +934,7 @@
     <div class="modal-bd">
       <div class="modal-err" id="amErr"></div>
       <input type="hidden" id="amCustomerId">
+
       <div class="form-group">
         <label class="form-label">Customer</label>
         <div class="customer-search-wrap">
@@ -937,16 +942,47 @@
           <div class="customer-dropdown" id="amCustomerDropdown"></div>
         </div>
       </div>
+
       <div class="form-group">
         <label class="form-label">Membership Plan</label>
         <select class="form-input" id="amPlanId"></select>
+        <div id="amPlanPrice" style="margin-top:6px;font-size:13px;color:var(--text-2);font-weight:600"></div>
       </div>
+
+      <div class="form-group">
+        <label class="form-label">Payment Method</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="amPaymentGrid">
+          <label class="am-pay-option" data-val="cash">
+            <input type="radio" name="amPayMethod" value="cash" style="display:none">
+            <div class="am-pay-card">💵 Cash</div>
+          </label>
+          <label class="am-pay-option" data-val="card">
+            <input type="radio" name="amPayMethod" value="card" style="display:none">
+            <div class="am-pay-card">💳 Card (Terminal)</div>
+          </label>
+          <label class="am-pay-option" data-val="complimentary">
+            <input type="radio" name="amPayMethod" value="complimentary" style="display:none">
+            <div class="am-pay-card">🎁 Complimentary</div>
+          </label>
+          <label class="am-pay-option" data-val="pending">
+            <input type="radio" name="amPayMethod" value="pending" style="display:none">
+            <div class="am-pay-card">⏳ Pending / Invoice</div>
+          </label>
+        </div>
+      </div>
+
+      <div id="amPaymentAmountRow" class="form-group" style="display:none">
+        <label class="form-label">Amount Taken (£)</label>
+        <input class="form-input" type="number" step="0.01" min="0" id="amPaymentAmount" placeholder="0.00">
+      </div>
+
+      <div id="amPendingNote" style="display:none;background:#FEF9C3;border:1px solid #FDE68A;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400E;line-height:1.5;margin-bottom:4px">
+        Membership will be set to <strong>pending</strong> until payment is received. Remember to follow up with the customer.
+      </div>
+
       <div class="form-group">
         <label class="form-label">Staff Notes (optional)</label>
-        <textarea class="form-input" id="amNotes" placeholder="e.g. Comp'd for opening month" style="min-height:60px;resize:vertical"></textarea>
-      </div>
-      <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px 14px;font-size:12px;color:#1E40AF;line-height:1.5;margin-bottom:4px">
-        If Square is configured and the plan has a Square plan variation ID, billing will start automatically. Otherwise the subscription is recorded manually.
+        <textarea class="form-input" id="amNotes" placeholder="Any additional notes…" style="min-height:60px;resize:vertical"></textarea>
       </div>
     </div>
     <div class="modal-ft">
@@ -3070,6 +3106,16 @@
     setTimeout(()=>el('mnNote').focus(),100);
   };
 
+  function amUpdatePlanPrice(){
+    const planId=parseInt(el('amPlanId').value);
+    const plan=membershipsData.plans.find(p=>p.id===planId);
+    const priceEl=el('amPlanPrice');
+    if(plan){priceEl.textContent=`£${(plan.priceMonthly/100).toFixed(2)} per month`}
+    else{priceEl.textContent=''}
+    // update amount placeholder
+    if(plan&&el('amPaymentAmount')){el('amPaymentAmount').placeholder=(plan.priceMonthly/100).toFixed(2)}
+  }
+
   window.openAddMemberModal=function(){
     el('amCustomerId').value='';
     el('amPlanId').innerHTML=membershipsData.plans.map(p=>`<option value="${p.id}">£${(p.priceMonthly/100).toFixed(2)}/mo — ${esc(p.name)}</option>`).join('');
@@ -3077,9 +3123,36 @@
     el('amCustomerDropdown').classList.remove('open');
     el('amCustomerDropdown').innerHTML='';
     el('amErr').classList.remove('show');
+    el('amNotes').value='';
+    // Reset payment selection
+    document.querySelectorAll('input[name="amPayMethod"]').forEach(r=>r.checked=false);
+    document.querySelectorAll('.am-pay-option').forEach(o=>o.classList.remove('selected'));
+    el('amPaymentAmountRow').style.display='none';
+    el('amPendingNote').style.display='none';
+    el('amPaymentAmount').value='';
+    amUpdatePlanPrice();
     openOverlay('addMemberModal');
     setTimeout(()=>el('amCustomerSearch').focus(),100);
   };
+
+  // Payment method card selection
+  document.querySelectorAll('.am-pay-option').forEach(opt=>{
+    opt.addEventListener('click',function(){
+      document.querySelectorAll('.am-pay-option').forEach(o=>o.classList.remove('selected'));
+      this.classList.add('selected');
+      const val=this.dataset.val;
+      const showAmount=val==='cash'||val==='card';
+      el('amPaymentAmountRow').style.display=showAmount?'block':'none';
+      el('amPendingNote').style.display=val==='pending'?'block':'none';
+      if(showAmount){
+        const planId=parseInt(el('amPlanId').value);
+        const plan=membershipsData.plans.find(p=>p.id===planId);
+        if(plan&&!el('amPaymentAmount').value){el('amPaymentAmount').value=(plan.priceMonthly/100).toFixed(2)}
+      }
+    });
+  });
+
+  el('amPlanId').addEventListener('change',amUpdatePlanPrice);
 
   // Customer search for add member modal
   (function(){
@@ -3127,12 +3200,36 @@
     if(!customerId){err.textContent='Select a customer first';err.classList.add('show');return}
     if(isNaN(parseInt(customerId))){err.textContent='That customer has no app account — they need to register in the app first';err.classList.add('show');return}
     if(!planId){err.textContent='Select a plan';err.classList.add('show');return}
+
+    // Payment method
+    const payMethod=document.querySelector('.am-pay-option.selected')?.dataset.val;
+    if(!payMethod){err.textContent='Select a payment method';err.classList.add('show');return}
+
+    // Build payment prefix for notes
+    const plan=membershipsData.plans.find(p=>p.id===parseInt(planId));
+    const planPrice=plan?`£${(plan.priceMonthly/100).toFixed(2)}/mo`:'';
+    let payLabel='';
+    if(payMethod==='cash'){
+      const amt=el('amPaymentAmount').value;
+      payLabel=`Payment: Cash${amt?` — £${parseFloat(amt).toFixed(2)}`:(planPrice?' — '+planPrice:'')}`;
+    }else if(payMethod==='card'){
+      const amt=el('amPaymentAmount').value;
+      payLabel=`Payment: Card (Terminal)${amt?` — £${parseFloat(amt).toFixed(2)}`:(planPrice?' — '+planPrice:'')}`;
+    }else if(payMethod==='complimentary'){
+      payLabel='Payment: Complimentary';
+    }else if(payMethod==='pending'){
+      payLabel='Payment: Pending / Invoice';
+    }
+    const staffNotes=[`[${payLabel}]`,notes].filter(Boolean).join(' ');
+    const status=payMethod==='pending'?'pending':'active';
+
     el('amSaveBtn').disabled=true;
     try{
-      const r=await api('/api/staff/membership/subscriptions',{method:'POST',body:JSON.stringify({customerId,planId,staffNotes:notes||null,source:'staff'})});
+      const r=await api('/api/staff/membership/subscriptions',{method:'POST',body:JSON.stringify({customerId,planId,staffNotes,status,source:'staff'})});
       if(!r.ok){const d=await r.json();err.textContent=d.message||'Failed';err.classList.add('show');return}
       closeOverlay('addMemberModal');
-      toast('Member added successfully','success');
+      const msg=payMethod==='pending'?'Member added — payment pending':'Member added & payment recorded';
+      toast(msg,'success');
       loadMemberships();
     }catch(e){if(e.message!=='Session expired'){err.textContent='Network error';err.classList.add('show')}}
     finally{el('amSaveBtn').disabled=false}
