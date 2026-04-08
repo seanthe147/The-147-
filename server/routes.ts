@@ -2873,6 +2873,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ── Membership — public plan listing ────────────────────────────────────────
   app.get("/api/membership/plans", async (_req, res) => {
     const plans = await storage.getMembershipPlans(true);
+    res.set("Cache-Control", "no-store");
     res.json(plans);
   });
 
@@ -2962,13 +2963,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
 
               // ── Generate checkout payment link ──────────────────────────────
-              const redirectUrl = `https://${process.env.EXPO_PUBLIC_DOMAIN || "the147bradford.replit.app"}/api/membership/${sub.id}/payment-return`;
+              const redirectUrl = `https://the147bradford.replit.app/api/membership/${sub.id}/payment-return`;
               const checkout = await square.createMembershipCheckoutLink({
                 planName: plan.name,
                 amountPence: plan.priceMonthly,
                 subscriptionId: sub.id,
                 redirectUrl,
-              }).catch(() => null);
+              }).catch((err) => {
+                console.error("[membership/join] checkout link error:", err?.message ?? err);
+                return null;
+              });
 
               if (checkout) {
                 checkoutUrl = checkout.url;
@@ -2980,8 +2984,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // If no Square checkout URL was generated, activate immediately (staff-managed flow)
-      if (!checkoutUrl) {
+      // Only auto-activate if Square is not configured at all (free/staff-managed plans)
+      // If Square IS configured but checkout link failed, keep as "pending" so staff can resolve
+      if (!checkoutUrl && !square.isConfigured()) {
         await storage.updateMembershipSubscription(sub.id, { status: "active" });
       }
 
@@ -3003,7 +3008,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`[MEMBERSHIP] Subscription #${subId} activated via payment return redirect`);
       }
     }
-    res.redirect("https://the147bradford.replit.app/membership-success");
+    res.redirect("https://the147bradford.replit.app/membership?payment=complete");
   });
 
   // Membership — retry payment (generates a fresh Square checkout link)
@@ -3022,7 +3027,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const plan = sub.plan ?? await storage.getMembershipPlan(sub.planId);
       if (!plan) return res.status(404).json({ message: "Plan not found" });
 
-      const redirectUrl = `https://${process.env.EXPO_PUBLIC_DOMAIN || "the147bradford.replit.app"}/api/membership/${sub.id}/payment-return`;
+      const redirectUrl = `https://the147bradford.replit.app/api/membership/${sub.id}/payment-return`;
       const checkout = await square.createMembershipCheckoutLink({
         planName: plan.name,
         amountPence: plan.priceMonthly,

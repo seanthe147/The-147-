@@ -639,9 +639,15 @@
       }
       if(d.checkoutUrl){
         setTimeout(()=>{window.location.href=d.checkoutUrl},1400);
-      }else{
-        // Activated immediately (no Square configured)
+      }else if(d.status==='active'){
+        // Activated without payment (free plan or Square not configured)
         document.querySelector('.success-sub').textContent='Your membership is now active! Download The 147 app to book tables, track loyalty points, and manage your account.';
+        document.querySelector('.redirect-row').style.display='none';
+      }else{
+        // Payment link couldn't be generated — subscription is pending
+        document.getElementById('successPane').querySelector('.success-ring').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+        document.getElementById('successPane').querySelector('h3').textContent='Account Created';
+        document.querySelector('.success-sub').textContent='Your account is ready but the payment link could not be generated. Please contact the club directly or visit us to complete your membership payment.';
         document.querySelector('.redirect-row').style.display='none';
       }
     }catch{

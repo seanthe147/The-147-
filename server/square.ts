@@ -311,7 +311,6 @@ export async function createMembershipCheckoutLink(opts: {
     checkout_options: {
       redirect_url: opts.redirectUrl,
     },
-    payment_note: `MEMBERSHIP:${opts.subscriptionId}`,
   });
 
   const link = data.payment_link;
