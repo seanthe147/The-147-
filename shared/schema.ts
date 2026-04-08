@@ -308,10 +308,14 @@ export type MembershipSubscription = typeof membershipSubscriptions.$inferSelect
 export const appOrders = pgTable("app_orders", {
   id: serial("id").primaryKey(),
   squareLinkId: text("square_link_id"),
+  squareOrderId: text("square_order_id"),
+  squarePaymentId: text("square_payment_id"),
   tableNote: text("table_note"),
   customerName: text("customer_name"),
+  customerEmail: text("customer_email"),
   itemsJson: text("items_json").notNull(),
   totalPence: integer("total_pence").notNull().default(0),
+  status: text("status").notNull().default("pending"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

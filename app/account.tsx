@@ -35,6 +35,21 @@ interface CustomerBooking {
   createdAt: string;
 }
 
+interface AppOrderItem {
+  name: string;
+  quantity: number;
+  price: number;
+}
+
+interface AppOrder {
+  id: number;
+  tableNote: string | null;
+  itemsJson: string;
+  totalPence: number;
+  status: string;
+  createdAt: string;
+}
+
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -259,6 +274,20 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount }: {
     },
   });
 
+  const ordersQuery = useQuery<AppOrder[]>({
+    queryKey: ["/api/customers/orders"],
+    queryFn: async () => {
+      const baseUrl = getApiUrl();
+      const url = new URL("/api/customers/orders", baseUrl);
+      const token = await getCustomerToken();
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to load orders");
+      return res.json();
+    },
+  });
+
   const cancelMutation = useMutation({
     mutationFn: async (bookingId: number) => {
       const baseUrl = getApiUrl();
@@ -423,6 +452,23 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount }: {
         </>
       )}
 
+      <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Food & Drink Orders</Text>
+      {ordersQuery.isLoading ? (
+        <ActivityIndicator color={Colors.brand.blue} style={{ marginTop: 20 }} />
+      ) : ordersQuery.error ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyText}>Could not load orders</Text>
+        </View>
+      ) : !ordersQuery.data?.length ? (
+        <View style={styles.emptyState}>
+          <Ionicons name="bag-outline" size={40} color="#9CA3AF" />
+          <Text style={styles.emptyText}>No orders yet</Text>
+          <Text style={[styles.emptyText, { fontSize: 13, marginTop: 4 }]}>Orders placed from the app appear here</Text>
+        </View>
+      ) : (
+        ordersQuery.data.map((order) => <OrderCard key={order.id} order={order} />)
+      )}
+
       <View style={styles.dangerZone}>
         <Text style={styles.dangerTitle}>Data & Privacy</Text>
         <Pressable
@@ -500,6 +546,42 @@ function BookingCard({ booking, onCancel, showCancel }: { booking: CustomerBooki
           <Text style={styles.cancelButtonText}>Cancel Booking</Text>
         </Pressable>
       )}
+    </View>
+  );
+}
+
+function OrderCard({ order }: { order: AppOrder }) {
+  const date = new Date(order.createdAt);
+  const dateStr = date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  const timeStr = date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  const total = `£${(order.totalPence / 100).toFixed(2)}`;
+  let items: AppOrderItem[] = [];
+  try { items = JSON.parse(order.itemsJson); } catch {}
+  const itemSummary = items.map((i) => `${i.quantity}× ${i.name}`).join(", ");
+
+  const statusConfig: Record<string, { label: string; bg: string; text: string }> = {
+    pending:   { label: "Pending",   bg: "#F3F4F6", text: "#6B7280" },
+    paid:      { label: "Paid",      bg: "#D1FAE5", text: "#065F46" },
+    cancelled: { label: "Cancelled", bg: "#FEE2E2", text: "#991B1B" },
+    refunded:  { label: "Refunded",  bg: "#FEF3C7", text: "#92400E" },
+  };
+  const sc = statusConfig[order.status] ?? statusConfig.pending;
+
+  return (
+    <View style={styles.bookingCard}>
+      <View style={styles.bookingTop}>
+        <View style={styles.bookingInfo}>
+          <Text style={styles.bookingTable}>{order.tableNote || "No table selected"}</Text>
+          <Text style={styles.bookingDate}>{dateStr} at {timeStr}</Text>
+          <Text style={styles.bookingDuration} numberOfLines={2}>{itemSummary || "—"}</Text>
+        </View>
+        <View style={{ alignItems: "flex-end", gap: 6 }}>
+          <View style={[styles.statusBadge, { backgroundColor: sc.bg }]}>
+            <Text style={[styles.statusText, { color: sc.text }]}>{sc.label}</Text>
+          </View>
+          <Text style={{ fontWeight: "700" as const, color: Colors.light.text }}>{total}</Text>
+        </View>
+      </View>
     </View>
   );
 }

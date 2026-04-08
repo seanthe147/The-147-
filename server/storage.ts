@@ -922,22 +922,55 @@ export class DatabaseStorage implements IStorage {
 
   async createAppOrder(data: {
     squareLinkId?: string;
+    squareOrderId?: string;
     tableNote?: string;
     customerName?: string;
+    customerEmail?: string;
     itemsJson: string;
     totalPence: number;
   }): Promise<void> {
     await db.insert(appOrders).values({
       squareLinkId: data.squareLinkId ?? null,
+      squareOrderId: data.squareOrderId ?? null,
+      squarePaymentId: null,
       tableNote: data.tableNote ?? null,
       customerName: data.customerName ?? null,
+      customerEmail: data.customerEmail ?? null,
       itemsJson: data.itemsJson,
       totalPence: data.totalPence,
+      status: "pending",
     });
   }
 
   async getRecentAppOrders(limit = 100): Promise<AppOrder[]> {
     return db.select().from(appOrders).orderBy(desc(appOrders.createdAt)).limit(limit);
+  }
+
+  async getAppOrder(id: number): Promise<AppOrder | null> {
+    const rows = await db.select().from(appOrders).where(eq(appOrders.id, id));
+    return rows[0] ?? null;
+  }
+
+  async getOrderBySquareOrderId(squareOrderId: string): Promise<AppOrder | null> {
+    const rows = await db.select().from(appOrders).where(eq(appOrders.squareOrderId, squareOrderId));
+    return rows[0] ?? null;
+  }
+
+  async updateAppOrderPaid(squareOrderId: string, squarePaymentId: string): Promise<void> {
+    await db.update(appOrders)
+      .set({ status: "paid", squarePaymentId })
+      .where(eq(appOrders.squareOrderId, squareOrderId));
+  }
+
+  async updateAppOrderStatus(id: number, status: string): Promise<void> {
+    await db.update(appOrders).set({ status }).where(eq(appOrders.id, id));
+  }
+
+  async getCustomerOrders(email: string): Promise<AppOrder[]> {
+    return db.select().from(appOrders)
+      .where(eq(appOrders.customerEmail, email))
+      .orderBy(desc(appOrders.createdAt))
+      .limit(50);
   }
 }
 

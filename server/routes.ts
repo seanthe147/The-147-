@@ -1790,6 +1790,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.sendStatus(200);
     }
 
+    // ── App order payment tracking ──────────────────────────────────────────
+    if (paymentStatus === "COMPLETED") {
+      const paymentOrderId = payment.order_id as string | undefined;
+      if (paymentOrderId) {
+        try {
+          const appOrder = await storage.getOrderBySquareOrderId(paymentOrderId);
+          if (appOrder && appOrder.status === "pending") {
+            await storage.updateAppOrderPaid(paymentOrderId, payment.id);
+            console.log(`[WEBHOOK] App order #${appOrder.id} marked paid (Square order: ${paymentOrderId})`);
+            return res.sendStatus(200);
+          }
+        } catch (err: any) {
+          console.error("[WEBHOOK] App order status update failed:", err.message);
+        }
+      }
+    }
+
     // ── Deposit payment (£5 completed only) ────────────────────────────────
     if (paymentStatus !== "COMPLETED") return res.sendStatus(200);
     if (amountPence !== 500 || currency !== "GBP") return res.sendStatus(200);
@@ -2259,12 +2276,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ message: "Cart is empty" });
     }
     try {
-      const { url, linkId } = await square.createOrderCheckoutLink(items, tableNote, customer);
+      const { url, linkId, squareOrderId } = await square.createOrderCheckoutLink(items, tableNote, customer);
       // Store order record (non-blocking — don't fail checkout if DB write fails)
       storage.createAppOrder({
         squareLinkId: linkId || undefined,
+        squareOrderId: squareOrderId || undefined,
         tableNote: tableNote || undefined,
         customerName: customer?.name || undefined,
+        customerEmail: customer?.email || undefined,
         itemsJson: JSON.stringify(
           items.map((i: any) => ({ name: i.name ?? "Item", quantity: i.quantity, price: i.price }))
         ),
@@ -2285,6 +2304,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(orders);
     } catch (err: any) {
       console.error("[ORDERS] Failed to load orders:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ── Staff: cancel an app order ────────────────────────────────────────────────
+  app.post("/api/staff/orders/:id/cancel", staffAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid order ID" });
+    try {
+      const order = await storage.getAppOrder(id);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      if (order.status === "cancelled" || order.status === "refunded") {
+        return res.status(400).json({ message: `Order is already ${order.status}` });
+      }
+      // If paid, issue a refund automatically
+      if (order.status === "paid" && order.squarePaymentId) {
+        const idKey = `refund-cancel-${id}-${Date.now()}`;
+        await square.createRefund({ paymentId: order.squarePaymentId, amountPence: order.totalPence, reason: "Order cancelled by staff", idempotencyKey: idKey });
+        await storage.updateAppOrderStatus(id, "refunded");
+        return res.json({ status: "refunded", message: "Payment refunded and order cancelled" });
+      }
+      await storage.updateAppOrderStatus(id, "cancelled");
+      res.json({ status: "cancelled" });
+    } catch (err: any) {
+      console.error("[ORDERS] Cancel failed:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ── Staff: refund a paid app order ────────────────────────────────────────────
+  app.post("/api/staff/orders/:id/refund", staffAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid order ID" });
+    const { reason } = req.body;
+    try {
+      const order = await storage.getAppOrder(id);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      if (order.status !== "paid") return res.status(400).json({ message: "Only paid orders can be refunded" });
+      if (!order.squarePaymentId) return res.status(400).json({ message: "No payment ID on record — contact Square support" });
+      const idKey = `refund-${id}-${Date.now()}`;
+      await square.createRefund({
+        paymentId: order.squarePaymentId,
+        amountPence: order.totalPence,
+        reason: reason || "Refund issued by staff",
+        idempotencyKey: idKey,
+      });
+      await storage.updateAppOrderStatus(id, "refunded");
+      res.json({ status: "refunded" });
+    } catch (err: any) {
+      console.error("[ORDERS] Refund failed:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ── Customer: order history ───────────────────────────────────────────────────
+  app.get("/api/customers/orders", customerAuth, async (req, res) => {
+    try {
+      const email = (req as any).customerEmail as string | undefined;
+      if (!email) return res.status(400).json({ message: "No customer email" });
+      const orders = await storage.getCustomerOrders(email);
+      res.json(orders);
+    } catch (err: any) {
+      console.error("[ORDERS] Customer orders failed:", err.message);
       res.status(500).json({ message: err.message });
     }
   });

@@ -2902,6 +2902,30 @@
   window.loadMenuManagement=loadMenuManagement;
 
   /* ── App Orders ── */
+  const ORDER_STATUS={
+    pending: {label:'Pending',cls:'pill-amber'},
+    paid:    {label:'Paid',   cls:'pill-green'},
+    cancelled:{label:'Cancelled',cls:'pill-red'},
+    refunded: {label:'Refunded', cls:'pill-amber'},
+  };
+
+  async function cancelOrder(id){
+    if(!confirm('Cancel this order? If it was already paid the customer will be automatically refunded.'))return;
+    try{
+      const r=await api(`/api/staff/orders/${id}/cancel`,{method:'POST'});
+      loadOrders();
+    }catch(e){alert('Cancel failed: '+(e.message||e));}
+  }
+
+  async function refundOrder(id){
+    const reason=prompt('Reason for refund (optional):');
+    if(reason===null)return;
+    try{
+      await api(`/api/staff/orders/${id}/refund`,{method:'POST',body:JSON.stringify({reason}),headers:{'Content-Type':'application/json'}});
+      loadOrders();
+    }catch(e){alert('Refund failed: '+(e.message||e));}
+  }
+
   async function loadOrders(){
     const wrap=el('ordersTableWrap');
     wrap.innerHTML='<div class="menu-loading">Loading orders…</div>';
@@ -2930,25 +2954,33 @@
         return items.map(i=>`${i.quantity}× ${i.name}`).join(', ');
       }catch(e){return'—';}
     }
-    const rows=orders.map(o=>`
-      <tr>
+    function fmtActions(o){
+      if(o.status==='pending') return`<button class="btn btn-secondary btn-sm" style="font-size:11px;padding:4px 10px" onclick="cancelOrder(${o.id})">Cancel</button>`;
+      if(o.status==='paid')    return`<button class="btn btn-sm" style="font-size:11px;padding:4px 10px;background:var(--red);color:#fff;border:none;border-radius:var(--r);cursor:pointer" onclick="refundOrder(${o.id})">Refund</button>`;
+      return'—';
+    }
+    const rows=orders.map(o=>{
+      const sc=ORDER_STATUS[o.status]||ORDER_STATUS.pending;
+      return`<tr>
         <td style="white-space:nowrap;color:var(--text-2);font-size:12px">${fmtTime(o.createdAt)}</td>
         <td><strong>${o.tableNote||'—'}</strong></td>
-        <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${fmtItems(o.itemsJson)}</td>
+        <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${fmtItems(o.itemsJson)}</td>
         <td style="white-space:nowrap;font-weight:600">${fmtTotal(o.totalPence)}</td>
         <td style="color:var(--text-2);font-size:12px">${o.customerName||'Guest'}</td>
-      </tr>`).join('');
+        <td><span class="pill ${sc.cls}">${sc.label}</span></td>
+        <td>${fmtActions(o)}</td>
+      </tr>`;}).join('');
     wrap.innerHTML=`
       <table class="bk-table" style="width:100%">
-        <thead>
-          <tr>
-            <th>Time</th><th>Table</th><th>Items</th><th>Total</th><th>Customer</th>
-          </tr>
-        </thead>
+        <thead><tr>
+          <th>Time</th><th>Table</th><th>Items</th><th>Total</th><th>Customer</th><th>Status</th><th>Actions</th>
+        </tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
   }
   window.loadOrders=loadOrders;
+  window.cancelOrder=cancelOrder;
+  window.refundOrder=refundOrder;
 
   let membershipsData={plans:[],subs:[]};
 
