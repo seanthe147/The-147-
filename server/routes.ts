@@ -2254,12 +2254,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Order Checkout ─────────────────────────────────────────────────────────
   app.post("/api/orders/checkout", async (req, res) => {
-    const { items, tableNote } = req.body;
+    const { items, tableNote, customer } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "Cart is empty" });
     }
     try {
-      const url = await square.createOrderCheckoutLink(items, tableNote);
+      const url = await square.createOrderCheckoutLink(items, tableNote, customer);
       res.json({ url });
     } catch (err: any) {
       console.error("[ORDER] Checkout failed:", err.message);

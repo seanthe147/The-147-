@@ -635,12 +635,47 @@ export interface OrderLineItem {
   quantity: number;
 }
 
+interface CheckoutCustomer {
+  name?: string;
+  email?: string;
+  phone?: string;
+}
+
+function normalizeUkPhone(phone: string): string | undefined {
+  const digits = phone.replace(/[\s\-\(\)]/g, "");
+  if (digits.startsWith("+44")) return digits;
+  if (digits.startsWith("44") && digits.length >= 12) return "+" + digits;
+  if (digits.startsWith("07") && digits.length === 11) return "+44" + digits.slice(1);
+  if (digits.startsWith("7") && digits.length === 10) return "+44" + digits;
+  return undefined;
+}
+
 export async function createOrderCheckoutLink(
   items: OrderLineItem[],
-  tableNote?: string
+  tableNote?: string,
+  customer?: CheckoutCustomer
 ): Promise<string> {
   const locationId = getLocationId();
   const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+  // Build pre-populated buyer data for logged-in customers
+  let prePopulated: Record<string, any> | undefined;
+  if (customer?.email || customer?.name || customer?.phone) {
+    prePopulated = {};
+    if (customer.email) prePopulated.buyer_email = customer.email;
+    if (customer.phone) {
+      const e164 = normalizeUkPhone(customer.phone);
+      if (e164) prePopulated.buyer_phone_number = e164;
+    }
+    if (customer.name) {
+      const parts = customer.name.trim().split(/\s+/);
+      const lastName = parts.length > 1 ? parts.slice(1).join(" ") : "";
+      prePopulated.buyer_address = {
+        first_name: parts[0],
+        ...(lastName ? { last_name: lastName } : {}),
+      };
+    }
+  }
 
   const body: any = {
     idempotency_key: idempotencyKey,
@@ -652,12 +687,13 @@ export async function createOrderCheckoutLink(
         base_price_money: { amount: item.price, currency: "GBP" },
       })),
       ...(tableNote ? {
-        note: `TABLE ${tableNote}`,
-        reference_id: `TABLE-${tableNote}`,
+        note: tableNote,
+        reference_id: tableNote.replace(/\s+/g, "-").toUpperCase().slice(0, 40),
       } : {}),
     },
     checkout_options: {
       allow_tipping: false,
+      ...(prePopulated ? { pre_populated_data: prePopulated } : {}),
     },
   };
 

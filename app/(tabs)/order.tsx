@@ -24,6 +24,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 import { useCart } from "@/contexts/CartContext";
+import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { getApiUrl } from "@/lib/query-client";
 import type { MenuCategory, MenuItem } from "@/types/menu";
 
@@ -33,7 +34,14 @@ const FOOD_CATEGORIES = new Set([
   "Sides", "Kids Mains", "Kids Puddings", "Puddings",
 ]);
 
-const TABLE_NUMBERS = Array.from({ length: 20 }, (_, i) => i + 1);
+const TABLE_SECTIONS = [
+  { label: "Snooker", color: "#1B7A3F", tables: Array.from({ length: 10 }, (_, i) => ({ display: String(i + 1), value: `Snooker ${i + 1}` })) },
+  { label: "Restaurant", color: "#C2570A", tables: Array.from({ length: 6 }, (_, i) => ({ display: String(i + 11), value: `Restaurant ${i + 11}` })) },
+  { label: "Main Area", color: "#1552A0", tables: Array.from({ length: 22 }, (_, i) => ({ display: String(i + 17), value: `Main Area ${i + 17}` })) },
+  { label: "Balcony", color: "#7B2F9E", tables: Array.from({ length: 5 }, (_, i) => ({ display: String(i + 39), value: `Balcony ${i + 39}` })) },
+  { label: "Pool", color: "#0E7C6E", tables: Array.from({ length: 6 }, (_, i) => ({ display: String(i + 1), value: `Pool ${i + 1}` })) },
+  { label: "Darts", color: "#B91C1C", tables: [{ display: "1", value: "Darts" }] },
+] as const;
 
 function formatPrice(pence: number) {
   return `£${(pence / 100).toFixed(2)}`;
@@ -104,6 +112,7 @@ function CartSheet({
   onClose: () => void;
 }) {
   const { items, updateQuantity, removeItem, clearCart, totalPrice, totalItems } = useCart();
+  const { customer } = useCustomerAuth();
   const [tableNote, setTableNote] = useState("");
   const [loading, setLoading] = useState(false);
   const insets = useSafeAreaInsets();
@@ -125,6 +134,9 @@ function CartSheet({
             quantity: i.quantity,
           })),
           tableNote: tableNote.trim() || undefined,
+          customer: customer
+            ? { name: customer.name, email: customer.email, phone: customer.phone ?? undefined }
+            : undefined,
         }),
       });
       const data = await res.json();
@@ -198,7 +210,7 @@ function CartSheet({
               <View style={styles.tablePickerHeader}>
                 <Ionicons name="grid-outline" size={15} color={Colors.light.textSecondary} />
                 <Text style={styles.tablePickerLabel}>
-                  {tableNote ? `Table ${tableNote} selected` : "Select your table (optional)"}
+                  {tableNote ? `${tableNote} selected` : "Select your table (optional)"}
                 </Text>
                 {!!tableNote && (
                   <Pressable onPress={() => setTableNote("")} hitSlop={8}>
@@ -206,26 +218,38 @@ function CartSheet({
                   </Pressable>
                 )}
               </View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.tableNumRow}
-              >
-                {TABLE_NUMBERS.map((n) => {
-                  const selected = tableNote === String(n);
-                  return (
-                    <Pressable
-                      key={n}
-                      onPress={() => setTableNote(selected ? "" : String(n))}
-                      style={[styles.tableNumBtn, selected && styles.tableNumBtnSelected]}
-                    >
-                      <Text style={[styles.tableNumText, selected && styles.tableNumTextSelected]}>
-                        {n}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
+              {TABLE_SECTIONS.map((section) => (
+                <View key={section.label} style={styles.tableSectionRow}>
+                  <View style={[styles.tableSectionLabelWrap, { borderLeftColor: section.color }]}>
+                    <Text style={[styles.tableSectionLabel, { color: section.color }]} numberOfLines={2}>
+                      {section.label}
+                    </Text>
+                  </View>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.tableNumRow}
+                  >
+                    {section.tables.map((table) => {
+                      const selected = tableNote === table.value;
+                      return (
+                        <Pressable
+                          key={table.value}
+                          onPress={() => setTableNote(selected ? "" : table.value)}
+                          style={[
+                            styles.tableNumBtn,
+                            selected && { backgroundColor: section.color, borderColor: section.color },
+                          ]}
+                        >
+                          <Text style={[styles.tableNumText, selected && styles.tableNumTextSelected]}>
+                            {table.display}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              ))}
             </View>
 
             <View style={styles.cartTotal}>
@@ -777,6 +801,8 @@ const styles = StyleSheet.create({
     paddingTop: 11,
     paddingBottom: 8,
     gap: 7,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
   },
   tablePickerLabel: {
     flex: 1,
@@ -784,16 +810,37 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.light.textSecondary,
   },
+  tableSectionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
+  },
+  tableSectionLabelWrap: {
+    width: 80,
+    paddingLeft: 12,
+    paddingVertical: 10,
+    borderLeftWidth: 3,
+    flexShrink: 0,
+    justifyContent: "center",
+  },
+  tableSectionLabel: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 11,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    lineHeight: 15,
+  },
   tableNumRow: {
-    paddingHorizontal: 14,
-    paddingBottom: 12,
-    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 6,
     flexDirection: "row",
   },
   tableNumBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
+    width: 38,
+    height: 38,
+    borderRadius: 9,
     backgroundColor: Colors.light.surface,
     borderWidth: 1.5,
     borderColor: Colors.light.border,
@@ -806,7 +853,7 @@ const styles = StyleSheet.create({
   },
   tableNumText: {
     fontFamily: "Montserrat_700Bold",
-    fontSize: 14,
+    fontSize: 13,
     color: Colors.light.text,
   },
   tableNumTextSelected: {
