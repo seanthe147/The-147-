@@ -2800,12 +2800,19 @@
       </div>`;
 
     if(isManager){
+      const allHaveSquareIds=plans.length>0&&plans.every(p=>p.squarePlanVariationId);
       html+=`<div class="settings-section" style="margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
         <div>
           <div class="settings-title" style="margin-bottom:2px">Membership Plans</div>
           <div class="settings-desc" style="margin:0">${needsSeed?'No plans yet — seed the defaults to get started.':'Reset all plans to defaults (Rack / Century / Maximum) with correct prices. Existing Square IDs are preserved.'}</div>
         </div>
-        <button class="btn btn-primary" style="flex-shrink:0" onclick="window.seedMembershipPlans()">${needsSeed?'Seed Default Plans':'Reset to Default Plans'}</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${!allHaveSquareIds?`<button class="btn btn-secondary" style="flex-shrink:0;border-color:#10B981;color:#10B981" onclick="window.setupSquareBilling()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            Enable Recurring Billing
+          </button>`:''}
+          <button class="btn btn-primary" style="flex-shrink:0" onclick="window.seedMembershipPlans()">${needsSeed?'Seed Default Plans':'Reset to Default Plans'}</button>
+        </div>
       </div>`;
     }
 
@@ -2965,6 +2972,24 @@
       toast('Default plans created','success');
       loadMemberships();
     }catch(e){if(e.message!=='Session expired')toast('Network error','error')}
+  };
+
+  window.setupSquareBilling=async function(){
+    if(!confirm('This will create monthly subscription plans in your Square account for each membership tier. This only needs to be done once. Continue?'))return;
+    const btn=document.querySelector('button[onclick="window.setupSquareBilling()"]');
+    if(btn){btn.textContent='Setting up…';btn.disabled=true;}
+    try{
+      const r=await api('/api/staff/membership/setup-square-billing',{method:'POST'});
+      const d=await r.json();
+      if(!r.ok){toast(d.message||'Setup failed','error');if(btn){btn.textContent='Enable Recurring Billing';btn.disabled=false;}return}
+      const skipped=d.results.filter(x=>x.skipped).length;
+      const created=d.results.filter(x=>!x.skipped).length;
+      toast(`Recurring billing enabled! ${created} plan${created!==1?'s':''} created in Square.`+(skipped?` (${skipped} already set up)`:''),'success');
+      loadMemberships();
+    }catch(e){
+      if(e.message!=='Session expired')toast('Network error — check server logs','error');
+      if(btn){btn.textContent='Enable Recurring Billing';btn.disabled=false;}
+    }
   };
 
   window.pauseMember=async function(id){

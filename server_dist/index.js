@@ -1183,6 +1183,73 @@ async function createMembershipCheckoutLink(opts) {
   const link = data.payment_link;
   return { url: link.url, paymentLinkId: link.id };
 }
+async function createSubscriptionCheckoutLink(opts) {
+  const body = {
+    idempotency_key: `sub-checkout-${opts.subscriptionId}-${Date.now()}`,
+    subscription_plan_variation_id: opts.planVariationId,
+    checkout_options: {
+      redirect_url: opts.redirectUrl,
+      subscription_cancel_url: "https://the147bradford.replit.app/membership"
+    }
+  };
+  if (opts.buyerEmail) {
+    body.pre_populated_data = { buyer_email: opts.buyerEmail };
+  }
+  const data = await squareRequest("POST", "/v2/online-checkout/payment-links", body);
+  const link = data.payment_link;
+  return { url: link.url, paymentLinkId: link.id };
+}
+async function createCatalogSubscriptionPlan(opts) {
+  const tempPlanId = `#plan-${opts.localPlanId}`;
+  const tempVarId = `#var-${opts.localPlanId}`;
+  const data = await squareRequest("POST", "/v2/catalog/batch-upsert", {
+    idempotency_key: `147-membership-plan-${opts.localPlanId}-${Date.now()}`,
+    batches: [
+      {
+        objects: [
+          {
+            type: "SUBSCRIPTION_PLAN",
+            id: tempPlanId,
+            subscription_plan_data: {
+              name: `The 147 Bradford \u2014 ${opts.name} Membership`,
+              subscription_plan_variations: [
+                {
+                  type: "SUBSCRIPTION_PLAN_VARIATION",
+                  id: tempVarId,
+                  subscription_plan_variation_data: {
+                    name: "Monthly",
+                    phases: [
+                      {
+                        cadence: "MONTHLY",
+                        recurring_price_money: {
+                          amount: opts.amountPence,
+                          currency: "GBP"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  });
+  const idMapping = data.id_mappings?.reduce(
+    (acc, m) => {
+      acc[m.client_object_id] = m.object_id;
+      return acc;
+    },
+    {}
+  ) ?? {};
+  const squarePlanId = idMapping[tempPlanId] ?? "";
+  const squarePlanVariationId = idMapping[tempVarId] ?? "";
+  if (!squarePlanVariationId) {
+    throw new Error(`Square did not return a variation ID for plan ${opts.name}`);
+  }
+  return { planId: opts.localPlanId, squarePlanId, squarePlanVariationId };
+}
 function membershipGroupName(planName) {
   return `147 Bradford \u2014 ${planName} Members`;
 }
@@ -4025,17 +4092,26 @@ Phone: ${phone}` : ""}`,
                 });
               }
               const redirectUrl = `https://the147bradford.replit.app/api/membership/${sub.id}/payment-return`;
-              const checkout = await createMembershipCheckoutLink({
+              const checkout = plan.squarePlanVariationId ? await createSubscriptionCheckoutLink({
+                planVariationId: plan.squarePlanVariationId,
+                subscriptionId: sub.id,
+                buyerEmail: customer?.email,
+                redirectUrl
+              }).catch((err) => {
+                console.error("[membership/join] subscription checkout error:", err?.message ?? err);
+                return null;
+              }) : await createMembershipCheckoutLink({
                 planName: plan.name,
                 amountPence: plan.priceMonthly,
                 subscriptionId: sub.id,
                 redirectUrl
               }).catch((err) => {
-                console.error("[membership/join] checkout link error:", err?.message ?? err);
+                console.error("[membership/join] one-time checkout error:", err?.message ?? err);
                 return null;
               });
               if (checkout) {
                 checkoutUrl = checkout.url;
+                console.log(`[membership/join] ${plan.squarePlanVariationId ? "Subscription" : "One-time"} checkout created for sub #${sub.id}`);
               }
             }
           }
@@ -4137,6 +4213,61 @@ Phone: ${phone}` : ""}`,
           }
         }
       }
+      if (type === "subscription.created") {
+        const sqSub = event?.data?.object?.subscription;
+        if (sqSub?.id && sqSub?.customer_id) {
+          const existingSubs = await storage.getMembershipSubscriptions();
+          const local = existingSubs.find(
+            (s) => s.squareCustomerId === sqSub.customer_id && (s.status === "pending" || s.status === "pending_payment") && !s.squareSubscriptionId
+          );
+          if (local) {
+            await storage.updateMembershipSubscription(local.id, {
+              squareSubscriptionId: sqSub.id
+            });
+            console.log(`[MEMBERSHIP WEBHOOK] Linked Square subscription ${sqSub.id} \u2192 local #${local.id}`);
+          }
+        }
+      }
+      if (type === "invoice.payment_made") {
+        const invoice = event?.data?.object?.invoice;
+        const sqSubId = invoice?.subscription_id;
+        if (sqSubId) {
+          const existingSubs = await storage.getMembershipSubscriptions();
+          const local = existingSubs.find((s) => s.squareSubscriptionId === sqSubId);
+          if (local) {
+            let nextPeriodEnd;
+            if (invoice.next_payment_amount_money || invoice.next_payment_due_date) {
+              nextPeriodEnd = invoice.next_payment_due_date ?? void 0;
+            }
+            if (!nextPeriodEnd) {
+              const next = /* @__PURE__ */ new Date();
+              next.setMonth(next.getMonth() + 1);
+              nextPeriodEnd = next.toISOString().slice(0, 10);
+            }
+            await storage.updateMembershipSubscription(local.id, {
+              status: "active",
+              failedPaymentAttempts: 0,
+              currentPeriodStart: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10),
+              currentPeriodEnd: nextPeriodEnd
+            });
+            console.log(`[MEMBERSHIP WEBHOOK] Payment received for #${local.id} \u2014 activated, renews ${nextPeriodEnd}`);
+            if (local.status === "active") {
+              const customer = await storage.getCustomerById(local.customerId).catch(() => null);
+              if (customer?.email) {
+                const tokens = await storage.getPushTokensByEmail(customer.email).catch(() => []);
+                if (tokens.length > 0) {
+                  await sendTargetedPush(
+                    tokens.map((t) => t.token),
+                    "Membership Renewed",
+                    `Your membership has been renewed and is active until ${nextPeriodEnd}.`
+                  ).catch(() => {
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
       if (type === "invoice.payment_failed") {
         const invoice = event?.data?.object?.invoice;
         const sqSubId = invoice?.subscription_id;
@@ -4191,6 +4322,33 @@ Phone: ${phone}` : ""}`,
     ];
     const created = await Promise.all(defaults.map((d) => storage.upsertMembershipPlan(d)));
     res.json(created);
+  });
+  app2.post("/api/staff/membership/setup-square-billing", staffAuth, managerAuth, async (_req, res) => {
+    if (!isConfigured()) {
+      return res.status(503).json({ message: "Square is not configured" });
+    }
+    try {
+      const plans = await storage.getMembershipPlans();
+      const results = [];
+      for (const plan of plans) {
+        if (plan.squarePlanVariationId) {
+          results.push({ planId: plan.id, name: plan.name, squarePlanVariationId: plan.squarePlanVariationId, skipped: true });
+          continue;
+        }
+        const result = await createCatalogSubscriptionPlan({
+          localPlanId: plan.id,
+          name: plan.name,
+          amountPence: plan.priceMonthly
+        });
+        await storage.updateMembershipPlan(plan.id, { squarePlanVariationId: result.squarePlanVariationId });
+        results.push({ planId: plan.id, name: plan.name, squarePlanVariationId: result.squarePlanVariationId });
+        console.log(`[SQUARE SETUP] Created plan variation for ${plan.name}: ${result.squarePlanVariationId}`);
+      }
+      res.json({ success: true, results });
+    } catch (err) {
+      console.error("[SQUARE SETUP] Error:", err?.message);
+      res.status(500).json({ message: err?.message || "Setup failed" });
+    }
   });
   app2.get("/api/staff/membership/subscriptions", staffAuth, async (_req, res) => {
     const subs = await storage.getMembershipSubscriptions();

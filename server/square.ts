@@ -291,7 +291,7 @@ export async function getCustomerGroupIds(customerId: string): Promise<string[]>
   return data.customer?.group_ids || [];
 }
 
-// ── Membership Checkout Link ──────────────────────────────────────────────────
+// ── Membership Checkout Link (one-time, used when no plan variation ID set) ───
 
 export async function createMembershipCheckoutLink(opts: {
   planName: string;
@@ -319,6 +319,100 @@ export async function createMembershipCheckoutLink(opts: {
 
   const link = data.payment_link;
   return { url: link.url, paymentLinkId: link.id };
+}
+
+// ── Subscription Checkout Link (recurring billing) ────────────────────────────
+
+export async function createSubscriptionCheckoutLink(opts: {
+  planVariationId: string;
+  subscriptionId: number;
+  buyerEmail?: string;
+  redirectUrl: string;
+}): Promise<{ url: string; paymentLinkId: string }> {
+  const body: Record<string, unknown> = {
+    idempotency_key: `sub-checkout-${opts.subscriptionId}-${Date.now()}`,
+    subscription_plan_variation_id: opts.planVariationId,
+    checkout_options: {
+      redirect_url: opts.redirectUrl,
+      subscription_cancel_url: "https://the147bradford.replit.app/membership",
+    },
+  };
+  if (opts.buyerEmail) {
+    body.pre_populated_data = { buyer_email: opts.buyerEmail };
+  }
+
+  const data = await squareRequest("POST", "/v2/online-checkout/payment-links", body);
+  const link = data.payment_link;
+  return { url: link.url, paymentLinkId: link.id };
+}
+
+// ── Square Catalog Subscription Plan Setup ────────────────────────────────────
+
+export interface PlanSetupResult {
+  planId: number;
+  squarePlanId: string;
+  squarePlanVariationId: string;
+}
+
+export async function createCatalogSubscriptionPlan(opts: {
+  localPlanId: number;
+  name: string;
+  amountPence: number;
+}): Promise<PlanSetupResult> {
+  const tempPlanId = `#plan-${opts.localPlanId}`;
+  const tempVarId = `#var-${opts.localPlanId}`;
+
+  const data = await squareRequest("POST", "/v2/catalog/batch-upsert", {
+    idempotency_key: `147-membership-plan-${opts.localPlanId}-${Date.now()}`,
+    batches: [
+      {
+        objects: [
+          {
+            type: "SUBSCRIPTION_PLAN",
+            id: tempPlanId,
+            subscription_plan_data: {
+              name: `The 147 Bradford — ${opts.name} Membership`,
+              subscription_plan_variations: [
+                {
+                  type: "SUBSCRIPTION_PLAN_VARIATION",
+                  id: tempVarId,
+                  subscription_plan_variation_data: {
+                    name: "Monthly",
+                    phases: [
+                      {
+                        cadence: "MONTHLY",
+                        recurring_price_money: {
+                          amount: opts.amountPence,
+                          currency: "GBP",
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  });
+
+  const idMapping: Record<string, string> = data.id_mappings?.reduce(
+    (acc: Record<string, string>, m: { client_object_id: string; object_id: string }) => {
+      acc[m.client_object_id] = m.object_id;
+      return acc;
+    },
+    {}
+  ) ?? {};
+
+  const squarePlanId = idMapping[tempPlanId] ?? "";
+  const squarePlanVariationId = idMapping[tempVarId] ?? "";
+
+  if (!squarePlanVariationId) {
+    throw new Error(`Square did not return a variation ID for plan ${opts.name}`);
+  }
+
+  return { planId: opts.localPlanId, squarePlanId, squarePlanVariationId };
 }
 
 // Group name used in Square for a given membership plan name

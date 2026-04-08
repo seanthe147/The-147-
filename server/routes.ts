@@ -3082,18 +3082,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
               // ── Generate checkout payment link ──────────────────────────────
               const redirectUrl = `https://the147bradford.replit.app/api/membership/${sub.id}/payment-return`;
-              const checkout = await square.createMembershipCheckoutLink({
-                planName: plan.name,
-                amountPence: plan.priceMonthly,
-                subscriptionId: sub.id,
-                redirectUrl,
-              }).catch((err) => {
-                console.error("[membership/join] checkout link error:", err?.message ?? err);
-                return null;
-              });
+
+              const checkout = plan.squarePlanVariationId
+                // Recurring subscription checkout — card saved, billed monthly
+                ? await square.createSubscriptionCheckoutLink({
+                    planVariationId: plan.squarePlanVariationId,
+                    subscriptionId: sub.id,
+                    buyerEmail: customer?.email,
+                    redirectUrl,
+                  }).catch((err) => {
+                    console.error("[membership/join] subscription checkout error:", err?.message ?? err);
+                    return null;
+                  })
+                // Fallback: one-time payment link (Square plan not set up yet)
+                : await square.createMembershipCheckoutLink({
+                    planName: plan.name,
+                    amountPence: plan.priceMonthly,
+                    subscriptionId: sub.id,
+                    redirectUrl,
+                  }).catch((err) => {
+                    console.error("[membership/join] one-time checkout error:", err?.message ?? err);
+                    return null;
+                  });
 
               if (checkout) {
                 checkoutUrl = checkout.url;
+                console.log(`[membership/join] ${plan.squarePlanVariationId ? "Subscription" : "One-time"} checkout created for sub #${sub.id}`);
               }
             }
           }
@@ -3213,6 +3227,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // subscription.created — link squareSubscriptionId to local record via squareCustomerId
+      if (type === "subscription.created") {
+        const sqSub = event?.data?.object?.subscription;
+        if (sqSub?.id && sqSub?.customer_id) {
+          const existingSubs = await storage.getMembershipSubscriptions();
+          // Find the local pending sub for this Square customer
+          const local = existingSubs.find(s =>
+            s.squareCustomerId === sqSub.customer_id &&
+            (s.status === "pending" || s.status === "pending_payment") &&
+            !s.squareSubscriptionId
+          );
+          if (local) {
+            await storage.updateMembershipSubscription(local.id, {
+              squareSubscriptionId: sqSub.id,
+            });
+            console.log(`[MEMBERSHIP WEBHOOK] Linked Square subscription ${sqSub.id} → local #${local.id}`);
+          }
+        }
+      }
+
+      // invoice.payment_made — activate on first payment, renew on subsequent ones
+      if (type === "invoice.payment_made") {
+        const invoice = event?.data?.object?.invoice;
+        const sqSubId: string | undefined = invoice?.subscription_id;
+        if (sqSubId) {
+          const existingSubs = await storage.getMembershipSubscriptions();
+          const local = existingSubs.find(s => s.squareSubscriptionId === sqSubId);
+          if (local) {
+            // Calculate next period end from invoice scheduled_at or add one month
+            let nextPeriodEnd: string | undefined;
+            if (invoice.next_payment_amount_money || invoice.next_payment_due_date) {
+              nextPeriodEnd = invoice.next_payment_due_date ?? undefined;
+            }
+            if (!nextPeriodEnd) {
+              const next = new Date();
+              next.setMonth(next.getMonth() + 1);
+              nextPeriodEnd = next.toISOString().slice(0, 10);
+            }
+            await storage.updateMembershipSubscription(local.id, {
+              status: "active",
+              failedPaymentAttempts: 0,
+              currentPeriodStart: new Date().toISOString().slice(0, 10),
+              currentPeriodEnd: nextPeriodEnd,
+            });
+            console.log(`[MEMBERSHIP WEBHOOK] Payment received for #${local.id} — activated, renews ${nextPeriodEnd}`);
+            // Push notification on successful renewal (not first activation)
+            if (local.status === "active") {
+              const customer = await storage.getCustomerById(local.customerId).catch(() => null);
+              if (customer?.email) {
+                const tokens = await storage.getPushTokensByEmail(customer.email).catch(() => [] as { token: string }[]);
+                if (tokens.length > 0) {
+                  await sendTargetedPush(tokens.map((t: { token: string }) => t.token),
+                    "Membership Renewed",
+                    `Your membership has been renewed and is active until ${nextPeriodEnd}.`
+                  ).catch(() => {});
+                }
+              }
+            }
+          }
+        }
+      }
+
       // invoice.payment_failed — recurring renewal failures
       if (type === "invoice.payment_failed") {
         const invoice = event?.data?.object?.invoice;
@@ -3277,6 +3353,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     ];
     const created = await Promise.all(defaults.map(d => storage.upsertMembershipPlan(d)));
     res.json(created);
+  });
+
+  // ── Setup Square recurring billing plans (one-time, manager only) ──────────
+  app.post("/api/staff/membership/setup-square-billing", staffAuth, managerAuth, async (_req, res) => {
+    if (!square.isConfigured()) {
+      return res.status(503).json({ message: "Square is not configured" });
+    }
+    try {
+      const plans = await storage.getMembershipPlans();
+      const results: Array<{ planId: number; name: string; squarePlanVariationId: string; skipped?: boolean }> = [];
+
+      for (const plan of plans) {
+        // Skip if already set up
+        if (plan.squarePlanVariationId) {
+          results.push({ planId: plan.id, name: plan.name, squarePlanVariationId: plan.squarePlanVariationId, skipped: true });
+          continue;
+        }
+        const result = await square.createCatalogSubscriptionPlan({
+          localPlanId: plan.id,
+          name: plan.name,
+          amountPence: plan.priceMonthly,
+        });
+        await storage.updateMembershipPlan(plan.id, { squarePlanVariationId: result.squarePlanVariationId });
+        results.push({ planId: plan.id, name: plan.name, squarePlanVariationId: result.squarePlanVariationId });
+        console.log(`[SQUARE SETUP] Created plan variation for ${plan.name}: ${result.squarePlanVariationId}`);
+      }
+
+      res.json({ success: true, results });
+    } catch (err: any) {
+      console.error("[SQUARE SETUP] Error:", err?.message);
+      res.status(500).json({ message: err?.message || "Setup failed" });
+    }
   });
 
   app.get("/api/staff/membership/subscriptions", staffAuth, async (_req, res) => {
