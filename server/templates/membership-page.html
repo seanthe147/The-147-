@@ -435,6 +435,7 @@
   let selectedPlan = null;
   let authToken = null;
   let activeTab = 'reg';
+  let allPlans = [];
 
   /* ── helpers ── */
   function esc(s){const d=document.createElement('div');d.textContent=s??'';return d.innerHTML}
@@ -502,7 +503,7 @@
               </li>`).join('')}
           </ul>
           <button class="plan-cta" style="background:${color};color:#fff"
-            onclick="openModal(${p.id},${JSON.stringify(esc(p.name))},${JSON.stringify(esc(p.tier||'rack'))},${JSON.stringify(color)},${JSON.stringify(price)})">
+            onclick="openModal(${p.id})">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
             Join ${esc(p.name)} — ${price}/mo
           </button>
@@ -519,6 +520,7 @@
       // Sort by sortOrder; mark most popular as the one with highest sortOrder among middle plans
       // or just the one explicitly marked. We use the middle plan if 3 plans.
       const sorted=[...plans].sort((a,b)=>(a.sortOrder??0)-(b.sortOrder??0));
+      allPlans=sorted;
       const popIdx=sorted.length===3?1:0;
       document.getElementById('plansGrid').innerHTML=sorted.map((p,i)=>renderPlan(p,i===popIdx)).join('');
       // Trigger fade-in
@@ -529,7 +531,13 @@
   }
 
   /* ── modal ── */
-  function openModal(id,name,tier,color,price){
+  function openModal(id){
+    const p=allPlans.find(pl=>pl.id===id);
+    if(!p)return;
+    const color=p.color||'#0047AB';
+    const price='£'+(p.priceMonthly/100).toFixed(2);
+    const name=p.name;
+    const tier=p.tier||'rack';
     selectedPlan={id,name,tier,color,price};
     // pill
     const pill=document.getElementById('modalPlanPill');
