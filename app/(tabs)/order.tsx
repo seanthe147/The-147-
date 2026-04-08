@@ -1,4 +1,4 @@
-import React, { useContext, useState, useRef, useCallback } from "react";
+import React, { useContext, useState, useRef, useCallback, useEffect } from "react";
 import {
   StyleSheet,
   View,
@@ -17,8 +17,6 @@ import Colors from "@/constants/colors";
 const MENU_URL =
   "https://www.the147order.co.uk/?location=11f07c84b040cae5b0923cecef6dbaf0&seat_select=true";
 
-const SHOW_AT_PROGRESS = 0.5;
-
 const CATEGORIES = [
   { icon: "beer-outline" as const, label: "Drinks" },
   { icon: "pizza-outline" as const, label: "Food" },
@@ -30,23 +28,23 @@ export default function OrderScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
-  const [loading, setLoading] = useState(true);
+
+  const [overlayVisible, setOverlayVisible] = useState(true);
   const [hasError, setHasError] = useState(false);
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const overlayAnim = useRef(new Animated.Value(1)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
   const webviewRef = useRef<WebView>(null);
   const hasRevealedRef = useRef(false);
 
-  const revealWebView = useCallback(() => {
+  const hideOverlay = useCallback(() => {
     if (hasRevealedRef.current) return;
     hasRevealedRef.current = true;
-    setLoading(false);
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 300,
+    Animated.timing(overlayAnim, {
+      toValue: 0,
+      duration: 350,
       useNativeDriver: true,
-    }).start();
-  }, [fadeAnim]);
+    }).start(() => setOverlayVisible(false));
+  }, [overlayAnim]);
 
   const animateProgress = useCallback(
     (toValue: number) => {
@@ -62,25 +60,26 @@ export default function OrderScreen() {
   const handleLoadProgress = useCallback(
     ({ nativeEvent }: { nativeEvent: { progress: number } }) => {
       animateProgress(nativeEvent.progress);
-      if (nativeEvent.progress >= SHOW_AT_PROGRESS) {
-        revealWebView();
+      if (nativeEvent.progress >= 0.4) {
+        hideOverlay();
       }
     },
-    [animateProgress, revealWebView]
+    [animateProgress, hideOverlay]
   );
 
   const handleLoadEnd = useCallback(() => {
     animateProgress(1);
-    revealWebView();
-  }, [animateProgress, revealWebView]);
+    hideOverlay();
+  }, [animateProgress, hideOverlay]);
 
   const handleError = useCallback(
     ({ nativeEvent }: { nativeEvent: { url?: string; code?: number } }) => {
       const url = nativeEvent?.url ?? "";
-      const isMainUrl = url === "" || url.startsWith("https://www.the147order.co.uk");
+      const isMainUrl =
+        url === "" || url.startsWith("https://www.the147order.co.uk");
       if (isMainUrl) {
         setHasError(true);
-        setLoading(false);
+        setOverlayVisible(false);
       }
     },
     []
@@ -89,19 +88,19 @@ export default function OrderScreen() {
   const handleRetry = useCallback(() => {
     hasRevealedRef.current = false;
     setHasError(false);
-    setLoading(true);
-    fadeAnim.setValue(0);
+    setOverlayVisible(true);
+    overlayAnim.setValue(1);
     progressAnim.setValue(0);
     webviewRef.current?.reload();
-  }, [fadeAnim, progressAnim]);
+  }, [overlayAnim, progressAnim]);
 
   const handleReload = useCallback(() => {
     hasRevealedRef.current = false;
-    setLoading(true);
-    fadeAnim.setValue(0);
+    setOverlayVisible(true);
+    overlayAnim.setValue(1);
     progressAnim.setValue(0);
     webviewRef.current?.reload();
-  }, [fadeAnim, progressAnim]);
+  }, [overlayAnim, progressAnim]);
 
   if (Platform.OS === "web") {
     return (
@@ -140,7 +139,7 @@ export default function OrderScreen() {
             <Text style={styles.headerTitle}>Order</Text>
             <Text style={styles.headerSubtitle}>Food & Drink</Text>
           </View>
-          {!loading && !hasError && (
+          {!overlayVisible && !hasError && (
             <Pressable
               onPress={handleReload}
               hitSlop={12}
@@ -151,7 +150,7 @@ export default function OrderScreen() {
           )}
         </View>
 
-        {loading && !hasError && (
+        {overlayVisible && !hasError && (
           <Animated.View
             style={[
               styles.progressBar,
@@ -165,36 +164,6 @@ export default function OrderScreen() {
           />
         )}
       </View>
-
-      {loading && !hasError && (
-        <View style={[styles.loadingPlaceholder, { paddingBottom: tabBarHeight }]}>
-          <View style={styles.placeholderHero}>
-            <View style={styles.placeholderIconRing}>
-              <Ionicons name="restaurant" size={32} color={Colors.brand.blue} />
-            </View>
-            <Text style={styles.placeholderTitle}>Loading Menu</Text>
-            <Text style={styles.placeholderSubtitle}>
-              Your table ordering system is getting ready
-            </Text>
-          </View>
-
-          <View style={styles.categoryRow}>
-            {CATEGORIES.map((cat) => (
-              <View key={cat.label} style={styles.categoryCard}>
-                <View style={styles.categoryIconBox}>
-                  <Ionicons name={cat.icon} size={24} color={Colors.brand.blue} />
-                </View>
-                <Text style={styles.categoryLabel}>{cat.label}</Text>
-              </View>
-            ))}
-          </View>
-
-          <View style={styles.infoRow}>
-            <Ionicons name="qr-code-outline" size={16} color={Colors.light.textSecondary} />
-            <Text style={styles.infoText}>Scan QR at your table or order directly here</Text>
-          </View>
-        </View>
-      )}
 
       {hasError && (
         <View style={[styles.errorOverlay, { paddingBottom: tabBarHeight }]}>
@@ -224,14 +193,13 @@ export default function OrderScreen() {
         </View>
       )}
 
-      <Animated.View
+      {/* WebView is always visible — content appears as it loads */}
+      <View
         style={[
           styles.webviewWrapper,
           {
             marginTop: headerHeight,
             marginBottom: tabBarHeight,
-            opacity: fadeAnim,
-            pointerEvents: loading ? "none" : "auto",
           },
         ]}
       >
@@ -254,8 +222,51 @@ export default function OrderScreen() {
           renderToHardwareTextureAndroid
           setSupportMultipleWindows={false}
           mediaPlaybackRequiresUserAction={false}
+          originWhitelist={["*"]}
+          androidLayerType="hardware"
         />
-      </Animated.View>
+      </View>
+
+      {/* Loading overlay fades out once content is ready — never blocks the WebView */}
+      {overlayVisible && !hasError && (
+        <Animated.View
+          style={[
+            styles.loadingOverlay,
+            {
+              top: headerHeight,
+              bottom: tabBarHeight,
+              opacity: overlayAnim,
+            },
+          ]}
+          pointerEvents="none"
+        >
+          <View style={styles.placeholderHero}>
+            <View style={styles.placeholderIconRing}>
+              <Ionicons name="restaurant" size={32} color={Colors.brand.blue} />
+            </View>
+            <Text style={styles.placeholderTitle}>Loading Menu</Text>
+            <Text style={styles.placeholderSubtitle}>
+              Your table ordering system is getting ready
+            </Text>
+          </View>
+
+          <View style={styles.categoryRow}>
+            {CATEGORIES.map((cat) => (
+              <View key={cat.label} style={styles.categoryCard}>
+                <View style={styles.categoryIconBox}>
+                  <Ionicons name={cat.icon} size={24} color={Colors.brand.blue} />
+                </View>
+                <Text style={styles.categoryLabel}>{cat.label}</Text>
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.infoRow}>
+            <Ionicons name="qr-code-outline" size={16} color={Colors.light.textSecondary} />
+            <Text style={styles.infoText}>Scan QR at your table or order directly here</Text>
+          </View>
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -316,8 +327,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.light.background,
   },
-  loadingPlaceholder: {
-    flex: 1,
+  loadingOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    zIndex: 5,
+    backgroundColor: Colors.light.background,
     paddingTop: 24,
     paddingHorizontal: 20,
   },
@@ -393,11 +408,17 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   errorOverlay: {
-    flex: 1,
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    top: 0,
+    zIndex: 6,
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 40,
     gap: 12,
+    backgroundColor: Colors.light.background,
   },
   errorIconRing: {
     width: 72,
