@@ -7,6 +7,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ConsentBanner } from "@/components/ConsentBanner";
 import { TabBarProvider } from "@/contexts/TabBarContext";
+import { CartProvider } from "@/contexts/CartContext";
 import { ConsentProvider } from "@/contexts/ConsentContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { StaffAuthProvider } from "@/contexts/StaffAuthContext";
@@ -71,11 +72,13 @@ export default function RootLayout() {
             <StaffAuthProvider>
               <NotificationProvider>
                 <TabBarProvider>
-                  <GestureHandlerRootView>
-                    <KeyboardProvider>
-                      <RootLayoutNav />
-                    </KeyboardProvider>
-                  </GestureHandlerRootView>
+                  <CartProvider>
+                    <GestureHandlerRootView>
+                      <KeyboardProvider>
+                        <RootLayoutNav />
+                      </KeyboardProvider>
+                    </GestureHandlerRootView>
+                  </CartProvider>
                 </TabBarProvider>
               </NotificationProvider>
             </StaffAuthProvider>

@@ -2131,6 +2131,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // ── Menu ──────────────────────────────────────────────────────────────────
+  app.get("/api/menu", async (_req, res) => {
+    try {
+      const categories = await square.getMenuFromSquare();
+      res.json(categories);
+    } catch (err: any) {
+      console.error("[MENU] Failed to fetch menu:", err.message);
+      res.status(500).json({ message: "Failed to load menu" });
+    }
+  });
+
+  // ── Order Checkout ─────────────────────────────────────────────────────────
+  app.post("/api/orders/checkout", async (req, res) => {
+    const { items, tableNote } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: "Cart is empty" });
+    }
+    try {
+      const url = await square.createOrderCheckoutLink(items, tableNote);
+      res.json({ url });
+    } catch (err: any) {
+      console.error("[ORDER] Checkout failed:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/events", async (req, res) => {
     try {
       const eventType = req.query.type as string | undefined;

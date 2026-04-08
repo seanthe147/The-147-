@@ -1293,6 +1293,143 @@ async function syncPlanToSquareCatalog(opts) {
 function membershipGroupName(planName) {
   return `147 Bradford \u2014 ${planName} Members`;
 }
+var PARENT_CATEGORY_IDS = /* @__PURE__ */ new Set([
+  "U4FPHVKPDJ3APM2V4NCNDRTK",
+  "EZKBBONU2F3MW2D2YIAKCUFQ",
+  "OJC6HWZ2YC274FOIWONUY2FI",
+  "C7GP3UY7G5KANXQH6TSG4QN3"
+]);
+var SKIP_ITEMS = /* @__PURE__ */ new Set([
+  "Platinum Membership",
+  "Click and collect (example service)"
+]);
+var CATEGORY_ORDER = {
+  "Starters": 1,
+  "Sharers": 2,
+  "Light Bites": 3,
+  "Pub Classic Mains": 4,
+  "Burgers": 5,
+  "Turkish Mains": 6,
+  "Loaded Fries Menu": 7,
+  "Pastas": 8,
+  "Panini": 9,
+  "Toasties": 10,
+  "Build Your Own Pizza": 11,
+  "Breakfast & Baps": 12,
+  "Sides": 13,
+  "Extras": 14,
+  "Snack's": 15,
+  "Snacks": 16,
+  "Kids Mains": 17,
+  "Kids": 18,
+  "Kids Puddings": 19,
+  "Puddings": 20,
+  "Golden Years - Starters": 21,
+  "Golden Years - Mains": 22,
+  "Golden Years - Puddings": 23,
+  "Draught": 24,
+  "Drinks - Draught": 24,
+  "Beer": 25,
+  "Bitters & Stouts": 26,
+  "Cider": 27,
+  "Bottles": 28,
+  "Bottles - Beers": 29,
+  "Bottles - Cider": 30,
+  "Soft Drinks": 31,
+  "Soft drinks": 31,
+  "Bottled Soft Drinks": 32,
+  "Low & No alcohol": 33,
+  "Spirits": 34,
+  "Spirits - Shots & Bombs": 35,
+  "Wine": 36,
+  "Drinks - Wines - Wine Promo": 37,
+  "Hot Drinks": 38,
+  "Offers & Promotions": 39,
+  "Snooker, Darts": 40,
+  "Darts": 41
+};
+var menuCache = null;
+async function getMenuFromSquare() {
+  if (menuCache && Date.now() < menuCache.expiry) return menuCache.data;
+  let allItems = [];
+  let cursor = null;
+  do {
+    const url = `/v2/catalog/list?types=ITEM${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+    const data = await squareRequest("GET", url);
+    allItems = allItems.concat(data.objects || []);
+    cursor = data.cursor || null;
+  } while (cursor);
+  const items = allItems.filter(
+    (o) => o.type === "ITEM" && !SKIP_ITEMS.has(o.item_data?.name)
+  );
+  const subcatIds = /* @__PURE__ */ new Set();
+  items.forEach((item) => {
+    (item.item_data?.categories || []).forEach((c) => {
+      if (!PARENT_CATEGORY_IDS.has(c.id)) subcatIds.add(c.id);
+    });
+  });
+  const catNames = {};
+  if (subcatIds.size > 0) {
+    const catData = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
+      object_ids: Array.from(subcatIds)
+    });
+    (catData.objects || []).forEach((o) => {
+      catNames[o.id] = o.category_data?.name || "Other";
+    });
+  }
+  const categoryMap = {};
+  items.forEach((item) => {
+    const subcatId = (item.item_data?.categories || []).find(
+      (c) => !PARENT_CATEGORY_IDS.has(c.id)
+    )?.id;
+    if (!subcatId) return;
+    const variation = item.item_data?.variations?.[0];
+    if (!variation) return;
+    if (!categoryMap[subcatId]) {
+      categoryMap[subcatId] = { name: catNames[subcatId] || "Other", items: [] };
+    }
+    categoryMap[subcatId].items.push({
+      id: item.id,
+      variationId: variation.id,
+      name: item.item_data.name,
+      description: item.item_data.description || "",
+      price: variation.item_variation_data?.price_money?.amount || 0
+    });
+  });
+  const result = Object.entries(categoryMap).map(([id, { name, items: its }]) => ({
+    id,
+    name,
+    items: its.sort((a, b) => a.name.localeCompare(b.name))
+  })).sort((a, b) => {
+    const oa = CATEGORY_ORDER[a.name] ?? 99;
+    const ob = CATEGORY_ORDER[b.name] ?? 99;
+    return oa !== ob ? oa - ob : a.name.localeCompare(b.name);
+  });
+  menuCache = { data: result, expiry: Date.now() + 5 * 60 * 1e3 };
+  return result;
+}
+async function createOrderCheckoutLink(items, tableNote) {
+  const locationId = getLocationId();
+  const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const body = {
+    idempotency_key: idempotencyKey,
+    order: {
+      location_id: locationId,
+      line_items: items.map((item) => ({
+        catalog_object_id: item.variationId,
+        quantity: String(item.quantity),
+        base_price_money: { amount: item.price, currency: "GBP" }
+      })),
+      ...tableNote ? { note: `Table ${tableNote}` } : {}
+    },
+    checkout_options: {
+      allow_tipping: false
+    }
+  };
+  const data = await squareRequest("POST", "/v2/online-checkout/payment-links", body);
+  if (!data.payment_link?.url) throw new Error("No checkout URL returned from Square");
+  return data.payment_link.url;
+}
 async function createRefund(opts) {
   const data = await squareRequest("POST", "/v2/refunds", {
     idempotency_key: opts.idempotencyKey,
@@ -3278,6 +3415,28 @@ async function registerRoutes(app2) {
       expiredSessionsCleared: sessionsCleared,
       retentionPeriodDays: 365
     });
+  });
+  app2.get("/api/menu", async (_req, res) => {
+    try {
+      const categories = await getMenuFromSquare();
+      res.json(categories);
+    } catch (err) {
+      console.error("[MENU] Failed to fetch menu:", err.message);
+      res.status(500).json({ message: "Failed to load menu" });
+    }
+  });
+  app2.post("/api/orders/checkout", async (req, res) => {
+    const { items, tableNote } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: "Cart is empty" });
+    }
+    try {
+      const url = await createOrderCheckoutLink(items, tableNote);
+      res.json({ url });
+    } catch (err) {
+      console.error("[ORDER] Checkout failed:", err.message);
+      res.status(500).json({ message: err.message });
+    }
   });
   app2.get("/api/events", async (req, res) => {
     try {

@@ -1,272 +1,397 @@
-import React, { useContext, useState, useRef, useCallback, useEffect } from "react";
+import React, {
+  useContext,
+  useState,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import {
   StyleSheet,
   View,
   Text,
   Platform,
   Pressable,
-  Animated,
+  FlatList,
+  ScrollView,
+  TextInput,
+  ActivityIndicator,
+  Modal,
   Linking,
+  Alert,
 } from "react-native";
-import { WebView } from "react-native-webview";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
+import { useQuery } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
+import { useCart } from "@/contexts/CartContext";
+import { getApiUrl } from "@/lib/query-client";
+import type { MenuCategory, MenuItem } from "@/types/menu";
 
-const MENU_URL =
-  "https://www.the147order.co.uk/?location=11f07c84b040cae5b0923cecef6dbaf0&seat_select=true";
+const FOOD_CATEGORIES = new Set([
+  "Starters", "Sharers", "Pub Classic Mains", "Burgers", "Turkish Mains",
+  "Loaded Fries Menu", "Pastas", "Panini", "Toasties", "Build Your Own Pizza",
+  "Sides", "Kids Mains", "Kids Puddings", "Puddings",
+]);
 
-const CATEGORIES = [
-  { icon: "beer-outline" as const, label: "Drinks" },
-  { icon: "pizza-outline" as const, label: "Food" },
-  { icon: "cafe-outline" as const, label: "Hot Drinks" },
-  { icon: "ice-cream-outline" as const, label: "Snacks" },
-];
+function formatPrice(pence: number) {
+  return `£${(pence / 100).toFixed(2)}`;
+}
+
+function ItemCard({ item }: { item: MenuItem }) {
+  const { addItem, updateQuantity, getQuantity } = useCart();
+  const qty = getQuantity(item.variationId);
+
+  return (
+    <View style={styles.itemCard}>
+      <View style={styles.itemInfo}>
+        <Text style={styles.itemName}>{item.name}</Text>
+        {!!item.description && (
+          <Text style={styles.itemDesc} numberOfLines={2}>{item.description}</Text>
+        )}
+        <Text style={styles.itemPrice}>{formatPrice(item.price)}</Text>
+      </View>
+
+      <View style={styles.itemActions}>
+        {qty === 0 ? (
+          <Pressable
+            onPress={() => addItem({ variationId: item.variationId, itemId: item.id, name: item.name, price: item.price })}
+            style={({ pressed }) => [styles.addBtn, { opacity: pressed ? 0.7 : 1 }]}
+            testID={`add-${item.variationId}`}
+          >
+            <Ionicons name="add" size={20} color="#fff" />
+          </Pressable>
+        ) : (
+          <View style={styles.qtyRow}>
+            <Pressable
+              onPress={() => updateQuantity(item.variationId, -1)}
+              style={({ pressed }) => [styles.qtyBtn, { opacity: pressed ? 0.7 : 1 }]}
+            >
+              <Ionicons name="remove" size={16} color={Colors.brand.blue} />
+            </Pressable>
+            <Text style={styles.qtyText}>{qty}</Text>
+            <Pressable
+              onPress={() => updateQuantity(item.variationId, 1)}
+              style={({ pressed }) => [styles.qtyBtn, { opacity: pressed ? 0.7 : 1 }]}
+            >
+              <Ionicons name="add" size={16} color={Colors.brand.blue} />
+            </Pressable>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
+function CartSheet({
+  visible,
+  onClose,
+}: {
+  visible: boolean;
+  onClose: () => void;
+}) {
+  const { items, updateQuantity, removeItem, clearCart, totalPrice, totalItems } = useCart();
+  const [tableNote, setTableNote] = useState("");
+  const [loading, setLoading] = useState(false);
+  const insets = useSafeAreaInsets();
+
+  const handleCheckout = async () => {
+    if (items.length === 0) return;
+    setLoading(true);
+    try {
+      const apiBase = getApiUrl();
+      const url = new URL("/api/orders/checkout", apiBase);
+      const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: items.map((i) => ({
+            variationId: i.variationId,
+            name: i.name,
+            price: i.price,
+            quantity: i.quantity,
+          })),
+          tableNote: tableNote.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Checkout failed");
+
+      onClose();
+      clearCart();
+      setTableNote("");
+      await Linking.openURL(data.url);
+    } catch (err: any) {
+      Alert.alert("Checkout Error", err.message || "Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
+      <View style={[styles.sheetContainer, { paddingBottom: insets.bottom + 16 }]}>
+        <View style={styles.sheetHeader}>
+          <Text style={styles.sheetTitle}>Your Order</Text>
+          <Pressable onPress={onClose} hitSlop={12} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+            <Ionicons name="close" size={24} color={Colors.light.text} />
+          </Pressable>
+        </View>
+
+        {items.length === 0 ? (
+          <View style={styles.emptyCart}>
+            <Ionicons name="cart-outline" size={48} color={Colors.light.textSecondary} />
+            <Text style={styles.emptyCartText}>Your cart is empty</Text>
+          </View>
+        ) : (
+          <>
+            <FlatList
+              data={items}
+              keyExtractor={(i) => i.variationId}
+              style={styles.cartList}
+              contentContainerStyle={{ paddingBottom: 8 }}
+              renderItem={({ item }) => (
+                <View style={styles.cartItem}>
+                  <View style={styles.cartItemInfo}>
+                    <Text style={styles.cartItemName}>{item.name}</Text>
+                    <Text style={styles.cartItemPrice}>{formatPrice(item.price * item.quantity)}</Text>
+                  </View>
+                  <View style={styles.qtyRow}>
+                    <Pressable
+                      onPress={() => updateQuantity(item.variationId, -1)}
+                      style={({ pressed }) => [styles.qtyBtn, { opacity: pressed ? 0.7 : 1 }]}
+                    >
+                      <Ionicons name="remove" size={16} color={Colors.brand.blue} />
+                    </Pressable>
+                    <Text style={styles.qtyText}>{item.quantity}</Text>
+                    <Pressable
+                      onPress={() => updateQuantity(item.variationId, 1)}
+                      style={({ pressed }) => [styles.qtyBtn, { opacity: pressed ? 0.7 : 1 }]}
+                    >
+                      <Ionicons name="add" size={16} color={Colors.brand.blue} />
+                    </Pressable>
+                  </View>
+                </View>
+              )}
+              ItemSeparatorComponent={() => <View style={styles.cartDivider} />}
+            />
+
+            <View style={styles.tableRow}>
+              <Ionicons name="location-outline" size={16} color={Colors.light.textSecondary} />
+              <TextInput
+                style={styles.tableInput}
+                placeholder="Table number (optional)"
+                placeholderTextColor={Colors.light.textSecondary}
+                value={tableNote}
+                onChangeText={setTableNote}
+                keyboardType="number-pad"
+                maxLength={3}
+                returnKeyType="done"
+              />
+            </View>
+
+            <View style={styles.cartTotal}>
+              <Text style={styles.cartTotalLabel}>Total</Text>
+              <Text style={styles.cartTotalPrice}>{formatPrice(totalPrice)}</Text>
+            </View>
+
+            <Pressable
+              onPress={handleCheckout}
+              disabled={loading}
+              style={({ pressed }) => [styles.checkoutBtn, { opacity: pressed || loading ? 0.8 : 1 }]}
+              testID="checkout-btn"
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <Text style={styles.checkoutBtnText}>Pay Now</Text>
+                  <Text style={styles.checkoutBtnSub}>Apple Pay · Google Pay · Card</Text>
+                </>
+              )}
+            </Pressable>
+          </>
+        )}
+      </View>
+    </Modal>
+  );
+}
 
 export default function OrderScreen() {
   const insets = useSafeAreaInsets();
-  const webTopInset = Platform.OS === "web" ? 67 : 0;
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
+  const webTopInset = Platform.OS === "web" ? 67 : 0;
 
-  const [overlayVisible, setOverlayVisible] = useState(true);
-  const [hasError, setHasError] = useState(false);
-  const overlayAnim = useRef(new Animated.Value(1)).current;
-  const progressAnim = useRef(new Animated.Value(0)).current;
-  const webviewRef = useRef<WebView>(null);
-  const hasRevealedRef = useRef(false);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [cartVisible, setCartVisible] = useState(false);
+  const { totalItems, totalPrice } = useCart();
+  const categoryScrollRef = useRef<ScrollView>(null);
 
-  const hideOverlay = useCallback(() => {
-    if (hasRevealedRef.current) return;
-    hasRevealedRef.current = true;
-    Animated.timing(overlayAnim, {
-      toValue: 0,
-      duration: 350,
-      useNativeDriver: true,
-    }).start(() => setOverlayVisible(false));
-  }, [overlayAnim]);
+  const { data: categories, isLoading, isError, refetch } = useQuery<MenuCategory[]>({
+    queryKey: ["/api/menu"],
+    staleTime: 5 * 60 * 1000,
+  });
 
-  const animateProgress = useCallback(
-    (toValue: number) => {
-      Animated.timing(progressAnim, {
-        toValue,
-        duration: 200,
-        useNativeDriver: false,
-      }).start();
-    },
-    [progressAnim]
-  );
+  const activeCategory = useMemo(() => {
+    if (!categories || categories.length === 0) return null;
+    if (selectedCategory && categories.find((c) => c.id === selectedCategory)) {
+      return selectedCategory;
+    }
+    return categories[0].id;
+  }, [categories, selectedCategory]);
 
-  const handleLoadProgress = useCallback(
-    ({ nativeEvent }: { nativeEvent: { progress: number } }) => {
-      animateProgress(nativeEvent.progress);
-      if (nativeEvent.progress >= 0.4) {
-        hideOverlay();
-      }
-    },
-    [animateProgress, hideOverlay]
-  );
+  const activeItems = useMemo(() => {
+    if (!categories) return [];
+    return categories.find((c) => c.id === activeCategory)?.items ?? [];
+  }, [categories, activeCategory]);
 
-  const handleLoadEnd = useCallback(() => {
-    animateProgress(1);
-    hideOverlay();
-  }, [animateProgress, hideOverlay]);
+  const headerHeight = insets.top + 56 + (Platform.OS === "web" ? webTopInset : 0);
+  const categoryBarHeight = 52;
+  const cartBarHeight = totalItems > 0 ? 72 : 0;
 
-  const handleError = useCallback(
-    ({ nativeEvent }: { nativeEvent: { url?: string; code?: number } }) => {
-      const url = nativeEvent?.url ?? "";
-      const isMainUrl =
-        url === "" || url.startsWith("https://www.the147order.co.uk");
-      if (isMainUrl) {
-        setHasError(true);
-        setOverlayVisible(false);
-      }
-    },
-    []
-  );
+  const renderItem = useCallback(({ item }: { item: MenuItem }) => (
+    <ItemCard item={item} />
+  ), []);
 
-  const handleRetry = useCallback(() => {
-    hasRevealedRef.current = false;
-    setHasError(false);
-    setOverlayVisible(true);
-    overlayAnim.setValue(1);
-    progressAnim.setValue(0);
-    webviewRef.current?.reload();
-  }, [overlayAnim, progressAnim]);
-
-  const handleReload = useCallback(() => {
-    hasRevealedRef.current = false;
-    setOverlayVisible(true);
-    overlayAnim.setValue(1);
-    progressAnim.setValue(0);
-    webviewRef.current?.reload();
-  }, [overlayAnim, progressAnim]);
-
-  if (Platform.OS === "web") {
+  if (isLoading) {
     return (
       <View style={styles.container}>
-        <View style={{ height: webTopInset }} />
-        <View style={styles.webHeader}>
-          <View>
-            <Text style={styles.headerTitle}>Order</Text>
-            <Text style={styles.headerSubtitle}>Food & Drink</Text>
-          </View>
+        <View style={[styles.header, { paddingTop: insets.top + webTopInset }]}>
+          <Text style={styles.headerTitle}>Order</Text>
+          <Text style={styles.headerSubtitle}>Food & Drink</Text>
         </View>
-        <View style={{ flex: 1, paddingBottom: tabBarHeight }}>
-          <iframe
-            src={MENU_URL}
-            style={{
-              flex: 1,
-              border: "none",
-              width: "100%",
-              height: "100%",
-            } as React.CSSProperties}
-            title="The 147 Order"
-            loading="eager"
-          />
+        <View style={styles.centred}>
+          <ActivityIndicator size="large" color={Colors.brand.blue} />
+          <Text style={styles.loadingText}>Loading menu…</Text>
         </View>
       </View>
     );
   }
 
-  const headerHeight = insets.top + 56;
+  if (isError || !categories) {
+    return (
+      <View style={styles.container}>
+        <View style={[styles.header, { paddingTop: insets.top + webTopInset }]}>
+          <Text style={styles.headerTitle}>Order</Text>
+          <Text style={styles.headerSubtitle}>Food & Drink</Text>
+        </View>
+        <View style={styles.centred}>
+          <Ionicons name="cloud-offline-outline" size={48} color={Colors.light.textSecondary} />
+          <Text style={styles.errorTitle}>Menu unavailable</Text>
+          <Text style={styles.errorSub}>Please check your connection</Text>
+          <Pressable onPress={() => refetch()} style={({ pressed }) => [styles.retryBtn, { opacity: pressed ? 0.8 : 1 }]}>
+            <Text style={styles.retryBtnText}>Try Again</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      <View style={[styles.nativeHeader, { paddingTop: insets.top }]}>
-        <View style={styles.headerContent}>
+      {/* Fixed header */}
+      <View style={[styles.header, { paddingTop: insets.top + webTopInset }]}>
+        <View style={styles.headerRow}>
           <View>
             <Text style={styles.headerTitle}>Order</Text>
             <Text style={styles.headerSubtitle}>Food & Drink</Text>
           </View>
-          {!overlayVisible && !hasError && (
-            <Pressable
-              onPress={handleReload}
-              hitSlop={12}
-              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
-            >
-              <Ionicons name="refresh" size={22} color="rgba(255,255,255,0.8)" />
-            </Pressable>
-          )}
-        </View>
-
-        {overlayVisible && !hasError && (
-          <Animated.View
-            style={[
-              styles.progressBar,
-              {
-                width: progressAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: ["0%", "100%"],
-                }),
-              },
-            ]}
-          />
-        )}
-      </View>
-
-      {hasError && (
-        <View style={[styles.errorOverlay, { paddingBottom: tabBarHeight }]}>
-          <View style={styles.errorIconRing}>
-            <Ionicons name="cloud-offline-outline" size={32} color={Colors.light.textSecondary} />
-          </View>
-          <Text style={styles.errorTitle}>Unable to Load Menu</Text>
-          <Text style={styles.errorText}>
-            Please check your internet connection and try again.
-          </Text>
-          <View style={styles.errorActions}>
-            <Pressable
-              onPress={handleRetry}
-              style={({ pressed }) => [styles.retryButton, { opacity: pressed ? 0.8 : 1 }]}
-            >
-              <Ionicons name="refresh" size={16} color="#FFFFFF" />
-              <Text style={styles.retryButtonText}>Try Again</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => Linking.openURL(MENU_URL)}
-              style={({ pressed }) => [styles.openButton, { opacity: pressed ? 0.8 : 1 }]}
-            >
-              <Ionicons name="open-outline" size={16} color={Colors.brand.blue} />
-              <Text style={styles.openButtonText}>Open in Browser</Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
-
-      {/* WebView is always visible — content appears as it loads */}
-      <View
-        style={[
-          styles.webviewWrapper,
-          {
-            marginTop: headerHeight,
-            marginBottom: tabBarHeight,
-          },
-        ]}
-      >
-        <WebView
-          ref={webviewRef}
-          source={{ uri: MENU_URL }}
-          style={styles.webview}
-          onLoadEnd={handleLoadEnd}
-          onLoadProgress={handleLoadProgress}
-          onError={handleError}
-          startInLoadingState={false}
-          javaScriptEnabled
-          domStorageEnabled
-          cacheEnabled
-          cacheMode="LOAD_CACHE_ELSE_NETWORK"
-          sharedCookiesEnabled
-          thirdPartyCookiesEnabled
-          allowsLinkPreview
-          allowsBackForwardNavigationGestures
-          renderToHardwareTextureAndroid
-          setSupportMultipleWindows={false}
-          mediaPlaybackRequiresUserAction={false}
-          originWhitelist={["*"]}
-          androidLayerType="hardware"
-        />
-      </View>
-
-      {/* Loading overlay fades out once content is ready — never blocks the WebView */}
-      {overlayVisible && !hasError && (
-        <Animated.View
-          style={[
-            styles.loadingOverlay,
-            {
-              top: headerHeight,
-              bottom: tabBarHeight,
-              opacity: overlayAnim,
-            },
-          ]}
-          pointerEvents="none"
-        >
-          <View style={styles.placeholderHero}>
-            <View style={styles.placeholderIconRing}>
-              <Ionicons name="restaurant" size={32} color={Colors.brand.blue} />
-            </View>
-            <Text style={styles.placeholderTitle}>Loading Menu</Text>
-            <Text style={styles.placeholderSubtitle}>
-              Your table ordering system is getting ready
-            </Text>
-          </View>
-
-          <View style={styles.categoryRow}>
-            {CATEGORIES.map((cat) => (
-              <View key={cat.label} style={styles.categoryCard}>
-                <View style={styles.categoryIconBox}>
-                  <Ionicons name={cat.icon} size={24} color={Colors.brand.blue} />
-                </View>
-                <Text style={styles.categoryLabel}>{cat.label}</Text>
+          <Pressable
+            onPress={() => setCartVisible(true)}
+            style={({ pressed }) => [styles.cartIconBtn, { opacity: pressed ? 0.7 : 1 }]}
+            testID="cart-icon"
+          >
+            <Ionicons name="cart-outline" size={24} color="#fff" />
+            {totalItems > 0 && (
+              <View style={styles.cartBadge}>
+                <Text style={styles.cartBadgeText}>{totalItems > 99 ? "99+" : totalItems}</Text>
               </View>
-            ))}
-          </View>
+            )}
+          </Pressable>
+        </View>
+      </View>
 
-          <View style={styles.infoRow}>
-            <Ionicons name="qr-code-outline" size={16} color={Colors.light.textSecondary} />
-            <Text style={styles.infoText}>Scan QR at your table or order directly here</Text>
+      {/* Category tabs */}
+      <View style={[styles.categoryBar, { top: headerHeight }]}>
+        <ScrollView
+          ref={categoryScrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoryScroll}
+        >
+          {categories.map((cat) => {
+            const isActive = cat.id === activeCategory;
+            const isFood = FOOD_CATEGORIES.has(cat.name);
+            return (
+              <Pressable
+                key={cat.id}
+                onPress={() => setSelectedCategory(cat.id)}
+                style={({ pressed }) => [
+                  styles.catPill,
+                  isActive && styles.catPillActive,
+                  { opacity: pressed ? 0.7 : 1 },
+                ]}
+              >
+                <Ionicons
+                  name={isFood ? "restaurant-outline" : "beer-outline"}
+                  size={13}
+                  color={isActive ? "#fff" : Colors.light.textSecondary}
+                  style={{ marginRight: 4 }}
+                />
+                <Text style={[styles.catPillText, isActive && styles.catPillTextActive]}>
+                  {cat.name}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* Items list */}
+      <FlatList
+        data={activeItems}
+        keyExtractor={(item) => item.variationId}
+        renderItem={renderItem}
+        contentContainerStyle={{
+          paddingTop: headerHeight + categoryBarHeight + 8,
+          paddingBottom: tabBarHeight + cartBarHeight + 16,
+          paddingHorizontal: 16,
+        }}
+        showsVerticalScrollIndicator={false}
+        ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+        ListEmptyComponent={
+          <View style={styles.centred}>
+            <Text style={styles.errorSub}>No items in this category</Text>
           </View>
-        </Animated.View>
+        }
+      />
+
+      {/* Cart bar */}
+      {totalItems > 0 && (
+        <Pressable
+          onPress={() => setCartVisible(true)}
+          style={({ pressed }) => [
+            styles.cartBar,
+            { bottom: tabBarHeight + 10, opacity: pressed ? 0.9 : 1 },
+          ]}
+          testID="cart-bar"
+        >
+          <View style={styles.cartBarLeft}>
+            <View style={styles.cartBarBadge}>
+              <Text style={styles.cartBarBadgeText}>{totalItems}</Text>
+            </View>
+            <Text style={styles.cartBarText}>View Order</Text>
+          </View>
+          <Text style={styles.cartBarPrice}>{formatPrice(totalPrice)}</Text>
+        </Pressable>
       )}
+
+      <CartSheet visible={cartVisible} onClose={() => setCartVisible(false)} />
     </View>
   );
 }
@@ -276,31 +401,26 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.light.background,
   },
-  nativeHeader: {
+  header: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
-    zIndex: 10,
+    zIndex: 20,
     backgroundColor: Colors.brand.navy,
     paddingHorizontal: 20,
     paddingBottom: 10,
   },
-  headerContent: {
+  headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     height: 46,
   },
-  webHeader: {
-    backgroundColor: Colors.brand.navy,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-  },
   headerTitle: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 20,
-    color: "#FFFFFF",
+    color: "#fff",
     lineHeight: 24,
   },
   headerSubtitle: {
@@ -309,170 +429,325 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.6)",
     marginTop: 1,
   },
-  progressBar: {
-    height: 3,
-    backgroundColor: Colors.brand.blue,
-    borderRadius: 2,
-    marginBottom: 2,
-    alignSelf: "flex-start",
-  },
-  webviewWrapper: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  webview: {
-    flex: 1,
-    backgroundColor: Colors.light.background,
-  },
-  loadingOverlay: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    zIndex: 5,
-    backgroundColor: Colors.light.background,
-    paddingTop: 24,
-    paddingHorizontal: 20,
-  },
-  placeholderHero: {
-    alignItems: "center",
-    paddingVertical: 32,
-  },
-  placeholderIconRing: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: "rgba(59,130,246,0.1)",
-    borderWidth: 1.5,
-    borderColor: "rgba(59,130,246,0.25)",
+  cartIconBtn: {
+    width: 40,
+    height: 40,
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 16,
   },
-  placeholderTitle: {
+  cartBadge: {
+    position: "absolute",
+    top: 2,
+    right: 2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: Colors.brand.red,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 3,
+  },
+  cartBadgeText: {
     fontFamily: "Montserrat_700Bold",
-    fontSize: 20,
-    color: Colors.light.text,
-    marginBottom: 6,
+    fontSize: 10,
+    color: "#fff",
   },
-  placeholderSubtitle: {
-    fontFamily: "Montserrat_400Regular",
-    fontSize: 13,
-    color: Colors.light.textSecondary,
-    textAlign: "center",
-    lineHeight: 18,
-    maxWidth: 240,
+  categoryBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    zIndex: 15,
+    backgroundColor: Colors.light.background,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
   },
-  categoryRow: {
+  categoryScroll: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 8,
     flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 10,
-    marginTop: 8,
-  },
-  categoryCard: {
-    flex: 1,
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    paddingVertical: 16,
+  },
+  catPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: Colors.light.surface,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    gap: 8,
+    borderColor: Colors.light.border,
   },
-  categoryIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(59,130,246,0.08)",
-    justifyContent: "center",
-    alignItems: "center",
+  catPillActive: {
+    backgroundColor: Colors.brand.blue,
+    borderColor: Colors.brand.blue,
   },
-  categoryLabel: {
+  catPillText: {
     fontFamily: "Montserrat_600SemiBold",
-    fontSize: 11,
-    color: Colors.light.text,
+    fontSize: 12,
+    color: Colors.light.textSecondary,
   },
-  infoRow: {
+  catPillTextActive: {
+    color: "#fff",
+  },
+  itemCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginTop: 24,
-    justifyContent: "center",
+    backgroundColor: Colors.light.surface,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
   },
-  infoText: {
+  itemInfo: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  itemName: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: Colors.light.text,
+    marginBottom: 3,
+  },
+  itemDesc: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 12,
     color: Colors.light.textSecondary,
+    lineHeight: 16,
+    marginBottom: 6,
+  },
+  itemPrice: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 14,
+    color: Colors.brand.blue,
+  },
+  itemActions: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.brand.blue,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  qtyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  qtyBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1.5,
+    borderColor: Colors.brand.blue,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  qtyText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 14,
+    color: Colors.light.text,
+    minWidth: 20,
     textAlign: "center",
   },
-  errorOverlay: {
+  cartBar: {
     position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    top: 0,
-    zIndex: 6,
-    justifyContent: "center",
+    left: 16,
+    right: 16,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: Colors.brand.blue,
+    flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 40,
-    gap: 12,
-    backgroundColor: Colors.light.background,
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    zIndex: 30,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
   },
-  errorIconRing: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: "#F3F4F6",
+  cartBarLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  cartBarBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "rgba(255,255,255,0.25)",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 4,
+  },
+  cartBarBadgeText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 12,
+    color: "#fff",
+  },
+  cartBarText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 15,
+    color: "#fff",
+  },
+  cartBarPrice: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 15,
+    color: "#fff",
+  },
+  centred: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 40,
+  },
+  loadingText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 14,
+    color: Colors.light.textSecondary,
   },
   errorTitle: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 18,
     color: Colors.light.text,
   },
-  errorText: {
+  errorSub: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 14,
     color: Colors.light.textSecondary,
     textAlign: "center",
-    lineHeight: 20,
   },
-  errorActions: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 8,
-  },
-  retryButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
+  retryBtn: {
     backgroundColor: Colors.brand.blue,
-    paddingHorizontal: 18,
-    paddingVertical: 11,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
     borderRadius: 12,
+    marginTop: 4,
   },
-  retryButtonText: {
+  retryBtnText: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 14,
-    color: "#FFFFFF",
+    color: "#fff",
   },
-  openButton: {
+  sheetContainer: {
+    flex: 1,
+    backgroundColor: Colors.light.background,
+    paddingTop: 16,
+  },
+  sheetHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    borderWidth: 1.5,
-    borderColor: Colors.brand.blue,
-    paddingHorizontal: 18,
-    paddingVertical: 11,
-    borderRadius: 12,
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
   },
-  openButtonText: {
+  sheetTitle: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 20,
+    color: Colors.light.text,
+  },
+  emptyCart: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 12,
+  },
+  emptyCartText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 16,
+    color: Colors.light.textSecondary,
+  },
+  cartList: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+  },
+  cartItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+  },
+  cartItemInfo: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  cartItemName: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 14,
+    color: Colors.light.text,
+    marginBottom: 3,
+  },
+  cartItemPrice: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+  },
+  cartDivider: {
+    height: 1,
+    backgroundColor: Colors.light.border,
+  },
+  tableRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 20,
+    marginTop: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: Colors.light.surfaceElevated,
+    borderRadius: 12,
+    gap: 8,
+  },
+  tableInput: {
+    flex: 1,
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 14,
+    color: Colors.light.text,
+  },
+  cartTotal: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 4,
+  },
+  cartTotalLabel: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 16,
+    color: Colors.light.text,
+  },
+  cartTotalPrice: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 20,
     color: Colors.brand.blue,
+  },
+  checkoutBtn: {
+    marginHorizontal: 20,
+    marginTop: 12,
+    backgroundColor: Colors.brand.blue,
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkoutBtnText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 17,
+    color: "#fff",
+  },
+  checkoutBtnSub: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 11,
+    color: "rgba(255,255,255,0.7)",
+    marginTop: 3,
   },
 });

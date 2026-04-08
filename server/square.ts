@@ -478,6 +478,191 @@ export function membershipGroupName(planName: string): string {
   return `147 Bradford — ${planName} Members`;
 }
 
+// ── Menu / Ordering ───────────────────────────────────────────────────────────
+
+const PARENT_CATEGORY_IDS = new Set([
+  "U4FPHVKPDJ3APM2V4NCNDRTK",
+  "EZKBBONU2F3MW2D2YIAKCUFQ",
+  "OJC6HWZ2YC274FOIWONUY2FI",
+  "C7GP3UY7G5KANXQH6TSG4QN3",
+]);
+
+const SKIP_ITEMS = new Set([
+  "Platinum Membership",
+  "Click and collect (example service)",
+]);
+
+const CATEGORY_ORDER: Record<string, number> = {
+  "Starters": 1,
+  "Sharers": 2,
+  "Light Bites": 3,
+  "Pub Classic Mains": 4,
+  "Burgers": 5,
+  "Turkish Mains": 6,
+  "Loaded Fries Menu": 7,
+  "Pastas": 8,
+  "Panini": 9,
+  "Toasties": 10,
+  "Build Your Own Pizza": 11,
+  "Breakfast & Baps": 12,
+  "Sides": 13,
+  "Extras": 14,
+  "Snack's": 15,
+  "Snacks": 16,
+  "Kids Mains": 17,
+  "Kids": 18,
+  "Kids Puddings": 19,
+  "Puddings": 20,
+  "Golden Years - Starters": 21,
+  "Golden Years - Mains": 22,
+  "Golden Years - Puddings": 23,
+  "Draught": 24,
+  "Drinks - Draught": 24,
+  "Beer": 25,
+  "Bitters & Stouts": 26,
+  "Cider": 27,
+  "Bottles": 28,
+  "Bottles - Beers": 29,
+  "Bottles - Cider": 30,
+  "Soft Drinks": 31,
+  "Soft drinks": 31,
+  "Bottled Soft Drinks": 32,
+  "Low & No alcohol": 33,
+  "Spirits": 34,
+  "Spirits - Shots & Bombs": 35,
+  "Wine": 36,
+  "Drinks - Wines - Wine Promo": 37,
+  "Hot Drinks": 38,
+  "Offers & Promotions": 39,
+  "Snooker, Darts": 40,
+  "Darts": 41,
+};
+
+export interface MenuItem {
+  id: string;
+  variationId: string;
+  name: string;
+  description: string;
+  price: number;
+}
+
+export interface MenuCategory {
+  id: string;
+  name: string;
+  items: MenuItem[];
+}
+
+let menuCache: { data: MenuCategory[]; expiry: number } | null = null;
+
+export async function getMenuFromSquare(): Promise<MenuCategory[]> {
+  if (menuCache && Date.now() < menuCache.expiry) return menuCache.data;
+
+  let allItems: any[] = [];
+  let cursor: string | null = null;
+  do {
+    const url = `/v2/catalog/list?types=ITEM${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+    const data = await squareRequest("GET", url);
+    allItems = allItems.concat(data.objects || []);
+    cursor = data.cursor || null;
+  } while (cursor);
+
+  const items = allItems.filter(
+    (o) => o.type === "ITEM" && !SKIP_ITEMS.has(o.item_data?.name)
+  );
+
+  const subcatIds = new Set<string>();
+  items.forEach((item) => {
+    (item.item_data?.categories || []).forEach((c: any) => {
+      if (!PARENT_CATEGORY_IDS.has(c.id)) subcatIds.add(c.id);
+    });
+  });
+
+  const catNames: Record<string, string> = {};
+  if (subcatIds.size > 0) {
+    const catData = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
+      object_ids: Array.from(subcatIds),
+    });
+    (catData.objects || []).forEach((o: any) => {
+      catNames[o.id] = o.category_data?.name || "Other";
+    });
+  }
+
+  const categoryMap: Record<string, { name: string; items: MenuItem[] }> = {};
+  items.forEach((item) => {
+    const subcatId = (item.item_data?.categories || []).find(
+      (c: any) => !PARENT_CATEGORY_IDS.has(c.id)
+    )?.id;
+    if (!subcatId) return;
+    const variation = item.item_data?.variations?.[0];
+    if (!variation) return;
+
+    if (!categoryMap[subcatId]) {
+      categoryMap[subcatId] = { name: catNames[subcatId] || "Other", items: [] };
+    }
+    categoryMap[subcatId].items.push({
+      id: item.id,
+      variationId: variation.id,
+      name: item.item_data.name,
+      description: item.item_data.description || "",
+      price: variation.item_variation_data?.price_money?.amount || 0,
+    });
+  });
+
+  const result = Object.entries(categoryMap)
+    .map(([id, { name, items: its }]) => ({
+      id,
+      name,
+      items: its.sort((a, b) => a.name.localeCompare(b.name)),
+    }))
+    .sort((a, b) => {
+      const oa = CATEGORY_ORDER[a.name] ?? 99;
+      const ob = CATEGORY_ORDER[b.name] ?? 99;
+      return oa !== ob ? oa - ob : a.name.localeCompare(b.name);
+    });
+
+  menuCache = { data: result, expiry: Date.now() + 5 * 60 * 1000 };
+  return result;
+}
+
+export function invalidateMenuCache() {
+  menuCache = null;
+}
+
+export interface OrderLineItem {
+  variationId: string;
+  name: string;
+  price: number;
+  quantity: number;
+}
+
+export async function createOrderCheckoutLink(
+  items: OrderLineItem[],
+  tableNote?: string
+): Promise<string> {
+  const locationId = getLocationId();
+  const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+  const body: any = {
+    idempotency_key: idempotencyKey,
+    order: {
+      location_id: locationId,
+      line_items: items.map((item) => ({
+        catalog_object_id: item.variationId,
+        quantity: String(item.quantity),
+        base_price_money: { amount: item.price, currency: "GBP" },
+      })),
+      ...(tableNote ? { note: `Table ${tableNote}` } : {}),
+    },
+    checkout_options: {
+      allow_tipping: false,
+    },
+  };
+
+  const data = await squareRequest("POST", "/v2/online-checkout/payment-links", body);
+  if (!data.payment_link?.url) throw new Error("No checkout URL returned from Square");
+  return data.payment_link.url;
+}
+
 // ── Refunds ───────────────────────────────────────────────────────────────────
 
 export async function createRefund(opts: {
