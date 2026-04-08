@@ -1624,11 +1624,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 if (groupId) await square.addCustomerToGroup(sub.squareCustomerId, groupId).catch(() => {});
 
                 // ── Set up recurring Square subscription ────────────────────
-                if (plan.squarePlanVariationId && !sub.squareSubscriptionId && process.env.SQUARE_LOCATION_ID) {
+                const sqLocId = process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID;
+                if (plan.squarePlanVariationId && !sub.squareSubscriptionId && sqLocId) {
                   const sqSub = await square.createSquareSubscription(
                     sub.squareCustomerId,
                     plan.squarePlanVariationId,
-                    process.env.SQUARE_LOCATION_ID
+                    sqLocId
                   ).catch((e) => { console.warn("[WEBHOOK] Recurring subscription setup failed:", e.message); return null; });
                   if (sqSub) {
                     await storage.updateMembershipSubscription(subId, {
@@ -3249,7 +3250,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           let sqCustomer = await square.findSquareCustomerByEmail(customer.email).catch(() => null);
           if (!sqCustomer) sqCustomer = await square.createSquareCustomer(customer.name, customer.email, customer.phone || undefined);
           if (sqCustomer) {
-            const locationId = process.env.SQUARE_LOCATION_ID!;
+            const locationId = (process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID)!;
             const sqSub = await square.createSquareSubscription(sqCustomer.id, plan.squarePlanVariationId, locationId).catch(() => null);
             if (sqSub) {
               await storage.updateMembershipSubscription(sub.id, {

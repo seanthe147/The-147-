@@ -92,6 +92,7 @@ SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = "587"
 SQUARE_DEPOSIT_LINK_URL = "https://square.link/u/tdsM4jUv"
 SQUARE_WEBHOOK_URL = "https://the147bradford.replit.app/api/webhooks/square"
+SQUARE_LOC_ID = "LRHR4ZM2FCJYY"
 
 [postMerge]
 path = "scripts/post-merge.sh"

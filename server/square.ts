@@ -2,6 +2,13 @@ const SQUARE_BASE_URL = process.env.SQUARE_ENVIRONMENT === "production"
   ? "https://connect.squareup.com"
   : "https://connect.squareupsandbox.com";
 
+// SQUARE_LOC_ID takes precedence over SQUARE_LOCATION_ID (which may be set to wrong value)
+function getLocationId(): string {
+  const loc = process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID;
+  if (!loc) throw new Error("SQUARE_LOCATION_ID not configured");
+  return loc;
+}
+
 function getHeaders(): Record<string, string> {
   const token = process.env.SQUARE_ACCESS_TOKEN;
   if (!token) throw new Error("SQUARE_ACCESS_TOKEN not configured");
@@ -82,8 +89,7 @@ export async function getLoyaltyAccount(accountId: string) {
 }
 
 export async function accumulateLoyaltyPoints(accountId: string, points: number, idempotencyKey: string) {
-  const locationId = process.env.SQUARE_LOCATION_ID;
-  if (!locationId) throw new Error("SQUARE_LOCATION_ID not configured");
+  const locationId = getLocationId();
 
   const data = await squareRequest("POST", `/v2/loyalty/accounts/${accountId}/accumulate`, {
     accumulate_points: { points },
@@ -102,8 +108,7 @@ export async function adjustLoyaltyPoints(accountId: string, points: number, rea
 }
 
 export async function redeemLoyaltyReward(accountId: string, rewardTierId: string, idempotencyKey: string) {
-  const locationId = process.env.SQUARE_LOCATION_ID;
-  if (!locationId) throw new Error("SQUARE_LOCATION_ID not configured");
+  const locationId = getLocationId();
 
   const data = await squareRequest("POST", "/v2/loyalty/rewards", {
     reward: {
@@ -150,7 +155,7 @@ export async function searchIssuedRewards(accountId: string): Promise<any[]> {
 }
 
 export function isConfigured(): boolean {
-  return !!(process.env.SQUARE_ACCESS_TOKEN && process.env.SQUARE_LOCATION_ID);
+  return !!(process.env.SQUARE_ACCESS_TOKEN && (process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID));
 }
 
 // ── Subscription helpers ──────────────────────────────────────────────────────
@@ -230,8 +235,7 @@ export async function createDepositPaymentLink(opts: {
   referenceId: string;
   redirectUrl: string;
 }): Promise<{ url: string; paymentLinkId: string }> {
-  const locationId = process.env.SQUARE_LOCATION_ID;
-  if (!locationId) throw new Error("SQUARE_LOCATION_ID not configured");
+  const locationId = getLocationId();
 
   const data = await squareRequest("POST", "/v2/online-checkout/payment-links", {
     idempotency_key: `deposit-${opts.referenceId}-${Date.now()}`,
@@ -295,8 +299,7 @@ export async function createMembershipCheckoutLink(opts: {
   subscriptionId: number;
   redirectUrl: string;
 }): Promise<{ url: string; paymentLinkId: string }> {
-  const locationId = process.env.SQUARE_LOCATION_ID;
-  if (!locationId) throw new Error("SQUARE_LOCATION_ID not configured");
+  const locationId = getLocationId();
 
   const data = await squareRequest("POST", "/v2/online-checkout/payment-links", {
     idempotency_key: `membership-${opts.subscriptionId}-${Date.now()}`,

@@ -939,6 +939,11 @@ import nodemailer from "nodemailer";
 
 // server/square.ts
 var SQUARE_BASE_URL = process.env.SQUARE_ENVIRONMENT === "production" ? "https://connect.squareup.com" : "https://connect.squareupsandbox.com";
+function getLocationId() {
+  const loc = process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID;
+  if (!loc) throw new Error("SQUARE_LOCATION_ID not configured");
+  return loc;
+}
 function getHeaders() {
   const token = process.env.SQUARE_ACCESS_TOKEN;
   if (!token) throw new Error("SQUARE_ACCESS_TOKEN not configured");
@@ -1008,8 +1013,7 @@ async function getLoyaltyAccount(accountId) {
   return data.loyalty_account;
 }
 async function accumulateLoyaltyPoints(accountId, points, idempotencyKey) {
-  const locationId = process.env.SQUARE_LOCATION_ID;
-  if (!locationId) throw new Error("SQUARE_LOCATION_ID not configured");
+  const locationId = getLocationId();
   const data = await squareRequest("POST", `/v2/loyalty/accounts/${accountId}/accumulate`, {
     accumulate_points: { points },
     location_id: locationId,
@@ -1025,8 +1029,7 @@ async function adjustLoyaltyPoints(accountId, points, reason, idempotencyKey) {
   return data.event;
 }
 async function redeemLoyaltyReward(accountId, rewardTierId, idempotencyKey) {
-  const locationId = process.env.SQUARE_LOCATION_ID;
-  if (!locationId) throw new Error("SQUARE_LOCATION_ID not configured");
+  const locationId = getLocationId();
   const data = await squareRequest("POST", "/v2/loyalty/rewards", {
     reward: {
       loyalty_account_id: accountId,
@@ -1065,7 +1068,7 @@ async function searchIssuedRewards(accountId) {
   }
 }
 function isConfigured() {
-  return !!(process.env.SQUARE_ACCESS_TOKEN && process.env.SQUARE_LOCATION_ID);
+  return !!(process.env.SQUARE_ACCESS_TOKEN && (process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID));
 }
 async function createSquareCustomer(name, email, phone) {
   const data = await squareRequest("POST", "/v2/customers", {
@@ -1114,8 +1117,7 @@ async function resumeSquareSubscription(subscriptionId) {
   return data.subscription;
 }
 async function createDepositPaymentLink(opts) {
-  const locationId = process.env.SQUARE_LOCATION_ID;
-  if (!locationId) throw new Error("SQUARE_LOCATION_ID not configured");
+  const locationId = getLocationId();
   const data = await squareRequest("POST", "/v2/online-checkout/payment-links", {
     idempotency_key: `deposit-${opts.referenceId}-${Date.now()}`,
     quick_pay: {
@@ -1162,8 +1164,7 @@ async function getCustomerGroupIds(customerId) {
   return data.customer?.group_ids || [];
 }
 async function createMembershipCheckoutLink(opts) {
-  const locationId = process.env.SQUARE_LOCATION_ID;
-  if (!locationId) throw new Error("SQUARE_LOCATION_ID not configured");
+  const locationId = getLocationId();
   const data = await squareRequest("POST", "/v2/online-checkout/payment-links", {
     idempotency_key: `membership-${opts.subscriptionId}-${Date.now()}`,
     quick_pay: {
@@ -2714,11 +2715,12 @@ async function registerRoutes(app2) {
                 const groupId = await getOrCreateCustomerGroup(membershipGroupName(plan.name)).catch(() => null);
                 if (groupId) await addCustomerToGroup(sub.squareCustomerId, groupId).catch(() => {
                 });
-                if (plan.squarePlanVariationId && !sub.squareSubscriptionId && process.env.SQUARE_LOCATION_ID) {
+                const sqLocId = process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID;
+                if (plan.squarePlanVariationId && !sub.squareSubscriptionId && sqLocId) {
                   const sqSub = await createSquareSubscription(
                     sub.squareCustomerId,
                     plan.squarePlanVariationId,
-                    process.env.SQUARE_LOCATION_ID
+                    sqLocId
                   ).catch((e) => {
                     console.warn("[WEBHOOK] Recurring subscription setup failed:", e.message);
                     return null;
@@ -4166,7 +4168,7 @@ Phone: ${phone}` : ""}`,
           let sqCustomer = await findSquareCustomerByEmail(customer.email).catch(() => null);
           if (!sqCustomer) sqCustomer = await createSquareCustomer(customer.name, customer.email, customer.phone || void 0);
           if (sqCustomer) {
-            const locationId = process.env.SQUARE_LOCATION_ID;
+            const locationId = process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID;
             const sqSub = await createSquareSubscription(sqCustomer.id, plan.squarePlanVariationId, locationId).catch(() => null);
             if (sqSub) {
               await storage.updateMembershipSubscription(sub.id, {
