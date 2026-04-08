@@ -70,6 +70,38 @@ interface IssuedReward {
 
 type AuthStep = "loading" | "phone" | "authenticated";
 
+interface MembershipPlan {
+  id: number;
+  name: string;
+  tier: string;
+  priceMonthly: number;
+  color: string | null;
+  hoursIncluded: number | null;
+  foodDrinkDiscount: number | null;
+  priorityBooking: boolean | null;
+  loyaltyMultiplier: number | null;
+  guestPassesMonthly: number | null;
+  active: boolean;
+}
+
+const PLAN_TIER_META: Record<string, { icon: string; tagline: string }> = {
+  rack: { icon: "ellipse", tagline: "Casual players" },
+  century: { icon: "trophy", tagline: "Most popular" },
+  maximum: { icon: "diamond", tagline: "The full experience" },
+};
+
+function getPlanDisplayFeatures(plan: MembershipPlan): string[] {
+  const f: string[] = [];
+  if (plan.hoursIncluded) f.push(`${plan.hoursIncluded} hrs snooker/month`);
+  else f.push("Unlimited snooker");
+  if (plan.foodDrinkDiscount) f.push(`${plan.foodDrinkDiscount}% food & drink discount`);
+  if (plan.priorityBooking) f.push("Priority booking");
+  if (plan.guestPassesMonthly && plan.guestPassesMonthly > 0) f.push(`${plan.guestPassesMonthly} guest pass/month`);
+  if (plan.loyaltyMultiplier && plan.loyaltyMultiplier > 1) f.push(`${plan.loyaltyMultiplier}× loyalty points`);
+  else f.push("Loyalty points");
+  return f;
+}
+
 function PointsDisplay({ balance, terminology }: { balance: number; terminology?: { one: string; other: string } }) {
   const label = terminology ? (balance === 1 ? terminology.one : terminology.other) : "Points";
   return (
@@ -303,6 +335,10 @@ export default function LoyaltyScreen() {
   const [account, setAccount] = useState<LoyaltyAccount | null>(null);
   const [lookupDone, setLookupDone] = useState(false);
   const [error, setError] = useState("");
+
+  const { data: membershipPlans = [] } = useQuery<MembershipPlan[]>({
+    queryKey: ["/api/membership/plans"],
+  });
 
   useEffect(() => {
     (async () => {
@@ -750,41 +786,46 @@ export default function LoyaltyScreen() {
             </View>
           </View>
 
-          {MEMBERSHIP_PLANS.map((plan, idx) => (
-            <Pressable
-              key={plan.id}
-              onPress={() => router.push("/membership")}
-              style={[styles.membershipPlanCard, idx < MEMBERSHIP_PLANS.length - 1 && styles.membershipPlanCardBorder]}
-            >
-              <View style={[styles.planColorBar, { backgroundColor: plan.color }]} />
-              <View style={styles.planCardContent}>
-                <View style={styles.planCardTop}>
-                  <View style={[styles.planBadge, { backgroundColor: plan.color + "22" }]}>
-                    <Ionicons name={plan.icon as any} size={16} color={plan.color} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.planCardName}>{plan.name}</Text>
-                    <Text style={styles.planCardTagline}>{plan.tagline}</Text>
-                  </View>
-                  <View style={{ alignItems: "flex-end" }}>
-                    <Text style={[styles.planCardPrice, { color: plan.color }]}>£{plan.price.toFixed(2)}</Text>
-                    <Text style={styles.planCardPeriod}>/month</Text>
-                  </View>
-                </View>
-                <View style={styles.planFeatureList}>
-                  {plan.features.map((f, i) => (
-                    <View key={i} style={styles.planFeatureRow}>
-                      <Ionicons name="checkmark-circle" size={13} color={plan.color} />
-                      <Text style={styles.planFeatureText}>{f}</Text>
+          {membershipPlans.map((plan, idx) => {
+            const planColor = plan.color || Colors.brand.blue;
+            const meta = PLAN_TIER_META[plan.tier] ?? { icon: "card", tagline: "" };
+            const features = getPlanDisplayFeatures(plan);
+            return (
+              <Pressable
+                key={plan.id}
+                onPress={() => router.push("/membership")}
+                style={[styles.membershipPlanCard, idx < membershipPlans.length - 1 && styles.membershipPlanCardBorder]}
+              >
+                <View style={[styles.planColorBar, { backgroundColor: planColor }]} />
+                <View style={styles.planCardContent}>
+                  <View style={styles.planCardTop}>
+                    <View style={[styles.planBadge, { backgroundColor: planColor + "22" }]}>
+                      <Ionicons name={meta.icon as any} size={16} color={planColor} />
                     </View>
-                  ))}
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.planCardName}>{plan.name}</Text>
+                      <Text style={styles.planCardTagline}>{meta.tagline}</Text>
+                    </View>
+                    <View style={{ alignItems: "flex-end" }}>
+                      <Text style={[styles.planCardPrice, { color: planColor }]}>£{(plan.priceMonthly / 100).toFixed(2)}</Text>
+                      <Text style={styles.planCardPeriod}>/month</Text>
+                    </View>
+                  </View>
+                  <View style={styles.planFeatureList}>
+                    {features.map((f, i) => (
+                      <View key={i} style={styles.planFeatureRow}>
+                        <Ionicons name="checkmark-circle" size={13} color={planColor} />
+                        <Text style={styles.planFeatureText}>{f}</Text>
+                      </View>
+                    ))}
+                  </View>
                 </View>
-              </View>
-              <View style={styles.planChevron}>
-                <Ionicons name="chevron-forward" size={16} color={Colors.light.textSecondary} />
-              </View>
-            </Pressable>
-          ))}
+                <View style={styles.planChevron}>
+                  <Ionicons name="chevron-forward" size={16} color={Colors.light.textSecondary} />
+                </View>
+              </Pressable>
+            );
+          })}
 
           <Pressable style={styles.membershipCtaBtn} onPress={() => router.push("/membership")}>
             <Ionicons name="card-outline" size={16} color="#fff" />
@@ -798,35 +839,6 @@ export default function LoyaltyScreen() {
   );
 }
 
-const MEMBERSHIP_PLANS = [
-  {
-    id: "rack",
-    name: "Rack",
-    price: 19.99,
-    color: Colors.brand.blue,
-    icon: "ellipse",
-    tagline: "Casual players",
-    features: ["4 hrs snooker/month", "5% food & drink discount", "Loyalty points"],
-  },
-  {
-    id: "century",
-    name: "Century",
-    price: 34.99,
-    color: Colors.brand.gold,
-    icon: "trophy",
-    tagline: "Most popular",
-    features: ["8 hrs snooker/month", "10% food & drink discount", "Priority booking", "Loyalty points"],
-  },
-  {
-    id: "maximum",
-    name: "Maximum",
-    price: 54.99,
-    color: "#10B981",
-    icon: "diamond",
-    tagline: "The full experience",
-    features: ["Unlimited snooker", "15% food & drink discount", "Priority booking", "1 guest pass/month", "2× loyalty points"],
-  },
-];
 
 const styles = StyleSheet.create({
   container: {
