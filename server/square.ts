@@ -308,6 +308,7 @@ export async function createMembershipCheckoutLink(opts: {
       },
       location_id: locationId,
     },
+    payment_note: `MEMBERSHIP:${opts.subscriptionId}`,
     checkout_options: {
       redirect_url: opts.redirectUrl,
     },

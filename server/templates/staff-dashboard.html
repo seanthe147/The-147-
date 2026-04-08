@@ -2754,7 +2754,8 @@
 
   const TIER_COLORS={rack:'var(--blue)',century:'var(--gold)',maximum:'var(--green)'};
   const TIER_LABELS={rack:'Rack',century:'Century',maximum:'Maximum'};
-  const STATUS_COLORS={active:'pill-green',paused:'pill-amber',cancelled:'pill-red',pending:'pill-blue',past_due:'pill-red'};
+  const STATUS_COLORS={active:'pill-green',paused:'pill-amber',cancelled:'pill-red',pending:'pill-amber',pending_payment:'pill-amber',past_due:'pill-red',frozen:'pill-red'};
+  const STATUS_LABELS={active:'Active',paused:'Paused',cancelled:'Cancelled',pending:'Pending',pending_payment:'⏳ Awaiting Payment',past_due:'Past Due',frozen:'Frozen'};
 
   async function loadMemberships(){
     el('membershipsContent').innerHTML='<div class="loading-state"><div class="spinner"></div>Loading memberships…</div>';
@@ -2868,12 +2869,13 @@
         const initials=cust?cust.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase():'?';
         const planColor=plan?plan.color:'#888';
         const statusClass=STATUS_COLORS[sub.status]||'pill-gray';
+        const statusLabel=STATUS_LABELS[sub.status]||sub.status;
         html+=`<div class="staff-card">
           <div class="staff-avatar" style="background:${esc(planColor)}">${esc(initials)}</div>
           <div class="staff-info">
             <div class="staff-name-row">
               <span class="staff-name">${esc(cust?cust.name:'Unknown')}</span>
-              <span class="pill ${statusClass}">${esc(sub.status)}</span>
+              <span class="pill ${statusClass}">${statusLabel}</span>
               ${plan?`<span class="pill" style="background:${esc(plan.color)}22;color:${esc(plan.color)}">${esc(plan.name)}</span>`:''}
             </div>
             <div class="staff-username">${esc(cust?cust.email:'')} ${cust&&cust.phone?'· '+esc(cust.phone):''}</div>
@@ -3218,7 +3220,8 @@
     el('amSaveBtn').textContent='Saving…';
     try{
       // 1. Create subscription
-      const r=await api('/api/staff/membership/subscriptions',{method:'POST',body:JSON.stringify({customerId,planId,staffNotes,status:'active',source:'staff'})});
+      const initialStatus=payMethod==='paylink'?'pending_payment':'active';
+      const r=await api('/api/staff/membership/subscriptions',{method:'POST',body:JSON.stringify({customerId,planId,staffNotes,status:initialStatus,source:'staff'})});
       if(!r.ok){const d=await r.json();err.textContent=d.message||'Failed';err.classList.add('show');el('amSaveBtn').disabled=false;el('amSaveBtn').textContent='Add Member & Generate Link';return}
       const sub=await r.json();
 
