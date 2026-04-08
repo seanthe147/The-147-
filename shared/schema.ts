@@ -303,6 +303,20 @@ export const insertMembershipSubscriptionSchema = createInsertSchema(membershipS
 export type InsertMembershipSubscription = z.infer<typeof insertMembershipSubscriptionSchema>;
 export type MembershipSubscription = typeof membershipSubscriptions.$inferSelect;
 
+// ── App orders (from native ordering system) ──────────────────────────────────
+
+export const appOrders = pgTable("app_orders", {
+  id: serial("id").primaryKey(),
+  squareLinkId: text("square_link_id"),
+  tableNote: text("table_note"),
+  customerName: text("customer_name"),
+  itemsJson: text("items_json").notNull(),
+  totalPence: integer("total_pence").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type AppOrder = typeof appOrders.$inferSelect;
+
 // ── Menu visibility overrides ─────────────────────────────────────────────────
 
 export const menuCategoryVisibility = pgTable("menu_category_visibility", {

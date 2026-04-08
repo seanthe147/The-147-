@@ -654,7 +654,7 @@ export async function createOrderCheckoutLink(
   items: OrderLineItem[],
   tableNote?: string,
   customer?: CheckoutCustomer
-): Promise<string> {
+): Promise<{ url: string; linkId: string }> {
   const locationId = getLocationId();
   const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -699,7 +699,7 @@ export async function createOrderCheckoutLink(
 
   const data = await squareRequest("POST", "/v2/online-checkout/payment-links", body);
   if (!data.payment_link?.url) throw new Error("No checkout URL returned from Square");
-  return data.payment_link.url;
+  return { url: data.payment_link.url as string, linkId: (data.payment_link.id ?? "") as string };
 }
 
 // ── Refunds ───────────────────────────────────────────────────────────────────

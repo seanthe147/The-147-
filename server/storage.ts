@@ -51,6 +51,8 @@ import {
   membershipSubscriptions,
   menuCategoryVisibility,
   menuItemOverrides,
+  appOrders,
+  type AppOrder,
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
 
@@ -916,6 +918,26 @@ export class DatabaseStorage implements IStorage {
         target: menuItemOverrides.variationId,
         set: { hidden, updatedBy, updatedAt: new Date() },
       });
+  }
+
+  async createAppOrder(data: {
+    squareLinkId?: string;
+    tableNote?: string;
+    customerName?: string;
+    itemsJson: string;
+    totalPence: number;
+  }): Promise<void> {
+    await db.insert(appOrders).values({
+      squareLinkId: data.squareLinkId ?? null,
+      tableNote: data.tableNote ?? null,
+      customerName: data.customerName ?? null,
+      itemsJson: data.itemsJson,
+      totalPence: data.totalPence,
+    });
+  }
+
+  async getRecentAppOrders(limit = 100): Promise<AppOrder[]> {
+    return db.select().from(appOrders).orderBy(desc(appOrders.createdAt)).limit(limit);
   }
 }
 

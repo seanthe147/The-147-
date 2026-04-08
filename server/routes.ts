@@ -2259,10 +2259,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ message: "Cart is empty" });
     }
     try {
-      const url = await square.createOrderCheckoutLink(items, tableNote, customer);
+      const { url, linkId } = await square.createOrderCheckoutLink(items, tableNote, customer);
+      // Store order record (non-blocking — don't fail checkout if DB write fails)
+      storage.createAppOrder({
+        squareLinkId: linkId || undefined,
+        tableNote: tableNote || undefined,
+        customerName: customer?.name || undefined,
+        itemsJson: JSON.stringify(
+          items.map((i: any) => ({ name: i.name ?? "Item", quantity: i.quantity, price: i.price }))
+        ),
+        totalPence: items.reduce((sum: number, i: any) => sum + (Number(i.price) * Number(i.quantity)), 0),
+      }).catch((err: any) => console.error("[ORDER] Failed to save order record:", err.message));
       res.json({ url });
     } catch (err: any) {
       console.error("[ORDER] Checkout failed:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ── Staff: recent app orders ─────────────────────────────────────────────────
+  app.get("/api/staff/orders", staffAuth, async (req, res) => {
+    try {
+      const limit = Math.min(Number(req.query.limit) || 100, 200);
+      const orders = await storage.getRecentAppOrders(limit);
+      res.json(orders);
+    } catch (err: any) {
+      console.error("[ORDERS] Failed to load orders:", err.message);
       res.status(500).json({ message: err.message });
     }
   });
