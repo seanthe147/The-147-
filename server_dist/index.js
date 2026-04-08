@@ -2803,6 +2803,64 @@ async function registerRoutes(app2) {
       }
       return res.sendStatus(200);
     }
+    if (eventType === "subscription.created") {
+      try {
+        const sqSub = event?.data?.object?.subscription;
+        if (sqSub?.id && sqSub?.customer_id) {
+          const allSubs = await storage.getMembershipSubscriptions();
+          const local = allSubs.find(
+            (s) => s.squareCustomerId === sqSub.customer_id && (s.status === "pending" || s.status === "pending_payment") && !s.squareSubscriptionId
+          );
+          if (local) {
+            await storage.updateMembershipSubscription(local.id, { squareSubscriptionId: sqSub.id });
+            console.log(`[WEBHOOK] Linked Square subscription ${sqSub.id} \u2192 local #${local.id}`);
+          }
+        }
+      } catch (err) {
+        console.error("[WEBHOOK] subscription.created error:", err);
+      }
+      return res.sendStatus(200);
+    }
+    if (eventType === "invoice.payment_made") {
+      try {
+        const invoice = event?.data?.object?.invoice;
+        const sqSubId = invoice?.subscription_id;
+        if (sqSubId) {
+          const allSubs = await storage.getMembershipSubscriptions();
+          const local = allSubs.find((s) => s.squareSubscriptionId === sqSubId);
+          if (local) {
+            const next = /* @__PURE__ */ new Date();
+            next.setMonth(next.getMonth() + 1);
+            const nextPeriodEnd = invoice.next_payment_due_date ?? next.toISOString().slice(0, 10);
+            const wasAlreadyActive = local.status === "active";
+            await storage.updateMembershipSubscription(local.id, {
+              status: "active",
+              failedPaymentAttempts: 0,
+              currentPeriodStart: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10),
+              currentPeriodEnd: nextPeriodEnd
+            });
+            console.log(`[WEBHOOK] Membership #${local.id} payment received \u2014 active until ${nextPeriodEnd}`);
+            if (wasAlreadyActive) {
+              const customer = await storage.getCustomerById(local.customerId).catch(() => null);
+              if (customer?.email) {
+                const tokens = await storage.getPushTokensByEmail(customer.email).catch(() => []);
+                if (tokens.length > 0) {
+                  await sendTargetedPush(
+                    tokens.map((t) => t.token),
+                    "Membership Renewed",
+                    `Your membership has been renewed and is active until ${nextPeriodEnd}.`
+                  ).catch(() => {
+                  });
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[WEBHOOK] invoice.payment_made error:", err);
+      }
+      return res.sendStatus(200);
+    }
     if (eventType !== "payment.updated") return res.sendStatus(200);
     const payment = event?.data?.object?.payment;
     if (!payment) return res.sendStatus(200);
