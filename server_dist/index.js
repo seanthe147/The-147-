@@ -4181,6 +4181,26 @@ Phone: ${phone}` : ""}`,
     }
     res.status(201).json(sub);
   });
+  app2.post("/api/staff/membership/payment-link", staffAuth, async (req, res) => {
+    const { subscriptionId, planId } = req.body ?? {};
+    if (!subscriptionId || !planId) return res.status(400).json({ message: "subscriptionId and planId required" });
+    if (!isConfigured()) return res.status(503).json({ message: "Square is not configured" });
+    try {
+      const plan = await storage.getMembershipPlan(parseInt(planId));
+      if (!plan) return res.status(404).json({ message: "Plan not found" });
+      const redirectUrl = `${process.env.REPLIT_INTERNAL_APP_DOMAIN ? `https://${process.env.REPLIT_INTERNAL_APP_DOMAIN}` : "https://the147bradford.replit.app"}/staff`;
+      const link = await createMembershipCheckoutLink({
+        planName: plan.name,
+        amountPence: plan.priceMonthly,
+        subscriptionId: parseInt(subscriptionId),
+        redirectUrl
+      });
+      res.json({ url: link.url, paymentLinkId: link.paymentLinkId });
+    } catch (err) {
+      console.error("[PAYMENT LINK]", err?.message);
+      res.status(500).json({ message: err?.message || "Failed to create payment link" });
+    }
+  });
   app2.patch("/api/staff/membership/subscriptions/:id", staffAuth, async (req, res) => {
     const id = parseInt(req.params.id);
     const sub = await storage.getMembershipSubscription(id);

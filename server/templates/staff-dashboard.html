@@ -952,25 +952,35 @@
       <div class="form-group">
         <label class="form-label">Payment Method</label>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="amPaymentGrid">
-          <label class="am-pay-option" data-val="card">
-            <input type="radio" name="amPayMethod" value="card" style="display:none">
-            <div class="am-pay-card">💳 Card (Terminal)</div>
+          <label class="am-pay-option" data-val="paylink">
+            <input type="radio" name="amPayMethod" value="paylink" style="display:none">
+            <div class="am-pay-card">🔗 Payment Link</div>
           </label>
           <label class="am-pay-option" data-val="complimentary" id="amPayComp" style="display:none">
             <input type="radio" name="amPayMethod" value="complimentary" style="display:none">
             <div class="am-pay-card">🎁 Complimentary</div>
           </label>
         </div>
+        <div id="amPaylinkHint" style="display:none;margin-top:8px;font-size:12px;color:var(--text-2);line-height:1.5">
+          A Square checkout link will be generated for the customer to pay on their phone or a tablet. The membership is activated once payment is confirmed.
+        </div>
       </div>
 
-      <div id="amPaymentAmountRow" class="form-group" style="display:none">
-        <label class="form-label">Amount Taken (£)</label>
-        <input class="form-input" type="number" step="0.01" min="0" id="amPaymentAmount" placeholder="0.00">
+      <div id="amLinkResult" style="display:none;background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:16px;text-align:center;margin-bottom:4px">
+        <div style="font-size:13px;font-weight:700;color:#166534;margin-bottom:12px">✅ Member added — share this payment link</div>
+        <img id="amLinkQr" src="" alt="QR Code" style="width:160px;height:160px;border-radius:8px;border:1px solid #BBF7D0;margin-bottom:12px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <input class="form-input" id="amLinkUrl" readonly style="font-size:12px;flex:1;cursor:pointer" onclick="this.select()">
+          <button class="btn btn-primary btn-sm" onclick="window.amCopyLink()">Copy</button>
+        </div>
+        <a id="amLinkOpen" href="#" target="_blank" style="display:block;margin-top:10px;font-size:12px;color:var(--blue)">Open link in new tab →</a>
       </div>
 
-      <div class="form-group">
-        <label class="form-label">Staff Notes (optional)</label>
-        <textarea class="form-input" id="amNotes" placeholder="Any additional notes…" style="min-height:60px;resize:vertical"></textarea>
+      <div id="amFormFields">
+        <div class="form-group">
+          <label class="form-label">Staff Notes (optional)</label>
+          <textarea class="form-input" id="amNotes" placeholder="Any additional notes…" style="min-height:60px;resize:vertical"></textarea>
+        </div>
       </div>
     </div>
     <div class="modal-ft">
@@ -3115,8 +3125,12 @@
     // Reset payment selection
     document.querySelectorAll('input[name="amPayMethod"]').forEach(r=>r.checked=false);
     document.querySelectorAll('.am-pay-option').forEach(o=>o.classList.remove('selected'));
-    el('amPaymentAmountRow').style.display='none';
-    el('amPaymentAmount').value='';
+    el('amLinkResult').style.display='none';
+    el('amFormFields').style.display='block';
+    el('amPaymentGrid').style.display='grid';
+    el('amPaylinkHint').style.display='none';
+    el('amSaveBtn').textContent='Add Member';
+    el('amSaveBtn').disabled=false;
     // Show complimentary only for managers/owners
     const isManager=state.role==='manager'||state.role==='owner';
     el('amPayComp').style.display=isManager?'block':'none';
@@ -3131,14 +3145,16 @@
       document.querySelectorAll('.am-pay-option').forEach(o=>o.classList.remove('selected'));
       this.classList.add('selected');
       const val=this.dataset.val;
-      el('amPaymentAmountRow').style.display=val==='card'?'block':'none';
-      if(val==='card'){
-        const planId=parseInt(el('amPlanId').value);
-        const plan=membershipsData.plans.find(p=>p.id===planId);
-        if(plan&&!el('amPaymentAmount').value){el('amPaymentAmount').value=(plan.priceMonthly/100).toFixed(2)}
-      }
+      el('amPaylinkHint').style.display=val==='paylink'?'block':'none';
+      el('amSaveBtn').textContent=val==='paylink'?'Add Member & Generate Link':'Add Member';
     });
   });
+
+  window.amCopyLink=function(){
+    const url=el('amLinkUrl').value;
+    if(navigator.clipboard){navigator.clipboard.writeText(url).then(()=>toast('Link copied!','success'))}
+    else{el('amLinkUrl').select();document.execCommand('copy');toast('Link copied!','success')}
+  };
 
   el('amPlanId').addEventListener('change',amUpdatePlanPrice);
 
@@ -3193,27 +3209,51 @@
     const payMethod=document.querySelector('.am-pay-option.selected')?.dataset.val;
     if(!payMethod){err.textContent='Select a payment method';err.classList.add('show');return}
 
-    // Build payment prefix for notes
+    // Build notes prefix
     const plan=membershipsData.plans.find(p=>p.id===parseInt(planId));
-    let payLabel='';
-    if(payMethod==='card'){
-      const amt=el('amPaymentAmount').value;
-      const planPrice=plan?`£${(plan.priceMonthly/100).toFixed(2)}`:'';
-      payLabel=`Payment: Card (Terminal)${amt?` — £${parseFloat(amt).toFixed(2)}`:(planPrice?' — '+planPrice:'')}`;
-    }else if(payMethod==='complimentary'){
-      payLabel='Payment: Complimentary';
-    }
-    const staffNotes=[payLabel?`[${payLabel}]`:'',notes].filter(Boolean).join(' ');
+    let payLabel=payMethod==='complimentary'?'Payment: Complimentary':'Payment: Square Link (pending)';
+    const staffNotes=[`[${payLabel}]`,notes].filter(Boolean).join(' ');
 
     el('amSaveBtn').disabled=true;
+    el('amSaveBtn').textContent='Saving…';
     try{
-      const r=await api('/api/staff/membership/subscriptions',{method:'POST',body:JSON.stringify({customerId,planId,staffNotes:staffNotes||null,status:'active',source:'staff'})});
-      if(!r.ok){const d=await r.json();err.textContent=d.message||'Failed';err.classList.add('show');return}
-      closeOverlay('addMemberModal');
-      toast('Member added & payment recorded','success');
-      loadMemberships();
-    }catch(e){if(e.message!=='Session expired'){err.textContent='Network error';err.classList.add('show')}}
-    finally{el('amSaveBtn').disabled=false}
+      // 1. Create subscription
+      const r=await api('/api/staff/membership/subscriptions',{method:'POST',body:JSON.stringify({customerId,planId,staffNotes,status:'active',source:'staff'})});
+      if(!r.ok){const d=await r.json();err.textContent=d.message||'Failed';err.classList.add('show');el('amSaveBtn').disabled=false;el('amSaveBtn').textContent='Add Member & Generate Link';return}
+      const sub=await r.json();
+
+      if(payMethod==='paylink'){
+        // 2. Generate Square payment link
+        el('amSaveBtn').textContent='Generating link…';
+        const lr=await api('/api/staff/membership/payment-link',{method:'POST',body:JSON.stringify({subscriptionId:sub.id,planId})});
+        if(!lr.ok){
+          // Subscription created but link failed — still show success, warn about link
+          const ld=await lr.json();
+          closeOverlay('addMemberModal');
+          toast('Member added but link failed: '+ld.message,'error');
+          loadMemberships();
+          return;
+        }
+        const {url}=await lr.json();
+        // Show result in modal
+        el('amFormFields').style.display='none';
+        el('amPaymentGrid').style.display='none';
+        el('amPaylinkHint').style.display='none';
+        el('amPlanPrice').textContent='';
+        el('amLinkUrl').value=url;
+        el('amLinkOpen').href=url;
+        el('amLinkQr').src=`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(url)}&size=200x200&margin=8&color=166534`;
+        el('amLinkResult').style.display='block';
+        el('amSaveBtn').textContent='Done';
+        el('amSaveBtn').disabled=false;
+        el('amSaveBtn').onclick=function(){closeOverlay('addMemberModal');el('amSaveBtn').onclick=null;loadMemberships()};
+      }else{
+        closeOverlay('addMemberModal');
+        toast('Member added — marked as complimentary','success');
+        loadMemberships();
+      }
+    }catch(e){if(e.message!=='Session expired'){err.textContent='Network error';err.classList.add('show');el('amSaveBtn').disabled=false;el('amSaveBtn').textContent='Add Member & Generate Link'}}
+    finally{}
   });
 
   el('mnSaveBtn').addEventListener('click',async()=>{

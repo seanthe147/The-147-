@@ -3265,6 +3265,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(201).json(sub);
   });
 
+  app.post("/api/staff/membership/payment-link", staffAuth, async (req, res) => {
+    const { subscriptionId, planId } = req.body ?? {};
+    if (!subscriptionId || !planId) return res.status(400).json({ message: "subscriptionId and planId required" });
+    if (!square.isConfigured()) return res.status(503).json({ message: "Square is not configured" });
+    try {
+      const plan = await storage.getMembershipPlan(parseInt(planId));
+      if (!plan) return res.status(404).json({ message: "Plan not found" });
+      const redirectUrl = `${process.env.REPLIT_INTERNAL_APP_DOMAIN ? `https://${process.env.REPLIT_INTERNAL_APP_DOMAIN}` : "https://the147bradford.replit.app"}/staff`;
+      const link = await square.createMembershipCheckoutLink({
+        planName: plan.name,
+        amountPence: plan.priceMonthly,
+        subscriptionId: parseInt(subscriptionId),
+        redirectUrl,
+      });
+      res.json({ url: link.url, paymentLinkId: link.paymentLinkId });
+    } catch (err: any) {
+      console.error("[PAYMENT LINK]", err?.message);
+      res.status(500).json({ message: err?.message || "Failed to create payment link" });
+    }
+  });
+
   app.patch("/api/staff/membership/subscriptions/:id", staffAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     const sub = await storage.getMembershipSubscription(id);
