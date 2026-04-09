@@ -677,6 +677,9 @@ export async function createOrderCheckoutLink(
     }
   }
 
+  // Recipient name: "Table 3" or customer name, shown on the KDS ticket
+  const ticketName = tableNote || (customer?.name ? customer.name.split(" ")[0] : "Guest");
+
   const body: any = {
     idempotency_key: idempotencyKey,
     order: {
@@ -686,6 +689,22 @@ export async function createOrderCheckoutLink(
         quantity: String(item.quantity),
         base_price_money: { amount: item.price, currency: "GBP" },
       })),
+      // PICKUP fulfillment is required for Square KDS to display the order.
+      // KDS routing rules on each device then split food → kitchen and drinks → bar.
+      fulfillments: [
+        {
+          type: "PICKUP",
+          state: "PROPOSED",
+          pickup_details: {
+            recipient: {
+              display_name: ticketName.slice(0, 60),
+            },
+            schedule_type: "ASAP",
+            is_curbside_pickup: false,
+            note: tableNote || undefined,
+          },
+        },
+      ],
       ...(tableNote ? {
         note: tableNote,
         reference_id: tableNote.replace(/\s+/g, "-").toUpperCase().slice(0, 40),
