@@ -4,6 +4,7 @@ import React, {
   useRef,
   useCallback,
   useMemo,
+  useEffect,
 } from "react";
 import {
   StyleSheet,
@@ -17,6 +18,10 @@ import {
   Modal,
   Linking,
   Alert,
+  Image,
+  Dimensions,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
@@ -28,10 +33,14 @@ import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { getApiUrl } from "@/lib/query-client";
 import type { MenuCategory, MenuItem } from "@/types/menu";
 
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const BANNER_HEIGHT = 200;
+
 const FOOD_CATEGORIES = new Set([
   "Starters", "Sharers", "Pub Classic Mains", "Burgers", "Turkish Mains",
   "Loaded Fries Menu", "Pastas", "Panini", "Toasties", "Build Your Own Pizza",
-  "Sides", "Kids Mains", "Kids Puddings", "Puddings",
+  "Sides", "Kids Mains", "Kids Puddings", "Puddings", "Light Bites",
+  "Breakfast & Baps", "Extras",
 ]);
 
 const TABLE_SECTIONS = [
@@ -46,6 +55,238 @@ const TABLE_SECTIONS = [
 function formatPrice(pence: number) {
   return `£${(pence / 100).toFixed(2)}`;
 }
+
+type CategoryStyle = { icon: string; color: string; bg: string };
+
+function getCategoryStyle(name: string): CategoryStyle {
+  const n = name.toLowerCase();
+  if (n.includes("starter")) return { icon: "leaf-outline", color: "#166534", bg: "#dcfce7" };
+  if (n.includes("sharer")) return { icon: "people-outline", color: "#9a3412", bg: "#ffedd5" };
+  if (n.includes("burger")) return { icon: "fast-food-outline", color: "#92400e", bg: "#fef3c7" };
+  if (n.includes("pizza")) return { icon: "pizza-outline", color: "#991b1b", bg: "#fee2e2" };
+  if (n.includes("breakfast") || n.includes("bap")) return { icon: "sunny-outline", color: "#b45309", bg: "#fef3c7" };
+  if (n.includes("turkish")) return { icon: "flame-outline", color: "#9a3412", bg: "#ffedd5" };
+  if (n.includes("fries") || n.includes("loaded")) return { icon: "fast-food-outline", color: "#854d0e", bg: "#fef9c3" };
+  if (n.includes("pasta")) return { icon: "restaurant-outline", color: "#7c3aed", bg: "#ede9fe" };
+  if (n.includes("panini") || n.includes("toastie")) return { icon: "restaurant-outline", color: "#c2410c", bg: "#ffedd5" };
+  if (n.includes("light bite")) return { icon: "nutrition-outline", color: "#065f46", bg: "#d1fae5" };
+  if (n.includes("kids")) return { icon: "happy-outline", color: "#be185d", bg: "#fce7f3" };
+  if (n.includes("pudding")) return { icon: "ice-cream-outline", color: "#db2777", bg: "#fce7f3" };
+  if (n.includes("snack")) return { icon: "nutrition-outline", color: "#b45309", bg: "#fef3c7" };
+  if (n.includes("side") || n.includes("extra")) return { icon: "apps-outline", color: "#374151", bg: "#f3f4f6" };
+  if (n.includes("golden year")) return { icon: "heart-outline", color: "#b45309", bg: "#fef3c7" };
+  if (n.includes("pub classic") || n.includes("main")) return { icon: "restaurant-outline", color: "#1e40af", bg: "#dbeafe" };
+  if (n.includes("draught") || n.includes("draft")) return { icon: "beer-outline", color: "#1d4ed8", bg: "#dbeafe" };
+  if (n.includes("beer") || n.includes("lager")) return { icon: "beer-outline", color: "#1d4ed8", bg: "#dbeafe" };
+  if (n.includes("bitter") || n.includes("stout")) return { icon: "beer-outline", color: "#78350f", bg: "#fef3c7" };
+  if (n.includes("cider")) return { icon: "wine-outline", color: "#15803d", bg: "#dcfce7" };
+  if (n.includes("bottle")) return { icon: "wine-outline", color: "#7c3aed", bg: "#ede9fe" };
+  if (n.includes("spirit") || n.includes("shot")) return { icon: "wine-outline", color: "#6d28d9", bg: "#ede9fe" };
+  if (n.includes("wine")) return { icon: "wine-outline", color: "#881337", bg: "#ffe4e6" };
+  if (n.includes("soft") || n.includes("water")) return { icon: "water-outline", color: "#0369a1", bg: "#e0f2fe" };
+  if (n.includes("hot drink") || n.includes("coffee") || n.includes("tea")) return { icon: "cafe-outline", color: "#92400e", bg: "#fef3c7" };
+  if (n.includes("low") || n.includes("no alcohol") || n.includes("mocktail")) return { icon: "leaf-outline", color: "#065f46", bg: "#d1fae5" };
+  if (n.includes("offer") || n.includes("promo")) return { icon: "pricetag-outline", color: "#b45309", bg: "#fef3c7" };
+  if (n.includes("snooker") || n.includes("darts") || n.includes("dart") || n.includes("pool")) return { icon: "ellipse-outline", color: "#0f766e", bg: "#ccfbf1" };
+  if (n.includes("easter")) return { icon: "egg-outline", color: "#be185d", bg: "#fce7f3" };
+  return { icon: "grid-outline", color: "#374151", bg: "#f3f4f6" };
+}
+
+interface BannerImage {
+  id: number;
+  imageUrl: string;
+  title?: string | null;
+  active: boolean;
+}
+
+function BannerCarousel({ banners }: { banners: BannerImage[] }) {
+  const [current, setCurrent] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startTimer = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (banners.length <= 1) return;
+    timerRef.current = setInterval(() => {
+      setCurrent((prev) => {
+        const next = (prev + 1) % banners.length;
+        scrollRef.current?.scrollTo({ x: next * SCREEN_WIDTH, animated: true });
+        return next;
+      });
+    }, 4000);
+  }, [banners.length]);
+
+  useEffect(() => {
+    startTimer();
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [startTimer]);
+
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const x = e.nativeEvent.contentOffset.x;
+    const idx = Math.round(x / SCREEN_WIDTH);
+    if (idx !== current) {
+      setCurrent(idx);
+      startTimer();
+    }
+  }, [current, startTimer]);
+
+  if (banners.length === 0) return null;
+
+  return (
+    <View style={bannerStyles.container}>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={onScroll}
+      >
+        {banners.map((banner) => (
+          <View key={banner.id} style={bannerStyles.slide}>
+            <Image
+              source={{ uri: banner.imageUrl }}
+              style={bannerStyles.image}
+              resizeMode="cover"
+            />
+            {!!banner.title && (
+              <View style={bannerStyles.titleOverlay}>
+                <Text style={bannerStyles.titleText}>{banner.title}</Text>
+              </View>
+            )}
+          </View>
+        ))}
+      </ScrollView>
+      {banners.length > 1 && (
+        <View style={bannerStyles.dots}>
+          {banners.map((_, i) => (
+            <View key={i} style={[bannerStyles.dot, i === current && bannerStyles.dotActive]} />
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+const bannerStyles = StyleSheet.create({
+  container: { position: "relative" },
+  slide: { width: SCREEN_WIDTH, height: BANNER_HEIGHT },
+  image: { width: "100%", height: "100%" },
+  titleOverlay: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  titleText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 15,
+    color: "#fff",
+  },
+  dots: {
+    position: "absolute",
+    bottom: 10,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 6,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.5)",
+  },
+  dotActive: {
+    backgroundColor: "#fff",
+    width: 18,
+  },
+});
+
+function CategoryGrid({
+  categories,
+  onSelect,
+}: {
+  categories: MenuCategory[];
+  onSelect: (id: string) => void;
+}) {
+  const numColumns = 2;
+  const cardSize = (SCREEN_WIDTH - 16 * 3) / numColumns;
+
+  return (
+    <View style={gridStyles.grid}>
+      {categories.map((cat) => {
+        const style = getCategoryStyle(cat.name);
+        return (
+          <Pressable
+            key={cat.id}
+            onPress={() => onSelect(cat.id)}
+            style={({ pressed }) => [
+              gridStyles.card,
+              { width: cardSize, height: cardSize * 0.85, opacity: pressed ? 0.75 : 1 },
+            ]}
+            testID={`cat-${cat.id}`}
+          >
+            <View style={[gridStyles.iconWrap, { backgroundColor: style.bg }]}>
+              <Ionicons name={style.icon as any} size={28} color={style.color} />
+            </View>
+            <Text style={gridStyles.cardName} numberOfLines={2}>{cat.name}</Text>
+            <Text style={gridStyles.cardCount}>{cat.items.length} items</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+const gridStyles = StyleSheet.create({
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    padding: 16,
+  },
+  card: {
+    backgroundColor: Colors.light.surface,
+    borderRadius: 16,
+    padding: 14,
+    alignItems: "flex-start",
+    justifyContent: "flex-end",
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  iconWrap: {
+    position: "absolute",
+    top: 14,
+    left: 14,
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  cardName: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 13,
+    color: Colors.light.text,
+    lineHeight: 17,
+  },
+  cardCount: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 11,
+    color: Colors.light.textSecondary,
+    marginTop: 2,
+  },
+});
 
 function ItemCard({ item }: { item: MenuItem }) {
   const { addItem, updateQuantity, getQuantity } = useCart();
@@ -117,7 +358,7 @@ function CartSheet({
   visible: boolean;
   onClose: () => void;
 }) {
-  const { items, updateQuantity, removeItem, clearCart, totalPrice, totalItems } = useCart();
+  const { items, updateQuantity, clearCart, totalPrice } = useCart();
   const { customer } = useCustomerAuth();
   const [tableNote, setTableNote] = useState("");
   const [loading, setLoading] = useState(false);
@@ -300,18 +541,33 @@ export default function OrderScreen() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const { data: banners } = useQuery<BannerImage[]>({
+    queryKey: ["/api/banner-images"],
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const activeBanners = useMemo(
+    () => (banners ?? []).filter((b) => b.active),
+    [banners]
+  );
+
   const activeCategory = useMemo(() => {
     if (!categories || categories.length === 0) return null;
     if (selectedCategory && categories.find((c) => c.id === selectedCategory)) {
       return selectedCategory;
     }
-    return categories[0].id;
+    return null;
   }, [categories, selectedCategory]);
 
-  const activeItems = useMemo(() => {
-    if (!categories) return [];
-    return categories.find((c) => c.id === activeCategory)?.items ?? [];
-  }, [categories, activeCategory]);
+  const activeCategoryData = useMemo(
+    () => categories?.find((c) => c.id === activeCategory) ?? null,
+    [categories, activeCategory]
+  );
+
+  const activeItems = useMemo(
+    () => activeCategoryData?.items ?? [],
+    [activeCategoryData]
+  );
 
   const headerHeight = insets.top + 56 + (Platform.OS === "web" ? webTopInset : 0);
   const categoryBarHeight = 52;
@@ -321,14 +577,41 @@ export default function OrderScreen() {
     <ItemCard item={item} />
   ), []);
 
+  const handleSelectCategory = useCallback((id: string) => {
+    setSelectedCategory(id);
+  }, []);
+
+  const handleBack = useCallback(() => {
+    setSelectedCategory(null);
+  }, []);
+
+  const CartButton = () => (
+    <Pressable
+      onPress={() => setCartVisible(true)}
+      style={({ pressed }) => [styles.cartIconBtn, { opacity: pressed ? 0.7 : 1 }]}
+      testID="cart-icon"
+    >
+      <Ionicons name="cart-outline" size={24} color="#fff" />
+      {totalItems > 0 && (
+        <View style={styles.cartBadge}>
+          <Text style={styles.cartBadgeText}>{totalItems > 99 ? "99+" : totalItems}</Text>
+        </View>
+      )}
+    </Pressable>
+  );
+
   if (isLoading) {
     return (
       <View style={styles.container}>
         <View style={[styles.header, { paddingTop: insets.top + webTopInset }]}>
-          <Text style={styles.headerTitle}>Order</Text>
-          <Text style={styles.headerSubtitle}>Food & Drink</Text>
+          <View style={styles.headerRow}>
+            <View>
+              <Text style={styles.headerTitle}>Order</Text>
+              <Text style={styles.headerSubtitle}>Food & Drink</Text>
+            </View>
+          </View>
         </View>
-        <View style={styles.centred}>
+        <View style={[styles.centred, { marginTop: headerHeight }]}>
           <ActivityIndicator size="large" color={Colors.brand.blue} />
           <Text style={styles.loadingText}>Loading menu…</Text>
         </View>
@@ -340,10 +623,14 @@ export default function OrderScreen() {
     return (
       <View style={styles.container}>
         <View style={[styles.header, { paddingTop: insets.top + webTopInset }]}>
-          <Text style={styles.headerTitle}>Order</Text>
-          <Text style={styles.headerSubtitle}>Food & Drink</Text>
+          <View style={styles.headerRow}>
+            <View>
+              <Text style={styles.headerTitle}>Order</Text>
+              <Text style={styles.headerSubtitle}>Food & Drink</Text>
+            </View>
+          </View>
         </View>
-        <View style={styles.centred}>
+        <View style={[styles.centred, { marginTop: headerHeight }]}>
           <Ionicons name="cloud-offline-outline" size={48} color={Colors.light.textSecondary} />
           <Text style={styles.errorTitle}>Menu unavailable</Text>
           <Text style={styles.errorSub}>Please check your connection</Text>
@@ -355,31 +642,75 @@ export default function OrderScreen() {
     );
   }
 
-  return (
-    <View style={styles.container}>
-      {/* Fixed header */}
-      <View style={[styles.header, { paddingTop: insets.top + webTopInset }]}>
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.headerTitle}>Order</Text>
-            <Text style={styles.headerSubtitle}>Food & Drink</Text>
+  if (!activeCategory) {
+    return (
+      <View style={styles.container}>
+        <View style={[styles.header, { paddingTop: insets.top + webTopInset }]}>
+          <View style={styles.headerRow}>
+            <View>
+              <Text style={styles.headerTitle}>Order</Text>
+              <Text style={styles.headerSubtitle}>Food & Drink</Text>
+            </View>
+            <CartButton />
           </View>
+        </View>
+
+        <ScrollView
+          contentContainerStyle={{ paddingTop: headerHeight, paddingBottom: tabBarHeight + cartBarHeight + 16 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {activeBanners.length > 0 && (
+            <BannerCarousel banners={activeBanners} />
+          )}
+
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>What would you like?</Text>
+          </View>
+
+          <CategoryGrid categories={categories} onSelect={handleSelectCategory} />
+        </ScrollView>
+
+        {totalItems > 0 && (
           <Pressable
             onPress={() => setCartVisible(true)}
-            style={({ pressed }) => [styles.cartIconBtn, { opacity: pressed ? 0.7 : 1 }]}
-            testID="cart-icon"
+            style={({ pressed }) => [
+              styles.cartBar,
+              { bottom: tabBarHeight + 10, opacity: pressed ? 0.9 : 1 },
+            ]}
+            testID="cart-bar"
           >
-            <Ionicons name="cart-outline" size={24} color="#fff" />
-            {totalItems > 0 && (
-              <View style={styles.cartBadge}>
-                <Text style={styles.cartBadgeText}>{totalItems > 99 ? "99+" : totalItems}</Text>
+            <View style={styles.cartBarLeft}>
+              <View style={styles.cartBarBadge}>
+                <Text style={styles.cartBarBadgeText}>{totalItems}</Text>
               </View>
-            )}
+              <Text style={styles.cartBarText}>View Order</Text>
+            </View>
+            <Text style={styles.cartBarPrice}>{formatPrice(totalPrice)}</Text>
           </Pressable>
+        )}
+
+        <CartSheet visible={cartVisible} onClose={() => setCartVisible(false)} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <View style={[styles.header, { paddingTop: insets.top + webTopInset }]}>
+        <View style={styles.headerRow}>
+          <View style={styles.headerLeft}>
+            <Pressable onPress={handleBack} hitSlop={8} style={({ pressed }) => [styles.backBtn, { opacity: pressed ? 0.7 : 1 }]}>
+              <Ionicons name="chevron-back" size={22} color="#fff" />
+            </Pressable>
+            <View>
+              <Text style={styles.headerTitle}>{activeCategoryData?.name ?? "Menu"}</Text>
+              <Text style={styles.headerSubtitle}>{activeItems.length} items</Text>
+            </View>
+          </View>
+          <CartButton />
         </View>
       </View>
 
-      {/* Category tabs */}
       <View style={[styles.categoryBar, { top: headerHeight }]}>
         <ScrollView
           ref={categoryScrollRef}
@@ -389,7 +720,7 @@ export default function OrderScreen() {
         >
           {categories.map((cat) => {
             const isActive = cat.id === activeCategory;
-            const isFood = FOOD_CATEGORIES.has(cat.name);
+            const catStyle = getCategoryStyle(cat.name);
             return (
               <Pressable
                 key={cat.id}
@@ -401,7 +732,7 @@ export default function OrderScreen() {
                 ]}
               >
                 <Ionicons
-                  name={isFood ? "restaurant-outline" : "beer-outline"}
+                  name={catStyle.icon as any}
                   size={13}
                   color={isActive ? "#fff" : Colors.light.textSecondary}
                   style={{ marginRight: 4 }}
@@ -415,7 +746,6 @@ export default function OrderScreen() {
         </ScrollView>
       </View>
 
-      {/* Items list */}
       <FlatList
         data={activeItems}
         keyExtractor={(item) => item.variationId}
@@ -434,7 +764,6 @@ export default function OrderScreen() {
         }
       />
 
-      {/* Cart bar */}
       {totalItems > 0 && (
         <Pressable
           onPress={() => setCartVisible(true)}
@@ -480,15 +809,28 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     height: 46,
   },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  backBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   headerTitle: {
     fontFamily: "Montserrat_700Bold",
-    fontSize: 20,
+    fontSize: 18,
     color: "#fff",
-    lineHeight: 24,
+    lineHeight: 22,
   },
   headerSubtitle: {
     fontFamily: "Montserrat_400Regular",
-    fontSize: 12,
+    fontSize: 11,
     color: "rgba(255,255,255,0.6)",
     marginTop: 1,
   },
@@ -514,6 +856,16 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_700Bold",
     fontSize: 10,
     color: "#fff",
+  },
+  sectionHeader: {
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 4,
+  },
+  sectionTitle: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 20,
+    color: Colors.light.text,
   },
   categoryBar: {
     position: "absolute",
@@ -677,11 +1029,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    zIndex: 30,
-    shadowColor: "#000",
+    shadowColor: Colors.brand.blue,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
     elevation: 8,
   },
   cartBarLeft: {
@@ -690,12 +1041,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   cartBarBadge: {
-    width: 26,
+    minWidth: 26,
     height: 26,
     borderRadius: 13,
     backgroundColor: "rgba(255,255,255,0.25)",
     justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: 4,
   },
   cartBarBadgeText: {
     fontFamily: "Montserrat_700Bold",
@@ -718,6 +1070,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     paddingHorizontal: 40,
+    paddingTop: 60,
   },
   loadingText: {
     fontFamily: "Montserrat_400Regular",
@@ -799,36 +1152,76 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   cartItemPrice: {
-    fontFamily: "Montserrat_500Medium",
+    fontFamily: "Montserrat_700Bold",
     fontSize: 13,
-    color: Colors.light.textSecondary,
+    color: Colors.brand.blue,
   },
   cartDivider: {
     height: 1,
     backgroundColor: Colors.light.border,
   },
+  cartTotal: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginHorizontal: 20,
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: Colors.light.border,
+  },
+  cartTotalLabel: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 16,
+    color: Colors.light.text,
+  },
+  cartTotalPrice: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 18,
+    color: Colors.brand.blue,
+  },
+  checkoutBtn: {
+    marginHorizontal: 20,
+    marginTop: 4,
+    backgroundColor: Colors.brand.blue,
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: "center",
+  },
+  checkoutBtnText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 16,
+    color: "#fff",
+  },
+  checkoutBtnSub: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 11,
+    color: "rgba(255,255,255,0.7)",
+    marginTop: 2,
+  },
   tablePicker: {
     marginHorizontal: 20,
-    marginTop: 12,
-    backgroundColor: Colors.light.surfaceElevated,
+    marginTop: 8,
+    marginBottom: 4,
+    backgroundColor: Colors.light.surface,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
     overflow: "hidden",
   },
   tablePickerHeader: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
-    paddingTop: 11,
-    paddingBottom: 8,
-    gap: 7,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: Colors.light.border,
   },
   tablePickerLabel: {
-    flex: 1,
-    fontFamily: "Montserrat_500Medium",
-    fontSize: 13,
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
     color: Colors.light.textSecondary,
+    flex: 1,
   },
   tableSectionRow: {
     flexDirection: "row",
@@ -837,84 +1230,40 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.light.border,
   },
   tableSectionLabelWrap: {
-    width: 80,
-    paddingLeft: 12,
-    paddingVertical: 10,
+    width: 72,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     borderLeftWidth: 3,
-    flexShrink: 0,
     justifyContent: "center",
   },
   tableSectionLabel: {
     fontFamily: "Montserrat_700Bold",
-    fontSize: 11,
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-    lineHeight: 15,
+    fontSize: 10,
+    textTransform: "uppercase" as const,
+    letterSpacing: 0.5,
   },
   tableNumRow: {
-    paddingHorizontal: 10,
+    flexDirection: "row",
+    paddingHorizontal: 8,
     paddingVertical: 8,
     gap: 6,
-    flexDirection: "row",
   },
   tableNumBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 9,
-    backgroundColor: Colors.light.surface,
-    borderWidth: 1.5,
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    borderWidth: 1,
     borderColor: Colors.light.border,
+    backgroundColor: Colors.light.background,
     justifyContent: "center",
     alignItems: "center",
   },
-  tableNumBtnSelected: {
-    backgroundColor: Colors.brand.blue,
-    borderColor: Colors.brand.blue,
-  },
   tableNumText: {
-    fontFamily: "Montserrat_700Bold",
-    fontSize: 13,
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
     color: Colors.light.text,
   },
   tableNumTextSelected: {
     color: "#fff",
-  },
-  cartTotal: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 4,
-  },
-  cartTotalLabel: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 16,
-    color: Colors.light.text,
-  },
-  cartTotalPrice: {
-    fontFamily: "Montserrat_700Bold",
-    fontSize: 20,
-    color: Colors.brand.blue,
-  },
-  checkoutBtn: {
-    marginHorizontal: 20,
-    marginTop: 12,
-    backgroundColor: Colors.brand.blue,
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkoutBtnText: {
-    fontFamily: "Montserrat_700Bold",
-    fontSize: 17,
-    color: "#fff",
-  },
-  checkoutBtnSub: {
-    fontFamily: "Montserrat_400Regular",
-    fontSize: 11,
-    color: "rgba(255,255,255,0.7)",
-    marginTop: 3,
   },
 });

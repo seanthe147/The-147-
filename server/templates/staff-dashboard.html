@@ -431,6 +431,10 @@
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
           Menu
         </div>
+        <div class="nav-item" data-page="banners" id="navBanners">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/></svg>
+          App Banners
+        </div>
         <div class="nav-section" style="margin-top:8px">Account</div>
         <div class="nav-item" data-page="settings">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -752,6 +756,26 @@
           </div>
           <div id="menuCategoriesList">
             <div class="menu-loading">Loading menu…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- APP BANNERS PAGE -->
+      <div class="page" id="pageBanners">
+        <div class="page-body">
+          <div class="menu-refresh-bar">
+            <p style="font-size:13px;color:var(--text-2);margin:0">Upload promotional banners that appear at the top of the <strong>Order</strong> tab in the customer app. Images auto-rotate every 4 seconds. Recommended: landscape photos at 1200×500px or wider.</p>
+            <button class="btn btn-primary btn-sm" onclick="document.getElementById('bannerFileInput').click()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Upload Image
+            </button>
+            <input type="file" id="bannerFileInput" accept="image/*" style="display:none" onchange="bannerUploadFile(this)">
+          </div>
+          <div id="bannerGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;padding:0 0 20px"></div>
+          <div id="bannerEmpty" style="display:none;text-align:center;padding:60px 20px;color:var(--text-2)">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.4;margin-bottom:12px"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/></svg>
+            <p style="margin:0;font-size:15px;font-weight:600">No banners yet</p>
+            <p style="margin:6px 0 0;font-size:13px">Upload your first promotional image to display it in the app</p>
           </div>
         </div>
       </div>
@@ -1587,7 +1611,7 @@
   function navigateTo(page){
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page'+cap(page)));
-    const titles={bookings:'Bookings',messages:'Messages',notifications:'Push Notifications',notices:'Staff Notices',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',availability:'Availability',menu:'Menu Management'};
+    const titles={bookings:'Bookings',messages:'Messages',notifications:'Push Notifications',notices:'Staff Notices',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',availability:'Availability',menu:'Menu Management',banners:'App Banners',orders:'Orders'};
     el('topbarTitle').textContent=titles[page]||'';
     el('topbarSub').textContent='';
     if(page==='bookings'){el('topbarActions').style.display='';loadBookings();loadDashboardNotices();startBookingsPolling();}
@@ -1599,6 +1623,7 @@
     if(page==='memberships')loadMemberships();
     if(page==='availability')loadAvailability();
     if(page==='menu')loadMenuManagement();
+    if(page==='banners')loadBanners();
     if(page==='orders')loadOrders();
   }
   function cap(s){return s.charAt(0).toUpperCase()+s.slice(1)}
@@ -3069,6 +3094,126 @@
   window.loadOrders=loadOrders;
   window.cancelOrder=cancelOrder;
   window.refundOrder=refundOrder;
+
+  /* ── Banner Management ── */
+  let bannersData=[];
+
+  async function loadBanners(){
+    const grid=el('bannerGrid');
+    const empty=el('bannerEmpty');
+    grid.innerHTML='<div class="loading-state"><div class="spinner"></div>Loading banners…</div>';
+    empty.style.display='none';
+    try{
+      const r=await api('/api/banner-images/all');
+      if(!r.ok)throw new Error();
+      bannersData=await r.json();
+      renderBanners();
+    }catch(e){
+      grid.innerHTML='<p style="color:var(--red);padding:20px">Failed to load banners</p>';
+    }
+  }
+
+  function renderBanners(){
+    const grid=el('bannerGrid');
+    const empty=el('bannerEmpty');
+    if(!bannersData.length){
+      grid.innerHTML='';
+      empty.style.display='block';
+      return;
+    }
+    empty.style.display='none';
+    grid.innerHTML=bannersData.map(b=>`
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow)">
+        <div style="position:relative;height:160px;background:#0a1628">
+          <img src="${b.imageUrl}" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'">
+          <div style="position:absolute;top:8px;right:8px;display:flex;gap:6px">
+            <span style="background:${b.active?'rgba(16,185,129,.9)':'rgba(0,0,0,.6)'};color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px">${b.active?'ACTIVE':'HIDDEN'}</span>
+          </div>
+        </div>
+        <div style="padding:12px 14px">
+          <div style="font-size:13px;font-weight:600;color:var(--text-1);margin-bottom:8px">${b.title||'<em style="color:var(--text-2);font-weight:400">No title</em>'}</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-secondary btn-sm" style="flex:1" onclick="toggleBanner(${b.id},${!b.active})">${b.active?'Hide':'Show'}</button>
+            <button class="btn btn-secondary btn-sm" onclick="promptBannerTitle(${b.id},'${(b.title||'').replace(/'/g,"\\'")}')">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button class="btn btn-sm" style="background:#ef4444;color:#fff;border-color:#ef4444" onclick="deleteBanner(${b.id})">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  async function bannerUploadFile(input){
+    if(!input.files||!input.files[0])return;
+    const file=input.files[0];
+    input.value='';
+    const formData=new FormData();
+    formData.append('image',file);
+    formData.append('active','true');
+    formData.append('sortOrder',String(bannersData.length));
+    const grid=el('bannerGrid');
+    const uploading=document.createElement('div');
+    uploading.style.cssText='background:var(--surface);border:2px dashed var(--border);border-radius:12px;display:flex;align-items:center;justify-content:center;height:220px;color:var(--text-2);font-size:13px;gap:8px';
+    uploading.innerHTML='<div class="spinner"></div>Uploading…';
+    grid.prepend(uploading);
+    try{
+      const r=await fetch('/api/banner-images',{method:'POST',body:formData,credentials:'include'});
+      if(!r.ok)throw new Error('Upload failed');
+      const newBanner=await r.json();
+      bannersData.unshift(newBanner);
+      renderBanners();
+    }catch(e){
+      alert('Upload failed. Please try again.');
+      uploading.remove();
+    }
+  }
+
+  async function toggleBanner(id,active){
+    try{
+      const r=await api('/api/banner-images/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({active})});
+      if(!r.ok)throw new Error();
+      const idx=bannersData.findIndex(b=>b.id===id);
+      if(idx>-1)bannersData[idx].active=active;
+      renderBanners();
+    }catch(e){
+      alert('Failed to update banner');
+    }
+  }
+
+  async function deleteBanner(id){
+    if(!confirm('Delete this banner? This cannot be undone.'))return;
+    try{
+      const r=await api('/api/banner-images/'+id,{method:'DELETE'});
+      if(!r.ok)throw new Error();
+      bannersData=bannersData.filter(b=>b.id!==id);
+      renderBanners();
+    }catch(e){
+      alert('Failed to delete banner');
+    }
+  }
+
+  async function promptBannerTitle(id,currentTitle){
+    const title=prompt('Enter banner title (optional, shown as overlay text on the image):',currentTitle);
+    if(title===null)return;
+    try{
+      const r=await api('/api/banner-images/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:title.trim()||null})});
+      if(!r.ok)throw new Error();
+      const idx=bannersData.findIndex(b=>b.id===id);
+      if(idx>-1)bannersData[idx].title=title.trim()||null;
+      renderBanners();
+    }catch(e){
+      alert('Failed to update title');
+    }
+  }
+
+  window.loadBanners=loadBanners;
+  window.bannerUploadFile=bannerUploadFile;
+  window.toggleBanner=toggleBanner;
+  window.deleteBanner=deleteBanner;
+  window.promptBannerTitle=promptBannerTitle;
 
   let membershipsData={plans:[],subs:[]};
 
