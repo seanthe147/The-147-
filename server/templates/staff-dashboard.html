@@ -1334,6 +1334,32 @@
   </div>
 </div>
 
+<!-- ORDER ACTION AUTHORISATION MODAL -->
+<div class="overlay" id="orderAuthModal">
+  <div class="modal modal-sm" style="max-width:400px">
+    <div class="modal-hd" id="orderAuthHd">
+      <div class="modal-hd-title" id="orderAuthTitle">Authorise Action</div>
+      <button class="modal-close" onclick="closeOrderAuthModal()">&times;</button>
+    </div>
+    <div class="modal-bd">
+      <div id="orderAuthSummary" style="background:var(--surface-2,#F8F9FB);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:var(--text-1)"></div>
+      <div class="modal-err" id="orderAuthErr"></div>
+      <div class="form-group">
+        <label class="form-label">Reason <span style="color:var(--text-3);font-weight:400">(optional)</span></label>
+        <input class="form-input" type="text" id="orderAuthReason" placeholder="e.g. item out of stock, customer request…" maxlength="200" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Your PIN</label>
+        <input class="form-input" type="password" id="orderAuthPin" inputmode="numeric" maxlength="8" placeholder="• • • •" autocomplete="off" style="text-align:center;letter-spacing:8px;font-size:20px">
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn btn-secondary" onclick="closeOrderAuthModal()">Cancel</button>
+      <button class="btn" id="orderAuthConfirm" style="background:var(--red);color:#fff;border:none;padding:9px 22px;border-radius:var(--r);font-weight:600;cursor:pointer">Confirm</button>
+    </div>
+  </div>
+</div>
+
 <!-- LOGIN POPUP MODAL -->
 <div class="overlay" id="loginPopupModal" style="z-index:600">
   <div class="modal modal-sm" id="loginPopupModalInner" style="max-width:480px">
@@ -2909,21 +2935,74 @@
     refunded: {label:'Refunded', cls:'pill-amber'},
   };
 
-  async function cancelOrder(id){
-    if(!confirm('Cancel this order? If it was already paid the customer will be automatically refunded.'))return;
-    try{
-      const r=await api(`/api/staff/orders/${id}/cancel`,{method:'POST'});
-      loadOrders();
-    }catch(e){alert('Cancel failed: '+(e.message||e));}
+  // ── Order auth modal state ────────────────────────────────────────────────
+  let _orderAuthCallback=null;
+
+  function openOrderAuthModal({title,summary,actionLabel,callback}){
+    el('orderAuthTitle').textContent=title;
+    el('orderAuthSummary').textContent=summary;
+    el('orderAuthErr').textContent='';
+    el('orderAuthReason').value='';
+    el('orderAuthPin').value='';
+    el('orderAuthConfirm').textContent=actionLabel||'Confirm';
+    // Show/hide PIN based on whether session is a named account
+    const pinRow=el('orderAuthPin').closest('.form-group');
+    const needsPin=!!state.username;
+    if(pinRow)pinRow.style.display=needsPin?'':'none';
+    _orderAuthCallback=callback;
+    openOverlay('orderAuthModal');
+    setTimeout(()=>(needsPin?el('orderAuthPin'):el('orderAuthReason')).focus(),120);
   }
 
-  async function refundOrder(id){
-    const reason=prompt('Reason for refund (optional):');
-    if(reason===null)return;
+  function closeOrderAuthModal(){
+    closeOverlay('orderAuthModal');
+    _orderAuthCallback=null;
+  }
+
+  el('orderAuthConfirm').addEventListener('click',async()=>{
+    if(!_orderAuthCallback)return;
+    const pin=el('orderAuthPin').value.trim();
+    const reason=el('orderAuthReason').value.trim();
+    if(state.username&&!pin){el('orderAuthErr').textContent='Please enter your PIN to continue.';el('orderAuthPin').focus();return;}
+    el('orderAuthErr').textContent='';
+    el('orderAuthConfirm').disabled=true;
     try{
-      await api(`/api/staff/orders/${id}/refund`,{method:'POST',body:JSON.stringify({reason}),headers:{'Content-Type':'application/json'}});
-      loadOrders();
-    }catch(e){alert('Refund failed: '+(e.message||e));}
+      await _orderAuthCallback({pin,reason});
+      closeOrderAuthModal();
+    }catch(e){
+      el('orderAuthErr').textContent=e.message||'Action failed. Please try again.';
+      el('orderAuthPin').value='';
+      if(state.username)el('orderAuthPin').focus();
+    }finally{el('orderAuthConfirm').disabled=false;}
+  });
+
+  el('orderAuthPin').addEventListener('keydown',ev=>{if(ev.key==='Enter')el('orderAuthConfirm').click();});
+  el('orderAuthReason').addEventListener('keydown',ev=>{if(ev.key==='Enter')el('orderAuthConfirm').click();});
+
+  function cancelOrder(id,tableNote,total){
+    const summary=`Order #${id} · ${tableNote||'No table'} · £${(total/100).toFixed(2)}`;
+    openOrderAuthModal({
+      title:'Cancel Order',
+      summary:'Cancel this order? If the customer has already paid, a full refund will be issued automatically.\n\n'+summary,
+      actionLabel:'Cancel Order',
+      callback:async({pin,reason})=>{
+        await api(`/api/staff/orders/${id}/cancel`,{method:'POST',body:JSON.stringify({pin:pin||undefined,reason:reason||undefined}),headers:{'Content-Type':'application/json'}});
+        loadOrders();
+      }
+    });
+  }
+
+  function refundOrder(id,tableNote,total){
+    const summary=`Order #${id} · ${tableNote||'No table'} · £${(total/100).toFixed(2)}`;
+    openOrderAuthModal({
+      title:'Issue Refund',
+      summary:'Issue a full refund to the customer for:\n\n'+summary,
+      actionLabel:'Issue Refund',
+      callback:async({pin,reason})=>{
+        await api(`/api/staff/orders/${id}/refund`,{method:'POST',body:JSON.stringify({pin:pin||undefined,reason:reason||undefined}),headers:{'Content-Type':'application/json'}});
+        loadOrders();
+      }
+    });
   }
 
   async function loadOrders(){
@@ -2955,8 +3034,13 @@
       }catch(e){return'—';}
     }
     function fmtActions(o){
-      if(o.status==='pending') return`<button class="btn btn-secondary btn-sm" style="font-size:11px;padding:4px 10px" onclick="cancelOrder(${o.id})">Cancel</button>`;
-      if(o.status==='paid')    return`<button class="btn btn-sm" style="font-size:11px;padding:4px 10px;background:var(--red);color:#fff;border:none;border-radius:var(--r);cursor:pointer" onclick="refundOrder(${o.id})">Refund</button>`;
+      if(o.status==='pending') return`<button class="btn btn-secondary btn-sm" style="font-size:11px;padding:4px 10px" onclick="cancelOrder(${o.id},'${(o.tableNote||'').replace(/'/g,"\\'")}',${o.totalPence})">Cancel</button>`;
+      if(o.status==='paid')    return`<button class="btn btn-sm" style="font-size:11px;padding:4px 10px;background:var(--red);color:#fff;border:none;border-radius:var(--r);cursor:pointer" onclick="refundOrder(${o.id},'${(o.tableNote||'').replace(/'/g,"\\'")}',${o.totalPence})">Refund</button>`;
+      if(o.audit){
+        const by=o.audit.staffUsername||'admin';
+        const note=o.audit.reason?` — "${o.audit.reason}"`:'';
+        return`<span style="font-size:11px;color:var(--text-2)">by <strong>${esc(by)}</strong>${esc(note)}</span>`;
+      }
       return'—';
     }
     const rows=orders.map(o=>{
@@ -2964,7 +3048,7 @@
       return`<tr>
         <td style="white-space:nowrap;color:var(--text-2);font-size:12px">${fmtTime(o.createdAt)}</td>
         <td><strong>${o.tableNote||'—'}</strong></td>
-        <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${fmtItems(o.itemsJson)}</td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${fmtItems(o.itemsJson)}</td>
         <td style="white-space:nowrap;font-weight:600">${fmtTotal(o.totalPence)}</td>
         <td style="color:var(--text-2);font-size:12px">${o.customerName||'Guest'}</td>
         <td><span class="pill ${sc.cls}">${sc.label}</span></td>
@@ -2973,7 +3057,7 @@
     wrap.innerHTML=`
       <table class="bk-table" style="width:100%">
         <thead><tr>
-          <th>Time</th><th>Table</th><th>Items</th><th>Total</th><th>Customer</th><th>Status</th><th>Actions</th>
+          <th>Time</th><th>Table</th><th>Items</th><th>Total</th><th>Customer</th><th>Status</th><th>Actions / By</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>`;

@@ -2301,31 +2301,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const limit = Math.min(Number(req.query.limit) || 100, 200);
       const orders = await storage.getRecentAppOrders(limit);
-      res.json(orders);
+      // Attach latest audit entry per order in one batch query
+      const orderIds = orders.map((o) => o.id);
+      const auditEntries = await storage.getAuditLogsForOrders(orderIds);
+      // Build map: orderId → most recent audit entry (already desc-ordered)
+      const auditMap: Record<number, { staffUsername: string; action: string; reason: string | null; createdAt: Date }> = {};
+      for (const entry of auditEntries) {
+        if (!auditMap[entry.orderId]) auditMap[entry.orderId] = entry;
+      }
+      const enriched = orders.map((o) => ({ ...o, audit: auditMap[o.id] ?? null }));
+      res.json(enriched);
     } catch (err: any) {
       console.error("[ORDERS] Failed to load orders:", err.message);
       res.status(500).json({ message: err.message });
     }
   });
 
-  // ── Staff: cancel an app order ────────────────────────────────────────────────
+  // ── Staff: cancel an app order (PIN-authorised) ──────────────────────────────
   app.post("/api/staff/orders/:id/cancel", staffAuth, async (req, res) => {
     const id = parseInt(String(req.params.id));
     if (isNaN(id)) return res.status(400).json({ message: "Invalid order ID" });
+    const { pin, reason } = req.body;
+    const staffUsername = (req as any).staffUsername as string | null;
+    // Verify PIN for named staff accounts; master-PIN sessions are pre-authenticated
+    if (staffUsername) {
+      if (!pin) return res.status(400).json({ message: "PIN required to authorise this action" });
+      const staffUser = await storage.getStaffUserByUsername(staffUsername);
+      if (!staffUser || !verifyPin(String(pin), staffUser.pinHash, staffUser.pinSalt)) {
+        return res.status(401).json({ message: "Incorrect PIN" });
+      }
+    }
     try {
       const order = await storage.getAppOrder(id);
       if (!order) return res.status(404).json({ message: "Order not found" });
       if (order.status === "cancelled" || order.status === "refunded") {
         return res.status(400).json({ message: `Order is already ${order.status}` });
       }
+      const actor = staffUsername || "admin";
       // If paid, issue a refund automatically
       if (order.status === "paid" && order.squarePaymentId) {
         const idKey = `refund-cancel-${id}-${Date.now()}`;
-        await square.createRefund({ paymentId: order.squarePaymentId, amountPence: order.totalPence, reason: "Order cancelled by staff", idempotencyKey: idKey });
+        await square.createRefund({ paymentId: order.squarePaymentId, amountPence: order.totalPence, reason: reason || "Order cancelled by staff", idempotencyKey: idKey });
         await storage.updateAppOrderStatus(id, "refunded");
+        await storage.logOrderAction({ orderId: id, staffUsername: actor, action: "cancel+refund", reason: reason || undefined });
+        console.log(`[ORDERS] Order #${id} cancelled+refunded by ${actor}`);
         return res.json({ status: "refunded", message: "Payment refunded and order cancelled" });
       }
       await storage.updateAppOrderStatus(id, "cancelled");
+      await storage.logOrderAction({ orderId: id, staffUsername: actor, action: "cancel", reason: reason || undefined });
+      console.log(`[ORDERS] Order #${id} cancelled by ${actor}`);
       res.json({ status: "cancelled" });
     } catch (err: any) {
       console.error("[ORDERS] Cancel failed:", err.message);
@@ -2333,16 +2357,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ── Staff: refund a paid app order ────────────────────────────────────────────
+  // ── Staff: refund a paid app order (PIN-authorised) ───────────────────────────
   app.post("/api/staff/orders/:id/refund", staffAuth, async (req, res) => {
     const id = parseInt(String(req.params.id));
     if (isNaN(id)) return res.status(400).json({ message: "Invalid order ID" });
-    const { reason } = req.body;
+    const { pin, reason } = req.body;
+    const staffUsername = (req as any).staffUsername as string | null;
+    // Verify PIN for named staff accounts
+    if (staffUsername) {
+      if (!pin) return res.status(400).json({ message: "PIN required to authorise this action" });
+      const staffUser = await storage.getStaffUserByUsername(staffUsername);
+      if (!staffUser || !verifyPin(String(pin), staffUser.pinHash, staffUser.pinSalt)) {
+        return res.status(401).json({ message: "Incorrect PIN" });
+      }
+    }
     try {
       const order = await storage.getAppOrder(id);
       if (!order) return res.status(404).json({ message: "Order not found" });
       if (order.status !== "paid") return res.status(400).json({ message: "Only paid orders can be refunded" });
       if (!order.squarePaymentId) return res.status(400).json({ message: "No payment ID on record — contact Square support" });
+      const actor = staffUsername || "admin";
       const idKey = `refund-${id}-${Date.now()}`;
       await square.createRefund({
         paymentId: order.squarePaymentId,
@@ -2351,6 +2385,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         idempotencyKey: idKey,
       });
       await storage.updateAppOrderStatus(id, "refunded");
+      await storage.logOrderAction({ orderId: id, staffUsername: actor, action: "refund", reason: reason || undefined });
+      console.log(`[ORDERS] Order #${id} refunded by ${actor}`);
       res.json({ status: "refunded" });
     } catch (err: any) {
       console.error("[ORDERS] Refund failed:", err.message);

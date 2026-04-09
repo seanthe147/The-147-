@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { eq, lt, lte, sql, and, gt, isNull, isNotNull, gte, desc } from "drizzle-orm";
+import { eq, lt, lte, sql, and, gt, isNull, isNotNull, gte, desc, inArray } from "drizzle-orm";
 import {
   type User,
   type InsertUser,
@@ -53,6 +53,8 @@ import {
   menuItemOverrides,
   appOrders,
   type AppOrder,
+  orderAuditLog,
+  type OrderAuditEntry,
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
 
@@ -971,6 +973,33 @@ export class DatabaseStorage implements IStorage {
       .where(eq(appOrders.customerEmail, email))
       .orderBy(desc(appOrders.createdAt))
       .limit(50);
+  }
+
+  async logOrderAction(data: {
+    orderId: number;
+    staffUsername: string;
+    action: string;
+    reason?: string;
+  }): Promise<void> {
+    await db.insert(orderAuditLog).values({
+      orderId: data.orderId,
+      staffUsername: data.staffUsername,
+      action: data.action,
+      reason: data.reason ?? null,
+    });
+  }
+
+  async getOrderAuditLog(orderId: number): Promise<OrderAuditEntry[]> {
+    return db.select().from(orderAuditLog)
+      .where(eq(orderAuditLog.orderId, orderId))
+      .orderBy(desc(orderAuditLog.createdAt));
+  }
+
+  async getAuditLogsForOrders(orderIds: number[]): Promise<OrderAuditEntry[]> {
+    if (orderIds.length === 0) return [];
+    return db.select().from(orderAuditLog)
+      .where(inArray(orderAuditLog.orderId, orderIds))
+      .orderBy(desc(orderAuditLog.createdAt));
   }
 }
 

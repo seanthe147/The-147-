@@ -321,6 +321,19 @@ export const appOrders = pgTable("app_orders", {
 
 export type AppOrder = typeof appOrders.$inferSelect;
 
+// ── Order audit log ───────────────────────────────────────────────────────────
+
+export const orderAuditLog = pgTable("order_audit_log", {
+  id: serial("id").primaryKey(),
+  orderId: integer("order_id").notNull(),
+  staffUsername: text("staff_username").notNull(),
+  action: text("action").notNull(),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type OrderAuditEntry = typeof orderAuditLog.$inferSelect;
+
 // ── Menu visibility overrides ─────────────────────────────────────────────────
 
 export const menuCategoryVisibility = pgTable("menu_category_visibility", {
