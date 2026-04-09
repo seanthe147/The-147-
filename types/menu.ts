@@ -6,10 +6,12 @@ export interface MenuItem {
   description: string;
   price: number;
   soldOut?: boolean;
+  imageUrl?: string;
 }
 
 export interface MenuCategory {
   id: string;
   name: string;
+  imageUrl?: string;
   items: MenuItem[];
 }

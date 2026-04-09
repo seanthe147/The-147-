@@ -214,28 +214,45 @@ function CategoryGrid({
   categories: MenuCategory[];
   onSelect: (id: string) => void;
 }) {
-  const numColumns = 2;
-  const cardSize = (SCREEN_WIDTH - 16 * 3) / numColumns;
+  const cardSize = (SCREEN_WIDTH - 16 * 3) / 2;
 
   return (
     <View style={gridStyles.grid}>
       {categories.map((cat) => {
-        const style = getCategoryStyle(cat.name);
+        const catStyle = getCategoryStyle(cat.name);
+        const hasImage = !!cat.imageUrl;
         return (
           <Pressable
             key={cat.id}
             onPress={() => onSelect(cat.id)}
             style={({ pressed }) => [
               gridStyles.card,
-              { width: cardSize, height: cardSize * 0.85, opacity: pressed ? 0.75 : 1 },
+              { width: cardSize, height: cardSize * 0.85, opacity: pressed ? 0.78 : 1 },
             ]}
             testID={`cat-${cat.id}`}
           >
-            <View style={[gridStyles.iconWrap, { backgroundColor: style.bg }]}>
-              <Ionicons name={style.icon as any} size={28} color={style.color} />
-            </View>
-            <Text style={gridStyles.cardName} numberOfLines={2}>{cat.name}</Text>
-            <Text style={gridStyles.cardCount}>{cat.items.length} items</Text>
+            {hasImage ? (
+              <>
+                <Image
+                  source={{ uri: cat.imageUrl }}
+                  style={gridStyles.cardBgImage}
+                  resizeMode="cover"
+                />
+                <View style={gridStyles.cardImageOverlay} />
+                <View style={gridStyles.cardImageContent}>
+                  <Text style={gridStyles.cardNameLight} numberOfLines={2}>{cat.name}</Text>
+                  <Text style={gridStyles.cardCountLight}>{cat.items.length} items</Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={[gridStyles.iconWrap, { backgroundColor: catStyle.bg }]}>
+                  <Ionicons name={catStyle.icon as any} size={28} color={catStyle.color} />
+                </View>
+                <Text style={gridStyles.cardName} numberOfLines={2}>{cat.name}</Text>
+                <Text style={gridStyles.cardCount}>{cat.items.length} items</Text>
+              </>
+            )}
           </Pressable>
         );
       })}
@@ -258,11 +275,50 @@ const gridStyles = StyleSheet.create({
     justifyContent: "flex-end",
     borderWidth: 1,
     borderColor: Colors.light.border,
+    overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.06,
     shadowRadius: 4,
     elevation: 2,
+  },
+  cardBgImage: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: "100%",
+    height: "100%",
+  },
+  cardImageOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.42)",
+  },
+  cardImageContent: {
+    position: "absolute",
+    bottom: 12,
+    left: 12,
+    right: 12,
+  },
+  cardNameLight: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 13,
+    color: "#fff",
+    lineHeight: 17,
+    textShadowColor: "rgba(0,0,0,0.4)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  cardCountLight: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 11,
+    color: "rgba(255,255,255,0.8)",
+    marginTop: 2,
   },
   iconWrap: {
     position: "absolute",
@@ -293,12 +349,20 @@ function ItemCard({ item }: { item: MenuItem }) {
   const qty = getQuantity(item.variationId);
   const soldOut = !!item.soldOut;
   const cartName = item.variationName ? `${item.name} — ${item.variationName}` : item.name;
+  const hasImage = !!item.imageUrl;
 
   return (
     <View style={[styles.itemCard, soldOut && styles.itemCardSoldOut]}>
-      <View style={styles.itemInfo}>
+      {hasImage && (
+        <Image
+          source={{ uri: item.imageUrl }}
+          style={styles.itemImage}
+          resizeMode="cover"
+        />
+      )}
+      <View style={[styles.itemInfo, hasImage && styles.itemInfoWithImage]}>
         <View style={styles.itemNameRow}>
-          <Text style={[styles.itemName, soldOut && styles.itemNameSoldOut]}>{item.name}</Text>
+          <Text style={[styles.itemName, soldOut && styles.itemNameSoldOut]} numberOfLines={2}>{item.name}</Text>
           {!!item.variationName && (
             <View style={styles.variationBadge}>
               <Text style={styles.variationText}>{item.variationName}</Text>
@@ -913,13 +977,24 @@ const styles = StyleSheet.create({
     padding: 14,
     borderWidth: 1,
     borderColor: Colors.light.border,
+    overflow: "hidden",
   },
   itemCardSoldOut: {
     opacity: 0.65,
   },
+  itemImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 10,
+    marginRight: 12,
+    backgroundColor: Colors.light.surfaceElevated,
+  },
   itemInfo: {
     flex: 1,
     paddingRight: 12,
+  },
+  itemInfoWithImage: {
+    paddingRight: 8,
   },
   itemNameRow: {
     flexDirection: "row",

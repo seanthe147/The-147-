@@ -2163,7 +2163,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const filtered = categories
         .filter(cat => !hiddenCategoryIds.has(cat.id))
         .map(cat => ({
-          ...cat,
+          id: cat.id,
+          name: cat.name,
+          imageUrl: cat.imageUrl,
           items: cat.items
             .filter(item => {
               const override = itemOverrideMap.get(item.variationId);
@@ -2178,6 +2180,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 variationName: item.variationName,
                 description: item.description,
                 price: item.price,
+                imageUrl: item.imageUrl,
               };
               return override?.soldOut ? { ...base, soldOut: true } : base;
             }),

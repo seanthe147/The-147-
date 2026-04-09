@@ -545,11 +545,13 @@ export interface MenuItem {
   variationName?: string;
   description: string;
   price: number;
+  imageUrl?: string;
 }
 
 export interface MenuCategory {
   id: string;
   name: string;
+  imageUrl?: string;
   items: MenuItem[];
 }
 
@@ -579,16 +581,48 @@ export async function getMenuFromSquare(): Promise<MenuCategory[]> {
   });
 
   const catNames: Record<string, string> = {};
+  const catImageIds: Record<string, string> = {};
   if (subcatIds.size > 0) {
     const catData = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
       object_ids: Array.from(subcatIds),
     });
     (catData.objects || []).forEach((o: any) => {
       catNames[o.id] = o.category_data?.name || "Other";
+      if (o.category_data?.image_ids?.[0]) {
+        catImageIds[o.id] = o.category_data.image_ids[0];
+      }
     });
   }
 
-  const categoryMap: Record<string, { name: string; items: MenuItem[] }> = {};
+  // Collect all image IDs referenced by items and categories
+  const itemImageIds: Record<string, string> = {};
+  items.forEach((item) => {
+    if (item.item_data?.image_ids?.[0]) {
+      itemImageIds[item.id] = item.item_data.image_ids[0];
+    }
+  });
+
+  const allImageObjectIds = [
+    ...new Set([...Object.values(itemImageIds), ...Object.values(catImageIds)]),
+  ];
+  const imageUrlMap: Record<string, string> = {};
+  if (allImageObjectIds.length > 0) {
+    for (let i = 0; i < allImageObjectIds.length; i += 100) {
+      try {
+        const chunk = allImageObjectIds.slice(i, i + 100);
+        const imgData = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
+          object_ids: chunk,
+        });
+        (imgData.objects || []).forEach((o: any) => {
+          if (o.image_data?.url) imageUrlMap[o.id] = o.image_data.url;
+        });
+      } catch {
+        // Non-fatal — continue without images for this chunk
+      }
+    }
+  }
+
+  const categoryMap: Record<string, { name: string; imageUrl?: string; items: MenuItem[] }> = {};
   items.forEach((item) => {
     const subcatId = (item.item_data?.categories || []).find(
       (c: any) => !PARENT_CATEGORY_IDS.has(c.id)
@@ -598,8 +632,16 @@ export async function getMenuFromSquare(): Promise<MenuCategory[]> {
     if (!variations.length) return;
 
     if (!categoryMap[subcatId]) {
-      categoryMap[subcatId] = { name: catNames[subcatId] || "Other", items: [] };
+      const catImgId = catImageIds[subcatId];
+      categoryMap[subcatId] = {
+        name: catNames[subcatId] || "Other",
+        imageUrl: catImgId ? imageUrlMap[catImgId] : undefined,
+        items: [],
+      };
     }
+
+    const itemImgId = itemImageIds[item.id];
+    const itemImageUrl = itemImgId ? imageUrlMap[itemImgId] : undefined;
 
     const hasMultiple = variations.length > 1;
     const isGenericName = (n: string) => ["regular", "standard", ""].includes(n.toLowerCase());
@@ -621,14 +663,16 @@ export async function getMenuFromSquare(): Promise<MenuCategory[]> {
         variationName,
         description: item.item_data.description || "",
         price: variation.item_variation_data?.price_money?.amount || 0,
+        imageUrl: itemImageUrl,
       });
     });
   });
 
   const result = Object.entries(categoryMap)
-    .map(([id, { name, items: its }]) => ({
+    .map(([id, { name, imageUrl, items: its }]) => ({
       id,
       name,
+      imageUrl,
       items: its.sort((a, b) => a.name.localeCompare(b.name)),
     }))
     .sort((a, b) => {
