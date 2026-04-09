@@ -970,9 +970,24 @@ export class DatabaseStorage implements IStorage {
 
   async getCustomerOrders(email: string): Promise<AppOrder[]> {
     return db.select().from(appOrders)
-      .where(eq(appOrders.customerEmail, email))
+      .where(and(
+        eq(appOrders.customerEmail, email),
+        // Never show expired (abandoned) orders to the customer
+        sql`${appOrders.status} != 'expired'`
+      ))
       .orderBy(desc(appOrders.createdAt))
       .limit(50);
+  }
+
+  async expireStaleOrders(olderThanMinutes: number = 30): Promise<number> {
+    const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1000);
+    const result = await db.update(appOrders)
+      .set({ status: "expired" })
+      .where(and(
+        eq(appOrders.status, "pending"),
+        lte(appOrders.createdAt, cutoff)
+      ));
+    return (result as any).rowCount ?? 0;
   }
 
   async logOrderAction(data: {

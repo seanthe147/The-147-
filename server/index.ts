@@ -426,6 +426,22 @@ function scheduleDepositAutoCancel() {
   setInterval(runAutoCancel, 30 * 60 * 1000);
 }
 
+function scheduleOrderExpiry() {
+  async function runExpiry() {
+    try {
+      const { storage: store } = await import("./storage");
+      const expired = await store.expireStaleOrders(30);
+      if (expired > 0) {
+        log(`[Orders] Expired ${expired} abandoned pending order(s) (no payment after 30 min)`);
+      }
+    } catch (e: any) {
+      log(`[Orders] Expiry job error: ${e.message}`);
+    }
+  }
+  runExpiry();
+  setInterval(runExpiry, 15 * 60 * 1000);
+}
+
 function scheduleRetentionCleanup() {
   // Run data retention cleanup immediately on startup, then every 24 hours
   // This ensures the 12-month anonymisation policy and session cleanup run automatically
@@ -485,6 +501,8 @@ function scheduleRetentionCleanup() {
   scheduleBookingReminders();
   // Auto-cancel pending deposit bookings older than 1 hour
   scheduleDepositAutoCancel();
+  // Expire abandoned app orders (never paid within 30 minutes)
+  scheduleOrderExpiry();
 
   const port = parseInt(process.env.PORT || "5000", 10);
   server.listen(
