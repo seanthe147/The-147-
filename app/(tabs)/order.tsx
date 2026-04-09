@@ -610,6 +610,14 @@ export default function OrderScreen() {
     staleTime: 10 * 60 * 1000,
   });
 
+  const { data: orderingStatus } = useQuery<{ enabled: boolean }>({
+    queryKey: ["/api/ordering-status"],
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
+  });
+
+  const orderingEnabled = orderingStatus?.enabled !== false;
+
   const activeBanners = useMemo(
     () => (banners ?? []).filter((b) => b.active),
     [banners]
@@ -725,6 +733,16 @@ export default function OrderScreen() {
         >
           {activeBanners.length > 0 && (
             <BannerCarousel banners={activeBanners} />
+          )}
+
+          {!orderingEnabled && (
+            <View style={styles.orderingClosedBanner}>
+              <Ionicons name="moon-outline" size={22} color="#92400e" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.orderingClosedTitle}>Ordering is currently closed</Text>
+                <Text style={styles.orderingClosedSub}>Please speak to a member of staff to place your order</Text>
+              </View>
+            </View>
           )}
 
           <View style={styles.sectionHeader}>
@@ -920,6 +938,30 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_700Bold",
     fontSize: 10,
     color: "#fff",
+  },
+  orderingClosedBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#fef3c7",
+    borderRadius: 14,
+    marginHorizontal: 16,
+    marginTop: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#fcd34d",
+  },
+  orderingClosedTitle: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 14,
+    color: "#92400e",
+    marginBottom: 2,
+  },
+  orderingClosedSub: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: "#a16207",
+    lineHeight: 16,
   },
   sectionHeader: {
     paddingHorizontal: 16,

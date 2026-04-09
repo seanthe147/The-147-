@@ -2281,6 +2281,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Online Ordering Toggle ──────────────────────────────────────────────────
+  function getTodayStr() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  async function getOrderingEnabled(): Promise<boolean> {
+    const enabled = await storage.getSetting("ordering_enabled");
+    if (enabled !== "false") return true;
+    // Auto-reset: if disabled on a previous day, re-enable it
+    const disabledDate = await storage.getSetting("ordering_disabled_date");
+    const today = getTodayStr();
+    if (disabledDate && disabledDate !== today) {
+      await storage.setSetting("ordering_enabled", "true");
+      return true;
+    }
+    return false;
+  }
+
+  app.get("/api/ordering-status", async (_req, res) => {
+    try {
+      const enabled = await getOrderingEnabled();
+      res.json({ enabled });
+    } catch {
+      res.json({ enabled: true }); // Default to enabled on error
+    }
+  });
+
+  app.put("/api/staff/ordering-status", staffAuth, async (req: any, res) => {
+    const { enabled } = req.body;
+    if (typeof enabled !== "boolean") {
+      return res.status(400).json({ message: "enabled must be boolean" });
+    }
+    await storage.setSetting("ordering_enabled", String(enabled));
+    if (!enabled) {
+      await storage.setSetting("ordering_disabled_date", getTodayStr());
+    }
+    const who = req.staff?.username || req.staff?.name || "staff";
+    console.log(`[ORDERING] Online ordering ${enabled ? "enabled" : "disabled"} by ${who}`);
+    res.json({ enabled });
+  });
+
   // ── Order Checkout ─────────────────────────────────────────────────────────
   app.post("/api/orders/checkout", async (req, res) => {
     const { items, tableNote, customer } = req.body;
@@ -2288,6 +2329,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ message: "Cart is empty" });
     }
     try {
+      const orderingEnabled = await getOrderingEnabled();
+      if (!orderingEnabled) {
+        return res.status(503).json({ message: "Online ordering is currently unavailable. Please order at the bar." });
+      }
       const { url, linkId, squareOrderId } = await square.createOrderCheckoutLink(items, tableNote, customer);
       // Store order record (non-blocking — don't fail checkout if DB write fails)
       storage.createAppOrder({

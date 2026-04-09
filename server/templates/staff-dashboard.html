@@ -457,6 +457,16 @@
           <span class="topbar-sub" id="topbarSub"></span>
         </div>
         <div class="topbar-actions" id="topbarActions"></div>
+        <div id="orderingToggleWrap" style="margin-left:auto;display:flex;align-items:center;gap:10px">
+          <div style="display:flex;flex-direction:column;align-items:flex-end;line-height:1.2">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-2)">Online Ordering</span>
+            <span id="orderingStatusLabel" style="font-size:11px;font-weight:600;color:var(--text-2)">Loading…</span>
+          </div>
+          <button id="orderingToggleBtn" onclick="toggleOrdering()" style="display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;border:none;font-size:13px;font-weight:700;cursor:pointer;transition:background .2s,color .2s">
+            <svg id="orderingToggleIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"></svg>
+            <span id="orderingToggleLabel">…</span>
+          </button>
+        </div>
         <button class="btn btn-danger btn-sm" id="topbarLogoutBtn" style="margin-left:12px;display:flex;align-items:center;gap:6px;">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
           Sign Out
@@ -3214,6 +3224,52 @@
   window.toggleBanner=toggleBanner;
   window.deleteBanner=deleteBanner;
   window.promptBannerTitle=promptBannerTitle;
+
+  /* ── Online Ordering Toggle ── */
+  let orderingEnabled=true;
+
+  function renderOrderingToggle(enabled){
+    orderingEnabled=enabled;
+    const btn=el('orderingToggleBtn');
+    const label=el('orderingToggleLabel');
+    const icon=el('orderingToggleIcon');
+    const statusLabel=el('orderingStatusLabel');
+    if(enabled){
+      btn.style.background='#ef4444';btn.style.color='#fff';
+      label.textContent='Turn Off';
+      statusLabel.textContent='Open';statusLabel.style.color='var(--green)';
+      icon.innerHTML='<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>';
+    }else{
+      btn.style.background='#22c55e';btn.style.color='#fff';
+      label.textContent='Turn On';
+      statusLabel.textContent='Closed';statusLabel.style.color='var(--red)';
+      icon.innerHTML='<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>';
+    }
+  }
+
+  async function loadOrderingStatus(){
+    try{
+      const r=await fetch('/api/ordering-status');
+      const data=await r.json();
+      renderOrderingToggle(data.enabled);
+    }catch(e){renderOrderingToggle(true);}
+  }
+
+  async function toggleOrdering(){
+    const next=!orderingEnabled;
+    const action=next?'enable':'disable';
+    if(!confirm((next?'Enable':'Disable')+' online ordering? Customers will '+(next?'be able to place orders from the app.':'no longer be able to place orders from the app until it is turned back on.')))return;
+    try{
+      const r=await api('/api/staff/ordering-status',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:next})});
+      if(!r.ok)throw new Error();
+      renderOrderingToggle(next);
+    }catch(e){
+      alert('Failed to update ordering status. Please try again.');
+    }
+  }
+
+  window.toggleOrdering=toggleOrdering;
+  loadOrderingStatus();
 
   let membershipsData={plans:[],subs:[]};
 
