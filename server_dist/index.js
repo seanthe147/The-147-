@@ -13,7 +13,7 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, serial, timestamp, boolean, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema;
+var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, menuCategoryVisibility, menuItemOverrides;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
@@ -235,6 +235,42 @@ var init_schema = __esm({
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     insertMembershipSubscriptionSchema = createInsertSchema(membershipSubscriptions).omit({ id: true, createdAt: true });
+    appOrders = pgTable("app_orders", {
+      id: serial("id").primaryKey(),
+      squareLinkId: text("square_link_id"),
+      squareOrderId: text("square_order_id"),
+      squarePaymentId: text("square_payment_id"),
+      tableNote: text("table_note"),
+      customerName: text("customer_name"),
+      customerEmail: text("customer_email"),
+      itemsJson: text("items_json").notNull(),
+      totalPence: integer("total_pence").notNull().default(0),
+      status: text("status").notNull().default("pending"),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
+    orderAuditLog = pgTable("order_audit_log", {
+      id: serial("id").primaryKey(),
+      orderId: integer("order_id").notNull(),
+      staffUsername: text("staff_username").notNull(),
+      action: text("action").notNull(),
+      reason: text("reason"),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
+    menuCategoryVisibility = pgTable("menu_category_visibility", {
+      categoryId: text("category_id").primaryKey(),
+      hidden: boolean("hidden").notNull().default(false),
+      updatedBy: text("updated_by").notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    });
+    menuItemOverrides = pgTable("menu_item_overrides", {
+      variationId: text("variation_id").primaryKey(),
+      itemId: text("item_id").notNull(),
+      name: text("name").notNull(),
+      soldOut: boolean("sold_out").notNull().default(false),
+      hidden: boolean("hidden").notNull().default(false),
+      updatedBy: text("updated_by").notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    });
   }
 });
 
@@ -310,7 +346,7 @@ __export(storage_exports, {
 });
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { eq, lt, lte, sql as sql2, and, gt, isNull, isNotNull, gte, desc } from "drizzle-orm";
+import { eq, lt, lte, sql as sql2, and, gt, isNull, isNotNull, gte, desc, inArray } from "drizzle-orm";
 function buildPoolConfig() {
   const rawUrl = process.env.DATABASE_URL;
   const url = new URL(rawUrl);
@@ -917,6 +953,83 @@ var init_storage = __esm({
         }
         return { total: all.length, active: active.length, paused: paused.length, cancelled: cancelled.length, mrr };
       }
+      // ── Menu visibility overrides ───────────────────────────────────────────────
+      async getMenuCategoryOverrides() {
+        return db.select().from(menuCategoryVisibility);
+      }
+      async setMenuCategoryHidden(categoryId, hidden, updatedBy) {
+        await db.insert(menuCategoryVisibility).values({ categoryId, hidden, updatedBy, updatedAt: /* @__PURE__ */ new Date() }).onConflictDoUpdate({
+          target: menuCategoryVisibility.categoryId,
+          set: { hidden, updatedBy, updatedAt: /* @__PURE__ */ new Date() }
+        });
+      }
+      async getMenuItemOverrides() {
+        return db.select().from(menuItemOverrides);
+      }
+      async setMenuItemSoldOut(variationId, itemId, name, soldOut, updatedBy) {
+        const existing = await db.select().from(menuItemOverrides).where(eq(menuItemOverrides.variationId, variationId));
+        const currentHidden = existing[0]?.hidden ?? false;
+        await db.insert(menuItemOverrides).values({ variationId, itemId, name, soldOut, hidden: currentHidden, updatedBy, updatedAt: /* @__PURE__ */ new Date() }).onConflictDoUpdate({
+          target: menuItemOverrides.variationId,
+          set: { soldOut, updatedBy, updatedAt: /* @__PURE__ */ new Date() }
+        });
+      }
+      async setMenuItemHidden(variationId, itemId, name, hidden, updatedBy) {
+        const existing = await db.select().from(menuItemOverrides).where(eq(menuItemOverrides.variationId, variationId));
+        const currentSoldOut = existing[0]?.soldOut ?? false;
+        await db.insert(menuItemOverrides).values({ variationId, itemId, name, soldOut: currentSoldOut, hidden, updatedBy, updatedAt: /* @__PURE__ */ new Date() }).onConflictDoUpdate({
+          target: menuItemOverrides.variationId,
+          set: { hidden, updatedBy, updatedAt: /* @__PURE__ */ new Date() }
+        });
+      }
+      async createAppOrder(data) {
+        await db.insert(appOrders).values({
+          squareLinkId: data.squareLinkId ?? null,
+          squareOrderId: data.squareOrderId ?? null,
+          squarePaymentId: null,
+          tableNote: data.tableNote ?? null,
+          customerName: data.customerName ?? null,
+          customerEmail: data.customerEmail ?? null,
+          itemsJson: data.itemsJson,
+          totalPence: data.totalPence,
+          status: "pending"
+        });
+      }
+      async getRecentAppOrders(limit = 100) {
+        return db.select().from(appOrders).orderBy(desc(appOrders.createdAt)).limit(limit);
+      }
+      async getAppOrder(id) {
+        const rows = await db.select().from(appOrders).where(eq(appOrders.id, id));
+        return rows[0] ?? null;
+      }
+      async getOrderBySquareOrderId(squareOrderId) {
+        const rows = await db.select().from(appOrders).where(eq(appOrders.squareOrderId, squareOrderId));
+        return rows[0] ?? null;
+      }
+      async updateAppOrderPaid(squareOrderId, squarePaymentId) {
+        await db.update(appOrders).set({ status: "paid", squarePaymentId }).where(eq(appOrders.squareOrderId, squareOrderId));
+      }
+      async updateAppOrderStatus(id, status) {
+        await db.update(appOrders).set({ status }).where(eq(appOrders.id, id));
+      }
+      async getCustomerOrders(email) {
+        return db.select().from(appOrders).where(eq(appOrders.customerEmail, email)).orderBy(desc(appOrders.createdAt)).limit(50);
+      }
+      async logOrderAction(data) {
+        await db.insert(orderAuditLog).values({
+          orderId: data.orderId,
+          staffUsername: data.staffUsername,
+          action: data.action,
+          reason: data.reason ?? null
+        });
+      }
+      async getOrderAuditLog(orderId) {
+        return db.select().from(orderAuditLog).where(eq(orderAuditLog.orderId, orderId)).orderBy(desc(orderAuditLog.createdAt));
+      }
+      async getAuditLogsForOrders(orderIds) {
+        if (orderIds.length === 0) return [];
+        return db.select().from(orderAuditLog).where(inArray(orderAuditLog.orderId, orderIds)).orderBy(desc(orderAuditLog.createdAt));
+      }
     };
     storage = new DatabaseStorage();
   }
@@ -1408,9 +1521,38 @@ async function getMenuFromSquare() {
   menuCache = { data: result, expiry: Date.now() + 5 * 60 * 1e3 };
   return result;
 }
-async function createOrderCheckoutLink(items, tableNote) {
+function invalidateMenuCache() {
+  menuCache = null;
+}
+function normalizeUkPhone(phone) {
+  const digits = phone.replace(/[\s\-\(\)]/g, "");
+  if (digits.startsWith("+44")) return digits;
+  if (digits.startsWith("44") && digits.length >= 12) return "+" + digits;
+  if (digits.startsWith("07") && digits.length === 11) return "+44" + digits.slice(1);
+  if (digits.startsWith("7") && digits.length === 10) return "+44" + digits;
+  return void 0;
+}
+async function createOrderCheckoutLink(items, tableNote, customer) {
   const locationId = getLocationId();
   const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  let prePopulated;
+  if (customer?.email || customer?.name || customer?.phone) {
+    prePopulated = {};
+    if (customer.email) prePopulated.buyer_email = customer.email;
+    if (customer.phone) {
+      const e164 = normalizeUkPhone(customer.phone);
+      if (e164) prePopulated.buyer_phone_number = e164;
+    }
+    if (customer.name) {
+      const parts = customer.name.trim().split(/\s+/);
+      const lastName = parts.length > 1 ? parts.slice(1).join(" ") : "";
+      prePopulated.buyer_address = {
+        first_name: parts[0],
+        ...lastName ? { last_name: lastName } : {}
+      };
+    }
+  }
+  const ticketName = tableNote || (customer?.name ? customer.name.split(" ")[0] : "Guest");
   const body = {
     idempotency_key: idempotencyKey,
     order: {
@@ -1420,15 +1562,39 @@ async function createOrderCheckoutLink(items, tableNote) {
         quantity: String(item.quantity),
         base_price_money: { amount: item.price, currency: "GBP" }
       })),
-      ...tableNote ? { note: `Table ${tableNote}` } : {}
+      // PICKUP fulfillment is required for Square KDS to display the order.
+      // KDS routing rules on each device then split food → kitchen and drinks → bar.
+      fulfillments: [
+        {
+          type: "PICKUP",
+          state: "PROPOSED",
+          pickup_details: {
+            recipient: {
+              display_name: ticketName.slice(0, 60)
+            },
+            schedule_type: "ASAP",
+            is_curbside_pickup: false,
+            note: tableNote || void 0
+          }
+        }
+      ],
+      ...tableNote ? {
+        note: tableNote,
+        reference_id: tableNote.replace(/\s+/g, "-").toUpperCase().slice(0, 40)
+      } : {}
     },
     checkout_options: {
-      allow_tipping: false
+      allow_tipping: false,
+      ...prePopulated ? { pre_populated_data: prePopulated } : {}
     }
   };
   const data = await squareRequest("POST", "/v2/online-checkout/payment-links", body);
   if (!data.payment_link?.url) throw new Error("No checkout URL returned from Square");
-  return data.payment_link.url;
+  return {
+    url: data.payment_link.url,
+    linkId: data.payment_link.id ?? "",
+    squareOrderId: data.payment_link.order_id ?? ""
+  };
 }
 async function createRefund(opts) {
   const data = await squareRequest("POST", "/v2/refunds", {
@@ -3115,6 +3281,21 @@ async function registerRoutes(app2) {
       }
       return res.sendStatus(200);
     }
+    if (paymentStatus === "COMPLETED") {
+      const paymentOrderId = payment.order_id;
+      if (paymentOrderId) {
+        try {
+          const appOrder = await storage.getOrderBySquareOrderId(paymentOrderId);
+          if (appOrder && appOrder.status === "pending") {
+            await storage.updateAppOrderPaid(paymentOrderId, payment.id);
+            console.log(`[WEBHOOK] App order #${appOrder.id} marked paid (Square order: ${paymentOrderId})`);
+            return res.sendStatus(200);
+          }
+        } catch (err) {
+          console.error("[WEBHOOK] App order status update failed:", err.message);
+        }
+      }
+    }
     if (paymentStatus !== "COMPLETED") return res.sendStatus(200);
     if (amountPence !== 500 || currency !== "GBP") return res.sendStatus(200);
     console.log(`[WEBHOOK] \xA35 deposit payment completed \u2014 payment ID: ${payment.id}`);
@@ -3418,23 +3599,221 @@ async function registerRoutes(app2) {
   });
   app2.get("/api/menu", async (_req, res) => {
     try {
-      const categories = await getMenuFromSquare();
-      res.json(categories);
+      const [categories, categoryOverrides, itemOverrides] = await Promise.all([
+        getMenuFromSquare(),
+        storage.getMenuCategoryOverrides(),
+        storage.getMenuItemOverrides()
+      ]);
+      const hiddenCategoryIds = new Set(categoryOverrides.filter((c) => c.hidden).map((c) => c.categoryId));
+      const itemOverrideMap = new Map(itemOverrides.map((o) => [o.variationId, o]));
+      const filtered = categories.filter((cat) => !hiddenCategoryIds.has(cat.id)).map((cat) => ({
+        ...cat,
+        items: cat.items.filter((item) => {
+          const override = itemOverrideMap.get(item.variationId);
+          return !override?.hidden;
+        }).map((item) => {
+          const override = itemOverrideMap.get(item.variationId);
+          return override?.soldOut ? { ...item, soldOut: true } : item;
+        })
+      })).filter((cat) => cat.items.length > 0);
+      res.json(filtered);
     } catch (err) {
       console.error("[MENU] Failed to fetch menu:", err.message);
       res.status(500).json({ message: "Failed to load menu" });
     }
   });
+  app2.get("/api/staff/menu", staffAuth, async (req, res) => {
+    try {
+      if (req.query.nocache === "1") invalidateMenuCache();
+      const [categories, categoryOverrides, itemOverrides] = await Promise.all([
+        getMenuFromSquare(),
+        storage.getMenuCategoryOverrides(),
+        storage.getMenuItemOverrides()
+      ]);
+      const categoryOverrideMap = new Map(categoryOverrides.map((o) => [o.categoryId, o]));
+      const itemOverrideMap = new Map(itemOverrides.map((o) => [o.variationId, o]));
+      const result = categories.map((cat) => ({
+        id: cat.id,
+        name: cat.name,
+        hidden: categoryOverrideMap.get(cat.id)?.hidden ?? false,
+        items: cat.items.map((item) => ({
+          variationId: item.variationId,
+          itemId: item.id,
+          name: item.name,
+          price: item.price,
+          soldOut: itemOverrideMap.get(item.variationId)?.soldOut ?? false,
+          hidden: itemOverrideMap.get(item.variationId)?.hidden ?? false
+        }))
+      }));
+      res.json(result);
+    } catch (err) {
+      console.error("[STAFF MENU] Failed to fetch menu:", err.message);
+      res.status(500).json({ message: "Failed to load menu" });
+    }
+  });
+  app2.put("/api/staff/menu/categories/:categoryId", staffAuth, managerAuth, async (req, res) => {
+    const { categoryId } = req.params;
+    const { hidden } = req.body;
+    if (typeof hidden !== "boolean") return res.status(400).json({ message: "hidden must be boolean" });
+    try {
+      const updatedBy = req.staffUser?.username ?? "staff";
+      await storage.setMenuCategoryHidden(categoryId, hidden, updatedBy);
+      invalidateMenuCache();
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[STAFF MENU] Category hide error:", err.message);
+      res.status(500).json({ message: "Failed to update category" });
+    }
+  });
+  app2.put("/api/staff/menu/items/:variationId/sold-out", staffAuth, async (req, res) => {
+    const { variationId } = req.params;
+    const { soldOut, itemId, name } = req.body;
+    if (typeof soldOut !== "boolean") return res.status(400).json({ message: "soldOut must be boolean" });
+    if (!itemId || !name) return res.status(400).json({ message: "itemId and name required" });
+    try {
+      const updatedBy = req.staffUser?.username ?? "staff";
+      await storage.setMenuItemSoldOut(variationId, itemId, name, soldOut, updatedBy);
+      invalidateMenuCache();
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[STAFF MENU] Item sold-out error:", err.message);
+      res.status(500).json({ message: "Failed to update item" });
+    }
+  });
+  app2.put("/api/staff/menu/items/:variationId/hidden", staffAuth, managerAuth, async (req, res) => {
+    const { variationId } = req.params;
+    const { hidden, itemId, name } = req.body;
+    if (typeof hidden !== "boolean") return res.status(400).json({ message: "hidden must be boolean" });
+    if (!itemId || !name) return res.status(400).json({ message: "itemId and name required" });
+    try {
+      const updatedBy = req.staffUser?.username ?? "staff";
+      await storage.setMenuItemHidden(variationId, itemId, name, hidden, updatedBy);
+      invalidateMenuCache();
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[STAFF MENU] Item hide error:", err.message);
+      res.status(500).json({ message: "Failed to update item" });
+    }
+  });
   app2.post("/api/orders/checkout", async (req, res) => {
-    const { items, tableNote } = req.body;
+    const { items, tableNote, customer } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "Cart is empty" });
     }
     try {
-      const url = await createOrderCheckoutLink(items, tableNote);
+      const { url, linkId, squareOrderId } = await createOrderCheckoutLink(items, tableNote, customer);
+      storage.createAppOrder({
+        squareLinkId: linkId || void 0,
+        squareOrderId: squareOrderId || void 0,
+        tableNote: tableNote || void 0,
+        customerName: customer?.name || void 0,
+        customerEmail: customer?.email || void 0,
+        itemsJson: JSON.stringify(
+          items.map((i) => ({ name: i.name ?? "Item", quantity: i.quantity, price: i.price }))
+        ),
+        totalPence: items.reduce((sum, i) => sum + Number(i.price) * Number(i.quantity), 0)
+      }).catch((err) => console.error("[ORDER] Failed to save order record:", err.message));
       res.json({ url });
     } catch (err) {
       console.error("[ORDER] Checkout failed:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app2.get("/api/staff/orders", staffAuth, async (req, res) => {
+    try {
+      const limit = Math.min(Number(req.query.limit) || 100, 200);
+      const orders = await storage.getRecentAppOrders(limit);
+      const orderIds = orders.map((o) => o.id);
+      const auditEntries = await storage.getAuditLogsForOrders(orderIds);
+      const auditMap = {};
+      for (const entry of auditEntries) {
+        if (!auditMap[entry.orderId]) auditMap[entry.orderId] = entry;
+      }
+      const enriched = orders.map((o) => ({ ...o, audit: auditMap[o.id] ?? null }));
+      res.json(enriched);
+    } catch (err) {
+      console.error("[ORDERS] Failed to load orders:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app2.post("/api/staff/orders/:id/cancel", staffAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid order ID" });
+    const { pin, reason } = req.body;
+    const staffUsername = req.staffUsername;
+    if (staffUsername) {
+      if (!pin) return res.status(400).json({ message: "PIN required to authorise this action" });
+      const staffUser = await storage.getStaffUserByUsername(staffUsername);
+      if (!staffUser || !verifyPin(String(pin), staffUser.pinHash, staffUser.pinSalt)) {
+        return res.status(401).json({ message: "Incorrect PIN" });
+      }
+    }
+    try {
+      const order = await storage.getAppOrder(id);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      if (order.status === "cancelled" || order.status === "refunded") {
+        return res.status(400).json({ message: `Order is already ${order.status}` });
+      }
+      const actor = staffUsername || "admin";
+      if (order.status === "paid" && order.squarePaymentId) {
+        const idKey = `refund-cancel-${id}-${Date.now()}`;
+        await createRefund({ paymentId: order.squarePaymentId, amountPence: order.totalPence, reason: reason || "Order cancelled by staff", idempotencyKey: idKey });
+        await storage.updateAppOrderStatus(id, "refunded");
+        await storage.logOrderAction({ orderId: id, staffUsername: actor, action: "cancel+refund", reason: reason || void 0 });
+        console.log(`[ORDERS] Order #${id} cancelled+refunded by ${actor}`);
+        return res.json({ status: "refunded", message: "Payment refunded and order cancelled" });
+      }
+      await storage.updateAppOrderStatus(id, "cancelled");
+      await storage.logOrderAction({ orderId: id, staffUsername: actor, action: "cancel", reason: reason || void 0 });
+      console.log(`[ORDERS] Order #${id} cancelled by ${actor}`);
+      res.json({ status: "cancelled" });
+    } catch (err) {
+      console.error("[ORDERS] Cancel failed:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app2.post("/api/staff/orders/:id/refund", staffAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid order ID" });
+    const { pin, reason } = req.body;
+    const staffUsername = req.staffUsername;
+    if (staffUsername) {
+      if (!pin) return res.status(400).json({ message: "PIN required to authorise this action" });
+      const staffUser = await storage.getStaffUserByUsername(staffUsername);
+      if (!staffUser || !verifyPin(String(pin), staffUser.pinHash, staffUser.pinSalt)) {
+        return res.status(401).json({ message: "Incorrect PIN" });
+      }
+    }
+    try {
+      const order = await storage.getAppOrder(id);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      if (order.status !== "paid") return res.status(400).json({ message: "Only paid orders can be refunded" });
+      if (!order.squarePaymentId) return res.status(400).json({ message: "No payment ID on record \u2014 contact Square support" });
+      const actor = staffUsername || "admin";
+      const idKey = `refund-${id}-${Date.now()}`;
+      await createRefund({
+        paymentId: order.squarePaymentId,
+        amountPence: order.totalPence,
+        reason: reason || "Refund issued by staff",
+        idempotencyKey: idKey
+      });
+      await storage.updateAppOrderStatus(id, "refunded");
+      await storage.logOrderAction({ orderId: id, staffUsername: actor, action: "refund", reason: reason || void 0 });
+      console.log(`[ORDERS] Order #${id} refunded by ${actor}`);
+      res.json({ status: "refunded" });
+    } catch (err) {
+      console.error("[ORDERS] Refund failed:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app2.get("/api/customers/orders", customerAuth, async (req, res) => {
+    try {
+      const email = req.customerEmail;
+      if (!email) return res.status(400).json({ message: "No customer email" });
+      const orders = await storage.getCustomerOrders(email);
+      res.json(orders);
+    } catch (err) {
+      console.error("[ORDERS] Customer orders failed:", err.message);
       res.status(500).json({ message: err.message });
     }
   });
