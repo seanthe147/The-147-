@@ -136,6 +136,14 @@ function generateOtp(): string {
   return num.toString().padStart(6, "0");
 }
 
+// Mask email addresses in logs to protect customer privacy
+function maskEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  if (!domain) return "***";
+  const visible = local.length > 2 ? local[0] + local[1] : local[0];
+  return `${visible}***@${domain}`;
+}
+
 function cleanupExpiredOtps(): void {
   const now = Date.now();
   for (const [key, val] of loyaltyOtps) {
@@ -187,7 +195,7 @@ async function sendEmailViaSMTP(to: string, subject: string, html: string): Prom
       tls: { rejectUnauthorized: false },
     });
     await transporter.sendMail({ from: `"The 147" <${user}>`, to, subject, html });
-    console.log(`[EMAIL SMTP] Sent to ${to}`);
+    console.log(`[EMAIL SMTP] Sent to ${maskEmail(to)}`);
     return true;
   } catch (err) {
     console.error("[EMAIL SMTP] Error:", err);
@@ -215,7 +223,7 @@ async function sendOtpEmail(email: string, code: string): Promise<boolean> {
         body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: email, subject, html }),
       });
       if (response.ok) {
-        console.log(`[LOYALTY OTP] Email sent via Resend to ${email}`);
+        console.log(`[LOYALTY OTP] Email sent via Resend to ${maskEmail(email)}`);
         return true;
       }
       const errorText = await response.text();
@@ -226,7 +234,7 @@ async function sendOtpEmail(email: string, code: string): Promise<boolean> {
   }
 
   // Both failed — log code so staff can manually provide it
-  console.warn(`[LOYALTY OTP] All email methods failed. Manual code for ${email}: ${code}`);
+  console.warn(`[LOYALTY OTP] All email methods failed for ${maskEmail(email)} — OTP not delivered`);
   return false;
 }
 
@@ -275,7 +283,7 @@ async function sendDepositLinkEmail(booking: {
 
   const smtpSent = await sendEmailViaSMTP(booking.customerEmail, subject, html);
   if (smtpSent) {
-    console.log(`[BOOKING] Deposit link email sent via SMTP to ${booking.customerEmail} for booking #${booking.id}`);
+    console.log(`[BOOKING] Deposit link email sent via SMTP to ${maskEmail(booking.customerEmail)} for booking #${booking.id}`);
     return true;
   }
   const resendKey = process.env.RESEND_API_KEY;
@@ -332,7 +340,7 @@ async function sendMembershipPaymentLinkEmail(opts: {
 
   const smtpSent = await sendEmailViaSMTP(opts.customerEmail, subject, html);
   if (smtpSent) {
-    console.log(`[MEMBERSHIP] Payment link email sent via SMTP to ${opts.customerEmail}`);
+    console.log(`[MEMBERSHIP] Payment link email sent via SMTP to ${maskEmail(opts.customerEmail)}`);
     return true;
   }
   const resendKey = process.env.RESEND_API_KEY;
@@ -346,12 +354,12 @@ async function sendMembershipPaymentLinkEmail(opts: {
         body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: opts.customerEmail, subject, html }),
       });
       if (response.ok) {
-        console.log(`[MEMBERSHIP] Payment link email sent via Resend to ${opts.customerEmail}`);
+        console.log(`[MEMBERSHIP] Payment link email sent via Resend to ${maskEmail(opts.customerEmail)}`);
         return true;
       }
     } catch (_) {}
   }
-  console.warn(`[MEMBERSHIP] Payment link email failed for ${opts.customerEmail}`);
+  console.warn(`[MEMBERSHIP] Payment link email failed for ${maskEmail(opts.customerEmail)}`);
   return false;
 }
 
@@ -421,7 +429,7 @@ async function sendBookingConfirmationEmail(booking: {
   // SMTP first — works with Gmail/Outlook without any domain verification
   const smtpSent = await sendEmailViaSMTP(booking.customerEmail, subject, html);
   if (smtpSent) {
-    console.log(`[BOOKING] Confirmation email sent via SMTP to ${booking.customerEmail} for booking #${booking.id}`);
+    console.log(`[BOOKING] Confirmation email sent via SMTP to ${maskEmail(booking.customerEmail)} for booking #${booking.id}`);
     return true;
   }
 
@@ -436,7 +444,7 @@ async function sendBookingConfirmationEmail(booking: {
         body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: booking.customerEmail, subject, html }),
       });
       if (response.ok) {
-        console.log(`[BOOKING] Confirmation email sent via Resend to ${booking.customerEmail} for booking #${booking.id}`);
+        console.log(`[BOOKING] Confirmation email sent via Resend to ${maskEmail(booking.customerEmail)} for booking #${booking.id}`);
         return true;
       }
       console.warn("[BOOKING] Resend also failed:", await response.text());
@@ -445,7 +453,7 @@ async function sendBookingConfirmationEmail(booking: {
     }
   }
 
-  console.warn(`[BOOKING] Confirmation email could not be sent for booking #${booking.id} to ${booking.customerEmail}`);
+  console.warn(`[BOOKING] Confirmation email could not be sent for booking #${booking.id} to ${maskEmail(booking.customerEmail)}`);
   return false;
 }
 
@@ -1835,7 +1843,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const pending = byEmail.filter(b => b.status === "pending_deposit");
           if (pending.length > 0) {
             booking = pending.sort((a, b) => b.id - a.id)[0];
-            console.log(`[WEBHOOK] Matched booking #${booking.id} by email: ${buyerEmail}`);
+            console.log(`[WEBHOOK] Matched booking #${booking.id} by email: ${maskEmail(buyerEmail)}`);
           }
         }
       }
