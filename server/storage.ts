@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { eq, lt, lte, sql, and, gt, isNull, isNotNull, gte, desc, inArray } from "drizzle-orm";
+import { eq, lt, lte, sql, and, gt, isNull, isNotNull, gte, desc, inArray, ne } from "drizzle-orm";
 import {
   type User,
   type InsertUser,
@@ -125,7 +125,7 @@ export interface IStorage {
   updateBookingStatus(id: number, status: string): Promise<Booking | undefined>;
   updateBooking(id: number, data: Partial<InsertBooking>): Promise<Booking | undefined>;
   deleteBooking(id: number): Promise<boolean>;
-  getBookedSlots(date: string, tableType: string, tableNumber?: string): Promise<Array<{ startTime: string; duration: number }>>;
+  getBookedSlots(date: string, tableType: string, tableNumber?: string, excludeBookingId?: number): Promise<Array<{ startTime: string; duration: number }>>;
   getBookingsDueReminder(windowStartMins: number, windowEndMins: number): Promise<Booking[]>;
   markReminderSent(id: number): Promise<void>;
   getExpiredPendingDeposits(olderThanMinutes: number): Promise<Booking[]>;
@@ -281,7 +281,7 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
-  async getBookedSlots(date: string, tableType: string, tableNumber?: string): Promise<Array<{ startTime: string; duration: number }>> {
+  async getBookedSlots(date: string, tableType: string, tableNumber?: string, excludeBookingId?: number): Promise<Array<{ startTime: string; duration: number }>> {
     const conditions = [
       eq(bookings.date, date),
       eq(bookings.tableType, tableType),
@@ -289,6 +289,9 @@ export class DatabaseStorage implements IStorage {
     ];
     if (tableNumber) {
       conditions.push(eq(bookings.tableNumber, tableNumber));
+    }
+    if (excludeBookingId) {
+      conditions.push(ne(bookings.id, excludeBookingId));
     }
     const results = await db
       .select({ startTime: bookings.startTime, duration: bookings.duration })

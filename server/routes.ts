@@ -457,6 +457,58 @@ async function sendBookingConfirmationEmail(booking: {
   return false;
 }
 
+async function sendBookingCancellationEmail(booking: {
+  customerName: string;
+  customerEmail: string;
+  date: string;
+  startTime: string;
+  duration: number;
+  tableType: string;
+  tableNumber?: string;
+  id: number;
+}): Promise<boolean> {
+  const tableLabels: Record<string, string> = { snooker: "Snooker Table", pool: "Pool Table", dining: "Dining Table" };
+  const tableLabel = tableLabels[booking.tableType] ?? booking.tableType;
+  const tableNum = booking.tableNumber ? ` #${booking.tableNumber}` : "";
+  const [dy, dm, dd] = booking.date.split("-").map(Number);
+  const dateObj = new Date(dy, dm - 1, dd);
+  const dateStr = dateObj.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const [sh, sm] = booking.startTime.split(":").map(Number);
+  const endMins = sh * 60 + sm + booking.duration * 60;
+  const endTime = `${Math.floor(endMins / 60).toString().padStart(2, "0")}:${(endMins % 60).toString().padStart(2, "0")}`;
+
+  const subject = `Booking Cancelled – The 147`;
+  const html = `
+  <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#f9f9f9;padding:32px;border-radius:12px">
+    <h2 style="color:#1a1a2e;margin-bottom:4px">Booking Cancelled</h2>
+    <p style="color:#555;margin-top:0">Hi ${booking.customerName}, your booking has been cancelled.</p>
+    <div style="background:#fff;border-radius:8px;padding:20px;margin:20px 0;border-left:4px solid #DC2626">
+      <p style="margin:0 0 8px 0"><strong>${tableLabel}${tableNum}</strong></p>
+      <p style="margin:0 0 4px 0;color:#555">${dateStr}</p>
+      <p style="margin:0;color:#555">${booking.startTime} – ${endTime} (${booking.duration} hour${booking.duration > 1 ? "s" : ""})</p>
+    </div>
+    <p style="color:#555;font-size:13px">If you'd like to make a new booking, you can do so through the app at any time.</p>
+    <p style="color:#888;font-size:12px;margin-top:24px">The 147 Bradford · Snooker &amp; Pool Club</p>
+  </div>`;
+
+  const smtpSent = await sendEmailViaSMTP(booking.customerEmail, subject, html);
+  if (smtpSent) return true;
+  const resendKey = process.env.RESEND_API_KEY;
+  if (resendKey) {
+    try {
+      const fromName = "The 147 Bradford";
+      const fromEmail = process.env.RESEND_FROM_EMAIL || "bookings@the147bradford.com";
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+        body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: booking.customerEmail, subject, html }),
+      });
+      if (response.ok) return true;
+    } catch (_) {}
+  }
+  return false;
+}
+
 function getClientIp(req: Request): string {
   return (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown";
 }
@@ -1465,19 +1517,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/bookings/availability", async (req, res) => {
-    const { date, tableType, tableNumber } = req.query;
+    const { date, tableType, tableNumber, excludeId } = req.query;
     if (!date || !tableType) {
       return res.status(400).json({ message: "date and tableType are required" });
     }
     const POOL_TABLE_COUNT = 6;
     const DINING_TABLE_COUNT = 25;
+    const excludeBookingId = excludeId ? parseInt(String(excludeId)) : undefined;
     // For dining: return all dining bookings so the frontend can count concurrent usage
     if (String(tableType) === "dining") {
-      const bookedSlots = await storage.getBookedSlots(String(date), "dining");
+      const bookedSlots = await storage.getBookedSlots(String(date), "dining", undefined, excludeBookingId);
       return res.json({ slots: bookedSlots, totalTables: DINING_TABLE_COUNT });
     }
     // For pool/snooker: per-table availability check requires a table number
-    const bookedSlots = await storage.getBookedSlots(String(date), String(tableType), tableNumber ? String(tableNumber) : undefined);
+    const bookedSlots = await storage.getBookedSlots(String(date), String(tableType), tableNumber ? String(tableNumber) : undefined, excludeBookingId);
     res.json({ slots: bookedSlots, totalTables: tableNumber ? 1 : POOL_TABLE_COUNT });
   });
 
@@ -3469,6 +3522,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ message: "Cannot cancel past bookings" });
     }
     const updated = await storage.updateBookingStatus(bookingId, "cancelled");
+    sendBookingCancellationEmail({
+      customerName: booking.customerName,
+      customerEmail: booking.customerEmail,
+      date: booking.date,
+      startTime: booking.startTime,
+      duration: booking.duration,
+      tableType: booking.tableType,
+      tableNumber: booking.tableNumber || undefined,
+      id: bookingId,
+    }).catch(() => {});
+    res.json({ success: true, booking: updated });
+  });
+
+  app.patch("/api/customers/bookings/:id/reschedule", customerAuth, async (req, res) => {
+    const bookingId = parseInt(req.params.id as string);
+    if (isNaN(bookingId)) {
+      return res.status(400).json({ message: "Invalid booking ID" });
+    }
+    const booking = await storage.getBooking(bookingId);
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+    const customerEmail = (req as any).customerEmail;
+    if (booking.customerEmail.toLowerCase() !== customerEmail.toLowerCase()) {
+      return res.status(403).json({ message: "Not your booking" });
+    }
+    if (booking.status === "cancelled") {
+      return res.status(400).json({ message: "Cannot reschedule a cancelled booking" });
+    }
+    const today = new Date().toISOString().split("T")[0];
+    if (booking.date < today) {
+      return res.status(400).json({ message: "Cannot reschedule past bookings" });
+    }
+    const { date, startTime, duration } = req.body;
+    if (!date || !startTime || !duration) {
+      return res.status(400).json({ message: "date, startTime, and duration are required" });
+    }
+    const dur = parseInt(String(duration));
+    if (isNaN(dur) || dur < 1) {
+      return res.status(400).json({ message: "Invalid duration" });
+    }
+
+    // Check availability for new slot (excluding current booking so same-day reschedules work correctly)
+    const DINING_TABLE_COUNT = 25;
+    const reqStart = parseInt(startTime.toString().replace(":", ""));
+    const reqEnd = reqStart + dur * 100;
+    const slots = await storage.getBookedSlots(date, booking.tableType, booking.tableNumber || undefined, bookingId);
+    if (booking.tableType === "dining") {
+      let count = 0;
+      for (const slot of slots) {
+        const slotStart = parseInt(slot.startTime.replace(":", ""));
+        const slotEnd = slotStart + slot.duration * 100;
+        if (reqStart < slotEnd && reqEnd > slotStart) count++;
+      }
+      if (count >= DINING_TABLE_COUNT) {
+        return res.status(409).json({ message: "That time slot is fully booked" });
+      }
+    } else {
+      for (const slot of slots) {
+        const slotStart = parseInt(slot.startTime.replace(":", ""));
+        const slotEnd = slotStart + slot.duration * 100;
+        if (reqStart < slotEnd && reqEnd > slotStart) {
+          return res.status(409).json({ message: "That time slot is no longer available" });
+        }
+      }
+    }
+
+    const updated = await storage.updateBooking(bookingId, { date, startTime, duration: dur });
+    sendBookingConfirmationEmail({
+      customerName: booking.customerName,
+      customerEmail: booking.customerEmail,
+      date,
+      startTime,
+      duration: dur,
+      tableType: booking.tableType,
+      tableNumber: booking.tableNumber || undefined,
+      id: bookingId,
+    }).catch(() => {});
     res.json({ success: true, booking: updated });
   });
 

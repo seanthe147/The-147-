@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import {
   StyleSheet,
   View,
@@ -10,6 +10,7 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  Modal,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,6 +21,39 @@ import { apiRequest, queryClient, getApiUrl } from "@/lib/query-client";
 import Colors from "@/constants/colors";
 import { TABLE_TYPES } from "@/lib/data";
 import { fetch } from "expo/fetch";
+
+const BOOKING_HOURS = [
+  "10:00", "10:30", "11:00", "11:30", "12:00", "12:30",
+  "13:00", "13:30", "14:00", "14:30", "15:00", "15:30",
+  "16:00", "16:30", "17:00", "17:30", "18:00", "18:30",
+  "19:00", "19:30", "20:00", "20:30", "21:00", "21:30",
+  "22:00", "22:30", "23:00",
+];
+const ALL_DURATION_OPTIONS = [1, 2, 3, 4];
+const STANDARD_DURATION_OPTIONS = [1, 2, 3];
+
+function localDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function parseDateLocal(dateStr: string): Date {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+function getWeekDays(weekOffset: number) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const startOfWeek = new Date(today);
+  startOfWeek.setDate(today.getDate() - today.getDay() + 1 + weekOffset * 7);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(startOfWeek);
+    d.setDate(startOfWeek.getDate() + i);
+    return {
+      date: localDateStr(d),
+      label: d.toLocaleDateString("en-GB", { weekday: "short" }),
+      dayNum: String(d.getDate()),
+    };
+  });
+}
 
 type AuthMode = "login" | "register";
 
@@ -288,6 +322,8 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount }: {
     },
   });
 
+  const [reschedulingBooking, setReschedulingBooking] = useState<CustomerBooking | null>(null);
+
   const cancelMutation = useMutation({
     mutationFn: async (bookingId: number) => {
       const baseUrl = getApiUrl();
@@ -308,6 +344,35 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount }: {
     },
     onError: (err: Error) => {
       const msg = err.message || "Failed to cancel booking";
+      if (Platform.OS === "web") window.alert(msg);
+      else Alert.alert("Error", msg);
+    },
+  });
+
+  const rescheduleMutation = useMutation({
+    mutationFn: async ({ bookingId, date, startTime, duration }: { bookingId: number; date: string; startTime: string; duration: number }) => {
+      const baseUrl = getApiUrl();
+      const url = new URL(`/api/customers/bookings/${bookingId}/reschedule`, baseUrl);
+      const token = await getCustomerToken();
+      const res = await fetch(url.toString(), {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ date, startTime, duration }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || "Reschedule failed");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      setReschedulingBooking(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/customers/bookings"] });
+      if (Platform.OS === "web") window.alert("Booking rescheduled! A confirmation email is on its way.");
+      else Alert.alert("Rescheduled", "Your booking has been updated. A confirmation email is on its way.");
+    },
+    onError: (err: Error) => {
+      const msg = err.message || "Failed to reschedule booking";
       if (Platform.OS === "web") window.alert(msg);
       else Alert.alert("Error", msg);
     },
@@ -353,6 +418,7 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount }: {
     .sort((a, b) => b.date.localeCompare(a.date));
 
   return (
+    <>
     <ScrollView
       style={styles.scrollContent}
       contentContainerStyle={styles.scrollInner}
@@ -439,7 +505,7 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount }: {
         </View>
       ) : (
         upcomingBookings.map((booking) => (
-          <BookingCard key={booking.id} booking={booking} onCancel={() => handleCancelBooking(booking.id)} showCancel />
+          <BookingCard key={booking.id} booking={booking} onCancel={() => handleCancelBooking(booking.id)} onReschedule={() => setReschedulingBooking(booking)} showCancel />
         ))
       )}
 
@@ -516,10 +582,21 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount }: {
 
       <View style={{ height: 40 }} />
     </ScrollView>
+    {reschedulingBooking && (
+      <RescheduleModal
+        booking={reschedulingBooking}
+        onClose={() => setReschedulingBooking(null)}
+        onConfirm={(date, startTime, duration) => {
+          rescheduleMutation.mutate({ bookingId: reschedulingBooking.id, date, startTime, duration });
+        }}
+        loading={rescheduleMutation.isPending}
+      />
+    )}
+    </>
   );
 }
 
-function BookingCard({ booking, onCancel, showCancel }: { booking: CustomerBooking; onCancel?: () => void; showCancel: boolean }) {
+function BookingCard({ booking, onCancel, onReschedule, showCancel }: { booking: CustomerBooking; onCancel?: () => void; onReschedule?: () => void; showCancel: boolean }) {
   const tableData = TABLE_TYPES.find((t) => t.id === booking.tableType);
   const tableName = tableData?.name || booking.tableType;
   const [dy, dm, dd] = booking.date.split("-").map(Number);
@@ -542,9 +619,17 @@ function BookingCard({ booking, onCancel, showCancel }: { booking: CustomerBooki
         </View>
       </View>
       {showCancel && !isCancelled && (
-        <Pressable onPress={onCancel} style={({ pressed }) => [styles.cancelButton, { opacity: pressed ? 0.7 : 1 }]}>
-          <Text style={styles.cancelButtonText}>Cancel Booking</Text>
-        </Pressable>
+        <View style={styles.bookingActions}>
+          {onReschedule && (
+            <Pressable onPress={onReschedule} style={({ pressed }) => [styles.rescheduleButton, { opacity: pressed ? 0.7 : 1 }]}>
+              <Ionicons name="calendar-outline" size={14} color={Colors.brand.blue} style={{ marginRight: 4 }} />
+              <Text style={styles.rescheduleButtonText}>Reschedule</Text>
+            </Pressable>
+          )}
+          <Pressable onPress={onCancel} style={({ pressed }) => [styles.cancelButton, { opacity: pressed ? 0.7 : 1, flex: 1 }]}>
+            <Text style={styles.cancelButtonText}>Cancel</Text>
+          </Pressable>
+        </View>
       )}
     </View>
   );
@@ -585,6 +670,221 @@ function OrderCard({ order }: { order: AppOrder }) {
     </View>
   );
 }
+
+function RescheduleModal({ booking, onClose, onConfirm, loading }: {
+  booking: CustomerBooking;
+  onClose: () => void;
+  onConfirm: (date: string, startTime: string, duration: number) => void;
+  loading: boolean;
+}) {
+  const insets = useSafeAreaInsets();
+  const [weekOffset, setWeekOffset] = useState(0);
+  const today = localDateStr(new Date());
+  const [selectedDate, setSelectedDate] = useState(booking.date >= today ? booking.date : today);
+  const [duration, setDuration] = useState(booking.duration);
+  const [selectedTime, setSelectedTime] = useState<string | null>(booking.startTime);
+
+  const isDining = booking.tableType === "dining";
+  const isSnooker = booking.tableType === "snooker";
+  const tableNumber = booking.tableNumber ?? undefined;
+  const needsTableNumber = (booking.tableType === "snooker" || booking.tableType === "pool") && tableNumber;
+
+  const availabilityQs = needsTableNumber
+    ? `?date=${selectedDate}&tableType=${booking.tableType}&tableNumber=${tableNumber}&excludeId=${booking.id}`
+    : `?date=${selectedDate}&tableType=${booking.tableType}&excludeId=${booking.id}`;
+
+  const availabilityQuery = useQuery<{ slots: Array<{ startTime: string; duration: number }>; totalTables: number }>({
+    queryKey: ["/api/bookings/availability/reschedule", availabilityQs],
+    queryFn: async () => {
+      const baseUrl = getApiUrl();
+      const url = new URL(`/api/bookings/availability${availabilityQs}`, baseUrl);
+      const res = await fetch(url.toString());
+      if (!res.ok) throw new Error("Failed to load availability");
+      return res.json();
+    },
+    enabled: !!selectedDate,
+  });
+
+  const bookedSlots = availabilityQuery.data?.slots ?? [];
+  const totalTables = availabilityQuery.data?.totalTables ?? 1;
+
+  const days = useMemo(() => getWeekDays(weekOffset), [weekOffset]);
+
+  const isSlotBooked = (time: string, dur: number) => {
+    const reqStart = parseInt(time.replace(":", ""));
+    const reqEnd = reqStart + dur * 100;
+    if (isDining) {
+      let count = 0;
+      for (const slot of bookedSlots) {
+        const s = parseInt(slot.startTime.replace(":", ""));
+        const e = s + slot.duration * 100;
+        if (reqStart < e && reqEnd > s) count++;
+      }
+      return count >= totalTables;
+    }
+    for (const slot of bookedSlots) {
+      const s = parseInt(slot.startTime.replace(":", ""));
+      const e = s + slot.duration * 100;
+      if (reqStart < e && reqEnd > s) return true;
+    }
+    return false;
+  };
+
+  const tableData = TABLE_TYPES.find((t) => t.id === booking.tableType);
+  const tableName = tableData?.name || booking.tableType;
+  const tableNum = booking.tableNumber ? ` #${booking.tableNumber}` : "";
+  const durations = isSnooker ? ALL_DURATION_OPTIONS : STANDARD_DURATION_OPTIONS;
+
+  return (
+    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: Colors.light.background }}>
+        <View style={[rStyles.header, { paddingTop: insets.top + (Platform.OS === "web" ? 20 : 0) }]}>
+          <Pressable onPress={onClose} style={rStyles.closeBtn}>
+            <Ionicons name="close" size={22} color="#fff" />
+          </Pressable>
+          <Text style={rStyles.headerTitle}>Reschedule</Text>
+          <View style={{ width: 36 }} />
+        </View>
+
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingBottom: insets.bottom + 40 }}>
+          <View style={rStyles.currentCard}>
+            <Text style={rStyles.currentLabel}>Current booking</Text>
+            <Text style={rStyles.currentDetail}>{tableName}{tableNum} · {booking.startTime} · {booking.duration}hr{booking.duration > 1 ? "s" : ""}</Text>
+          </View>
+
+          <Text style={rStyles.sectionLabel}>Select new date</Text>
+          <View style={rStyles.weekNav}>
+            <Pressable onPress={() => setWeekOffset(Math.max(0, weekOffset - 1))} style={rStyles.weekBtn} disabled={weekOffset === 0}>
+              <Ionicons name="chevron-back" size={18} color={weekOffset === 0 ? "#CBD5E1" : Colors.brand.blue} />
+            </Pressable>
+            <Text style={rStyles.weekLabel}>
+              {days[0].label} {days[0].dayNum} – {days[6].label} {days[6].dayNum}
+            </Text>
+            <Pressable onPress={() => setWeekOffset(Math.min(26, weekOffset + 1))} style={rStyles.weekBtn}>
+              <Ionicons name="chevron-forward" size={18} color={Colors.brand.blue} />
+            </Pressable>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
+            {days.map((day) => {
+              const isPast = day.date < today;
+              const isSelected = day.date === selectedDate;
+              return (
+                <Pressable
+                  key={day.date}
+                  disabled={isPast}
+                  onPress={() => { setSelectedDate(day.date); setSelectedTime(null); }}
+                  style={[rStyles.dayChip, isSelected && rStyles.dayChipSelected, isPast && rStyles.dayChipDisabled]}
+                >
+                  <Text style={[rStyles.dayLabel, isSelected && rStyles.dayLabelSelected, isPast && rStyles.dayTextDisabled]}>{day.label}</Text>
+                  <Text style={[rStyles.dayNum, isSelected && rStyles.dayNumSelected, isPast && rStyles.dayTextDisabled]}>{day.dayNum}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+
+          <Text style={rStyles.sectionLabel}>Duration</Text>
+          <View style={rStyles.chipRow}>
+            {durations.map((d) => (
+              <Pressable
+                key={d}
+                onPress={() => { setDuration(d); setSelectedTime(null); }}
+                style={[rStyles.chip, duration === d && rStyles.chipSelected]}
+              >
+                <Text style={[rStyles.chipText, duration === d && rStyles.chipTextSelected]}>{d}hr{d > 1 ? "s" : ""}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={rStyles.sectionLabel}>Select time</Text>
+          {availabilityQuery.isLoading ? (
+            <ActivityIndicator color={Colors.brand.blue} style={{ marginVertical: 16 }} />
+          ) : (
+            <View style={rStyles.timeGrid}>
+              {BOOKING_HOURS.filter((time) => {
+                const [h, m] = time.split(":").map(Number);
+                const mins = h * 60 + m;
+                if (isDining) {
+                  const end = mins + duration * 60;
+                  if (mins < 720 || end > 1200) return false;
+                }
+                if (selectedDate === today) {
+                  const now = new Date();
+                  return mins > now.getHours() * 60 + now.getMinutes() + 60;
+                }
+                return !isDining || (h * 60 + m + duration * 60 <= 24 * 60);
+              }).map((time) => {
+                const booked = isSlotBooked(time, duration);
+                const isSelected = selectedTime === time;
+                const [tH, tM] = time.split(":").map(Number);
+                const tooLate = !isDining && tH * 60 + tM + duration * 60 > 24 * 60;
+                const disabled = booked || tooLate;
+                return (
+                  <Pressable
+                    key={time}
+                    onPress={() => { if (!disabled) setSelectedTime(time); }}
+                    disabled={disabled}
+                    style={[rStyles.timeChip, isSelected && rStyles.timeChipSelected, disabled && rStyles.timeChipDisabled]}
+                  >
+                    <Text style={[rStyles.timeText, isSelected && rStyles.timeTextSelected, disabled && rStyles.timeTextDisabled]}>{time}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+
+          <Pressable
+            onPress={() => { if (selectedTime) onConfirm(selectedDate, selectedTime, duration); }}
+            disabled={!selectedTime || loading}
+            style={({ pressed }) => [rStyles.confirmBtn, (!selectedTime || loading) && { opacity: 0.5 }, pressed && { opacity: 0.8 }]}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={rStyles.confirmBtnText}>
+                {selectedTime ? `Confirm — ${selectedTime} · ${duration}hr${duration > 1 ? "s" : ""}` : "Pick a time to confirm"}
+              </Text>
+            )}
+          </Pressable>
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
+const rStyles = StyleSheet.create({
+  header: { backgroundColor: Colors.brand.navy, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 14 },
+  closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center" },
+  headerTitle: { fontSize: 17, fontWeight: "700" as const, color: "#fff" },
+  currentCard: { backgroundColor: "#EFF6FF", borderRadius: 10, padding: 14, marginBottom: 24, borderLeftWidth: 3, borderLeftColor: Colors.brand.blue },
+  currentLabel: { fontSize: 11, fontWeight: "600" as const, color: "#6B7280", textTransform: "uppercase" as const, letterSpacing: 0.5, marginBottom: 4 },
+  currentDetail: { fontSize: 14, fontWeight: "600" as const, color: Colors.brand.navy },
+  sectionLabel: { fontSize: 13, fontWeight: "700" as const, color: "#374151", marginBottom: 12, textTransform: "uppercase" as const, letterSpacing: 0.5 },
+  weekNav: { flexDirection: "row" as const, alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
+  weekBtn: { padding: 6 },
+  weekLabel: { fontSize: 13, fontWeight: "600" as const, color: "#374151" },
+  dayChip: { width: 48, alignItems: "center", paddingVertical: 10, marginRight: 8, borderRadius: 10, backgroundColor: "#F1F5F9", borderWidth: 1.5, borderColor: "transparent" },
+  dayChipSelected: { backgroundColor: Colors.brand.blue, borderColor: Colors.brand.blue },
+  dayChipDisabled: { opacity: 0.35 },
+  dayLabel: { fontSize: 11, fontWeight: "600" as const, color: "#64748B" },
+  dayLabelSelected: { color: "#fff" },
+  dayNum: { fontSize: 16, fontWeight: "800" as const, color: "#1E293B", marginTop: 2 },
+  dayNumSelected: { color: "#fff" },
+  dayTextDisabled: { color: "#94A3B8" },
+  chipRow: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 8, marginBottom: 24 },
+  chip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, backgroundColor: "#F1F5F9", borderWidth: 1.5, borderColor: "transparent" },
+  chipSelected: { backgroundColor: Colors.brand.blue, borderColor: Colors.brand.blue },
+  chipText: { fontSize: 13, fontWeight: "600" as const, color: "#374151" },
+  chipTextSelected: { color: "#fff" },
+  timeGrid: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 8, marginBottom: 28 },
+  timeChip: { width: 72, paddingVertical: 10, alignItems: "center", borderRadius: 8, backgroundColor: "#F1F5F9", borderWidth: 1.5, borderColor: "transparent" },
+  timeChipSelected: { backgroundColor: Colors.brand.blue, borderColor: Colors.brand.blue },
+  timeChipDisabled: { opacity: 0.35 },
+  timeText: { fontSize: 13, fontWeight: "600" as const, color: "#374151" },
+  timeTextSelected: { color: "#fff" },
+  timeTextDisabled: { color: "#94A3B8" },
+  confirmBtn: { backgroundColor: Colors.brand.navy, borderRadius: 12, paddingVertical: 16, alignItems: "center" as const },
+  confirmBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" as const },
+});
 
 async function getCustomerToken(): Promise<string> {
   const AsyncStorage = (await import("@react-native-async-storage/async-storage")).default;
@@ -872,12 +1172,35 @@ const styles = StyleSheet.create({
   statusTextCancelled: {
     color: "#DC2626",
   },
-  cancelButton: {
+  bookingActions: {
+    flexDirection: "row",
+    gap: 8,
     marginTop: 12,
     borderTopWidth: 1,
     borderTopColor: "#F3F4F6",
     paddingTop: 12,
+  },
+  rescheduleButton: {
+    flex: 1,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: Colors.brand.blue,
+  },
+  rescheduleButtonText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: Colors.brand.blue,
+  },
+  cancelButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: "#FEF2F2",
   },
   cancelButtonText: {
     fontFamily: "Montserrat_600SemiBold",
