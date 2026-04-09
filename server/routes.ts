@@ -2498,17 +2498,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const cust = await storage.getCustomerByEmail(customer.email);
           if (cust) {
             const sub = await storage.getMembershipSubscriptionByCustomer(cust.id);
-            // Validate: must be status=active, not cancelled, billing period not expired, and plan has a discount
+            // Validate: subscription active + not cancelled + billing period current + plan is active in staff portal + plan has a discount
             const isActive = sub?.status === "active";
             const notCancelled = !sub?.cancelledAt;
             const periodValid = !sub?.currentPeriodEnd || new Date(sub.currentPeriodEnd) >= new Date();
+            const planActive = sub?.plan !== null; // storage already filters plan by active=true; null means inactive plan
             const hasDiscount = (sub?.plan?.foodDrinkDiscount ?? 0) > 0;
-            if (sub && isActive && notCancelled && periodValid && hasDiscount) {
+            if (sub && isActive && notCancelled && periodValid && planActive && hasDiscount) {
               discountPercent = sub.plan!.foodDrinkDiscount;
               discountLabel = `${sub.plan!.name} Member Discount`;
             } else if (sub) {
               console.log(
-                `[ORDER] Discount withheld for ${customer.email}: status=${sub.status}, cancelledAt=${sub.cancelledAt}, periodEnd=${sub.currentPeriodEnd}, discount=${sub.plan?.foodDrinkDiscount}`
+                `[ORDER] Discount withheld for ${customer.email}: status=${sub.status}, cancelledAt=${sub.cancelledAt}, periodEnd=${sub.currentPeriodEnd}, planActive=${planActive}, discount=${sub.plan?.foodDrinkDiscount}`
               );
             }
           }

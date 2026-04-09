@@ -859,7 +859,9 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(membershipSubscriptions.customerId, customerId), eq(membershipSubscriptions.status, "active")))
       .orderBy(desc(membershipSubscriptions.createdAt));
     if (!sub) return null;
-    const [plan] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, sub.planId));
+    // Only return the plan if it is currently active in the staff portal
+    const [plan] = await db.select().from(membershipPlans)
+      .where(and(eq(membershipPlans.id, sub.planId), eq(membershipPlans.active, true)));
     return { ...sub, plan: plan || null };
   }
 

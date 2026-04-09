@@ -432,7 +432,7 @@ function CartSheet({
     status: string;
     cancelledAt: string | null;
     currentPeriodEnd: string | null;
-    plan: { name: string; foodDrinkDiscount: number } | null;
+    plan: { name: string; foodDrinkDiscount: number; active: boolean } | null;
   } | null>({
     queryKey: ["/api/membership/my-subscription"],
     queryFn: async () => {
@@ -452,6 +452,7 @@ function CartSheet({
     memberSub?.status === "active" &&
     !memberSub.cancelledAt &&
     (!memberSub.currentPeriodEnd || new Date(memberSub.currentPeriodEnd) >= new Date()) &&
+    memberSub.plan?.active === true &&
     (memberSub.plan?.foodDrinkDiscount ?? 0) > 0;
   const discountPercent = isValidMember ? memberSub!.plan!.foodDrinkDiscount : 0;
   const discountLabel = discountPercent > 0 ? `${memberSub!.plan!.name} Member Discount` : "";
