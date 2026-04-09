@@ -3925,6 +3925,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(plans);
   });
 
+  app.post("/api/staff/membership/plans", staffAuth, managerAuth, async (req, res) => {
+    const { name, tier, priceMonthly, hoursIncluded, hoursUnit, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, active, sortOrder, color, description } = req.body ?? {};
+    if (!name?.trim()) return res.status(400).json({ message: "Plan name is required" });
+    if (priceMonthly == null || isNaN(Number(priceMonthly))) return res.status(400).json({ message: "Monthly price is required" });
+    // Auto-generate a tier slug from the name if not provided
+    const resolvedTier = (tier?.trim() || name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")) + "_" + Date.now();
+    try {
+      const plan = await storage.createMembershipPlan({
+        name: name.trim(),
+        tier: resolvedTier,
+        priceMonthly: Number(priceMonthly),
+        hoursIncluded: hoursIncluded != null && hoursIncluded !== "" ? Number(hoursIncluded) : null,
+        hoursUnit: hoursUnit || "month",
+        foodDrinkDiscount: Number(foodDrinkDiscount) || 0,
+        priorityBooking: !!priorityBooking,
+        loyaltyMultiplier: Number(loyaltyMultiplier) || 1,
+        guestPassesMonthly: Number(guestPassesMonthly) || 0,
+        squarePlanVariationId: squarePlanVariationId?.trim() || null,
+        active: active !== false,
+        sortOrder: Number(sortOrder) || 0,
+        color: color || "#0047AB",
+        description: description?.trim() || null,
+      });
+      res.json(plan);
+    } catch (err: any) {
+      console.error("[PLAN CREATE]", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.put("/api/staff/membership/plans/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
 

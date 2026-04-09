@@ -836,6 +836,11 @@ export class DatabaseStorage implements IStorage {
     return plan;
   }
 
+  async createMembershipPlan(data: InsertMembershipPlan): Promise<MembershipPlan> {
+    const [plan] = await db.insert(membershipPlans).values(data).returning();
+    return plan;
+  }
+
   async updateMembershipPlan(id: number, data: Partial<InsertMembershipPlan>): Promise<MembershipPlan | undefined> {
     const [plan] = await db.update(membershipPlans).set(data).where(eq(membershipPlans.id, id)).returning();
     return plan;

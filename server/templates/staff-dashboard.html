@@ -3676,6 +3676,10 @@
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             Enable Recurring Billing
           </button>`:''}
+          <button class="btn btn-secondary" style="flex-shrink:0" onclick="window.openCreatePlanModal()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Plan
+          </button>
           <button class="btn btn-primary" style="flex-shrink:0" onclick="window.seedMembershipPlans()">${needsSeed?'Seed Default Plans':'Reset to Default Plans'}</button>
         </div>
       </div>`;
@@ -3773,7 +3777,27 @@
     el('membershipsContent').innerHTML=html;
   }
 
-  /* ── Edit Plan ── */
+  /* ── Create / Edit Plan ── */
+  window.openCreatePlanModal=function(){
+    el('epTitle').textContent='Add New Plan';
+    el('epName').value='';
+    el('epColor').value='#0047AB';
+    el('epDescription').value='';
+    el('epPrice').value='';
+    el('epHours').value='';
+    el('epHoursUnit').value='month';
+    el('epDiscount').value='0';
+    el('epGuestPasses').value='0';
+    el('epLoyaltyMult').value='1';
+    el('epPriorityBooking').checked=false;
+    el('epSquareId').value='';
+    el('epActive').checked=true;
+    el('epErr').classList.remove('show');
+    el('editPlanModal').dataset.planId='';
+    openOverlay('editPlanModal');
+    setTimeout(()=>el('epName').focus(),100);
+  };
+
   window.openEditPlanModal=function(planId){
     const plan=membershipsData.plans.find(p=>p.id===planId);
     if(!plan)return;
@@ -3798,7 +3822,9 @@
 
   el('epSaveBtn').addEventListener('click',async()=>{
     const err=el('epErr');err.classList.remove('show');
-    const planId=parseInt(el('editPlanModal').dataset.planId);
+    const planIdRaw=el('editPlanModal').dataset.planId;
+    const isCreate=!planIdRaw;
+    const planId=isCreate?null:parseInt(planIdRaw);
     const name=el('epName').value.trim();
     const priceStr=el('epPrice').value;
     if(!name){err.textContent='Plan name is required';err.classList.add('show');return}
@@ -3821,11 +3847,15 @@
     };
     el('epSaveBtn').disabled=true;
     try{
-      const r=await api('/api/staff/membership/plans/'+planId,{method:'PUT',body:JSON.stringify(payload)});
+      const url=isCreate?'/api/staff/membership/plans':'/api/staff/membership/plans/'+planId;
+      const method=isCreate?'POST':'PUT';
+      const r=await api(url,{method,body:JSON.stringify(payload)});
       if(!r.ok){const d=await r.json();err.textContent=d.message||'Failed to save plan';err.classList.add('show');return}
       const d=await r.json();
       closeOverlay('editPlanModal');
-      if(d.squareSyncError){
+      if(isCreate){
+        toast('Plan "'+name+'" created','success');
+      }else if(d.squareSyncError){
         toast('Plan saved — Square sync failed: '+d.squareSyncError,'error');
       }else if(d.squareSynced){
         toast('Plan saved & Square billing updated ✓','success');
