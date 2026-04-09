@@ -3388,7 +3388,8 @@
     wrap.innerHTML='<div class="menu-loading">Loading orders…</div>';
     let orders;
     try{
-      orders=await api('/api/staff/orders?limit=100');
+      const r=await api('/api/staff/orders?limit=100');
+      orders=await r.json();
     }catch(e){
       wrap.innerHTML='<div class="menu-loading" style="color:var(--red)">Failed to load orders. Try refreshing.</div>';
       return;
