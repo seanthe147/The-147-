@@ -542,6 +542,7 @@ export interface MenuItem {
   id: string;
   variationId: string;
   name: string;
+  variationName?: string;
   description: string;
   price: number;
 }
@@ -593,18 +594,34 @@ export async function getMenuFromSquare(): Promise<MenuCategory[]> {
       (c: any) => !PARENT_CATEGORY_IDS.has(c.id)
     )?.id;
     if (!subcatId) return;
-    const variation = item.item_data?.variations?.[0];
-    if (!variation) return;
+    const variations: any[] = item.item_data?.variations || [];
+    if (!variations.length) return;
 
     if (!categoryMap[subcatId]) {
       categoryMap[subcatId] = { name: catNames[subcatId] || "Other", items: [] };
     }
-    categoryMap[subcatId].items.push({
-      id: item.id,
-      variationId: variation.id,
-      name: item.item_data.name,
-      description: item.item_data.description || "",
-      price: variation.item_variation_data?.price_money?.amount || 0,
+
+    const hasMultiple = variations.length > 1;
+    const isGenericName = (n: string) => ["regular", "standard", ""].includes(n.toLowerCase());
+
+    const hasMeaningfulVariations = hasMultiple &&
+      variations.some((v: any) => !isGenericName(v.item_variation_data?.name || ""));
+
+    const variationsToShow: any[] = hasMeaningfulVariations
+      ? variations
+      : [variations[0]];
+
+    variationsToShow.forEach((variation: any) => {
+      const rawVarName: string = variation.item_variation_data?.name || "";
+      const variationName = hasMeaningfulVariations && !isGenericName(rawVarName) ? rawVarName : undefined;
+      categoryMap[subcatId].items.push({
+        id: item.id,
+        variationId: variation.id,
+        name: item.item_data.name,
+        variationName,
+        description: item.item_data.description || "",
+        price: variation.item_variation_data?.price_money?.amount || 0,
+      });
     });
   });
 

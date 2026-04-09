@@ -51,15 +51,21 @@ function ItemCard({ item }: { item: MenuItem }) {
   const { addItem, updateQuantity, getQuantity } = useCart();
   const qty = getQuantity(item.variationId);
   const soldOut = !!item.soldOut;
+  const cartName = item.variationName ? `${item.name} — ${item.variationName}` : item.name;
 
   return (
     <View style={[styles.itemCard, soldOut && styles.itemCardSoldOut]}>
       <View style={styles.itemInfo}>
         <View style={styles.itemNameRow}>
           <Text style={[styles.itemName, soldOut && styles.itemNameSoldOut]}>{item.name}</Text>
+          {!!item.variationName && (
+            <View style={styles.variationBadge}>
+              <Text style={styles.variationText}>{item.variationName}</Text>
+            </View>
+          )}
           {soldOut && (
             <View style={styles.soldOutBadge}>
-              <Text style={styles.soldOutText}>Sold Out</Text>
+              <Text style={styles.soldOutText}>Unavailable</Text>
             </View>
           )}
         </View>
@@ -76,7 +82,7 @@ function ItemCard({ item }: { item: MenuItem }) {
           </View>
         ) : qty === 0 ? (
           <Pressable
-            onPress={() => addItem({ variationId: item.variationId, itemId: item.id, name: item.name, price: item.price })}
+            onPress={() => addItem({ variationId: item.variationId, itemId: item.id, name: cartName, price: item.price })}
             style={({ pressed }) => [styles.addBtn, { opacity: pressed ? 0.7 : 1 }]}
             testID={`add-${item.variationId}`}
           >
@@ -590,8 +596,22 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_700Bold",
     fontSize: 10,
     color: "#ef4444",
-    textTransform: "uppercase",
+    textTransform: "uppercase" as const,
     letterSpacing: 0.5,
+  },
+  variationBadge: {
+    backgroundColor: "#eff6ff",
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+  },
+  variationText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 10,
+    color: "#2563eb",
+    letterSpacing: 0.3,
   },
   itemDesc: {
     fontFamily: "Montserrat_400Regular",

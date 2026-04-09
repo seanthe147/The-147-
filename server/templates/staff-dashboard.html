@@ -299,7 +299,9 @@
     .menu-item-row:last-child{border-bottom:none}
     .menu-item-row.sold-out .menu-item-name{color:var(--text-2);text-decoration:line-through}
     .menu-item-row.hidden-item{opacity:.5}
-    .menu-item-name{flex:1;font-size:13px;font-weight:600;color:var(--text)}
+    .menu-item-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+    .menu-item-name{font-size:13px;font-weight:600;color:var(--text)}
+    .menu-item-variation{font-size:11px;font-weight:600;color:var(--blue);background:#eff6ff;border-radius:4px;padding:1px 6px;margin-left:6px;letter-spacing:.2px}
     .menu-item-price{font-size:12px;color:var(--text-2);font-weight:600;min-width:52px;text-align:right}
     .menu-toggle-group{display:flex;align-items:center;gap:16px}
     .menu-toggle-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-2);display:flex;align-items:center;gap:6px}
@@ -2872,17 +2874,18 @@
     list.innerHTML=cats.map((cat,ci)=>{
       const totalItems=cat.items.length;
       const hiddenCount=cat.items.filter(i=>i.hidden).length;
-      const soldOutCount=cat.items.filter(i=>i.soldOut).length;
+      const unavailCount=cat.items.filter(i=>i.soldOut).length;
       let countParts=[totalItems+' item'+(totalItems!==1?'s':'')];
-      if(soldOutCount)countParts.push(soldOutCount+' sold out');
+      if(unavailCount)countParts.push(unavailCount+' unavailable');
       if(hiddenCount)countParts.push(hiddenCount+' hidden');
       const catBadge=cat.hidden?'<span class="badge-hidden">hidden</span>':'';
       const catHideToggle=isMgr?`<label class="menu-toggle-label" onclick="event.stopPropagation()">Hide cat<label class="toggle-sw danger"><input type="checkbox" ${cat.hidden?'checked':''} onchange="menuToggleCatHidden('${cat.id}',this.checked)"><span class="toggle-sw-slider"></span></label></label>`:'';
       const itemsHtml=cat.items.map(item=>{
         const rowCls=['menu-item-row',item.soldOut?'sold-out':'',item.hidden?'hidden-item':''].filter(Boolean).join(' ');
         const price=item.price?'£'+(item.price/100).toFixed(2):'—';
+        const varLabel=item.variationName?`<span class="menu-item-variation">${item.variationName}</span>`:'';
         const hideTgl=isMgr?`<label class="menu-toggle-label">Hide<label class="toggle-sw danger"><input type="checkbox" ${item.hidden?'checked':''} onchange="menuToggleItemHidden('${item.variationId}','${item.itemId}',${JSON.stringify(item.name)},this.checked)"><span class="toggle-sw-slider"></span></label></label>`:'';
-        return `<div class="${rowCls}"><span class="menu-item-name">${item.name}</span><span class="menu-item-price">${price}</span><div class="menu-toggle-group"><label class="menu-toggle-label">Sold out<label class="toggle-sw"><input type="checkbox" ${item.soldOut?'checked':''} onchange="menuToggleItemSoldOut('${item.variationId}','${item.itemId}',${JSON.stringify(item.name)},this.checked)"><span class="toggle-sw-slider"></span></label></label>${hideTgl}</div></div>`;
+        return `<div class="${rowCls}"><div class="menu-item-info"><span class="menu-item-name">${item.name}${varLabel}</span></div><span class="menu-item-price">${price}</span><div class="menu-toggle-group"><label class="menu-toggle-label">Available<label class="toggle-sw"><input type="checkbox" ${!item.soldOut?'checked':''} onchange="menuToggleItemSoldOut('${item.variationId}','${item.itemId}',${JSON.stringify(item.name)},!this.checked)"><span class="toggle-sw-slider"></span></label></label>${hideTgl}</div></div>`;
       }).join('');
       return `<div class="menu-cat" id="menuCat_${ci}"><div class="menu-cat-header" onclick="menuToggleCat(${ci})"><svg class="menu-cat-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg><span class="menu-cat-name">${cat.name}${catBadge}</span><span class="menu-cat-count">${countParts.join(' · ')}</span>${catHideToggle}</div><div class="menu-cat-items">${itemsHtml}</div></div>`;
     }).join('');

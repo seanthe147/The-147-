@@ -2171,7 +2171,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             })
             .map(item => {
               const override = itemOverrideMap.get(item.variationId);
-              return override?.soldOut ? { ...item, soldOut: true } : item;
+              const base = {
+                id: item.id,
+                variationId: item.variationId,
+                name: item.name,
+                variationName: item.variationName,
+                description: item.description,
+                price: item.price,
+              };
+              return override?.soldOut ? { ...base, soldOut: true } : base;
             }),
         }))
         .filter(cat => cat.items.length > 0);
@@ -2206,6 +2214,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           variationId: item.variationId,
           itemId: item.id,
           name: item.name,
+          variationName: item.variationName,
           price: item.price,
           soldOut: itemOverrideMap.get(item.variationId)?.soldOut ?? false,
           hidden: itemOverrideMap.get(item.variationId)?.hidden ?? false,
