@@ -2149,43 +2149,94 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Menu ──────────────────────────────────────────────────────────────────
+  // ── Availability helper ────────────────────────────────────────────────────
+  function isAvailableNow(rules: import("@shared/schema").AvailabilityRule[], targetId: string): boolean {
+    const activeRules = rules.filter(r => r.targetId === targetId && r.enabled);
+    if (activeRules.length === 0) return true; // no restriction = always available
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0=Sun … 6=Sat
+    const hhmm = now.toTimeString().slice(0, 5); // "HH:MM"
+    const dateStr = now.toISOString().slice(0, 10); // "YYYY-MM-DD"
+    return activeRules.some(rule => {
+      if (rule.startDate && dateStr < rule.startDate) return false;
+      if (rule.endDate && dateStr > rule.endDate) return false;
+      if (rule.daysOfWeek) {
+        const days: number[] = JSON.parse(rule.daysOfWeek);
+        if (!days.includes(dayOfWeek)) return false;
+      }
+      if (rule.startTime && hhmm < rule.startTime) return false;
+      if (rule.endTime && hhmm > rule.endTime) return false;
+      return true;
+    });
+  }
+
   app.get("/api/menu", async (_req, res) => {
     try {
-      const [categories, categoryOverrides, itemOverrides] = await Promise.all([
+      const [categories, categoryOverrides, itemOverrides, catSettingsArr, availRules] = await Promise.all([
         square.getMenuFromSquare(),
         storage.getMenuCategoryOverrides(),
         storage.getMenuItemOverrides(),
+        storage.getCategorySettings(),
+        storage.getAvailabilityRules(),
       ]);
 
       const hiddenCategoryIds = new Set(categoryOverrides.filter(c => c.hidden).map(c => c.categoryId));
       const itemOverrideMap = new Map(itemOverrides.map(o => [o.variationId, o]));
+      const catSettingsMap = new Map(catSettingsArr.map(s => [s.categoryId, s]));
 
-      const filtered = categories
-        .filter(cat => !hiddenCategoryIds.has(cat.id))
-        .map(cat => ({
-          id: cat.id,
-          name: cat.name,
-          imageUrl: cat.imageUrl,
-          items: cat.items
-            .filter(item => {
-              const override = itemOverrideMap.get(item.variationId);
-              return !override?.hidden;
-            })
-            .map(item => {
-              const override = itemOverrideMap.get(item.variationId);
-              const base = {
-                id: item.id,
-                variationId: item.variationId,
-                name: item.name,
-                variationName: item.variationName,
-                description: item.description,
-                price: item.price,
-                imageUrl: item.imageUrl,
-              };
-              return override?.soldOut ? { ...base, soldOut: true } : base;
-            }),
-        }))
-        .filter(cat => cat.items.length > 0);
+      // Expand categories and apply merging + display overrides
+      const mergedMap: Map<string, { id: string; name: string; imageUrl?: string; order: number; items: any[] }> = new Map();
+
+      for (const cat of categories) {
+        if (hiddenCategoryIds.has(cat.id)) continue;
+        if (!isAvailableNow(availRules.filter(r => r.targetType === 'category'), cat.id)) continue;
+
+        const settings = catSettingsMap.get(cat.id);
+        const targetId = settings?.mergedIntoId ?? cat.id; // if merged, group under parent
+        const displayName = settings?.displayName ?? cat.name;
+        const displayOrder = settings?.displayOrder ?? 99;
+
+        if (!mergedMap.has(targetId)) {
+          // Get display name for the target (the category we're merging into)
+          const targetSettings = catSettingsMap.get(targetId);
+          const targetCat = categories.find(c => c.id === targetId);
+          mergedMap.set(targetId, {
+            id: targetId,
+            name: targetSettings?.displayName ?? targetCat?.name ?? displayName,
+            imageUrl: targetCat?.imageUrl ?? cat.imageUrl,
+            order: targetSettings?.displayOrder ?? targetCat ? (catSettingsMap.get(targetId)?.displayOrder ?? 99) : displayOrder,
+            items: [],
+          });
+        }
+
+        const availableItems = cat.items
+          .filter(item => {
+            const override = itemOverrideMap.get(item.variationId);
+            if (override?.hidden) return false;
+            if (!isAvailableNow(availRules.filter(r => r.targetType === 'item'), item.id)) return false;
+            return true;
+          })
+          .map(item => {
+            const override = itemOverrideMap.get(item.variationId);
+            const base = {
+              id: item.id,
+              variationId: item.variationId,
+              name: item.name,
+              variationName: item.variationName,
+              description: item.description,
+              price: item.price,
+              imageUrl: item.imageUrl,
+            };
+            return override?.soldOut ? { ...base, soldOut: true } : base;
+          });
+
+        mergedMap.get(targetId)!.items.push(...availableItems);
+      }
+
+      const filtered = Array.from(mergedMap.values())
+        .filter(cat => cat.items.length > 0)
+        .sort((a, b) => a.order !== b.order ? a.order - b.order : a.name.localeCompare(b.name))
+        .map(({ order, ...rest }) => rest);
 
       res.json(filtered);
     } catch (err: any) {
@@ -2278,6 +2329,111 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: any) {
       console.error("[STAFF MENU] Item hide error:", err.message);
       res.status(500).json({ message: "Failed to update item" });
+    }
+  });
+
+  // ── Category Settings (order, merge, rename) ──────────────────────────────
+
+  app.get("/api/staff/menu/category-settings", staffAuth, managerAuth, async (req: any, res) => {
+    try {
+      const [categories, settings] = await Promise.all([
+        square.getMenuFromSquare(),
+        storage.getCategorySettings(),
+      ]);
+      const settingsMap = new Map(settings.map(s => [s.categoryId, s]));
+      const result = categories.map(cat => ({
+        id: cat.id,
+        name: cat.name,
+        imageUrl: cat.imageUrl,
+        displayName: settingsMap.get(cat.id)?.displayName ?? null,
+        displayOrder: settingsMap.get(cat.id)?.displayOrder ?? 99,
+        mergedIntoId: settingsMap.get(cat.id)?.mergedIntoId ?? null,
+      }));
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to load category settings" });
+    }
+  });
+
+  app.put("/api/staff/menu/category-settings", staffAuth, managerAuth, async (req: any, res) => {
+    try {
+      const { settings } = req.body; // array of { categoryId, displayOrder?, mergedIntoId?, displayName? }
+      if (!Array.isArray(settings)) return res.status(400).json({ message: "settings must be an array" });
+      const updatedBy = req.staffUser?.username ?? "staff";
+      await storage.upsertCategorySettings(settings.map((s: any) => ({ ...s, updatedBy })));
+      square.invalidateMenuCache();
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[STAFF MENU] Category settings error:", err.message);
+      res.status(500).json({ message: "Failed to save category settings" });
+    }
+  });
+
+  // ── Availability Rules ─────────────────────────────────────────────────────
+
+  app.get("/api/staff/menu/availability", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      const rules = await storage.getAvailabilityRules();
+      res.json(rules);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to load availability rules" });
+    }
+  });
+
+  app.post("/api/staff/menu/availability", staffAuth, managerAuth, async (req: any, res) => {
+    try {
+      const { targetType, targetId, targetName, daysOfWeek, startTime, endTime, startDate, endDate, note } = req.body;
+      if (!targetType || !targetId || !targetName) return res.status(400).json({ message: "targetType, targetId, and targetName required" });
+      const createdBy = req.staffUser?.username ?? "staff";
+      const rule = await storage.createAvailabilityRule({
+        targetType, targetId, targetName,
+        daysOfWeek: daysOfWeek ? JSON.stringify(daysOfWeek) : null,
+        startTime: startTime || null,
+        endTime: endTime || null,
+        startDate: startDate || null,
+        endDate: endDate || null,
+        note: note || null,
+        enabled: true,
+        createdBy,
+      });
+      square.invalidateMenuCache();
+      res.json(rule);
+    } catch (err: any) {
+      console.error("[AVAILABILITY] Create error:", err.message);
+      res.status(500).json({ message: "Failed to create rule" });
+    }
+  });
+
+  app.put("/api/staff/menu/availability/:id", staffAuth, managerAuth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { daysOfWeek, startTime, endTime, startDate, endDate, note, enabled } = req.body;
+      const updated = await storage.updateAvailabilityRule(id, {
+        ...(daysOfWeek !== undefined ? { daysOfWeek: daysOfWeek ? JSON.stringify(daysOfWeek) : null } : {}),
+        ...(startTime !== undefined ? { startTime: startTime || null } : {}),
+        ...(endTime !== undefined ? { endTime: endTime || null } : {}),
+        ...(startDate !== undefined ? { startDate: startDate || null } : {}),
+        ...(endDate !== undefined ? { endDate: endDate || null } : {}),
+        ...(note !== undefined ? { note: note || null } : {}),
+        ...(enabled !== undefined ? { enabled } : {}),
+      });
+      if (!updated) return res.status(404).json({ message: "Rule not found" });
+      square.invalidateMenuCache();
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update rule" });
+    }
+  });
+
+  app.delete("/api/staff/menu/availability/:id", staffAuth, managerAuth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const ok = await storage.deleteAvailabilityRule(id);
+      if (!ok) return res.status(404).json({ message: "Rule not found" });
+      square.invalidateMenuCache();
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to delete rule" });
     }
   });
 

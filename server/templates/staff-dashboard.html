@@ -314,6 +314,27 @@
     .toggle-sw.danger input:checked+.toggle-sw-slider{background:var(--red)}
     .menu-refresh-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
     .menu-loading{text-align:center;padding:40px;color:var(--text-2);font-size:14px}
+    .menu-tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:4px;width:fit-content}
+    .menu-tab{padding:7px 18px;border:none;background:none;border-radius:calc(var(--r) - 2px);font-size:13px;font-weight:700;color:var(--text-2);cursor:pointer;transition:background .15s,color .15s}
+    .menu-tab:hover{background:var(--blue-light);color:var(--text)}
+    .menu-tab.active{background:var(--blue);color:#fff}
+    .cat-sort-row{display:flex;align-items:center;gap:10px;padding:11px 14px;border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px;background:var(--surface);cursor:grab;user-select:none;transition:box-shadow .15s}
+    .cat-sort-row:active{cursor:grabbing}
+    .cat-sort-row.drag-over{border-color:var(--blue);background:var(--blue-light);box-shadow:0 0 0 2px var(--blue)}
+    .cat-sort-row.is-merged{opacity:.6;border-style:dashed}
+    .cat-sort-handle{color:var(--text-2);flex-shrink:0}
+    .cat-sort-name{flex:1;font-size:14px;font-weight:700;color:var(--text)}
+    .cat-sort-sub{font-size:11px;color:var(--text-2);font-weight:600}
+    .avail-rule-card{border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;margin-bottom:10px;background:var(--surface)}
+    .avail-rule-card.disabled{opacity:.5}
+    .avail-rule-header{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+    .avail-rule-title{flex:1;font-size:14px;font-weight:700;color:var(--text)}
+    .avail-rule-badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
+    .avail-badge-item{background:#dbeafe;color:#1e40af}
+    .avail-badge-cat{background:#fef3c7;color:#92400e}
+    .avail-rule-detail{font-size:12px;color:var(--text-2);line-height:1.6}
+    .avail-modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px}
+    .avail-modal-box{background:var(--surface);border-radius:14px;padding:28px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
     .badge-sold-out{display:inline-block;background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:1px 6px;border-radius:4px;border:1px solid #fcd34d;margin-left:6px}
     .badge-hidden{display:inline-block;background:#fee2e2;color:#991b1b;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:1px 6px;border-radius:4px;border:1px solid #fca5a5;margin-left:6px}
   </style>
@@ -757,15 +778,49 @@
       <!-- MENU MANAGEMENT PAGE -->
       <div class="page" id="pageMenu">
         <div class="page-body">
-          <div class="menu-refresh-bar">
-            <p style="font-size:13px;color:var(--text-2);margin:0">Mark items as <strong>Sold Out</strong> to show a red badge and disable ordering (all staff). Managers and owners can also <strong>Hide</strong> items or entire categories so they don't appear in the app at all. Changes apply within seconds.</p>
-            <button class="btn btn-secondary btn-sm" onclick="loadMenuManagement(true)" id="menuRefreshBtn">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-              Refresh from Square
-            </button>
+          <!-- Menu sub-tabs -->
+          <div class="menu-tabs" id="menuTabBar">
+            <button class="menu-tab active" onclick="switchMenuTab('items')" id="menuTabItems">Items</button>
+            <button class="menu-tab" onclick="switchMenuTab('categories')" id="menuTabCategories">Categories</button>
+            <button class="menu-tab" onclick="switchMenuTab('availability')" id="menuTabAvailability">Availability</button>
           </div>
-          <div id="menuCategoriesList">
-            <div class="menu-loading">Loading menu…</div>
+
+          <!-- ITEMS TAB -->
+          <div id="menuTabPanelItems">
+            <div class="menu-refresh-bar">
+              <p style="font-size:13px;color:var(--text-2);margin:0">Mark items as <strong>Sold Out</strong> to show a red badge and disable ordering (all staff). Managers and owners can also <strong>Hide</strong> items or entire categories so they don't appear in the app at all.</p>
+              <button class="btn btn-secondary btn-sm" onclick="loadMenuManagement(true)" id="menuRefreshBtn">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                Refresh from Square
+              </button>
+            </div>
+            <div id="menuCategoriesList">
+              <div class="menu-loading">Loading menu…</div>
+            </div>
+          </div>
+
+          <!-- CATEGORIES TAB -->
+          <div id="menuTabPanelCategories" style="display:none">
+            <div class="menu-refresh-bar">
+              <p style="font-size:13px;color:var(--text-2);margin:0">Drag to reorder categories, rename them, or merge two categories into one display group. Changes affect the app only — Square is unchanged.</p>
+              <button class="btn btn-secondary btn-sm" onclick="loadCategorySettings()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                Refresh
+              </button>
+            </div>
+            <div id="catSettingsList" style="padding:0 0 24px"></div>
+          </div>
+
+          <!-- AVAILABILITY TAB -->
+          <div id="menuTabPanelAvailability" style="display:none">
+            <div class="menu-refresh-bar">
+              <p style="font-size:13px;color:var(--text-2);margin:0">Restrict items or categories to specific <strong>times of day</strong>, <strong>days of the week</strong>, or <strong>date ranges</strong>. Items outside their window are hidden from the app automatically.</p>
+              <button class="btn btn-primary btn-sm" onclick="showAddAvailabilityRule()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Add Rule
+              </button>
+            </div>
+            <div id="availRulesList" style="padding:0 0 24px"></div>
           </div>
         </div>
       </div>
@@ -2964,6 +3019,290 @@
   window.menuToggleItemSoldOut=menuToggleItemSoldOut;
   window.menuToggleItemHidden=menuToggleItemHidden;
   window.loadMenuManagement=loadMenuManagement;
+
+  /* ── Menu Sub-tabs ────────────────────────────────────────────────────────── */
+  let currentMenuTab='items';
+
+  function switchMenuTab(tab){
+    currentMenuTab=tab;
+    ['items','categories','availability'].forEach(t=>{
+      el('menuTab'+t.charAt(0).toUpperCase()+t.slice(1))?.classList.toggle('active',t===tab);
+      const panel=el('menuTabPanel'+t.charAt(0).toUpperCase()+t.slice(1));
+      if(panel)panel.style.display=t===tab?'':'none';
+    });
+    if(tab==='categories')loadCategorySettings();
+    if(tab==='availability')loadAvailabilityRules();
+  }
+
+  window.switchMenuTab=switchMenuTab;
+
+  /* ── Category Settings ────────────────────────────────────────────────────── */
+  let catSettingsData=[];
+  let dragSrcIdx=null;
+
+  async function loadCategorySettings(){
+    const list=el('catSettingsList');
+    list.innerHTML='<div class="menu-loading">Loading categories…</div>';
+    try{
+      const r=await api('/api/staff/menu/category-settings');
+      catSettingsData=await r.json();
+      catSettingsData.sort((a,b)=>a.displayOrder-b.displayOrder);
+      renderCategorySettings();
+    }catch(e){list.innerHTML='<div class="menu-loading" style="color:var(--red)">Failed to load categories.</div>';}
+  }
+
+  function renderCategorySettings(){
+    const list=el('catSettingsList');
+    if(!catSettingsData.length){list.innerHTML='<div class="menu-loading">No categories found.</div>';return;}
+    const mergedIds=new Set(catSettingsData.filter(c=>c.mergedIntoId).map(c=>c.id));
+    list.innerHTML=catSettingsData.map((cat,i)=>{
+      const isMergedChild=!!cat.mergedIntoId;
+      const parentName=isMergedChild?(catSettingsData.find(c=>c.id===cat.mergedIntoId)?.displayName||catSettingsData.find(c=>c.id===cat.mergedIntoId)?.name||''):'';
+      const displayedName=cat.displayName||cat.name;
+      const mergeNote=isMergedChild?`<span class="cat-sort-sub">merged into <em>${parentName}</em></span>`:`<span class="cat-sort-sub">${cat.name}</span>`;
+      const otherCats=catSettingsData.filter(c=>c.id!==cat.id&&!c.mergedIntoId).map(c=>`<option value="${c.id}"${cat.mergedIntoId===c.id?' selected':''}>${c.displayName||c.name}</option>`).join('');
+      return `<div class="cat-sort-row${isMergedChild?' is-merged':''}" draggable="true" data-idx="${i}" 
+        ondragstart="catDragStart(event,${i})" ondragend="catDragEnd(event)" ondragover="catDragOver(event,${i})" ondragleave="catDragLeave(event)" ondrop="catDrop(event,${i})">
+        <svg class="cat-sort-handle" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="cat-sort-name">${displayedName}</span>
+            ${mergeNote}
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <button class="btn btn-secondary btn-sm" style="padding:4px 10px;font-size:11px" onclick="promptRenameCat('${cat.id}',${JSON.stringify(cat.displayName||cat.name)})">Rename</button>
+          <select style="font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)" onchange="mergeCat('${cat.id}',this.value)">
+            <option value="">No merge</option>
+            ${otherCats}
+          </select>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function catDragStart(e,idx){dragSrcIdx=idx;e.dataTransfer.effectAllowed='move';e.currentTarget.style.opacity='.4';}
+  function catDragEnd(e){e.currentTarget.style.opacity='';}
+  function catDragOver(e,idx){e.preventDefault();e.dataTransfer.dropEffect='move';e.currentTarget.classList.add('drag-over');}
+  function catDragLeave(e){e.currentTarget.classList.remove('drag-over');}
+  function catDrop(e,idx){
+    e.preventDefault();e.currentTarget.classList.remove('drag-over');
+    e.currentTarget.style.opacity='';
+    if(dragSrcIdx===null||dragSrcIdx===idx)return;
+    const moved=catSettingsData.splice(dragSrcIdx,1)[0];
+    catSettingsData.splice(idx,0,moved);
+    catSettingsData.forEach((c,i)=>c.displayOrder=i+1);
+    dragSrcIdx=null;
+    renderCategorySettings();
+    saveCategorySettings();
+  }
+
+  async function mergeCat(categoryId,mergedIntoId){
+    const cat=catSettingsData.find(c=>c.id===categoryId);
+    if(!cat)return;
+    cat.mergedIntoId=mergedIntoId||null;
+    renderCategorySettings();
+    await saveCategorySettings();
+  }
+
+  async function promptRenameCat(categoryId,currentName){
+    const newName=prompt('Rename category (leave blank to use Square name):',currentName);
+    if(newName===null)return;
+    const cat=catSettingsData.find(c=>c.id===categoryId);
+    if(!cat)return;
+    cat.displayName=newName.trim()||null;
+    renderCategorySettings();
+    await saveCategorySettings();
+  }
+
+  async function saveCategorySettings(){
+    try{
+      const r=await api('/api/staff/menu/category-settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({settings:catSettingsData.map((c,i)=>({categoryId:c.id,displayOrder:i+1,mergedIntoId:c.mergedIntoId??null,displayName:c.displayName??null}))})});
+      if(!r.ok)throw new Error();
+    }catch(e){alert('Failed to save category settings.');}
+  }
+
+  window.loadCategorySettings=loadCategorySettings;
+  window.catDragStart=catDragStart;
+  window.catDragEnd=catDragEnd;
+  window.catDragOver=catDragOver;
+  window.catDragLeave=catDragLeave;
+  window.catDrop=catDrop;
+  window.mergeCat=mergeCat;
+  window.promptRenameCat=promptRenameCat;
+
+  /* ── Availability Rules ───────────────────────────────────────────────────── */
+  let availRulesData=[];
+  let availMenuData=[];
+
+  const DAY_NAMES=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  async function loadAvailabilityRules(){
+    const list=el('availRulesList');
+    list.innerHTML='<div class="menu-loading">Loading rules…</div>';
+    try{
+      const [rulesR,menuR]=await Promise.all([api('/api/staff/menu/availability'),api('/api/staff/menu')]);
+      availRulesData=await rulesR.json();
+      availMenuData=await menuR.json();
+      renderAvailabilityRules();
+    }catch(e){list.innerHTML='<div class="menu-loading" style="color:var(--red)">Failed to load rules.</div>';}
+  }
+
+  function formatAvailDetail(rule){
+    const parts=[];
+    if(rule.daysOfWeek){const days=JSON.parse(rule.daysOfWeek);parts.push(days.map(d=>DAY_NAMES[d]).join(', '));}else{parts.push('Every day');}
+    if(rule.startTime||rule.endTime){parts.push((rule.startTime||'00:00')+' – '+(rule.endTime||'23:59'));}else{parts.push('All hours');}
+    if(rule.startDate)parts.push('From '+rule.startDate);
+    if(rule.endDate)parts.push('Until '+rule.endDate);
+    if(rule.note)parts.push('"'+rule.note+'"');
+    return parts.join(' · ');
+  }
+
+  function renderAvailabilityRules(){
+    const list=el('availRulesList');
+    if(!availRulesData.length){
+      list.innerHTML=`<div style="text-align:center;padding:48px 20px;color:var(--text-2)"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.4;display:block;margin:0 auto 12px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><p style="margin:0;font-weight:700;font-size:15px">No availability rules</p><p style="margin:4px 0 0;font-size:13px">All items and categories are always available by default.</p></div>`;
+      return;
+    }
+    list.innerHTML=availRulesData.map(rule=>`
+      <div class="avail-rule-card${rule.enabled?'':' disabled'}">
+        <div class="avail-rule-header">
+          <span class="avail-rule-badge ${rule.targetType==='item'?'avail-badge-item':'avail-badge-cat'}">${rule.targetType==='item'?'Item':'Category'}</span>
+          <span class="avail-rule-title">${rule.targetName}</span>
+          <label class="toggle-sw" title="${rule.enabled?'Disable':'Enable'} rule"><input type="checkbox" ${rule.enabled?'checked':''} onchange="toggleAvailRule(${rule.id},this.checked)"><span class="toggle-sw-slider"></span></label>
+          <button class="btn btn-secondary btn-sm" style="padding:4px 10px;font-size:11px" onclick="editAvailRule(${rule.id})">Edit</button>
+          <button class="btn btn-danger btn-sm" style="padding:4px 10px;font-size:11px" onclick="deleteAvailRule(${rule.id})">Delete</button>
+        </div>
+        <div class="avail-rule-detail">${formatAvailDetail(rule)}</div>
+      </div>`).join('');
+  }
+
+  async function toggleAvailRule(id,enabled){
+    try{
+      const r=await api('/api/staff/menu/availability/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});
+      if(!r.ok)throw new Error();
+      const rule=availRulesData.find(r=>r.id===id);
+      if(rule)rule.enabled=enabled;
+      renderAvailabilityRules();
+    }catch(e){alert('Failed to update rule.');}
+  }
+
+  async function deleteAvailRule(id){
+    const rule=availRulesData.find(r=>r.id===id);
+    if(!confirm('Delete availability rule for "'+rule?.targetName+'"?'))return;
+    try{
+      const r=await api('/api/staff/menu/availability/'+id,{method:'DELETE'});
+      if(!r.ok)throw new Error();
+      availRulesData=availRulesData.filter(r=>r.id!==id);
+      renderAvailabilityRules();
+    }catch(e){alert('Failed to delete rule.');}
+  }
+
+  function buildAvailModal(rule=null){
+    const allTargets=[];
+    for(const cat of availMenuData){
+      allTargets.push({type:'category',id:cat.id,name:cat.name});
+      for(const item of cat.items){
+        const label=item.name+(item.variationName?' ('+item.variationName+')':'');
+        if(!allTargets.find(t=>t.id===item.variationId))
+          allTargets.push({type:'item',id:item.variationId,name:label});
+      }
+    }
+    const targetOptions=allTargets.map(t=>`<option value="${t.type}|${t.id}|${encodeURIComponent(t.name)}"${rule&&rule.targetId===t.id?' selected':''}>${t.type==='category'?'[Cat] ':''} ${t.name}</option>`).join('');
+    const daysVal=rule?.daysOfWeek?JSON.parse(rule.daysOfWeek):[];
+    const dayCheckboxes=DAY_NAMES.map((d,i)=>`<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="checkbox" value="${i}" ${(!rule||daysVal.includes(i))?'checked':''}> ${d}</label>`).join('');
+    document.body.insertAdjacentHTML('beforeend',`
+      <div class="avail-modal" id="availModal">
+        <div class="avail-modal-box">
+          <h3 style="margin:0 0 20px;font-size:18px">${rule?'Edit':'Add'} Availability Rule</h3>
+          <div style="margin-bottom:16px">
+            <label style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-2);display:block;margin-bottom:6px">Item or Category</label>
+            <select id="availTarget" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font-size:13px">
+              <option value="">Select…</option>
+              ${targetOptions}
+            </select>
+          </div>
+          <div style="margin-bottom:16px">
+            <label style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-2);display:block;margin-bottom:8px">Days of Week (leave all checked = every day)</label>
+            <div style="display:flex;flex-wrap:wrap;gap:10px">${dayCheckboxes}</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+            <div>
+              <label style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-2);display:block;margin-bottom:6px">Available from</label>
+              <input type="time" id="availStartTime" value="${rule?.startTime||''}" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font-size:13px">
+            </div>
+            <div>
+              <label style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-2);display:block;margin-bottom:6px">Available until</label>
+              <input type="time" id="availEndTime" value="${rule?.endTime||''}" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font-size:13px">
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+            <div>
+              <label style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-2);display:block;margin-bottom:6px">Start date (optional)</label>
+              <input type="date" id="availStartDate" value="${rule?.startDate||''}" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font-size:13px">
+            </div>
+            <div>
+              <label style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-2);display:block;margin-bottom:6px">End date (optional)</label>
+              <input type="date" id="availEndDate" value="${rule?.endDate||''}" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font-size:13px">
+            </div>
+          </div>
+          <div style="margin-bottom:20px">
+            <label style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-2);display:block;margin-bottom:6px">Note (optional)</label>
+            <input type="text" id="availNote" value="${rule?.note||''}" placeholder="e.g. Breakfast menu" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);font-size:13px;box-sizing:border-box">
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button class="btn btn-secondary" onclick="closeAvailModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveAvailRule(${rule?rule.id:'null'})">${rule?'Save Changes':'Add Rule'}</button>
+          </div>
+        </div>
+      </div>`);
+  }
+
+  function showAddAvailabilityRule(){buildAvailModal(null);}
+
+  function editAvailRule(id){
+    const rule=availRulesData.find(r=>r.id===id);
+    if(rule)buildAvailModal(rule);
+  }
+
+  function closeAvailModal(){
+    const m=el('availModal');
+    if(m)m.remove();
+  }
+
+  async function saveAvailRule(editId){
+    const targetVal=document.getElementById('availTarget').value;
+    if(!targetVal)return alert('Please select an item or category.');
+    const [targetType,targetId,targetNameEncoded]=targetVal.split('|');
+    const targetName=decodeURIComponent(targetNameEncoded);
+    const checkedDays=[...document.querySelectorAll('#availModal input[type=checkbox]:checked')].map(cb=>parseInt(cb.value));
+    const allDays=[0,1,2,3,4,5,6];
+    const daysOfWeek=checkedDays.length===7||checkedDays.length===0?null:checkedDays;
+    const startTime=document.getElementById('availStartTime').value||null;
+    const endTime=document.getElementById('availEndTime').value||null;
+    const startDate=document.getElementById('availStartDate').value||null;
+    const endDate=document.getElementById('availEndDate').value||null;
+    const note=document.getElementById('availNote').value||null;
+    try{
+      let r;
+      if(editId){
+        r=await api('/api/staff/menu/availability/'+editId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({daysOfWeek,startTime,endTime,startDate,endDate,note})});
+      }else{
+        r=await api('/api/staff/menu/availability',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({targetType,targetId,targetName,daysOfWeek,startTime,endTime,startDate,endDate,note})});
+      }
+      if(!r.ok)throw new Error();
+      closeAvailModal();
+      await loadAvailabilityRules();
+    }catch(e){alert('Failed to save rule. Please try again.');}
+  }
+
+  window.loadAvailabilityRules=loadAvailabilityRules;
+  window.showAddAvailabilityRule=showAddAvailabilityRule;
+  window.editAvailRule=editAvailRule;
+  window.closeAvailModal=closeAvailModal;
+  window.deleteAvailRule=deleteAvailRule;
+  window.toggleAvailRule=toggleAvailRule;
+  window.saveAvailRule=saveAvailRule;
 
   /* ── App Orders ── */
   const ORDER_STATUS={

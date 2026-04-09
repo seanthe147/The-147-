@@ -356,3 +356,36 @@ export const menuItemOverrides = pgTable("menu_item_overrides", {
 });
 
 export type MenuItemOverride = typeof menuItemOverrides.$inferSelect;
+
+// ── Category display settings (order, merge, rename) ──────────────────────────
+
+export const categorySettings = pgTable("category_settings", {
+  categoryId: text("category_id").primaryKey(),
+  displayOrder: integer("display_order").notNull().default(99),
+  mergedIntoId: text("merged_into_id"),
+  displayName: text("display_name"),
+  updatedBy: text("updated_by").notNull().default("system"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type CategorySetting = typeof categorySettings.$inferSelect;
+
+// ── Availability rules (time / day / date restrictions) ───────────────────────
+
+export const availabilityRules = pgTable("availability_rules", {
+  id: serial("id").primaryKey(),
+  targetType: text("target_type").notNull(),   // 'item' | 'category'
+  targetId: text("target_id").notNull(),
+  targetName: text("target_name").notNull(),
+  daysOfWeek: text("days_of_week"),            // JSON array e.g. "[1,2,3,4,5]", null = all days
+  startTime: text("start_time"),               // "HH:MM" or null
+  endTime: text("end_time"),                   // "HH:MM" or null
+  startDate: text("start_date"),               // "YYYY-MM-DD" or null
+  endDate: text("end_date"),                   // "YYYY-MM-DD" or null
+  note: text("note"),
+  enabled: boolean("enabled").notNull().default(true),
+  createdBy: text("created_by").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type AvailabilityRule = typeof availabilityRules.$inferSelect;

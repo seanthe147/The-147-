@@ -31,6 +31,8 @@ import {
   type InsertMembershipSubscription,
   type MenuCategoryVisibility,
   type MenuItemOverride,
+  type CategorySetting,
+  type AvailabilityRule,
   users,
   offers,
   pushTokens,
@@ -51,6 +53,8 @@ import {
   membershipSubscriptions,
   menuCategoryVisibility,
   menuItemOverrides,
+  categorySettings,
+  availabilityRules,
   appOrders,
   type AppOrder,
   orderAuditLog,
@@ -150,6 +154,12 @@ export interface IStorage {
   getBlockedPeriods(): Promise<BlockedPeriod[]>;
   createBlockedPeriod(data: InsertBlockedPeriod): Promise<BlockedPeriod>;
   deleteBlockedPeriod(id: number): Promise<boolean>;
+  getCategorySettings(): Promise<CategorySetting[]>;
+  upsertCategorySettings(settings: { categoryId: string; displayOrder?: number; mergedIntoId?: string | null; displayName?: string | null; updatedBy: string }[]): Promise<void>;
+  getAvailabilityRules(): Promise<AvailabilityRule[]>;
+  createAvailabilityRule(rule: Omit<AvailabilityRule, 'id' | 'updatedAt'>): Promise<AvailabilityRule>;
+  updateAvailabilityRule(id: number, rule: Partial<Omit<AvailabilityRule, 'id' | 'updatedAt'>>): Promise<AvailabilityRule | undefined>;
+  deleteAvailabilityRule(id: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -920,6 +930,56 @@ export class DatabaseStorage implements IStorage {
         target: menuItemOverrides.variationId,
         set: { hidden, updatedBy, updatedAt: new Date() },
       });
+  }
+
+  async getCategorySettings(): Promise<CategorySetting[]> {
+    return db.select().from(categorySettings);
+  }
+
+  async upsertCategorySettings(settings: { categoryId: string; displayOrder?: number; mergedIntoId?: string | null; displayName?: string | null; updatedBy: string }[]): Promise<void> {
+    for (const s of settings) {
+      await db.insert(categorySettings)
+        .values({
+          categoryId: s.categoryId,
+          displayOrder: s.displayOrder ?? 99,
+          mergedIntoId: s.mergedIntoId ?? null,
+          displayName: s.displayName ?? null,
+          updatedBy: s.updatedBy,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: categorySettings.categoryId,
+          set: {
+            ...(s.displayOrder !== undefined ? { displayOrder: s.displayOrder } : {}),
+            ...(s.mergedIntoId !== undefined ? { mergedIntoId: s.mergedIntoId } : {}),
+            ...(s.displayName !== undefined ? { displayName: s.displayName } : {}),
+            updatedBy: s.updatedBy,
+            updatedAt: new Date(),
+          },
+        });
+    }
+  }
+
+  async getAvailabilityRules(): Promise<AvailabilityRule[]> {
+    return db.select().from(availabilityRules).orderBy(availabilityRules.id);
+  }
+
+  async createAvailabilityRule(rule: Omit<AvailabilityRule, 'id' | 'updatedAt'>): Promise<AvailabilityRule> {
+    const [created] = await db.insert(availabilityRules).values({ ...rule, updatedAt: new Date() }).returning();
+    return created;
+  }
+
+  async updateAvailabilityRule(id: number, rule: Partial<Omit<AvailabilityRule, 'id' | 'updatedAt'>>): Promise<AvailabilityRule | undefined> {
+    const [updated] = await db.update(availabilityRules)
+      .set({ ...rule, updatedAt: new Date() })
+      .where(eq(availabilityRules.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteAvailabilityRule(id: number): Promise<boolean> {
+    const result = await db.delete(availabilityRules).where(eq(availabilityRules.id, id)).returning();
+    return result.length > 0;
   }
 
   async createAppOrder(data: {
