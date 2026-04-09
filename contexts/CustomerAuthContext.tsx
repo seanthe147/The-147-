@@ -22,6 +22,7 @@ interface CustomerAuthContextValue {
   updateProfile: (data: { name?: string; phone?: string }) => Promise<{ success: boolean; error?: string }>;
   deleteAccount: () => Promise<{ success: boolean; error?: string }>;
   refreshProfile: () => Promise<void>;
+  getCustomerToken: () => string | null;
 }
 
 const CustomerAuthContext = createContext<CustomerAuthContextValue | null>(null);
@@ -187,6 +188,8 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     if (profile) setCustomer(profile);
   }, [token, fetchProfile]);
 
+  const getCustomerToken = useCallback(() => token, [token]);
+
   const value = useMemo(
     () => ({
       isAuthenticated: !!token,
@@ -198,8 +201,9 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       updateProfile,
       deleteAccount,
       refreshProfile,
+      getCustomerToken,
     }),
-    [token, isLoading, customer, login, register, logout, updateProfile, deleteAccount, refreshProfile]
+    [token, isLoading, customer, login, register, logout, updateProfile, deleteAccount, refreshProfile, getCustomerToken]
   );
 
   return (

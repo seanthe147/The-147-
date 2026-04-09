@@ -990,6 +990,8 @@ export class DatabaseStorage implements IStorage {
     customerEmail?: string;
     itemsJson: string;
     totalPence: number;
+    discountPercent?: number;
+    discountLabel?: string;
   }): Promise<void> {
     await db.insert(appOrders).values({
       squareLinkId: data.squareLinkId ?? null,
@@ -1000,6 +1002,8 @@ export class DatabaseStorage implements IStorage {
       customerEmail: data.customerEmail ?? null,
       itemsJson: data.itemsJson,
       totalPence: data.totalPence,
+      discountPercent: data.discountPercent ?? null,
+      discountLabel: data.discountLabel ?? null,
       status: "pending",
     });
   }

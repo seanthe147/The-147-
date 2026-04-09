@@ -423,10 +423,32 @@ function CartSheet({
   onClose: () => void;
 }) {
   const { items, updateQuantity, clearCart, totalPrice } = useCart();
-  const { customer } = useCustomerAuth();
+  const { customer, getCustomerToken } = useCustomerAuth();
   const [tableNote, setTableNote] = useState("");
   const [loading, setLoading] = useState(false);
   const insets = useSafeAreaInsets();
+
+  const { data: memberSub } = useQuery<{ status: string; plan: { name: string; foodDrinkDiscount: number } | null } | null>({
+    queryKey: ["/api/membership/my-subscription"],
+    queryFn: async () => {
+      if (!customer) return null;
+      const baseUrl = getApiUrl();
+      const url = new URL("/api/membership/my-subscription", baseUrl);
+      const token = await getCustomerToken();
+      const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!customer,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const discountPercent = memberSub?.status === "active" && (memberSub.plan?.foodDrinkDiscount ?? 0) > 0
+    ? memberSub.plan!.foodDrinkDiscount
+    : 0;
+  const discountLabel = discountPercent > 0 ? `${memberSub!.plan!.name} Member Discount` : "";
+  const discountAmountPence = discountPercent > 0 ? Math.round(totalPrice * discountPercent / 100) : 0;
+  const finalPrice = totalPrice - discountAmountPence;
 
   const handleCheckout = async () => {
     if (items.length === 0) return;
@@ -564,8 +586,30 @@ function CartSheet({
             </View>
 
             <View style={styles.cartTotal}>
-              <Text style={styles.cartTotalLabel}>Total</Text>
-              <Text style={styles.cartTotalPrice}>{formatPrice(totalPrice)}</Text>
+              {discountPercent > 0 ? (
+                <>
+                  <View style={styles.cartTotalRow}>
+                    <Text style={styles.cartTotalLabel}>Subtotal</Text>
+                    <Text style={[styles.cartTotalPrice, { color: Colors.light.textSecondary, fontSize: 15, fontWeight: "500" }]}>{formatPrice(totalPrice)}</Text>
+                  </View>
+                  <View style={[styles.cartTotalRow, styles.discountRow]}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Ionicons name="diamond-outline" size={14} color="#166534" />
+                      <Text style={styles.discountLabel}>{discountLabel}</Text>
+                    </View>
+                    <Text style={styles.discountAmount}>−{formatPrice(discountAmountPence)}</Text>
+                  </View>
+                  <View style={styles.cartTotalRow}>
+                    <Text style={styles.cartTotalLabel}>Total</Text>
+                    <Text style={styles.cartTotalPrice}>{formatPrice(finalPrice)}</Text>
+                  </View>
+                </>
+              ) : (
+                <View style={styles.cartTotalRow}>
+                  <Text style={styles.cartTotalLabel}>Total</Text>
+                  <Text style={styles.cartTotalPrice}>{formatPrice(totalPrice)}</Text>
+                </View>
+              )}
             </View>
 
             <Pressable
@@ -1278,13 +1322,33 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.light.border,
   },
   cartTotal: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    flexDirection: "column",
     marginHorizontal: 20,
     paddingVertical: 14,
     borderTopWidth: 1,
     borderTopColor: Colors.light.border,
+    gap: 6,
+  },
+  cartTotalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  discountRow: {
+    backgroundColor: "#f0fdf4",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  discountLabel: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: "#166534",
+  },
+  discountAmount: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 13,
+    color: "#166534",
   },
   cartTotalLabel: {
     fontFamily: "Montserrat_700Bold",

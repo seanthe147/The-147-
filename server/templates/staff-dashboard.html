@@ -3422,13 +3422,17 @@
       }
       return'—';
     }
+    function fmtDiscount(o){
+      if(!o.discountPercent)return'';
+      return`<br><span style="font-size:11px;color:var(--green);font-weight:600">−${o.discountPercent}% ${esc(o.discountLabel||'Member')}</span>`;
+    }
     const rows=orders.map(o=>{
       const sc=ORDER_STATUS[o.status]||ORDER_STATUS.pending;
       return`<tr>
         <td style="white-space:nowrap;color:var(--text-2);font-size:12px">${fmtTime(o.createdAt)}</td>
         <td><strong>${o.tableNote||'—'}</strong></td>
         <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${fmtItems(o.itemsJson)}</td>
-        <td style="white-space:nowrap;font-weight:600">${fmtTotal(o.totalPence)}</td>
+        <td style="white-space:nowrap;font-weight:600">${fmtTotal(o.totalPence)}${fmtDiscount(o)}</td>
         <td style="color:var(--text-2);font-size:12px">${o.customerName||'Guest'}</td>
         <td><span class="pill ${sc.cls}">${sc.label}</span></td>
         <td>${fmtActions(o)}</td>

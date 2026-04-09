@@ -2489,7 +2489,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!orderingEnabled) {
         return res.status(503).json({ message: "Online ordering is currently unavailable. Please order at the bar." });
       }
-      const { url, linkId, squareOrderId } = await square.createOrderCheckoutLink(items, tableNote, customer);
+
+      // Look up active membership discount for the customer
+      let discountPercent: number | undefined;
+      let discountLabel: string | undefined;
+      if (customer?.email) {
+        try {
+          const cust = await storage.getCustomerByEmail(customer.email);
+          if (cust) {
+            const sub = await storage.getMembershipSubscriptionByCustomer(cust.id);
+            if (sub?.status === "active" && sub.plan && sub.plan.foodDrinkDiscount > 0) {
+              discountPercent = sub.plan.foodDrinkDiscount;
+              discountLabel = `${sub.plan.name} Member Discount`;
+            }
+          }
+        } catch (err: any) {
+          console.warn("[ORDER] Could not look up membership discount:", err.message);
+        }
+      }
+
+      const { url, linkId, squareOrderId } = await square.createOrderCheckoutLink(
+        items, tableNote, customer, discountPercent, discountLabel
+      );
+      const rawTotal = items.reduce((sum: number, i: any) => sum + (Number(i.price) * Number(i.quantity)), 0);
+      const discountedTotal = discountPercent
+        ? Math.round(rawTotal * (1 - discountPercent / 100))
+        : rawTotal;
+
       // Store order record (non-blocking — don't fail checkout if DB write fails)
       storage.createAppOrder({
         squareLinkId: linkId || undefined,
@@ -2500,9 +2526,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         itemsJson: JSON.stringify(
           items.map((i: any) => ({ name: i.name ?? "Item", quantity: i.quantity, price: i.price }))
         ),
-        totalPence: items.reduce((sum: number, i: any) => sum + (Number(i.price) * Number(i.quantity)), 0),
+        totalPence: discountedTotal,
+        discountPercent: discountPercent ?? undefined,
+        discountLabel: discountLabel ?? undefined,
       }).catch((err: any) => console.error("[ORDER] Failed to save order record:", err.message));
-      res.json({ url });
+
+      res.json({ url, discountPercent: discountPercent ?? null, discountLabel: discountLabel ?? null });
     } catch (err: any) {
       console.error("[ORDER] Checkout failed:", err.message);
       res.status(500).json({ message: err.message });

@@ -714,7 +714,9 @@ function normalizeUkPhone(phone: string): string | undefined {
 export async function createOrderCheckoutLink(
   items: OrderLineItem[],
   tableNote?: string,
-  customer?: CheckoutCustomer
+  customer?: CheckoutCustomer,
+  discountPercent?: number,
+  discountLabel?: string
 ): Promise<{ url: string; linkId: string; squareOrderId: string }> {
   const locationId = getLocationId();
   const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -741,6 +743,9 @@ export async function createOrderCheckoutLink(
   // Recipient name: "Table 3" or customer name, shown on the KDS ticket
   const ticketName = tableNote || (customer?.name ? customer.name.split(" ")[0] : "Guest");
 
+  const memberDiscountUid = "MEMBER-DISCOUNT";
+  const applyDiscount = typeof discountPercent === "number" && discountPercent > 0;
+
   const body: any = {
     idempotency_key: idempotencyKey,
     order: {
@@ -750,6 +755,15 @@ export async function createOrderCheckoutLink(
         quantity: String(item.quantity),
         base_price_money: { amount: item.price, currency: "GBP" },
       })),
+      ...(applyDiscount ? {
+        discounts: [{
+          uid: memberDiscountUid,
+          name: discountLabel ?? "Member Discount",
+          type: "FIXED_PERCENTAGE",
+          percentage: String(discountPercent),
+          scope: "ORDER",
+        }],
+      } : {}),
       // PICKUP fulfillment is required for Square KDS to display the order.
       // KDS routing rules on each device then split food → kitchen and drinks → bar.
       fulfillments: [

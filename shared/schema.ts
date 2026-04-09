@@ -315,6 +315,8 @@ export const appOrders = pgTable("app_orders", {
   customerEmail: text("customer_email"),
   itemsJson: text("items_json").notNull(),
   totalPence: integer("total_pence").notNull().default(0),
+  discountPercent: integer("discount_percent"),
+  discountLabel: text("discount_label"),
   status: text("status").notNull().default("pending"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
