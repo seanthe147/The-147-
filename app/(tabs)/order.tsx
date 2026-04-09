@@ -428,7 +428,12 @@ function CartSheet({
   const [loading, setLoading] = useState(false);
   const insets = useSafeAreaInsets();
 
-  const { data: memberSub } = useQuery<{ status: string; plan: { name: string; foodDrinkDiscount: number } | null } | null>({
+  const { data: memberSub } = useQuery<{
+    status: string;
+    cancelledAt: string | null;
+    currentPeriodEnd: string | null;
+    plan: { name: string; foodDrinkDiscount: number } | null;
+  } | null>({
     queryKey: ["/api/membership/my-subscription"],
     queryFn: async () => {
       if (!customer) return null;
@@ -443,9 +448,12 @@ function CartSheet({
     staleTime: 5 * 60 * 1000,
   });
 
-  const discountPercent = memberSub?.status === "active" && (memberSub.plan?.foodDrinkDiscount ?? 0) > 0
-    ? memberSub.plan!.foodDrinkDiscount
-    : 0;
+  const isValidMember =
+    memberSub?.status === "active" &&
+    !memberSub.cancelledAt &&
+    (!memberSub.currentPeriodEnd || new Date(memberSub.currentPeriodEnd) >= new Date()) &&
+    (memberSub.plan?.foodDrinkDiscount ?? 0) > 0;
+  const discountPercent = isValidMember ? memberSub!.plan!.foodDrinkDiscount : 0;
   const discountLabel = discountPercent > 0 ? `${memberSub!.plan!.name} Member Discount` : "";
   const discountAmountPence = discountPercent > 0 ? Math.round(totalPrice * discountPercent / 100) : 0;
   const finalPrice = totalPrice - discountAmountPence;
