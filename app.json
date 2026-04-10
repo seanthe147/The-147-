@@ -34,7 +34,7 @@
       }
     },
     "android": {
-      "package": "com.the147bradford.app",
+      "package": "com.the147bradford.venue",
       "permissions": [],
       "blockedPermissions": [
         "android.permission.CAMERA",
