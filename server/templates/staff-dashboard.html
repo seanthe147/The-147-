@@ -77,6 +77,54 @@
     .sidebar-footer{padding:12px 20px;border-top:1px solid rgba(255,255,255,.08)}
     .btn-logout{width:100%;padding:10px;background:rgba(223,49,49,.15);color:#F87171;border:1px solid rgba(223,49,49,.25);border-radius:var(--r);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .15s}
     .btn-logout:hover{background:rgba(223,49,49,.25)}
+    .sidebar-logo-img{width:100%;max-width:160px;height:auto;display:block;border-radius:12px;object-fit:contain}
+
+    /* ── Hamburger ── */
+    .hamburger-btn{display:none;background:none;border:none;cursor:pointer;padding:6px;color:var(--text-2);border-radius:var(--r);flex-shrink:0;align-items:center;justify-content:center}
+    .hamburger-btn:hover{background:var(--bg)}
+
+    /* ── Sidebar overlay (mobile) ── */
+    .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:199;backdrop-filter:blur(2px)}
+    .sidebar-overlay.active{display:block}
+
+    /* ── Responsive sidebar ── */
+    @media(max-width:767px){
+      :root{--sidebar:280px}
+      .hamburger-btn{display:inline-flex}
+      .sidebar{position:fixed;left:0;top:0;height:100vh;z-index:200;transform:translateX(-100%);transition:transform .25s ease;box-shadow:none}
+      .sidebar.open{transform:translateX(0);box-shadow:var(--shadow-lg)}
+      .sidebar-logo-img{max-width:120px}
+      .topbar{padding:0 14px;gap:10px}
+      .topbar-title{font-size:14px}
+      .page-body{padding:14px}
+      .login-card{padding:28px 20px}
+      .summary-row{grid-template-columns:1fr 1fr;gap:8px}
+      .stat-card{padding:12px 14px}
+      .bookings-toolbar{flex-wrap:wrap;gap:8px;padding:10px 14px}
+      .date-nav{min-width:0;flex:1}
+      .search-box{min-width:0;flex:1 1 100%}
+      .type-filter{flex:1 1 100%;flex-wrap:wrap}
+      .filter-pill{padding:5px 10px;font-size:11px}
+      .b-row{flex-wrap:wrap;gap:8px}
+      .b-header{flex-wrap:wrap;gap:6px}
+      .menu-tabs{padding:10px 14px 0;gap:4px}
+      .menu-tab{padding:7px 12px;font-size:12px}
+      .settings-section{padding:16px}
+      #orderingToggleWrap > div:first-child{display:none}
+      #topbarLogoutBtn span{display:none}
+      #topbarLogoutBtn{padding:7px 10px}
+      .modal{border-radius:16px 16px 0 0;max-height:94vh;position:fixed;bottom:0;left:0;right:0;width:100%;max-width:100%}
+      .modal-overlay{align-items:flex-end}
+    }
+    @media(min-width:768px) and (max-width:1023px){
+      :root{--sidebar:200px}
+      .topbar{padding:0 18px}
+      .page-body{padding:18px 20px}
+      .sidebar-logo-img{max-width:130px}
+      .summary-row{grid-template-columns:repeat(2,1fr)}
+      .bookings-toolbar{flex-wrap:wrap;gap:10px}
+      .search-box{min-width:160px}
+    }
 
     /* ── Main ── */
     .main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
@@ -346,13 +394,7 @@
   <div class="login-wrap">
     <div class="login-card">
       <div class="login-logo">
-        <div class="login-logo-mark">
-          <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="18" cy="18" r="16" fill="#D4A843" opacity=".15"/>
-            <text x="18" y="24" text-anchor="middle" font-family="Montserrat" font-weight="800" font-size="16" fill="#D4A843">147</text>
-          </svg>
-        </div>
-        <div class="login-brand">The <span>147</span></div>
+        <img src="/assets/logo-147.png" alt="The 147" style="width:140px;height:140px;object-fit:contain;border-radius:18px;display:block;margin:0 auto 12px">
         <div class="login-tagline">Staff Management Portal</div>
       </div>
 
@@ -401,10 +443,13 @@
 <div id="app">
   <div class="app-layout">
 
+    <!-- Mobile sidebar overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
     <!-- Sidebar -->
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
-        <div class="sidebar-brand">The <span>147</span></div>
+        <img src="/assets/logo-147.png" alt="The 147" class="sidebar-logo-img">
       </div>
       <div class="sidebar-user">
         <div class="sidebar-user-name" id="sidebarName">—</div>
@@ -461,6 +506,9 @@
     <!-- Main -->
     <main class="main">
       <div class="topbar">
+        <button class="hamburger-btn" id="hamburgerBtn" onclick="toggleSidebar()" aria-label="Menu">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
         <div>
           <span class="topbar-title" id="topbarTitle">Bookings</span>
           <span class="topbar-sub" id="topbarSub"></span>
@@ -1809,7 +1857,20 @@
     }catch(e){/* silent fail */}
   }
 
+  function toggleSidebar(){
+    const s=el('sidebar');const o=el('sidebarOverlay');
+    const open=s.classList.toggle('open');
+    o.classList.toggle('active',open);
+  }
+  function closeSidebar(){
+    el('sidebar').classList.remove('open');
+    el('sidebarOverlay').classList.remove('active');
+  }
+  window.toggleSidebar=toggleSidebar;
+  window.closeSidebar=closeSidebar;
+
   function navigateTo(page){
+    closeSidebar();
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page'+cap(page)));
     const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',banners:'App Banners'};
