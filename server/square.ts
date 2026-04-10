@@ -538,6 +538,21 @@ const CATEGORY_ORDER: Record<string, number> = {
   "Darts": 41,
 };
 
+export interface ModifierOption {
+  id: string;           // Square catalog object ID of the modifier
+  name: string;
+  price: number;        // extra price in pence (0 if free)
+}
+
+export interface ModifierList {
+  id: string;           // Square modifier list ID
+  name: string;
+  selectionType: "SINGLE" | "MULTIPLE";
+  minSelections: number;
+  maxSelections: number;
+  options: ModifierOption[];
+}
+
 export interface MenuItem {
   id: string;
   variationId: string;
@@ -546,6 +561,7 @@ export interface MenuItem {
   description: string;
   price: number;
   imageUrl?: string;
+  modifiers?: ModifierList[];
 }
 
 export interface MenuCategory {
@@ -574,9 +590,13 @@ export async function getMenuFromSquare(): Promise<MenuCategory[]> {
   );
 
   const subcatIds = new Set<string>();
+  const modifierListIds = new Set<string>();
   items.forEach((item) => {
     (item.item_data?.categories || []).forEach((c: any) => {
       if (!PARENT_CATEGORY_IDS.has(c.id)) subcatIds.add(c.id);
+    });
+    (item.item_data?.modifier_list_info || []).forEach((m: any) => {
+      if (m.enabled !== false) modifierListIds.add(m.modifier_list_id);
     });
   });
 
@@ -592,6 +612,38 @@ export async function getMenuFromSquare(): Promise<MenuCategory[]> {
         catImageIds[o.id] = o.category_data.image_ids[0];
       }
     });
+  }
+
+  // Fetch modifier lists
+  const modifierListMap: Record<string, ModifierList> = {};
+  if (modifierListIds.size > 0) {
+    const modIds = Array.from(modifierListIds);
+    for (let i = 0; i < modIds.length; i += 100) {
+      try {
+        const chunk = modIds.slice(i, i + 100);
+        const modData = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
+          object_ids: chunk,
+        });
+        (modData.objects || []).forEach((o: any) => {
+          if (o.type !== "MODIFIER_LIST") return;
+          const mld = o.modifier_list_data || {};
+          modifierListMap[o.id] = {
+            id: o.id,
+            name: mld.name || "",
+            selectionType: mld.selection_type === "MULTIPLE" ? "MULTIPLE" : "SINGLE",
+            minSelections: mld.min_selected_modifiers ?? (mld.selection_type === "SINGLE" ? 1 : 0),
+            maxSelections: mld.max_selected_modifiers ?? (mld.selection_type === "SINGLE" ? 1 : 999),
+            options: (mld.modifiers || []).map((m: any) => ({
+              id: m.id,
+              name: m.modifier_data?.name || "",
+              price: m.modifier_data?.price_money?.amount || 0,
+            })),
+          };
+        });
+      } catch {
+        // Non-fatal — continue without modifiers for this chunk
+      }
+    }
   }
 
   // Collect all image IDs referenced by items and categories
@@ -653,6 +705,11 @@ export async function getMenuFromSquare(): Promise<MenuCategory[]> {
       ? variations
       : [variations[0]];
 
+    // Resolve modifier lists for this item
+    const itemModifiers: ModifierList[] = (item.item_data?.modifier_list_info || [])
+      .filter((m: any) => m.enabled !== false && modifierListMap[m.modifier_list_id])
+      .map((m: any) => modifierListMap[m.modifier_list_id]);
+
     variationsToShow.forEach((variation: any) => {
       const rawVarName: string = variation.item_variation_data?.name || "";
       const variationName = hasMeaningfulVariations && !isGenericName(rawVarName) ? rawVarName : undefined;
@@ -664,6 +721,7 @@ export async function getMenuFromSquare(): Promise<MenuCategory[]> {
         description: item.item_data.description || "",
         price: variation.item_variation_data?.price_money?.amount || 0,
         imageUrl: itemImageUrl,
+        ...(itemModifiers.length > 0 ? { modifiers: itemModifiers } : {}),
       });
     });
   });
@@ -689,11 +747,18 @@ export function invalidateMenuCache() {
   menuCache = null;
 }
 
+export interface SelectedModifier {
+  catalogObjectId: string;  // Square modifier catalog object ID
+  name: string;
+  price: number;            // extra price in pence
+}
+
 export interface OrderLineItem {
   variationId: string;
   name: string;
   price: number;
   quantity: number;
+  modifiers?: SelectedModifier[];
 }
 
 interface CheckoutCustomer {
@@ -754,6 +819,14 @@ export async function createOrderCheckoutLink(
         catalog_object_id: item.variationId,
         quantity: String(item.quantity),
         base_price_money: { amount: item.price, currency: "GBP" },
+        ...(item.modifiers?.length
+          ? {
+              modifiers: item.modifiers.map((m) => ({
+                catalog_object_id: m.catalogObjectId,
+                base_price_money: { amount: m.price, currency: "GBP" },
+              })),
+            }
+          : {}),
       })),
       ...(applyDiscount ? {
         discounts: [{

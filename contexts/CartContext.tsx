@@ -1,18 +1,34 @@
 import React, { createContext, useContext, useState, useCallback } from "react";
+import type { SelectedModifier } from "@/types/menu";
 
 export interface CartItem {
+  cartKey: string;
   variationId: string;
   itemId: string;
   name: string;
   price: number;
   quantity: number;
+  modifiers?: SelectedModifier[];
+}
+
+function makeCartKey(variationId: string, modifiers?: SelectedModifier[]): string {
+  if (!modifiers || modifiers.length === 0) return variationId;
+  return variationId + ":" + modifiers.map((m) => m.catalogObjectId).sort().join(",");
+}
+
+interface AddItemPayload {
+  variationId: string;
+  itemId: string;
+  name: string;
+  price: number;
+  modifiers?: SelectedModifier[];
 }
 
 interface CartContextType {
   items: CartItem[];
-  addItem: (item: Omit<CartItem, "quantity">) => void;
-  removeItem: (variationId: string) => void;
-  updateQuantity: (variationId: string, delta: number) => void;
+  addItem: (item: AddItemPayload) => void;
+  removeItem: (cartKey: string) => void;
+  updateQuantity: (cartKey: string, delta: number) => void;
   clearCart: () => void;
   totalItems: number;
   totalPrice: number;
@@ -24,32 +40,27 @@ const CartContext = createContext<CartContextType | null>(null);
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
 
-  const addItem = useCallback((item: Omit<CartItem, "quantity">) => {
+  const addItem = useCallback((item: AddItemPayload) => {
+    const cartKey = makeCartKey(item.variationId, item.modifiers);
     setItems((prev) => {
-      const existing = prev.find((i) => i.variationId === item.variationId);
+      const existing = prev.find((i) => i.cartKey === cartKey);
       if (existing) {
         return prev.map((i) =>
-          i.variationId === item.variationId
-            ? { ...i, quantity: i.quantity + 1 }
-            : i
+          i.cartKey === cartKey ? { ...i, quantity: i.quantity + 1 } : i
         );
       }
-      return [...prev, { ...item, quantity: 1 }];
+      return [...prev, { ...item, cartKey, quantity: 1 }];
     });
   }, []);
 
-  const removeItem = useCallback((variationId: string) => {
-    setItems((prev) => prev.filter((i) => i.variationId !== variationId));
+  const removeItem = useCallback((cartKey: string) => {
+    setItems((prev) => prev.filter((i) => i.cartKey !== cartKey));
   }, []);
 
-  const updateQuantity = useCallback((variationId: string, delta: number) => {
+  const updateQuantity = useCallback((cartKey: string, delta: number) => {
     setItems((prev) =>
       prev
-        .map((i) =>
-          i.variationId === variationId
-            ? { ...i, quantity: i.quantity + delta }
-            : i
-        )
+        .map((i) => (i.cartKey === cartKey ? { ...i, quantity: i.quantity + delta } : i))
         .filter((i) => i.quantity > 0)
     );
   }, []);
@@ -57,11 +68,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const clearCart = useCallback(() => setItems([]), []);
 
   const totalItems = items.reduce((sum, i) => sum + i.quantity, 0);
-  const totalPrice = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const totalPrice = items.reduce(
+    (sum, i) =>
+      sum +
+      (i.price + (i.modifiers?.reduce((ms, m) => ms + m.price, 0) ?? 0)) * i.quantity,
+    0
+  );
 
   const getQuantity = useCallback(
     (variationId: string) =>
-      items.find((i) => i.variationId === variationId)?.quantity ?? 0,
+      items
+        .filter((i) => i.variationId === variationId)
+        .reduce((sum, i) => sum + i.quantity, 0),
     [items]
   );
 

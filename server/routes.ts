@@ -2816,7 +2816,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         customerName: customer?.name || undefined,
         customerEmail: customer?.email || undefined,
         itemsJson: JSON.stringify(
-          items.map((i: any) => ({ name: i.name ?? "Item", quantity: i.quantity, price: i.price }))
+          items.map((i: any) => ({
+            name: i.name ?? "Item",
+            quantity: i.quantity,
+            price: i.price,
+            ...(i.modifiers?.length ? { modifiers: i.modifiers.map((m: any) => m.name) } : {}),
+          }))
         ),
         totalPence: discountedTotal,
         discountPercent: discountPercent ?? undefined,

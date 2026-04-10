@@ -31,7 +31,7 @@ import Colors from "@/constants/colors";
 import { useCart } from "@/contexts/CartContext";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { getApiUrl } from "@/lib/query-client";
-import type { MenuCategory, MenuItem } from "@/types/menu";
+import type { MenuCategory, MenuItem, ModifierList, SelectedModifier } from "@/types/menu";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const BANNER_HEIGHT = 200;
@@ -344,12 +344,292 @@ const gridStyles = StyleSheet.create({
   },
 });
 
-function ItemCard({ item }: { item: MenuItem }) {
+function ModifierModal({
+  item,
+  visible,
+  onClose,
+  onConfirm,
+}: {
+  item: MenuItem | null;
+  visible: boolean;
+  onClose: () => void;
+  onConfirm: (modifiers: SelectedModifier[]) => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const [selections, setSelections] = useState<Record<string, string[]>>({});
+
+  useEffect(() => {
+    if (visible && item?.modifiers) {
+      const init: Record<string, string[]> = {};
+      item.modifiers.forEach((ml) => {
+        init[ml.id] = ml.selectionType === "SINGLE" && ml.minSelections > 0 && ml.options.length > 0
+          ? [ml.options[0].id]
+          : [];
+      });
+      setSelections(init);
+    }
+  }, [visible, item]);
+
+  if (!item) return null;
+
+  const toggle = (listId: string, optId: string, selType: "SINGLE" | "MULTIPLE") => {
+    setSelections((prev) => {
+      const current = prev[listId] || [];
+      if (selType === "SINGLE") {
+        return { ...prev, [listId]: current[0] === optId ? [] : [optId] };
+      }
+      const idx = current.indexOf(optId);
+      return { ...prev, [listId]: idx >= 0 ? current.filter((id) => id !== optId) : [...current, optId] };
+    });
+  };
+
+  const handleConfirm = () => {
+    const missing = (item.modifiers || []).filter(
+      (ml) => ml.minSelections > 0 && (!selections[ml.id] || selections[ml.id].length < ml.minSelections)
+    );
+    if (missing.length > 0) {
+      Alert.alert("Required", `Please choose from: ${missing.map((m) => m.name).join(", ")}`);
+      return;
+    }
+    const mods: SelectedModifier[] = [];
+    (item.modifiers || []).forEach((ml) => {
+      (selections[ml.id] || []).forEach((optId) => {
+        const opt = ml.options.find((o) => o.id === optId);
+        if (opt) mods.push({ catalogObjectId: opt.id, name: opt.name, price: opt.price });
+      });
+    });
+    onConfirm(mods);
+  };
+
+  const cartName = item.variationName ? `${item.name} — ${item.variationName}` : item.name;
+  const modifierTotal = (item.modifiers || []).reduce((sum, ml) => {
+    return sum + (selections[ml.id] || []).reduce((s, optId) => {
+      const opt = ml.options.find((o) => o.id === optId);
+      return s + (opt?.price ?? 0);
+    }, 0);
+  }, 0);
+  const lineTotal = item.price + modifierTotal;
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: Colors.light.background }}>
+        <View style={[modStyles.header, { paddingTop: insets.top + 16 }]}>
+          <Text style={modStyles.title} numberOfLines={2}>{cartName}</Text>
+          <Pressable onPress={onClose} hitSlop={12} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+            <Ionicons name="close" size={24} color={Colors.light.text} />
+          </Pressable>
+        </View>
+
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingBottom: 120 }}>
+          {(item.modifiers || []).map((ml) => (
+            <View key={ml.id} style={modStyles.group}>
+              <View style={modStyles.groupHeader}>
+                <Text style={modStyles.groupName}>{ml.name}</Text>
+                {ml.minSelections > 0 && (
+                  <View style={modStyles.requiredBadge}>
+                    <Text style={modStyles.requiredText}>Required</Text>
+                  </View>
+                )}
+                {ml.selectionType === "MULTIPLE" && (
+                  <Text style={modStyles.groupHint}>Choose any</Text>
+                )}
+              </View>
+              {ml.options.map((opt) => {
+                const isSelected = (selections[ml.id] || []).includes(opt.id);
+                return (
+                  <Pressable
+                    key={opt.id}
+                    onPress={() => toggle(ml.id, opt.id, ml.selectionType)}
+                    style={[modStyles.option, isSelected && modStyles.optionSelected]}
+                  >
+                    <View style={[
+                      ml.selectionType === "SINGLE" ? modStyles.radio : modStyles.checkbox,
+                      isSelected && modStyles.radioSelected,
+                    ]}>
+                      {isSelected && (
+                        <View style={ml.selectionType === "SINGLE" ? modStyles.radioDot : modStyles.checkDot}>
+                          {ml.selectionType === "MULTIPLE" && (
+                            <Ionicons name="checkmark" size={12} color="#fff" />
+                          )}
+                        </View>
+                      )}
+                    </View>
+                    <Text style={modStyles.optionName}>{opt.name}</Text>
+                    {opt.price > 0 && (
+                      <Text style={modStyles.optionPrice}>+{formatPrice(opt.price)}</Text>
+                    )}
+                  </Pressable>
+                );
+              })}
+            </View>
+          ))}
+        </ScrollView>
+
+        <View style={[modStyles.footer, { paddingBottom: insets.bottom + 16 }]}>
+          <Pressable
+            onPress={handleConfirm}
+            style={({ pressed }) => [modStyles.addBtn, { opacity: pressed ? 0.8 : 1 }]}
+          >
+            <Text style={modStyles.addBtnText}>Add to Order · {formatPrice(lineTotal)}</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const modStyles = StyleSheet.create({
+  header: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
+    gap: 12,
+  },
+  title: {
+    flex: 1,
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 18,
+    color: Colors.light.text,
+  },
+  group: {
+    marginBottom: 24,
+  },
+  groupHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  groupName: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 15,
+    color: Colors.light.text,
+    flex: 1,
+  },
+  groupHint: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+  },
+  requiredBadge: {
+    backgroundColor: "#FEF3C7",
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  requiredText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 11,
+    color: "#92400E",
+  },
+  option: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: Colors.light.border,
+    marginBottom: 8,
+    backgroundColor: Colors.light.background,
+  },
+  optionSelected: {
+    borderColor: Colors.brand.blue,
+    backgroundColor: "#EFF6FF",
+  },
+  radio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: Colors.light.border,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: Colors.light.border,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  radioSelected: {
+    borderColor: Colors.brand.blue,
+    backgroundColor: Colors.brand.blue,
+  },
+  radioDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#fff",
+  },
+  checkDot: {
+    width: 20,
+    height: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  optionName: {
+    flex: 1,
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 14,
+    color: Colors.light.text,
+  },
+  optionPrice: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+  },
+  footer: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: Colors.light.border,
+    backgroundColor: Colors.light.background,
+  },
+  addBtn: {
+    backgroundColor: Colors.brand.blue,
+    borderRadius: 12,
+    paddingVertical: 15,
+    alignItems: "center",
+  },
+  addBtnText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 16,
+    color: "#fff",
+  },
+});
+
+function ItemCard({
+  item,
+  onOpenModifiers,
+}: {
+  item: MenuItem;
+  onOpenModifiers: (item: MenuItem) => void;
+}) {
   const { addItem, updateQuantity, getQuantity } = useCart();
   const qty = getQuantity(item.variationId);
   const soldOut = !!item.soldOut;
   const cartName = item.variationName ? `${item.name} — ${item.variationName}` : item.name;
   const hasImage = !!item.imageUrl;
+  const hasModifiers = !!(item.modifiers && item.modifiers.length > 0);
+
+  const handleAdd = () => {
+    if (hasModifiers) {
+      onOpenModifiers(item);
+    } else {
+      addItem({ variationId: item.variationId, itemId: item.id, name: cartName, price: item.price });
+    }
+  };
 
   return (
     <View style={[styles.itemCard, soldOut && styles.itemCardSoldOut]}>
@@ -373,6 +653,11 @@ function ItemCard({ item }: { item: MenuItem }) {
               <Text style={styles.soldOutText}>Unavailable</Text>
             </View>
           )}
+          {hasModifiers && !soldOut && (
+            <View style={[styles.variationBadge, { backgroundColor: "#EFF6FF" }]}>
+              <Text style={[styles.variationText, { color: Colors.brand.blue }]}>Customisable</Text>
+            </View>
+          )}
         </View>
         {!!item.description && (
           <Text style={[styles.itemDesc, soldOut && { opacity: 0.4 }]} numberOfLines={2}>{item.description}</Text>
@@ -385,9 +670,24 @@ function ItemCard({ item }: { item: MenuItem }) {
           <View style={styles.addBtnDisabled}>
             <Ionicons name="close" size={18} color="rgba(255,255,255,0.5)" />
           </View>
+        ) : hasModifiers ? (
+          <View style={{ alignItems: "center", gap: 4 }}>
+            {qty > 0 && (
+              <View style={styles.modQtyBadge}>
+                <Text style={styles.modQtyText}>{qty}</Text>
+              </View>
+            )}
+            <Pressable
+              onPress={handleAdd}
+              style={({ pressed }) => [styles.addBtn, { opacity: pressed ? 0.7 : 1 }]}
+              testID={`add-${item.variationId}`}
+            >
+              <Ionicons name="add" size={20} color="#fff" />
+            </Pressable>
+          </View>
         ) : qty === 0 ? (
           <Pressable
-            onPress={() => addItem({ variationId: item.variationId, itemId: item.id, name: cartName, price: item.price })}
+            onPress={handleAdd}
             style={({ pressed }) => [styles.addBtn, { opacity: pressed ? 0.7 : 1 }]}
             testID={`add-${item.variationId}`}
           >
@@ -403,7 +703,7 @@ function ItemCard({ item }: { item: MenuItem }) {
             </Pressable>
             <Text style={styles.qtyText}>{qty}</Text>
             <Pressable
-              onPress={() => updateQuantity(item.variationId, 1)}
+              onPress={handleAdd}
               style={({ pressed }) => [styles.qtyBtn, { opacity: pressed ? 0.7 : 1 }]}
             >
               <Ionicons name="add" size={16} color={Colors.brand.blue} />
@@ -474,6 +774,7 @@ function CartSheet({
             name: i.name,
             price: i.price,
             quantity: i.quantity,
+            ...(i.modifiers?.length ? { modifiers: i.modifiers } : {}),
           })),
           tableNote: tableNote.trim() || undefined,
           customer: customer
@@ -519,32 +820,40 @@ function CartSheet({
           <>
             <FlatList
               data={items}
-              keyExtractor={(i) => i.variationId}
+              keyExtractor={(i) => i.cartKey}
               style={styles.cartList}
               contentContainerStyle={{ paddingBottom: 8 }}
-              renderItem={({ item }) => (
-                <View style={styles.cartItem}>
-                  <View style={styles.cartItemInfo}>
-                    <Text style={styles.cartItemName}>{item.name}</Text>
-                    <Text style={styles.cartItemPrice}>{formatPrice(item.price * item.quantity)}</Text>
+              renderItem={({ item }) => {
+                const linePrice = (item.price + (item.modifiers?.reduce((s, m) => s + m.price, 0) ?? 0)) * item.quantity;
+                return (
+                  <View style={styles.cartItem}>
+                    <View style={styles.cartItemInfo}>
+                      <Text style={styles.cartItemName}>{item.name}</Text>
+                      {item.modifiers && item.modifiers.length > 0 && (
+                        <Text style={styles.cartItemMods} numberOfLines={2}>
+                          {item.modifiers.map((m) => m.name).join(", ")}
+                        </Text>
+                      )}
+                      <Text style={styles.cartItemPrice}>{formatPrice(linePrice)}</Text>
+                    </View>
+                    <View style={styles.qtyRow}>
+                      <Pressable
+                        onPress={() => updateQuantity(item.cartKey, -1)}
+                        style={({ pressed }) => [styles.qtyBtn, { opacity: pressed ? 0.7 : 1 }]}
+                      >
+                        <Ionicons name="remove" size={16} color={Colors.brand.blue} />
+                      </Pressable>
+                      <Text style={styles.qtyText}>{item.quantity}</Text>
+                      <Pressable
+                        onPress={() => updateQuantity(item.cartKey, 1)}
+                        style={({ pressed }) => [styles.qtyBtn, { opacity: pressed ? 0.7 : 1 }]}
+                      >
+                        <Ionicons name="add" size={16} color={Colors.brand.blue} />
+                      </Pressable>
+                    </View>
                   </View>
-                  <View style={styles.qtyRow}>
-                    <Pressable
-                      onPress={() => updateQuantity(item.variationId, -1)}
-                      style={({ pressed }) => [styles.qtyBtn, { opacity: pressed ? 0.7 : 1 }]}
-                    >
-                      <Ionicons name="remove" size={16} color={Colors.brand.blue} />
-                    </Pressable>
-                    <Text style={styles.qtyText}>{item.quantity}</Text>
-                    <Pressable
-                      onPress={() => updateQuantity(item.variationId, 1)}
-                      style={({ pressed }) => [styles.qtyBtn, { opacity: pressed ? 0.7 : 1 }]}
-                    >
-                      <Ionicons name="add" size={16} color={Colors.brand.blue} />
-                    </Pressable>
-                  </View>
-                </View>
-              )}
+                );
+              }}
               ItemSeparatorComponent={() => <View style={styles.cartDivider} />}
             />
 
@@ -650,7 +959,8 @@ export default function OrderScreen() {
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [cartVisible, setCartVisible] = useState(false);
-  const { totalItems, totalPrice } = useCart();
+  const [modifierItem, setModifierItem] = useState<MenuItem | null>(null);
+  const { totalItems, totalPrice, addItem } = useCart();
   const categoryScrollRef = useRef<ScrollView>(null);
 
   const { data: categories, isLoading, isError, refetch } = useQuery<MenuCategory[]>({
@@ -698,9 +1008,28 @@ export default function OrderScreen() {
   const categoryBarHeight = 52;
   const cartBarHeight = totalItems > 0 ? 72 : 0;
 
+  const handleOpenModifiers = useCallback((item: MenuItem) => {
+    setModifierItem(item);
+  }, []);
+
+  const handleModifierConfirm = useCallback((modifiers: SelectedModifier[]) => {
+    if (!modifierItem) return;
+    const cartName = modifierItem.variationName
+      ? `${modifierItem.name} — ${modifierItem.variationName}`
+      : modifierItem.name;
+    addItem({
+      variationId: modifierItem.variationId,
+      itemId: modifierItem.id,
+      name: cartName,
+      price: modifierItem.price,
+      modifiers: modifiers.length > 0 ? modifiers : undefined,
+    });
+    setModifierItem(null);
+  }, [modifierItem, addItem]);
+
   const renderItem = useCallback(({ item }: { item: MenuItem }) => (
-    <ItemCard item={item} />
-  ), []);
+    <ItemCard item={item} onOpenModifiers={handleOpenModifiers} />
+  ), [handleOpenModifiers]);
 
   const handleSelectCategory = useCallback((id: string) => {
     setSelectedCategory(id);
@@ -832,6 +1161,12 @@ export default function OrderScreen() {
         )}
 
         <CartSheet visible={cartVisible} onClose={() => setCartVisible(false)} />
+        <ModifierModal
+          item={modifierItem}
+          visible={!!modifierItem}
+          onClose={() => setModifierItem(null)}
+          onConfirm={handleModifierConfirm}
+        />
       </View>
     );
   }
@@ -926,6 +1261,12 @@ export default function OrderScreen() {
       )}
 
       <CartSheet visible={cartVisible} onClose={() => setCartVisible(false)} />
+      <ModifierModal
+        item={modifierItem}
+        visible={!!modifierItem}
+        onClose={() => setModifierItem(null)}
+        onConfirm={handleModifierConfirm}
+      />
     </View>
   );
 }
@@ -1332,6 +1673,27 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_700Bold",
     fontSize: 13,
     color: Colors.brand.blue,
+    marginTop: 2,
+  },
+  cartItemMods: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginBottom: 2,
+  },
+  modQtyBadge: {
+    backgroundColor: Colors.brand.blue,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 5,
+  },
+  modQtyText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 11,
+    color: "#fff",
   },
   cartDivider: {
     height: 1,
