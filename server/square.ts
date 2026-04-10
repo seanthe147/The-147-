@@ -590,7 +590,29 @@ export async function getSquareDeals(): Promise<Deal[]> {
       if (ids.length > 0) productSetMap.set(o.id, ids);
     }
 
-    // Build maps from pricing rules: discount_id -> expiry date + applicable variation IDs
+    // Collect all unique product IDs from product sets, then batch-retrieve to
+    // find which are ITEM_VARIATION (and get their parent item ID) vs ITEM (all variants covered).
+    const allProductIds = [...new Set([...(productSetMap.values())].flat())];
+    const variationParentItemId = new Map<string, string>(); // variation_id -> parent item_id
+    if (allProductIds.length > 0) {
+      try {
+        const batchData = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
+          object_ids: allProductIds,
+          include_related_objects: false,
+        });
+        for (const o of (batchData.objects || []) as any[]) {
+          if (o.type === "ITEM_VARIATION" && o.item_variation_data?.item_id) {
+            variationParentItemId.set(o.id, o.item_variation_data.item_id);
+          }
+        }
+      } catch {
+        // non-fatal — fall back to variation-only matching
+      }
+    }
+
+    // Build maps from pricing rules: discount_id -> expiry date + applicable IDs
+    // applicableIds includes both the product set IDs AND parent item IDs of any variations,
+    // so matching at checkout works for ALL sizes of an item (Pint + Half, etc.)
     const expiryByDiscountId = new Map<string, string>();
     const variationsByDiscountId = new Map<string, string[]>();
     for (const o of (ruleData.objects || []) as any[]) {
@@ -604,12 +626,17 @@ export async function getSquareDeals(): Promise<Deal[]> {
           expiryByDiscountId.set(pd.discount_id, pd.valid_until_date);
         }
       }
-      // Applicable product IDs from linked product set
+      // Applicable product IDs: include original IDs + parent item IDs for any variations
       if (pd.match_products_id) {
-        const ids = productSetMap.get(pd.match_products_id);
-        if (ids && ids.length > 0) {
+        const ids = productSetMap.get(pd.match_products_id) || [];
+        if (ids.length > 0) {
+          const expanded = new Set<string>(ids);
+          for (const id of ids) {
+            const parentItemId = variationParentItemId.get(id);
+            if (parentItemId) expanded.add(parentItemId); // covers all variations of the item
+          }
           const existing = variationsByDiscountId.get(pd.discount_id) || [];
-          variationsByDiscountId.set(pd.discount_id, [...new Set([...existing, ...ids])]);
+          variationsByDiscountId.set(pd.discount_id, [...new Set([...existing, ...expanded])]);
         }
       }
     }
@@ -928,6 +955,11 @@ export async function createOrderCheckoutLink(
       if (!dealByVariationId.has(vid)) dealByVariationId.set(vid, deal);
     }
   }
+  const cartVariationIds = items.map((i) => i.variationId);
+  const matchedDeals = items
+    .filter((i) => dealByVariationId.has(i.variationId) || (i.itemId && dealByVariationId.has(i.itemId)))
+    .map((i) => (dealByVariationId.get(i.variationId) ?? dealByVariationId.get(i.itemId!))!.name);
+  console.log(`[DEALS] Cart variation IDs: ${cartVariationIds.join(", ")} | Matched deals: ${matchedDeals.join(", ") || "none"} | Deal-linked IDs: ${[...dealByVariationId.keys()].join(", ") || "none"}`);
 
   // Build line items with UIDs and collect auto-apply discounts
   const orderDiscounts: any[] = applyMemberDiscount ? [{
@@ -940,7 +972,8 @@ export async function createOrderCheckoutLink(
 
   const lineItems = items.map((item, idx) => {
     const lineUid = `li-${idx}`;
-    const deal = dealByVariationId.get(item.variationId);
+    // Match by variationId first, fall back to parent itemId (covers all sizes of an item)
+    const deal = dealByVariationId.get(item.variationId) ?? (item.itemId ? dealByVariationId.get(item.itemId) : undefined);
     const appliedDiscounts: any[] = [];
 
     if (deal) {

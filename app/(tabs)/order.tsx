@@ -755,6 +755,7 @@ function CartSheet({
         body: JSON.stringify({
           items: items.map((i) => ({
             variationId: i.variationId,
+            itemId: i.itemId,
             name: i.name,
             price: i.price,
             quantity: i.quantity,

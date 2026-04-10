@@ -1589,6 +1589,22 @@ async function getSquareDeals() {
       const ids = o.product_set_data?.product_ids_any || [];
       if (ids.length > 0) productSetMap.set(o.id, ids);
     }
+    const allProductIds = [...new Set([...productSetMap.values()].flat())];
+    const variationParentItemId = /* @__PURE__ */ new Map();
+    if (allProductIds.length > 0) {
+      try {
+        const batchData = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
+          object_ids: allProductIds,
+          include_related_objects: false
+        });
+        for (const o of batchData.objects || []) {
+          if (o.type === "ITEM_VARIATION" && o.item_variation_data?.item_id) {
+            variationParentItemId.set(o.id, o.item_variation_data.item_id);
+          }
+        }
+      } catch {
+      }
+    }
     const expiryByDiscountId = /* @__PURE__ */ new Map();
     const variationsByDiscountId = /* @__PURE__ */ new Map();
     for (const o of ruleData.objects || []) {
@@ -1602,10 +1618,15 @@ async function getSquareDeals() {
         }
       }
       if (pd.match_products_id) {
-        const ids = productSetMap.get(pd.match_products_id);
-        if (ids && ids.length > 0) {
+        const ids = productSetMap.get(pd.match_products_id) || [];
+        if (ids.length > 0) {
+          const expanded = new Set(ids);
+          for (const id of ids) {
+            const parentItemId = variationParentItemId.get(id);
+            if (parentItemId) expanded.add(parentItemId);
+          }
           const existing = variationsByDiscountId.get(pd.discount_id) || [];
-          variationsByDiscountId.set(pd.discount_id, [.../* @__PURE__ */ new Set([...existing, ...ids])]);
+          variationsByDiscountId.set(pd.discount_id, [.../* @__PURE__ */ new Set([...existing, ...expanded])]);
         }
       }
     }
@@ -1823,6 +1844,9 @@ async function createOrderCheckoutLink(items, tableNote, customer, discountPerce
       if (!dealByVariationId.has(vid)) dealByVariationId.set(vid, deal);
     }
   }
+  const cartVariationIds = items.map((i) => i.variationId);
+  const matchedDeals = items.filter((i) => dealByVariationId.has(i.variationId) || i.itemId && dealByVariationId.has(i.itemId)).map((i) => (dealByVariationId.get(i.variationId) ?? dealByVariationId.get(i.itemId)).name);
+  console.log(`[DEALS] Cart variation IDs: ${cartVariationIds.join(", ")} | Matched deals: ${matchedDeals.join(", ") || "none"} | Deal-linked IDs: ${[...dealByVariationId.keys()].join(", ") || "none"}`);
   const orderDiscounts = applyMemberDiscount ? [{
     uid: memberDiscountUid,
     name: discountLabel ?? "Member Discount",
@@ -1832,7 +1856,7 @@ async function createOrderCheckoutLink(items, tableNote, customer, discountPerce
   }] : [];
   const lineItems = items.map((item, idx) => {
     const lineUid = `li-${idx}`;
-    const deal = dealByVariationId.get(item.variationId);
+    const deal = dealByVariationId.get(item.variationId) ?? (item.itemId ? dealByVariationId.get(item.itemId) : void 0);
     const appliedDiscounts = [];
     if (deal) {
       const discountUid = `deal-${idx}`;
