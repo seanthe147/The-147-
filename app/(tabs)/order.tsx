@@ -361,11 +361,7 @@ function ModifierModal({
   useEffect(() => {
     if (visible && item?.modifiers) {
       const init: Record<string, string[]> = {};
-      item.modifiers.forEach((ml) => {
-        init[ml.id] = ml.selectionType === "SINGLE" && ml.minSelections > 0 && ml.options.length > 0
-          ? [ml.options[0].id]
-          : [];
-      });
+      item.modifiers.forEach((ml) => { init[ml.id] = []; });
       setSelections(init);
     }
   }, [visible, item]);
@@ -384,13 +380,6 @@ function ModifierModal({
   };
 
   const handleConfirm = () => {
-    const missing = (item.modifiers || []).filter(
-      (ml) => ml.minSelections > 0 && (!selections[ml.id] || selections[ml.id].length < ml.minSelections)
-    );
-    if (missing.length > 0) {
-      Alert.alert("Required", `Please choose from: ${missing.map((m) => m.name).join(", ")}`);
-      return;
-    }
     const mods: SelectedModifier[] = [];
     (item.modifiers || []).forEach((ml) => {
       (selections[ml.id] || []).forEach((optId) => {
@@ -425,14 +414,9 @@ function ModifierModal({
             <View key={ml.id} style={modStyles.group}>
               <View style={modStyles.groupHeader}>
                 <Text style={modStyles.groupName}>{ml.name}</Text>
-                {ml.minSelections > 0 && (
-                  <View style={modStyles.requiredBadge}>
-                    <Text style={modStyles.requiredText}>Required</Text>
-                  </View>
-                )}
-                {ml.selectionType === "MULTIPLE" && (
-                  <Text style={modStyles.groupHint}>Choose any</Text>
-                )}
+                <Text style={modStyles.groupHint}>
+                  {ml.selectionType === "MULTIPLE" ? "Choose any" : "Optional"}
+                </Text>
               </View>
               {ml.options.map((opt) => {
                 const isSelected = (selections[ml.id] || []).includes(opt.id);
