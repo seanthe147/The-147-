@@ -1320,6 +1320,12 @@ async function resumeSquareSubscription(subscriptionId) {
   });
   return data.subscription;
 }
+async function listSquareSubscriptionsForCustomer(squareCustomerId) {
+  const data = await squareRequest("POST", "/v2/subscriptions/search", {
+    query: { filter: { customer_ids: [squareCustomerId] } }
+  });
+  return data.subscriptions || [];
+}
 async function createDepositPaymentLink(opts) {
   const locationId = getLocationId();
   const data = await squareRequest("POST", "/v2/online-checkout/payment-links", {
@@ -5206,6 +5212,43 @@ async function registerRoutes(app2) {
     res.setHeader("Pragma", "no-cache");
     res.status(200).send(html);
   });
+  async function syncSquareMembershipForCustomer(customerId, email) {
+    try {
+      if (!isConfigured()) return;
+      const existing = await storage.getMembershipSubscriptionByCustomer(customerId);
+      if (existing) return;
+      const sqCustomer = await findSquareCustomerByEmail(email).catch(() => null);
+      if (!sqCustomer) return;
+      const sqSubs = await listSquareSubscriptionsForCustomer(sqCustomer.id).catch(() => []);
+      if (!sqSubs.length) return;
+      const allPlans = await storage.getMembershipPlans();
+      const activePlans = allPlans.filter((p) => p.active && p.squarePlanVariationId);
+      if (!activePlans.length) return;
+      const match = sqSubs.find(
+        (s) => (s.status === "ACTIVE" || s.status === "PENDING") && activePlans.some((p) => p.squarePlanVariationId === s.plan_variation_id)
+      );
+      if (!match) return;
+      const plan = activePlans.find((p) => p.squarePlanVariationId === match.plan_variation_id);
+      const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+      const periodEnd = match.charged_through_date ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
+      await storage.createMembershipSubscription({
+        customerId,
+        planId: plan.id,
+        status: "active",
+        currentPeriodStart: match.start_date ?? today,
+        currentPeriodEnd: periodEnd,
+        hoursUsedThisPeriod: 0,
+        guestPassesUsed: 0,
+        squareSubscriptionId: match.id,
+        squareCustomerId: sqCustomer.id,
+        source: "square_sync",
+        staffNotes: "Auto-synced from Square on app sign-in"
+      });
+      console.log(`[MEMBERSHIP] Auto-synced Square subscription ${match.id} \u2192 customer #${customerId} (${email})`);
+    } catch (err) {
+      console.warn("[MEMBERSHIP] Square sync failed (non-fatal):", err.message);
+    }
+  }
   app2.post("/api/customers/register", async (req, res) => {
     const clientIp = getClientIp(req);
     const rateCheck = checkCustomerRateLimit(clientIp);
@@ -5242,6 +5285,7 @@ async function registerRoutes(app2) {
         token,
         customer: { id: customer.id, name: customer.name, email: customer.email, phone: customer.phone }
       });
+      syncSquareMembershipForCustomer(customer.id, customer.email);
     } catch (err) {
       console.error("Customer register error:", err.message);
       res.status(500).json({ message: "Registration failed" });
@@ -5276,6 +5320,7 @@ async function registerRoutes(app2) {
         token,
         customer: { id: customer.id, name: customer.name, email: customer.email, phone: customer.phone }
       });
+      syncSquareMembershipForCustomer(customer.id, customer.email);
     } catch (err) {
       console.error("Customer login error:", err.message);
       res.status(500).json({ message: "Login failed" });
