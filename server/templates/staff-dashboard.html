@@ -436,10 +436,6 @@
           Memberships
           <span class="nav-badge hidden" id="membersBadge">0</span>
         </div>
-        <div class="nav-item hidden" data-page="availability" id="navAvailability">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
-          Availability
-        </div>
         <div class="nav-item" data-page="menu" id="navMenu">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
           Orders &amp; Menu
@@ -488,41 +484,133 @@
 
       <!-- BOOKINGS PAGE -->
       <div class="page active" id="pageBookings">
-        <div class="page-body">
-          <div id="dashboardNotices" style="display:none;margin-bottom:16px"></div>
-          <div class="summary-row" id="summaryRow">
-            <div class="stat-card"><div class="stat-label">Total Today</div><div class="stat-value" id="statTotal">—</div><div class="stat-sub">bookings</div></div>
-            <div class="stat-card"><div class="stat-label">Confirmed</div><div class="stat-value" id="statConfirmed" style="color:var(--green)">—</div><div class="stat-sub">active</div></div>
-            <div class="stat-card"><div class="stat-label">Cancelled</div><div class="stat-value" id="statCancelled" style="color:var(--red)">—</div><div class="stat-sub">cancelled</div></div>
-            <div class="stat-card"><div class="stat-label">Pending</div><div class="stat-value" id="statPending" style="color:var(--amber)">—</div><div class="stat-sub">awaiting confirmation</div></div>
-          </div>
-          <div class="bookings-toolbar">
-            <div class="date-nav">
-              <button class="btn-nav" id="prevDay" title="Previous day">&#8249;</button>
-              <div class="date-label-box">
-                <input type="date" id="dateInput">
-                <div class="date-day-label" id="dateDayLabel"></div>
+        <!-- Bookings / Availability tab bar -->
+        <div class="menu-tabs" id="bookingsTabBar">
+          <button class="menu-tab active" onclick="switchBookingsTab('bookings')" id="bookingsTabBookings">Bookings</button>
+          <button class="menu-tab hidden" onclick="switchBookingsTab('availability')" id="bookingsTabAvailability">Availability</button>
+        </div>
+
+        <!-- BOOKINGS TAB -->
+        <div id="bookingsTabPanelBookings">
+          <div class="page-body" style="padding-top:0">
+            <div id="dashboardNotices" style="display:none;margin-bottom:16px"></div>
+            <div class="summary-row" id="summaryRow">
+              <div class="stat-card"><div class="stat-label">Total Today</div><div class="stat-value" id="statTotal">—</div><div class="stat-sub">bookings</div></div>
+              <div class="stat-card"><div class="stat-label">Confirmed</div><div class="stat-value" id="statConfirmed" style="color:var(--green)">—</div><div class="stat-sub">active</div></div>
+              <div class="stat-card"><div class="stat-label">Cancelled</div><div class="stat-value" id="statCancelled" style="color:var(--red)">—</div><div class="stat-sub">cancelled</div></div>
+              <div class="stat-card"><div class="stat-label">Pending</div><div class="stat-value" id="statPending" style="color:var(--amber)">—</div><div class="stat-sub">awaiting confirmation</div></div>
+            </div>
+            <div class="bookings-toolbar">
+              <div class="date-nav">
+                <button class="btn-nav" id="prevDay" title="Previous day">&#8249;</button>
+                <div class="date-label-box">
+                  <input type="date" id="dateInput">
+                  <div class="date-day-label" id="dateDayLabel"></div>
+                </div>
+                <button class="btn-nav" id="nextDay" title="Next day">&#8250;</button>
               </div>
-              <button class="btn-nav" id="nextDay" title="Next day">&#8250;</button>
+              <button class="today-btn" id="todayBtn">Today</button>
+              <div class="search-box">
+                <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="searchInput" placeholder="Search name, email…">
+              </div>
+              <div class="type-filter">
+                <button class="filter-pill active" data-type="all">All</button>
+                <button class="filter-pill" data-type="snooker">Snooker</button>
+                <button class="filter-pill" data-type="pool">Pool</button>
+                <button class="filter-pill" data-type="dining">Dining</button>
+              </div>
             </div>
-            <button class="today-btn" id="todayBtn">Today</button>
-            <div class="search-box">
-              <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="text" id="searchInput" placeholder="Search name, email…">
+            <div class="live-bar">
+              <div class="live-dot"></div>
+              <span class="live-label">Live</span>
+              <span class="live-updated" id="liveUpdatedText">Updating…</span>
             </div>
-            <div class="type-filter">
-              <button class="filter-pill active" data-type="all">All</button>
-              <button class="filter-pill" data-type="snooker">Snooker</button>
-              <button class="filter-pill" data-type="pool">Pool</button>
-              <button class="filter-pill" data-type="dining">Dining</button>
+            <div id="bookingsContent"></div>
+          </div>
+        </div>
+
+        <!-- AVAILABILITY TAB -->
+        <div id="bookingsTabPanelAvailability" style="display:none">
+          <div class="page-body" style="padding-top:0">
+            <div style="max-width:680px;margin:0 auto">
+              <div style="margin-bottom:20px">
+                <div class="section-label" style="font-size:11px;font-weight:700;color:#8B9AB0;letter-spacing:.8px;margin-bottom:12px">ADD NEW BLOCK</div>
+                <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px">
+
+                  <!-- Mode toggle -->
+                  <div style="display:flex;background:#F1F5FB;border-radius:10px;padding:3px;margin-bottom:18px">
+                    <button id="avModeDate" onclick="avSetMode('date')" style="flex:1;padding:8px;border:none;background:#fff;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.08)">Specific Date</button>
+                    <button id="avModeRecur" onclick="avSetMode('recurring')" style="flex:1;padding:8px;border:none;background:transparent;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;color:var(--text-2)">Recurring Weekly</button>
+                  </div>
+
+                  <!-- Date input -->
+                  <div id="avDateField" style="margin-bottom:14px">
+                    <label style="display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:6px">Date</label>
+                    <input type="date" id="avDate" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);box-sizing:border-box">
+                  </div>
+
+                  <!-- Day of week -->
+                  <div id="avDayField" style="margin-bottom:14px;display:none">
+                    <label style="display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:8px">Day of Week</label>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px" id="avDayBtns">
+                      <button onclick="avSelectDay(0)" data-day="0" class="av-day-btn">Sun</button>
+                      <button onclick="avSelectDay(1)" data-day="1" class="av-day-btn av-day-active">Mon</button>
+                      <button onclick="avSelectDay(2)" data-day="2" class="av-day-btn">Tue</button>
+                      <button onclick="avSelectDay(3)" data-day="3" class="av-day-btn">Wed</button>
+                      <button onclick="avSelectDay(4)" data-day="4" class="av-day-btn">Thu</button>
+                      <button onclick="avSelectDay(5)" data-day="5" class="av-day-btn">Fri</button>
+                      <button onclick="avSelectDay(6)" data-day="6" class="av-day-btn">Sat</button>
+                    </div>
+                  </div>
+
+                  <!-- Time row -->
+                  <div style="display:flex;gap:12px;margin-bottom:14px">
+                    <div style="flex:1">
+                      <label style="display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:6px">Start Time <span style="font-weight:400">(optional)</span></label>
+                      <input type="time" id="avStart" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);box-sizing:border-box">
+                    </div>
+                    <div style="flex:1">
+                      <label style="display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:6px">End Time <span style="font-weight:400">(optional)</span></label>
+                      <input type="time" id="avEnd" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);box-sizing:border-box">
+                    </div>
+                  </div>
+
+                  <!-- Table type -->
+                  <div style="margin-bottom:14px">
+                    <label style="display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:8px">Table Type</label>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap" id="avTypeBtns">
+                      <button onclick="avSelectType('')"  data-type=""        class="av-type-btn av-type-active">All Tables</button>
+                      <button onclick="avSelectType('snooker')" data-type="snooker" class="av-type-btn">Snooker</button>
+                      <button onclick="avSelectType('pool')"    data-type="pool"    class="av-type-btn">Pool</button>
+                      <button onclick="avSelectType('dining')"  data-type="dining"  class="av-type-btn">Dining</button>
+                      <button onclick="avSelectType('darts')"   data-type="darts"   class="av-type-btn">Darts</button>
+                    </div>
+                  </div>
+
+                  <!-- Label -->
+                  <div style="margin-bottom:16px">
+                    <label style="display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:6px">Reason / Label <span style="font-weight:400">(optional)</span></label>
+                    <input type="text" id="avLabel" placeholder="e.g. Private event, Maintenance…" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);box-sizing:border-box">
+                  </div>
+
+                  <div id="avErr" style="display:none;background:#FEF2F2;border-radius:8px;padding:10px;color:#DC2626;font-size:13px;margin-bottom:12px"></div>
+
+                  <button onclick="avCreate()" id="avSubmitBtn" class="btn btn-danger" style="width:100%">
+                    🚫 Block This Period
+                  </button>
+                </div>
+              </div>
+
+              <div class="section-label" style="font-size:11px;font-weight:700;color:#8B9AB0;letter-spacing:.8px;margin-bottom:12px">ACTIVE BLOCKS</div>
+              <div id="avBlocksList"></div>
+
+              <div style="display:flex;align-items:flex-start;gap:10px;background:#EFF6FF;border-radius:12px;padding:14px;margin-top:8px">
+                <span style="font-size:16px;flex-shrink:0">ℹ️</span>
+                <span style="font-size:12px;color:var(--blue);line-height:1.6">Dining is automatically restricted to Thursday–Sunday, 12pm–8pm as a business rule. Use blocks above for additional closures or event days.</span>
+              </div>
             </div>
           </div>
-          <div class="live-bar">
-            <div class="live-dot"></div>
-            <span class="live-label">Live</span>
-            <span class="live-updated" id="liveUpdatedText">Updating…</span>
-          </div>
-          <div id="bookingsContent"></div>
         </div>
       </div>
 
@@ -689,89 +777,6 @@
       </div>
 
 
-      <!-- AVAILABILITY PAGE -->
-      <div class="page" id="pageAvailability">
-        <div class="page-body">
-          <div style="max-width:680px;margin:0 auto">
-
-            <div style="margin-bottom:20px">
-              <div class="section-label" style="font-size:11px;font-weight:700;color:#8B9AB0;letter-spacing:.8px;margin-bottom:12px">ADD NEW BLOCK</div>
-              <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px">
-
-                <!-- Mode toggle -->
-                <div style="display:flex;background:#F1F5FB;border-radius:10px;padding:3px;margin-bottom:18px">
-                  <button id="avModeDate" onclick="avSetMode('date')" style="flex:1;padding:8px;border:none;background:#fff;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.08)">Specific Date</button>
-                  <button id="avModeRecur" onclick="avSetMode('recurring')" style="flex:1;padding:8px;border:none;background:transparent;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;color:var(--text-2)">Recurring Weekly</button>
-                </div>
-
-                <!-- Date input -->
-                <div id="avDateField" style="margin-bottom:14px">
-                  <label style="display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:6px">Date</label>
-                  <input type="date" id="avDate" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);box-sizing:border-box">
-                </div>
-
-                <!-- Day of week -->
-                <div id="avDayField" style="margin-bottom:14px;display:none">
-                  <label style="display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:8px">Day of Week</label>
-                  <div style="display:flex;flex-wrap:wrap;gap:6px" id="avDayBtns">
-                    <button onclick="avSelectDay(0)" data-day="0" class="av-day-btn">Sun</button>
-                    <button onclick="avSelectDay(1)" data-day="1" class="av-day-btn av-day-active">Mon</button>
-                    <button onclick="avSelectDay(2)" data-day="2" class="av-day-btn">Tue</button>
-                    <button onclick="avSelectDay(3)" data-day="3" class="av-day-btn">Wed</button>
-                    <button onclick="avSelectDay(4)" data-day="4" class="av-day-btn">Thu</button>
-                    <button onclick="avSelectDay(5)" data-day="5" class="av-day-btn">Fri</button>
-                    <button onclick="avSelectDay(6)" data-day="6" class="av-day-btn">Sat</button>
-                  </div>
-                </div>
-
-                <!-- Time row -->
-                <div style="display:flex;gap:12px;margin-bottom:14px">
-                  <div style="flex:1">
-                    <label style="display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:6px">Start Time <span style="font-weight:400">(optional)</span></label>
-                    <input type="time" id="avStart" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);box-sizing:border-box">
-                  </div>
-                  <div style="flex:1">
-                    <label style="display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:6px">End Time <span style="font-weight:400">(optional)</span></label>
-                    <input type="time" id="avEnd" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);box-sizing:border-box">
-                  </div>
-                </div>
-
-                <!-- Table type -->
-                <div style="margin-bottom:14px">
-                  <label style="display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:8px">Table Type</label>
-                  <div style="display:flex;gap:8px;flex-wrap:wrap" id="avTypeBtns">
-                    <button onclick="avSelectType('')"  data-type=""        class="av-type-btn av-type-active">All Tables</button>
-                    <button onclick="avSelectType('snooker')" data-type="snooker" class="av-type-btn">Snooker</button>
-                    <button onclick="avSelectType('pool')"    data-type="pool"    class="av-type-btn">Pool</button>
-                    <button onclick="avSelectType('dining')"  data-type="dining"  class="av-type-btn">Dining</button>
-                    <button onclick="avSelectType('darts')"   data-type="darts"   class="av-type-btn">Darts</button>
-                  </div>
-                </div>
-
-                <!-- Label -->
-                <div style="margin-bottom:16px">
-                  <label style="display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:6px">Reason / Label <span style="font-weight:400">(optional)</span></label>
-                  <input type="text" id="avLabel" placeholder="e.g. Private event, Maintenance…" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);box-sizing:border-box">
-                </div>
-
-                <div id="avErr" style="display:none;background:#FEF2F2;border-radius:8px;padding:10px;color:#DC2626;font-size:13px;margin-bottom:12px"></div>
-
-                <button onclick="avCreate()" id="avSubmitBtn" class="btn btn-danger" style="width:100%">
-                  🚫 Block This Period
-                </button>
-              </div>
-            </div>
-
-            <div class="section-label" style="font-size:11px;font-weight:700;color:#8B9AB0;letter-spacing:.8px;margin-bottom:12px">ACTIVE BLOCKS</div>
-            <div id="avBlocksList"></div>
-
-            <div style="display:flex;align-items:flex-start;gap:10px;background:#EFF6FF;border-radius:12px;padding:14px;margin-top:8px">
-              <span style="font-size:16px;flex-shrink:0">ℹ️</span>
-              <span style="font-size:12px;color:var(--blue);line-height:1.6">Dining is automatically restricted to Thursday–Sunday, 12pm–8pm as a business rule. Use blocks above for additional closures or event days.</span>
-            </div>
-          </div>
-        </div>
-      </div>
 
       <!-- MENU MANAGEMENT PAGE -->
       <div class="page" id="pageMenu">
@@ -1739,7 +1744,7 @@
     el('navComms').classList.toggle('hidden',!isManager);
     el('navStaff').classList.toggle('hidden',!isOwner);
     el('navMemberships').classList.toggle('hidden',!isManager);
-    el('navAvailability').classList.toggle('hidden',!isManager);
+    el('bookingsTabAvailability').classList.toggle('hidden',!isManager);
     el('popupSection').style.display=isManager?'':'none';
     el('topbarActions').innerHTML=`<button class="btn btn-primary" id="newBookingBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Booking</button>`;
     el('newBookingBtn').addEventListener('click',()=>openBookingModal(null));
@@ -1807,16 +1812,15 @@
   function navigateTo(page){
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page'+cap(page)));
-    const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',availability:'Availability',menu:'Orders & Menu',banners:'App Banners'};
+    const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',banners:'App Banners'};
     el('topbarTitle').textContent=titles[page]||'';
     el('topbarSub').textContent='';
-    if(page==='bookings'){el('topbarActions').style.display='';loadBookings();loadDashboardNotices();startBookingsPolling();}
+    if(page==='bookings'){el('topbarActions').style.display='';switchBookingsTab('bookings');loadBookings();loadDashboardNotices();startBookingsPolling();}
     else{el('topbarActions').style.display='none';stopBookingsPolling();}
     if(page==='messages')loadMessages(true);
     if(page==='comms'){switchCommsTab('notices');loadNotices();loadPopups();}
     if(page==='staff')loadStaff();
     if(page==='memberships')loadMemberships();
-    if(page==='availability')loadAvailability();
     if(page==='menu'){switchMenuTab('orders');loadOrders();loadOrderingSchedule();}
     if(page==='banners')loadBanners();
   }
@@ -3165,6 +3169,19 @@
   }
 
   window.switchMenuTab=switchMenuTab;
+
+  /* ── Bookings Sub-tabs ────────────────────────────────────────────────────── */
+  function switchBookingsTab(tab){
+    ['bookings','availability'].forEach(t=>{
+      const btn=el('bookingsTab'+t.charAt(0).toUpperCase()+t.slice(1));
+      if(btn)btn.classList.toggle('active',t===tab);
+      const panel=el('bookingsTabPanel'+t.charAt(0).toUpperCase()+t.slice(1));
+      if(panel)panel.style.display=t===tab?'':'none';
+    });
+    if(tab==='availability')loadAvailability();
+  }
+
+  window.switchBookingsTab=switchBookingsTab;
 
   /* ── Comms Sub-tabs ───────────────────────────────────────────────────────── */
   function switchCommsTab(tab){
