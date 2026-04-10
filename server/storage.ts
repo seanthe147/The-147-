@@ -82,6 +82,11 @@ function buildPoolConfig() {
 
 const pool = new Pool(buildPoolConfig());
 
+// Prevent idle connection errors from crashing the process
+pool.on("error", (err) => {
+  console.error("[DB] Unexpected pool error (non-fatal):", err.message);
+});
+
 const db = drizzle(pool);
 
 function encryptBookingFields(booking: InsertBooking): InsertBooking & { emailHash?: string } {

@@ -417,6 +417,9 @@ var init_storage = __esm({
     init_schema();
     init_encryption();
     pool = new Pool(buildPoolConfig());
+    pool.on("error", (err) => {
+      console.error("[DB] Unexpected pool error (non-fatal):", err.message);
+    });
     db = drizzle(pool);
     DatabaseStorage = class {
       async getUser(id) {
