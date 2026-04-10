@@ -2360,7 +2360,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           })
           .map(item => {
             const override = itemOverrideMap.get(item.variationId);
-            const base = {
+            const base: any = {
               id: item.id,
               variationId: item.variationId,
               name: item.name,
@@ -2368,6 +2368,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               description: item.description,
               price: item.price,
               imageUrl: item.imageUrl,
+              ...(item.modifiers && item.modifiers.length > 0 ? { modifiers: item.modifiers } : {}),
             };
             return override?.soldOut ? { ...base, soldOut: true } : base;
           });
