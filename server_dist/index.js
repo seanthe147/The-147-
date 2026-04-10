@@ -13,7 +13,7 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, serial, timestamp, boolean, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, menuCategoryVisibility, menuItemOverrides;
+var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
@@ -245,6 +245,8 @@ var init_schema = __esm({
       customerEmail: text("customer_email"),
       itemsJson: text("items_json").notNull(),
       totalPence: integer("total_pence").notNull().default(0),
+      discountPercent: integer("discount_percent"),
+      discountLabel: text("discount_label"),
       status: text("status").notNull().default("pending"),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
@@ -269,6 +271,35 @@ var init_schema = __esm({
       soldOut: boolean("sold_out").notNull().default(false),
       hidden: boolean("hidden").notNull().default(false),
       updatedBy: text("updated_by").notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    });
+    categorySettings = pgTable("category_settings", {
+      categoryId: text("category_id").primaryKey(),
+      displayOrder: integer("display_order").notNull().default(99),
+      mergedIntoId: text("merged_into_id"),
+      displayName: text("display_name"),
+      updatedBy: text("updated_by").notNull().default("system"),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    });
+    availabilityRules = pgTable("availability_rules", {
+      id: serial("id").primaryKey(),
+      targetType: text("target_type").notNull(),
+      // 'item' | 'category'
+      targetId: text("target_id").notNull(),
+      targetName: text("target_name").notNull(),
+      daysOfWeek: text("days_of_week"),
+      // JSON array e.g. "[1,2,3,4,5]", null = all days
+      startTime: text("start_time"),
+      // "HH:MM" or null
+      endTime: text("end_time"),
+      // "HH:MM" or null
+      startDate: text("start_date"),
+      // "YYYY-MM-DD" or null
+      endDate: text("end_date"),
+      // "YYYY-MM-DD" or null
+      note: text("note"),
+      enabled: boolean("enabled").notNull().default(true),
+      createdBy: text("created_by").notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
   }
@@ -346,7 +377,7 @@ __export(storage_exports, {
 });
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { eq, lt, lte, sql as sql2, and, gt, isNull, isNotNull, gte, desc, inArray } from "drizzle-orm";
+import { eq, lt, lte, sql as sql2, and, gt, isNull, isNotNull, gte, desc, inArray, ne } from "drizzle-orm";
 function buildPoolConfig() {
   const rawUrl = process.env.DATABASE_URL;
   const url = new URL(rawUrl);
@@ -484,7 +515,7 @@ var init_storage = __esm({
         const result = await db.delete(bookings).where(eq(bookings.id, id)).returning();
         return result.length > 0;
       }
-      async getBookedSlots(date, tableType, tableNumber) {
+      async getBookedSlots(date, tableType, tableNumber, excludeBookingId) {
         const conditions = [
           eq(bookings.date, date),
           eq(bookings.tableType, tableType),
@@ -492,6 +523,9 @@ var init_storage = __esm({
         ];
         if (tableNumber) {
           conditions.push(eq(bookings.tableNumber, tableNumber));
+        }
+        if (excludeBookingId) {
+          conditions.push(ne(bookings.id, excludeBookingId));
         }
         const results = await db.select({ startTime: bookings.startTime, duration: bookings.duration }).from(bookings).where(and(...conditions));
         return results;
@@ -909,6 +943,10 @@ var init_storage = __esm({
         const [plan] = await db.insert(membershipPlans).values(data).returning();
         return plan;
       }
+      async createMembershipPlan(data) {
+        const [plan] = await db.insert(membershipPlans).values(data).returning();
+        return plan;
+      }
       async updateMembershipPlan(id, data) {
         const [plan] = await db.update(membershipPlans).set(data).where(eq(membershipPlans.id, id)).returning();
         return plan;
@@ -926,7 +964,7 @@ var init_storage = __esm({
       async getMembershipSubscriptionByCustomer(customerId) {
         const [sub] = await db.select().from(membershipSubscriptions).where(and(eq(membershipSubscriptions.customerId, customerId), eq(membershipSubscriptions.status, "active"))).orderBy(desc(membershipSubscriptions.createdAt));
         if (!sub) return null;
-        const [plan] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, sub.planId));
+        const [plan] = await db.select().from(membershipPlans).where(and(eq(membershipPlans.id, sub.planId), eq(membershipPlans.active, true)));
         return { ...sub, plan: plan || null };
       }
       async getMembershipSubscription(id) {
@@ -982,6 +1020,45 @@ var init_storage = __esm({
           set: { hidden, updatedBy, updatedAt: /* @__PURE__ */ new Date() }
         });
       }
+      async getCategorySettings() {
+        return db.select().from(categorySettings);
+      }
+      async upsertCategorySettings(settings) {
+        for (const s of settings) {
+          await db.insert(categorySettings).values({
+            categoryId: s.categoryId,
+            displayOrder: s.displayOrder ?? 99,
+            mergedIntoId: s.mergedIntoId ?? null,
+            displayName: s.displayName ?? null,
+            updatedBy: s.updatedBy,
+            updatedAt: /* @__PURE__ */ new Date()
+          }).onConflictDoUpdate({
+            target: categorySettings.categoryId,
+            set: {
+              ...s.displayOrder !== void 0 ? { displayOrder: s.displayOrder } : {},
+              ...s.mergedIntoId !== void 0 ? { mergedIntoId: s.mergedIntoId } : {},
+              ...s.displayName !== void 0 ? { displayName: s.displayName } : {},
+              updatedBy: s.updatedBy,
+              updatedAt: /* @__PURE__ */ new Date()
+            }
+          });
+        }
+      }
+      async getAvailabilityRules() {
+        return db.select().from(availabilityRules).orderBy(availabilityRules.id);
+      }
+      async createAvailabilityRule(rule) {
+        const [created] = await db.insert(availabilityRules).values({ ...rule, updatedAt: /* @__PURE__ */ new Date() }).returning();
+        return created;
+      }
+      async updateAvailabilityRule(id, rule) {
+        const [updated] = await db.update(availabilityRules).set({ ...rule, updatedAt: /* @__PURE__ */ new Date() }).where(eq(availabilityRules.id, id)).returning();
+        return updated;
+      }
+      async deleteAvailabilityRule(id) {
+        const result = await db.delete(availabilityRules).where(eq(availabilityRules.id, id)).returning();
+        return result.length > 0;
+      }
       async createAppOrder(data) {
         await db.insert(appOrders).values({
           squareLinkId: data.squareLinkId ?? null,
@@ -992,6 +1069,8 @@ var init_storage = __esm({
           customerEmail: data.customerEmail ?? null,
           itemsJson: data.itemsJson,
           totalPence: data.totalPence,
+          discountPercent: data.discountPercent ?? null,
+          discountLabel: data.discountLabel ?? null,
           status: "pending"
         });
       }
@@ -1013,7 +1092,19 @@ var init_storage = __esm({
         await db.update(appOrders).set({ status }).where(eq(appOrders.id, id));
       }
       async getCustomerOrders(email) {
-        return db.select().from(appOrders).where(eq(appOrders.customerEmail, email)).orderBy(desc(appOrders.createdAt)).limit(50);
+        return db.select().from(appOrders).where(and(
+          eq(appOrders.customerEmail, email),
+          // Never show expired (abandoned) orders to the customer
+          sql2`${appOrders.status} != 'expired'`
+        )).orderBy(desc(appOrders.createdAt)).limit(50);
+      }
+      async expireStaleOrders(olderThanMinutes = 30) {
+        const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1e3);
+        const result = await db.update(appOrders).set({ status: "expired" }).where(and(
+          eq(appOrders.status, "pending"),
+          lte(appOrders.createdAt, cutoff)
+        ));
+        return result.rowCount ?? 0;
       }
       async logOrderAction(data) {
         await db.insert(orderAuditLog).values({
@@ -1476,19 +1567,80 @@ async function getMenuFromSquare() {
     (o) => o.type === "ITEM" && !SKIP_ITEMS.has(o.item_data?.name)
   );
   const subcatIds = /* @__PURE__ */ new Set();
+  const modifierListIds = /* @__PURE__ */ new Set();
   items.forEach((item) => {
     (item.item_data?.categories || []).forEach((c) => {
       if (!PARENT_CATEGORY_IDS.has(c.id)) subcatIds.add(c.id);
     });
+    (item.item_data?.modifier_list_info || []).forEach((m) => {
+      if (m.enabled !== false) modifierListIds.add(m.modifier_list_id);
+    });
   });
   const catNames = {};
+  const catImageIds = {};
   if (subcatIds.size > 0) {
     const catData = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
       object_ids: Array.from(subcatIds)
     });
     (catData.objects || []).forEach((o) => {
       catNames[o.id] = o.category_data?.name || "Other";
+      if (o.category_data?.image_ids?.[0]) {
+        catImageIds[o.id] = o.category_data.image_ids[0];
+      }
     });
+  }
+  const modifierListMap = {};
+  if (modifierListIds.size > 0) {
+    const modIds = Array.from(modifierListIds);
+    for (let i = 0; i < modIds.length; i += 100) {
+      try {
+        const chunk = modIds.slice(i, i + 100);
+        const modData = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
+          object_ids: chunk
+        });
+        (modData.objects || []).forEach((o) => {
+          if (o.type !== "MODIFIER_LIST") return;
+          const mld = o.modifier_list_data || {};
+          modifierListMap[o.id] = {
+            id: o.id,
+            name: mld.name || "",
+            selectionType: mld.selection_type === "MULTIPLE" ? "MULTIPLE" : "SINGLE",
+            minSelections: mld.min_selected_modifiers ?? (mld.selection_type === "SINGLE" ? 1 : 0),
+            maxSelections: mld.max_selected_modifiers ?? (mld.selection_type === "SINGLE" ? 1 : 999),
+            options: (mld.modifiers || []).map((m) => ({
+              id: m.id,
+              name: m.modifier_data?.name || "",
+              price: m.modifier_data?.price_money?.amount || 0
+            }))
+          };
+        });
+      } catch {
+      }
+    }
+  }
+  const itemImageIds = {};
+  items.forEach((item) => {
+    if (item.item_data?.image_ids?.[0]) {
+      itemImageIds[item.id] = item.item_data.image_ids[0];
+    }
+  });
+  const allImageObjectIds = [
+    .../* @__PURE__ */ new Set([...Object.values(itemImageIds), ...Object.values(catImageIds)])
+  ];
+  const imageUrlMap = {};
+  if (allImageObjectIds.length > 0) {
+    for (let i = 0; i < allImageObjectIds.length; i += 100) {
+      try {
+        const chunk = allImageObjectIds.slice(i, i + 100);
+        const imgData = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
+          object_ids: chunk
+        });
+        (imgData.objects || []).forEach((o) => {
+          if (o.image_data?.url) imageUrlMap[o.id] = o.image_data.url;
+        });
+      } catch {
+      }
+    }
   }
   const categoryMap = {};
   items.forEach((item) => {
@@ -1496,22 +1648,42 @@ async function getMenuFromSquare() {
       (c) => !PARENT_CATEGORY_IDS.has(c.id)
     )?.id;
     if (!subcatId) return;
-    const variation = item.item_data?.variations?.[0];
-    if (!variation) return;
+    const variations = item.item_data?.variations || [];
+    if (!variations.length) return;
     if (!categoryMap[subcatId]) {
-      categoryMap[subcatId] = { name: catNames[subcatId] || "Other", items: [] };
+      const catImgId = catImageIds[subcatId];
+      categoryMap[subcatId] = {
+        name: catNames[subcatId] || "Other",
+        imageUrl: catImgId ? imageUrlMap[catImgId] : void 0,
+        items: []
+      };
     }
-    categoryMap[subcatId].items.push({
-      id: item.id,
-      variationId: variation.id,
-      name: item.item_data.name,
-      description: item.item_data.description || "",
-      price: variation.item_variation_data?.price_money?.amount || 0
+    const itemImgId = itemImageIds[item.id];
+    const itemImageUrl = itemImgId ? imageUrlMap[itemImgId] : void 0;
+    const hasMultiple = variations.length > 1;
+    const isGenericName = (n) => ["regular", "standard", ""].includes(n.toLowerCase());
+    const hasMeaningfulVariations = hasMultiple && variations.some((v) => !isGenericName(v.item_variation_data?.name || ""));
+    const variationsToShow = hasMeaningfulVariations ? variations : [variations[0]];
+    const itemModifiers = (item.item_data?.modifier_list_info || []).filter((m) => m.enabled !== false && modifierListMap[m.modifier_list_id]).map((m) => modifierListMap[m.modifier_list_id]);
+    variationsToShow.forEach((variation) => {
+      const rawVarName = variation.item_variation_data?.name || "";
+      const variationName = hasMeaningfulVariations && !isGenericName(rawVarName) ? rawVarName : void 0;
+      categoryMap[subcatId].items.push({
+        id: item.id,
+        variationId: variation.id,
+        name: item.item_data.name,
+        variationName,
+        description: item.item_data.description || "",
+        price: variation.item_variation_data?.price_money?.amount || 0,
+        imageUrl: itemImageUrl,
+        ...itemModifiers.length > 0 ? { modifiers: itemModifiers } : {}
+      });
     });
   });
-  const result = Object.entries(categoryMap).map(([id, { name, items: its }]) => ({
+  const result = Object.entries(categoryMap).map(([id, { name, imageUrl, items: its }]) => ({
     id,
     name,
+    imageUrl,
     items: its.sort((a, b) => a.name.localeCompare(b.name))
   })).sort((a, b) => {
     const oa = CATEGORY_ORDER[a.name] ?? 99;
@@ -1532,7 +1704,7 @@ function normalizeUkPhone(phone) {
   if (digits.startsWith("7") && digits.length === 10) return "+44" + digits;
   return void 0;
 }
-async function createOrderCheckoutLink(items, tableNote, customer) {
+async function createOrderCheckoutLink(items, tableNote, customer, discountPercent, discountLabel) {
   const locationId = getLocationId();
   const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   let prePopulated;
@@ -1553,6 +1725,8 @@ async function createOrderCheckoutLink(items, tableNote, customer) {
     }
   }
   const ticketName = tableNote || (customer?.name ? customer.name.split(" ")[0] : "Guest");
+  const memberDiscountUid = "MEMBER-DISCOUNT";
+  const applyDiscount = typeof discountPercent === "number" && discountPercent > 0;
   const body = {
     idempotency_key: idempotencyKey,
     order: {
@@ -1560,8 +1734,23 @@ async function createOrderCheckoutLink(items, tableNote, customer) {
       line_items: items.map((item) => ({
         catalog_object_id: item.variationId,
         quantity: String(item.quantity),
-        base_price_money: { amount: item.price, currency: "GBP" }
+        base_price_money: { amount: item.price, currency: "GBP" },
+        ...item.modifiers?.length ? {
+          modifiers: item.modifiers.map((m) => ({
+            catalog_object_id: m.catalogObjectId,
+            base_price_money: { amount: m.price, currency: "GBP" }
+          }))
+        } : {}
       })),
+      ...applyDiscount ? {
+        discounts: [{
+          uid: memberDiscountUid,
+          name: discountLabel ?? "Member Discount",
+          type: "FIXED_PERCENTAGE",
+          percentage: String(discountPercent),
+          scope: "ORDER"
+        }]
+      } : {},
       // PICKUP fulfillment is required for Square KDS to display the order.
       // KDS routing rules on each device then split food → kitchen and drinks → bar.
       fulfillments: [
@@ -1814,6 +2003,12 @@ function generateOtp() {
   const num = (bytes[0] * 65536 + bytes[1] * 256 + bytes[2]) % 1e6;
   return num.toString().padStart(6, "0");
 }
+function maskEmail(email) {
+  const [local, domain] = email.split("@");
+  if (!domain) return "***";
+  const visible = local.length > 2 ? local[0] + local[1] : local[0];
+  return `${visible}***@${domain}`;
+}
 function cleanupExpiredOtps() {
   const now = Date.now();
   for (const [key, val] of loyaltyOtps) {
@@ -1860,7 +2055,7 @@ async function sendEmailViaSMTP(to, subject, html) {
       tls: { rejectUnauthorized: false }
     });
     await transporter.sendMail({ from: `"The 147" <${user}>`, to, subject, html });
-    console.log(`[EMAIL SMTP] Sent to ${to}`);
+    console.log(`[EMAIL SMTP] Sent to ${maskEmail(to)}`);
     return true;
   } catch (err) {
     console.error("[EMAIL SMTP] Error:", err);
@@ -1883,7 +2078,7 @@ async function sendOtpEmail(email, code) {
         body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: email, subject, html })
       });
       if (response.ok) {
-        console.log(`[LOYALTY OTP] Email sent via Resend to ${email}`);
+        console.log(`[LOYALTY OTP] Email sent via Resend to ${maskEmail(email)}`);
         return true;
       }
       const errorText = await response.text();
@@ -1892,7 +2087,7 @@ async function sendOtpEmail(email, code) {
       console.warn("[LOYALTY OTP] Resend exception:", err);
     }
   }
-  console.warn(`[LOYALTY OTP] All email methods failed. Manual code for ${email}: ${code}`);
+  console.warn(`[LOYALTY OTP] All email methods failed for ${maskEmail(email)} \u2014 OTP not delivered`);
   return false;
 }
 async function sendDepositLinkEmail(booking) {
@@ -1930,7 +2125,7 @@ async function sendDepositLinkEmail(booking) {
   </div>`;
   const smtpSent = await sendEmailViaSMTP(booking.customerEmail, subject, html);
   if (smtpSent) {
-    console.log(`[BOOKING] Deposit link email sent via SMTP to ${booking.customerEmail} for booking #${booking.id}`);
+    console.log(`[BOOKING] Deposit link email sent via SMTP to ${maskEmail(booking.customerEmail)} for booking #${booking.id}`);
     return true;
   }
   const resendKey = process.env.RESEND_API_KEY;
@@ -1980,7 +2175,7 @@ async function sendMembershipPaymentLinkEmail(opts) {
   </div>`;
   const smtpSent = await sendEmailViaSMTP(opts.customerEmail, subject, html);
   if (smtpSent) {
-    console.log(`[MEMBERSHIP] Payment link email sent via SMTP to ${opts.customerEmail}`);
+    console.log(`[MEMBERSHIP] Payment link email sent via SMTP to ${maskEmail(opts.customerEmail)}`);
     return true;
   }
   const resendKey = process.env.RESEND_API_KEY;
@@ -1994,13 +2189,13 @@ async function sendMembershipPaymentLinkEmail(opts) {
         body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: opts.customerEmail, subject, html })
       });
       if (response.ok) {
-        console.log(`[MEMBERSHIP] Payment link email sent via Resend to ${opts.customerEmail}`);
+        console.log(`[MEMBERSHIP] Payment link email sent via Resend to ${maskEmail(opts.customerEmail)}`);
         return true;
       }
     } catch (_) {
     }
   }
-  console.warn(`[MEMBERSHIP] Payment link email failed for ${opts.customerEmail}`);
+  console.warn(`[MEMBERSHIP] Payment link email failed for ${maskEmail(opts.customerEmail)}`);
   return false;
 }
 async function sendBookingConfirmationEmail(booking) {
@@ -2051,7 +2246,7 @@ async function sendBookingConfirmationEmail(booking) {
   const subject = `Booking Confirmed - ${tableDisplay} on ${dateFormatted}`;
   const smtpSent = await sendEmailViaSMTP(booking.customerEmail, subject, html);
   if (smtpSent) {
-    console.log(`[BOOKING] Confirmation email sent via SMTP to ${booking.customerEmail} for booking #${booking.id}`);
+    console.log(`[BOOKING] Confirmation email sent via SMTP to ${maskEmail(booking.customerEmail)} for booking #${booking.id}`);
     return true;
   }
   if (resendKey) {
@@ -2064,7 +2259,7 @@ async function sendBookingConfirmationEmail(booking) {
         body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: booking.customerEmail, subject, html })
       });
       if (response.ok) {
-        console.log(`[BOOKING] Confirmation email sent via Resend to ${booking.customerEmail} for booking #${booking.id}`);
+        console.log(`[BOOKING] Confirmation email sent via Resend to ${maskEmail(booking.customerEmail)} for booking #${booking.id}`);
         return true;
       }
       console.warn("[BOOKING] Resend also failed:", await response.text());
@@ -2072,7 +2267,118 @@ async function sendBookingConfirmationEmail(booking) {
       console.warn("[BOOKING] Resend exception:", err);
     }
   }
-  console.warn(`[BOOKING] Confirmation email could not be sent for booking #${booking.id} to ${booking.customerEmail}`);
+  console.warn(`[BOOKING] Confirmation email could not be sent for booking #${booking.id} to ${maskEmail(booking.customerEmail)}`);
+  return false;
+}
+async function sendBookingCancellationEmail(booking) {
+  const tableLabels = { snooker: "Snooker Table", pool: "Pool Table", dining: "Dining Table" };
+  const tableLabel = tableLabels[booking.tableType] ?? booking.tableType;
+  const tableNum = booking.tableNumber ? ` #${booking.tableNumber}` : "";
+  const [dy, dm, dd] = booking.date.split("-").map(Number);
+  const dateObj = new Date(dy, dm - 1, dd);
+  const dateStr = dateObj.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const [sh, sm] = booking.startTime.split(":").map(Number);
+  const endMins = sh * 60 + sm + booking.duration * 60;
+  const endTime = `${Math.floor(endMins / 60).toString().padStart(2, "0")}:${(endMins % 60).toString().padStart(2, "0")}`;
+  const subject = `Booking Cancelled \u2013 The 147`;
+  const html = `
+  <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#f9f9f9;padding:32px;border-radius:12px">
+    <h2 style="color:#1a1a2e;margin-bottom:4px">Booking Cancelled</h2>
+    <p style="color:#555;margin-top:0">Hi ${booking.customerName}, your booking has been cancelled.</p>
+    <div style="background:#fff;border-radius:8px;padding:20px;margin:20px 0;border-left:4px solid #DC2626">
+      <p style="margin:0 0 8px 0"><strong>${tableLabel}${tableNum}</strong></p>
+      <p style="margin:0 0 4px 0;color:#555">${dateStr}</p>
+      <p style="margin:0;color:#555">${booking.startTime} \u2013 ${endTime} (${booking.duration} hour${booking.duration > 1 ? "s" : ""})</p>
+    </div>
+    <p style="color:#555;font-size:13px">If you'd like to make a new booking, you can do so through the app at any time.</p>
+    <p style="color:#888;font-size:12px;margin-top:24px">The 147 Bradford \xB7 Snooker &amp; Pool Club</p>
+  </div>`;
+  const smtpSent = await sendEmailViaSMTP(booking.customerEmail, subject, html);
+  if (smtpSent) return true;
+  const resendKey = process.env.RESEND_API_KEY;
+  if (resendKey) {
+    try {
+      const fromName = "The 147 Bradford";
+      const fromEmail = process.env.RESEND_FROM_EMAIL || "bookings@the147bradford.com";
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+        body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: booking.customerEmail, subject, html })
+      });
+      if (response.ok) return true;
+    } catch (_) {
+    }
+  }
+  return false;
+}
+async function sendBookingRescheduleEmail(booking) {
+  const tableLabels = {
+    snooker: "Snooker Table",
+    pool: "Pool Table",
+    "american-pool": "American Pool Table",
+    darts: "Darts Lane",
+    shuffleboard: "Shuffleboard",
+    dining: "Dining Table"
+  };
+  const tableLabel = tableLabels[booking.tableType] ?? booking.tableType;
+  const tableNum = booking.tableNumber ? ` #${booking.tableNumber}` : "";
+  const tableDisplay = `${tableLabel}${tableNum}`;
+  const [dy, dm, dd] = booking.date.split("-").map(Number);
+  const dateObj = new Date(dy, dm - 1, dd);
+  const dateStr = dateObj.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const [sh, sm] = booking.startTime.split(":").map(Number);
+  const endMins = sh * 60 + sm + booking.duration * 60;
+  const endTime = `${Math.floor(endMins / 60).toString().padStart(2, "0")}:${(endMins % 60).toString().padStart(2, "0")}`;
+  const durationLabel = booking.duration === 1 ? "1 hour" : `${booking.duration} hours`;
+  const bookingRef = `147-${booking.id.toString().padStart(5, "0")}`;
+  const subject = `Booking Rescheduled \u2013 ${tableDisplay} on ${dateStr}`;
+  const html = `
+  <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#f9f9f9;padding:32px;border-radius:12px">
+    <div style="text-align:center;margin-bottom:24px">
+      <h1 style="color:#0A1628;font-size:24px;margin:0">The 147</h1>
+      <p style="color:#6b7280;font-size:13px;margin:4px 0 0">Snooker, Bar &amp; Restaurant</p>
+    </div>
+    <div style="background:#dbeafe;border-radius:12px;padding:16px;text-align:center;margin-bottom:24px">
+      <span style="font-size:28px">&#128197;</span>
+      <h2 style="color:#0047AB;font-size:18px;margin:8px 0 0">Booking Rescheduled</h2>
+    </div>
+    <p style="color:#374151;font-size:15px">Hi ${escHtml(booking.customerName)},</p>
+    <p style="color:#374151;font-size:15px">Your booking at The 147 has been rescheduled. Here are your updated details:</p>
+    <div style="background:#fff;border-radius:8px;padding:20px;margin:20px 0;border-left:4px solid #0047AB">
+      <table style="width:100%;border-collapse:collapse">
+        <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;font-weight:600">Booking Ref</td><td style="padding:8px 0;color:#0047AB;font-size:15px;font-weight:700;text-align:right">${escHtml(bookingRef)}</td></tr>
+        <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;font-weight:600">Table</td><td style="padding:8px 0;color:#0A1628;font-size:14px;font-weight:600;text-align:right">${escHtml(tableDisplay)}</td></tr>
+        <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;font-weight:600">New Date</td><td style="padding:8px 0;color:#0A1628;font-size:14px;font-weight:600;text-align:right">${escHtml(dateStr)}</td></tr>
+        <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;font-weight:600">New Time</td><td style="padding:8px 0;color:#0A1628;font-size:14px;font-weight:600;text-align:right">${escHtml(booking.startTime)} \u2013 ${escHtml(endTime)} (${escHtml(durationLabel)})</td></tr>
+      </table>
+    </div>
+    <p style="color:#374151;font-size:14px">Please arrive 5 minutes before your slot. If you need to cancel or change your booking again, you can do so through the app.</p>
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
+    <p style="color:#9ca3af;font-size:12px;text-align:center">The 147 &mdash; Snooker, Bar &amp; Restaurant<br/>www.the147.co.uk</p>
+  </div>`;
+  const smtpSent = await sendEmailViaSMTP(booking.customerEmail, subject, html);
+  if (smtpSent) {
+    console.log(`[BOOKING] Reschedule email sent via SMTP to ${maskEmail(booking.customerEmail)} for booking #${booking.id}`);
+    return true;
+  }
+  const resendKey = process.env.RESEND_API_KEY;
+  if (resendKey) {
+    try {
+      const fromName = process.env.RESEND_FROM_NAME || "The 147";
+      const fromEmail = process.env.RESEND_FROM_EMAIL || "bookings@the147bradford.com";
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+        body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: booking.customerEmail, subject, html })
+      });
+      if (response.ok) {
+        console.log(`[BOOKING] Reschedule email sent via Resend to ${maskEmail(booking.customerEmail)} for booking #${booking.id}`);
+        return true;
+      }
+    } catch (_) {
+    }
+  }
+  console.warn(`[BOOKING] Reschedule email could not be sent for booking #${booking.id} to ${maskEmail(booking.customerEmail)}`);
   return false;
 }
 function getClientIp(req) {
@@ -2983,17 +3289,18 @@ async function registerRoutes(app2) {
     res.status(201).json({ created: createdBookings.length, skipped: skippedDates.length, skippedDates, bookings: createdBookings });
   });
   app2.get("/api/bookings/availability", async (req, res) => {
-    const { date, tableType, tableNumber } = req.query;
+    const { date, tableType, tableNumber, excludeId } = req.query;
     if (!date || !tableType) {
       return res.status(400).json({ message: "date and tableType are required" });
     }
     const POOL_TABLE_COUNT = 6;
     const DINING_TABLE_COUNT = 25;
+    const excludeBookingId = excludeId ? parseInt(String(excludeId)) : void 0;
     if (String(tableType) === "dining") {
-      const bookedSlots2 = await storage.getBookedSlots(String(date), "dining");
+      const bookedSlots2 = await storage.getBookedSlots(String(date), "dining", void 0, excludeBookingId);
       return res.json({ slots: bookedSlots2, totalTables: DINING_TABLE_COUNT });
     }
-    const bookedSlots = await storage.getBookedSlots(String(date), String(tableType), tableNumber ? String(tableNumber) : void 0);
+    const bookedSlots = await storage.getBookedSlots(String(date), String(tableType), tableNumber ? String(tableNumber) : void 0, excludeBookingId);
     res.json({ slots: bookedSlots, totalTables: tableNumber ? 1 : POOL_TABLE_COUNT });
   });
   app2.get("/api/staff-notices", staffAuth, async (_req, res) => {
@@ -3318,7 +3625,7 @@ async function registerRoutes(app2) {
           const pending = byEmail.filter((b) => b.status === "pending_deposit");
           if (pending.length > 0) {
             booking = pending.sort((a, b) => b.id - a.id)[0];
-            console.log(`[WEBHOOK] Matched booking #${booking.id} by email: ${buyerEmail}`);
+            console.log(`[WEBHOOK] Matched booking #${booking.id} by email: ${maskEmail(buyerEmail)}`);
           }
         }
       }
@@ -3597,25 +3904,78 @@ async function registerRoutes(app2) {
       retentionPeriodDays: 365
     });
   });
+  function isAvailableNow(rules, targetId) {
+    const activeRules = rules.filter((r) => r.targetId === targetId && r.enabled);
+    if (activeRules.length === 0) return true;
+    const now = /* @__PURE__ */ new Date();
+    const dayOfWeek = now.getDay();
+    const hhmm = now.toTimeString().slice(0, 5);
+    const dateStr = now.toISOString().slice(0, 10);
+    return activeRules.some((rule) => {
+      if (rule.startDate && dateStr < rule.startDate) return false;
+      if (rule.endDate && dateStr > rule.endDate) return false;
+      if (rule.daysOfWeek) {
+        const days = JSON.parse(rule.daysOfWeek);
+        if (!days.includes(dayOfWeek)) return false;
+      }
+      if (rule.startTime && hhmm < rule.startTime) return false;
+      if (rule.endTime && hhmm > rule.endTime) return false;
+      return true;
+    });
+  }
   app2.get("/api/menu", async (_req, res) => {
     try {
-      const [categories, categoryOverrides, itemOverrides] = await Promise.all([
+      const [categories, categoryOverrides, itemOverrides, catSettingsArr, availRules] = await Promise.all([
         getMenuFromSquare(),
         storage.getMenuCategoryOverrides(),
-        storage.getMenuItemOverrides()
+        storage.getMenuItemOverrides(),
+        storage.getCategorySettings(),
+        storage.getAvailabilityRules()
       ]);
       const hiddenCategoryIds = new Set(categoryOverrides.filter((c) => c.hidden).map((c) => c.categoryId));
       const itemOverrideMap = new Map(itemOverrides.map((o) => [o.variationId, o]));
-      const filtered = categories.filter((cat) => !hiddenCategoryIds.has(cat.id)).map((cat) => ({
-        ...cat,
-        items: cat.items.filter((item) => {
+      const catSettingsMap = new Map(catSettingsArr.map((s) => [s.categoryId, s]));
+      const mergedMap = /* @__PURE__ */ new Map();
+      for (const cat of categories) {
+        if (hiddenCategoryIds.has(cat.id)) continue;
+        if (!isAvailableNow(availRules.filter((r) => r.targetType === "category"), cat.id)) continue;
+        const settings = catSettingsMap.get(cat.id);
+        const targetId = settings?.mergedIntoId ?? cat.id;
+        const displayName = settings?.displayName ?? cat.name;
+        const displayOrder = settings?.displayOrder ?? 99;
+        if (!mergedMap.has(targetId)) {
+          const targetSettings = catSettingsMap.get(targetId);
+          const targetCat = categories.find((c) => c.id === targetId);
+          mergedMap.set(targetId, {
+            id: targetId,
+            name: targetSettings?.displayName ?? targetCat?.name ?? displayName,
+            imageUrl: targetCat?.imageUrl ?? cat.imageUrl,
+            order: targetSettings?.displayOrder ?? targetCat ? catSettingsMap.get(targetId)?.displayOrder ?? 99 : displayOrder,
+            items: []
+          });
+        }
+        const availableItems = cat.items.filter((item) => {
           const override = itemOverrideMap.get(item.variationId);
-          return !override?.hidden;
+          if (override?.hidden) return false;
+          if (!isAvailableNow(availRules.filter((r) => r.targetType === "item"), item.id)) return false;
+          return true;
         }).map((item) => {
           const override = itemOverrideMap.get(item.variationId);
-          return override?.soldOut ? { ...item, soldOut: true } : item;
-        })
-      })).filter((cat) => cat.items.length > 0);
+          const base = {
+            id: item.id,
+            variationId: item.variationId,
+            name: item.name,
+            variationName: item.variationName,
+            description: item.description,
+            price: item.price,
+            imageUrl: item.imageUrl,
+            ...item.modifiers && item.modifiers.length > 0 ? { modifiers: item.modifiers } : {}
+          };
+          return override?.soldOut ? { ...base, soldOut: true } : base;
+        });
+        mergedMap.get(targetId).items.push(...availableItems);
+      }
+      const filtered = Array.from(mergedMap.values()).filter((cat) => cat.items.length > 0).sort((a, b) => a.order !== b.order ? a.order - b.order : a.name.localeCompare(b.name)).map(({ order, ...rest }) => rest);
       res.json(filtered);
     } catch (err) {
       console.error("[MENU] Failed to fetch menu:", err.message);
@@ -3640,6 +4000,7 @@ async function registerRoutes(app2) {
           variationId: item.variationId,
           itemId: item.id,
           name: item.name,
+          variationName: item.variationName,
           price: item.price,
           soldOut: itemOverrideMap.get(item.variationId)?.soldOut ?? false,
           hidden: itemOverrideMap.get(item.variationId)?.hidden ?? false
@@ -3695,13 +4056,300 @@ async function registerRoutes(app2) {
       res.status(500).json({ message: "Failed to update item" });
     }
   });
+  app2.get("/api/staff/menu/category-settings", staffAuth, managerAuth, async (req, res) => {
+    try {
+      const [categories, settings] = await Promise.all([
+        getMenuFromSquare(),
+        storage.getCategorySettings()
+      ]);
+      const settingsMap = new Map(settings.map((s) => [s.categoryId, s]));
+      const result = categories.map((cat) => ({
+        id: cat.id,
+        name: cat.name,
+        imageUrl: cat.imageUrl,
+        displayName: settingsMap.get(cat.id)?.displayName ?? null,
+        displayOrder: settingsMap.get(cat.id)?.displayOrder ?? 99,
+        mergedIntoId: settingsMap.get(cat.id)?.mergedIntoId ?? null
+      }));
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to load category settings" });
+    }
+  });
+  app2.put("/api/staff/menu/category-settings", staffAuth, managerAuth, async (req, res) => {
+    try {
+      const { settings } = req.body;
+      if (!Array.isArray(settings)) return res.status(400).json({ message: "settings must be an array" });
+      const updatedBy = req.staffUser?.username ?? "staff";
+      await storage.upsertCategorySettings(settings.map((s) => ({ ...s, updatedBy })));
+      invalidateMenuCache();
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[STAFF MENU] Category settings error:", err.message);
+      res.status(500).json({ message: "Failed to save category settings" });
+    }
+  });
+  app2.get("/api/staff/menu/availability", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      const rules = await storage.getAvailabilityRules();
+      res.json(rules);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to load availability rules" });
+    }
+  });
+  app2.post("/api/staff/menu/availability", staffAuth, managerAuth, async (req, res) => {
+    try {
+      const { targetType, targetId, targetName, daysOfWeek, startTime, endTime, startDate, endDate, note } = req.body;
+      if (!targetType || !targetId || !targetName) return res.status(400).json({ message: "targetType, targetId, and targetName required" });
+      const createdBy = req.staffUser?.username ?? "staff";
+      const rule = await storage.createAvailabilityRule({
+        targetType,
+        targetId,
+        targetName,
+        daysOfWeek: daysOfWeek ? JSON.stringify(daysOfWeek) : null,
+        startTime: startTime || null,
+        endTime: endTime || null,
+        startDate: startDate || null,
+        endDate: endDate || null,
+        note: note || null,
+        enabled: true,
+        createdBy
+      });
+      invalidateMenuCache();
+      res.json(rule);
+    } catch (err) {
+      console.error("[AVAILABILITY] Create error:", err.message);
+      res.status(500).json({ message: "Failed to create rule" });
+    }
+  });
+  app2.put("/api/staff/menu/availability/:id", staffAuth, managerAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { daysOfWeek, startTime, endTime, startDate, endDate, note, enabled } = req.body;
+      const updated = await storage.updateAvailabilityRule(id, {
+        ...daysOfWeek !== void 0 ? { daysOfWeek: daysOfWeek ? JSON.stringify(daysOfWeek) : null } : {},
+        ...startTime !== void 0 ? { startTime: startTime || null } : {},
+        ...endTime !== void 0 ? { endTime: endTime || null } : {},
+        ...startDate !== void 0 ? { startDate: startDate || null } : {},
+        ...endDate !== void 0 ? { endDate: endDate || null } : {},
+        ...note !== void 0 ? { note: note || null } : {},
+        ...enabled !== void 0 ? { enabled } : {}
+      });
+      if (!updated) return res.status(404).json({ message: "Rule not found" });
+      invalidateMenuCache();
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update rule" });
+    }
+  });
+  app2.delete("/api/staff/menu/availability/:id", staffAuth, managerAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const ok = await storage.deleteAvailabilityRule(id);
+      if (!ok) return res.status(404).json({ message: "Rule not found" });
+      invalidateMenuCache();
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete rule" });
+    }
+  });
+  function getTodayStr() {
+    return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  }
+  const DEFAULT_SCHEDULE = { days: [4, 5, 6, 0], startTime: "12:00", endTime: "20:00" };
+  const DAY_NAMES_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const DAY_NAMES_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  async function getOrderingSchedule() {
+    try {
+      const raw = await storage.getSetting("ordering_schedule");
+      if (raw) return { ...DEFAULT_SCHEDULE, ...JSON.parse(raw) };
+    } catch {
+    }
+    return DEFAULT_SCHEDULE;
+  }
+  async function getOrderingOverrides() {
+    try {
+      const raw = await storage.getSetting("ordering_overrides");
+      if (raw) return JSON.parse(raw);
+    } catch {
+    }
+    return [];
+  }
+  function scheduleOpenMessage(schedule) {
+    const dayNames = schedule.days.sort((a, b) => a - b).map((d) => DAY_NAMES_SHORT[d]);
+    const start = schedule.startTime.replace(":", "").length === 4 ? schedule.startTime : schedule.startTime;
+    const fmt = (t) => {
+      const [h, m] = t.split(":").map(Number);
+      if (m === 0) return h < 12 ? `${h}am` : h === 12 ? "12pm" : `${h - 12}pm`;
+      return h < 12 ? `${h}:${String(m).padStart(2, "0")}am` : `${h === 12 ? 12 : h - 12}:${String(m).padStart(2, "0")}pm`;
+    };
+    return `${dayNames.join(", ")} ${fmt(schedule.startTime)}\u2013${fmt(schedule.endTime)}`;
+  }
+  async function getOrderingStatus() {
+    const today = getTodayStr();
+    const now = /* @__PURE__ */ new Date();
+    const hhmm = now.toTimeString().slice(0, 5);
+    const dow = now.getDay();
+    const manualEnabled = await storage.getSetting("ordering_enabled");
+    if (manualEnabled === "false") {
+      const disabledDate = await storage.getSetting("ordering_disabled_date");
+      if (!disabledDate || disabledDate === today) {
+        return { enabled: false, reason: "Online ordering has been temporarily closed by staff.", manualOverride: true };
+      }
+      await storage.setSetting("ordering_enabled", "true");
+    }
+    const schedule = await getOrderingSchedule();
+    const overrides = await getOrderingOverrides();
+    const todayOverride = overrides.find((o) => o.date === today);
+    if (todayOverride) {
+      if (todayOverride.closed) {
+        return { enabled: false, reason: `Ordering is closed today${todayOverride.note ? ` (${todayOverride.note})` : ""}.`, nextOpen: scheduleOpenMessage(schedule) };
+      }
+      const oStart = todayOverride.startTime ?? schedule.startTime;
+      const oEnd = todayOverride.endTime ?? schedule.endTime;
+      if (hhmm >= oStart && hhmm < oEnd) {
+        return { enabled: true, reason: `Ordering open until ${oEnd}`, closesAt: oEnd };
+      }
+      if (hhmm < oStart) {
+        return { enabled: false, reason: `Ordering opens today at ${oStart}${todayOverride.note ? ` (${todayOverride.note})` : ""}`, nextOpen: `Today from ${oStart}` };
+      }
+    }
+    const isScheduledDay = schedule.days.includes(dow);
+    if (!isScheduledDay) {
+      let daysAhead = 1;
+      let nextDow = (dow + daysAhead) % 7;
+      while (!schedule.days.includes(nextDow) && daysAhead < 8) {
+        daysAhead++;
+        nextDow = (dow + daysAhead) % 7;
+      }
+      const nextName = daysAhead === 1 ? "Tomorrow" : DAY_NAMES_FULL[nextDow];
+      return { enabled: false, reason: `Food ordering is available ${scheduleOpenMessage(schedule)}.`, nextOpen: `${nextName} from ${schedule.startTime}` };
+    }
+    if (hhmm < schedule.startTime) {
+      return { enabled: false, reason: `Food ordering opens at ${schedule.startTime} today.`, nextOpen: `Today from ${schedule.startTime}` };
+    }
+    if (hhmm >= schedule.endTime) {
+      let daysAhead = 1;
+      let nextDow = (dow + daysAhead) % 7;
+      while (!schedule.days.includes(nextDow) && daysAhead < 8) {
+        daysAhead++;
+        nextDow = (dow + daysAhead) % 7;
+      }
+      const nextName = daysAhead === 1 ? "Tomorrow" : DAY_NAMES_FULL[nextDow];
+      return { enabled: false, reason: `Food ordering closes at ${schedule.endTime}. See you ${nextName.toLowerCase()}!`, nextOpen: `${nextName} from ${schedule.startTime}` };
+    }
+    return { enabled: true, reason: `Ordering open until ${schedule.endTime}`, closesAt: schedule.endTime };
+  }
+  async function getOrderingEnabled() {
+    const status = await getOrderingStatus();
+    return status.enabled;
+  }
+  app2.get("/api/ordering-status", async (_req, res) => {
+    try {
+      const status = await getOrderingStatus();
+      res.json(status);
+    } catch {
+      res.json({ enabled: true, reason: "Ordering available" });
+    }
+  });
+  app2.put("/api/staff/ordering-status", staffAuth, async (req, res) => {
+    const { enabled } = req.body;
+    if (typeof enabled !== "boolean") {
+      return res.status(400).json({ message: "enabled must be boolean" });
+    }
+    await storage.setSetting("ordering_enabled", String(enabled));
+    if (!enabled) {
+      await storage.setSetting("ordering_disabled_date", getTodayStr());
+    } else {
+      await storage.setSetting("ordering_disabled_date", "");
+    }
+    const who = req.staff?.username || req.staff?.name || "staff";
+    console.log(`[ORDERING] Online ordering ${enabled ? "enabled" : "disabled"} by ${who}`);
+    const status = await getOrderingStatus();
+    res.json(status);
+  });
+  app2.get("/api/staff/ordering-schedule", staffAuth, async (_req, res) => {
+    const schedule = await getOrderingSchedule();
+    res.json(schedule);
+  });
+  app2.put("/api/staff/ordering-schedule", staffAuth, async (req, res) => {
+    const { days, startTime, endTime } = req.body;
+    if (!Array.isArray(days) || !startTime || !endTime) {
+      return res.status(400).json({ message: "days, startTime and endTime required" });
+    }
+    const schedule = { days, startTime, endTime };
+    await storage.setSetting("ordering_schedule", JSON.stringify(schedule));
+    const who = req.staff?.username || req.staff?.name || "staff";
+    console.log(`[ORDERING] Schedule updated by ${who}: ${JSON.stringify(schedule)}`);
+    res.json(schedule);
+  });
+  app2.get("/api/staff/ordering-overrides", staffAuth, async (_req, res) => {
+    const overrides = await getOrderingOverrides();
+    res.json(overrides);
+  });
+  app2.post("/api/staff/ordering-overrides", staffAuth, async (req, res) => {
+    const { date, closed, startTime, endTime, note } = req.body;
+    if (!date) return res.status(400).json({ message: "date required" });
+    const overrides = await getOrderingOverrides();
+    const idx = overrides.findIndex((o) => o.date === date);
+    const entry = { date, closed: !!closed, startTime, endTime, note };
+    if (idx >= 0) overrides[idx] = entry;
+    else overrides.push(entry);
+    overrides.sort((a, b) => a.date.localeCompare(b.date));
+    await storage.setSetting("ordering_overrides", JSON.stringify(overrides));
+    res.json(entry);
+  });
+  app2.delete("/api/staff/ordering-overrides/:date", staffAuth, async (req, res) => {
+    const { date } = req.params;
+    const overrides = await getOrderingOverrides();
+    const filtered = overrides.filter((o) => o.date !== date);
+    await storage.setSetting("ordering_overrides", JSON.stringify(filtered));
+    res.json({ success: true });
+  });
   app2.post("/api/orders/checkout", async (req, res) => {
     const { items, tableNote, customer } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "Cart is empty" });
     }
     try {
-      const { url, linkId, squareOrderId } = await createOrderCheckoutLink(items, tableNote, customer);
+      const orderingEnabled = await getOrderingEnabled();
+      if (!orderingEnabled) {
+        return res.status(503).json({ message: "Online ordering is currently unavailable. Please order at the bar." });
+      }
+      let discountPercent;
+      let discountLabel;
+      if (customer?.email) {
+        try {
+          const cust = await storage.getCustomerByEmail(customer.email);
+          if (cust) {
+            const sub = await storage.getMembershipSubscriptionByCustomer(cust.id);
+            const isActive = sub?.status === "active";
+            const notCancelled = !sub?.cancelledAt;
+            const periodValid = !sub?.currentPeriodEnd || new Date(sub.currentPeriodEnd) >= /* @__PURE__ */ new Date();
+            const planActive = sub?.plan !== null;
+            const hasDiscount = (sub?.plan?.foodDrinkDiscount ?? 0) > 0;
+            if (sub && isActive && notCancelled && periodValid && planActive && hasDiscount) {
+              discountPercent = sub.plan.foodDrinkDiscount;
+              discountLabel = `${sub.plan.name} Member Discount`;
+            } else if (sub) {
+              console.log(
+                `[ORDER] Discount withheld for ${customer.email}: status=${sub.status}, cancelledAt=${sub.cancelledAt}, periodEnd=${sub.currentPeriodEnd}, planActive=${planActive}, discount=${sub.plan?.foodDrinkDiscount}`
+              );
+            }
+          }
+        } catch (err) {
+          console.warn("[ORDER] Could not look up membership discount:", err.message);
+        }
+      }
+      const { url, linkId, squareOrderId } = await createOrderCheckoutLink(
+        items,
+        tableNote,
+        customer,
+        discountPercent,
+        discountLabel
+      );
+      const rawTotal = items.reduce((sum, i) => sum + Number(i.price) * Number(i.quantity), 0);
+      const discountedTotal = discountPercent ? Math.round(rawTotal * (1 - discountPercent / 100)) : rawTotal;
       storage.createAppOrder({
         squareLinkId: linkId || void 0,
         squareOrderId: squareOrderId || void 0,
@@ -3709,11 +4357,18 @@ async function registerRoutes(app2) {
         customerName: customer?.name || void 0,
         customerEmail: customer?.email || void 0,
         itemsJson: JSON.stringify(
-          items.map((i) => ({ name: i.name ?? "Item", quantity: i.quantity, price: i.price }))
+          items.map((i) => ({
+            name: i.name ?? "Item",
+            quantity: i.quantity,
+            price: i.price,
+            ...i.modifiers?.length ? { modifiers: i.modifiers.map((m) => m.name) } : {}
+          }))
         ),
-        totalPence: items.reduce((sum, i) => sum + Number(i.price) * Number(i.quantity), 0)
+        totalPence: discountedTotal,
+        discountPercent: discountPercent ?? void 0,
+        discountLabel: discountLabel ?? void 0
       }).catch((err) => console.error("[ORDER] Failed to save order record:", err.message));
-      res.json({ url });
+      res.json({ url, discountPercent: discountPercent ?? null, discountLabel: discountLabel ?? null });
     } catch (err) {
       console.error("[ORDER] Checkout failed:", err.message);
       res.status(500).json({ message: err.message });
@@ -4558,6 +5213,82 @@ async function registerRoutes(app2) {
       return res.status(400).json({ message: "Cannot cancel past bookings" });
     }
     const updated = await storage.updateBookingStatus(bookingId, "cancelled");
+    sendBookingCancellationEmail({
+      customerName: booking.customerName,
+      customerEmail: booking.customerEmail,
+      date: booking.date,
+      startTime: booking.startTime,
+      duration: booking.duration,
+      tableType: booking.tableType,
+      tableNumber: booking.tableNumber || void 0,
+      id: bookingId
+    }).catch(() => {
+    });
+    res.json({ success: true, booking: updated });
+  });
+  app2.patch("/api/customers/bookings/:id/reschedule", customerAuth, async (req, res) => {
+    const bookingId = parseInt(req.params.id);
+    if (isNaN(bookingId)) {
+      return res.status(400).json({ message: "Invalid booking ID" });
+    }
+    const booking = await storage.getBooking(bookingId);
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+    const customerEmail = req.customerEmail;
+    if (booking.customerEmail.toLowerCase() !== customerEmail.toLowerCase()) {
+      return res.status(403).json({ message: "Not your booking" });
+    }
+    if (booking.status === "cancelled") {
+      return res.status(400).json({ message: "Cannot reschedule a cancelled booking" });
+    }
+    const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+    if (booking.date < today) {
+      return res.status(400).json({ message: "Cannot reschedule past bookings" });
+    }
+    const { date, startTime, duration } = req.body;
+    if (!date || !startTime || !duration) {
+      return res.status(400).json({ message: "date, startTime, and duration are required" });
+    }
+    const dur = parseInt(String(duration));
+    if (isNaN(dur) || dur < 1) {
+      return res.status(400).json({ message: "Invalid duration" });
+    }
+    const DINING_TABLE_COUNT = 25;
+    const reqStart = parseInt(startTime.toString().replace(":", ""));
+    const reqEnd = reqStart + dur * 100;
+    const slots = await storage.getBookedSlots(date, booking.tableType, booking.tableNumber || void 0, bookingId);
+    if (booking.tableType === "dining") {
+      let count = 0;
+      for (const slot of slots) {
+        const slotStart = parseInt(slot.startTime.replace(":", ""));
+        const slotEnd = slotStart + slot.duration * 100;
+        if (reqStart < slotEnd && reqEnd > slotStart) count++;
+      }
+      if (count >= DINING_TABLE_COUNT) {
+        return res.status(409).json({ message: "That time slot is fully booked" });
+      }
+    } else {
+      for (const slot of slots) {
+        const slotStart = parseInt(slot.startTime.replace(":", ""));
+        const slotEnd = slotStart + slot.duration * 100;
+        if (reqStart < slotEnd && reqEnd > slotStart) {
+          return res.status(409).json({ message: "That time slot is no longer available" });
+        }
+      }
+    }
+    const updated = await storage.updateBooking(bookingId, { date, startTime, duration: dur });
+    sendBookingRescheduleEmail({
+      customerName: booking.customerName,
+      customerEmail: booking.customerEmail,
+      date,
+      startTime,
+      duration: dur,
+      tableType: booking.tableType,
+      tableNumber: booking.tableNumber || void 0,
+      id: bookingId
+    }).catch(() => {
+    });
     res.json({ success: true, booking: updated });
   });
   const membershipPageHeaders = (res) => {
@@ -4943,6 +5674,34 @@ Phone: ${phone}` : ""}`,
   app2.get("/api/staff/membership/plans", staffAuth, async (_req, res) => {
     const plans = await storage.getMembershipPlans();
     res.json(plans);
+  });
+  app2.post("/api/staff/membership/plans", staffAuth, managerAuth, async (req, res) => {
+    const { name, tier, priceMonthly, hoursIncluded, hoursUnit, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, active, sortOrder, color, description } = req.body ?? {};
+    if (!name?.trim()) return res.status(400).json({ message: "Plan name is required" });
+    if (priceMonthly == null || isNaN(Number(priceMonthly))) return res.status(400).json({ message: "Monthly price is required" });
+    const resolvedTier = (tier?.trim() || name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")) + "_" + Date.now();
+    try {
+      const plan = await storage.createMembershipPlan({
+        name: name.trim(),
+        tier: resolvedTier,
+        priceMonthly: Number(priceMonthly),
+        hoursIncluded: hoursIncluded != null && hoursIncluded !== "" ? Number(hoursIncluded) : null,
+        hoursUnit: hoursUnit || "month",
+        foodDrinkDiscount: Number(foodDrinkDiscount) || 0,
+        priorityBooking: !!priorityBooking,
+        loyaltyMultiplier: Number(loyaltyMultiplier) || 1,
+        guestPassesMonthly: Number(guestPassesMonthly) || 0,
+        squarePlanVariationId: squarePlanVariationId?.trim() || null,
+        active: active !== false,
+        sortOrder: Number(sortOrder) || 0,
+        color: color || "#0047AB",
+        description: description?.trim() || null
+      });
+      res.json(plan);
+    } catch (err) {
+      console.error("[PLAN CREATE]", err.message);
+      res.status(500).json({ message: err.message });
+    }
   });
   app2.put("/api/staff/membership/plans/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id);
@@ -5502,6 +6261,21 @@ function scheduleDepositAutoCancel() {
   }
   setInterval(runAutoCancel, 30 * 60 * 1e3);
 }
+function scheduleOrderExpiry() {
+  async function runExpiry() {
+    try {
+      const { storage: store } = await Promise.resolve().then(() => (init_storage(), storage_exports));
+      const expired = await store.expireStaleOrders(30);
+      if (expired > 0) {
+        log(`[Orders] Expired ${expired} abandoned pending order(s) (no payment after 30 min)`);
+      }
+    } catch (e) {
+      log(`[Orders] Expiry job error: ${e.message}`);
+    }
+  }
+  runExpiry();
+  setInterval(runExpiry, 15 * 60 * 1e3);
+}
 function scheduleRetentionCleanup() {
   async function runCleanup() {
     try {
@@ -5545,6 +6319,7 @@ function scheduleRetentionCleanup() {
   scheduleRetentionCleanup();
   scheduleBookingReminders();
   scheduleDepositAutoCancel();
+  scheduleOrderExpiry();
   const port = parseInt(process.env.PORT || "5000", 10);
   server.listen(
     {
