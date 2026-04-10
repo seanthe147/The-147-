@@ -544,6 +544,7 @@ export interface Deal {
   discountType: "FIXED_PERCENTAGE" | "FIXED_AMOUNT";
   percentage?: string;
   amountPence?: number;
+  expiresOn?: string; // "YYYY-MM-DD" from Square pricing rule valid_until_date
 }
 
 const DEAL_EXCLUDE_PATTERNS = [
@@ -565,13 +566,35 @@ let dealsCache: { data: Deal[]; expiry: number } | null = null;
 export async function getSquareDeals(): Promise<Deal[]> {
   if (dealsCache && Date.now() < dealsCache.expiry) return dealsCache.data;
   try {
-    const data = await squareRequest("POST", "/v2/catalog/search", {
-      object_types: ["DISCOUNT"],
-      include_deleted_objects: false,
-    });
+    const [discountData, ruleData] = await Promise.all([
+      squareRequest("POST", "/v2/catalog/search", {
+        object_types: ["DISCOUNT"],
+        include_deleted_objects: false,
+      }),
+      squareRequest("POST", "/v2/catalog/search", {
+        object_types: ["PRICING_RULE"],
+        include_deleted_objects: false,
+      }),
+    ]);
+
+    // Build map: discount_id -> earliest valid_until_date from pricing rules
+    const expiryByDiscountId = new Map<string, string>();
+    for (const o of (ruleData.objects || []) as any[]) {
+      if (o.type !== "PRICING_RULE" || o.is_deleted) continue;
+      const pd = o.pricing_rule_data || {};
+      if (pd.discount_id && pd.valid_until_date) {
+        const existing = expiryByDiscountId.get(pd.discount_id);
+        // Keep the earliest expiry if multiple rules reference the same discount
+        if (!existing || pd.valid_until_date < existing) {
+          expiryByDiscountId.set(pd.discount_id, pd.valid_until_date);
+        }
+      }
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
     const seen = new Set<string>();
     const deals: Deal[] = [];
-    for (const o of (data.objects || []) as any[]) {
+    for (const o of (discountData.objects || []) as any[]) {
       if (o.type !== "DISCOUNT" || o.is_deleted) continue;
       const dd = o.discount_data || {};
       const name: string = (dd.name || "").trim();
@@ -580,12 +603,16 @@ export async function getSquareDeals(): Promise<Deal[]> {
       const key = name.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
+      const expiresOn = expiryByDiscountId.get(o.id);
+      // Skip deals whose expiry has already passed
+      if (expiresOn && expiresOn < today) continue;
       deals.push({
         id: o.id,
         name,
         discountType: dd.discount_type === "FIXED_AMOUNT" ? "FIXED_AMOUNT" : "FIXED_PERCENTAGE",
         percentage: dd.percentage,
         amountPence: dd.amount_money?.amount,
+        ...(expiresOn ? { expiresOn } : {}),
       });
     }
     dealsCache = { data: deals, expiry: Date.now() + 5 * 60 * 1000 };

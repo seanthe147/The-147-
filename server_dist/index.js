@@ -1569,13 +1569,31 @@ var dealsCache = null;
 async function getSquareDeals() {
   if (dealsCache && Date.now() < dealsCache.expiry) return dealsCache.data;
   try {
-    const data = await squareRequest("POST", "/v2/catalog/search", {
-      object_types: ["DISCOUNT"],
-      include_deleted_objects: false
-    });
+    const [discountData, ruleData] = await Promise.all([
+      squareRequest("POST", "/v2/catalog/search", {
+        object_types: ["DISCOUNT"],
+        include_deleted_objects: false
+      }),
+      squareRequest("POST", "/v2/catalog/search", {
+        object_types: ["PRICING_RULE"],
+        include_deleted_objects: false
+      })
+    ]);
+    const expiryByDiscountId = /* @__PURE__ */ new Map();
+    for (const o of ruleData.objects || []) {
+      if (o.type !== "PRICING_RULE" || o.is_deleted) continue;
+      const pd = o.pricing_rule_data || {};
+      if (pd.discount_id && pd.valid_until_date) {
+        const existing = expiryByDiscountId.get(pd.discount_id);
+        if (!existing || pd.valid_until_date < existing) {
+          expiryByDiscountId.set(pd.discount_id, pd.valid_until_date);
+        }
+      }
+    }
+    const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
     const seen = /* @__PURE__ */ new Set();
     const deals = [];
-    for (const o of data.objects || []) {
+    for (const o of discountData.objects || []) {
       if (o.type !== "DISCOUNT" || o.is_deleted) continue;
       const dd = o.discount_data || {};
       const name = (dd.name || "").trim();
@@ -1584,12 +1602,15 @@ async function getSquareDeals() {
       const key = name.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
+      const expiresOn = expiryByDiscountId.get(o.id);
+      if (expiresOn && expiresOn < today) continue;
       deals.push({
         id: o.id,
         name,
         discountType: dd.discount_type === "FIXED_AMOUNT" ? "FIXED_AMOUNT" : "FIXED_PERCENTAGE",
         percentage: dd.percentage,
-        amountPence: dd.amount_money?.amount
+        amountPence: dd.amount_money?.amount,
+        ...expiresOn ? { expiresOn } : {}
       });
     }
     dealsCache = { data: deals, expiry: Date.now() + 5 * 60 * 1e3 };

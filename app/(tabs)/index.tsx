@@ -196,6 +196,7 @@ interface Deal {
   discountType: "FIXED_PERCENTAGE" | "FIXED_AMOUNT";
   percentage?: string;
   amountPence?: number;
+  expiresOn?: string; // "YYYY-MM-DD"
 }
 
 function formatDealValue(deal: Deal): string {
@@ -227,10 +228,22 @@ const DealsSection = memo(function DealsSection() {
       >
         {deals.map((deal) => {
           const value = formatDealValue(deal);
+          const expiry = deal.expiresOn
+            ? (() => {
+                const [y, m, d] = deal.expiresOn.split("-").map(Number);
+                return new Date(y, m - 1, d).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+              })()
+            : null;
           return (
             <View key={deal.id} style={styles.dealCard}>
               <Text style={styles.dealName} numberOfLines={2}>{deal.name}</Text>
               {value ? <Text style={styles.dealValue}>{value}</Text> : null}
+              {expiry ? (
+                <View style={styles.dealExpiry}>
+                  <Ionicons name="time-outline" size={11} color="rgba(255,255,255,0.5)" />
+                  <Text style={styles.dealExpiryText}>Ends {expiry}</Text>
+                </View>
+              ) : null}
             </View>
           );
         })}
@@ -848,6 +861,17 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_700Bold",
     fontSize: 16,
     color: Colors.brand.gold,
+  },
+  dealExpiry: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    marginTop: 6,
+  },
+  dealExpiryText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 10,
+    color: "rgba(255,255,255,0.5)",
   },
   hoursCard: {
     flexDirection: "row",
