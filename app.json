@@ -2,7 +2,7 @@
   "expo": {
     "name": "The 147",
     "slug": "the-147",
-    "version": "2.6.1",
+    "version": "2.6.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "the147",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.the147bradford.app",
-      "buildNumber": "10",
+      "buildNumber": "11",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
@@ -50,7 +50,7 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "versionCode": 103
+      "versionCode": 104
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
