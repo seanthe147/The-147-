@@ -663,7 +663,7 @@ export default function OrderScreen() {
     staleTime: 10 * 60 * 1000,
   });
 
-  const { data: orderingStatus } = useQuery<{ enabled: boolean }>({
+  const { data: orderingStatus } = useQuery<{ enabled: boolean; reason?: string; nextOpen?: string; closesAt?: string }>({
     queryKey: ["/api/ordering-status"],
     staleTime: 30 * 1000,
     refetchInterval: 60 * 1000,
@@ -790,10 +790,17 @@ export default function OrderScreen() {
 
           {!orderingEnabled && (
             <View style={styles.orderingClosedBanner}>
-              <Ionicons name="moon-outline" size={22} color="#92400e" />
+              <Ionicons name="time-outline" size={22} color="#92400e" />
               <View style={{ flex: 1 }}>
                 <Text style={styles.orderingClosedTitle}>Ordering is currently closed</Text>
-                <Text style={styles.orderingClosedSub}>Please speak to a member of staff to place your order</Text>
+                <Text style={styles.orderingClosedSub}>
+                  {orderingStatus?.reason ?? "Please speak to a member of staff to place your order"}
+                </Text>
+                {orderingStatus?.nextOpen && (
+                  <Text style={[styles.orderingClosedSub, { marginTop: 4, fontWeight: "700" as const, color: "#78350f" }]}>
+                    Next open: {orderingStatus.nextOpen}
+                  </Text>
+                )}
               </View>
             </View>
           )}

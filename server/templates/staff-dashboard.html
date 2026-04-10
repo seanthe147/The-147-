@@ -848,6 +848,28 @@
       <!-- APP ORDERS PAGE -->
       <div class="page" id="pageOrders">
         <div class="page-body">
+
+          <!-- Ordering Hours Schedule -->
+          <div class="settings-section" style="margin-bottom:20px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+              <div class="settings-title" style="margin:0">Ordering Hours</div>
+              <button class="btn btn-secondary btn-sm" onclick="openScheduleEditor()" id="scheduleEditBtn" style="display:none">Edit Schedule</button>
+            </div>
+            <div class="settings-desc" style="margin-bottom:12px">Set the days and times when customers can place food &amp; drink orders through the app.</div>
+            <div id="scheduleDisplay" style="font-size:13px;color:var(--text-2)">Loading…</div>
+
+            <!-- Override dates -->
+            <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+                <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2)">Date Overrides</span>
+                <button class="btn btn-secondary btn-sm" onclick="openAddOverride()">+ Add Override</button>
+              </div>
+              <div id="overridesList" style="display:flex;flex-direction:column;gap:8px">
+                <span style="font-size:13px;color:var(--text-3)">No overrides set</span>
+              </div>
+            </div>
+          </div>
+
           <div class="menu-refresh-bar">
             <p style="font-size:13px;color:var(--text-2);margin:0">Orders initiated through the app. Payment is processed by Square — each row is a checkout session that was started.</p>
             <button class="btn btn-secondary btn-sm" onclick="loadOrders()" id="ordersRefreshBtn">
@@ -886,6 +908,85 @@
         </div>
       </div>
     </main>
+  </div>
+</div>
+
+<!-- SCHEDULE EDITOR MODAL -->
+<div class="overlay" id="scheduleModal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-hd">
+      <div class="modal-hd-title">Edit Ordering Hours</div>
+      <button class="modal-close" onclick="closeOverlay('scheduleModal')">&times;</button>
+    </div>
+    <div class="modal-bd">
+      <p style="font-size:13px;color:var(--text-2);margin:0 0 16px">Choose which days and hours customers can place orders through the app.</p>
+      <div class="form-group">
+        <label class="form-label">Open Days</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap" id="scheduleDayPicker">
+          <!-- populated by JS -->
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px">
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Opens at</label>
+          <input class="form-input" type="time" id="scheduleStartTime">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Closes at</label>
+          <input class="form-input" type="time" id="scheduleEndTime">
+        </div>
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn btn-primary" onclick="saveSchedule()">Save Hours</button>
+      <button class="btn btn-secondary" onclick="closeOverlay('scheduleModal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD OVERRIDE MODAL -->
+<div class="overlay" id="overrideModal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-hd">
+      <div class="modal-hd-title">Add Date Override</div>
+      <button class="modal-close" onclick="closeOverlay('overrideModal')">&times;</button>
+    </div>
+    <div class="modal-bd">
+      <p style="font-size:13px;color:var(--text-2);margin:0 0 16px">Override the default schedule for a specific date — either add an extra opening time or mark a day as closed.</p>
+      <div class="form-group">
+        <label class="form-label">Date</label>
+        <input class="form-input" type="date" id="ovDate" style="max-width:200px">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Type</label>
+        <div style="display:flex;gap:8px">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+            <input type="radio" name="ovType" value="open" id="ovTypeOpen" checked onchange="toggleOverrideType()"> Extra opening
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+            <input type="radio" name="ovType" value="closed" id="ovTypeClosed" onchange="toggleOverrideType()"> Mark as closed
+          </label>
+        </div>
+      </div>
+      <div id="ovHoursRow" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Opens at</label>
+          <input class="form-input" type="time" id="ovStart" value="12:00">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Closes at</label>
+          <input class="form-input" type="time" id="ovEnd" value="20:00">
+        </div>
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">Note (optional)</label>
+        <input class="form-input" type="text" id="ovNote" placeholder="e.g. Bank Holiday, Christmas Eve" maxlength="80">
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn btn-primary" onclick="saveOverride()">Save Override</button>
+      <button class="btn btn-secondary" onclick="closeOverlay('overrideModal')">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -1689,7 +1790,7 @@
     if(page==='availability')loadAvailability();
     if(page==='menu')loadMenuManagement();
     if(page==='banners')loadBanners();
-    if(page==='orders')loadOrders();
+    if(page==='orders'){loadOrders();loadOrderingSchedule();}
   }
   function cap(s){return s.charAt(0).toUpperCase()+s.slice(1)}
 
@@ -3614,6 +3715,152 @@
 
   window.toggleOrdering=toggleOrdering;
   loadOrderingStatus();
+
+  /* ── Ordering Schedule & Overrides ────────────────────────────────────── */
+  const SCHED_DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  let scheduleData={days:[4,5,6,0],startTime:'12:00',endTime:'20:00'};
+  let overridesData=[];
+
+  function fmtTime(t){
+    if(!t)return'';
+    const[h,m]=t.split(':').map(Number);
+    if(m===0)return h<12?`${h}am`:h===12?'12pm':`${h-12}pm`;
+    return h<12?`${h}:${String(m).padStart(2,'0')}am`:`${h===12?12:h-12}:${String(m).padStart(2,'0')}pm`;
+  }
+
+  async function loadOrderingSchedule(){
+    try{
+      const[schR,ovR]=await Promise.all([api('/api/staff/ordering-schedule'),api('/api/staff/ordering-overrides')]);
+      scheduleData=await schR.json();
+      overridesData=await ovR.json();
+      renderScheduleDisplay();
+      renderOverrides();
+      // Show edit controls for managers/owners only
+      const isManager=state.role==='manager'||state.role==='owner';
+      if(el('scheduleEditBtn'))el('scheduleEditBtn').style.display=isManager?'':'none';
+    }catch(e){console.warn('Failed to load ordering schedule',e);}
+  }
+
+  function renderScheduleDisplay(){
+    const dayNames=scheduleData.days.slice().sort((a,b)=>a-b).map(d=>SCHED_DAYS[d]).join(', ');
+    el('scheduleDisplay').innerHTML=`<strong>${dayNames}</strong> &mdash; ${fmtTime(scheduleData.startTime)} to ${fmtTime(scheduleData.endTime)}`;
+  }
+
+  function renderOverrides(){
+    const list=el('overridesList');
+    if(!overridesData.length){list.innerHTML='<span style="font-size:13px;color:var(--text-3)">No overrides set</span>';return;}
+    // Filter out past overrides older than today
+    const today=new Date().toISOString().slice(0,10);
+    const relevant=overridesData.filter(o=>o.date>=today);
+    if(!relevant.length){list.innerHTML='<span style="font-size:13px;color:var(--text-3)">No upcoming overrides</span>';return;}
+    list.innerHTML=relevant.map(o=>{
+      const dateObj=new Date(o.date+'T00:00:00');
+      const dateLabel=dateObj.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+      const detail=o.closed?'<span style="color:var(--red);font-weight:700">Closed</span>':`<span style="color:var(--green);font-weight:700">Open ${fmtTime(o.startTime||scheduleData.startTime)}–${fmtTime(o.endTime||scheduleData.endTime)}</span>`;
+      const note=o.note?`<span style="color:var(--text-3);font-size:12px;margin-left:6px">${o.note}</span>`:'';
+      return`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r);gap:12px">
+        <div>
+          <span style="font-size:13px;font-weight:600">${dateLabel}</span>${note}<br>
+          ${detail}
+        </div>
+        <button class="btn btn-danger btn-sm" style="flex-shrink:0" onclick="deleteOverride('${o.date}')">Remove</button>
+      </div>`;
+    }).join('');
+  }
+
+  function openScheduleEditor(){
+    // Populate day picker
+    const picker=el('scheduleDayPicker');
+    picker.innerHTML=SCHED_DAYS.map((name,i)=>{
+      const sel=scheduleData.days.includes(i);
+      return`<button type="button" class="btn btn-sm${sel?' btn-primary':' btn-secondary'}" style="padding:6px 12px;font-size:12px" 
+        onclick="toggleScheduleDay(${i},this)" data-day="${i}">${name}</button>`;
+    }).join('');
+    el('scheduleStartTime').value=scheduleData.startTime;
+    el('scheduleEndTime').value=scheduleData.endTime;
+    openOverlay('scheduleModal');
+  }
+
+  window._selectedDays=null;
+  function toggleScheduleDay(day,btn){
+    if(!window._selectedDays)window._selectedDays=scheduleData.days.slice();
+    const idx=window._selectedDays.indexOf(day);
+    if(idx>=0)window._selectedDays.splice(idx,1);
+    else window._selectedDays.push(day);
+    btn.classList.toggle('btn-primary',window._selectedDays.includes(day));
+    btn.classList.toggle('btn-secondary',!window._selectedDays.includes(day));
+  }
+
+  async function saveSchedule(){
+    const days=window._selectedDays||scheduleData.days.slice();
+    if(!days.length){alert('Select at least one day.');return;}
+    const startTime=el('scheduleStartTime').value;
+    const endTime=el('scheduleEndTime').value;
+    if(!startTime||!endTime){alert('Please set opening and closing times.');return;}
+    if(startTime>=endTime){alert('Opening time must be before closing time.');return;}
+    try{
+      const r=await api('/api/staff/ordering-schedule',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({days,startTime,endTime})});
+      if(!r.ok)throw new Error();
+      scheduleData={days,startTime,endTime};
+      window._selectedDays=null;
+      renderScheduleDisplay();
+      closeOverlay('scheduleModal');
+      toast('Ordering hours updated','success');
+    }catch(e){alert('Failed to save schedule.');}
+  }
+
+  function openAddOverride(){
+    el('ovDate').value=new Date().toISOString().slice(0,10);
+    el('ovTypeOpen').checked=true;
+    el('ovStart').value=scheduleData.startTime;
+    el('ovEnd').value=scheduleData.endTime;
+    el('ovNote').value='';
+    toggleOverrideType();
+    openOverlay('overrideModal');
+  }
+
+  function toggleOverrideType(){
+    const isClosed=el('ovTypeClosed').checked;
+    el('ovHoursRow').style.display=isClosed?'none':'grid';
+  }
+
+  async function saveOverride(){
+    const date=el('ovDate').value;
+    if(!date){alert('Select a date.');return;}
+    const closed=el('ovTypeClosed').checked;
+    const body={date,closed,note:el('ovNote').value||undefined};
+    if(!closed){body.startTime=el('ovStart').value;body.endTime=el('ovEnd').value;}
+    try{
+      const r=await api('/api/staff/ordering-overrides',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      if(!r.ok)throw new Error();
+      // Update local data
+      const idx=overridesData.findIndex(o=>o.date===date);
+      if(idx>=0)overridesData[idx]={...body};else overridesData.push({...body});
+      overridesData.sort((a,b)=>a.date.localeCompare(b.date));
+      renderOverrides();
+      closeOverlay('overrideModal');
+      toast('Override saved','success');
+    }catch(e){alert('Failed to save override.');}
+  }
+
+  async function deleteOverride(date){
+    if(!confirm('Remove this override?'))return;
+    try{
+      const r=await api('/api/staff/ordering-overrides/'+date,{method:'DELETE'});
+      if(!r.ok)throw new Error();
+      overridesData=overridesData.filter(o=>o.date!==date);
+      renderOverrides();
+      toast('Override removed','success');
+    }catch(e){alert('Failed to remove override.');}
+  }
+
+  window.openScheduleEditor=openScheduleEditor;
+  window.toggleScheduleDay=toggleScheduleDay;
+  window.saveSchedule=saveSchedule;
+  window.openAddOverride=openAddOverride;
+  window.toggleOverrideType=toggleOverrideType;
+  window.saveOverride=saveOverride;
+  window.deleteOverride=deleteOverride;
 
   let membershipsData={plans:[],subs:[]};
 

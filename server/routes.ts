@@ -2584,25 +2584,118 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return new Date().toISOString().slice(0, 10);
   }
 
-  async function getOrderingEnabled(): Promise<boolean> {
-    const enabled = await storage.getSetting("ordering_enabled");
-    if (enabled !== "false") return true;
-    // Auto-reset: if disabled on a previous day, re-enable it
-    const disabledDate = await storage.getSetting("ordering_disabled_date");
+  interface OrderingSchedule { days: number[]; startTime: string; endTime: string; }
+  interface OrderingOverride { date: string; closed: boolean; startTime?: string; endTime?: string; note?: string; }
+  interface OrderingStatusResult { enabled: boolean; reason: string; nextOpen?: string; closesAt?: string; manualOverride?: boolean; }
+
+  const DEFAULT_SCHEDULE: OrderingSchedule = { days: [4, 5, 6, 0], startTime: "12:00", endTime: "20:00" };
+  const DAY_NAMES_FULL = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  const DAY_NAMES_SHORT = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+  async function getOrderingSchedule(): Promise<OrderingSchedule> {
+    try {
+      const raw = await storage.getSetting("ordering_schedule");
+      if (raw) return { ...DEFAULT_SCHEDULE, ...JSON.parse(raw) };
+    } catch {}
+    return DEFAULT_SCHEDULE;
+  }
+
+  async function getOrderingOverrides(): Promise<OrderingOverride[]> {
+    try {
+      const raw = await storage.getSetting("ordering_overrides");
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return [];
+  }
+
+  function scheduleOpenMessage(schedule: OrderingSchedule): string {
+    const dayNames = schedule.days.sort((a,b)=>a-b).map(d => DAY_NAMES_SHORT[d]);
+    const start = schedule.startTime.replace(":","").length===4 ? schedule.startTime : schedule.startTime;
+    const fmt = (t: string) => {
+      const [h,m] = t.split(":").map(Number);
+      if (m === 0) return h < 12 ? `${h}am` : h === 12 ? "12pm" : `${h-12}pm`;
+      return h < 12 ? `${h}:${String(m).padStart(2,"0")}am` : `${h === 12 ? 12 : h-12}:${String(m).padStart(2,"0")}pm`;
+    };
+    return `${dayNames.join(", ")} ${fmt(schedule.startTime)}–${fmt(schedule.endTime)}`;
+  }
+
+  async function getOrderingStatus(): Promise<OrderingStatusResult> {
     const today = getTodayStr();
-    if (disabledDate && disabledDate !== today) {
+    const now = new Date();
+    const hhmm = now.toTimeString().slice(0, 5);
+    const dow = now.getDay();
+
+    // 1. Check manual disable override (auto-resets next day)
+    const manualEnabled = await storage.getSetting("ordering_enabled");
+    if (manualEnabled === "false") {
+      const disabledDate = await storage.getSetting("ordering_disabled_date");
+      if (!disabledDate || disabledDate === today) {
+        return { enabled: false, reason: "Online ordering has been temporarily closed by staff.", manualOverride: true };
+      }
+      // Auto-reset: disabled on a previous day
       await storage.setSetting("ordering_enabled", "true");
-      return true;
     }
-    return false;
+
+    const schedule = await getOrderingSchedule();
+    const overrides = await getOrderingOverrides();
+
+    // 2. Check today's override
+    const todayOverride = overrides.find(o => o.date === today);
+    if (todayOverride) {
+      if (todayOverride.closed) {
+        // Explicitly closed today
+        return { enabled: false, reason: `Ordering is closed today${todayOverride.note ? ` (${todayOverride.note})` : ""}.`, nextOpen: scheduleOpenMessage(schedule) };
+      }
+      // Extra opening today — check hours
+      const oStart = todayOverride.startTime ?? schedule.startTime;
+      const oEnd = todayOverride.endTime ?? schedule.endTime;
+      if (hhmm >= oStart && hhmm < oEnd) {
+        return { enabled: true, reason: `Ordering open until ${oEnd}`, closesAt: oEnd };
+      }
+      if (hhmm < oStart) {
+        return { enabled: false, reason: `Ordering opens today at ${oStart}${todayOverride.note ? ` (${todayOverride.note})` : ""}`, nextOpen: `Today from ${oStart}` };
+      }
+      // Past today's override window — fall through to normal schedule check
+    }
+
+    // 3. Check normal weekly schedule
+    const isScheduledDay = schedule.days.includes(dow);
+    if (!isScheduledDay) {
+      // Find next scheduled day
+      let daysAhead = 1;
+      let nextDow = (dow + daysAhead) % 7;
+      while (!schedule.days.includes(nextDow) && daysAhead < 8) { daysAhead++; nextDow = (dow + daysAhead) % 7; }
+      const nextName = daysAhead === 1 ? "Tomorrow" : DAY_NAMES_FULL[nextDow];
+      return { enabled: false, reason: `Food ordering is available ${scheduleOpenMessage(schedule)}.`, nextOpen: `${nextName} from ${schedule.startTime}` };
+    }
+
+    // It's a scheduled day — check the time window
+    if (hhmm < schedule.startTime) {
+      return { enabled: false, reason: `Food ordering opens at ${schedule.startTime} today.`, nextOpen: `Today from ${schedule.startTime}` };
+    }
+    if (hhmm >= schedule.endTime) {
+      // After closing — find next open slot
+      let daysAhead = 1;
+      let nextDow = (dow + daysAhead) % 7;
+      while (!schedule.days.includes(nextDow) && daysAhead < 8) { daysAhead++; nextDow = (dow + daysAhead) % 7; }
+      const nextName = daysAhead === 1 ? "Tomorrow" : DAY_NAMES_FULL[nextDow];
+      return { enabled: false, reason: `Food ordering closes at ${schedule.endTime}. See you ${nextName.toLowerCase()}!`, nextOpen: `${nextName} from ${schedule.startTime}` };
+    }
+
+    return { enabled: true, reason: `Ordering open until ${schedule.endTime}`, closesAt: schedule.endTime };
+  }
+
+  async function getOrderingEnabled(): Promise<boolean> {
+    const status = await getOrderingStatus();
+    return status.enabled;
   }
 
   app.get("/api/ordering-status", async (_req, res) => {
     try {
-      const enabled = await getOrderingEnabled();
-      res.json({ enabled });
+      const status = await getOrderingStatus();
+      res.json(status);
     } catch {
-      res.json({ enabled: true }); // Default to enabled on error
+      res.json({ enabled: true, reason: "Ordering available" });
     }
   });
 
@@ -2614,10 +2707,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     await storage.setSetting("ordering_enabled", String(enabled));
     if (!enabled) {
       await storage.setSetting("ordering_disabled_date", getTodayStr());
+    } else {
+      await storage.setSetting("ordering_disabled_date", "");
     }
     const who = req.staff?.username || req.staff?.name || "staff";
     console.log(`[ORDERING] Online ordering ${enabled ? "enabled" : "disabled"} by ${who}`);
-    res.json({ enabled });
+    const status = await getOrderingStatus();
+    res.json(status);
+  });
+
+  // ── Ordering Schedule ───────────────────────────────────────────────────────
+  app.get("/api/staff/ordering-schedule", staffAuth, async (_req, res) => {
+    const schedule = await getOrderingSchedule();
+    res.json(schedule);
+  });
+
+  app.put("/api/staff/ordering-schedule", staffAuth, async (req: any, res) => {
+    const { days, startTime, endTime } = req.body;
+    if (!Array.isArray(days) || !startTime || !endTime) {
+      return res.status(400).json({ message: "days, startTime and endTime required" });
+    }
+    const schedule: OrderingSchedule = { days, startTime, endTime };
+    await storage.setSetting("ordering_schedule", JSON.stringify(schedule));
+    const who = req.staff?.username || req.staff?.name || "staff";
+    console.log(`[ORDERING] Schedule updated by ${who}: ${JSON.stringify(schedule)}`);
+    res.json(schedule);
+  });
+
+  // ── Ordering Overrides ──────────────────────────────────────────────────────
+  app.get("/api/staff/ordering-overrides", staffAuth, async (_req, res) => {
+    const overrides = await getOrderingOverrides();
+    res.json(overrides);
+  });
+
+  app.post("/api/staff/ordering-overrides", staffAuth, async (req: any, res) => {
+    const { date, closed, startTime, endTime, note } = req.body;
+    if (!date) return res.status(400).json({ message: "date required" });
+    const overrides = await getOrderingOverrides();
+    const idx = overrides.findIndex(o => o.date === date);
+    const entry: OrderingOverride = { date, closed: !!closed, startTime, endTime, note };
+    if (idx >= 0) overrides[idx] = entry; else overrides.push(entry);
+    overrides.sort((a, b) => a.date.localeCompare(b.date));
+    await storage.setSetting("ordering_overrides", JSON.stringify(overrides));
+    res.json(entry);
+  });
+
+  app.delete("/api/staff/ordering-overrides/:date", staffAuth, async (req, res) => {
+    const { date } = req.params;
+    const overrides = await getOrderingOverrides();
+    const filtered = overrides.filter(o => o.date !== date);
+    await storage.setSetting("ordering_overrides", JSON.stringify(filtered));
+    res.json({ success: true });
   });
 
   // ── Order Checkout ─────────────────────────────────────────────────────────
