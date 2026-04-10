@@ -509,6 +509,87 @@ async function sendBookingCancellationEmail(booking: {
   return false;
 }
 
+async function sendBookingRescheduleEmail(booking: {
+  customerName: string;
+  customerEmail: string;
+  date: string;
+  startTime: string;
+  duration: number;
+  tableType: string;
+  tableNumber?: string | null;
+  id: number;
+}): Promise<boolean> {
+  const tableLabels: Record<string, string> = {
+    snooker: "Snooker Table",
+    pool: "Pool Table",
+    "american-pool": "American Pool Table",
+    darts: "Darts Lane",
+    shuffleboard: "Shuffleboard",
+    dining: "Dining Table",
+  };
+  const tableLabel = tableLabels[booking.tableType] ?? booking.tableType;
+  const tableNum = booking.tableNumber ? ` #${booking.tableNumber}` : "";
+  const tableDisplay = `${tableLabel}${tableNum}`;
+  const [dy, dm, dd] = booking.date.split("-").map(Number);
+  const dateObj = new Date(dy, dm - 1, dd);
+  const dateStr = dateObj.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const [sh, sm] = booking.startTime.split(":").map(Number);
+  const endMins = sh * 60 + sm + booking.duration * 60;
+  const endTime = `${Math.floor(endMins / 60).toString().padStart(2, "0")}:${(endMins % 60).toString().padStart(2, "0")}`;
+  const durationLabel = booking.duration === 1 ? "1 hour" : `${booking.duration} hours`;
+  const bookingRef = `147-${booking.id.toString().padStart(5, "0")}`;
+
+  const subject = `Booking Rescheduled – ${tableDisplay} on ${dateStr}`;
+  const html = `
+  <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#f9f9f9;padding:32px;border-radius:12px">
+    <div style="text-align:center;margin-bottom:24px">
+      <h1 style="color:#0A1628;font-size:24px;margin:0">The 147</h1>
+      <p style="color:#6b7280;font-size:13px;margin:4px 0 0">Snooker, Bar &amp; Restaurant</p>
+    </div>
+    <div style="background:#dbeafe;border-radius:12px;padding:16px;text-align:center;margin-bottom:24px">
+      <span style="font-size:28px">&#128197;</span>
+      <h2 style="color:#0047AB;font-size:18px;margin:8px 0 0">Booking Rescheduled</h2>
+    </div>
+    <p style="color:#374151;font-size:15px">Hi ${escHtml(booking.customerName)},</p>
+    <p style="color:#374151;font-size:15px">Your booking at The 147 has been rescheduled. Here are your updated details:</p>
+    <div style="background:#fff;border-radius:8px;padding:20px;margin:20px 0;border-left:4px solid #0047AB">
+      <table style="width:100%;border-collapse:collapse">
+        <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;font-weight:600">Booking Ref</td><td style="padding:8px 0;color:#0047AB;font-size:15px;font-weight:700;text-align:right">${escHtml(bookingRef)}</td></tr>
+        <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;font-weight:600">Table</td><td style="padding:8px 0;color:#0A1628;font-size:14px;font-weight:600;text-align:right">${escHtml(tableDisplay)}</td></tr>
+        <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;font-weight:600">New Date</td><td style="padding:8px 0;color:#0A1628;font-size:14px;font-weight:600;text-align:right">${escHtml(dateStr)}</td></tr>
+        <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;font-weight:600">New Time</td><td style="padding:8px 0;color:#0A1628;font-size:14px;font-weight:600;text-align:right">${escHtml(booking.startTime)} – ${escHtml(endTime)} (${escHtml(durationLabel)})</td></tr>
+      </table>
+    </div>
+    <p style="color:#374151;font-size:14px">Please arrive 5 minutes before your slot. If you need to cancel or change your booking again, you can do so through the app.</p>
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
+    <p style="color:#9ca3af;font-size:12px;text-align:center">The 147 &mdash; Snooker, Bar &amp; Restaurant<br/>www.the147.co.uk</p>
+  </div>`;
+
+  const smtpSent = await sendEmailViaSMTP(booking.customerEmail, subject, html);
+  if (smtpSent) {
+    console.log(`[BOOKING] Reschedule email sent via SMTP to ${maskEmail(booking.customerEmail)} for booking #${booking.id}`);
+    return true;
+  }
+  const resendKey = process.env.RESEND_API_KEY;
+  if (resendKey) {
+    try {
+      const fromName = process.env.RESEND_FROM_NAME || "The 147";
+      const fromEmail = process.env.RESEND_FROM_EMAIL || "bookings@the147bradford.com";
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+        body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: booking.customerEmail, subject, html }),
+      });
+      if (response.ok) {
+        console.log(`[BOOKING] Reschedule email sent via Resend to ${maskEmail(booking.customerEmail)} for booking #${booking.id}`);
+        return true;
+      }
+    } catch (_) {}
+  }
+  console.warn(`[BOOKING] Reschedule email could not be sent for booking #${booking.id} to ${maskEmail(booking.customerEmail)}`);
+  return false;
+}
+
 function getClientIp(req: Request): string {
   return (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown";
 }
@@ -3590,7 +3671,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     const updated = await storage.updateBooking(bookingId, { date, startTime, duration: dur });
-    sendBookingConfirmationEmail({
+    sendBookingRescheduleEmail({
       customerName: booking.customerName,
       customerEmail: booking.customerEmail,
       date,
