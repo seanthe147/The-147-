@@ -190,6 +190,55 @@ const BannerCarousel = memo(function BannerCarousel({ images }: { images: Banner
   );
 });
 
+interface Deal {
+  id: string;
+  name: string;
+  discountType: "FIXED_PERCENTAGE" | "FIXED_AMOUNT";
+  percentage?: string;
+  amountPence?: number;
+}
+
+function formatDealValue(deal: Deal): string {
+  if (deal.discountType === "FIXED_AMOUNT" && deal.amountPence != null) {
+    const pounds = deal.amountPence / 100;
+    return pounds % 1 === 0 ? `£${pounds} off` : `£${pounds.toFixed(2)} off`;
+  }
+  if (deal.discountType === "FIXED_PERCENTAGE" && deal.percentage) {
+    const pct = parseFloat(deal.percentage);
+    return `${pct % 1 === 0 ? pct : deal.percentage}% off`;
+  }
+  return "";
+}
+
+const DealsSection = memo(function DealsSection() {
+  const { data: deals } = useQuery<Deal[]>({ queryKey: ["/api/deals"] });
+  if (!deals || deals.length === 0) return null;
+  return (
+    <View style={styles.dealsSection}>
+      <View style={styles.dealsSectionHeader}>
+        <Ionicons name="pricetag" size={16} color={Colors.brand.gold} />
+        <Text style={styles.dealsSectionTitle}>Current Deals</Text>
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.dealsScroll}
+        decelerationRate="fast"
+      >
+        {deals.map((deal) => {
+          const value = formatDealValue(deal);
+          return (
+            <View key={deal.id} style={styles.dealCard}>
+              <Text style={styles.dealName} numberOfLines={2}>{deal.name}</Text>
+              {value ? <Text style={styles.dealValue}>{value}</Text> : null}
+            </View>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+});
+
 const EventPreview = memo(function EventPreview() {
   const { data: events } = useQuery<Event[]>({
     queryKey: ["/api/events?type=event"],
@@ -415,6 +464,8 @@ export default function HomeScreen() {
           ) : bannerImages && bannerImages.length > 0 ? (
             <BannerCarousel images={bannerImages} />
           ) : null}
+
+          <DealsSection />
 
           <EventPreview />
 
@@ -758,6 +809,45 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_400Regular",
     fontSize: 12,
     color: Colors.light.textSecondary,
+  },
+  dealsSection: {
+    marginBottom: 16,
+  },
+  dealsSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginHorizontal: 20,
+    marginBottom: 10,
+  },
+  dealsSectionTitle: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: Colors.light.text,
+  },
+  dealsScroll: {
+    paddingHorizontal: 20,
+    gap: 10,
+  },
+  dealCard: {
+    backgroundColor: Colors.brand.navy,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    minWidth: 140,
+    maxWidth: 180,
+    justifyContent: "space-between",
+  },
+  dealName: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: "#FFFFFF",
+    marginBottom: 8,
+  },
+  dealValue: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 16,
+    color: Colors.brand.gold,
   },
   hoursCard: {
     flexDirection: "row",

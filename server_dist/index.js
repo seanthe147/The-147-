@@ -1552,6 +1552,52 @@ var CATEGORY_ORDER = {
   "Snooker, Darts": 40,
   "Darts": 41
 };
+var DEAL_EXCLUDE_PATTERNS = [
+  /next.?time/i,
+  /next.?visit/i,
+  /next.?purchase/i,
+  /\bstaff\b/i,
+  /\bmember\b/i,
+  /\bplatinum\b/i,
+  /\bgold\b/i,
+  /\bvip\b/i,
+  /blue.?light/i,
+  /\bbulls?\b/i,
+  /loyalty/i
+];
+var dealsCache = null;
+async function getSquareDeals() {
+  if (dealsCache && Date.now() < dealsCache.expiry) return dealsCache.data;
+  try {
+    const data = await squareRequest("POST", "/v2/catalog/search", {
+      object_types: ["DISCOUNT"],
+      include_deleted_objects: false
+    });
+    const seen = /* @__PURE__ */ new Set();
+    const deals = [];
+    for (const o of data.objects || []) {
+      if (o.type !== "DISCOUNT" || o.is_deleted) continue;
+      const dd = o.discount_data || {};
+      const name = (dd.name || "").trim();
+      if (!name) continue;
+      if (DEAL_EXCLUDE_PATTERNS.some((p) => p.test(name))) continue;
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deals.push({
+        id: o.id,
+        name,
+        discountType: dd.discount_type === "FIXED_AMOUNT" ? "FIXED_AMOUNT" : "FIXED_PERCENTAGE",
+        percentage: dd.percentage,
+        amountPence: dd.amount_money?.amount
+      });
+    }
+    dealsCache = { data: deals, expiry: Date.now() + 5 * 60 * 1e3 };
+    return deals;
+  } catch {
+    return dealsCache?.data ?? [];
+  }
+}
 var menuCache = null;
 async function getMenuFromSquare() {
   if (menuCache && Date.now() < menuCache.expiry) return menuCache.data;
@@ -3923,6 +3969,14 @@ async function registerRoutes(app2) {
       return true;
     });
   }
+  app2.get("/api/deals", async (_req, res) => {
+    try {
+      const deals = await getSquareDeals();
+      res.json(deals);
+    } catch {
+      res.json([]);
+    }
+  });
   app2.get("/api/menu", async (_req, res) => {
     try {
       const [categories, categoryOverrides, itemOverrides, catSettingsArr, availRules] = await Promise.all([

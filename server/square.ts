@@ -538,6 +538,63 @@ const CATEGORY_ORDER: Record<string, number> = {
   "Darts": 41,
 };
 
+export interface Deal {
+  id: string;
+  name: string;
+  discountType: "FIXED_PERCENTAGE" | "FIXED_AMOUNT";
+  percentage?: string;
+  amountPence?: number;
+}
+
+const DEAL_EXCLUDE_PATTERNS = [
+  /next.?time/i,
+  /next.?visit/i,
+  /next.?purchase/i,
+  /\bstaff\b/i,
+  /\bmember\b/i,
+  /\bplatinum\b/i,
+  /\bgold\b/i,
+  /\bvip\b/i,
+  /blue.?light/i,
+  /\bbulls?\b/i,
+  /loyalty/i,
+];
+
+let dealsCache: { data: Deal[]; expiry: number } | null = null;
+
+export async function getSquareDeals(): Promise<Deal[]> {
+  if (dealsCache && Date.now() < dealsCache.expiry) return dealsCache.data;
+  try {
+    const data = await squareRequest("POST", "/v2/catalog/search", {
+      object_types: ["DISCOUNT"],
+      include_deleted_objects: false,
+    });
+    const seen = new Set<string>();
+    const deals: Deal[] = [];
+    for (const o of (data.objects || []) as any[]) {
+      if (o.type !== "DISCOUNT" || o.is_deleted) continue;
+      const dd = o.discount_data || {};
+      const name: string = (dd.name || "").trim();
+      if (!name) continue;
+      if (DEAL_EXCLUDE_PATTERNS.some((p) => p.test(name))) continue;
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deals.push({
+        id: o.id,
+        name,
+        discountType: dd.discount_type === "FIXED_AMOUNT" ? "FIXED_AMOUNT" : "FIXED_PERCENTAGE",
+        percentage: dd.percentage,
+        amountPence: dd.amount_money?.amount,
+      });
+    }
+    dealsCache = { data: deals, expiry: Date.now() + 5 * 60 * 1000 };
+    return deals;
+  } catch {
+    return dealsCache?.data ?? [];
+  }
+}
+
 export interface ModifierOption {
   id: string;           // Square catalog object ID of the modifier
   name: string;

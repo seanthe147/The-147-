@@ -2312,6 +2312,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   }
 
+  app.get("/api/deals", async (_req, res) => {
+    try {
+      const deals = await square.getSquareDeals();
+      res.json(deals);
+    } catch {
+      res.json([]);
+    }
+  });
+
   app.get("/api/menu", async (_req, res) => {
     try {
       const [categories, categoryOverrides, itemOverrides, catSettingsArr, availRules] = await Promise.all([
