@@ -1336,6 +1336,31 @@
   </div>
 </div>
 
+<!-- SQUARE SYNC MODAL -->
+<div class="overlay" id="squareSyncModal">
+  <div class="modal modal-sm">
+    <div class="modal-hd">
+      <div class="modal-hd-title">Sync from Square</div>
+      <button class="modal-close" onclick="closeOverlay('squareSyncModal')">&times;</button>
+    </div>
+    <div class="modal-bd">
+      <p style="font-size:13px;color:var(--text-2);margin-bottom:16px;line-height:1.6">Enter the customer's email address. The system will search Square for a matching subscription and link it to their app account.</p>
+      <div class="form-group">
+        <label class="form-label" for="sqSyncEmail">Customer Email</label>
+        <input class="form-input" type="email" id="sqSyncEmail" placeholder="customer@example.com" autocapitalize="off">
+      </div>
+      <div id="sqSyncResult" style="display:none;margin-top:12px;border-radius:10px;padding:12px 14px;font-size:13px;font-weight:600;line-height:1.5"></div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn btn-secondary" onclick="closeOverlay('squareSyncModal')">Close</button>
+      <button class="btn btn-primary" id="sqSyncBtn" style="background:#10B981;border-color:#10B981">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+        Look Up & Sync
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- MEMBER NOTE MODAL -->
 <div class="overlay" id="memberNoteModal">
   <div class="modal modal-sm">
@@ -4194,13 +4219,19 @@
       html+=`</div>`;
     }
 
-    html+=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+    html+=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div style="font-size:16px;font-weight:800;color:var(--text)">All Members (${subs.length})</div>`;
-    if(isManager&&plans.length>0){
-      html+=`<button class="btn btn-primary btn-sm" onclick="window.openAddMemberModal()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Add Member
-      </button>`;
+    if(isManager){
+      html+=`<div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-secondary btn-sm" onclick="window.openSquareSyncModal()" style="border-color:#10B981;color:#10B981">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+          Sync from Square
+        </button>
+        ${plans.length>0?`<button class="btn btn-primary btn-sm" onclick="window.openAddMemberModal()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add Member
+        </button>`:''}
+      </div>`;
     }
     html+=`</div>`;
 
@@ -4536,6 +4567,45 @@
     openOverlay('addMemberModal');
     setTimeout(()=>el('amCustomerSearch').focus(),100);
   };
+
+  /* ── Square Sync Modal ─────────────────────────────────────────────────────── */
+  window.openSquareSyncModal=function(){
+    el('sqSyncEmail').value='';
+    el('sqSyncResult').style.display='none';
+    el('sqSyncResult').textContent='';
+    el('sqSyncBtn').disabled=false;
+    el('sqSyncBtn').textContent='Look Up & Sync';
+    openOverlay('squareSyncModal');
+    setTimeout(()=>el('sqSyncEmail').focus(),100);
+  };
+
+  el('sqSyncBtn').addEventListener('click',async()=>{
+    const email=el('sqSyncEmail').value.trim();
+    if(!email){el('sqSyncEmail').focus();return;}
+    const btn=el('sqSyncBtn');
+    const resultEl=el('sqSyncResult');
+    btn.disabled=true;btn.textContent='Searching…';
+    resultEl.style.display='none';
+    try{
+      const r=await api('/api/staff/membership/square-sync',{method:'POST',body:JSON.stringify({email})});
+      const data=await r.json();
+      const ok=data.status==='linked';
+      const warn=data.status==='already_linked';
+      resultEl.style.display='block';
+      resultEl.style.background=ok?'#DCFCE7':warn?'#DBEAFE':'#FEF3C7';
+      resultEl.style.color=ok?'#15803D':warn?'#1D4ED8':'#92400E';
+      resultEl.textContent=data.message||'Unknown response';
+      if(ok){setTimeout(()=>{closeOverlay('squareSyncModal');loadMemberships();},1800);}
+    }catch(e){
+      resultEl.style.display='block';
+      resultEl.style.background='#FEF2F2';resultEl.style.color='#DC2626';
+      resultEl.textContent='Request failed — please try again.';
+    }finally{
+      btn.disabled=false;btn.textContent='Look Up & Sync';
+    }
+  });
+
+  el('sqSyncEmail').addEventListener('keydown',e=>{if(e.key==='Enter')el('sqSyncBtn').click();});
 
   // Payment method card selection
   document.querySelectorAll('.am-pay-option').forEach(opt=>{

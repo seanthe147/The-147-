@@ -5981,6 +5981,51 @@ Phone: ${phone}` : ""}`,
     const subs = await storage.getMembershipSubscriptions();
     res.json(subs);
   });
+  app2.post("/api/staff/membership/square-sync", staffAuth, async (req, res) => {
+    const { email } = req.body ?? {};
+    if (!email) return res.status(400).json({ message: "Email is required" });
+    try {
+      if (!isConfigured()) return res.status(503).json({ message: "Square is not configured" });
+      const customer = await storage.getCustomerByEmail(email.trim().toLowerCase());
+      if (!customer) return res.status(404).json({ message: "No app account found with that email. The customer needs to register in the app first." });
+      const existing = await storage.getMembershipSubscriptionByCustomer(customer.id);
+      if (existing) return res.json({ status: "already_linked", message: `${customer.name} already has a membership linked (${existing.status}).` });
+      const sqCustomer = await findSquareCustomerByEmail(email.trim()).catch(() => null);
+      if (!sqCustomer) return res.json({ status: "no_square_customer", message: `No Square customer found for ${email}. They may need to be added to Square first.` });
+      const sqSubs = await listSquareSubscriptionsForCustomer(sqCustomer.id).catch(() => []);
+      if (!sqSubs.length) return res.json({ status: "no_subscriptions", message: `${customer.name} found in Square but has no subscriptions attached.` });
+      const allPlans = await storage.getMembershipPlans();
+      const activePlans = allPlans.filter((p) => p.active && p.squarePlanVariationId);
+      const match = sqSubs.find(
+        (s) => (s.status === "ACTIVE" || s.status === "PENDING") && activePlans.some((p) => p.squarePlanVariationId === s.plan_variation_id)
+      );
+      if (!match) {
+        const subStatuses = sqSubs.map((s) => `${s.status} (plan: ${s.plan_variation_id || "unknown"})`).join(", ");
+        return res.json({ status: "no_matching_plan", message: `${customer.name} has Square subscriptions but none match an active local plan. Square subs: ${subStatuses}` });
+      }
+      const plan = activePlans.find((p) => p.squarePlanVariationId === match.plan_variation_id);
+      const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+      const periodEnd = match.charged_through_date ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
+      await storage.createMembershipSubscription({
+        customerId: customer.id,
+        planId: plan.id,
+        status: "active",
+        currentPeriodStart: match.start_date ?? today,
+        currentPeriodEnd: periodEnd,
+        hoursUsedThisPeriod: 0,
+        guestPassesUsed: 0,
+        squareSubscriptionId: match.id,
+        squareCustomerId: sqCustomer.id,
+        source: "square_sync",
+        staffNotes: "Manually synced from Square via staff portal"
+      });
+      console.log(`[MEMBERSHIP] Manual Square sync: ${match.id} \u2192 customer #${customer.id} (${email}) on plan "${plan.name}"`);
+      return res.json({ status: "linked", message: `\u2713 ${customer.name} linked to ${plan.name} plan (Square sub: ${match.id})` });
+    } catch (err) {
+      console.error("[MEMBERSHIP] Manual Square sync error:", err.message);
+      return res.status(500).json({ message: "Sync failed: " + err.message });
+    }
+  });
   app2.post("/api/staff/membership/subscriptions", staffAuth, async (req, res) => {
     const { customerId, planId, status = "active", staffNotes, source = "staff" } = req.body ?? {};
     if (!customerId || !planId) return res.status(400).json({ message: "customerId and planId are required" });
