@@ -73,6 +73,7 @@ interface AppOrderItem {
   name: string;
   quantity: number;
   price: number;
+  variationName?: string;
 }
 
 interface AppOrder {
@@ -82,6 +83,7 @@ interface AppOrder {
   totalPence: number;
   status: string;
   createdAt: string;
+  discountLabel?: string | null;
 }
 
 export default function AccountScreen() {
@@ -518,22 +520,41 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount }: {
         </>
       )}
 
-      <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Food & Drink Orders</Text>
-      {ordersQuery.isLoading ? (
-        <ActivityIndicator color={Colors.brand.blue} style={{ marginTop: 20 }} />
-      ) : ordersQuery.error ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>Could not load orders</Text>
-        </View>
-      ) : !ordersQuery.data?.length ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="bag-outline" size={40} color="#9CA3AF" />
-          <Text style={styles.emptyText}>No orders yet</Text>
-          <Text style={[styles.emptyText, { fontSize: 13, marginTop: 4 }]}>Orders placed from the app appear here</Text>
-        </View>
-      ) : (
-        ordersQuery.data.map((order) => <OrderCard key={order.id} order={order} />)
-      )}
+      {(() => {
+        const allOrders = ordersQuery.data ?? [];
+        const activeOrders = allOrders.filter((o) => o.status === "pending");
+        const pastOrders = allOrders.filter((o) => o.status !== "pending");
+        return (
+          <>
+            {activeOrders.length > 0 && (
+              <>
+                <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Active Orders</Text>
+                {activeOrders.map((order) => <OrderCard key={order.id} order={order} active />)}
+              </>
+            )}
+            <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Order History</Text>
+            {ordersQuery.isLoading ? (
+              <ActivityIndicator color={Colors.brand.blue} style={{ marginTop: 20 }} />
+            ) : ordersQuery.error ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyText}>Could not load orders</Text>
+              </View>
+            ) : pastOrders.length === 0 && activeOrders.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="bag-outline" size={40} color="#9CA3AF" />
+                <Text style={styles.emptyText}>No orders yet</Text>
+                <Text style={[styles.emptyText, { fontSize: 13, marginTop: 4 }]}>Orders placed from the app appear here</Text>
+              </View>
+            ) : pastOrders.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyText}>No past orders</Text>
+              </View>
+            ) : (
+              pastOrders.map((order) => <OrderCard key={order.id} order={order} />)
+            )}
+          </>
+        );
+      })()}
 
       <View style={styles.dangerZone}>
         <Text style={styles.dangerTitle}>Data & Privacy</Text>
@@ -635,38 +656,58 @@ function BookingCard({ booking, onCancel, onReschedule, showCancel }: { booking:
   );
 }
 
-function OrderCard({ order }: { order: AppOrder }) {
+function OrderCard({ order, active }: { order: AppOrder; active?: boolean }) {
   const date = new Date(order.createdAt);
   const dateStr = date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
   const timeStr = date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const total = `£${(order.totalPence / 100).toFixed(2)}`;
   let items: AppOrderItem[] = [];
   try { items = JSON.parse(order.itemsJson); } catch {}
-  const itemSummary = items.map((i) => `${i.quantity}× ${i.name}`).join(", ");
 
   const statusConfig: Record<string, { label: string; bg: string; text: string }> = {
-    pending:   { label: "Pending",   bg: "#F3F4F6", text: "#6B7280" },
-    paid:      { label: "Paid",      bg: "#D1FAE5", text: "#065F46" },
-    cancelled: { label: "Cancelled", bg: "#FEE2E2", text: "#991B1B" },
-    refunded:  { label: "Refunded",  bg: "#FEF3C7", text: "#92400E" },
+    pending:   { label: "Awaiting Payment", bg: "#FEF3C7", text: "#92400E" },
+    paid:      { label: "Paid",             bg: "#D1FAE5", text: "#065F46" },
+    cancelled: { label: "Cancelled",        bg: "#FEE2E2", text: "#991B1B" },
+    refunded:  { label: "Refunded",         bg: "#FEF3C7", text: "#92400E" },
   };
   const sc = statusConfig[order.status] ?? statusConfig.pending;
 
   return (
-    <View style={styles.bookingCard}>
+    <View style={[styles.bookingCard, active && styles.activeOrderCard]}>
+      {active && (
+        <View style={styles.activeOrderBanner}>
+          <Ionicons name="time-outline" size={13} color="#92400E" style={{ marginRight: 5 }} />
+          <Text style={styles.activeOrderBannerText}>Order pending — complete payment to confirm</Text>
+        </View>
+      )}
       <View style={styles.bookingTop}>
         <View style={styles.bookingInfo}>
-          <Text style={styles.bookingTable}>{order.tableNote || "No table selected"}</Text>
+          <Text style={styles.bookingTable}>{order.tableNote || "No table"}</Text>
           <Text style={styles.bookingDate}>{dateStr} at {timeStr}</Text>
-          <Text style={styles.bookingDuration} numberOfLines={2}>{itemSummary || "—"}</Text>
+          {items.length > 0 && (
+            <View style={{ marginTop: 6, gap: 2 }}>
+              {items.map((item, idx) => (
+                <Text key={idx} style={styles.orderItemRow} numberOfLines={1}>
+                  {item.quantity}× {item.name}
+                  {item.variationName ? ` (${item.variationName})` : ""}
+                </Text>
+              ))}
+            </View>
+          )}
         </View>
         <View style={{ alignItems: "flex-end", gap: 6 }}>
           <View style={[styles.statusBadge, { backgroundColor: sc.bg }]}>
             <Text style={[styles.statusText, { color: sc.text }]}>{sc.label}</Text>
           </View>
-          <Text style={{ fontWeight: "700" as const, color: Colors.light.text }}>{total}</Text>
+          <Text style={{ fontWeight: "700" as const, fontSize: 15, color: Colors.light.text }}>{total}</Text>
         </View>
       </View>
+      {order.discountLabel && (
+        <View style={styles.orderDiscountRow}>
+          <Ionicons name="pricetag-outline" size={12} color="#065F46" style={{ marginRight: 4 }} />
+          <Text style={styles.orderDiscountText}>{order.discountLabel}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -1206,6 +1247,44 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 13,
     color: Colors.brand.red,
+  },
+  activeOrderCard: {
+    borderLeftWidth: 3,
+    borderLeftColor: "#D97706",
+    backgroundColor: "#FFFBEB",
+  },
+  activeOrderBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+    backgroundColor: "#FEF3C7",
+    borderRadius: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  activeOrderBannerText: {
+    fontSize: 12,
+    fontFamily: "Montserrat_600SemiBold",
+    color: "#92400E",
+    flex: 1,
+  },
+  orderItemRow: {
+    fontSize: 12,
+    fontFamily: "Montserrat_400Regular",
+    color: "#6B7280",
+  },
+  orderDiscountRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+  },
+  orderDiscountText: {
+    fontSize: 12,
+    fontFamily: "Montserrat_600SemiBold",
+    color: "#065F46",
   },
   consentRow: {
     flexDirection: "row",
