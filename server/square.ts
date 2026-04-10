@@ -545,6 +545,7 @@ export interface Deal {
   percentage?: string;
   amountPence?: number;
   expiresOn?: string; // "YYYY-MM-DD" from Square pricing rule valid_until_date
+  applicableVariationIds?: string[]; // catalog IDs from linked product set — for auto-apply at checkout
 }
 
 const DEAL_EXCLUDE_PATTERNS = [
@@ -566,7 +567,7 @@ let dealsCache: { data: Deal[]; expiry: number } | null = null;
 export async function getSquareDeals(): Promise<Deal[]> {
   if (dealsCache && Date.now() < dealsCache.expiry) return dealsCache.data;
   try {
-    const [discountData, ruleData] = await Promise.all([
+    const [discountData, ruleData, productSetData] = await Promise.all([
       squareRequest("POST", "/v2/catalog/search", {
         object_types: ["DISCOUNT"],
         include_deleted_objects: false,
@@ -575,18 +576,40 @@ export async function getSquareDeals(): Promise<Deal[]> {
         object_types: ["PRICING_RULE"],
         include_deleted_objects: false,
       }),
+      squareRequest("POST", "/v2/catalog/search", {
+        object_types: ["PRODUCT_SET"],
+        include_deleted_objects: false,
+      }),
     ]);
 
-    // Build map: discount_id -> earliest valid_until_date from pricing rules
+    // Build map: product_set_id -> array of item/variation IDs
+    const productSetMap = new Map<string, string[]>();
+    for (const o of (productSetData.objects || []) as any[]) {
+      if (o.type !== "PRODUCT_SET" || o.is_deleted) continue;
+      const ids: string[] = o.product_set_data?.product_ids_any || [];
+      if (ids.length > 0) productSetMap.set(o.id, ids);
+    }
+
+    // Build maps from pricing rules: discount_id -> expiry date + applicable variation IDs
     const expiryByDiscountId = new Map<string, string>();
+    const variationsByDiscountId = new Map<string, string[]>();
     for (const o of (ruleData.objects || []) as any[]) {
       if (o.type !== "PRICING_RULE" || o.is_deleted) continue;
       const pd = o.pricing_rule_data || {};
-      if (pd.discount_id && pd.valid_until_date) {
+      if (!pd.discount_id) continue;
+      // Expiry date
+      if (pd.valid_until_date) {
         const existing = expiryByDiscountId.get(pd.discount_id);
-        // Keep the earliest expiry if multiple rules reference the same discount
         if (!existing || pd.valid_until_date < existing) {
           expiryByDiscountId.set(pd.discount_id, pd.valid_until_date);
+        }
+      }
+      // Applicable product IDs from linked product set
+      if (pd.match_products_id) {
+        const ids = productSetMap.get(pd.match_products_id);
+        if (ids && ids.length > 0) {
+          const existing = variationsByDiscountId.get(pd.discount_id) || [];
+          variationsByDiscountId.set(pd.discount_id, [...new Set([...existing, ...ids])]);
         }
       }
     }
@@ -604,8 +627,8 @@ export async function getSquareDeals(): Promise<Deal[]> {
       if (seen.has(key)) continue;
       seen.add(key);
       const expiresOn = expiryByDiscountId.get(o.id);
-      // Skip deals whose expiry has already passed
       if (expiresOn && expiresOn < today) continue;
+      const applicableVariationIds = variationsByDiscountId.get(o.id);
       deals.push({
         id: o.id,
         name,
@@ -613,6 +636,7 @@ export async function getSquareDeals(): Promise<Deal[]> {
         percentage: dd.percentage,
         amountPence: dd.amount_money?.amount,
         ...(expiresOn ? { expiresOn } : {}),
+        ...(applicableVariationIds ? { applicableVariationIds } : {}),
       });
     }
     dealsCache = { data: deals, expiry: Date.now() + 5 * 60 * 1000 };
@@ -893,34 +917,80 @@ export async function createOrderCheckoutLink(
   const ticketName = tableNote || (customer?.name ? customer.name.split(" ")[0] : "Guest");
 
   const memberDiscountUid = "MEMBER-DISCOUNT";
-  const applyDiscount = typeof discountPercent === "number" && discountPercent > 0;
+  const applyMemberDiscount = typeof discountPercent === "number" && discountPercent > 0;
+
+  // Auto-apply active Square deals that match items in this cart
+  const activeDeals = await getSquareDeals().catch(() => [] as Deal[]);
+  const dealByVariationId = new Map<string, Deal>();
+  for (const deal of activeDeals) {
+    if (!deal.applicableVariationIds) continue;
+    for (const vid of deal.applicableVariationIds) {
+      if (!dealByVariationId.has(vid)) dealByVariationId.set(vid, deal);
+    }
+  }
+
+  // Build line items with UIDs and collect auto-apply discounts
+  const orderDiscounts: any[] = applyMemberDiscount ? [{
+    uid: memberDiscountUid,
+    name: discountLabel ?? "Member Discount",
+    type: "FIXED_PERCENTAGE",
+    percentage: String(discountPercent),
+    scope: "ORDER",
+  }] : [];
+
+  const lineItems = items.map((item, idx) => {
+    const lineUid = `li-${idx}`;
+    const deal = dealByVariationId.get(item.variationId);
+    const appliedDiscounts: any[] = [];
+
+    if (deal) {
+      const discountUid = `deal-${idx}`;
+      if (deal.discountType === "FIXED_AMOUNT" && deal.amountPence != null) {
+        // Scale the fixed amount by quantity so each unit gets the discount
+        orderDiscounts.push({
+          uid: discountUid,
+          name: deal.name,
+          type: "FIXED_AMOUNT",
+          amount_money: { amount: deal.amountPence * item.quantity, currency: "GBP" },
+          scope: "LINE_ITEM",
+        });
+      } else if (deal.discountType === "FIXED_PERCENTAGE" && deal.percentage) {
+        orderDiscounts.push({
+          uid: discountUid,
+          name: deal.name,
+          type: "FIXED_PERCENTAGE",
+          percentage: deal.percentage,
+          scope: "LINE_ITEM",
+        });
+      }
+      if (orderDiscounts.find((d) => d.uid === discountUid)) {
+        appliedDiscounts.push({ discount_uid: discountUid });
+      }
+    }
+
+    return {
+      uid: lineUid,
+      catalog_object_id: item.variationId,
+      quantity: String(item.quantity),
+      base_price_money: { amount: item.price, currency: "GBP" },
+      ...(item.modifiers?.length
+        ? {
+            modifiers: item.modifiers.map((m) => ({
+              catalog_object_id: m.catalogObjectId,
+              base_price_money: { amount: m.price, currency: "GBP" },
+            })),
+          }
+        : {}),
+      ...(appliedDiscounts.length ? { applied_discounts: appliedDiscounts } : {}),
+    };
+  });
 
   const body: any = {
     idempotency_key: idempotencyKey,
     order: {
       location_id: locationId,
-      line_items: items.map((item) => ({
-        catalog_object_id: item.variationId,
-        quantity: String(item.quantity),
-        base_price_money: { amount: item.price, currency: "GBP" },
-        ...(item.modifiers?.length
-          ? {
-              modifiers: item.modifiers.map((m) => ({
-                catalog_object_id: m.catalogObjectId,
-                base_price_money: { amount: m.price, currency: "GBP" },
-              })),
-            }
-          : {}),
-      })),
-      ...(applyDiscount ? {
-        discounts: [{
-          uid: memberDiscountUid,
-          name: discountLabel ?? "Member Discount",
-          type: "FIXED_PERCENTAGE",
-          percentage: String(discountPercent),
-          scope: "ORDER",
-        }],
-      } : {}),
+      line_items: lineItems,
+      ...(orderDiscounts.length ? { discounts: orderDiscounts } : {}),
       // PICKUP fulfillment is required for Square KDS to display the order.
       // KDS routing rules on each device then split food → kitchen and drinks → bar.
       fulfillments: [
