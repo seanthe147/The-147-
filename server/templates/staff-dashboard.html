@@ -852,10 +852,10 @@
           <!-- Ordering Hours Schedule -->
           <div class="settings-section" style="margin-bottom:20px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-              <div class="settings-title" style="margin:0">Ordering Hours</div>
+              <div class="settings-title" style="margin:0">Venue Ordering Hours</div>
               <button class="btn btn-secondary btn-sm" onclick="openScheduleEditor()" id="scheduleEditBtn" style="display:none">Edit Schedule</button>
             </div>
-            <div class="settings-desc" style="margin-bottom:12px">Set the days and times when customers can place food &amp; drink orders through the app.</div>
+            <div class="settings-desc" style="margin-bottom:12px">The default ordering window shown to customers when the app is closed. Individual categories have their own hours — set them in <strong>Menu → Categories</strong>.</div>
             <div id="scheduleDisplay" style="font-size:13px;color:var(--text-2)">Loading…</div>
 
             <!-- Override dates -->
@@ -986,6 +986,44 @@
     <div class="modal-ft">
       <button class="btn btn-primary" onclick="saveOverride()">Save Override</button>
       <button class="btn btn-secondary" onclick="closeOverlay('overrideModal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- CATEGORY HOURS MODAL -->
+<div class="overlay" id="catHoursModal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-hd">
+      <div class="modal-hd-title" id="catHoursTitle">Set Hours</div>
+      <button class="modal-close" onclick="closeOverlay('catHoursModal')">&times;</button>
+    </div>
+    <div class="modal-bd">
+      <p style="font-size:13px;color:var(--text-2);margin:0 0 14px">Set which days and hours this category is available for customers to order from.</p>
+      <div style="margin-bottom:14px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+          <input type="checkbox" id="catHoursAlways" onchange="toggleCatHoursAlways()"> Always available (no time restrictions)
+        </label>
+      </div>
+      <div id="catHoursSchedule">
+        <div class="form-group">
+          <label class="form-label">Available Days</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap" id="catHoursDayPicker"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Opens at</label>
+            <input class="form-input" type="time" id="catHoursStart">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Closes at</label>
+            <input class="form-input" type="time" id="catHoursEnd">
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn btn-primary" onclick="saveCatHours()">Save Hours</button>
+      <button class="btn btn-secondary" onclick="closeOverlay('catHoursModal')">Cancel</button>
     </div>
   </div>
 </div>
@@ -3139,39 +3177,56 @@
 
   /* ── Category Settings ────────────────────────────────────────────────────── */
   let catSettingsData=[];
+  let catAvailRules=[];
   let dragSrcIdx=null;
 
   async function loadCategorySettings(){
     const list=el('catSettingsList');
     list.innerHTML='<div class="menu-loading">Loading categories…</div>';
     try{
-      const r=await api('/api/staff/menu/category-settings');
+      const [r,arR]=await Promise.all([api('/api/staff/menu/category-settings'),api('/api/staff/menu/availability')]);
       catSettingsData=await r.json();
+      catAvailRules=(await arR.json()).filter(r=>r.targetType==='category');
       catSettingsData.sort((a,b)=>a.displayOrder-b.displayOrder);
       renderCategorySettings();
     }catch(e){list.innerHTML='<div class="menu-loading" style="color:var(--red)">Failed to load categories.</div>';}
   }
 
+  function catHoursBadge(catId){
+    const rule=catAvailRules.find(r=>r.targetId===catId&&!r.startDate&&!r.endDate);
+    if(!rule)return'';
+    const days=JSON.parse(rule.daysOfWeek||'[]').sort((a,b)=>a-b).map(d=>SCHED_DAYS[d]).join('/');
+    const timeStr=fmtTime(rule.startTime)+' – '+fmtTime(rule.endTime);
+    const col=rule.enabled?'var(--blue)':'var(--text-3)';
+    const icon=`<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
+    return`<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:${col};font-weight:600;padding:2px 7px;background:${rule.enabled?'rgba(59,130,246,.1)':'var(--bg-2)'};border-radius:20px">${icon}${days} ${timeStr}</span>`;
+  }
+
   function renderCategorySettings(){
     const list=el('catSettingsList');
     if(!catSettingsData.length){list.innerHTML='<div class="menu-loading">No categories found.</div>';return;}
-    const mergedIds=new Set(catSettingsData.filter(c=>c.mergedIntoId).map(c=>c.id));
+    const isManager=state.role==='manager'||state.role==='owner';
     list.innerHTML=catSettingsData.map((cat,i)=>{
       const isMergedChild=!!cat.mergedIntoId;
       const parentName=isMergedChild?(catSettingsData.find(c=>c.id===cat.mergedIntoId)?.displayName||catSettingsData.find(c=>c.id===cat.mergedIntoId)?.name||''):'';
       const displayedName=cat.displayName||cat.name;
       const mergeNote=isMergedChild?`<span class="cat-sort-sub">merged into <em>${parentName}</em></span>`:`<span class="cat-sort-sub">${cat.name}</span>`;
       const otherCats=catSettingsData.filter(c=>c.id!==cat.id&&!c.mergedIntoId).map(c=>`<option value="${c.id}"${cat.mergedIntoId===c.id?' selected':''}>${c.displayName||c.name}</option>`).join('');
+      const hoursBadge=catHoursBadge(cat.id);
+      const setHoursBtn=isManager?`<button class="btn btn-secondary btn-sm" style="padding:4px 10px;font-size:11px" onclick="openCatHoursEditor('${cat.id}',${JSON.stringify(displayedName)})">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:3px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Hours</button>`:'';
       return `<div class="cat-sort-row${isMergedChild?' is-merged':''}" draggable="true" data-idx="${i}" 
         ondragstart="catDragStart(event,${i})" ondragend="catDragEnd(event)" ondragover="catDragOver(event,${i})" ondragleave="catDragLeave(event)" ondrop="catDrop(event,${i})">
         <svg class="cat-sort-handle" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:8px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <span class="cat-sort-name">${displayedName}</span>
             ${mergeNote}
+            ${hoursBadge}
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          ${setHoursBtn}
           <button class="btn btn-secondary btn-sm" style="padding:4px 10px;font-size:11px" onclick="promptRenameCat('${cat.id}',${JSON.stringify(cat.displayName||cat.name)})">Rename</button>
           <select style="font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)" onchange="mergeCat('${cat.id}',this.value)">
             <option value="">No merge</option>
@@ -3231,6 +3286,91 @@
   window.catDrop=catDrop;
   window.mergeCat=mergeCat;
   window.promptRenameCat=promptRenameCat;
+
+  /* ── Category Hours ────────────────────────────────────────────────────────── */
+  let _catHoursEditId=null;
+  let _catHoursRuleId=null;
+  let _catHoursSelectedDays=[];
+
+  function openCatHoursEditor(catId,catName){
+    _catHoursEditId=catId;
+    const existing=catAvailRules.find(r=>r.targetId===catId&&!r.startDate&&!r.endDate);
+    _catHoursRuleId=existing?existing.id:null;
+    el('catHoursTitle').textContent=catName+' — Hours';
+    // Pre-fill days (default Thu/Fri/Sat/Sun if no rule)
+    _catHoursSelectedDays=existing?JSON.parse(existing.daysOfWeek||'[]').slice():[4,5,6,0];
+    const picker=el('catHoursDayPicker');
+    picker.innerHTML=SCHED_DAYS.map((name,i)=>{
+      const sel=_catHoursSelectedDays.includes(i);
+      return`<button type="button" class="btn btn-sm${sel?' btn-primary':' btn-secondary'}" style="padding:6px 12px;font-size:12px" onclick="toggleCatHoursDay(${i},this)">${name}</button>`;
+    }).join('');
+    el('catHoursStart').value=existing?.startTime||'12:00';
+    el('catHoursEnd').value=existing?.endTime||'20:00';
+    el('catHoursAlways').checked=!existing;
+    toggleCatHoursAlways();
+    openOverlay('catHoursModal');
+  }
+
+  function toggleCatHoursDay(day,btn){
+    const idx=_catHoursSelectedDays.indexOf(day);
+    if(idx>=0)_catHoursSelectedDays.splice(idx,1);else _catHoursSelectedDays.push(day);
+    btn.classList.toggle('btn-primary',_catHoursSelectedDays.includes(day));
+    btn.classList.toggle('btn-secondary',!_catHoursSelectedDays.includes(day));
+  }
+
+  function toggleCatHoursAlways(){
+    el('catHoursSchedule').style.display=el('catHoursAlways').checked?'none':'';
+  }
+
+  async function saveCatHours(){
+    const always=el('catHoursAlways').checked;
+    if(always){
+      if(_catHoursRuleId){
+        try{
+          const r=await api('/api/staff/menu/availability/'+_catHoursRuleId,{method:'DELETE'});
+          if(!r.ok)throw new Error();
+          catAvailRules=catAvailRules.filter(r=>r.id!==_catHoursRuleId);
+          renderCategorySettings();
+          closeOverlay('catHoursModal');
+          toast('Category set to always available','success');
+        }catch(e){alert('Failed to remove hours.');}
+      }else{closeOverlay('catHoursModal');}
+      return;
+    }
+    if(!_catHoursSelectedDays.length){alert('Select at least one day.');return;}
+    const startTime=el('catHoursStart').value;
+    const endTime=el('catHoursEnd').value;
+    if(!startTime||!endTime){alert('Set opening and closing times.');return;}
+    if(startTime>=endTime){alert('Opening time must be before closing time.');return;}
+    const cat=catSettingsData.find(c=>c.id===_catHoursEditId);
+    const targetName=cat?.displayName||cat?.name||'Category';
+    const body={targetType:'category',targetId:_catHoursEditId,targetName,
+      daysOfWeek:JSON.stringify(_catHoursSelectedDays.slice().sort((a,b)=>a-b)),
+      startTime,endTime,enabled:true,createdBy:state.name||'manager'};
+    try{
+      let rule;
+      if(_catHoursRuleId){
+        const r=await api('/api/staff/menu/availability/'+_catHoursRuleId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        if(!r.ok)throw new Error();
+        rule=await r.json();
+        const idx=catAvailRules.findIndex(r=>r.id===_catHoursRuleId);
+        if(idx>=0)catAvailRules[idx]=rule;else catAvailRules.push(rule);
+      }else{
+        const r=await api('/api/staff/menu/availability',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        if(!r.ok)throw new Error();
+        rule=await r.json();
+        catAvailRules.push(rule);
+      }
+      renderCategorySettings();
+      closeOverlay('catHoursModal');
+      toast('Category hours saved','success');
+    }catch(e){alert('Failed to save hours.');}
+  }
+
+  window.openCatHoursEditor=openCatHoursEditor;
+  window.toggleCatHoursDay=toggleCatHoursDay;
+  window.toggleCatHoursAlways=toggleCatHoursAlways;
+  window.saveCatHours=saveCatHours;
 
   /* ── Availability Rules ───────────────────────────────────────────────────── */
   let availRulesData=[];
