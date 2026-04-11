@@ -269,6 +269,8 @@ export const membershipPlans = pgTable("membership_plans", {
   loyaltyMultiplier: integer("loyalty_multiplier").notNull().default(1),
   guestPassesMonthly: integer("guest_passes_monthly").notNull().default(0),
   squarePlanVariationId: text("square_plan_variation_id"),
+  squareCustomerGroupId: text("square_customer_group_id"),
+  excludeWithDeals: boolean("exclude_with_deals").notNull().default(false),
   active: boolean("active").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
   color: text("color").notNull().default("#0047AB"),

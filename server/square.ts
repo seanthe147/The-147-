@@ -916,7 +916,8 @@ export async function createOrderCheckoutLink(
   tableNote?: string,
   customer?: CheckoutCustomer,
   discountPercent?: number,
-  discountLabel?: string
+  discountLabel?: string,
+  excludeWithDeals?: boolean
 ): Promise<{ url: string; linkId: string; squareOrderId: string }> {
   const locationId = getLocationId();
   const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -944,7 +945,6 @@ export async function createOrderCheckoutLink(
   const ticketName = tableNote || (customer?.name ? customer.name.split(" ")[0] : "Guest");
 
   const memberDiscountUid = "MEMBER-DISCOUNT";
-  const applyMemberDiscount = typeof discountPercent === "number" && discountPercent > 0;
 
   // Auto-apply active Square deals that match items in this cart
   const activeDeals = await getSquareDeals().catch(() => [] as Deal[]);
@@ -960,6 +960,16 @@ export async function createOrderCheckoutLink(
     .filter((i) => dealByVariationId.has(i.variationId) || (i.itemId && dealByVariationId.has(i.itemId)))
     .map((i) => (dealByVariationId.get(i.variationId) ?? dealByVariationId.get(i.itemId!))!.name);
   console.log(`[DEALS] Cart variation IDs: ${cartVariationIds.join(", ")} | Matched deals: ${matchedDeals.join(", ") || "none"} | Deal-linked IDs: ${[...dealByVariationId.keys()].join(", ") || "none"}`);
+
+  // If plan excludes stacking with offers, skip member discount when any deal is active in the cart
+  const dealsInCart = matchedDeals.length > 0;
+  const applyMemberDiscount =
+    typeof discountPercent === "number" &&
+    discountPercent > 0 &&
+    !(excludeWithDeals && dealsInCart);
+  if (excludeWithDeals && dealsInCart) {
+    console.log(`[ORDER] Member discount withheld — plan excludes stacking with active deals (${matchedDeals.join(", ")})`);
+  }
 
   // Build line items with UIDs and collect auto-apply discounts
   const orderDiscounts: any[] = applyMemberDiscount ? [{

@@ -211,6 +211,8 @@ var init_schema = __esm({
       loyaltyMultiplier: integer("loyalty_multiplier").notNull().default(1),
       guestPassesMonthly: integer("guest_passes_monthly").notNull().default(0),
       squarePlanVariationId: text("square_plan_variation_id"),
+      squareCustomerGroupId: text("square_customer_group_id"),
+      excludeWithDeals: boolean("exclude_with_deals").notNull().default(false),
       active: boolean("active").notNull().default(true),
       sortOrder: integer("sort_order").notNull().default(0),
       color: text("color").notNull().default("#0047AB"),
@@ -1822,7 +1824,7 @@ function normalizeUkPhone(phone) {
   if (digits.startsWith("7") && digits.length === 10) return "+44" + digits;
   return void 0;
 }
-async function createOrderCheckoutLink(items, tableNote, customer, discountPercent, discountLabel) {
+async function createOrderCheckoutLink(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals) {
   const locationId = getLocationId();
   const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   let prePopulated;
@@ -1844,7 +1846,6 @@ async function createOrderCheckoutLink(items, tableNote, customer, discountPerce
   }
   const ticketName = tableNote || (customer?.name ? customer.name.split(" ")[0] : "Guest");
   const memberDiscountUid = "MEMBER-DISCOUNT";
-  const applyMemberDiscount = typeof discountPercent === "number" && discountPercent > 0;
   const activeDeals = await getSquareDeals().catch(() => []);
   const dealByVariationId = /* @__PURE__ */ new Map();
   for (const deal of activeDeals) {
@@ -1856,6 +1857,11 @@ async function createOrderCheckoutLink(items, tableNote, customer, discountPerce
   const cartVariationIds = items.map((i) => i.variationId);
   const matchedDeals = items.filter((i) => dealByVariationId.has(i.variationId) || i.itemId && dealByVariationId.has(i.itemId)).map((i) => (dealByVariationId.get(i.variationId) ?? dealByVariationId.get(i.itemId)).name);
   console.log(`[DEALS] Cart variation IDs: ${cartVariationIds.join(", ")} | Matched deals: ${matchedDeals.join(", ") || "none"} | Deal-linked IDs: ${[...dealByVariationId.keys()].join(", ") || "none"}`);
+  const dealsInCart = matchedDeals.length > 0;
+  const applyMemberDiscount = typeof discountPercent === "number" && discountPercent > 0 && !(excludeWithDeals && dealsInCart);
+  if (excludeWithDeals && dealsInCart) {
+    console.log(`[ORDER] Member discount withheld \u2014 plan excludes stacking with active deals (${matchedDeals.join(", ")})`);
+  }
   const orderDiscounts = applyMemberDiscount ? [{
     uid: memberDiscountUid,
     name: discountLabel ?? "Member Discount",
@@ -4485,6 +4491,7 @@ async function registerRoutes(app2) {
       }
       let discountPercent;
       let discountLabel;
+      let excludeWithDeals = false;
       if (customer?.email) {
         try {
           const cust = await storage.getCustomerByEmail(customer.email);
@@ -4498,6 +4505,7 @@ async function registerRoutes(app2) {
             if (sub && isActive && notCancelled && periodValid && planActive && hasDiscount) {
               discountPercent = sub.plan.foodDrinkDiscount;
               discountLabel = `${sub.plan.name} Member Discount`;
+              excludeWithDeals = !!sub.plan?.excludeWithDeals;
             } else if (sub) {
               console.log(
                 `[ORDER] Discount withheld for ${customer.email}: status=${sub.status}, cancelledAt=${sub.cancelledAt}, periodEnd=${sub.currentPeriodEnd}, planActive=${planActive}, discount=${sub.plan?.foodDrinkDiscount}`
@@ -4513,7 +4521,8 @@ async function registerRoutes(app2) {
         tableNote,
         customer,
         discountPercent,
-        discountLabel
+        discountLabel,
+        excludeWithDeals
       );
       const rawTotal = items.reduce((sum, i) => sum + Number(i.price) * Number(i.quantity), 0);
       const discountedTotal = discountPercent ? Math.round(rawTotal * (1 - discountPercent / 100)) : rawTotal;
@@ -5222,32 +5231,53 @@ async function registerRoutes(app2) {
       if (existing) return;
       const sqCustomer = await findSquareCustomerByEmail(email).catch(() => null);
       if (!sqCustomer) return;
-      const sqSubs = await listSquareSubscriptionsForCustomer(sqCustomer.id).catch(() => []);
-      if (!sqSubs.length) return;
       const allPlans = await storage.getMembershipPlans();
-      const activePlans = allPlans.filter((p) => p.active && p.squarePlanVariationId);
-      if (!activePlans.length) return;
-      const match = sqSubs.find(
-        (s) => (s.status === "ACTIVE" || s.status === "PENDING") && activePlans.some((p) => p.squarePlanVariationId === s.plan_variation_id)
-      );
-      if (!match) return;
-      const plan = activePlans.find((p) => p.squarePlanVariationId === match.plan_variation_id);
       const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-      const periodEnd = match.charged_through_date ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
-      await storage.createMembershipSubscription({
-        customerId,
-        planId: plan.id,
-        status: "active",
-        currentPeriodStart: match.start_date ?? today,
-        currentPeriodEnd: periodEnd,
-        hoursUsedThisPeriod: 0,
-        guestPassesUsed: 0,
-        squareSubscriptionId: match.id,
-        squareCustomerId: sqCustomer.id,
-        source: "square_sync",
-        staffNotes: "Auto-synced from Square on app sign-in"
-      });
-      console.log(`[MEMBERSHIP] Auto-synced Square subscription ${match.id} \u2192 customer #${customerId} (${email})`);
+      const sqSubs = await listSquareSubscriptionsForCustomer(sqCustomer.id).catch(() => []);
+      const subPlans = allPlans.filter((p) => p.active && p.squarePlanVariationId);
+      const matchedSub = sqSubs.find(
+        (s) => (s.status === "ACTIVE" || s.status === "PENDING") && subPlans.some((p) => p.squarePlanVariationId === s.plan_variation_id)
+      );
+      if (matchedSub) {
+        const plan = subPlans.find((p) => p.squarePlanVariationId === matchedSub.plan_variation_id);
+        const periodEnd = matchedSub.charged_through_date ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
+        await storage.createMembershipSubscription({
+          customerId,
+          planId: plan.id,
+          status: "active",
+          currentPeriodStart: matchedSub.start_date ?? today,
+          currentPeriodEnd: periodEnd,
+          hoursUsedThisPeriod: 0,
+          guestPassesUsed: 0,
+          squareSubscriptionId: matchedSub.id,
+          squareCustomerId: sqCustomer.id,
+          source: "square_sync",
+          staffNotes: "Auto-synced from Square on app sign-in"
+        });
+        console.log(`[MEMBERSHIP] Auto-synced Square subscription ${matchedSub.id} \u2192 customer #${customerId} (${email})`);
+        return;
+      }
+      const groupPlans = allPlans.filter((p) => p.active && p.squareCustomerGroupId);
+      if (groupPlans.length) {
+        const customerGroupIds = await getCustomerGroupIds(sqCustomer.id).catch(() => []);
+        const groupMatch = groupPlans.find((p) => customerGroupIds.includes(p.squareCustomerGroupId));
+        if (groupMatch) {
+          const periodEnd = new Date(Date.now() + 365 * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
+          await storage.createMembershipSubscription({
+            customerId,
+            planId: groupMatch.id,
+            status: "active",
+            currentPeriodStart: today,
+            currentPeriodEnd: periodEnd,
+            hoursUsedThisPeriod: 0,
+            guestPassesUsed: 0,
+            squareCustomerId: sqCustomer.id,
+            source: "square_group_sync",
+            staffNotes: `Auto-synced from Square customer group "${groupMatch.name}" on app sign-in`
+          });
+          console.log(`[MEMBERSHIP] Auto-synced Square group "${groupMatch.name}" \u2192 customer #${customerId} (${email})`);
+        }
+      }
     } catch (err) {
       console.warn("[MEMBERSHIP] Square sync failed (non-fatal):", err.message);
     }
@@ -5881,8 +5911,17 @@ Phone: ${phone}` : ""}`,
     const plans = await storage.getMembershipPlans();
     res.json(plans);
   });
+  app2.get("/api/staff/square/customer-groups", staffAuth, async (_req, res) => {
+    try {
+      if (!isConfigured()) return res.status(503).json({ message: "Square is not configured" });
+      const groups = await listCustomerGroups();
+      res.json(groups);
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  });
   app2.post("/api/staff/membership/plans", staffAuth, managerAuth, async (req, res) => {
-    const { name, tier, priceMonthly, hoursIncluded, hoursUnit, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, active, sortOrder, color, description } = req.body ?? {};
+    const { name, tier, priceMonthly, hoursIncluded, hoursUnit, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, squareCustomerGroupId, excludeWithDeals, active, sortOrder, color, description } = req.body ?? {};
     if (!name?.trim()) return res.status(400).json({ message: "Plan name is required" });
     if (priceMonthly == null || isNaN(Number(priceMonthly))) return res.status(400).json({ message: "Monthly price is required" });
     const resolvedTier = (tier?.trim() || name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")) + "_" + Date.now();
@@ -5898,6 +5937,8 @@ Phone: ${phone}` : ""}`,
         loyaltyMultiplier: Number(loyaltyMultiplier) || 1,
         guestPassesMonthly: Number(guestPassesMonthly) || 0,
         squarePlanVariationId: squarePlanVariationId?.trim() || null,
+        squareCustomerGroupId: squareCustomerGroupId?.trim() || null,
+        excludeWithDeals: !!excludeWithDeals,
         active: active !== false,
         sortOrder: Number(sortOrder) || 0,
         color: color || "#0047AB",
@@ -5995,35 +6036,61 @@ Phone: ${phone}` : ""}`,
       if (existing) return res.json({ status: "already_linked", message: `${customer.name} already has a membership linked (${existing.status}).` });
       const sqCustomer = await findSquareCustomerByEmail(email.trim()).catch(() => null);
       if (!sqCustomer) return res.json({ status: "no_square_customer", message: `No Square customer found for ${email}. They may need to be added to Square first.` });
-      const sqSubs = await listSquareSubscriptionsForCustomer(sqCustomer.id).catch(() => []);
-      if (!sqSubs.length) return res.json({ status: "no_subscriptions", message: `${customer.name} found in Square but has no subscriptions attached.` });
       const allPlans = await storage.getMembershipPlans();
-      const activePlans = allPlans.filter((p) => p.active && p.squarePlanVariationId);
-      const match = sqSubs.find(
-        (s) => (s.status === "ACTIVE" || s.status === "PENDING") && activePlans.some((p) => p.squarePlanVariationId === s.plan_variation_id)
-      );
-      if (!match) {
-        const subStatuses = sqSubs.map((s) => `${s.status} (plan: ${s.plan_variation_id || "unknown"})`).join(", ");
-        return res.json({ status: "no_matching_plan", message: `${customer.name} has Square subscriptions but none match an active local plan. Square subs: ${subStatuses}` });
-      }
-      const plan = activePlans.find((p) => p.squarePlanVariationId === match.plan_variation_id);
       const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-      const periodEnd = match.charged_through_date ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
-      await storage.createMembershipSubscription({
-        customerId: customer.id,
-        planId: plan.id,
-        status: "active",
-        currentPeriodStart: match.start_date ?? today,
-        currentPeriodEnd: periodEnd,
-        hoursUsedThisPeriod: 0,
-        guestPassesUsed: 0,
-        squareSubscriptionId: match.id,
-        squareCustomerId: sqCustomer.id,
-        source: "square_sync",
-        staffNotes: "Manually synced from Square via staff portal"
-      });
-      console.log(`[MEMBERSHIP] Manual Square sync: ${match.id} \u2192 customer #${customer.id} (${email}) on plan "${plan.name}"`);
-      return res.json({ status: "linked", message: `\u2713 ${customer.name} linked to ${plan.name} plan (Square sub: ${match.id})` });
+      const sqSubs = await listSquareSubscriptionsForCustomer(sqCustomer.id).catch(() => []);
+      const subPlans = allPlans.filter((p) => p.active && p.squarePlanVariationId);
+      const match = sqSubs.find(
+        (s) => (s.status === "ACTIVE" || s.status === "PENDING") && subPlans.some((p) => p.squarePlanVariationId === s.plan_variation_id)
+      );
+      if (match) {
+        const plan = subPlans.find((p) => p.squarePlanVariationId === match.plan_variation_id);
+        const periodEnd = match.charged_through_date ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
+        await storage.createMembershipSubscription({
+          customerId: customer.id,
+          planId: plan.id,
+          status: "active",
+          currentPeriodStart: match.start_date ?? today,
+          currentPeriodEnd: periodEnd,
+          hoursUsedThisPeriod: 0,
+          guestPassesUsed: 0,
+          squareSubscriptionId: match.id,
+          squareCustomerId: sqCustomer.id,
+          source: "square_sync",
+          staffNotes: "Manually synced from Square via staff portal"
+        });
+        console.log(`[MEMBERSHIP] Manual Square sync: ${match.id} \u2192 customer #${customer.id} (${email}) on plan "${plan.name}"`);
+        return res.json({ status: "linked", message: `\u2713 ${customer.name} linked to ${plan.name} plan (Square sub: ${match.id})` });
+      }
+      const groupPlans = allPlans.filter((p) => p.active && p.squareCustomerGroupId);
+      if (groupPlans.length) {
+        const customerGroupIds = await getCustomerGroupIds(sqCustomer.id).catch(() => []);
+        const groupMatch = groupPlans.find((p) => customerGroupIds.includes(p.squareCustomerGroupId));
+        if (groupMatch) {
+          const periodEnd = new Date(Date.now() + 365 * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
+          await storage.createMembershipSubscription({
+            customerId: customer.id,
+            planId: groupMatch.id,
+            status: "active",
+            currentPeriodStart: today,
+            currentPeriodEnd: periodEnd,
+            hoursUsedThisPeriod: 0,
+            guestPassesUsed: 0,
+            squareCustomerId: sqCustomer.id,
+            source: "square_group_sync",
+            staffNotes: `Manually synced from Square customer group "${groupMatch.name}" via staff portal`
+          });
+          console.log(`[MEMBERSHIP] Manual group sync: group "${groupMatch.name}" \u2192 customer #${customer.id} (${email})`);
+          return res.json({ status: "linked", message: `\u2713 ${customer.name} linked to ${groupMatch.name} plan via Square customer group` });
+        }
+        const groupInfo = customerGroupIds.length ? `Their Square groups: ${customerGroupIds.join(", ")}` : "They are not in any Square customer groups.";
+        return res.json({ status: "no_matching_plan", message: `${customer.name} found in Square but has no matching subscription or customer group. ${sqSubs.length ? `Subscriptions: ${sqSubs.map((s) => `${s.status} (plan: ${s.plan_variation_id || "unknown"})`).join(", ")}. ` : "No subscriptions found. "}${groupInfo}` });
+      }
+      if (!sqSubs.length) {
+        return res.json({ status: "no_subscriptions", message: `${customer.name} found in Square but has no subscriptions and no customer groups are mapped to plans.` });
+      }
+      const subStatuses = sqSubs.map((s) => `${s.status} (plan: ${s.plan_variation_id || "unknown"})`).join(", ");
+      return res.json({ status: "no_matching_plan", message: `${customer.name} has Square subscriptions but none match an active local plan. Square subs: ${subStatuses}` });
     } catch (err) {
       console.error("[MEMBERSHIP] Manual Square sync error:", err.message);
       return res.status(500).json({ message: "Sync failed: " + err.message });
