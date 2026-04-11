@@ -3635,13 +3635,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // ── 1. Check Square subscriptions ──────────────────────────────────────
       const sqSubs: any[] = await square.listSquareSubscriptionsForCustomer(sqCustomer.id).catch(() => []);
-      const subPlans = allPlans.filter(p => p.active && p.squarePlanVariationId);
+      const subPlans = allPlans.filter(p => p.active && (p.squarePlanVariationId || (p as any).squarePlanVariationIdAlt));
+      const planMatchesVariation = (p: any, variationId: string) =>
+        p.squarePlanVariationId === variationId || p.squarePlanVariationIdAlt === variationId;
       const matchedSub = sqSubs.find((s: any) =>
         (s.status === "ACTIVE" || s.status === "PENDING") &&
-        subPlans.some(p => p.squarePlanVariationId === s.plan_variation_id)
+        subPlans.some(p => planMatchesVariation(p, s.plan_variation_id))
       );
       if (matchedSub) {
-        const plan = subPlans.find(p => p.squarePlanVariationId === matchedSub.plan_variation_id)!;
+        const plan = subPlans.find(p => planMatchesVariation(p, matchedSub.plan_variation_id))!;
         const periodEnd = matchedSub.charged_through_date ??
           new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
         await storage.createMembershipSubscription({
@@ -4407,7 +4409,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/staff/membership/plans", staffAuth, managerAuth, async (req, res) => {
-    const { name, tier, priceMonthly, hoursIncluded, hoursUnit, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, squareCustomerGroupId, excludeWithDeals, active, sortOrder, color, description } = req.body ?? {};
+    const { name, tier, priceMonthly, hoursIncluded, hoursUnit, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, squarePlanVariationIdAlt, squareCustomerGroupId, excludeWithDeals, active, sortOrder, color, description } = req.body ?? {};
     if (!name?.trim()) return res.status(400).json({ message: "Plan name is required" });
     if (priceMonthly == null || isNaN(Number(priceMonthly))) return res.status(400).json({ message: "Monthly price is required" });
     // Auto-generate a tier slug from the name if not provided
@@ -4424,6 +4426,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         loyaltyMultiplier: Number(loyaltyMultiplier) || 1,
         guestPassesMonthly: Number(guestPassesMonthly) || 0,
         squarePlanVariationId: squarePlanVariationId?.trim() || null,
+        squarePlanVariationIdAlt: squarePlanVariationIdAlt?.trim() || null,
         squareCustomerGroupId: squareCustomerGroupId?.trim() || null,
         excludeWithDeals: !!excludeWithDeals,
         active: active !== false,
@@ -4546,13 +4549,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // ── 1. Check subscriptions ──────────────────────────────────────────────
       const sqSubs: any[] = await square.listSquareSubscriptionsForCustomer(sqCustomer.id).catch(() => []);
-      const subPlans = allPlans.filter(p => p.active && p.squarePlanVariationId);
+      const subPlans = allPlans.filter(p => p.active && (p.squarePlanVariationId || (p as any).squarePlanVariationIdAlt));
+      const planMatchesVar = (p: any, vid: string) =>
+        p.squarePlanVariationId === vid || p.squarePlanVariationIdAlt === vid;
       const match = sqSubs.find((s: any) =>
         (s.status === "ACTIVE" || s.status === "PENDING") &&
-        subPlans.some(p => p.squarePlanVariationId === s.plan_variation_id)
+        subPlans.some(p => planMatchesVar(p, s.plan_variation_id))
       );
       if (match) {
-        const plan = subPlans.find(p => p.squarePlanVariationId === match.plan_variation_id)!;
+        const plan = subPlans.find(p => planMatchesVar(p, match.plan_variation_id))!;
         const periodEnd = match.charged_through_date ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
         await storage.createMembershipSubscription({
           customerId: customer.id, planId: plan.id, status: "active",

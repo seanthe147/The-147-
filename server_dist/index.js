@@ -211,6 +211,7 @@ var init_schema = __esm({
       loyaltyMultiplier: integer("loyalty_multiplier").notNull().default(1),
       guestPassesMonthly: integer("guest_passes_monthly").notNull().default(0),
       squarePlanVariationId: text("square_plan_variation_id"),
+      squarePlanVariationIdAlt: text("square_plan_variation_id_alt"),
       squareCustomerGroupId: text("square_customer_group_id"),
       excludeWithDeals: boolean("exclude_with_deals").notNull().default(false),
       active: boolean("active").notNull().default(true),
@@ -401,6 +402,7 @@ async function runStartupMigrations() {
   try {
     await client.query(`
       ALTER TABLE membership_plans
+        ADD COLUMN IF NOT EXISTS square_plan_variation_id_alt TEXT,
         ADD COLUMN IF NOT EXISTS square_customer_group_id TEXT,
         ADD COLUMN IF NOT EXISTS exclude_with_deals BOOLEAN NOT NULL DEFAULT FALSE;
     `);
@@ -5298,12 +5300,13 @@ async function registerRoutes(app2) {
       const sqCustomer = await findSquareCustomerByEmail(email).catch(() => null);
       if (!sqCustomer) return;
       const sqSubs = await listSquareSubscriptionsForCustomer(sqCustomer.id).catch(() => []);
-      const subPlans = allPlans.filter((p) => p.active && p.squarePlanVariationId);
+      const subPlans = allPlans.filter((p) => p.active && (p.squarePlanVariationId || p.squarePlanVariationIdAlt));
+      const planMatchesVariation = (p, variationId) => p.squarePlanVariationId === variationId || p.squarePlanVariationIdAlt === variationId;
       const matchedSub = sqSubs.find(
-        (s) => (s.status === "ACTIVE" || s.status === "PENDING") && subPlans.some((p) => p.squarePlanVariationId === s.plan_variation_id)
+        (s) => (s.status === "ACTIVE" || s.status === "PENDING") && subPlans.some((p) => planMatchesVariation(p, s.plan_variation_id))
       );
       if (matchedSub) {
-        const plan = subPlans.find((p) => p.squarePlanVariationId === matchedSub.plan_variation_id);
+        const plan = subPlans.find((p) => planMatchesVariation(p, matchedSub.plan_variation_id));
         const periodEnd = matchedSub.charged_through_date ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
         await storage.createMembershipSubscription({
           customerId,
@@ -5985,7 +5988,7 @@ Phone: ${phone}` : ""}`,
     }
   });
   app2.post("/api/staff/membership/plans", staffAuth, managerAuth, async (req, res) => {
-    const { name, tier, priceMonthly, hoursIncluded, hoursUnit, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, squareCustomerGroupId, excludeWithDeals, active, sortOrder, color, description } = req.body ?? {};
+    const { name, tier, priceMonthly, hoursIncluded, hoursUnit, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, squarePlanVariationIdAlt, squareCustomerGroupId, excludeWithDeals, active, sortOrder, color, description } = req.body ?? {};
     if (!name?.trim()) return res.status(400).json({ message: "Plan name is required" });
     if (priceMonthly == null || isNaN(Number(priceMonthly))) return res.status(400).json({ message: "Monthly price is required" });
     const resolvedTier = (tier?.trim() || name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")) + "_" + Date.now();
@@ -6001,6 +6004,7 @@ Phone: ${phone}` : ""}`,
         loyaltyMultiplier: Number(loyaltyMultiplier) || 1,
         guestPassesMonthly: Number(guestPassesMonthly) || 0,
         squarePlanVariationId: squarePlanVariationId?.trim() || null,
+        squarePlanVariationIdAlt: squarePlanVariationIdAlt?.trim() || null,
         squareCustomerGroupId: squareCustomerGroupId?.trim() || null,
         excludeWithDeals: !!excludeWithDeals,
         active: active !== false,
@@ -6103,12 +6107,13 @@ Phone: ${phone}` : ""}`,
       const allPlans = await storage.getMembershipPlans();
       const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
       const sqSubs = await listSquareSubscriptionsForCustomer(sqCustomer.id).catch(() => []);
-      const subPlans = allPlans.filter((p) => p.active && p.squarePlanVariationId);
+      const subPlans = allPlans.filter((p) => p.active && (p.squarePlanVariationId || p.squarePlanVariationIdAlt));
+      const planMatchesVar = (p, vid) => p.squarePlanVariationId === vid || p.squarePlanVariationIdAlt === vid;
       const match = sqSubs.find(
-        (s) => (s.status === "ACTIVE" || s.status === "PENDING") && subPlans.some((p) => p.squarePlanVariationId === s.plan_variation_id)
+        (s) => (s.status === "ACTIVE" || s.status === "PENDING") && subPlans.some((p) => planMatchesVar(p, s.plan_variation_id))
       );
       if (match) {
-        const plan = subPlans.find((p) => p.squarePlanVariationId === match.plan_variation_id);
+        const plan = subPlans.find((p) => planMatchesVar(p, match.plan_variation_id));
         const periodEnd = match.charged_through_date ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
         await storage.createMembershipSubscription({
           customerId: customer.id,

@@ -1152,9 +1152,14 @@
       <div style="background:var(--surface-2,#F8F9FB);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px">
         <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-bottom:10px">Square Integration</div>
         <div class="form-group" style="margin-bottom:10px">
-          <label class="form-label">Square Plan Variation ID</label>
+          <label class="form-label">Square Plan Variation ID (Monthly)</label>
           <input class="form-input" type="text" id="epSquareId" placeholder="Leave blank if not using Square billing" style="font-family:monospace;font-size:13px">
           <div style="font-size:11px;color:var(--text-3);margin-top:4px;line-height:1.5">For paid subscription plans billed through Square. Find in Square Dashboard → Subscriptions.</div>
+        </div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label class="form-label">Square Plan Variation ID (Annual)</label>
+          <input class="form-input" type="text" id="epSquareIdAlt" placeholder="Optional — for annual billing variation" style="font-family:monospace;font-size:13px">
+          <div style="font-size:11px;color:var(--text-3);margin-top:4px;line-height:1.5">Annual subscription variation ID for the same plan. Members on an annual plan will auto-sync on login.</div>
         </div>
         <div class="form-group" style="margin-bottom:10px">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
@@ -4308,6 +4313,7 @@
     el('epLoyaltyMult').value='1';
     el('epPriorityBooking').checked=false;
     el('epSquareId').value='';
+    el('epSquareIdAlt').value='';
     el('epSquareGroupId').innerHTML='<option value="">— None —</option>';
     el('epExcludeWithDeals').checked=false;
     el('epActive').checked=true;
@@ -4351,6 +4357,7 @@
     el('epLoyaltyMult').value=plan.loyaltyMultiplier||1;
     el('epPriorityBooking').checked=!!plan.priorityBooking;
     el('epSquareId').value=plan.squarePlanVariationId||'';
+    el('epSquareIdAlt').value=plan.squarePlanVariationIdAlt||'';
     el('epExcludeWithDeals').checked=!!plan.excludeWithDeals;
     // Populate group dropdown with current value
     const groupSel=el('epSquareGroupId');
@@ -4393,6 +4400,7 @@
       loyaltyMultiplier:parseInt(el('epLoyaltyMult').value)||1,
       priorityBooking:el('epPriorityBooking').checked,
       squarePlanVariationId:el('epSquareId').value.trim()||null,
+      squarePlanVariationIdAlt:el('epSquareIdAlt').value.trim()||null,
       squareCustomerGroupId:el('epSquareGroupId').value.trim()||null,
       excludeWithDeals:el('epExcludeWithDeals').checked,
       active:el('epActive').checked,
