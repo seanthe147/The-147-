@@ -375,6 +375,7 @@ var init_encryption = __esm({
 var storage_exports = {};
 __export(storage_exports, {
   DatabaseStorage: () => DatabaseStorage,
+  runStartupMigrations: () => runStartupMigrations,
   storage: () => storage
 });
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -394,6 +395,35 @@ function buildPoolConfig() {
     connectionString: url.toString(),
     ssl: { rejectUnauthorized: !skipVerify }
   };
+}
+async function runStartupMigrations() {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      ALTER TABLE membership_plans
+        ADD COLUMN IF NOT EXISTS square_customer_group_id TEXT,
+        ADD COLUMN IF NOT EXISTS exclude_with_deals BOOLEAN NOT NULL DEFAULT FALSE;
+    `);
+    await client.query(`
+      INSERT INTO membership_plans
+        (name, tier, price_monthly, hours_included, hours_unit, food_drink_discount,
+         priority_booking, loyalty_multiplier, guest_passes_monthly,
+         square_plan_variation_id, square_customer_group_id, exclude_with_deals,
+         active, sort_order, color, description)
+      VALUES
+        ('VIP', 'vip', 0, NULL, 'month', 10,
+         FALSE, 1, 0,
+         NULL, NULL, TRUE,
+         TRUE, 3, '#7C3AED',
+         '10% off food & drink (excluding snooker bookings and active offers)')
+      ON CONFLICT (tier) DO NOTHING;
+    `);
+    console.log("[DB] Startup migrations applied");
+  } catch (err) {
+    console.error("[DB] Startup migration failed (non-fatal):", err.message);
+  } finally {
+    client.release();
+  }
 }
 function encryptBookingFields(booking) {
   return {
@@ -6261,6 +6291,7 @@ Phone: ${phone}` : ""}`,
 }
 
 // server/index.ts
+init_storage();
 import * as fs2 from "fs";
 import * as path2 from "path";
 import nodemailer2 from "nodemailer";
@@ -6667,6 +6698,7 @@ function scheduleRetentionCleanup() {
   configureExpoAndLanding(app);
   const server = await registerRoutes(app);
   setupErrorHandler(app);
+  await runStartupMigrations();
   await bootstrapOwner();
   scheduleRetentionCleanup();
   scheduleBookingReminders();

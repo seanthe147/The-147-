@@ -89,6 +89,41 @@ pool.on("error", (err) => {
 
 const db = drizzle(pool);
 
+// ── Startup migrations — safe, idempotent schema updates ──────────────────────
+export async function runStartupMigrations() {
+  const client = await pool.connect();
+  try {
+    // Add columns introduced after initial deployment
+    await client.query(`
+      ALTER TABLE membership_plans
+        ADD COLUMN IF NOT EXISTS square_customer_group_id TEXT,
+        ADD COLUMN IF NOT EXISTS exclude_with_deals BOOLEAN NOT NULL DEFAULT FALSE;
+    `);
+
+    // Ensure VIP plan exists (10% food & drink, group-based, excludes stacking with deals)
+    await client.query(`
+      INSERT INTO membership_plans
+        (name, tier, price_monthly, hours_included, hours_unit, food_drink_discount,
+         priority_booking, loyalty_multiplier, guest_passes_monthly,
+         square_plan_variation_id, square_customer_group_id, exclude_with_deals,
+         active, sort_order, color, description)
+      VALUES
+        ('VIP', 'vip', 0, NULL, 'month', 10,
+         FALSE, 1, 0,
+         NULL, NULL, TRUE,
+         TRUE, 3, '#7C3AED',
+         '10% off food & drink (excluding snooker bookings and active offers)')
+      ON CONFLICT (tier) DO NOTHING;
+    `);
+
+    console.log("[DB] Startup migrations applied");
+  } catch (err: any) {
+    console.error("[DB] Startup migration failed (non-fatal):", err.message);
+  } finally {
+    client.release();
+  }
+}
+
 function encryptBookingFields(booking: InsertBooking): InsertBooking & { emailHash?: string } {
   return {
     ...booking,

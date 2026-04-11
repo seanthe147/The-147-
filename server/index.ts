@@ -1,6 +1,7 @@
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
+import { runStartupMigrations } from "./storage";
 import * as fs from "fs";
 import * as path from "path";
 import nodemailer from "nodemailer";
@@ -493,6 +494,8 @@ function scheduleRetentionCleanup() {
 
   setupErrorHandler(app);
 
+  // Apply safe, idempotent schema migrations (adds new columns, seeds required plans)
+  await runStartupMigrations();
   // Promote seanclowe/seanlowe to owner if no owner account exists (one-time bootstrap)
   await bootstrapOwner();
   // Automatically enforce GDPR data retention (90-day anonymisation + session cleanup)
