@@ -210,6 +210,7 @@ var init_schema = __esm({
       priorityBooking: boolean("priority_booking").notNull().default(false),
       loyaltyMultiplier: integer("loyalty_multiplier").notNull().default(1),
       guestPassesMonthly: integer("guest_passes_monthly").notNull().default(0),
+      priceAnnual: integer("price_annual"),
       squarePlanVariationId: text("square_plan_variation_id"),
       squarePlanVariationIdAlt: text("square_plan_variation_id_alt"),
       squareCustomerGroupId: text("square_customer_group_id"),
@@ -402,6 +403,7 @@ async function runStartupMigrations() {
   try {
     await client.query(`
       ALTER TABLE membership_plans
+        ADD COLUMN IF NOT EXISTS price_annual INTEGER,
         ADD COLUMN IF NOT EXISTS square_plan_variation_id_alt TEXT,
         ADD COLUMN IF NOT EXISTS square_customer_group_id TEXT,
         ADD COLUMN IF NOT EXISTS exclude_with_deals BOOLEAN NOT NULL DEFAULT FALSE;
@@ -5707,8 +5709,9 @@ Phone: ${phone}` : ""}`,
   app2.post("/api/membership/join", customerAuth, async (req, res) => {
     try {
       const customerId = req.customerId;
-      const { planId } = req.body ?? {};
+      const { planId, billingFrequency = "monthly" } = req.body ?? {};
       if (!planId) return res.status(400).json({ message: "planId is required" });
+      const isAnnual = billingFrequency === "annual";
       const existing = await storage.getMembershipSubscriptionByCustomer(customerId);
       if (existing && existing.planId === parseInt(planId) && existing.status === "active") {
         return res.status(409).json({ message: "You already have an active membership on this plan" });
@@ -5716,8 +5719,12 @@ Phone: ${phone}` : ""}`,
       const plan = await storage.getMembershipPlan(parseInt(planId));
       if (!plan || !plan.active) return res.status(404).json({ message: "Plan not found" });
       const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-      const nextMonth = /* @__PURE__ */ new Date();
-      nextMonth.setMonth(nextMonth.getMonth() + 1);
+      const periodEnd = /* @__PURE__ */ new Date();
+      if (isAnnual) {
+        periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+      } else {
+        periodEnd.setMonth(periodEnd.getMonth() + 1);
+      }
       if (existing && existing.id) {
         await storage.updateMembershipSubscription(existing.id, {
           status: "cancelled",
@@ -5729,11 +5736,11 @@ Phone: ${phone}` : ""}`,
         planId: plan.id,
         status: "pending",
         currentPeriodStart: today,
-        currentPeriodEnd: nextMonth.toISOString().slice(0, 10),
+        currentPeriodEnd: periodEnd.toISOString().slice(0, 10),
         hoursUsedThisPeriod: 0,
         guestPassesUsed: 0,
         staffNotes: null,
-        source: "app"
+        source: isAnnual ? "app_annual" : "app"
       });
       let checkoutUrl = null;
       if (isConfigured()) {
@@ -5762,8 +5769,10 @@ Phone: ${phone}` : ""}`,
                 });
               }
               const redirectUrl = `https://the147bradford.replit.app/api/membership/${sub.id}/payment-return`;
-              const checkout = plan.squarePlanVariationId ? await createSubscriptionCheckoutLink({
-                planVariationId: plan.squarePlanVariationId,
+              const variationId = isAnnual ? plan.squarePlanVariationIdAlt || plan.squarePlanVariationId : plan.squarePlanVariationId;
+              const chargeAmount = isAnnual ? plan.priceAnnual || plan.priceMonthly * 12 : plan.priceMonthly;
+              const checkout = variationId ? await createSubscriptionCheckoutLink({
+                planVariationId: variationId,
                 subscriptionId: sub.id,
                 buyerEmail: customer?.email,
                 redirectUrl
@@ -5771,8 +5780,8 @@ Phone: ${phone}` : ""}`,
                 console.error("[membership/join] subscription checkout error:", err?.message ?? err);
                 return null;
               }) : await createMembershipCheckoutLink({
-                planName: plan.name,
-                amountPence: plan.priceMonthly,
+                planName: `${plan.name}${isAnnual ? " (Annual)" : ""}`,
+                amountPence: chargeAmount,
                 subscriptionId: sub.id,
                 redirectUrl
               }).catch((err) => {
@@ -5781,7 +5790,7 @@ Phone: ${phone}` : ""}`,
               });
               if (checkout) {
                 checkoutUrl = checkout.url;
-                console.log(`[membership/join] ${plan.squarePlanVariationId ? "Subscription" : "One-time"} checkout created for sub #${sub.id}`);
+                console.log(`[membership/join] ${variationId ? "Subscription" : "One-time"} ${isAnnual ? "annual" : "monthly"} checkout created for sub #${sub.id}`);
               }
             }
           }
@@ -5988,7 +5997,7 @@ Phone: ${phone}` : ""}`,
     }
   });
   app2.post("/api/staff/membership/plans", staffAuth, managerAuth, async (req, res) => {
-    const { name, tier, priceMonthly, hoursIncluded, hoursUnit, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, squarePlanVariationIdAlt, squareCustomerGroupId, excludeWithDeals, active, sortOrder, color, description } = req.body ?? {};
+    const { name, tier, priceMonthly, priceAnnual, hoursIncluded, hoursUnit, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, squarePlanVariationIdAlt, squareCustomerGroupId, excludeWithDeals, active, sortOrder, color, description } = req.body ?? {};
     if (!name?.trim()) return res.status(400).json({ message: "Plan name is required" });
     if (priceMonthly == null || isNaN(Number(priceMonthly))) return res.status(400).json({ message: "Monthly price is required" });
     const resolvedTier = (tier?.trim() || name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")) + "_" + Date.now();
@@ -6003,6 +6012,7 @@ Phone: ${phone}` : ""}`,
         priorityBooking: !!priorityBooking,
         loyaltyMultiplier: Number(loyaltyMultiplier) || 1,
         guestPassesMonthly: Number(guestPassesMonthly) || 0,
+        priceAnnual: priceAnnual != null && priceAnnual !== "" ? Number(priceAnnual) : null,
         squarePlanVariationId: squarePlanVariationId?.trim() || null,
         squarePlanVariationIdAlt: squarePlanVariationIdAlt?.trim() || null,
         squareCustomerGroupId: squareCustomerGroupId?.trim() || null,

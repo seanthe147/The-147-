@@ -268,6 +268,7 @@ export const membershipPlans = pgTable("membership_plans", {
   priorityBooking: boolean("priority_booking").notNull().default(false),
   loyaltyMultiplier: integer("loyalty_multiplier").notNull().default(1),
   guestPassesMonthly: integer("guest_passes_monthly").notNull().default(0),
+  priceAnnual: integer("price_annual"),
   squarePlanVariationId: text("square_plan_variation_id"),
   squarePlanVariationIdAlt: text("square_plan_variation_id_alt"),
   squareCustomerGroupId: text("square_customer_group_id"),

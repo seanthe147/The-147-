@@ -96,6 +96,7 @@ export async function runStartupMigrations() {
     // Add columns introduced after initial deployment
     await client.query(`
       ALTER TABLE membership_plans
+        ADD COLUMN IF NOT EXISTS price_annual INTEGER,
         ADD COLUMN IF NOT EXISTS square_plan_variation_id_alt TEXT,
         ADD COLUMN IF NOT EXISTS square_customer_group_id TEXT,
         ADD COLUMN IF NOT EXISTS exclude_with_deals BOOLEAN NOT NULL DEFAULT FALSE;

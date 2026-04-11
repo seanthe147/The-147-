@@ -75,6 +75,7 @@ interface MembershipPlan {
   name: string;
   tier: string;
   priceMonthly: number;
+  priceAnnual?: number | null;
   color: string | null;
   hoursIncluded: number | null;
   foodDrinkDiscount: number | null;

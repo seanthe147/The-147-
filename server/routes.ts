@@ -4066,8 +4066,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/membership/join", customerAuth, async (req, res) => {
     try {
       const customerId = (req as any).customerId as number;
-      const { planId } = req.body ?? {};
+      const { planId, billingFrequency = "monthly" } = req.body ?? {};
       if (!planId) return res.status(400).json({ message: "planId is required" });
+      const isAnnual = billingFrequency === "annual";
 
       // Check if already an active member on this same plan
       const existing = await storage.getMembershipSubscriptionByCustomer(customerId);
@@ -4079,8 +4080,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!plan || !plan.active) return res.status(404).json({ message: "Plan not found" });
 
       const today = new Date().toISOString().slice(0, 10);
-      const nextMonth = new Date();
-      nextMonth.setMonth(nextMonth.getMonth() + 1);
+      const periodEnd = new Date();
+      if (isAnnual) {
+        periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+      } else {
+        periodEnd.setMonth(periodEnd.getMonth() + 1);
+      }
 
       // If upgrading (existing sub on a different plan), cancel the old one
       if (existing && existing.id) {
@@ -4095,11 +4100,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         planId: plan.id,
         status: "pending",
         currentPeriodStart: today,
-        currentPeriodEnd: nextMonth.toISOString().slice(0, 10),
+        currentPeriodEnd: periodEnd.toISOString().slice(0, 10),
         hoursUsedThisPeriod: 0,
         guestPassesUsed: 0,
         staffNotes: null,
-        source: "app",
+        source: isAnnual ? "app_annual" : "app",
       });
 
       let checkoutUrl: string | null = null;
@@ -4143,10 +4148,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
               // ── Generate checkout payment link ──────────────────────────────
               const redirectUrl = `https://the147bradford.replit.app/api/membership/${sub.id}/payment-return`;
 
-              const checkout = plan.squarePlanVariationId
-                // Recurring subscription checkout — card saved, billed monthly
+              // Pick variation ID and price based on billing frequency
+              const variationId = isAnnual
+                ? ((plan as any).squarePlanVariationIdAlt || plan.squarePlanVariationId)
+                : plan.squarePlanVariationId;
+              const chargeAmount = isAnnual
+                ? ((plan as any).priceAnnual || plan.priceMonthly * 12)
+                : plan.priceMonthly;
+
+              const checkout = variationId
+                // Recurring subscription checkout
                 ? await square.createSubscriptionCheckoutLink({
-                    planVariationId: plan.squarePlanVariationId,
+                    planVariationId: variationId,
                     subscriptionId: sub.id,
                     buyerEmail: customer?.email,
                     redirectUrl,
@@ -4156,8 +4169,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   })
                 // Fallback: one-time payment link (Square plan not set up yet)
                 : await square.createMembershipCheckoutLink({
-                    planName: plan.name,
-                    amountPence: plan.priceMonthly,
+                    planName: `${plan.name}${isAnnual ? " (Annual)" : ""}`,
+                    amountPence: chargeAmount,
                     subscriptionId: sub.id,
                     redirectUrl,
                   }).catch((err) => {
@@ -4167,7 +4180,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
               if (checkout) {
                 checkoutUrl = checkout.url;
-                console.log(`[membership/join] ${plan.squarePlanVariationId ? "Subscription" : "One-time"} checkout created for sub #${sub.id}`);
+                console.log(`[membership/join] ${variationId ? "Subscription" : "One-time"} ${isAnnual ? "annual" : "monthly"} checkout created for sub #${sub.id}`);
               }
             }
           }
@@ -4409,7 +4422,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/staff/membership/plans", staffAuth, managerAuth, async (req, res) => {
-    const { name, tier, priceMonthly, hoursIncluded, hoursUnit, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, squarePlanVariationIdAlt, squareCustomerGroupId, excludeWithDeals, active, sortOrder, color, description } = req.body ?? {};
+    const { name, tier, priceMonthly, priceAnnual, hoursIncluded, hoursUnit, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, squarePlanVariationIdAlt, squareCustomerGroupId, excludeWithDeals, active, sortOrder, color, description } = req.body ?? {};
     if (!name?.trim()) return res.status(400).json({ message: "Plan name is required" });
     if (priceMonthly == null || isNaN(Number(priceMonthly))) return res.status(400).json({ message: "Monthly price is required" });
     // Auto-generate a tier slug from the name if not provided
@@ -4425,6 +4438,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         priorityBooking: !!priorityBooking,
         loyaltyMultiplier: Number(loyaltyMultiplier) || 1,
         guestPassesMonthly: Number(guestPassesMonthly) || 0,
+        priceAnnual: priceAnnual != null && priceAnnual !== "" ? Number(priceAnnual) : null,
         squarePlanVariationId: squarePlanVariationId?.trim() || null,
         squarePlanVariationIdAlt: squarePlanVariationIdAlt?.trim() || null,
         squareCustomerGroupId: squareCustomerGroupId?.trim() || null,

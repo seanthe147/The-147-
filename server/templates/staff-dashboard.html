@@ -1111,6 +1111,11 @@
           <input class="form-input" type="number" id="epPrice" min="0" step="0.01" placeholder="19.99">
           <div style="font-size:11px;color:var(--text-3);margin-top:4px">Enter in pounds (e.g. 19.99). Stored internally in pence.</div>
         </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Annual Price (£) <span style="font-weight:400;color:var(--text-3)">optional</span></label>
+          <input class="form-input" type="number" id="epPriceAnnual" min="0" step="0.01" placeholder="e.g. 199.99 — leave blank if annual not offered">
+          <div style="font-size:11px;color:var(--text-3);margin-top:4px">Full annual charge. Leave blank to only offer monthly billing.</div>
+        </div>
       </div>
 
       <!-- Perks -->
@@ -4223,7 +4228,10 @@
                 ${pausedCnt?`<span class="pill pill-amber">${pausedCnt} paused</span>`:''}
               </div>
             </div>
-            <div style="font-size:24px;font-weight:800;color:${esc(p.color)}">£${(p.priceMonthly/100).toFixed(2)}<span style="font-size:13px;font-weight:600;color:var(--text-2)">/mo</span></div>
+            <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+              <div style="font-size:24px;font-weight:800;color:${esc(p.color)}">£${(p.priceMonthly/100).toFixed(2)}<span style="font-size:13px;font-weight:600;color:var(--text-2)">/mo</span></div>
+              ${p.priceAnnual?`<div style="font-size:14px;font-weight:600;color:var(--text-2)">£${(p.priceAnnual/100).toFixed(2)}<span style="font-size:11px;font-weight:500;color:var(--text-3)">/yr</span> <span style="font-size:10px;background:${esc(p.color)}18;color:${esc(p.color)};padding:2px 6px;border-radius:4px;font-weight:700">ANNUAL</span></div>`:''}
+            </div>
             <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
               ${perks.map(pk=>`<span style="font-size:11px;background:${esc(p.color)}18;color:${esc(p.color)};padding:3px 8px;border-radius:6px;font-weight:600">${esc(pk)}</span>`).join('')}
             </div>
@@ -4306,6 +4314,7 @@
     el('epColor').value='#0047AB';
     el('epDescription').value='';
     el('epPrice').value='';
+    el('epPriceAnnual').value='';
     el('epHours').value='';
     el('epHoursUnit').value='month';
     el('epDiscount').value='0';
@@ -4350,6 +4359,7 @@
     el('epColor').value=plan.color||'#0047AB';
     el('epDescription').value=plan.description||'';
     el('epPrice').value=(plan.priceMonthly/100).toFixed(2);
+    el('epPriceAnnual').value=plan.priceAnnual?(plan.priceAnnual/100).toFixed(2):'';
     el('epHours').value=plan.hoursIncluded!=null?plan.hoursIncluded:'';
     el('epHoursUnit').value=plan.hoursUnit||'month';
     el('epDiscount').value=plan.foodDrinkDiscount||0;
@@ -4388,11 +4398,14 @@
     const priceVal=parseFloat(priceStr);
     if(isNaN(priceVal)||priceVal<0){err.textContent='Enter a valid price (e.g. 19.99)';err.classList.add('show');return}
     const hoursRaw=el('epHours').value;
+    const annualStr=el('epPriceAnnual').value.trim();
+    const annualVal=annualStr!==''?parseFloat(annualStr):null;
     const payload={
       name,
       color:el('epColor').value,
       description:el('epDescription').value.trim()||null,
       priceMonthly:Math.round(priceVal*100),
+      priceAnnual:annualVal!=null&&!isNaN(annualVal)?Math.round(annualVal*100):null,
       hoursIncluded:hoursRaw!==''?parseInt(hoursRaw):null,
       hoursUnit:el('epHoursUnit').value||'month',
       foodDrinkDiscount:parseInt(el('epDiscount').value)||0,

@@ -26,6 +26,7 @@ interface MembershipPlan {
   name: string;
   tier: string;
   priceMonthly: number;
+  priceAnnual: number | null;
   description: string | null;
   color: string | null;
   hoursIncluded: number | null;
@@ -37,6 +38,8 @@ interface MembershipPlan {
   sortOrder: number | null;
   active: boolean;
 }
+
+type BillingFrequency = "monthly" | "annual";
 
 interface MembershipSubscription {
   id: number;
@@ -92,6 +95,7 @@ export default function MembershipScreen() {
   const { isAuthenticated, isLoading: authLoading, customer } = useCustomerAuth();
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [joining, setJoining] = useState(false);
+  const [billingFrequency, setBillingFrequency] = useState<BillingFrequency>("monthly");
   const queryClient = useQueryClient();
 
   const { data: plans = [], isLoading: plansLoading } = useQuery<MembershipPlan[]>({
@@ -113,7 +117,7 @@ export default function MembershipScreen() {
   });
 
   const joinMutation = useMutation({
-    mutationFn: async (planId: number) => {
+    mutationFn: async ({ planId, frequency }: { planId: number; frequency: BillingFrequency }) => {
       const token = await getToken();
       const url = new URL("/api/membership/join", getApiUrl());
       const res = await fetch(url.toString(), {
@@ -122,7 +126,7 @@ export default function MembershipScreen() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ planId }),
+        body: JSON.stringify({ planId, billingFrequency: frequency }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to join");
@@ -145,16 +149,41 @@ export default function MembershipScreen() {
 
   const selectedPlan = plans.find((p) => p.id === selectedPlanId) ?? null;
 
+  // When switching to annual, only show plans that have an annual price set
+  const visiblePlans = billingFrequency === "annual"
+    ? plans.filter((p) => p.priceAnnual != null)
+    : plans;
+  const hasAnyAnnualPlan = plans.some((p) => p.priceAnnual != null);
+
+  const getDisplayPrice = (plan: MembershipPlan) =>
+    billingFrequency === "annual" && plan.priceAnnual != null
+      ? plan.priceAnnual
+      : plan.priceMonthly;
+
+  const getPriceSaving = (plan: MembershipPlan) => {
+    if (!plan.priceAnnual) return null;
+    const annualIfMonthly = plan.priceMonthly * 12;
+    const saving = annualIfMonthly - plan.priceAnnual;
+    return saving > 0 ? saving : null;
+  };
+
   const handleJoin = () => {
     if (!selectedPlanId || !selectedPlan) return;
+    const isAnnual = billingFrequency === "annual";
+    const price = isAnnual && selectedPlan.priceAnnual != null
+      ? selectedPlan.priceAnnual
+      : selectedPlan.priceMonthly;
+    const periodLabel = isAnnual ? "per year" : "per month";
+    const saving = getPriceSaving(selectedPlan);
+    const savingNote = isAnnual && saving ? `\n\nYou save £${(saving / 100).toFixed(2)} compared to paying monthly.` : "";
     Alert.alert(
       "Confirm Membership",
-      `Join the ${selectedPlan.name} plan for £${(selectedPlan.priceMonthly / 100).toFixed(2)}/month?\n\nYou'll be taken to a secure payment page to complete your sign-up.`,
+      `Join the ${selectedPlan.name} plan for £${(price / 100).toFixed(2)} ${periodLabel}?${savingNote}\n\nYou'll be taken to a secure payment page to complete your sign-up.`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Continue to Payment",
-          onPress: () => joinMutation.mutate(selectedPlanId),
+          onPress: () => joinMutation.mutate({ planId: selectedPlanId, frequency: billingFrequency }),
         },
       ]
     );
@@ -197,11 +226,37 @@ export default function MembershipScreen() {
             </Text>
           </View>
 
-          {plans.map((plan) => {
+          {hasAnyAnnualPlan && (
+            <View style={styles.billingToggle}>
+              <Pressable
+                style={[styles.billingOption, billingFrequency === "monthly" && styles.billingOptionActive]}
+                onPress={() => { setBillingFrequency("monthly"); setSelectedPlanId(null); }}
+              >
+                <Text style={[styles.billingOptionText, billingFrequency === "monthly" && styles.billingOptionTextActive]}>
+                  Monthly
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.billingOption, billingFrequency === "annual" && styles.billingOptionActive]}
+                onPress={() => { setBillingFrequency("annual"); setSelectedPlanId(null); }}
+              >
+                <Text style={[styles.billingOptionText, billingFrequency === "annual" && styles.billingOptionTextActive]}>
+                  Annual
+                </Text>
+                <View style={styles.saveBadge}>
+                  <Text style={styles.saveBadgeText}>Save more</Text>
+                </View>
+              </Pressable>
+            </View>
+          )}
+
+          {visiblePlans.map((plan) => {
             const meta = getPlanMeta(plan.tier);
             const planColor = plan.color || Colors.brand.blue;
             const isSelected = selectedPlanId === plan.id;
             const features = getPlanFeatures(plan);
+            const displayPrice = getDisplayPrice(plan);
+            const saving = getPriceSaving(plan);
             return (
               <Pressable
                 key={plan.id}
@@ -217,6 +272,11 @@ export default function MembershipScreen() {
                     <Text style={styles.popularBadgeText}>Most Popular</Text>
                   </View>
                 )}
+                {billingFrequency === "annual" && saving != null && (
+                  <View style={[styles.annualSavingBadge, { backgroundColor: "#16A34A" }]}>
+                    <Text style={styles.annualSavingText}>Save £{(saving / 100).toFixed(0)}/yr</Text>
+                  </View>
+                )}
                 <View style={styles.planHeader}>
                   <View style={[styles.planIconWrap, { backgroundColor: planColor + "22" }]}>
                     <Ionicons name={meta.name} size={20} color={planColor} />
@@ -227,9 +287,14 @@ export default function MembershipScreen() {
                   </View>
                   <View style={styles.priceBlock}>
                     <Text style={[styles.planPrice, { color: planColor }]}>
-                      £{(plan.priceMonthly / 100).toFixed(2)}
+                      £{(displayPrice / 100).toFixed(2)}
                     </Text>
-                    <Text style={styles.planPeriod}>/month</Text>
+                    <Text style={styles.planPeriod}>/{billingFrequency === "annual" ? "year" : "month"}</Text>
+                    {billingFrequency === "annual" && (
+                      <Text style={styles.planPriceMonthly}>
+                        £{(displayPrice / 100 / 12).toFixed(2)}/mo
+                      </Text>
+                    )}
                   </View>
                 </View>
                 <View style={styles.featureList}>
@@ -264,7 +329,15 @@ export default function MembershipScreen() {
                   <>
                     <Ionicons name="card-outline" size={18} color="#fff" />
                     <Text style={styles.joinBtnText}>
-                      Join {selectedPlan?.name} — £{selectedPlan ? (selectedPlan.priceMonthly / 100).toFixed(2) : ""}/mo
+                      {(() => {
+                        if (!selectedPlan) return "";
+                        const isAnnual = billingFrequency === "annual";
+                        const price = isAnnual && selectedPlan.priceAnnual != null
+                          ? selectedPlan.priceAnnual
+                          : selectedPlan.priceMonthly;
+                        const period = isAnnual ? "/yr" : "/mo";
+                        return `Join ${selectedPlan.name} — £${(price / 100).toFixed(2)}${period}`;
+                      })()}
                     </Text>
                   </>
                 )}
@@ -565,6 +638,27 @@ const styles = StyleSheet.create({
   priceBlock: { alignItems: "flex-end" },
   planPrice: { fontFamily: "Montserrat_700Bold", fontSize: 22 },
   planPeriod: { fontFamily: "Montserrat_400Regular", fontSize: 11, color: Colors.light.textSecondary },
+  planPriceMonthly: { fontFamily: "Montserrat_400Regular", fontSize: 10, color: Colors.light.textSecondary, marginTop: 1 },
+  billingToggle: {
+    flexDirection: "row", backgroundColor: "#F1F5F9",
+    borderRadius: 12, padding: 4, marginBottom: 16,
+  },
+  billingOption: {
+    flex: 1, paddingVertical: 8, paddingHorizontal: 12,
+    borderRadius: 9, alignItems: "center", flexDirection: "row",
+    justifyContent: "center", gap: 6,
+  },
+  billingOptionActive: { backgroundColor: "#fff", shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 4, elevation: 2 },
+  billingOptionText: { fontFamily: "Montserrat_600SemiBold", fontSize: 14, color: Colors.light.textSecondary },
+  billingOptionTextActive: { color: Colors.light.text },
+  saveBadge: { backgroundColor: "#16A34A", borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 },
+  saveBadgeText: { fontFamily: "Montserrat_700Bold", fontSize: 9, color: "#fff" },
+  annualSavingBadge: {
+    position: "absolute", top: 0, left: 0,
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderTopLeftRadius: 12, borderBottomRightRadius: 10,
+  },
+  annualSavingText: { fontFamily: "Montserrat_700Bold", fontSize: 10, color: "#fff" },
   featureList: { gap: 8 },
   featureRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   featureDot: {
