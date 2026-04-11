@@ -961,23 +961,31 @@ export async function createOrderCheckoutLink(
     .map((i) => (dealByVariationId.get(i.variationId) ?? dealByVariationId.get(i.itemId!))!.name);
   console.log(`[DEALS] Cart variation IDs: ${cartVariationIds.join(", ")} | Matched deals: ${matchedDeals.join(", ") || "none"} | Deal-linked IDs: ${[...dealByVariationId.keys()].join(", ") || "none"}`);
 
-  // If plan excludes stacking with offers, skip member discount when any deal is active in the cart
+  const hasMemberDiscount = typeof discountPercent === "number" && discountPercent > 0;
   const dealsInCart = matchedDeals.length > 0;
-  const applyMemberDiscount =
-    typeof discountPercent === "number" &&
-    discountPercent > 0 &&
-    !(excludeWithDeals && dealsInCart);
-  if (excludeWithDeals && dealsInCart) {
-    console.log(`[ORDER] Member discount withheld — plan excludes stacking with active deals (${matchedDeals.join(", ")})`);
+  // When excludeWithDeals is true and offers exist, apply discount item-by-item (skip items on offer)
+  // Otherwise apply as a standard ORDER-level discount
+  const itemLevelMemberDiscount = hasMemberDiscount && excludeWithDeals && dealsInCart;
+  const orderLevelMemberDiscount = hasMemberDiscount && !itemLevelMemberDiscount;
+
+  if (itemLevelMemberDiscount) {
+    console.log(`[ORDER] Member discount applied per-item — excluded from offer items: ${matchedDeals.join(", ")}`);
   }
 
   // Build line items with UIDs and collect auto-apply discounts
-  const orderDiscounts: any[] = applyMemberDiscount ? [{
+  const orderDiscounts: any[] = orderLevelMemberDiscount ? [{
     uid: memberDiscountUid,
     name: discountLabel ?? "Member Discount",
     type: "FIXED_PERCENTAGE",
     percentage: String(discountPercent),
     scope: "ORDER",
+  }] : itemLevelMemberDiscount ? [{
+    // LINE_ITEM scoped — will only be applied to items without a deal (referenced per line item)
+    uid: memberDiscountUid,
+    name: discountLabel ?? "Member Discount",
+    type: "FIXED_PERCENTAGE",
+    percentage: String(discountPercent),
+    scope: "LINE_ITEM",
   }] : [];
 
   const lineItems = items.map((item, idx) => {
@@ -1008,8 +1016,13 @@ export async function createOrderCheckoutLink(
       }
       if (orderDiscounts.find((d) => d.uid === discountUid)) {
         appliedDiscounts.push({ discount_uid: discountUid });
+        // Item has a deal — do NOT apply member discount to it (for excludeWithDeals plans)
       }
+    } else if (itemLevelMemberDiscount) {
+      // No deal on this item — apply member discount individually
+      appliedDiscounts.push({ discount_uid: memberDiscountUid });
     }
+    // ORDER-scoped member discount applies automatically to all items — no need to reference it here
 
     return {
       uid: lineUid,

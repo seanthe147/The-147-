@@ -1857,17 +1857,26 @@ async function createOrderCheckoutLink(items, tableNote, customer, discountPerce
   const cartVariationIds = items.map((i) => i.variationId);
   const matchedDeals = items.filter((i) => dealByVariationId.has(i.variationId) || i.itemId && dealByVariationId.has(i.itemId)).map((i) => (dealByVariationId.get(i.variationId) ?? dealByVariationId.get(i.itemId)).name);
   console.log(`[DEALS] Cart variation IDs: ${cartVariationIds.join(", ")} | Matched deals: ${matchedDeals.join(", ") || "none"} | Deal-linked IDs: ${[...dealByVariationId.keys()].join(", ") || "none"}`);
+  const hasMemberDiscount = typeof discountPercent === "number" && discountPercent > 0;
   const dealsInCart = matchedDeals.length > 0;
-  const applyMemberDiscount = typeof discountPercent === "number" && discountPercent > 0 && !(excludeWithDeals && dealsInCart);
-  if (excludeWithDeals && dealsInCart) {
-    console.log(`[ORDER] Member discount withheld \u2014 plan excludes stacking with active deals (${matchedDeals.join(", ")})`);
+  const itemLevelMemberDiscount = hasMemberDiscount && excludeWithDeals && dealsInCart;
+  const orderLevelMemberDiscount = hasMemberDiscount && !itemLevelMemberDiscount;
+  if (itemLevelMemberDiscount) {
+    console.log(`[ORDER] Member discount applied per-item \u2014 excluded from offer items: ${matchedDeals.join(", ")}`);
   }
-  const orderDiscounts = applyMemberDiscount ? [{
+  const orderDiscounts = orderLevelMemberDiscount ? [{
     uid: memberDiscountUid,
     name: discountLabel ?? "Member Discount",
     type: "FIXED_PERCENTAGE",
     percentage: String(discountPercent),
     scope: "ORDER"
+  }] : itemLevelMemberDiscount ? [{
+    // LINE_ITEM scoped — will only be applied to items without a deal (referenced per line item)
+    uid: memberDiscountUid,
+    name: discountLabel ?? "Member Discount",
+    type: "FIXED_PERCENTAGE",
+    percentage: String(discountPercent),
+    scope: "LINE_ITEM"
   }] : [];
   const lineItems = items.map((item, idx) => {
     const lineUid = `li-${idx}`;
@@ -1895,6 +1904,8 @@ async function createOrderCheckoutLink(items, tableNote, customer, discountPerce
       if (orderDiscounts.find((d) => d.uid === discountUid)) {
         appliedDiscounts.push({ discount_uid: discountUid });
       }
+    } else if (itemLevelMemberDiscount) {
+      appliedDiscounts.push({ discount_uid: memberDiscountUid });
     }
     return {
       uid: lineUid,
@@ -5228,11 +5239,34 @@ async function registerRoutes(app2) {
     try {
       if (!isConfigured()) return;
       const existing = await storage.getMembershipSubscriptionByCustomer(customerId);
-      if (existing) return;
-      const sqCustomer = await findSquareCustomerByEmail(email).catch(() => null);
-      if (!sqCustomer) return;
       const allPlans = await storage.getMembershipPlans();
       const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+      if (existing && existing.source === "square_group_sync") {
+        const sqCustomerForCheck = await findSquareCustomerByEmail(email).catch(() => null);
+        if (sqCustomerForCheck) {
+          const groupPlansForCheck = allPlans.filter((p) => p.active && p.squareCustomerGroupId);
+          const currentGroupIds = await getCustomerGroupIds(sqCustomerForCheck.id).catch(() => []);
+          const stillInGroup = groupPlansForCheck.some((p) => currentGroupIds.includes(p.squareCustomerGroupId) && p.id === existing.planId);
+          if (!stillInGroup) {
+            await storage.updateMembershipSubscription(existing.id, {
+              status: "cancelled",
+              cancelledAt: /* @__PURE__ */ new Date(),
+              staffNotes: "Auto-cancelled: customer removed from Square customer group"
+            });
+            console.log(`[MEMBERSHIP] Group membership cancelled for #${customerId} (${email}) \u2014 no longer in Square group`);
+          } else {
+            const refreshedEnd = new Date(Date.now() + 365 * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
+            await storage.updateMembershipSubscription(existing.id, { currentPeriodEnd: refreshedEnd });
+            return;
+          }
+        } else {
+          return;
+        }
+      } else if (existing) {
+        return;
+      }
+      const sqCustomer = await findSquareCustomerByEmail(email).catch(() => null);
+      if (!sqCustomer) return;
       const sqSubs = await listSquareSubscriptionsForCustomer(sqCustomer.id).catch(() => []);
       const subPlans = allPlans.filter((p) => p.active && p.squarePlanVariationId);
       const matchedSub = sqSubs.find(

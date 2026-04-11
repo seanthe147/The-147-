@@ -3594,15 +3594,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
   async function syncSquareMembershipForCustomer(customerId: number, email: string) {
     try {
       if (!square.isConfigured()) return;
-      // Skip if already has a local active subscription
-      const existing = await storage.getMembershipSubscriptionByCustomer(customerId);
-      if (existing) return;
-      // Find the Square customer by email
-      const sqCustomer = await square.findSquareCustomerByEmail(email).catch(() => null);
-      if (!sqCustomer) return;
 
+      const existing = await storage.getMembershipSubscriptionByCustomer(customerId);
       const allPlans = await storage.getMembershipPlans();
       const today = new Date().toISOString().slice(0, 10);
+
+      // ── If customer already has a group-synced subscription, re-check membership ──
+      // This handles removal: if they've been taken out of the Square group, cancel locally
+      if (existing && (existing as any).source === "square_group_sync") {
+        const sqCustomerForCheck = await square.findSquareCustomerByEmail(email).catch(() => null);
+        if (sqCustomerForCheck) {
+          const groupPlansForCheck = allPlans.filter(p => p.active && (p as any).squareCustomerGroupId);
+          const currentGroupIds = await square.getCustomerGroupIds(sqCustomerForCheck.id).catch(() => [] as string[]);
+          const stillInGroup = groupPlansForCheck.some(p => currentGroupIds.includes((p as any).squareCustomerGroupId) && p.id === existing.planId);
+          if (!stillInGroup) {
+            // Removed from group — cancel the local subscription immediately
+            await storage.updateMembershipSubscription(existing.id, {
+              status: "cancelled",
+              cancelledAt: new Date(),
+              staffNotes: "Auto-cancelled: customer removed from Square customer group",
+            } as any);
+            console.log(`[MEMBERSHIP] Group membership cancelled for #${customerId} (${email}) — no longer in Square group`);
+            // Fall through to check if they're now in a different group
+          } else {
+            // Still in group — refresh the period end date to keep it rolling
+            const refreshedEnd = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+            await storage.updateMembershipSubscription(existing.id, { currentPeriodEnd: refreshedEnd } as any);
+            return; // Membership valid, nothing else to do
+          }
+        } else {
+          return; // Can't reach Square — leave as-is
+        }
+      } else if (existing) {
+        return; // Non-group subscription exists — don't touch it
+      }
+
+      // ── No existing subscription — find the Square customer and check ──────
+      const sqCustomer = await square.findSquareCustomerByEmail(email).catch(() => null);
+      if (!sqCustomer) return;
 
       // ── 1. Check Square subscriptions ──────────────────────────────────────
       const sqSubs: any[] = await square.listSquareSubscriptionsForCustomer(sqCustomer.id).catch(() => []);
@@ -3632,7 +3661,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const customerGroupIds = await square.getCustomerGroupIds(sqCustomer.id).catch(() => [] as string[]);
         const groupMatch = groupPlans.find(p => customerGroupIds.includes((p as any).squareCustomerGroupId));
         if (groupMatch) {
-          // Group-based memberships don't expire — set a far-future end date (refreshed on each login)
           const periodEnd = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
           await storage.createMembershipSubscription({
             customerId, planId: groupMatch.id, status: "active",
