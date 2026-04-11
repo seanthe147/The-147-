@@ -42,6 +42,7 @@ export const offers = pgTable("offers", {
   gradientStart: text("gradient_start").notNull().default("#0047AB"),
   gradientEnd: text("gradient_end").notNull().default("#1E6FD9"),
   icon: text("icon").notNull().default("pricetag"),
+  active: boolean("active").notNull().default(true),
 });
 
 export const insertOfferSchema = createInsertSchema(offers).omit({ id: true });

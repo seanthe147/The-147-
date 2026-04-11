@@ -1051,9 +1051,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Public: only active offers
   app.get("/api/offers", async (_req, res) => {
     const offers = await storage.getOffers();
     res.json(offers);
+  });
+
+  // Staff: all offers including inactive (for management)
+  app.get("/api/staff/offers", staffAuth, async (_req, res) => {
+    const offers = await storage.getAllOffers();
+    res.json(offers);
+  });
+
+  // Staff: quick toggle active status
+  app.patch("/api/staff/offers/:id/toggle", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const offer = await storage.getOffer(id);
+    if (!offer) return res.status(404).json({ message: "Offer not found" });
+    const updated = await storage.updateOffer(id, { active: !offer.active });
+    res.json(updated);
   });
 
   app.get("/api/offers/:id", async (req, res) => {

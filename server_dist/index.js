@@ -45,7 +45,8 @@ var init_schema = __esm({
       validUntil: text("valid_until").notNull(),
       gradientStart: text("gradient_start").notNull().default("#0047AB"),
       gradientEnd: text("gradient_end").notNull().default("#1E6FD9"),
-      icon: text("icon").notNull().default("pricetag")
+      icon: text("icon").notNull().default("pricetag"),
+      active: boolean("active").notNull().default(true)
     });
     insertOfferSchema = createInsertSchema(offers).omit({ id: true });
     pushTokens = pgTable("push_tokens", {
@@ -402,6 +403,10 @@ async function runStartupMigrations() {
   const client = await pool.connect();
   try {
     await client.query(`
+      ALTER TABLE offers
+        ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+    `);
+    await client.query(`
       ALTER TABLE membership_plans
         ADD COLUMN IF NOT EXISTS price_annual INTEGER,
         ADD COLUMN IF NOT EXISTS square_plan_variation_id_alt TEXT,
@@ -471,7 +476,10 @@ var init_storage = __esm({
         return user;
       }
       async getOffers() {
-        return db.select().from(offers);
+        return db.select().from(offers).where(eq(offers.active, true));
+      }
+      async getAllOffers() {
+        return db.select().from(offers).orderBy(offers.id);
       }
       async getOffer(id) {
         const [offer] = await db.select().from(offers).where(eq(offers.id, id));
@@ -2993,6 +3001,18 @@ async function registerRoutes(app2) {
   app2.get("/api/offers", async (_req, res) => {
     const offers2 = await storage.getOffers();
     res.json(offers2);
+  });
+  app2.get("/api/staff/offers", staffAuth, async (_req, res) => {
+    const offers2 = await storage.getAllOffers();
+    res.json(offers2);
+  });
+  app2.patch("/api/staff/offers/:id/toggle", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const offer = await storage.getOffer(id);
+    if (!offer) return res.status(404).json({ message: "Offer not found" });
+    const updated = await storage.updateOffer(id, { active: !offer.active });
+    res.json(updated);
   });
   app2.get("/api/offers/:id", async (req, res) => {
     const id = parseInt(req.params.id);

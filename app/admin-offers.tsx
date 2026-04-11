@@ -113,14 +113,16 @@ export default function AdminOffersScreen() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
 
+  const STAFF_OFFERS_KEY = ["/api/staff/offers"];
+
   const { data: offers, isLoading } = useQuery<Offer[]>({
-    queryKey: ["/api/offers"],
+    queryKey: STAFF_OFFERS_KEY,
   });
 
   const createMutation = useMutation({
     mutationFn: (data: OfferForm) => apiRequest("POST", "/api/offers", data),
     onSuccess: async () => {
-      await queryClient.refetchQueries({ queryKey: ["/api/offers"] });
+      await queryClient.refetchQueries({ queryKey: STAFF_OFFERS_KEY });
       resetForm();
     },
   });
@@ -129,8 +131,18 @@ export default function AdminOffersScreen() {
     mutationFn: ({ id, data }: { id: number; data: OfferForm }) =>
       apiRequest("PUT", `/api/offers/${id}`, data),
     onSuccess: async () => {
-      await queryClient.refetchQueries({ queryKey: ["/api/offers"] });
+      await queryClient.refetchQueries({ queryKey: STAFF_OFFERS_KEY });
       resetForm();
+    },
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("PATCH", `/api/staff/offers/${id}/toggle`, {}),
+    onSuccess: async () => {
+      await queryClient.refetchQueries({ queryKey: STAFF_OFFERS_KEY });
+    },
+    onError: () => {
+      Alert.alert("Error", "Failed to update offer status.");
     },
   });
 
@@ -140,7 +152,7 @@ export default function AdminOffersScreen() {
       return id;
     },
     onSuccess: async () => {
-      await queryClient.refetchQueries({ queryKey: ["/api/offers"] });
+      await queryClient.refetchQueries({ queryKey: STAFF_OFFERS_KEY });
     },
     onError: () => {
       Alert.alert("Error", "Failed to delete offer. Please try again.");
@@ -365,43 +377,84 @@ export default function AdminOffersScreen() {
           <ActivityIndicator size="large" color={Colors.brand.blue} style={{ marginTop: 40 }} />
         ) : offers && offers.length > 0 ? (
           <View style={styles.offerList}>
-            <Text style={styles.listHeading}>
-              Current Offers ({offers.length})
-            </Text>
-            {offers.map((offer) => (
-              <View key={offer.id} style={styles.offerRow}>
-                <LinearGradient
-                  colors={[offer.gradientStart, offer.gradientEnd]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.offerRowGradient}
-                >
-                  <Ionicons
-                    name={offer.icon as keyof typeof Ionicons.glyphMap}
-                    size={20}
-                    color="#FFFFFF"
-                  />
-                </LinearGradient>
-                <View style={styles.offerRowInfo}>
-                  <Text style={styles.offerRowTitle}>{offer.title}</Text>
-                  <Text style={styles.offerRowSub}>{offer.discount}</Text>
+            <View style={styles.listHeader}>
+              <Text style={styles.listHeading}>All Offers</Text>
+              <View style={styles.listStats}>
+                <View style={styles.statPill}>
+                  <View style={[styles.statDot, { backgroundColor: "#16A34A" }]} />
+                  <Text style={styles.statText}>{offers.filter((o) => o.active).length} live</Text>
                 </View>
-                <Pressable
-                  onPress={() => startEdit(offer)}
-                  style={styles.offerRowAction}
-                  testID={`edit-offer-${offer.id}`}
-                >
-                  <Ionicons name="create-outline" size={22} color={Colors.brand.blue} />
-                </Pressable>
-                <Pressable
-                  onPress={() => handleDelete(offer.id)}
-                  style={styles.offerRowAction}
-                  testID={`delete-offer-${offer.id}`}
-                >
-                  <Ionicons name="trash-outline" size={22} color={Colors.brand.red} />
-                </Pressable>
+                {offers.filter((o) => !o.active).length > 0 && (
+                  <View style={styles.statPill}>
+                    <View style={[styles.statDot, { backgroundColor: "#9CA3AF" }]} />
+                    <Text style={styles.statText}>{offers.filter((o) => !o.active).length} hidden</Text>
+                  </View>
+                )}
               </View>
-            ))}
+            </View>
+            {offers.map((offer) => {
+              const isToggling = toggleMutation.isPending && toggleMutation.variables === offer.id;
+              return (
+                <View key={offer.id} style={[styles.offerRow, !offer.active && styles.offerRowInactive]}>
+                  <LinearGradient
+                    colors={offer.active ? [offer.gradientStart, offer.gradientEnd] : ["#D1D5DB", "#9CA3AF"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.offerRowGradient}
+                  >
+                    <Ionicons
+                      name={offer.icon as keyof typeof Ionicons.glyphMap}
+                      size={20}
+                      color="#FFFFFF"
+                    />
+                  </LinearGradient>
+
+                  <View style={styles.offerRowInfo}>
+                    <Text style={[styles.offerRowTitle, !offer.active && styles.offerRowTitleInactive]}>
+                      {offer.title}
+                    </Text>
+                    <Text style={styles.offerRowSub}>{offer.discount}</Text>
+                  </View>
+
+                  <Pressable
+                    onPress={() => toggleMutation.mutate(offer.id)}
+                    disabled={isToggling}
+                    style={[styles.toggleBtn, offer.active ? styles.toggleBtnLive : styles.toggleBtnHidden]}
+                    testID={`toggle-offer-${offer.id}`}
+                  >
+                    {isToggling ? (
+                      <ActivityIndicator size="small" color={offer.active ? "#16A34A" : "#9CA3AF"} />
+                    ) : (
+                      <>
+                        <Ionicons
+                          name={offer.active ? "eye" : "eye-off"}
+                          size={13}
+                          color={offer.active ? "#16A34A" : "#6B7280"}
+                        />
+                        <Text style={[styles.toggleBtnText, offer.active ? styles.toggleBtnTextLive : styles.toggleBtnTextHidden]}>
+                          {offer.active ? "Live" : "Hidden"}
+                        </Text>
+                      </>
+                    )}
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => startEdit(offer)}
+                    style={styles.offerRowAction}
+                    testID={`edit-offer-${offer.id}`}
+                  >
+                    <Ionicons name="create-outline" size={21} color={Colors.brand.blue} />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => handleDelete(offer.id)}
+                    style={styles.offerRowAction}
+                    testID={`delete-offer-${offer.id}`}
+                  >
+                    <Ionicons name="trash-outline" size={21} color={Colors.brand.red} />
+                  </Pressable>
+                </View>
+              );
+            })}
           </View>
         ) : (
           <View style={styles.emptyState}>
@@ -623,12 +676,35 @@ const styles = StyleSheet.create({
   offerList: {
     marginTop: 4,
   },
+  listHeader: {
+    flexDirection: "row", alignItems: "center",
+    justifyContent: "space-between", marginBottom: 12,
+  },
   listHeading: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 16,
     color: Colors.light.text,
-    marginBottom: 14,
   },
+  listStats: { flexDirection: "row", gap: 8 },
+  statPill: {
+    flexDirection: "row", alignItems: "center",
+    gap: 5, backgroundColor: "#F3F4F6",
+    borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4,
+  },
+  statDot: { width: 7, height: 7, borderRadius: 3.5 },
+  statText: { fontFamily: "Montserrat_500Medium", fontSize: 12, color: Colors.light.textSecondary },
+  offerRowInactive: { opacity: 0.6 },
+  offerRowTitleInactive: { color: Colors.light.textSecondary },
+  toggleBtn: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    paddingHorizontal: 9, paddingVertical: 5,
+    borderRadius: 8, borderWidth: 1,
+  },
+  toggleBtnLive: { backgroundColor: "#F0FDF4", borderColor: "#86EFAC" },
+  toggleBtnHidden: { backgroundColor: "#F9FAFB", borderColor: "#D1D5DB" },
+  toggleBtnText: { fontFamily: "Montserrat_600SemiBold", fontSize: 12 },
+  toggleBtnTextLive: { color: "#16A34A" },
+  toggleBtnTextHidden: { color: "#6B7280" },
   offerRow: {
     flexDirection: "row",
     alignItems: "center",

@@ -95,6 +95,11 @@ export async function runStartupMigrations() {
   try {
     // Add columns introduced after initial deployment
     await client.query(`
+      ALTER TABLE offers
+        ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+    `);
+
+    await client.query(`
       ALTER TABLE membership_plans
         ADD COLUMN IF NOT EXISTS price_annual INTEGER,
         ADD COLUMN IF NOT EXISTS square_plan_variation_id_alt TEXT,
@@ -150,6 +155,7 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   getOffers(): Promise<Offer[]>;
+  getAllOffers(): Promise<Offer[]>;
   getOffer(id: number): Promise<Offer | undefined>;
   createOffer(offer: InsertOffer): Promise<Offer>;
   updateOffer(id: number, offer: Partial<InsertOffer>): Promise<Offer | undefined>;
@@ -221,7 +227,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getOffers(): Promise<Offer[]> {
-    return db.select().from(offers);
+    return db.select().from(offers).where(eq(offers.active, true));
+  }
+
+  async getAllOffers(): Promise<Offer[]> {
+    return db.select().from(offers).orderBy(offers.id);
   }
 
   async getOffer(id: number): Promise<Offer | undefined> {
