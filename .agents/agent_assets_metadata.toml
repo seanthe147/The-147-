@@ -1,5 +1,10 @@
 uploads = []
-generated = []
+
+[[generated]]
+id = "Kc3di9W2N9d5kR2ONt6gn"
+uri = "file://attached_assets/feature-graphic.png"
+type = "image"
+title = "the147-feature-graphic"
 
 [[outputs]]
 id = "8Yf8r4nXxk7njTTcNeWAv"
@@ -66,3 +71,9 @@ id = "_cdlrRwC1CakxkHq4wBjO"
 uri = "file://attached_assets/generated_images/play-store-feature-blue-1024x500.png"
 type = "image"
 title = "Google Play Feature Graphic — Blue Edition (1024×500)"
+
+[[outputs]]
+id = "cwx5b0fcj8dA7vAIPo2_-"
+uri = "file://attached_assets/feature-graphic.png"
+type = "image"
+title = "Google Play Feature Graphic"
