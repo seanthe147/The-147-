@@ -68,7 +68,7 @@ export const notifications = pgTable("notifications", {
   title: text("title").notNull(),
   body: text("body").notNull(),
   sentAt: timestamp("sent_at").defaultNow().notNull(),
-  recipientCount: serial("recipient_count"),
+  recipientCount: integer("recipient_count").notNull().default(0),
   sentBy: text("sent_by"),
 });
 

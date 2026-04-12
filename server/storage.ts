@@ -288,7 +288,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getNotificationHistory(): Promise<Notification[]> {
-    return db.select().from(notifications).orderBy(notifications.sentAt);
+    return db.select().from(notifications).orderBy(desc(notifications.sentAt));
   }
 
   async createBooking(booking: InsertBooking): Promise<Booking> {

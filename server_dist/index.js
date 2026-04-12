@@ -62,7 +62,7 @@ var init_schema = __esm({
       title: text("title").notNull(),
       body: text("body").notNull(),
       sentAt: timestamp("sent_at").defaultNow().notNull(),
-      recipientCount: serial("recipient_count"),
+      recipientCount: integer("recipient_count").notNull().default(0),
       sentBy: text("sent_by")
     });
     bookings = pgTable("bookings", {
@@ -524,7 +524,7 @@ var init_storage = __esm({
         return created;
       }
       async getNotificationHistory() {
-        return db.select().from(notifications).orderBy(notifications.sentAt);
+        return db.select().from(notifications).orderBy(desc(notifications.sentAt));
       }
       async createBooking(booking) {
         const encrypted = encryptBookingFields(booking);
