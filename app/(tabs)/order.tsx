@@ -22,11 +22,14 @@ import {
   Dimensions,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  TextInput,
+  KeyboardAvoidingView,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
+import { router } from "expo-router";
 import Colors from "@/constants/colors";
 import { useCart } from "@/contexts/CartContext";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
@@ -708,9 +711,21 @@ function CartSheet({
 }) {
   const { items, updateQuantity, clearCart, totalPrice } = useCart();
   const { customer, getCustomerToken } = useCustomerAuth();
+  const [step, setStep] = useState<"cart" | "customer">("cart");
   const [tableNote, setTableNote] = useState("");
+  const [orderNote, setOrderNote] = useState("");
+  const [guestName, setGuestName] = useState("");
+  const [guestEmail, setGuestEmail] = useState("");
+  const [guestMode, setGuestMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    if (!visible) {
+      setStep("cart");
+      setGuestMode(false);
+    }
+  }, [visible]);
 
   const { data: memberSub } = useQuery<{
     status: string;
@@ -743,6 +758,12 @@ function CartSheet({
   const discountAmountPence = discountPercent > 0 ? Math.round(totalPrice * discountPercent / 100) : 0;
   const finalPrice = totalPrice - discountAmountPence;
 
+  const effectiveCustomer = customer
+    ? { name: customer.name, email: customer.email, phone: customer.phone ?? undefined }
+    : guestMode && (guestName.trim() || guestEmail.trim())
+    ? { name: guestName.trim() || undefined, email: guestEmail.trim() || undefined }
+    : undefined;
+
   const handleCheckout = async () => {
     if (items.length === 0) return;
     setLoading(true);
@@ -762,9 +783,8 @@ function CartSheet({
             ...(i.modifiers?.length ? { modifiers: i.modifiers } : {}),
           })),
           tableNote: tableNote.trim() || undefined,
-          customer: customer
-            ? { name: customer.name, email: customer.email, phone: customer.phone ?? undefined }
-            : undefined,
+          orderNote: orderNote.trim() || undefined,
+          customer: effectiveCustomer,
         }),
       });
       const data = await res.json();
@@ -773,6 +793,11 @@ function CartSheet({
       onClose();
       clearCart();
       setTableNote("");
+      setOrderNote("");
+      setGuestName("");
+      setGuestEmail("");
+      setStep("cart");
+      setGuestMode(false);
       await Linking.openURL(data.url);
     } catch (err: any) {
       Alert.alert("Checkout Error", err.message || "Please try again.");
@@ -781,158 +806,308 @@ function CartSheet({
     }
   };
 
+  const handleClose = () => {
+    setStep("cart");
+    setGuestMode(false);
+    onClose();
+  };
+
+  const TotalSummary = () => (
+    <View style={styles.cartTotal}>
+      {discountPercent > 0 ? (
+        <>
+          <View style={styles.cartTotalRow}>
+            <Text style={styles.cartTotalLabel}>Subtotal</Text>
+            <Text style={[styles.cartTotalPrice, { color: Colors.light.textSecondary, fontSize: 15, fontWeight: "500" as const }]}>{formatPrice(totalPrice)}</Text>
+          </View>
+          <View style={[styles.cartTotalRow, styles.discountRow]}>
+            <View style={{ flexDirection: "row" as const, alignItems: "center" as const, gap: 6 }}>
+              <Ionicons name="diamond-outline" size={14} color="#166534" />
+              <Text style={styles.discountLabel}>{discountLabel}</Text>
+            </View>
+            <Text style={styles.discountAmount}>−{formatPrice(discountAmountPence)}</Text>
+          </View>
+          <View style={styles.cartTotalRow}>
+            <Text style={styles.cartTotalLabel}>Total</Text>
+            <Text style={styles.cartTotalPrice}>{formatPrice(finalPrice)}</Text>
+          </View>
+        </>
+      ) : (
+        <View style={styles.cartTotalRow}>
+          <Text style={styles.cartTotalLabel}>Total</Text>
+          <Text style={styles.cartTotalPrice}>{formatPrice(totalPrice)}</Text>
+        </View>
+      )}
+    </View>
+  );
+
   return (
     <Modal
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
     >
-      <View style={[styles.sheetContainer, { paddingBottom: insets.bottom + 16 }]}>
-        <View style={styles.sheetHeader}>
-          <Text style={styles.sheetTitle}>Your Order</Text>
-          <Pressable onPress={onClose} hitSlop={12} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
-            <Ionicons name="close" size={24} color={Colors.light.text} />
-          </Pressable>
-        </View>
-
-        {items.length === 0 ? (
-          <View style={styles.emptyCart}>
-            <Ionicons name="cart-outline" size={48} color={Colors.light.textSecondary} />
-            <Text style={styles.emptyCartText}>Your cart is empty</Text>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <View style={[styles.sheetContainer, { paddingBottom: insets.bottom + 16 }]}>
+          {/* Header */}
+          <View style={styles.sheetHeader}>
+            {step === "customer" ? (
+              <Pressable onPress={() => setStep("cart")} hitSlop={12} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+                <Ionicons name="chevron-back" size={26} color={Colors.light.text} />
+              </Pressable>
+            ) : (
+              <View style={{ width: 26 }} />
+            )}
+            <Text style={styles.sheetTitle}>{step === "cart" ? "Your Order" : "Checkout"}</Text>
+            <Pressable onPress={handleClose} hitSlop={12} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+              <Ionicons name="close" size={24} color={Colors.light.text} />
+            </Pressable>
           </View>
-        ) : (
-          <>
-            <FlatList
-              data={items}
-              keyExtractor={(i) => i.cartKey}
-              style={styles.cartList}
-              contentContainerStyle={{ paddingBottom: 8 }}
-              renderItem={({ item }) => {
-                const linePrice = (item.price + (item.modifiers?.reduce((s, m) => s + m.price, 0) ?? 0)) * item.quantity;
-                return (
-                  <View style={styles.cartItem}>
-                    <View style={styles.cartItemInfo}>
-                      <Text style={styles.cartItemName}>{item.name}</Text>
-                      {item.modifiers && item.modifiers.length > 0 && (
-                        <Text style={styles.cartItemMods} numberOfLines={2}>
-                          {item.modifiers.map((m) => m.name).join(", ")}
-                        </Text>
-                      )}
-                      <Text style={styles.cartItemPrice}>{formatPrice(linePrice)}</Text>
+
+          {items.length === 0 ? (
+            <View style={styles.emptyCart}>
+              <Ionicons name="cart-outline" size={48} color={Colors.light.textSecondary} />
+              <Text style={styles.emptyCartText}>Your cart is empty</Text>
+            </View>
+          ) : step === "cart" ? (
+            /* ── Step 1: Cart ── */
+            <>
+              <FlatList
+                data={items}
+                keyExtractor={(i) => i.cartKey}
+                style={styles.cartList}
+                contentContainerStyle={{ paddingBottom: 8 }}
+                renderItem={({ item }) => {
+                  const linePrice = (item.price + (item.modifiers?.reduce((s, m) => s + m.price, 0) ?? 0)) * item.quantity;
+                  return (
+                    <View style={styles.cartItem}>
+                      <View style={styles.cartItemInfo}>
+                        <Text style={styles.cartItemName}>{item.name}</Text>
+                        {item.modifiers && item.modifiers.length > 0 && (
+                          <Text style={styles.cartItemMods} numberOfLines={2}>
+                            {item.modifiers.map((m) => m.name).join(", ")}
+                          </Text>
+                        )}
+                        <Text style={styles.cartItemPrice}>{formatPrice(linePrice)}</Text>
+                      </View>
+                      <View style={styles.qtyRow}>
+                        <Pressable
+                          onPress={() => updateQuantity(item.cartKey, -1)}
+                          style={({ pressed }) => [styles.qtyBtn, { opacity: pressed ? 0.7 : 1 }]}
+                        >
+                          <Ionicons name="remove" size={16} color={Colors.brand.blue} />
+                        </Pressable>
+                        <Text style={styles.qtyText}>{item.quantity}</Text>
+                        <Pressable
+                          onPress={() => updateQuantity(item.cartKey, 1)}
+                          style={({ pressed }) => [styles.qtyBtn, { opacity: pressed ? 0.7 : 1 }]}
+                        >
+                          <Ionicons name="add" size={16} color={Colors.brand.blue} />
+                        </Pressable>
+                      </View>
                     </View>
-                    <View style={styles.qtyRow}>
-                      <Pressable
-                        onPress={() => updateQuantity(item.cartKey, -1)}
-                        style={({ pressed }) => [styles.qtyBtn, { opacity: pressed ? 0.7 : 1 }]}
-                      >
-                        <Ionicons name="remove" size={16} color={Colors.brand.blue} />
-                      </Pressable>
-                      <Text style={styles.qtyText}>{item.quantity}</Text>
-                      <Pressable
-                        onPress={() => updateQuantity(item.cartKey, 1)}
-                        style={({ pressed }) => [styles.qtyBtn, { opacity: pressed ? 0.7 : 1 }]}
-                      >
-                        <Ionicons name="add" size={16} color={Colors.brand.blue} />
-                      </Pressable>
+                  );
+                }}
+                ItemSeparatorComponent={() => <View style={styles.cartDivider} />}
+              />
+
+              <View style={styles.tablePicker}>
+                <View style={styles.tablePickerHeader}>
+                  <Ionicons name="grid-outline" size={15} color={Colors.light.textSecondary} />
+                  <Text style={styles.tablePickerLabel}>
+                    {tableNote ? `${tableNote} selected` : "Select your table (optional)"}
+                  </Text>
+                  {!!tableNote && (
+                    <Pressable onPress={() => setTableNote("")} hitSlop={8}>
+                      <Ionicons name="close-circle" size={16} color={Colors.light.textSecondary} />
+                    </Pressable>
+                  )}
+                </View>
+                {TABLE_SECTIONS.map((section) => (
+                  <View key={section.label} style={styles.tableSectionRow}>
+                    <View style={[styles.tableSectionLabelWrap, { borderLeftColor: section.color }]}>
+                      <Text style={[styles.tableSectionLabel, { color: section.color }]} numberOfLines={2}>
+                        {section.label}
+                      </Text>
+                    </View>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.tableNumRow}
+                    >
+                      {section.tables.map((table) => {
+                        const selected = tableNote === table.value;
+                        return (
+                          <Pressable
+                            key={table.value}
+                            onPress={() => setTableNote(selected ? "" : table.value)}
+                            style={[
+                              styles.tableNumBtn,
+                              selected && { backgroundColor: section.color, borderColor: section.color },
+                            ]}
+                          >
+                            <Text style={[styles.tableNumText, selected && styles.tableNumTextSelected]}>
+                              {table.display}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                ))}
+              </View>
+
+              <TotalSummary />
+
+              <Pressable
+                onPress={() => setStep("customer")}
+                style={({ pressed }) => [styles.checkoutBtn, { opacity: pressed ? 0.8 : 1 }]}
+                testID="continue-btn"
+              >
+                <Text style={styles.checkoutBtnText}>Continue</Text>
+                <Text style={styles.checkoutBtnSub}>{formatPrice(finalPrice)}</Text>
+              </Pressable>
+            </>
+          ) : (
+            /* ── Step 2: Customer + Notes ── */
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={{ paddingBottom: 8 }}
+              keyboardShouldPersistTaps="handled"
+            >
+              {/* Customer section */}
+              <View style={styles.coSection}>
+                {customer ? (
+                  /* Logged in */
+                  <View style={styles.coCustomerCard}>
+                    <View style={styles.coAvatar}>
+                      <Text style={styles.coAvatarText}>
+                        {customer.name.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.coCustomerName}>{customer.name}</Text>
+                      <Text style={styles.coCustomerEmail}>{customer.email}</Text>
+                    </View>
+                    <View style={styles.coVerifiedBadge}>
+                      <Ionicons name="checkmark-circle" size={20} color="#16A34A" />
                     </View>
                   </View>
-                );
-              }}
-              ItemSeparatorComponent={() => <View style={styles.cartDivider} />}
-            />
-
-            <View style={styles.tablePicker}>
-              <View style={styles.tablePickerHeader}>
-                <Ionicons name="grid-outline" size={15} color={Colors.light.textSecondary} />
-                <Text style={styles.tablePickerLabel}>
-                  {tableNote ? `${tableNote} selected` : "Select your table (optional)"}
-                </Text>
-                {!!tableNote && (
-                  <Pressable onPress={() => setTableNote("")} hitSlop={8}>
-                    <Ionicons name="close-circle" size={16} color={Colors.light.textSecondary} />
-                  </Pressable>
+                ) : !guestMode ? (
+                  /* Not logged in — show options */
+                  <>
+                    <Text style={styles.coSectionTitle}>How would you like to continue?</Text>
+                    <Text style={styles.coSectionSub}>
+                      Sign in to earn loyalty points and get your member discount automatically applied.
+                    </Text>
+                    <Pressable
+                      style={({ pressed }) => [styles.coOptionBtn, styles.coOptionBtnPrimary, { opacity: pressed ? 0.85 : 1 }]}
+                      onPress={() => { handleClose(); router.push("/(tabs)/account"); }}
+                    >
+                      <Ionicons name="person-circle-outline" size={20} color="#fff" />
+                      <Text style={styles.coOptionBtnTextPrimary}>Sign In to My Account</Text>
+                    </Pressable>
+                    <Pressable
+                      style={({ pressed }) => [styles.coOptionBtn, styles.coOptionBtnSecondary, { opacity: pressed ? 0.85 : 1 }]}
+                      onPress={() => { handleClose(); router.push("/(tabs)/account"); }}
+                    >
+                      <Ionicons name="person-add-outline" size={20} color={Colors.brand.blue} />
+                      <Text style={styles.coOptionBtnTextSecondary}>Create an Account</Text>
+                    </Pressable>
+                    <Pressable
+                      style={({ pressed }) => [styles.coOptionBtn, styles.coOptionBtnGhost, { opacity: pressed ? 0.85 : 1 }]}
+                      onPress={() => setGuestMode(true)}
+                    >
+                      <Ionicons name="arrow-forward-outline" size={20} color={Colors.light.textSecondary} />
+                      <Text style={styles.coOptionBtnTextGhost}>Continue as Guest</Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  /* Guest mode */
+                  <>
+                    <Text style={styles.coSectionTitle}>Your details (optional)</Text>
+                    <Text style={styles.coSectionSub}>
+                      Add your name or email if you'd like to be identifiable on your order.
+                    </Text>
+                    <View style={styles.coInputGroup}>
+                      <Ionicons name="person-outline" size={16} color={Colors.light.textSecondary} style={styles.coInputIcon} />
+                      <TextInput
+                        style={styles.coInput}
+                        placeholder="Name"
+                        placeholderTextColor={Colors.light.textSecondary}
+                        value={guestName}
+                        onChangeText={setGuestName}
+                        autoCapitalize="words"
+                        returnKeyType="next"
+                      />
+                    </View>
+                    <View style={styles.coInputGroup}>
+                      <Ionicons name="mail-outline" size={16} color={Colors.light.textSecondary} style={styles.coInputIcon} />
+                      <TextInput
+                        style={styles.coInput}
+                        placeholder="Email (optional)"
+                        placeholderTextColor={Colors.light.textSecondary}
+                        value={guestEmail}
+                        onChangeText={setGuestEmail}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        returnKeyType="done"
+                      />
+                    </View>
+                    <Pressable onPress={() => setGuestMode(false)} hitSlop={8}>
+                      <Text style={styles.coBackLink}>← Back to options</Text>
+                    </Pressable>
+                  </>
                 )}
               </View>
-              {TABLE_SECTIONS.map((section) => (
-                <View key={section.label} style={styles.tableSectionRow}>
-                  <View style={[styles.tableSectionLabelWrap, { borderLeftColor: section.color }]}>
-                    <Text style={[styles.tableSectionLabel, { color: section.color }]} numberOfLines={2}>
-                      {section.label}
-                    </Text>
-                  </View>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.tableNumRow}
-                  >
-                    {section.tables.map((table) => {
-                      const selected = tableNote === table.value;
-                      return (
-                        <Pressable
-                          key={table.value}
-                          onPress={() => setTableNote(selected ? "" : table.value)}
-                          style={[
-                            styles.tableNumBtn,
-                            selected && { backgroundColor: section.color, borderColor: section.color },
-                          ]}
-                        >
-                          <Text style={[styles.tableNumText, selected && styles.tableNumTextSelected]}>
-                            {table.display}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </ScrollView>
-                </View>
-              ))}
-            </View>
 
-            <View style={styles.cartTotal}>
-              {discountPercent > 0 ? (
-                <>
-                  <View style={styles.cartTotalRow}>
-                    <Text style={styles.cartTotalLabel}>Subtotal</Text>
-                    <Text style={[styles.cartTotalPrice, { color: Colors.light.textSecondary, fontSize: 15, fontWeight: "500" }]}>{formatPrice(totalPrice)}</Text>
-                  </View>
-                  <View style={[styles.cartTotalRow, styles.discountRow]}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <Ionicons name="diamond-outline" size={14} color="#166534" />
-                      <Text style={styles.discountLabel}>{discountLabel}</Text>
-                    </View>
-                    <Text style={styles.discountAmount}>−{formatPrice(discountAmountPence)}</Text>
-                  </View>
-                  <View style={styles.cartTotalRow}>
-                    <Text style={styles.cartTotalLabel}>Total</Text>
-                    <Text style={styles.cartTotalPrice}>{formatPrice(finalPrice)}</Text>
-                  </View>
-                </>
-              ) : (
-                <View style={styles.cartTotalRow}>
-                  <Text style={styles.cartTotalLabel}>Total</Text>
-                  <Text style={styles.cartTotalPrice}>{formatPrice(totalPrice)}</Text>
+              {/* Order notes */}
+              <View style={[styles.coSection, { marginTop: 12 }]}>
+                <View style={styles.coNotesHeader}>
+                  <Ionicons name="create-outline" size={16} color={Colors.light.textSecondary} />
+                  <Text style={styles.coNotesLabel}>Order notes</Text>
                 </View>
-              )}
-            </View>
+                <TextInput
+                  style={styles.coNotesInput}
+                  placeholder="Allergies, dietary requirements, special requests…"
+                  placeholderTextColor={Colors.light.textSecondary}
+                  value={orderNote}
+                  onChangeText={setOrderNote}
+                  multiline
+                  numberOfLines={3}
+                  maxLength={200}
+                  returnKeyType="done"
+                />
+                <Text style={styles.coNotesCount}>{orderNote.length}/200</Text>
+              </View>
 
-            <Pressable
-              onPress={handleCheckout}
-              disabled={loading}
-              style={({ pressed }) => [styles.checkoutBtn, { opacity: pressed || loading ? 0.8 : 1 }]}
-              testID="checkout-btn"
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <>
-                  <Text style={styles.checkoutBtnText}>Pay Now</Text>
-                  <Text style={styles.checkoutBtnSub}>Apple Pay · Google Pay · Card</Text>
-                </>
-              )}
-            </Pressable>
-          </>
-        )}
-      </View>
+              {/* Compact order summary */}
+              <TotalSummary />
+
+              {/* Place order button */}
+              <Pressable
+                onPress={handleCheckout}
+                disabled={loading}
+                style={({ pressed }) => [styles.checkoutBtn, { opacity: pressed || loading ? 0.8 : 1, marginHorizontal: 16 }]}
+                testID="checkout-btn"
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <Text style={styles.checkoutBtnText}>Place Order</Text>
+                    <Text style={styles.checkoutBtnSub}>Apple Pay · Google Pay · Card</Text>
+                  </>
+                )}
+              </Pressable>
+            </ScrollView>
+          )}
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -1809,5 +1984,153 @@ const styles = StyleSheet.create({
   },
   tableNumTextSelected: {
     color: "#fff",
+  },
+  // ── Step 2 checkout styles ──────────────────────────────────────────────────
+  coSection: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    backgroundColor: Colors.light.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    padding: 16,
+  },
+  coSectionTitle: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 15,
+    color: Colors.light.text,
+    marginBottom: 6,
+  },
+  coSectionSub: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+    marginBottom: 14,
+    lineHeight: 19,
+  },
+  coCustomerCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  coAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.brand.blue,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  coAvatarText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 18,
+    color: "#fff",
+  },
+  coCustomerName: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 15,
+    color: Colors.light.text,
+  },
+  coCustomerEmail: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+    marginTop: 2,
+  },
+  coVerifiedBadge: {
+    marginLeft: "auto",
+  },
+  coOptionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 10,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+  },
+  coOptionBtnPrimary: {
+    backgroundColor: Colors.brand.blue,
+  },
+  coOptionBtnSecondary: {
+    backgroundColor: "transparent",
+    borderWidth: 1.5,
+    borderColor: Colors.brand.blue,
+  },
+  coOptionBtnGhost: {
+    backgroundColor: Colors.light.background,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+  },
+  coOptionBtnTextPrimary: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: "#fff",
+  },
+  coOptionBtnTextSecondary: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: Colors.brand.blue,
+  },
+  coOptionBtnTextGhost: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+  },
+  coInputGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.light.background,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+    height: 46,
+  },
+  coInputIcon: {
+    marginRight: 8,
+  },
+  coInput: {
+    flex: 1,
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 14,
+    color: Colors.light.text,
+  },
+  coBackLink: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: Colors.brand.blue,
+    marginTop: 4,
+  },
+  coNotesHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
+  },
+  coNotesLabel: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+  },
+  coNotesInput: {
+    backgroundColor: Colors.light.background,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    padding: 12,
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 14,
+    color: Colors.light.text,
+    minHeight: 80,
+    textAlignVertical: "top",
+  },
+  coNotesCount: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 11,
+    color: Colors.light.textSecondary,
+    textAlign: "right",
+    marginTop: 4,
   },
 });

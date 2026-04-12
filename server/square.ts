@@ -917,7 +917,8 @@ export async function createOrderCheckoutLink(
   customer?: CheckoutCustomer,
   discountPercent?: number,
   discountLabel?: string,
-  excludeWithDeals?: boolean
+  excludeWithDeals?: boolean,
+  orderNote?: string
 ): Promise<{ url: string; linkId: string; squareOrderId: string }> {
   const locationId = getLocationId();
   const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -1059,14 +1060,18 @@ export async function createOrderCheckoutLink(
             },
             schedule_type: "ASAP",
             is_curbside_pickup: false,
-            note: tableNote || undefined,
+            note: [tableNote, orderNote].filter(Boolean).join(" | ") || undefined,
           },
         },
       ],
-      ...(tableNote ? {
-        note: tableNote,
-        reference_id: tableNote.replace(/\s+/g, "-").toUpperCase().slice(0, 40),
-      } : {}),
+      ...(() => {
+        const noteParts = [tableNote, orderNote].filter(Boolean);
+        const combinedNote = noteParts.join(" | ");
+        return combinedNote ? {
+          note: combinedNote.slice(0, 500),
+          reference_id: (tableNote || "ORDER").replace(/\s+/g, "-").toUpperCase().slice(0, 40),
+        } : {};
+      })(),
     },
     checkout_options: {
       allow_tipping: false,

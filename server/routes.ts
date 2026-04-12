@@ -2789,7 +2789,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Order Checkout ─────────────────────────────────────────────────────────
   app.post("/api/orders/checkout", async (req, res) => {
-    const { items, tableNote, customer } = req.body;
+    const { items, tableNote, orderNote, customer } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "Cart is empty" });
     }
@@ -2841,7 +2841,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       const { url, linkId, squareOrderId } = await square.createOrderCheckoutLink(
-        items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals
+        items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote
       );
       const rawTotal = items.reduce((sum: number, i: any) => sum + (Number(i.price) * Number(i.quantity)), 0);
       const discountedTotal = discountPercent

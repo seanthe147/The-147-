@@ -1869,7 +1869,7 @@ function normalizeUkPhone(phone) {
   if (digits.startsWith("7") && digits.length === 10) return "+44" + digits;
   return void 0;
 }
-async function createOrderCheckoutLink(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals) {
+async function createOrderCheckoutLink(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote) {
   const locationId = getLocationId();
   const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   let prePopulated;
@@ -1984,14 +1984,18 @@ async function createOrderCheckoutLink(items, tableNote, customer, discountPerce
             },
             schedule_type: "ASAP",
             is_curbside_pickup: false,
-            note: tableNote || void 0
+            note: [tableNote, orderNote].filter(Boolean).join(" | ") || void 0
           }
         }
       ],
-      ...tableNote ? {
-        note: tableNote,
-        reference_id: tableNote.replace(/\s+/g, "-").toUpperCase().slice(0, 40)
-      } : {}
+      ...(() => {
+        const noteParts = [tableNote, orderNote].filter(Boolean);
+        const combinedNote = noteParts.join(" | ");
+        return combinedNote ? {
+          note: combinedNote.slice(0, 500),
+          reference_id: (tableNote || "ORDER").replace(/\s+/g, "-").toUpperCase().slice(0, 40)
+        } : {};
+      })()
     },
     checkout_options: {
       allow_tipping: false,
@@ -4548,7 +4552,7 @@ async function registerRoutes(app2) {
     res.json({ success: true });
   });
   app2.post("/api/orders/checkout", async (req, res) => {
-    const { items, tableNote, customer } = req.body;
+    const { items, tableNote, orderNote, customer } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "Cart is empty" });
     }
@@ -4597,7 +4601,8 @@ async function registerRoutes(app2) {
         customer,
         discountPercent,
         discountLabel,
-        excludeWithDeals
+        excludeWithDeals,
+        orderNote
       );
       const rawTotal = items.reduce((sum, i) => sum + Number(i.price) * Number(i.quantity), 0);
       const discountedTotal = discountPercent ? Math.round(rawTotal * (1 - discountPercent / 100)) : rawTotal;
