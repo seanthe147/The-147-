@@ -88,6 +88,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       await apiRequest("POST", "/api/push-tokens", {
         token,
         deviceName: Device.deviceName ?? "Unknown Device",
+        platform: Platform.OS,
       });
       console.log("[Push] Token registered with server");
     } catch (err) {

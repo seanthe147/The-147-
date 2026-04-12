@@ -54,6 +54,7 @@ var init_schema = __esm({
       token: text("token").notNull().unique(),
       deviceName: text("device_name"),
       customerEmail: text("customer_email"),
+      platform: text("platform"),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     insertPushTokenSchema = createInsertSchema(pushTokens).omit({ id: true, createdAt: true });

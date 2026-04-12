@@ -254,28 +254,40 @@ export default function AdminNotificationsScreen() {
                 <Text style={styles.emptySubtext}>Devices register when users open the app and accept notifications</Text>
               </View>
             ) : (
-              tokensQuery.data.map((t) => (
-                <View key={t.id} style={styles.deviceCard}>
-                  <View style={styles.deviceInfo}>
-                    <Ionicons name="phone-portrait" size={20} color={Colors.brand.blue} />
-                    <View style={styles.deviceDetails}>
-                      <Text style={styles.deviceName}>{t.deviceName || "Unknown Device"}</Text>
-                      <Text style={styles.deviceToken} numberOfLines={1}>
-                        {t.token.substring(0, 30)}...
-                      </Text>
-                      <Text style={styles.deviceDate}>
-                        Registered {new Date(t.createdAt).toLocaleDateString("en-GB")}
-                      </Text>
+              tokensQuery.data.map((t) => {
+                const isAndroid = t.platform === "android";
+                const isIOS = t.platform === "ios";
+                const platformIcon = isAndroid ? "logo-android" : isIOS ? "logo-apple" : "phone-portrait";
+                const platformColor = isAndroid ? "#3DDC84" : isIOS ? "#555" : Colors.brand.blue;
+                const platformLabel = isAndroid ? "Android" : isIOS ? "iOS" : (t.platform ?? "Unknown");
+                return (
+                  <View key={t.id} style={styles.deviceCard}>
+                    <View style={styles.deviceInfo}>
+                      <Ionicons name={platformIcon as any} size={20} color={platformColor} />
+                      <View style={styles.deviceDetails}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <Text style={styles.deviceName}>{t.deviceName || "Unknown Device"}</Text>
+                          <View style={[styles.platformBadge, { backgroundColor: isAndroid ? "#DCFCE7" : isIOS ? "#F3F4F6" : "#EFF6FF" }]}>
+                            <Text style={[styles.platformBadgeText, { color: platformColor }]}>{platformLabel}</Text>
+                          </View>
+                        </View>
+                        <Text style={styles.deviceToken} numberOfLines={1}>
+                          {t.token.substring(0, 30)}...
+                        </Text>
+                        <Text style={styles.deviceDate}>
+                          Registered {new Date(t.createdAt).toLocaleDateString("en-GB")}
+                        </Text>
+                      </View>
                     </View>
+                    <Pressable
+                      onPress={() => handleRemoveToken(t.token)}
+                      hitSlop={8}
+                    >
+                      <Ionicons name="trash-outline" size={18} color={Colors.brand.red} />
+                    </Pressable>
                   </View>
-                  <Pressable
-                    onPress={() => handleRemoveToken(t.token)}
-                    hitSlop={8}
-                  >
-                    <Ionicons name="trash-outline" size={18} color={Colors.brand.red} />
-                  </Pressable>
-                </View>
-              ))
+                );
+              })
             )}
           </View>
         )}
@@ -488,6 +500,15 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_400Regular",
     fontSize: 11,
     color: Colors.light.textSecondary,
+  },
+  platformBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  platformBadgeText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 10,
   },
   emptyState: {
     alignItems: "center",
