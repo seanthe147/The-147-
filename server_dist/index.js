@@ -4561,6 +4561,13 @@ async function registerRoutes(app2) {
         try {
           const cust = await storage.getCustomerByEmail(customer.email);
           if (cust) {
+            const preSub = await storage.getMembershipSubscriptionByCustomer(cust.id);
+            const needsSync = !preSub || preSub.source === "square_group_sync";
+            if (needsSync) {
+              await syncSquareMembershipForCustomer(cust.id, cust.email).catch(
+                (e) => console.warn("[ORDER] Pre-checkout sync failed:", e.message)
+              );
+            }
             const sub = await storage.getMembershipSubscriptionByCustomer(cust.id);
             const isActive = sub?.status === "active";
             const notCancelled = !sub?.cancelledAt;

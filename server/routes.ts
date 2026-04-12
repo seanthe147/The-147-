@@ -2807,6 +2807,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           const cust = await storage.getCustomerByEmail(customer.email);
           if (cust) {
+            // Sync with Square before checking — ensures group-based members (e.g. VIP)
+            // get their discount even if they haven't logged in recently to trigger the
+            // normal login sync. Only sync if no subscription or if it came from a group
+            // sync (may be stale). Non-blocking: a sync failure never blocks the order.
+            const preSub = await storage.getMembershipSubscriptionByCustomer(cust.id);
+            const needsSync = !preSub || (preSub as any).source === "square_group_sync";
+            if (needsSync) {
+              await syncSquareMembershipForCustomer(cust.id, cust.email).catch((e: any) =>
+                console.warn("[ORDER] Pre-checkout sync failed:", e.message)
+              );
+            }
+
             const sub = await storage.getMembershipSubscriptionByCustomer(cust.id);
             // Validate: subscription active + not cancelled + billing period current + plan is active in staff portal + plan has a discount
             const isActive = sub?.status === "active";
