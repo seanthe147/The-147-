@@ -4253,6 +4253,10 @@
       <div style="font-size:16px;font-weight:800;color:var(--text)">All Members (${subs.length})</div>`;
     if(isManager){
       html+=`<div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-secondary btn-sm" id="syncAllBtn" onclick="window.syncAllMembers()" style="border-color:#7C3AED;color:#7C3AED">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+          Sync All Customers
+        </button>
         <button class="btn btn-secondary btn-sm" onclick="window.openSquareSyncModal()" style="border-color:#10B981;color:#10B981">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
           Sync from Square
@@ -4679,6 +4683,29 @@
   });
 
   el('sqSyncEmail').addEventListener('keydown',e=>{if(e.key==='Enter')el('sqSyncBtn').click();});
+
+  window.syncAllMembers=async function(){
+    const btn=document.getElementById('syncAllBtn');
+    if(!btn)return;
+    if(!confirm('This will sync all app customer accounts with Square — checking subscriptions and customer groups for each one. Continue?'))return;
+    btn.disabled=true;
+    btn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px;animation:spin 1s linear infinite"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>Syncing…';
+    try{
+      const r=await api('/api/staff/membership/sync-all',{method:'POST'});
+      const d=await r.json();
+      if(!r.ok){toast(d.message||'Sync failed','error');return;}
+      const linked=d.linked||0;const total=d.total||0;
+      const msg=linked>0
+        ?`✓ Sync complete — ${linked} of ${total} customer${total===1?'':'s'} linked to a membership plan`
+        :`Sync complete — ${total} customer${total===1?'':'s'} checked, none matched an active membership plan`;
+      toast(msg,linked>0?'success':'info');
+      if(linked>0)loadMemberships();
+    }catch(e){
+      toast('Sync failed — please try again','error');
+    }finally{
+      if(btn){btn.disabled=false;btn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>Sync All Customers';}
+    }
+  };
 
   // Payment method card selection
   document.querySelectorAll('.am-pay-option').forEach(opt=>{

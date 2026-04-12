@@ -4649,6 +4649,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Bulk sync — runs syncSquareMembershipForCustomer for every app customer
+  app.post("/api/staff/membership/sync-all", staffAuth, managerAuth, async (req, res) => {
+    if (!square.isConfigured()) return res.status(503).json({ message: "Square is not configured" });
+    try {
+      const allCustomers = await storage.getAllCustomers();
+      const results: { email: string; status: string }[] = [];
+      for (const c of allCustomers) {
+        try {
+          await syncSquareMembershipForCustomer(c.id, c.email);
+          const sub = await storage.getMembershipSubscriptionByCustomer(c.id);
+          results.push({ email: c.email, status: sub ? `linked: ${sub.status} (${(sub as any).plan?.name ?? "unknown plan"})` : "no membership found" });
+        } catch (e: any) {
+          results.push({ email: c.email, status: `error: ${e.message}` });
+        }
+      }
+      const linked = results.filter(r => r.status.startsWith("linked")).length;
+      console.log(`[MEMBERSHIP] Bulk sync complete: ${linked}/${allCustomers.length} customers linked`);
+      res.json({ total: allCustomers.length, linked, results });
+    } catch (err: any) {
+      res.status(500).json({ message: "Bulk sync failed: " + err.message });
+    }
+  });
+
   app.post("/api/staff/membership/subscriptions", staffAuth, async (req, res) => {
     const { customerId, planId, status = "active", staffNotes, source = "staff" } = req.body ?? {};
     if (!customerId || !planId) return res.status(400).json({ message: "customerId and planId are required" });
