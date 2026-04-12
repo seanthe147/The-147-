@@ -81,3 +81,7 @@ SQUARE_LOC_ID = "LRHR4ZM2FCJYY"
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 180000
+
+[[ports]]
+localPort = 8082
+externalPort = 80
