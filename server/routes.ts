@@ -4811,6 +4811,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Subject Access Request (SAR) — Article 15 UK GDPR ───────────────────────
+  app.post("/api/admin/sar", staffAuth, managerAuth, async (req, res) => {
+    const { email } = req.body ?? {};
+    if (!email || typeof email !== "string" || !email.includes("@")) {
+      return res.status(400).json({ message: "A valid email address is required." });
+    }
+    const normalised = email.trim().toLowerCase();
+
+    // Gather all data held for this person
+    const [customer, bookings, pushTokens, orders, allMessages] = await Promise.all([
+      storage.getCustomerByEmail(normalised),
+      storage.getBookingsByEmail(normalised),
+      storage.getPushTokensByEmail(normalised),
+      storage.getCustomerOrders(normalised),
+      storage.getContactMessages(),
+    ]);
+
+    // Contact messages are encrypted — filter by matching email after decryption
+    const contactMessages = allMessages.filter(m => m.email.toLowerCase() === normalised);
+
+    const report = {
+      generatedAt: new Date().toISOString(),
+      subjectEmail: normalised,
+      customerAccount: customer ? {
+        id: customer.id,
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone ?? null,
+        createdAt: customer.createdAt,
+        privacyConsentAt: customer.privacyConsentAt ?? null,
+      } : null,
+      bookings: bookings.map(b => ({
+        id: b.id,
+        date: b.date,
+        startTime: b.startTime,
+        tableNumber: b.tableNumber,
+        status: b.status,
+        createdAt: b.createdAt,
+      })),
+      contactMessages: contactMessages.map(m => ({
+        id: m.id,
+        subject: m.subject,
+        message: m.message,
+        createdAt: m.createdAt,
+        status: m.status,
+      })),
+      pushTokens: pushTokens.map(t => ({
+        platform: t.platform,
+        deviceName: t.deviceName,
+        createdAt: t.createdAt,
+      })),
+      orders: orders.map(o => ({
+        id: o.id,
+        totalPence: o.totalPence,
+        status: o.status,
+        createdAt: o.createdAt,
+      })),
+    };
+    res.json(report);
+  });
+
   // Public API endpoint — deletes all data for a given email address
   app.post("/api/request-deletion", async (req, res) => {
     const { email } = req.body ?? {};

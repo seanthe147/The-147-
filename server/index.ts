@@ -508,9 +508,10 @@ function scheduleRetentionCleanup() {
     try {
       const { storage: store } = await import("./storage");
       const anonymized = await store.anonymizeOldBookings(365);
+      const hrAnonymized = await store.anonymizeOldHRRecords();
       const sessionsCleared = await store.cleanupExpiredSessions();
-      if (anonymized > 0 || sessionsCleared > 0) {
-        log(`[GDPR Retention] Anonymized ${anonymized} old records, cleared ${sessionsCleared} expired sessions`);
+      if (anonymized > 0 || hrAnonymized > 0 || sessionsCleared > 0) {
+        log(`[GDPR Retention] Booking records: ${anonymized}, HR records: ${hrAnonymized}, sessions cleared: ${sessionsCleared}`);
       }
     } catch (err) {
       console.error("[GDPR Retention] Cleanup error:", err);
@@ -546,6 +547,14 @@ function scheduleRetentionCleanup() {
     res.status(200).send(privacyPolicyHtml);
   });
 
+  // Staff privacy notice — internal page linked from GDPR portal and mobile HR app
+  const staffPrivacyHtmlPath = path.resolve(process.cwd(), "server", "templates", "staff-privacy-notice.html");
+  const staffPrivacyHtml = fs.readFileSync(staffPrivacyHtmlPath, "utf-8");
+  app.get("/staff-privacy-notice", (_req, res) => {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.status(200).send(staffPrivacyHtml);
+  });
+
   configureExpoAndLanding(app);
 
   const server = await registerRoutes(app);
@@ -564,6 +573,9 @@ function scheduleRetentionCleanup() {
 
   // Apply safe, idempotent schema migrations (adds new columns, seeds required plans)
   await runStartupMigrations();
+  // Encrypt any existing plaintext PII in customers, contact messages, push tokens, and orders
+  const { storage: storeForMigration } = await import("./storage");
+  await storeForMigration.migrateEncryptExistingPII();
   // Promote seanclowe/seanlowe to owner if no owner account exists (one-time bootstrap)
   await bootstrapOwner();
   // Automatically enforce GDPR data retention (90-day anonymisation + session cleanup)

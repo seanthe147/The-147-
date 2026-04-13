@@ -57,6 +57,7 @@ export const pushTokens = pgTable("push_tokens", {
   token: text("token").notNull().unique(),
   deviceName: text("device_name"),
   customerEmail: text("customer_email"),
+  customerEmailHash: text("customer_email_hash"),
   platform: text("platform"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -173,7 +174,8 @@ export type ContactMessage = typeof contactMessages.$inferSelect;
 
 export const customers = pgTable("customers", {
   id: serial("id").primaryKey(),
-  email: text("email").notNull().unique(),
+  email: text("email").notNull(),
+  emailHash: text("email_hash").unique(),
   name: text("name").notNull(),
   phone: text("phone"),
   passwordHash: text("password_hash").notNull(),
@@ -324,6 +326,7 @@ export const appOrders = pgTable("app_orders", {
   tableNote: text("table_note"),
   customerName: text("customer_name"),
   customerEmail: text("customer_email"),
+  customerEmailHash: text("customer_email_hash"),
   itemsJson: text("items_json").notNull(),
   totalPence: integer("total_pence").notNull().default(0),
   discountPercent: integer("discount_percent"),

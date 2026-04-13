@@ -76,6 +76,40 @@ import {
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
 
+function decryptCustomer<T extends { email: string; name: string; phone?: string | null }>(c: T): T {
+  return {
+    ...c,
+    email: decrypt(c.email),
+    name: decrypt(c.name),
+    phone: c.phone ? decrypt(c.phone) : c.phone,
+  };
+}
+
+function decryptContactMessage<T extends { name: string; email: string; phone?: string | null; message: string }>(m: T): T {
+  return {
+    ...m,
+    name: decrypt(m.name),
+    email: decrypt(m.email),
+    phone: m.phone ? decrypt(m.phone) : m.phone,
+    message: decrypt(m.message),
+  };
+}
+
+function decryptPushToken<T extends { customerEmail?: string | null }>(t: T): T {
+  return {
+    ...t,
+    customerEmail: t.customerEmail ? decrypt(t.customerEmail) : t.customerEmail,
+  };
+}
+
+function decryptAppOrder<T extends { customerName?: string | null; customerEmail?: string | null }>(o: T): T {
+  return {
+    ...o,
+    customerName: o.customerName ? decrypt(o.customerName) : o.customerName,
+    customerEmail: o.customerEmail ? decrypt(o.customerEmail) : o.customerEmail,
+  };
+}
+
 function decryptTimeEntry<T extends { clockInLat?: string | null; clockInLng?: string | null; clockOutLat?: string | null; clockOutLng?: string | null }>(entry: T): T {
   return {
     ...entry,
@@ -144,6 +178,45 @@ export async function runStartupMigrations() {
         ADD COLUMN IF NOT EXISTS square_plan_variation_id_alt TEXT,
         ADD COLUMN IF NOT EXISTS square_customer_group_id TEXT,
         ADD COLUMN IF NOT EXISTS exclude_with_deals BOOLEAN NOT NULL DEFAULT FALSE;
+    `);
+
+    // Add GDPR encryption helper columns (new — may already exist)
+    await client.query(`
+      ALTER TABLE customers
+        ADD COLUMN IF NOT EXISTS email_hash TEXT;
+    `);
+    // Remove old unique constraint on customers.email (now stored encrypted; email_hash is the unique lookup)
+    await client.query(`
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname IN ('customers_email_unique', 'customers_email_key')
+            AND conrelid = 'customers'::regclass
+        ) THEN
+          ALTER TABLE customers DROP CONSTRAINT IF EXISTS customers_email_unique;
+          ALTER TABLE customers DROP CONSTRAINT IF EXISTS customers_email_key;
+        END IF;
+      END $$;
+    `);
+    // Add unique constraint on email_hash only if not already present
+    await client.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'customers_email_hash_unique'
+            AND conrelid = 'customers'::regclass
+        ) THEN
+          ALTER TABLE customers ADD CONSTRAINT customers_email_hash_unique UNIQUE (email_hash);
+        END IF;
+      END $$;
+    `);
+    await client.query(`
+      ALTER TABLE push_tokens
+        ADD COLUMN IF NOT EXISTS customer_email_hash TEXT;
+    `);
+    await client.query(`
+      ALTER TABLE app_orders
+        ADD COLUMN IF NOT EXISTS customer_email_hash TEXT;
     `);
 
     // Ensure VIP plan exists (10% food & drink, group-based, excludes stacking with deals)
@@ -222,6 +295,7 @@ export interface IStorage {
   getBookingsByEmail(email: string): Promise<Booking[]>;
   deleteBookingsByEmail(email: string): Promise<number>;
   anonymizeOldBookings(retentionDays: number): Promise<number>;
+  anonymizeOldHRRecords(): Promise<number>;
   cleanupExpiredSessions(): Promise<number>;
   createStaffUser(username: string, pinHash: string, pinSalt: string, displayName?: string, role?: string, approvalStatus?: string): Promise<StaffUser>;
   updateStaffApproval(id: number, approvalStatus: string): Promise<StaffUser | undefined>;
@@ -229,6 +303,7 @@ export interface IStorage {
   getAllStaffUsers(): Promise<StaffUser[]>;
   updateStaffPin(username: string, pinHash: string, pinSalt: string): Promise<StaffUser | undefined>;
   migrateEncryptExistingBookings(): Promise<number>;
+  migrateEncryptExistingPII(): Promise<void>;
   searchCustomers(query: string, limit?: number): Promise<Array<{ id?: number; name: string; phone: string; email: string }>>;
   createCustomer(email: string, name: string, phone: string | null, passwordHash: string): Promise<Customer>;
   getCustomerByEmail(email: string): Promise<Customer | undefined>;
@@ -308,20 +383,28 @@ export class DatabaseStorage implements IStorage {
 
   async registerPushToken(data: InsertPushToken): Promise<PushToken> {
     const [existing] = await db.select().from(pushTokens).where(eq(pushTokens.token, data.token));
+    const encEmail = data.customerEmail ? encrypt(data.customerEmail) : null;
+    const emailHash = data.customerEmail ? hashEmail(data.customerEmail) : null;
     if (existing) {
-      // Update email if newly provided
-      if (data.customerEmail && existing.customerEmail !== data.customerEmail) {
-        const [updated] = await db.update(pushTokens).set({ customerEmail: data.customerEmail }).where(eq(pushTokens.token, data.token)).returning();
-        return updated;
+      if (data.customerEmail && existing.customerEmailHash !== emailHash) {
+        const [updated] = await db.update(pushTokens)
+          .set({ customerEmail: encEmail, customerEmailHash: emailHash })
+          .where(eq(pushTokens.token, data.token)).returning();
+        return decryptPushToken(updated);
       }
-      return existing;
+      return decryptPushToken(existing);
     }
-    const [created] = await db.insert(pushTokens).values(data).returning();
-    return created;
+    const [created] = await db.insert(pushTokens).values({
+      ...data,
+      customerEmail: encEmail,
+      customerEmailHash: emailHash,
+    }).returning();
+    return decryptPushToken(created);
   }
 
   async getAllPushTokens(): Promise<PushToken[]> {
-    return db.select().from(pushTokens);
+    const rows = await db.select().from(pushTokens);
+    return rows.map(decryptPushToken);
   }
 
   async removePushToken(token: string): Promise<boolean> {
@@ -330,7 +413,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPushTokensByEmail(email: string): Promise<PushToken[]> {
-    return db.select().from(pushTokens).where(sql`lower(${pushTokens.customerEmail}) = lower(${email})`);
+    const hash = hashEmail(email);
+    // Try hash-based lookup first (encrypted records)
+    const byHash = await db.select().from(pushTokens).where(eq(pushTokens.customerEmailHash, hash));
+    if (byHash.length > 0) return byHash.map(decryptPushToken);
+    // Fallback: plaintext lookup for legacy records
+    const byPlain = await db.select().from(pushTokens).where(sql`lower(${pushTokens.customerEmail}) = lower(${email})`);
+    return byPlain.map(decryptPushToken);
   }
 
   async saveNotification(title: string, body: string, recipientCount: number, sentBy?: string): Promise<Notification> {
@@ -511,9 +600,15 @@ export class DatabaseStorage implements IStorage {
     );
 
     // Add hashes of all registered customer accounts — they are always active
-    const allCustomers = await db.select({ email: customers.email }).from(customers);
+    // Use emailHash column (deterministic hash) rather than re-hashing the encrypted email field
+    const allCustomers = await db.select({ emailHash: customers.emailHash, email: customers.email }).from(customers);
     for (const c of allCustomers) {
-      if (c.email) activeHashes.add(hashEmail(c.email));
+      if (c.emailHash) {
+        activeHashes.add(c.emailHash);
+      } else if (c.email && !c.email.startsWith("enc:")) {
+        // Legacy plaintext record — compute hash on the fly
+        activeHashes.add(hashEmail(c.email));
+      }
     }
 
     // Anonymise old bookings only for customers with no recent activity and no account
@@ -559,6 +654,50 @@ export class DatabaseStorage implements IStorage {
       lte(staffSessions.expiresAt, new Date())
     ).returning();
     return result.length;
+  }
+
+  async anonymizeOldHRRecords(): Promise<number> {
+    let count = 0;
+    const now = new Date();
+
+    // Working Time Regulations: time entry GPS data — anonymise after 3 years
+    const gpsRetention = new Date(now);
+    gpsRetention.setFullYear(gpsRetention.getFullYear() - 3);
+    const oldTimeEntries = await db.select().from(staffTimeEntries)
+      .where(lt(staffTimeEntries.clockedInAt, gpsRetention));
+    for (const entry of oldTimeEntries) {
+      if (!entry.clockInLat && !entry.clockInLng && !entry.clockOutLat && !entry.clockOutLng) continue;
+      await db.update(staffTimeEntries)
+        .set({ clockInLat: null, clockInLng: null, clockOutLat: null, clockOutLng: null })
+        .where(eq(staffTimeEntries.id, entry.id));
+      count++;
+    }
+
+    // Personnel records: incident descriptions and leave reasons — anonymise after 7 years
+    const hrRetention = new Date(now);
+    hrRetention.setFullYear(hrRetention.getFullYear() - 7);
+
+    const oldIncidents = await db.select().from(staffIncidents)
+      .where(lt(staffIncidents.createdAt, hrRetention));
+    for (const incident of oldIncidents) {
+      if (!incident.description || incident.description === "ANONYMIZED") continue;
+      await db.update(staffIncidents)
+        .set({ description: "ANONYMIZED" })
+        .where(eq(staffIncidents.id, incident.id));
+      count++;
+    }
+
+    const oldLeaveRequests = await db.select().from(staffLeaveRequests)
+      .where(lt(staffLeaveRequests.createdAt, hrRetention));
+    for (const req of oldLeaveRequests) {
+      if (!req.reason || req.reason === "ANONYMIZED") continue;
+      await db.update(staffLeaveRequests)
+        .set({ reason: "ANONYMIZED", reviewNotes: req.reviewNotes ? "ANONYMIZED" : null })
+        .where(eq(staffLeaveRequests.id, req.id));
+      count++;
+    }
+
+    return count;
   }
 
   async createStaffUser(username: string, pinHash: string, pinSalt: string, displayName?: string, role?: string, approvalStatus?: string): Promise<StaffUser> {
@@ -642,6 +781,60 @@ export class DatabaseStorage implements IStorage {
     return migrated;
   }
 
+  async migrateEncryptExistingPII(): Promise<void> {
+    // Encrypt plaintext customer account records
+    const allCustomers = await db.select().from(customers);
+    for (const c of allCustomers) {
+      if (c.email.startsWith("enc:") || c.email === "ANONYMIZED") continue;
+      await db.update(customers).set({
+        email: encrypt(c.email),
+        emailHash: hashEmail(c.email),
+        name: c.name.startsWith("enc:") ? c.name : encrypt(c.name),
+        phone: (c.phone && !c.phone.startsWith("enc:")) ? encrypt(c.phone) : c.phone,
+      }).where(eq(customers.id, c.id));
+    }
+
+    // Encrypt plaintext contact messages
+    const allMessages = await db.select().from(contactMessages);
+    for (const m of allMessages) {
+      if (m.name === "ANONYMIZED" || m.name.startsWith("enc:")) continue;
+      await db.update(contactMessages).set({
+        name: encrypt(m.name),
+        email: encrypt(m.email),
+        phone: (m.phone && !m.phone.startsWith("enc:")) ? encrypt(m.phone) : m.phone,
+        message: m.message.startsWith("enc:") ? m.message : encrypt(m.message),
+      }).where(eq(contactMessages.id, m.id));
+    }
+
+    // Encrypt plaintext push token emails
+    const allTokens = await db.select().from(pushTokens);
+    for (const t of allTokens) {
+      if (!t.customerEmail || t.customerEmail.startsWith("enc:")) continue;
+      await db.update(pushTokens).set({
+        customerEmail: encrypt(t.customerEmail),
+        customerEmailHash: hashEmail(t.customerEmail),
+      }).where(eq(pushTokens.id, t.id));
+    }
+
+    // Encrypt plaintext app order customer fields
+    const allOrders = await db.select().from(appOrders);
+    for (const o of allOrders) {
+      if (!o.customerEmail && !o.customerName) continue;
+      if (o.customerEmail?.startsWith("enc:")) continue;
+      const updates: Record<string, string | null> = {};
+      if (o.customerName && !o.customerName.startsWith("enc:")) updates.customerName = encrypt(o.customerName);
+      if (o.customerEmail && !o.customerEmail.startsWith("enc:")) {
+        updates.customerEmail = encrypt(o.customerEmail);
+        updates.customerEmailHash = hashEmail(o.customerEmail);
+      }
+      if (Object.keys(updates).length > 0) {
+        await db.update(appOrders).set(updates).where(eq(appOrders.id, o.id));
+      }
+    }
+
+    console.log("[GDPR] Existing PII encryption migration complete");
+  }
+
   async searchCustomers(query: string, limit = 6): Promise<Array<{ id?: number; name: string; phone: string; email: string }>> {
     if (!query || query.trim().length < 2) return [];
     const q = query.trim().toLowerCase();
@@ -713,17 +906,25 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createContactMessage(data: InsertContactMessage): Promise<ContactMessage> {
-    const [created] = await db.insert(contactMessages).values(data).returning();
-    return created;
+    const encrypted = {
+      ...data,
+      name: encrypt(data.name),
+      email: encrypt(data.email),
+      phone: data.phone ? encrypt(data.phone) : undefined,
+      message: encrypt(data.message),
+    };
+    const [created] = await db.insert(contactMessages).values(encrypted).returning();
+    return decryptContactMessage(created);
   }
 
   async getContactMessages(): Promise<ContactMessage[]> {
-    return db.select().from(contactMessages).orderBy(contactMessages.createdAt);
+    const rows = await db.select().from(contactMessages).orderBy(contactMessages.createdAt);
+    return rows.map(decryptContactMessage);
   }
 
   async updateContactMessageStatus(id: number, status: string): Promise<ContactMessage | undefined> {
     const [updated] = await db.update(contactMessages).set({ status }).where(eq(contactMessages.id, id)).returning();
-    return updated;
+    return updated ? decryptContactMessage(updated) : undefined;
   }
 
   async replyToContactMessage(id: number, replyText: string): Promise<ContactMessage | undefined> {
@@ -731,12 +932,12 @@ export class DatabaseStorage implements IStorage {
       .set({ staffReply: replyText, repliedAt: new Date(), status: "replied" })
       .where(eq(contactMessages.id, id))
       .returning();
-    return updated;
+    return updated ? decryptContactMessage(updated) : undefined;
   }
 
   async getContactMessage(id: number): Promise<ContactMessage | undefined> {
     const [msg] = await db.select().from(contactMessages).where(eq(contactMessages.id, id));
-    return msg;
+    return msg ? decryptContactMessage(msg) : undefined;
   }
 
   async getSetting(key: string): Promise<string | null> {
@@ -789,33 +990,44 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createCustomer(email: string, name: string, phone: string | null, passwordHash: string): Promise<Customer> {
+    const normalised = email.toLowerCase().trim();
     const [customer] = await db.insert(customers).values({
-      email: email.toLowerCase().trim(),
-      name,
-      phone,
+      email: encrypt(normalised),
+      emailHash: hashEmail(normalised),
+      name: encrypt(name),
+      phone: phone ? encrypt(phone) : null,
       passwordHash,
       privacyConsentAt: new Date(),
     }).returning();
-    return customer;
+    return decryptCustomer(customer);
   }
 
   async getCustomerByEmail(email: string): Promise<Customer | undefined> {
-    const [customer] = await db.select().from(customers).where(eq(customers.email, email.toLowerCase().trim()));
-    return customer;
+    const hash = hashEmail(email.toLowerCase().trim());
+    // Try hash-based lookup (encrypted records)
+    const [byHash] = await db.select().from(customers).where(eq(customers.emailHash, hash));
+    if (byHash) return decryptCustomer(byHash);
+    // Fallback: plaintext lookup for legacy unencrypted records
+    const [byPlain] = await db.select().from(customers).where(eq(customers.email, email.toLowerCase().trim()));
+    return byPlain ? decryptCustomer(byPlain) : undefined;
   }
 
   async getCustomerById(id: number): Promise<Customer | undefined> {
     const [customer] = await db.select().from(customers).where(eq(customers.id, id));
-    return customer;
+    return customer ? decryptCustomer(customer) : undefined;
   }
 
   async getAllCustomers(): Promise<Customer[]> {
-    return db.select().from(customers).orderBy(customers.id);
+    const rows = await db.select().from(customers).orderBy(customers.id);
+    return rows.map(decryptCustomer);
   }
 
   async updateCustomer(id: number, data: Partial<{ name: string; phone: string }>): Promise<Customer | undefined> {
-    const [updated] = await db.update(customers).set(data).where(eq(customers.id, id)).returning();
-    return updated;
+    const encData: Record<string, string> = {};
+    if (data.name) encData.name = encrypt(data.name);
+    if (data.phone) encData.phone = encrypt(data.phone);
+    const [updated] = await db.update(customers).set(encData).where(eq(customers.id, id)).returning();
+    return updated ? decryptCustomer(updated) : undefined;
   }
 
   async deleteCustomer(id: number): Promise<boolean> {
@@ -1125,8 +1337,9 @@ export class DatabaseStorage implements IStorage {
       squareOrderId: data.squareOrderId ?? null,
       squarePaymentId: null,
       tableNote: data.tableNote ?? null,
-      customerName: data.customerName ?? null,
-      customerEmail: data.customerEmail ?? null,
+      customerName: data.customerName ? encrypt(data.customerName) : null,
+      customerEmail: data.customerEmail ? encrypt(data.customerEmail) : null,
+      customerEmailHash: data.customerEmail ? hashEmail(data.customerEmail) : null,
       itemsJson: data.itemsJson,
       totalPence: data.totalPence,
       discountPercent: data.discountPercent ?? null,
@@ -1136,17 +1349,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getRecentAppOrders(limit = 100): Promise<AppOrder[]> {
-    return db.select().from(appOrders).orderBy(desc(appOrders.createdAt)).limit(limit);
+    const rows = await db.select().from(appOrders).orderBy(desc(appOrders.createdAt)).limit(limit);
+    return rows.map(decryptAppOrder);
   }
 
   async getAppOrder(id: number): Promise<AppOrder | null> {
     const rows = await db.select().from(appOrders).where(eq(appOrders.id, id));
-    return rows[0] ?? null;
+    return rows[0] ? decryptAppOrder(rows[0]) : null;
   }
 
   async getOrderBySquareOrderId(squareOrderId: string): Promise<AppOrder | null> {
     const rows = await db.select().from(appOrders).where(eq(appOrders.squareOrderId, squareOrderId));
-    return rows[0] ?? null;
+    return rows[0] ? decryptAppOrder(rows[0]) : null;
   }
 
   async updateAppOrderPaid(squareOrderId: string, squarePaymentId: string): Promise<void> {
@@ -1160,14 +1374,25 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCustomerOrders(email: string): Promise<AppOrder[]> {
-    return db.select().from(appOrders)
+    const emailHash = hashEmail(email);
+    // Try hash-based lookup (encrypted records)
+    const byHash = await db.select().from(appOrders)
       .where(and(
-        eq(appOrders.customerEmail, email),
-        // Never show expired (abandoned) orders to the customer
+        eq(appOrders.customerEmailHash, emailHash),
         sql`${appOrders.status} != 'expired'`
       ))
       .orderBy(desc(appOrders.createdAt))
       .limit(50);
+    if (byHash.length > 0) return byHash.map(decryptAppOrder);
+    // Fallback: plaintext lookup for legacy records
+    const byPlain = await db.select().from(appOrders)
+      .where(and(
+        eq(appOrders.customerEmail, email),
+        sql`${appOrders.status} != 'expired'`
+      ))
+      .orderBy(desc(appOrders.createdAt))
+      .limit(50);
+    return byPlain.map(decryptAppOrder);
   }
 
   async expireStaleOrders(olderThanMinutes: number = 30): Promise<number> {

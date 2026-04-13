@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Modal, TextInput,
-  ActivityIndicator, Alert, Platform, RefreshControl,
+  ActivityIndicator, Alert, Platform, RefreshControl, Linking,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -508,6 +508,7 @@ export default function StaffHRScreen() {
 
 function GDPRNotice({ onAccept }: { onAccept: () => void }) {
   const insets = useSafeAreaInsets();
+  const privacyUrl = `${getApiUrl().replace(/\/api$/, "")}/staff-privacy-notice`;
   return (
     <View style={[styles.container, styles.centered, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20, paddingHorizontal: 24 }]}>
       <Ionicons name="shield-checkmark" size={48} color={Colors.brand.blue} style={{ marginBottom: 20 }} />
@@ -516,11 +517,19 @@ function GDPRNotice({ onAccept }: { onAccept: () => void }) {
         The 147 Bradford collects and stores your attendance and leave data to meet employment law obligations under the Working Time Regulations 1998.{"\n\n"}
         <Text style={{ fontWeight: "700" }}>What we collect:</Text>
         {"\n"}• Clock-in and clock-out times{"\n"}• GPS coordinates at clock-in/out (on-site verification only){"\n"}• Leave requests and approvals{"\n"}• Incident reports{"\n\n"}
-        <Text style={{ fontWeight: "700" }}>Your rights (GDPR):</Text>
-        {"\n"}• View all your data at any time{"\n"}• Request correction of errors{"\n"}• Request deletion when you leave (subject to legal retention periods){"\n\n"}
-        <Text style={{ fontWeight: "700" }}>Retention:</Text> Employment records are kept for 6 years after employment ends as required by UK law.{"\n\n"}
-        Location data is only captured at the moment of clocking in or out and is not continuously tracked.
+        <Text style={{ fontWeight: "700" }}>Your rights (UK GDPR):</Text>
+        {"\n"}• Access all data held about you{"\n"}• Request correction of errors{"\n"}• Request deletion when you leave (subject to legal retention){"\n\n"}
+        <Text style={{ fontWeight: "700" }}>Retention:</Text> GPS removed after 3 years. Employment records kept for 7 years as required by UK law.{"\n\n"}
+        Location is only captured at the moment of clocking in or out — not continuously tracked.
       </Text>
+      <Pressable
+        onPress={() => Linking.openURL(privacyUrl)}
+        style={{ marginBottom: 12 }}
+      >
+        <Text style={{ fontSize: 13, color: Colors.brand.blue, textDecorationLine: "underline", textAlign: "center" }}>
+          View full Staff Privacy Notice →
+        </Text>
+      </Pressable>
       <Pressable onPress={onAccept} style={styles.gdprBtn}>
         <Text style={styles.gdprBtnText}>I Understand — Continue</Text>
       </Pressable>
