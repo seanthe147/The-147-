@@ -1,4 +1,4 @@
-import React, { useState, useContext, memo, useCallback } from "react";
+import React, { useState, useContext, memo, useCallback, useRef, useEffect } from "react";
 import {
   StyleSheet,
   View,
@@ -8,15 +8,136 @@ import {
   ScrollView,
   Linking,
   ActivityIndicator,
+  Dimensions,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { LinearGradient } from "expo-linear-gradient";
+import { Image as ExpoImage } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { useQuery } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
-import type { Event } from "@shared/schema";
+import { getApiUrl } from "@/lib/query-client";
+import type { Event, BannerImage } from "@shared/schema";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const BANNER_WIDTH = SCREEN_WIDTH - 40;
+const BANNER_HEIGHT = 180;
+const AUTO_SCROLL_INTERVAL = 5000;
+
+function resolveImageUrl(path: string): string {
+  if (path.startsWith("http://") || path.startsWith("https://") || path.startsWith("data:")) return path;
+  const base = getApiUrl();
+  return new URL(path, base).toString();
+}
+
+const BannerCarousel = memo(function BannerCarousel({ images }: { images: BannerImage[] }) {
+  const scrollRef = useRef<ScrollView>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startAutoScroll = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (images.length <= 1) return;
+    timerRef.current = setInterval(() => {
+      setActiveIndex((prev) => {
+        const next = (prev + 1) % images.length;
+        scrollRef.current?.scrollTo({ x: next * (BANNER_WIDTH + 12), animated: true });
+        return next;
+      });
+    }, AUTO_SCROLL_INTERVAL);
+  }, [images.length]);
+
+  useEffect(() => {
+    startAutoScroll();
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [startAutoScroll]);
+
+  const onScrollEnd = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const x = e.nativeEvent.contentOffset.x;
+    const idx = Math.round(x / (BANNER_WIDTH + 12));
+    setActiveIndex(idx);
+    startAutoScroll();
+  }, [startAutoScroll]);
+
+  return (
+    <View style={styles.bannerSection}>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        snapToInterval={BANNER_WIDTH + 12}
+        decelerationRate="fast"
+        contentContainerStyle={{ paddingHorizontal: 20 }}
+        onMomentumScrollEnd={onScrollEnd}
+        scrollEnabled={images.length > 1}
+        scrollEventThrottle={16}
+        removeClippedSubviews
+      >
+        {images.map((item) => {
+          const hasLink = !!item.linkType;
+          const handleBannerPress = () => {
+            if (!item.linkType) return;
+            if (item.linkType === "url" && item.linkValue) {
+              Linking.openURL(item.linkValue);
+            }
+          };
+          return (
+            <Pressable
+              key={item.id}
+              style={({ pressed }) => [
+                styles.bannerSlide,
+                hasLink && { opacity: pressed ? 0.88 : 1 },
+              ]}
+              onPress={hasLink ? handleBannerPress : undefined}
+            >
+              <ExpoImage
+                source={{ uri: resolveImageUrl(item.imageUrl) }}
+                style={styles.bannerImage}
+                contentFit="cover"
+                transition={250}
+                cachePolicy="memory-disk"
+              />
+              {item.title ? (
+                <LinearGradient
+                  colors={["transparent", "rgba(0,0,0,0.6)"]}
+                  style={styles.bannerOverlay}
+                >
+                  <Text style={styles.bannerCaption} numberOfLines={2}>{item.title}</Text>
+                  {hasLink ? (
+                    <View style={styles.bannerLinkBadge}>
+                      <Ionicons name="open-outline" size={11} color="rgba(255,255,255,0.9)" />
+                      <Text style={styles.bannerLinkText}>Learn More</Text>
+                      <Ionicons name="chevron-forward" size={11} color="rgba(255,255,255,0.9)" />
+                    </View>
+                  ) : null}
+                </LinearGradient>
+              ) : hasLink ? (
+                <View style={styles.bannerOverlayMinimal}>
+                  <View style={styles.bannerLinkBadge}>
+                    <Ionicons name="open-outline" size={11} color="rgba(255,255,255,0.9)" />
+                    <Text style={styles.bannerLinkText}>Learn More</Text>
+                    <Ionicons name="chevron-forward" size={11} color="rgba(255,255,255,0.9)" />
+                  </View>
+                </View>
+              ) : null}
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+      {images.length > 1 && (
+        <View style={styles.dotRow}>
+          {images.map((_, i) => (
+            <View key={i} style={[styles.dot, i === activeIndex && styles.dotActive]} />
+          ))}
+        </View>
+      )}
+    </View>
+  );
+});
 
 const DAYS_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -239,6 +360,10 @@ export default function EventsScreen() {
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const [activeTab, setActiveTab] = useState<"events" | "whats-on">("events");
 
+  const { data: bannerImages } = useQuery<BannerImage[]>({
+    queryKey: ["/api/banner-images"],
+  });
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -294,6 +419,10 @@ export default function EventsScreen() {
             </Pressable>
           </View>
         </LinearGradient>
+
+        {bannerImages && bannerImages.length > 0 && (
+          <BannerCarousel images={bannerImages} />
+        )}
 
         <View style={styles.contentSection}>
           {activeTab === "events" ? <UpcomingEventsTab /> : <WhatsOnTab />}
@@ -491,5 +620,78 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 12,
     color: Colors.brand.blue,
+  },
+  bannerSection: {
+    marginTop: 20,
+    marginBottom: 4,
+  },
+  bannerSlide: {
+    width: BANNER_WIDTH,
+    height: BANNER_HEIGHT,
+    borderRadius: 16,
+    overflow: "hidden",
+    marginRight: 12,
+    backgroundColor: Colors.light.surface,
+  },
+  bannerImage: {
+    width: "100%",
+    height: "100%",
+  },
+  bannerOverlay: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    paddingTop: 30,
+  },
+  bannerCaption: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 16,
+    color: "#FFFFFF",
+    textShadowColor: "rgba(0,0,0,0.3)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  bannerOverlayMinimal: {
+    position: "absolute",
+    bottom: 10,
+    right: 12,
+  },
+  bannerLinkBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginTop: 6,
+    alignSelf: "flex-start",
+  },
+  bannerLinkText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 11,
+    color: "rgba(255,255,255,0.95)",
+    letterSpacing: 0.3,
+  },
+  dotRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 12,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.light.border,
+  },
+  dotActive: {
+    backgroundColor: Colors.brand.blue,
+    width: 20,
+    borderRadius: 3,
   },
 });
