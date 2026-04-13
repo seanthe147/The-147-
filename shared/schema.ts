@@ -44,6 +44,7 @@ export const offers = pgTable("offers", {
   icon: text("icon").notNull().default("pricetag"),
   active: boolean("active").notNull().default(true),
   linkUrl: text("link_url"),
+  linkType: text("link_type"),
 });
 
 export const insertOfferSchema = createInsertSchema(offers).omit({ id: true });

@@ -228,11 +228,21 @@ const OffersSection = memo(function OffersSection() {
         decelerationRate="fast"
       >
         {active.map((offer) => {
-          const hasLink = !!(offer as any).linkUrl;
+          const linkType = (offer as any).linkType as string | null;
+          const linkUrl = (offer as any).linkUrl as string | null;
+          const hasLink = !!(linkType || linkUrl);
+          const handleOfferPress = () => {
+            if (linkType === "order_item" && linkUrl) {
+              const [catId, itemId, itemName] = linkUrl.split("|");
+              router.push({ pathname: "/(tabs)/order", params: { hlCatId: catId, hlItemId: itemId, hlItemName: itemName } } as any);
+            } else if (linkUrl) {
+              Linking.openURL(linkUrl);
+            }
+          };
           return (
             <Pressable
               key={offer.id}
-              onPress={hasLink ? () => Linking.openURL((offer as any).linkUrl) : undefined}
+              onPress={hasLink ? handleOfferPress : undefined}
               style={({ pressed }) => [styles.offerCard, hasLink && { opacity: pressed ? 0.85 : 1 }]}
             >
               <LinearGradient

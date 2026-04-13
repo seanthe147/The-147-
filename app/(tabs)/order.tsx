@@ -29,7 +29,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import Colors from "@/constants/colors";
 import { useCart } from "@/contexts/CartContext";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
@@ -599,9 +599,11 @@ const modStyles = StyleSheet.create({
 function ItemCard({
   item,
   onOpenModifiers,
+  highlighted,
 }: {
   item: MenuItem;
   onOpenModifiers: (item: MenuItem) => void;
+  highlighted?: boolean;
 }) {
   const { addItem, updateQuantity, getQuantity } = useCart();
   const qty = getQuantity(item.variationId);
@@ -619,7 +621,13 @@ function ItemCard({
   };
 
   return (
-    <View style={[styles.itemCard, soldOut && styles.itemCardSoldOut]}>
+    <View style={[styles.itemCard, soldOut && styles.itemCardSoldOut, highlighted && styles.itemCardHighlighted]}>
+      {highlighted && (
+        <View style={styles.highlightedBanner}>
+          <Ionicons name="pricetag" size={11} color="#fff" />
+          <Text style={styles.highlightedBannerText}>Featured offer</Text>
+        </View>
+      )}
       {hasImage && (
         <Image
           source={{ uri: item.imageUrl }}
@@ -1116,10 +1124,12 @@ export default function OrderScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const webTopInset = Platform.OS === "web" ? 67 : 0;
+  const params = useLocalSearchParams<{ hlCatId?: string; hlItemId?: string; hlItemName?: string }>();
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [cartVisible, setCartVisible] = useState(false);
   const [modifierItem, setModifierItem] = useState<MenuItem | null>(null);
+  const [highlightItemId, setHighlightItemId] = useState<string | null>(null);
   const { totalItems, totalPrice, addItem } = useCart();
   const categoryScrollRef = useRef<ScrollView>(null);
 
@@ -1187,9 +1197,19 @@ export default function OrderScreen() {
     setModifierItem(null);
   }, [modifierItem, addItem]);
 
+  useEffect(() => {
+    if (params.hlCatId && params.hlItemId && categories && categories.length > 0) {
+      const catExists = categories.find((c) => c.id === params.hlCatId);
+      if (catExists) {
+        setSelectedCategory(params.hlCatId);
+        setHighlightItemId(params.hlItemId ?? null);
+      }
+    }
+  }, [params.hlCatId, params.hlItemId, categories]);
+
   const renderItem = useCallback(({ item }: { item: MenuItem }) => (
-    <ItemCard item={item} onOpenModifiers={handleOpenModifiers} />
-  ), [handleOpenModifiers]);
+    <ItemCard item={item} onOpenModifiers={handleOpenModifiers} highlighted={item.id === highlightItemId} />
+  ), [handleOpenModifiers, highlightItemId]);
 
   const handleSelectCategory = useCallback((id: string) => {
     setSelectedCategory(id);
@@ -1584,6 +1604,30 @@ const styles = StyleSheet.create({
   },
   itemCardSoldOut: {
     opacity: 0.65,
+  },
+  itemCardHighlighted: {
+    borderWidth: 2,
+    borderColor: Colors.brand.blue,
+    backgroundColor: Colors.brand.blue + "08",
+  },
+  highlightedBanner: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    backgroundColor: Colors.brand.blue,
+    borderBottomLeftRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    zIndex: 1,
+  },
+  highlightedBannerText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 10,
+    color: "#fff",
+    letterSpacing: 0.3,
   },
   itemImage: {
     width: 72,

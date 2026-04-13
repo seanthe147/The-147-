@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   StyleSheet,
   Text,
@@ -51,6 +51,7 @@ interface OfferForm {
   gradientEnd: string;
   icon: string;
   linkUrl: string;
+  linkType: string;
 }
 
 const emptyForm: OfferForm = {
@@ -62,7 +63,19 @@ const emptyForm: OfferForm = {
   gradientEnd: "#1E6FD9",
   icon: "pricetag",
   linkUrl: "",
+  linkType: "",
 };
+
+interface MenuItem {
+  id: string;
+  name: string;
+  price: number;
+}
+interface MenuCategory {
+  id: string;
+  name: string;
+  items: MenuItem[];
+}
 
 function OfferPreview({ form }: { form: OfferForm }) {
   return (
@@ -114,8 +127,24 @@ export default function AdminOffersScreen() {
   const [form, setForm] = useState<OfferForm>(emptyForm);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [pickerCat, setPickerCat] = useState<string | null>(null);
 
   const STAFF_OFFERS_KEY = ["/api/staff/offers"];
+
+  const { data: menuCategories } = useQuery<MenuCategory[]>({
+    queryKey: ["/api/menu"],
+    enabled: showForm && form.linkType === "order_item",
+  });
+
+  const allMenuItems = useMemo(() => {
+    if (!menuCategories) return [];
+    return menuCategories.flatMap((c) => c.items.map((i) => ({ ...i, catId: c.id, catName: c.name })));
+  }, [menuCategories]);
+
+  const pickerCatItems = useMemo(() => {
+    if (!pickerCat || !menuCategories) return [];
+    return menuCategories.find((c) => c.id === pickerCat)?.items ?? [];
+  }, [pickerCat, menuCategories]);
 
   const { data: offers, isLoading } = useQuery<Offer[]>({
     queryKey: STAFF_OFFERS_KEY,
@@ -177,6 +206,7 @@ export default function AdminOffersScreen() {
       gradientEnd: offer.gradientEnd,
       icon: offer.icon,
       linkUrl: (offer as any).linkUrl ?? "",
+      linkType: (offer as any).linkType ?? "",
     });
     setEditingId(offer.id);
     setShowForm(true);
@@ -289,23 +319,108 @@ export default function AdminOffersScreen() {
               onChangeText={(t) => setForm((f) => ({ ...f, validUntil: t }))}
             />
 
-            <Text style={styles.fieldLabel}>Link URL <Text style={styles.fieldLabelOptional}>(optional)</Text></Text>
-            <TextInput
-              style={styles.input}
-              placeholder="https://the147bradford.co.uk/menu"
-              placeholderTextColor="#9CA3AF"
-              value={form.linkUrl}
-              onChangeText={(t) => setForm((f) => ({ ...f, linkUrl: t }))}
-              autoCapitalize="none"
-              keyboardType="url"
-              autoCorrect={false}
-            />
-            {form.linkUrl ? (
-              <View style={styles.linkHint}>
-                <Ionicons name="link-outline" size={13} color={Colors.brand.blue} />
-                <Text style={styles.linkHintText}>Customers tap the offer card to open this link</Text>
+            <Text style={styles.fieldLabel}>Link <Text style={styles.fieldLabelOptional}>(optional — make the card tappable)</Text></Text>
+            <View style={styles.linkTypeRow}>
+              {[
+                { val: "", label: "None" },
+                { val: "url", label: "Website URL" },
+                { val: "order_item", label: "Menu item" },
+              ].map((opt) => (
+                <Pressable
+                  key={opt.val}
+                  onPress={() => setForm((f) => ({ ...f, linkType: opt.val, linkUrl: "" }))}
+                  style={[styles.linkTypeBtn, form.linkType === opt.val && styles.linkTypeBtnActive]}
+                >
+                  <Text style={[styles.linkTypeBtnText, form.linkType === opt.val && styles.linkTypeBtnTextActive]}>
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {form.linkType === "url" && (
+              <>
+                <TextInput
+                  style={[styles.input, { marginTop: 8 }]}
+                  placeholder="https://the147bradford.co.uk/menu"
+                  placeholderTextColor="#9CA3AF"
+                  value={form.linkUrl}
+                  onChangeText={(t) => setForm((f) => ({ ...f, linkUrl: t }))}
+                  autoCapitalize="none"
+                  keyboardType="url"
+                  autoCorrect={false}
+                />
+                {form.linkUrl ? (
+                  <View style={styles.linkHint}>
+                    <Ionicons name="link-outline" size={13} color={Colors.brand.blue} />
+                    <Text style={styles.linkHintText}>Opens in browser when customer taps the card</Text>
+                  </View>
+                ) : null}
+              </>
+            )}
+
+            {form.linkType === "order_item" && (
+              <View style={styles.menuPicker}>
+                {!menuCategories ? (
+                  <ActivityIndicator size="small" color={Colors.brand.blue} style={{ marginTop: 8 }} />
+                ) : (
+                  <>
+                    {form.linkUrl ? (
+                      <View style={styles.selectedItemRow}>
+                        <Ionicons name="fast-food-outline" size={14} color={Colors.brand.blue} />
+                        <Text style={styles.selectedItemText} numberOfLines={1}>
+                          {form.linkUrl.split("|")[2] || "Selected"} — {menuCategories.find(c => c.id === form.linkUrl.split("|")[0])?.name}
+                        </Text>
+                        <Pressable onPress={() => { setForm((f) => ({ ...f, linkUrl: "" })); setPickerCat(null); }}>
+                          <Ionicons name="close-circle" size={16} color={Colors.brand.red} />
+                        </Pressable>
+                      </View>
+                    ) : null}
+                    <Text style={[styles.fieldLabel, { marginTop: 8, fontSize: 11 }]}>Pick a category:</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                      <View style={{ flexDirection: "row", gap: 6 }}>
+                        {menuCategories.map((cat) => (
+                          <Pressable
+                            key={cat.id}
+                            onPress={() => setPickerCat(cat.id)}
+                            style={[styles.linkTypeBtn, pickerCat === cat.id && styles.linkTypeBtnActive]}
+                          >
+                            <Text style={[styles.linkTypeBtnText, pickerCat === cat.id && styles.linkTypeBtnTextActive]}>
+                              {cat.name}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </ScrollView>
+                    {pickerCat && pickerCatItems.length > 0 && (
+                      <View style={styles.itemPickerList}>
+                        {pickerCatItems.map((item) => (
+                          <Pressable
+                            key={item.id}
+                            onPress={() => {
+                              setForm((f) => ({ ...f, linkUrl: `${pickerCat}|${item.id}|${item.name}` }));
+                            }}
+                            style={[styles.itemPickerRow, form.linkUrl === `${pickerCat}|${item.id}|${item.name}` && styles.itemPickerRowSelected]}
+                          >
+                            <Text style={styles.itemPickerName}>{item.name}</Text>
+                            <Text style={styles.itemPickerPrice}>£{(item.price / 100).toFixed(2)}</Text>
+                            {form.linkUrl === `${pickerCat}|${item.id}|${item.name}` && (
+                              <Ionicons name="checkmark-circle" size={16} color={Colors.brand.blue} />
+                            )}
+                          </Pressable>
+                        ))}
+                      </View>
+                    )}
+                    {form.linkUrl && (
+                      <View style={styles.linkHint}>
+                        <Ionicons name="fast-food-outline" size={13} color={Colors.brand.blue} />
+                        <Text style={styles.linkHintText}>Tapping opens the Order tab with this item highlighted</Text>
+                      </View>
+                    )}
+                  </>
+                )}
               </View>
-            ) : null}
+            )}
 
             <Text style={styles.fieldLabel}>Icon</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.optionScroll}>
@@ -617,6 +732,85 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.brand.blue,
     flex: 1,
+  },
+  linkTypeRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8,
+    flexWrap: "wrap",
+  },
+  linkTypeBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: Colors.light.border,
+    backgroundColor: Colors.light.surfaceElevated,
+  },
+  linkTypeBtnActive: {
+    backgroundColor: Colors.brand.blue,
+    borderColor: Colors.brand.blue,
+  },
+  linkTypeBtnText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+  },
+  linkTypeBtnTextActive: {
+    color: "#fff",
+  },
+  menuPicker: {
+    marginTop: 8,
+    backgroundColor: Colors.light.surfaceElevated,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    padding: 12,
+  },
+  selectedItemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: Colors.brand.blue + "12",
+    borderRadius: 8,
+    padding: 8,
+    marginBottom: 4,
+  },
+  selectedItemText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
+    color: Colors.brand.blue,
+    flex: 1,
+  },
+  itemPickerList: {
+    borderRadius: 8,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+  },
+  itemPickerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: Colors.light.background,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
+    gap: 8,
+  },
+  itemPickerRowSelected: {
+    backgroundColor: Colors.brand.blue + "0F",
+  },
+  itemPickerName: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 13,
+    color: Colors.light.text,
+    flex: 1,
+  },
+  itemPickerPrice: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
   },
   input: {
     backgroundColor: Colors.light.surfaceElevated,
