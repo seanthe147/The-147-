@@ -492,6 +492,10 @@
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/></svg>
           App Banners
         </div>
+        <div class="nav-item" data-page="offers" id="navOffers">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+          Offers
+        </div>
         <div class="nav-section" style="margin-top:8px">Account</div>
         <div class="nav-item" data-page="settings">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -931,6 +935,74 @@
         </div>
       </div>
 
+
+      <!-- OFFERS PAGE -->
+      <div class="page" id="pageOffers">
+        <div class="page-body">
+          <div class="menu-refresh-bar">
+            <p style="font-size:13px;color:var(--text-2);margin:0">Offers appear on the customer app home screen as tappable cards. Toggle visibility to show or hide each offer instantly.</p>
+            <button class="btn btn-primary btn-sm" onclick="openOfferForm()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              New Offer
+            </button>
+          </div>
+          <div id="offersGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;padding:0 0 20px"></div>
+          <div id="offersEmpty" style="display:none;text-align:center;padding:60px 20px;color:var(--text-2)">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.4;margin-bottom:12px"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+            <p style="margin:0;font-size:15px;font-weight:600">No offers yet</p>
+            <p style="margin:6px 0 0;font-size:13px">Create your first offer to display it in the customer app</p>
+            <button class="btn btn-primary" style="margin-top:16px" onclick="openOfferForm()">Create Offer</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- OFFER FORM MODAL -->
+      <div class="overlay" id="offerModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:900;display:none;align-items:center;justify-content:center;padding:20px">
+        <div style="background:var(--bg);border-radius:16px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;padding:28px 28px 24px;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+            <h2 id="offerModalTitle" style="margin:0;font-size:18px">New Offer</h2>
+            <button onclick="closeOfferModal()" style="background:none;border:none;cursor:pointer;color:var(--text-2);padding:4px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          </div>
+          <div id="offerFormErr" class="modal-err"></div>
+          <div class="form-group">
+            <label class="form-label">Title <span style="color:var(--red)">*</span></label>
+            <input class="form-input" id="ofTitle" placeholder="e.g. Lunch Deal" maxlength="60">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Subtitle / Description <span style="color:var(--red)">*</span></label>
+            <input class="form-input" id="ofSubtitle" placeholder="e.g. Any main + drink for £10" maxlength="120">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="form-group">
+              <label class="form-label">Discount badge</label>
+              <input class="form-input" id="ofDiscount" placeholder="e.g. 20% OFF" maxlength="20">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Valid until</label>
+              <input class="form-input" id="ofValidUntil" type="date">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Card colours</label>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px" id="ofGradientPicker"></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Link type <span style="font-weight:400;color:var(--text-2)">(optional)</span></label>
+            <select class="form-input" id="ofLinkType" onchange="offerLinkTypeChange()">
+              <option value="">No link</option>
+              <option value="url">External URL</option>
+            </select>
+          </div>
+          <div id="ofLinkUrlWrap" class="form-group" style="display:none">
+            <label class="form-label">URL</label>
+            <input class="form-input" id="ofLinkUrl" type="url" placeholder="https://..." autocomplete="off">
+          </div>
+          <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+            <button class="btn btn-secondary" onclick="closeOfferModal()">Cancel</button>
+            <button class="btn btn-primary" id="ofSaveBtn" onclick="saveOffer()">Save Offer</button>
+          </div>
+        </div>
+      </div>
 
       <!-- SETTINGS PAGE -->
       <div class="page" id="pageSettings">
@@ -1928,7 +2000,7 @@
     closeSidebar();
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page'+cap(page)));
-    const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',banners:'App Banners'};
+    const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',banners:'App Banners',offers:'Offers'};
     el('topbarTitle').textContent=titles[page]||'';
     el('topbarSub').textContent='';
     if(page==='bookings'){el('topbarActions').style.display='';switchBookingsTab('bookings');loadBookings();loadDashboardNotices();startBookingsPolling();}
@@ -1939,6 +2011,7 @@
     if(page==='memberships')loadMemberships();
     if(page==='menu'){switchMenuTab('orders');loadOrders();loadOrderingSchedule();}
     if(page==='banners')loadBanners();
+    if(page==='offers')loadOffers();
   }
   function cap(s){return s.charAt(0).toUpperCase()+s.slice(1)}
 
@@ -4058,6 +4131,194 @@
   }
 
   window.toggleOrdering=toggleOrdering;
+
+  /* ════════════════════════════════════════════
+     OFFERS MANAGEMENT
+  ════════════════════════════════════════════ */
+  const OFFER_GRADIENTS=[
+    {start:'#0047AB',end:'#1E6FD9',label:'Blue'},
+    {start:'#7C3AED',end:'#A855F7',label:'Purple'},
+    {start:'#B91C1C',end:'#EF4444',label:'Red'},
+    {start:'#065F46',end:'#10B981',label:'Green'},
+    {start:'#B45309',end:'#F59E0B',label:'Amber'},
+    {start:'#0F766E',end:'#2DD4BF',label:'Teal'},
+  ];
+
+  let offersData=[];
+  let editingOfferId=null;
+  let selectedOfferGradient=OFFER_GRADIENTS[0];
+
+  async function loadOffers(){
+    const grid=el('offersGrid');
+    const empty=el('offersEmpty');
+    grid.innerHTML='<div class="loading-state"><div class="spinner"></div>Loading offers…</div>';
+    empty.style.display='none';
+    try{
+      const r=await api('/api/staff/offers');
+      offersData=await r.json();
+      renderOffers();
+    }catch(e){
+      grid.innerHTML='<p style="color:var(--red);padding:20px">Failed to load offers</p>';
+    }
+  }
+
+  function renderOffers(){
+    const grid=el('offersGrid');
+    const empty=el('offersEmpty');
+    if(!offersData.length){
+      grid.innerHTML='';
+      empty.style.display='';
+      return;
+    }
+    empty.style.display='none';
+    grid.innerHTML=offersData.map(o=>{
+      const gStart=o.gradientStart||'#0047AB';
+      const gEnd=o.gradientEnd||'#1E6FD9';
+      const isActive=!!o.active;
+      const expiry=o.validUntil?new Date(o.validUntil):null;
+      const isExpired=expiry&&expiry<new Date();
+      let linkLabel='';
+      if(o.linkType==='order_item'&&o.linkUrl){linkLabel=`<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-2)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/></svg>${esc((o.linkUrl.split('|')[2]||'Menu item'))}</span>`;}
+      else if(o.linkType==='url'&&o.linkUrl){linkLabel=`<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-2)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>${esc(o.linkUrl.replace(/^https?:\/\//,'').substring(0,30))}</span>`;}
+      return `
+        <div style="background:var(--surface);border-radius:14px;border:1px solid var(--border);overflow:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column;${!isActive?'opacity:.65':''}">
+          <div style="background:linear-gradient(135deg,${esc(gStart)},${esc(gEnd)});padding:16px 14px 12px;position:relative;min-height:76px">
+            ${o.discount?`<div style="position:absolute;top:10px;right:10px;background:rgba(255,255,255,.22);backdrop-filter:blur(6px);border-radius:20px;padding:3px 10px;font-size:12px;font-weight:700;color:#fff;letter-spacing:.3px">${esc(o.discount)}</div>`:''}
+            <div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:3px;padding-right:${o.discount?'80px':'0'}">${esc(o.title)}</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.8);line-height:1.4">${esc(o.subtitle)}</div>
+          </div>
+          <div style="padding:12px 14px 14px;display:flex;flex-direction:column;gap:8px;flex:1">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              ${isExpired?`<span style="font-size:11px;font-weight:600;color:var(--red);background:rgba(239,68,68,.08);border-radius:20px;padding:2px 8px">Expired ${esc(o.validUntil)}</span>`
+                :o.validUntil?`<span style="font-size:11px;color:var(--text-2)">Valid until ${esc(o.validUntil)}</span>`:''}
+              ${linkLabel}
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:auto;padding-top:4px;border-top:1px solid var(--border)">
+              <button onclick="toggleOffer(${o.id},${!isActive})" style="flex:1;padding:7px 0;border-radius:8px;border:1.5px solid ${isActive?'var(--red)':'var(--green)'};background:${isActive?'rgba(239,68,68,.06)':'rgba(34,197,94,.06)'};color:${isActive?'var(--red)':'var(--green)'};font-size:12px;font-weight:600;cursor:pointer">
+                ${isActive?'Hide from app':'Show in app'}
+              </button>
+              <button onclick="openOfferForm(${o.id})" style="padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer">Edit</button>
+              <button onclick="deleteOffer(${o.id})" style="padding:7px 10px;border-radius:8px;border:1px solid rgba(239,68,68,.3);background:rgba(239,68,68,.06);color:var(--red);font-size:12px;cursor:pointer">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function renderGradientPicker(){
+    const container=el('ofGradientPicker');
+    container.innerHTML=OFFER_GRADIENTS.map(g=>{
+      const sel=selectedOfferGradient.start===g.start;
+      return `<button onclick="selectOfferGradient('${g.start}','${g.end}')" title="${g.label}" style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,${g.start},${g.end});border:${sel?'3px solid var(--gold)':'3px solid transparent'};outline:${sel?'2px solid var(--gold)':'none'};cursor:pointer;transition:transform .1s" onmouseover="this.style.transform='scale(1.12)'" onmouseout="this.style.transform=''"></button>`;
+    }).join('');
+  }
+
+  window.selectOfferGradient=function(start,end){
+    selectedOfferGradient=OFFER_GRADIENTS.find(g=>g.start===start)||{start,end};
+    renderGradientPicker();
+  };
+
+  window.offerLinkTypeChange=function(){
+    const lt=el('ofLinkType').value;
+    el('ofLinkUrlWrap').style.display=lt==='url'?'':'none';
+  };
+
+  function openOfferForm(id){
+    editingOfferId=id||null;
+    el('offerFormErr').style.display='none';
+    el('offerFormErr').textContent='';
+    const offer=id?offersData.find(o=>o.id===id):null;
+    el('offerModalTitle').textContent=id?'Edit Offer':'New Offer';
+    el('ofTitle').value=offer?offer.title:'';
+    el('ofSubtitle').value=offer?offer.subtitle:'';
+    el('ofDiscount').value=offer?offer.discount:'';
+    el('ofValidUntil').value=offer?offer.validUntil:'';
+    const lt=offer&&offer.linkType||'';
+    el('ofLinkType').value=lt;
+    el('ofLinkUrl').value=(offer&&offer.linkType==='url'&&offer.linkUrl)||'';
+    el('ofLinkUrlWrap').style.display=lt==='url'?'':'none';
+    selectedOfferGradient=offer?{start:offer.gradientStart||'#0047AB',end:offer.gradientEnd||'#1E6FD9'}:OFFER_GRADIENTS[0];
+    renderGradientPicker();
+    el('offerModal').style.display='flex';
+  }
+
+  function closeOfferModal(){
+    el('offerModal').style.display='none';
+    editingOfferId=null;
+  }
+
+  async function saveOffer(){
+    el('offerFormErr').style.display='none';
+    const title=el('ofTitle').value.trim();
+    const subtitle=el('ofSubtitle').value.trim();
+    if(!title||!subtitle){
+      el('offerFormErr').textContent='Title and description are required.';
+      el('offerFormErr').style.display='';
+      return;
+    }
+    const lt=el('ofLinkType').value;
+    const payload={
+      title,subtitle,
+      discount:el('ofDiscount').value.trim()||null,
+      validUntil:el('ofValidUntil').value||null,
+      gradientStart:selectedOfferGradient.start,
+      gradientEnd:selectedOfferGradient.end,
+      icon:'pricetag',
+      linkType:lt||null,
+      linkUrl:lt==='url'?el('ofLinkUrl').value.trim()||null:null,
+      active:editingOfferId?offersData.find(o=>o.id===editingOfferId)?.active??true:true,
+    };
+    const btn=el('ofSaveBtn');
+    btn.disabled=true;btn.textContent='Saving…';
+    try{
+      if(editingOfferId){
+        const r=await api(`/api/offers/${editingOfferId}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        const updated=await r.json();
+        const idx=offersData.findIndex(o=>o.id===editingOfferId);
+        if(idx>-1)offersData[idx]=updated;
+      }else{
+        const r=await api('/api/offers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        const created=await r.json();
+        offersData.unshift(created);
+      }
+      renderOffers();
+      closeOfferModal();
+    }catch(e){
+      el('offerFormErr').textContent='Failed to save offer. Please try again.';
+      el('offerFormErr').style.display='';
+    }finally{
+      btn.disabled=false;btn.textContent='Save Offer';
+    }
+  }
+
+  async function toggleOffer(id,active){
+    try{
+      const r=await api(`/api/staff/offers/${id}/toggle`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+      const updated=await r.json();
+      const idx=offersData.findIndex(o=>o.id===id);
+      if(idx>-1)offersData[idx]=updated;
+      renderOffers();
+    }catch(e){alert('Failed to update offer visibility');}
+  }
+
+  async function deleteOffer(id){
+    const offer=offersData.find(o=>o.id===id);
+    if(!confirm(`Delete "${offer?.title||'this offer'}"? This cannot be undone.`))return;
+    try{
+      await api(`/api/offers/${id}`,{method:'DELETE'});
+      offersData=offersData.filter(o=>o.id!==id);
+      renderOffers();
+    }catch(e){alert('Failed to delete offer');}
+  }
+
+  window.loadOffers=loadOffers;
+  window.openOfferForm=openOfferForm;
+  window.closeOfferModal=closeOfferModal;
+  window.saveOffer=saveOffer;
+  window.toggleOffer=toggleOffer;
+  window.deleteOffer=deleteOffer;
   loadOrderingStatus();
 
   /* ── Ordering Schedule & Overrides ────────────────────────────────────── */
