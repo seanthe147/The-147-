@@ -24,7 +24,7 @@ import { getApiUrl } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import Colors from "@/constants/colors";
 import { OPENING_HOURS } from "@/lib/data";
-import type { Event, BannerImage } from "@shared/schema";
+import type { Event, BannerImage, Offer } from "@shared/schema";
 
 const logoImage = require("@/assets/images/logo-147.png");
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -210,6 +210,66 @@ function formatDealValue(deal: Deal): string {
   }
   return "";
 }
+
+const OffersSection = memo(function OffersSection() {
+  const { data: offers } = useQuery<Offer[]>({ queryKey: ["/api/offers"] });
+  const active = (offers || []).filter((o) => o.active);
+  if (active.length === 0) return null;
+  return (
+    <View style={styles.offersSection}>
+      <View style={styles.offersSectionHeader}>
+        <Ionicons name="pricetag" size={16} color="#B45309" />
+        <Text style={styles.offersSectionTitle}>Special Offers</Text>
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.offersScroll}
+        decelerationRate="fast"
+      >
+        {active.map((offer) => {
+          const hasLink = !!(offer as any).linkUrl;
+          return (
+            <Pressable
+              key={offer.id}
+              onPress={hasLink ? () => Linking.openURL((offer as any).linkUrl) : undefined}
+              style={({ pressed }) => [styles.offerCard, hasLink && { opacity: pressed ? 0.85 : 1 }]}
+            >
+              <LinearGradient
+                colors={[offer.gradientStart || "#0047AB", offer.gradientEnd || "#1E6FD9"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.offerCardGradient}
+              >
+                <View style={styles.offerCardTop}>
+                  <View style={styles.offerCardIconWrap}>
+                    <Ionicons name={(offer.icon || "pricetag") as keyof typeof Ionicons.glyphMap} size={16} color="#fff" />
+                  </View>
+                  <View style={styles.offerCardBadge}>
+                    <Text style={styles.offerCardBadgeText}>{offer.discount}</Text>
+                  </View>
+                  {hasLink && (
+                    <View style={styles.offerCardLinkBadge}>
+                      <Ionicons name="open-outline" size={11} color="rgba(255,255,255,0.85)" />
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.offerCardTitle} numberOfLines={2}>{offer.title}</Text>
+                <Text style={styles.offerCardSub} numberOfLines={2}>{offer.subtitle}</Text>
+                {offer.validUntil ? (
+                  <View style={styles.offerCardFooter}>
+                    <Ionicons name="calendar-outline" size={10} color="rgba(255,255,255,0.6)" />
+                    <Text style={styles.offerCardValid}>{offer.validUntil}</Text>
+                  </View>
+                ) : null}
+              </LinearGradient>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+});
 
 const DealsSection = memo(function DealsSection() {
   const { data: deals } = useQuery<Deal[]>({ queryKey: ["/api/deals"] });
@@ -477,6 +537,8 @@ export default function HomeScreen() {
           ) : bannerImages && bannerImages.length > 0 ? (
             <BannerCarousel images={bannerImages} />
           ) : null}
+
+          <OffersSection />
 
           <DealsSection />
 
@@ -822,6 +884,95 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_400Regular",
     fontSize: 12,
     color: Colors.light.textSecondary,
+  },
+  offersSection: {
+    marginBottom: 16,
+  },
+  offersSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginHorizontal: 20,
+    marginBottom: 10,
+  },
+  offersSectionTitle: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: Colors.light.text,
+  },
+  offersScroll: {
+    paddingHorizontal: 20,
+    gap: 10,
+    paddingBottom: 4,
+  },
+  offerCard: {
+    borderRadius: 16,
+    overflow: "hidden",
+    minWidth: 160,
+    maxWidth: 200,
+  },
+  offerCardGradient: {
+    padding: 14,
+    minHeight: 120,
+    justifyContent: "space-between",
+  },
+  offerCardTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 8,
+  },
+  offerCardIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  offerCardBadge: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    alignSelf: "flex-start",
+  },
+  offerCardBadgeText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 11,
+    color: "#fff",
+  },
+  offerCardLinkBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  offerCardTitle: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 13,
+    color: "#fff",
+    marginBottom: 3,
+  },
+  offerCardSub: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 11,
+    color: "rgba(255,255,255,0.8)",
+    lineHeight: 15,
+    marginBottom: 6,
+  },
+  offerCardFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  offerCardValid: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 10,
+    color: "rgba(255,255,255,0.6)",
   },
   dealsSection: {
     marginBottom: 16,

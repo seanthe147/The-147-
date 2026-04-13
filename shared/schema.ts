@@ -43,6 +43,7 @@ export const offers = pgTable("offers", {
   gradientEnd: text("gradient_end").notNull().default("#1E6FD9"),
   icon: text("icon").notNull().default("pricetag"),
   active: boolean("active").notNull().default(true),
+  linkUrl: text("link_url"),
 });
 
 export const insertOfferSchema = createInsertSchema(offers).omit({ id: true });

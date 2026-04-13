@@ -50,6 +50,7 @@ interface OfferForm {
   gradientStart: string;
   gradientEnd: string;
   icon: string;
+  linkUrl: string;
 }
 
 const emptyForm: OfferForm = {
@@ -60,6 +61,7 @@ const emptyForm: OfferForm = {
   gradientStart: "#0047AB",
   gradientEnd: "#1E6FD9",
   icon: "pricetag",
+  linkUrl: "",
 };
 
 function OfferPreview({ form }: { form: OfferForm }) {
@@ -174,6 +176,7 @@ export default function AdminOffersScreen() {
       gradientStart: offer.gradientStart,
       gradientEnd: offer.gradientEnd,
       icon: offer.icon,
+      linkUrl: (offer as any).linkUrl ?? "",
     });
     setEditingId(offer.id);
     setShowForm(true);
@@ -285,6 +288,24 @@ export default function AdminOffersScreen() {
               value={form.validUntil}
               onChangeText={(t) => setForm((f) => ({ ...f, validUntil: t }))}
             />
+
+            <Text style={styles.fieldLabel}>Link URL <Text style={styles.fieldLabelOptional}>(optional)</Text></Text>
+            <TextInput
+              style={styles.input}
+              placeholder="https://the147bradford.co.uk/menu"
+              placeholderTextColor="#9CA3AF"
+              value={form.linkUrl}
+              onChangeText={(t) => setForm((f) => ({ ...f, linkUrl: t }))}
+              autoCapitalize="none"
+              keyboardType="url"
+              autoCorrect={false}
+            />
+            {form.linkUrl ? (
+              <View style={styles.linkHint}>
+                <Ionicons name="link-outline" size={13} color={Colors.brand.blue} />
+                <Text style={styles.linkHintText}>Customers tap the offer card to open this link</Text>
+              </View>
+            ) : null}
 
             <Text style={styles.fieldLabel}>Icon</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.optionScroll}>
@@ -578,6 +599,24 @@ const styles = StyleSheet.create({
     color: Colors.light.textSecondary,
     marginBottom: 6,
     marginTop: 12,
+  },
+  fieldLabelOptional: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+  },
+  linkHint: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 6,
+    marginBottom: 2,
+  },
+  linkHintText: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 12,
+    color: Colors.brand.blue,
+    flex: 1,
   },
   input: {
     backgroundColor: Colors.light.surfaceElevated,
