@@ -1249,9 +1249,10 @@
             </div>
             <div class="settings-desc">Under UK GDPR Article 15, anyone can request all data held about them. Enter their email to generate a full data report. Respond within 30 days.</div>
             <div style="display:flex;gap:8px;margin-top:12px;max-width:480px">
-              <input class="form-input" type="email" id="sarEmail" placeholder="customer@example.com" style="flex:1">
-              <button class="btn btn-primary" onclick="runSAR()">Generate Report</button>
+              <input class="form-input" type="text" id="sarEmail" placeholder="customer@example.com" style="flex:1" oninput="el('sarEmailError').style.display='none'" autocomplete="email">
+              <button type="button" class="btn btn-primary" onclick="runSAR()">Generate Report</button>
             </div>
+            <p id="sarEmailError" role="alert" aria-live="assertive" aria-atomic="true" style="color:#EF4444;font-size:12px;margin-top:6px;display:none">Please enter a valid email address.</p>
             <div id="sarResult" style="display:none;margin-top:16px;background:var(--bg2);border-radius:var(--r);padding:16px;font-size:12px;font-family:monospace;white-space:pre-wrap;overflow:auto;max-height:400px;border:1px solid var(--border)"></div>
           </div>
 
@@ -4767,7 +4768,12 @@
   // ── GDPR / SAR ──────────────────────────────────────────────────────────────
   async function runSAR(){
     const email=el('sarEmail').value.trim();
-    if(!email||!email.includes('@')){toast('Please enter a valid email address','error');return;}
+    if(!email||!email.includes('@')){
+      el('sarEmailError').style.display='block';
+      toast('Please enter a valid email address','error');
+      return;
+    }
+    el('sarEmailError').style.display='none';
     const resultEl=el('sarResult');
     resultEl.style.display='';
     resultEl.textContent='Generating report…';
@@ -4785,6 +4791,7 @@
       toast('SAR report generated and downloaded');
     }catch(e){resultEl.textContent='Error generating report. Please try again.';toast('SAR failed','error');}
   }
+  window.runSAR=runSAR;
 
   // ── Attendance ──────────────────────────────────────────────────────────────
   function fmtDt(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});}

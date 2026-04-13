@@ -571,6 +571,15 @@ function scheduleRetentionCleanup() {
     });
   });
 
+  // In development, also bind port 8082 (the Replit preview port configured in .replit)
+  // so the Replit browser preview and test agent can reach the Express server.
+  if (process.env.NODE_ENV !== "production" && port !== 8082) {
+    const previewServer = http.createServer(app);
+    previewServer.listen(8082, "0.0.0.0", () => {
+      log("express also serving on port 8082 (Replit preview)");
+    });
+  }
+
   // Apply safe, idempotent schema migrations (adds new columns, seeds required plans)
   await runStartupMigrations();
   // Encrypt any existing plaintext PII in customers, contact messages, push tokens, and orders
