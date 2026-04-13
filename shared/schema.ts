@@ -479,4 +479,43 @@ export const staffIncidents = pgTable("staff_incidents", {
 });
 
 export type StaffIncident = typeof staffIncidents.$inferSelect;
-export const insertStaffIncidentSchema = createInsertSchema(staffIncidents).omit({ id: true, createdAt: true });
+
+// ── Rota / shift scheduling ────────────────────────────────────────────────────
+export const staffRotaShifts = pgTable("staff_rota_shifts", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull(),
+  weekStart: text("week_start").notNull(),      // YYYY-MM-DD (Monday)
+  dayOfWeek: integer("day_of_week").notNull(),  // 0=Mon … 6=Sun
+  shiftStart: text("shift_start").notNull(),    // "HH:MM"
+  shiftEnd: text("shift_end").notNull(),        // "HH:MM"
+  role: text("role"),                           // "Bar" | "Kitchen" | "Floor" | "Manager" etc.
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type StaffRotaShift = typeof staffRotaShifts.$inferSelect;
+export const insertStaffRotaShiftSchema = createInsertSchema(staffRotaShifts).omit({ id: true, createdAt: true, updatedAt: true });
+
+// ── Rota published weeks ───────────────────────────────────────────────────────
+export const staffRotaPublished = pgTable("staff_rota_published", {
+  id: serial("id").primaryKey(),
+  weekStart: text("week_start").notNull().unique(), // YYYY-MM-DD (Monday)
+  publishedAt: timestamp("published_at").defaultNow().notNull(),
+  publishedByUsername: text("published_by_username"),
+  notificationSent: boolean("notification_sent").notNull().default(false),
+  staffNotified: integer("staff_notified").notNull().default(0),
+});
+
+export type StaffRotaPublished = typeof staffRotaPublished.$inferSelect;
+
+// ── Staff push tokens (for targeted staff notifications) ───────────────────────
+export const staffPushTokens = pgTable("staff_push_tokens", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull(),
+  token: text("token").notNull().unique(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type StaffPushToken = typeof staffPushTokens.$inferSelect;

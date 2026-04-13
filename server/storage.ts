@@ -67,6 +67,12 @@ import {
   type StaffLeaveAllowance,
   staffIncidents,
   type StaffIncident,
+  staffRotaShifts,
+  type StaffRotaShift,
+  staffRotaPublished,
+  type StaffRotaPublished,
+  staffPushTokens,
+  type StaffPushToken,
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
 
@@ -217,6 +223,18 @@ export interface IStorage {
   createAvailabilityRule(rule: Omit<AvailabilityRule, 'id' | 'updatedAt'>): Promise<AvailabilityRule>;
   updateAvailabilityRule(id: number, rule: Partial<Omit<AvailabilityRule, 'id' | 'updatedAt'>>): Promise<AvailabilityRule | undefined>;
   deleteAvailabilityRule(id: number): Promise<boolean>;
+  getAllLeaveRequests(): Promise<StaffLeaveRequest[]>;
+  // Rota
+  getRotaShifts(weekStart: string): Promise<StaffRotaShift[]>;
+  getRotaShiftsForStaff(staffId: number, weekStart: string): Promise<StaffRotaShift[]>;
+  upsertRotaShift(data: Omit<StaffRotaShift, 'id' | 'createdAt' | 'updatedAt'>, existingId?: number): Promise<StaffRotaShift>;
+  deleteRotaShift(id: number): Promise<boolean>;
+  publishRota(weekStart: string, publishedByUsername: string | null): Promise<StaffRotaPublished>;
+  getRotaPublished(weekStart: string): Promise<StaffRotaPublished | undefined>;
+  // Staff push tokens
+  upsertStaffPushToken(staffId: number, token: string): Promise<StaffPushToken>;
+  getStaffPushTokens(staffIds: number[]): Promise<StaffPushToken[]>;
+  removeStaffPushToken(token: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1294,6 +1312,86 @@ export class DatabaseStorage implements IStorage {
       .where(eq(staffIncidents.id, id))
       .returning();
     return incident ?? null;
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // STAFF ROTA
+  // ══════════════════════════════════════════════════════════════════
+
+  async getRotaShifts(weekStart: string): Promise<StaffRotaShift[]> {
+    return db.select().from(staffRotaShifts)
+      .where(eq(staffRotaShifts.weekStart, weekStart))
+      .orderBy(staffRotaShifts.dayOfWeek, staffRotaShifts.shiftStart);
+  }
+
+  async getRotaShiftsForStaff(staffId: number, weekStart: string): Promise<StaffRotaShift[]> {
+    return db.select().from(staffRotaShifts)
+      .where(and(eq(staffRotaShifts.staffId, staffId), eq(staffRotaShifts.weekStart, weekStart)))
+      .orderBy(staffRotaShifts.dayOfWeek, staffRotaShifts.shiftStart);
+  }
+
+  async upsertRotaShift(data: Omit<StaffRotaShift, 'id' | 'createdAt' | 'updatedAt'>, existingId?: number): Promise<StaffRotaShift> {
+    if (existingId) {
+      const [updated] = await db.update(staffRotaShifts)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(staffRotaShifts.id, existingId))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(staffRotaShifts).values(data).returning();
+    return created;
+  }
+
+  async deleteRotaShift(id: number): Promise<boolean> {
+    const result = await db.delete(staffRotaShifts).where(eq(staffRotaShifts.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async publishRota(weekStart: string, publishedByUsername: string | null): Promise<StaffRotaPublished> {
+    const [existing] = await db.select().from(staffRotaPublished).where(eq(staffRotaPublished.weekStart, weekStart));
+    if (existing) {
+      const [updated] = await db.update(staffRotaPublished)
+        .set({ publishedAt: new Date(), publishedByUsername, notificationSent: false })
+        .where(eq(staffRotaPublished.weekStart, weekStart))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(staffRotaPublished)
+      .values({ weekStart, publishedByUsername, notificationSent: false, staffNotified: 0 })
+      .returning();
+    return created;
+  }
+
+  async getRotaPublished(weekStart: string): Promise<StaffRotaPublished | undefined> {
+    const [row] = await db.select().from(staffRotaPublished).where(eq(staffRotaPublished.weekStart, weekStart));
+    return row;
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // STAFF PUSH TOKENS
+  // ══════════════════════════════════════════════════════════════════
+
+  async upsertStaffPushToken(staffId: number, token: string): Promise<StaffPushToken> {
+    const [existing] = await db.select().from(staffPushTokens).where(eq(staffPushTokens.token, token));
+    if (existing) {
+      const [updated] = await db.update(staffPushTokens)
+        .set({ staffId, updatedAt: new Date() })
+        .where(eq(staffPushTokens.token, token))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(staffPushTokens).values({ staffId, token }).returning();
+    return created;
+  }
+
+  async getStaffPushTokens(staffIds: number[]): Promise<StaffPushToken[]> {
+    if (!staffIds.length) return [];
+    return db.select().from(staffPushTokens).where(inArray(staffPushTokens.staffId, staffIds));
+  }
+
+  async removeStaffPushToken(token: string): Promise<boolean> {
+    const result = await db.delete(staffPushTokens).where(eq(staffPushTokens.token, token)).returning();
+    return result.length > 0;
   }
 }
 

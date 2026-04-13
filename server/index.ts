@@ -552,6 +552,16 @@ function scheduleRetentionCleanup() {
 
   setupErrorHandler(app);
 
+  // Open the port immediately so the Replit workflow health check succeeds.
+  // Migrations and background tasks run afterwards.
+  const port = parseInt(process.env.PORT || "5000", 10);
+  await new Promise<void>((resolve) => {
+    server.listen(port, "0.0.0.0", () => {
+      log(`express server serving on port ${port}`);
+      resolve();
+    });
+  });
+
   // Apply safe, idempotent schema migrations (adds new columns, seeds required plans)
   await runStartupMigrations();
   // Promote seanclowe/seanlowe to owner if no owner account exists (one-time bootstrap)
@@ -564,16 +574,16 @@ function scheduleRetentionCleanup() {
   scheduleDepositAutoCancel();
   // Expire abandoned app orders (never paid within 30 minutes)
   scheduleOrderExpiry();
+})().catch((err) => {
+  console.error("FATAL SERVER ERROR:", err);
+  process.exit(1);
+});
 
-  const port = parseInt(process.env.PORT || "5000", 10);
-  server.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      log(`express server serving on port ${port}`);
-    },
-  );
-})();
+process.on("unhandledRejection", (reason) => {
+  console.error("UNHANDLED REJECTION:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT EXCEPTION:", err);
+  process.exit(1);
+});

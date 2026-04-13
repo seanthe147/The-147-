@@ -9,7 +9,8 @@ import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
-import { getApiUrl } from "@/lib/query-client";
+import * as Notifications from "expo-notifications";
+import { getApiUrl, getStaffToken } from "@/lib/query-client";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import Colors from "@/constants/colors";
 
@@ -67,10 +68,28 @@ function weekHoursMs(entries: any[]): number {
 async function hrApi(path: string, opts?: RequestInit) {
   const base = getApiUrl();
   const url = new URL(path, base).toString();
-  const r = await fetch(url, { credentials: "include", headers: { "Content-Type": "application/json" }, ...opts });
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const token = getStaffToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const r = await fetch(url, { credentials: "include", headers, ...opts });
   if (!r.ok) { const body = await r.json().catch(() => ({})); throw new Error(body.message || `HTTP ${r.status}`); }
   return r.json();
 }
+
+function getWeekMonday(date: Date = new Date()): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function dateToStr(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const GDPR_KEY = "hr_gdpr_accepted_v1";
 
@@ -85,6 +104,7 @@ export default function StaffHRScreen() {
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [rotaWeekStart, setRotaWeekStart] = useState<Date>(() => getWeekMonday());
 
   // redirect if not logged in
   useEffect(() => {
@@ -134,11 +154,34 @@ export default function StaffHRScreen() {
     enabled: isAuthenticated && gdprAccepted === true,
   });
 
+  const rotaWeekStr = dateToStr(rotaWeekStart);
+  const { data: rotaData, refetch: refetchRota } = useQuery({
+    queryKey: ["/api/hr/rota/my", rotaWeekStr],
+    queryFn: () => hrApi(`/api/hr/rota/my?weekStart=${rotaWeekStr}`),
+    enabled: isAuthenticated && gdprAccepted === true,
+  });
+
+  // Register push token once auth + GDPR accepted
+  useEffect(() => {
+    if (!isAuthenticated || gdprAccepted !== true || Platform.OS === "web") return;
+    (async () => {
+      try {
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status !== "granted") return;
+        const tokenData = await Notifications.getExpoPushTokenAsync();
+        const pushToken = tokenData.data;
+        await hrApi("/api/hr/staff-push-token", { method: "POST", body: JSON.stringify({ token: pushToken }) });
+      } catch {
+        // non-critical — silently ignore
+      }
+    })();
+  }, [isAuthenticated, gdprAccepted]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refetchClock(), refetchEntries(), refetchBalance(), refetchLeave()]);
+    await Promise.all([refetchClock(), refetchEntries(), refetchBalance(), refetchLeave(), refetchRota()]);
     setRefreshing(false);
-  }, [refetchClock, refetchEntries, refetchBalance, refetchLeave]);
+  }, [refetchClock, refetchEntries, refetchBalance, refetchLeave, refetchRota]);
 
   // ── Geofence clock action ────────────────────────────────────────────────────
   const handleClockAction = async () => {
@@ -364,6 +407,71 @@ export default function StaffHRScreen() {
           <View style={styles.emptyState}>
             <Ionicons name="time-outline" size={32} color={Colors.light.border} />
             <Text style={styles.emptyText}>No shifts recorded yet</Text>
+          </View>
+        )}
+
+        {/* My Rota */}
+        <View style={styles.rotaHeader}>
+          <Text style={styles.sectionTitle}>My Rota</Text>
+          <View style={styles.rotaNav}>
+            <Pressable
+              onPress={() => { const d = new Date(rotaWeekStart); d.setDate(d.getDate() - 7); setRotaWeekStart(d); }}
+              style={({ pressed }) => [styles.rotaNavBtn, pressed && { opacity: 0.6 }]}
+            >
+              <Ionicons name="chevron-back" size={18} color={Colors.brand.blue} />
+            </Pressable>
+            <Text style={styles.rotaWeekLabel}>
+              {rotaWeekStart.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+              {" — "}
+              {(() => { const e = new Date(rotaWeekStart); e.setDate(e.getDate() + 6); return e.toLocaleDateString("en-GB", { day: "numeric", month: "short" }); })()}
+            </Text>
+            <Pressable
+              onPress={() => { const d = new Date(rotaWeekStart); d.setDate(d.getDate() + 7); setRotaWeekStart(d); }}
+              style={({ pressed }) => [styles.rotaNavBtn, pressed && { opacity: 0.6 }]}
+            >
+              <Ionicons name="chevron-forward" size={18} color={Colors.brand.blue} />
+            </Pressable>
+          </View>
+        </View>
+
+        {rotaData == null ? (
+          <ActivityIndicator size="small" color={Colors.brand.blue} style={{ marginVertical: 12 }} />
+        ) : !rotaData.published ? (
+          <View style={styles.rotaUnpublished}>
+            <Ionicons name="time-outline" size={22} color={Colors.light.textSecondary} />
+            <Text style={styles.rotaUnpublishedText}>Rota not yet published for this week</Text>
+          </View>
+        ) : (rotaData.shifts as any[]).length === 0 ? (
+          <View style={styles.rotaUnpublished}>
+            <Ionicons name="calendar-outline" size={22} color={Colors.light.textSecondary} />
+            <Text style={styles.rotaUnpublishedText}>No shifts scheduled for this week</Text>
+          </View>
+        ) : (
+          <View style={styles.rotaDays}>
+            {DAY_NAMES.map((dayName, idx) => {
+              const dayShifts = (rotaData.shifts as any[]).filter((s: any) => s.dayOfWeek === idx);
+              const dayDate = new Date(rotaWeekStart);
+              dayDate.setDate(dayDate.getDate() + idx);
+              const isToday = dayDate.toDateString() === new Date().toDateString();
+              return (
+                <View key={idx} style={[styles.rotaDayRow, isToday && styles.rotaDayRowToday]}>
+                  <View style={[styles.rotaDayLabel, isToday && styles.rotaDayLabelToday]}>
+                    <Text style={[styles.rotaDayName, isToday && { color: "#fff" }]}>{dayName}</Text>
+                    <Text style={[styles.rotaDayDate, isToday && { color: "rgba(255,255,255,0.8)" }]}>{dayDate.getDate()}</Text>
+                  </View>
+                  <View style={styles.rotaDayShifts}>
+                    {dayShifts.length === 0 ? (
+                      <Text style={styles.rotaDayOff}>Off</Text>
+                    ) : dayShifts.map((s: any, si: number) => (
+                      <View key={si} style={styles.rotaShiftChip}>
+                        <Text style={styles.rotaShiftTime}>{s.shiftStart} – {s.shiftEnd}</Text>
+                        {s.role && <Text style={styles.rotaShiftRole}>{s.role}</Text>}
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              );
+            })}
           </View>
         )}
 
@@ -720,4 +828,24 @@ const styles = StyleSheet.create({
   historyStatBox: { flex: 1, alignItems: "center", gap: 2 },
   historyStatValue: { fontFamily: "Montserrat_700Bold", fontSize: 18, color: Colors.brand.blue },
   historyStatLabel: { fontFamily: "Montserrat_400Regular", fontSize: 11, color: Colors.light.textSecondary },
+
+  // My Rota
+  rotaHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  rotaNav: { flexDirection: "row", alignItems: "center", gap: 6 },
+  rotaNavBtn: { padding: 6 },
+  rotaWeekLabel: { fontFamily: "Montserrat_600SemiBold", fontSize: 12, color: Colors.light.textSecondary },
+  rotaUnpublished: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: Colors.light.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: Colors.light.border },
+  rotaUnpublishedText: { fontFamily: "Montserrat_500Medium", fontSize: 13, color: Colors.light.textSecondary, flex: 1 },
+  rotaDays: { backgroundColor: Colors.light.surface, borderRadius: 14, borderWidth: 1, borderColor: Colors.light.border, overflow: "hidden" },
+  rotaDayRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: Colors.light.border },
+  rotaDayRowToday: { backgroundColor: Colors.brand.blue + "08" },
+  rotaDayLabel: { width: 40, alignItems: "center", backgroundColor: Colors.light.surfaceElevated, borderRadius: 8, paddingVertical: 6, marginRight: 12 },
+  rotaDayLabelToday: { backgroundColor: Colors.brand.blue },
+  rotaDayName: { fontFamily: "Montserrat_700Bold", fontSize: 11, color: Colors.light.textSecondary },
+  rotaDayDate: { fontFamily: "Montserrat_700Bold", fontSize: 15, color: Colors.light.text, marginTop: 1 },
+  rotaDayShifts: { flex: 1, gap: 4 },
+  rotaDayOff: { fontFamily: "Montserrat_400Regular", fontSize: 13, color: Colors.light.textSecondary },
+  rotaShiftChip: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: Colors.brand.blue + "12", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, alignSelf: "flex-start" },
+  rotaShiftTime: { fontFamily: "Montserrat_600SemiBold", fontSize: 13, color: Colors.brand.blue },
+  rotaShiftRole: { fontFamily: "Montserrat_400Regular", fontSize: 11, color: Colors.brand.blue + "BB" },
 });

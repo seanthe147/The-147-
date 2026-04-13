@@ -5009,6 +5009,109 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // ══════════════════════════════════════════════════════════════════════════════
+  // STAFF ROTA
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  // Get rota for a week (with staff names and leave overlay)
+  app.get("/api/hr/rota", staffAuth, managerAuth, async (req: any, res) => {
+    const weekStart = String(req.query.weekStart || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+      return res.status(400).json({ message: "weekStart (YYYY-MM-DD) required" });
+    }
+    const [shifts, staffUsers, published] = await Promise.all([
+      storage.getRotaShifts(weekStart),
+      storage.getAllStaffUsers(),
+      storage.getRotaPublished(weekStart),
+    ]);
+    // Get approved leave for this week
+    const allLeave = await storage.getAllLeaveRequests();
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    const weekEndStr = weekEnd.toISOString().slice(0, 10);
+    const weekLeave = allLeave.filter((l: any) =>
+      l.status === "approved" &&
+      l.startDate <= weekEndStr &&
+      l.endDate >= weekStart
+    );
+    const userMap = Object.fromEntries(staffUsers.map((u: any) => [u.id, { displayName: u.displayName || u.username, username: u.username, role: u.role, active: u.active }]));
+    res.json({ shifts, staffUsers: staffUsers.filter((u: any) => u.active), userMap, weekLeave, published: published || null });
+  });
+
+  // Get my rota for a week (any authenticated staff)
+  app.get("/api/hr/rota/my", staffAuth, async (req: any, res) => {
+    const weekStart = String(req.query.weekStart || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart) || !req.staffUser?.id) {
+      return res.status(400).json({ message: "weekStart required and staff must be logged in" });
+    }
+    const shifts = await storage.getRotaShiftsForStaff(req.staffUser.id, weekStart);
+    const published = await storage.getRotaPublished(weekStart);
+    res.json({ shifts, published: published || null });
+  });
+
+  // Add or update a rota shift
+  app.post("/api/hr/rota/shifts", staffAuth, managerAuth, async (req: any, res) => {
+    const { staffId, weekStart, dayOfWeek, shiftStart, shiftEnd, role, notes, id } = req.body;
+    if (!staffId || !weekStart || dayOfWeek === undefined || !shiftStart || !shiftEnd) {
+      return res.status(400).json({ message: "staffId, weekStart, dayOfWeek, shiftStart, shiftEnd required" });
+    }
+    const shift = await storage.upsertRotaShift(
+      { staffId: Number(staffId), weekStart, dayOfWeek: Number(dayOfWeek), shiftStart, shiftEnd, role: role || null, notes: notes || null },
+      id ? Number(id) : undefined,
+    );
+    res.status(id ? 200 : 201).json(shift);
+  });
+
+  // Delete a rota shift
+  app.delete("/api/hr/rota/shifts/:id", staffAuth, managerAuth, async (req: any, res) => {
+    const id = parseInt(req.params.id);
+    const deleted = await storage.deleteRotaShift(id);
+    if (!deleted) return res.status(404).json({ message: "Shift not found" });
+    res.status(204).send();
+  });
+
+  // Publish rota + send push notifications to all staff with shifts that week
+  app.post("/api/hr/rota/publish", staffAuth, managerAuth, async (req: any, res) => {
+    const { weekStart } = req.body;
+    if (!weekStart) return res.status(400).json({ message: "weekStart required" });
+    const publishedBy = req.staffUser?.username || null;
+    const published = await storage.publishRota(weekStart, publishedBy);
+    // Get all staff IDs that have shifts this week
+    const shifts = await storage.getRotaShifts(weekStart);
+    const staffIds = [...new Set(shifts.map((s: any) => s.staffId))];
+    const tokens = await storage.getStaffPushTokens(staffIds);
+    let notified = 0;
+    if (tokens.length > 0) {
+      const tokenStrings = tokens.map((t: any) => t.token);
+      const messages = tokenStrings.map((to: string) => ({
+        to, sound: "default" as const,
+        title: "Your Rota Has Been Published",
+        body: `The rota for the week of ${weekStart} has been published. Check the app to see your shifts.`,
+      }));
+      try {
+        const r = await fetch("https://exp.host/--/api/v2/push/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(messages),
+        });
+        const data = await r.json() as { data?: Array<{ status: string }> };
+        notified = data.data?.filter(d => d.status === "ok").length ?? 0;
+      } catch { /* notification failure doesn't block publish */ }
+      // Update notified count
+      await storage.publishRota(weekStart, publishedBy);
+    }
+    res.json({ ...published, staffNotified: notified, tokenCount: tokens.length });
+  });
+
+  // Register staff push token (called from mobile app on login)
+  app.post("/api/hr/staff-push-token", staffAuth, async (req: any, res) => {
+    const { token } = req.body;
+    if (!token || typeof token !== "string") return res.status(400).json({ message: "token required" });
+    if (!req.staffUser?.id) return res.status(403).json({ message: "Must be logged in as a named staff user" });
+    const record = await storage.upsertStaffPushToken(req.staffUser.id, token);
+    res.json(record);
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

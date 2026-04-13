@@ -1017,6 +1017,7 @@
             <button class="menu-tab" data-hr="leave" onclick="switchHRTab('leave')">Leave Requests</button>
             <button class="menu-tab" data-hr="incidents" onclick="switchHRTab('incidents')">Incident Reports</button>
             <button class="menu-tab" data-hr="geofence" onclick="switchHRTab('geofence')">Geofence</button>
+            <button class="menu-tab" data-hr="rota" onclick="switchHRTab('rota')">📅 Rota</button>
           </div>
 
           <!-- Attendance Tab -->
@@ -1130,6 +1131,84 @@
                 <div style="font-size:12px;color:var(--text-2);line-height:1.6">GPS coordinates are collected only at the moment of clocking in or out for on-site verification. Location is not continuously tracked. Data is held under GDPR Article 6(1)(b) — necessary for employment contract. Retained for 6 years post-employment.</div>
               </div>
             </div>
+          </div>
+
+          <!-- Rota Tab -->
+          <div id="hrTabRota" style="display:none">
+            <!-- Week nav + publish bar -->
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+              <div style="display:flex;align-items:center;gap:10px">
+                <button class="btn-nav" onclick="rotaPrevWeek()">&#8249;</button>
+                <span id="rotaWeekLabel" style="font-size:15px;font-weight:700;color:var(--text);min-width:200px;text-align:center"></span>
+                <button class="btn-nav" onclick="rotaNextWeek()">&#8250;</button>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <div id="rotaPublishStatus" style="font-size:12px;font-weight:600;padding:5px 12px;border-radius:20px;display:none"></div>
+                <button class="btn btn-primary" id="rotaPublishBtn" onclick="publishRota()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:5px"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9l20-7z"/></svg>
+                  Publish Rota &amp; Notify Staff
+                </button>
+              </div>
+            </div>
+
+            <!-- Legend -->
+            <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;font-size:11px;font-weight:600">
+              <span style="display:flex;align-items:center;gap:4px"><span style="width:12px;height:12px;border-radius:3px;background:#DBEAFE;display:inline-block"></span>Bar</span>
+              <span style="display:flex;align-items:center;gap:4px"><span style="width:12px;height:12px;border-radius:3px;background:#D1FAE5;display:inline-block"></span>Kitchen</span>
+              <span style="display:flex;align-items:center;gap:4px"><span style="width:12px;height:12px;border-radius:3px;background:#EDE9FE;display:inline-block"></span>Floor</span>
+              <span style="display:flex;align-items:center;gap:4px"><span style="width:12px;height:12px;border-radius:3px;background:#FEF3C7;display:inline-block"></span>Manager</span>
+              <span style="display:flex;align-items:center;gap:4px"><span style="width:12px;height:12px;border-radius:3px;background:#FCE7F3;display:inline-block"></span>Security</span>
+              <span style="display:flex;align-items:center;gap:4px"><span style="width:12px;height:12px;border-radius:3px;background:#FEE2E2;border:1px solid #FCA5A5;display:inline-block"></span>On Leave</span>
+            </div>
+
+            <div id="rotaGridWrap" style="overflow-x:auto">
+              <div id="rotaGrid"><div class="loading-state"><div class="spinner"></div>Loading rota…</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Shift Edit Modal -->
+      <div class="overlay" id="shiftModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:950;align-items:center;justify-content:center;padding:20px">
+        <div style="background:var(--bg);border-radius:16px;width:100%;max-width:420px;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+            <h2 id="shiftModalTitle" style="margin:0;font-size:17px;font-weight:800">Add Shift</h2>
+            <button onclick="closeShiftModal()" style="background:none;border:none;cursor:pointer;color:var(--text-2)">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div id="shiftModalInfo" style="background:var(--blue-light);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;font-weight:600;color:var(--blue)"></div>
+          <div id="shiftModalErr" style="display:none;color:var(--red);font-size:13px;font-weight:600;margin-bottom:12px;padding:8px 12px;background:var(--red-light);border-radius:var(--r)"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Start Time</label>
+              <input class="form-input" id="shiftStart" type="time" value="09:00">
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">End Time</label>
+              <input class="form-input" id="shiftEnd" type="time" value="17:00">
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom:12px">
+            <label class="form-label">Role</label>
+            <select class="form-input" id="shiftRole">
+              <option value="">— no role —</option>
+              <option value="Bar">Bar</option>
+              <option value="Kitchen">Kitchen</option>
+              <option value="Floor">Floor</option>
+              <option value="Manager">Manager</option>
+              <option value="Security">Security</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:20px">
+            <label class="form-label">Notes <span style="font-weight:400;color:var(--text-2)">(optional)</span></label>
+            <input class="form-input" id="shiftNotes" placeholder="e.g. Opening shift">
+          </div>
+          <div style="display:flex;gap:10px">
+            <button id="shiftDeleteBtn" onclick="deleteShift()" style="padding:11px 16px;border-radius:var(--r);border:2px solid var(--red);background:var(--red-light);color:var(--red);font-weight:700;font-size:13px;cursor:pointer;display:none">Delete</button>
+            <button onclick="closeShiftModal()" class="btn btn-secondary" style="flex:1">Cancel</button>
+            <button onclick="saveShift()" class="btn btn-primary" style="flex:2">Save Shift</button>
           </div>
         </div>
       </div>
@@ -4484,9 +4563,10 @@
   function switchHRTab(tab){
     currentHRTab=tab;
     document.querySelectorAll('.menu-tab[data-hr]').forEach(b=>b.classList.toggle('active',b.dataset.hr===tab));
-    ['hrTabAttendance','hrTabLeave','hrTabIncidents','hrTabGeofence'].forEach(id=>el(id).style.display='none');
+    ['hrTabAttendance','hrTabLeave','hrTabIncidents','hrTabGeofence','hrTabRota'].forEach(id=>el(id).style.display='none');
     el('hrTab'+cap(tab)).style.display='';
     if(tab==='geofence')loadGeofenceSettings();
+    if(tab==='rota')loadRota();
   }
   window.switchHRTab=switchHRTab;
 
@@ -4741,6 +4821,241 @@
   window.saveGeofence=saveGeofence;
   window.exportAttendanceCSV=exportAttendanceCSV;
   window.loadHR=loadHR;
+
+  /* ════════════════════════════════════════════
+     ROTA MODULE
+  ════════════════════════════════════════════ */
+  const DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const ROLE_COLORS={Bar:'#DBEAFE',Kitchen:'#D1FAE5',Floor:'#EDE9FE',Manager:'#FEF3C7',Security:'#FCE7F3',Other:'#F1F5F9'};
+  const ROLE_TEXT={Bar:'#1D4ED8',Kitchen:'#065F46',Floor:'#5B21B6',Manager:'#92400E',Security:'#9D174D',Other:'#475569'};
+
+  let rotaWeekStart=getMonday(new Date());
+  let rotaData={shifts:[],staffUsers:[],userMap:{},weekLeave:[],published:null};
+  let shiftModalCtx={staffId:null,dayOfWeek:null,existingId:null};
+
+  function getMonday(d){
+    const dt=new Date(d);
+    const day=dt.getDay();
+    const diff=day===0?-6:1-day;
+    dt.setDate(dt.getDate()+diff);
+    dt.setHours(0,0,0,0);
+    return dt;
+  }
+
+  function fmtWeekStart(d){
+    const end=new Date(d);end.setDate(end.getDate()+6);
+    return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+'–'+end.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+  }
+
+  function dateToStr(d){return d.toISOString().slice(0,10);}
+
+  function rotaPrevWeek(){rotaWeekStart=new Date(rotaWeekStart);rotaWeekStart.setDate(rotaWeekStart.getDate()-7);loadRota();}
+  function rotaNextWeek(){rotaWeekStart=new Date(rotaWeekStart);rotaWeekStart.setDate(rotaWeekStart.getDate()+7);loadRota();}
+  window.rotaPrevWeek=rotaPrevWeek;
+  window.rotaNextWeek=rotaNextWeek;
+
+  async function loadRota(){
+    el('rotaWeekLabel').textContent=fmtWeekStart(rotaWeekStart);
+    el('rotaGrid').innerHTML='<div class="loading-state"><div class="spinner"></div>Loading rota…</div>';
+    const ws=dateToStr(rotaWeekStart);
+    try{
+      const r=await api('/api/hr/rota?weekStart='+ws);
+      rotaData=await r.json();
+      renderRotaGrid();
+      updatePublishStatus();
+    }catch(e){
+      el('rotaGrid').innerHTML='<div style="color:var(--red);padding:20px;text-align:center">Failed to load rota</div>';
+    }
+  }
+
+  function updatePublishStatus(){
+    const s=el('rotaPublishStatus');
+    const pub=rotaData.published;
+    if(pub){
+      const dt=new Date(pub.publishedAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+      s.textContent='✓ Published '+dt+(pub.publishedByUsername?' by '+pub.publishedByUsername:'');
+      s.style.background='var(--green-light)';s.style.color='var(--green)';s.style.display='';
+    } else {
+      s.textContent='Draft — not yet published';
+      s.style.background='var(--amber-light)';s.style.color='var(--amber)';s.style.display='';
+    }
+  }
+
+  function renderRotaGrid(){
+    const ws=dateToStr(rotaWeekStart);
+    const {shifts,staffUsers,weekLeave}=rotaData;
+    if(!staffUsers.length){el('rotaGrid').innerHTML='<div style="padding:40px;text-align:center;color:var(--text-2);font-size:14px">No active staff members found. Add staff in the Staff Accounts section.</div>';return;}
+
+    // Build leave lookup: staffId → Set of date strings
+    const leaveMap={};
+    for(const lv of weekLeave){
+      const sid=lv.staffId;
+      if(!leaveMap[sid])leaveMap[sid]=new Set();
+      // Enumerate each day of the leave period that falls in this week
+      let cur=new Date(Math.max(new Date(lv.startDate),rotaWeekStart));
+      const leaveEnd=new Date(lv.endDate);
+      const weekEnd=new Date(rotaWeekStart);weekEnd.setDate(weekEnd.getDate()+6);
+      while(cur<=leaveEnd&&cur<=weekEnd){leaveMap[sid].add(dateToStr(cur));cur.setDate(cur.getDate()+1);}
+    }
+
+    // Build shift lookup: staffId_day → shift[]
+    const shiftMap={};
+    for(const sh of shifts){
+      const key=sh.staffId+'_'+sh.dayOfWeek;
+      if(!shiftMap[key])shiftMap[key]=[];
+      shiftMap[key].push(sh);
+    }
+
+    // Build day date strings (Mon=0..Sun=6)
+    const dayDates=DAYS.map((_,i)=>{const d=new Date(rotaWeekStart);d.setDate(d.getDate()+i);return dateToStr(d);});
+
+    let html='<table style="width:100%;border-collapse:collapse;min-width:700px;font-size:13px">';
+    // Header
+    html+='<thead><tr>';
+    html+='<th style="text-align:left;padding:10px 14px;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);border-bottom:2px solid var(--border);background:var(--surface);position:sticky;left:0;z-index:2;min-width:130px">Staff</th>';
+    for(let d=0;d<7;d++){
+      const dd=new Date(rotaWeekStart);dd.setDate(dd.getDate()+d);
+      const isToday=dateToStr(dd)===dateToStr(new Date());
+      html+=`<th style="text-align:center;padding:10px 8px;font-weight:700;font-size:12px;color:${isToday?'var(--blue)':'var(--text-2)'};border-bottom:2px solid var(--border);border-left:1px solid var(--border);background:var(--surface);min-width:100px">${DAYS[d]}<br><span style="font-weight:400;font-size:11px;color:${isToday?'var(--blue)':'var(--text-3)'}">${dd.getDate()+' '+dd.toLocaleString('en-GB',{month:'short'})}</span></th>`;
+    }
+    html+='</tr></thead><tbody>';
+
+    for(const staff of staffUsers){
+      html+=`<tr>`;
+      html+=`<td style="padding:10px 14px;font-weight:600;color:var(--text);border-bottom:1px solid var(--border);background:var(--surface);position:sticky;left:0;z-index:1;vertical-align:top">
+        <div style="font-size:13px">${staff.displayName||staff.username}</div>
+        <div style="font-size:11px;color:var(--text-3);text-transform:capitalize">${staff.role}</div>
+      </td>`;
+
+      for(let d=0;d<7;d++){
+        const dayDate=dayDates[d];
+        const isOnLeave=leaveMap[staff.id]&&leaveMap[staff.id].has(dayDate);
+        const cellShifts=shiftMap[staff.id+'_'+d]||[];
+        const isToday=dayDate===dateToStr(new Date());
+        let cellBg=isOnLeave?'#FEF2F2':(isToday?'rgba(0,71,171,0.03)':'var(--bg)');
+
+        html+=`<td style="padding:6px 8px;border-bottom:1px solid var(--border);border-left:1px solid var(--border);background:${cellBg};vertical-align:top;position:relative" class="rota-cell" data-staff="${staff.id}" data-day="${d}">`;
+
+        if(isOnLeave&&!cellShifts.length){
+          html+=`<div style="background:#FEE2E2;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:600;color:#DC2626;text-align:center;margin-bottom:4px">🏖 On Leave</div>`;
+        }
+
+        for(const sh of cellShifts){
+          const roleBg=ROLE_COLORS[sh.role]||'#F1F5F9';
+          const roleClr=ROLE_TEXT[sh.role]||'#475569';
+          html+=`<div onclick="openShiftModal(${staff.id},${d},${sh.id})" style="background:${roleBg};border-radius:6px;padding:5px 8px;margin-bottom:4px;cursor:pointer;border:1px solid rgba(0,0,0,0.06)">
+            <div style="font-size:12px;font-weight:700;color:var(--text)">${sh.shiftStart}–${sh.shiftEnd}</div>
+            ${sh.role?`<div style="font-size:10px;font-weight:700;color:${roleClr};text-transform:uppercase;letter-spacing:.5px">${sh.role}</div>`:''}
+            ${sh.notes?`<div style="font-size:10px;color:var(--text-2);margin-top:2px">${sh.notes}</div>`:''}
+          </div>`;
+        }
+
+        html+=`<button onclick="openShiftModal(${staff.id},${d},null)" title="Add shift" style="width:100%;padding:4px;border:1.5px dashed var(--border-dark);border-radius:6px;background:none;cursor:pointer;color:var(--text-3);font-size:18px;line-height:1;opacity:0;transition:opacity .15s" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0">+</button>`;
+        html+=`</td>`;
+      }
+      html+=`</tr>`;
+    }
+    html+='</tbody></table>';
+    el('rotaGrid').innerHTML=html;
+  }
+
+  function openShiftModal(staffId,dayOfWeek,existingId){
+    shiftModalCtx={staffId,dayOfWeek,existingId};
+    const staff=rotaData.staffUsers.find(s=>s.id===staffId);
+    const staffName=staff?(staff.displayName||staff.username):'Staff';
+    const weekDate=new Date(rotaWeekStart);weekDate.setDate(weekDate.getDate()+dayOfWeek);
+    el('shiftModalTitle').textContent=existingId?'Edit Shift':'Add Shift';
+    el('shiftModalInfo').textContent=staffName+' — '+DAYS[dayOfWeek]+' '+weekDate.toLocaleDateString('en-GB',{day:'numeric',month:'long'});
+    el('shiftModalErr').style.display='none';
+
+    if(existingId){
+      const sh=rotaData.shifts.find(s=>s.id===existingId);
+      if(sh){
+        el('shiftStart').value=sh.shiftStart;
+        el('shiftEnd').value=sh.shiftEnd;
+        el('shiftRole').value=sh.role||'';
+        el('shiftNotes').value=sh.notes||'';
+      }
+      el('shiftDeleteBtn').style.display='';
+    } else {
+      el('shiftStart').value='09:00';
+      el('shiftEnd').value='17:00';
+      el('shiftRole').value='';
+      el('shiftNotes').value='';
+      el('shiftDeleteBtn').style.display='none';
+    }
+
+    const m=el('shiftModal');
+    m.style.display='flex';
+    requestAnimationFrame(()=>m.style.opacity='1');
+  }
+  window.openShiftModal=openShiftModal;
+
+  function closeShiftModal(){
+    el('shiftModal').style.display='none';
+    el('shiftModal').style.opacity='';
+  }
+  window.closeShiftModal=closeShiftModal;
+
+  async function saveShift(){
+    const {staffId,dayOfWeek,existingId}=shiftModalCtx;
+    const shiftStart=el('shiftStart').value;
+    const shiftEnd=el('shiftEnd').value;
+    const role=el('shiftRole').value;
+    const notes=el('shiftNotes').value.trim();
+    const ws=dateToStr(rotaWeekStart);
+
+    if(!shiftStart||!shiftEnd){el('shiftModalErr').textContent='Start and end time are required.';el('shiftModalErr').style.display='';return;}
+    if(shiftEnd<=shiftStart){el('shiftModalErr').textContent='End time must be after start time.';el('shiftModalErr').style.display='';return;}
+
+    try{
+      const r=await api('/api/hr/rota/shifts',{method:'POST',body:JSON.stringify({staffId,weekStart:ws,dayOfWeek,shiftStart,shiftEnd,role:role||null,notes:notes||null,id:existingId||undefined})});
+      if(!r.ok){const d=await r.json();throw new Error(d.message||'Failed');}
+      closeShiftModal();
+      loadRota();
+    }catch(e){
+      el('shiftModalErr').textContent=e.message||'Failed to save shift';
+      el('shiftModalErr').style.display='';
+    }
+  }
+  window.saveShift=saveShift;
+
+  async function deleteShift(){
+    const {existingId}=shiftModalCtx;
+    if(!existingId)return;
+    if(!confirm('Delete this shift?'))return;
+    try{
+      const r=await api('/api/hr/rota/shifts/'+existingId,{method:'DELETE'});
+      if(!r.ok)throw new Error('Failed');
+      closeShiftModal();
+      loadRota();
+    }catch(e){alert('Failed to delete shift');}
+  }
+  window.deleteShift=deleteShift;
+
+  async function publishRota(){
+    const ws=dateToStr(rotaWeekStart);
+    const shiftCount=rotaData.shifts.length;
+    if(!shiftCount){alert('No shifts added for this week yet. Add some shifts before publishing.');return;}
+    if(!confirm(`Publish the rota for the week of ${ws}? This will send a push notification to all staff who have shifts this week.`))return;
+    const btn=el('rotaPublishBtn');
+    btn.disabled=true;btn.textContent='Publishing…';
+    try{
+      const r=await api('/api/hr/rota/publish',{method:'POST',body:JSON.stringify({weekStart:ws})});
+      const d=await r.json();
+      const notified=d.staffNotified||0;
+      toast(`Rota published! ${notified} staff member${notified===1?'':'s'} notified.`,'success');
+      loadRota();
+    }catch(e){
+      alert('Failed to publish rota: '+(e.message||'Unknown error'));
+    }finally{
+      btn.disabled=false;btn.textContent='Publish Rota & Notify Staff';
+    }
+  }
+  window.publishRota=publishRota;
+
+  window.rotaWeekStart=rotaWeekStart;
+
   loadOrderingStatus();
 
   /* ── Ordering Schedule & Overrides ────────────────────────────────────── */
