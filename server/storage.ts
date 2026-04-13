@@ -705,7 +705,16 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async getBannerImages(): Promise<BannerImage[]> {
+  async getBannerImages(page?: string): Promise<BannerImage[]> {
+    if (page === "home") {
+      return db.select().from(bannerImages).where(and(eq(bannerImages.active, true), eq(bannerImages.showOnHome, true))).orderBy(bannerImages.sortOrder);
+    }
+    if (page === "order") {
+      return db.select().from(bannerImages).where(and(eq(bannerImages.active, true), eq(bannerImages.showOnOrder, true))).orderBy(bannerImages.sortOrder);
+    }
+    if (page === "events") {
+      return db.select().from(bannerImages).where(and(eq(bannerImages.active, true), eq(bannerImages.showOnEvents, true))).orderBy(bannerImages.sortOrder);
+    }
     return db.select().from(bannerImages).where(eq(bannerImages.active, true)).orderBy(bannerImages.sortOrder);
   }
 

@@ -1129,7 +1129,7 @@ export default function OrderScreen() {
   });
 
   const { data: banners } = useQuery<BannerImage[]>({
-    queryKey: ["/api/banner-images"],
+    queryKey: ["/api/banner-images?page=order"],
     staleTime: 10 * 60 * 1000,
   });
 

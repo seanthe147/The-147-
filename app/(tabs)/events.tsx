@@ -361,7 +361,7 @@ export default function EventsScreen() {
   const [activeTab, setActiveTab] = useState<"events" | "whats-on">("events");
 
   const { data: bannerImages } = useQuery<BannerImage[]>({
-    queryKey: ["/api/banner-images"],
+    queryKey: ["/api/banner-images?page=events"],
   });
 
   return (

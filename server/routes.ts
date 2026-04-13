@@ -3071,8 +3071,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ key: req.params.key, value: String(value) });
   });
 
-  app.get("/api/banner-images", async (_req, res) => {
-    const images = await storage.getBannerImages();
+  app.get("/api/banner-images", async (req, res) => {
+    const page = typeof req.query.page === "string" ? req.query.page : undefined;
+    const images = await storage.getBannerImages(page);
     res.json(images);
   });
 

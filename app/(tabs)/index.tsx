@@ -331,7 +331,7 @@ export default function HomeScreen() {
   const { isAuthenticated, customer } = useCustomerAuth();
 
   const { data: bannerImages, isLoading: bannersLoading } = useQuery<BannerImage[]>({
-    queryKey: ["/api/banner-images"],
+    queryKey: ["/api/banner-images?page=home"],
   });
 
   const { data: settings } = useQuery<Record<string, string>>({
