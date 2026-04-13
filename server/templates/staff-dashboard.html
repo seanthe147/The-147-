@@ -3919,7 +3919,10 @@
     uploading.innerHTML='<div class="spinner"></div>Uploading…';
     grid.prepend(uploading);
     try{
-      const r=await fetch('/api/banner-images',{method:'POST',body:formData,credentials:'include'});
+      const tok=getToken();
+      const headers={};
+      if(tok)headers['Authorization']='Bearer '+tok;
+      const r=await fetch('/api/banner-images',{method:'POST',body:formData,headers});
       if(!r.ok)throw new Error('Upload failed');
       const newBanner=await r.json();
       bannersData.unshift(newBanner);
