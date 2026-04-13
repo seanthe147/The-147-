@@ -460,11 +460,11 @@
       </div>
       <nav class="sidebar-nav">
         <div class="nav-section">Management</div>
-        <div class="nav-item active" data-page="bookings">
+        <div class="nav-item hidden active" data-page="bookings" id="navBookings">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           Bookings
         </div>
-        <div class="nav-item" data-page="messages" id="navMessages">
+        <div class="nav-item hidden" data-page="messages" id="navMessages">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           Messages
           <span class="nav-badge hidden" id="msgBadge">0</span>
@@ -484,15 +484,15 @@
           Memberships
           <span class="nav-badge hidden" id="membersBadge">0</span>
         </div>
-        <div class="nav-item" data-page="menu" id="navMenu">
+        <div class="nav-item hidden" data-page="menu" id="navMenu">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
           Orders &amp; Menu
         </div>
-        <div class="nav-item" data-page="banners" id="navBanners">
+        <div class="nav-item hidden" data-page="banners" id="navBanners">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/></svg>
           App Banners
         </div>
-        <div class="nav-item" data-page="offers" id="navOffers">
+        <div class="nav-item hidden" data-page="offers" id="navOffers">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
           Offers
         </div>
@@ -504,8 +504,8 @@
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           GDPR &amp; Compliance
         </div>
-        <div class="nav-section" style="margin-top:8px">Account</div>
-        <div class="nav-item" data-page="settings">
+        <div class="nav-section hidden" id="navSectionAccount" style="margin-top:8px">Account</div>
+        <div class="nav-item hidden" data-page="settings" id="navSettings">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           Settings
         </div>
@@ -1028,7 +1028,7 @@
           <div id="hrTabAttendance">
             <div class="menu-refresh-bar" style="margin-bottom:16px">
               <p style="font-size:13px;color:var(--text-2);margin:0">All staff clock-in/out records. Hours are calculated automatically.</p>
-              <button class="btn btn-secondary btn-sm" onclick="exportAttendanceCSV()">
+              <button class="btn btn-secondary btn-sm" id="hrExportBtn" onclick="exportAttendanceCSV()">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 Export CSV
               </button>
@@ -2323,8 +2323,9 @@
       state.username=d.username||state.username;
     }catch(e){}
     setupUI();
-    navigateTo('bookings');
-    loadMessages();
+    const isManagerUser=state.role==='manager'||state.role==='owner';
+    navigateTo(isManagerUser?'bookings':'hr');
+    if(isManagerUser)loadMessages();
     // Show any active login pop-ups after a short delay
     setTimeout(checkLoginPopups, 600);
   }
@@ -2335,10 +2336,17 @@
     el('sidebarName').textContent=state.displayName||state.username||'Staff';
     el('sidebarRole').textContent=state.role.charAt(0).toUpperCase()+state.role.slice(1);
     el('sidebarRole').className='sidebar-user-role role-'+state.role;
+    el('navBookings').classList.toggle('hidden',!isManager);
+    el('navMessages').classList.toggle('hidden',!isManager);
     el('navComms').classList.toggle('hidden',!isManager);
     el('navStaff').classList.toggle('hidden',!isOwner);
     el('navMemberships').classList.toggle('hidden',!isManager);
+    el('navMenu').classList.toggle('hidden',!isManager);
+    el('navBanners').classList.toggle('hidden',!isManager);
+    el('navOffers').classList.toggle('hidden',!isManager);
     el('navGDPR').classList.toggle('hidden',!isManager);
+    el('navSettings').classList.toggle('hidden',!isManager);
+    el('navSectionAccount').classList.toggle('hidden',!isManager);
     el('bookingsTabAvailability').classList.toggle('hidden',!isManager);
     el('popupSection').style.display=isManager?'':'none';
     el('topbarActions').innerHTML=`<button class="btn btn-primary" id="newBookingBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Booking</button>`;
@@ -4762,6 +4770,10 @@
   window.switchHRTab=switchHRTab;
 
   async function loadHR(){
+    const isMgrHR=state.role==='manager'||state.role==='owner';
+    // Hide admin-only tabs from regular staff
+    document.querySelectorAll('[data-hr="geofence"],[data-hr="rota"]').forEach(t=>t.style.display=isMgrHR?'':'none');
+    if(el('hrExportBtn'))el('hrExportBtn').style.display=isMgrHR?'':'none';
     switchHRTab('attendance');
     await Promise.all([loadAttendance(),loadLeaveRequests(),loadIncidents()]);
   }
@@ -4802,8 +4814,15 @@
   async function loadAttendance(){
     el('hrAttendanceContent').innerHTML='<div class="loading-state"><div class="spinner"></div>Loading…</div>';
     try{
-      const r=await api('/api/hr/time-entries/all');
-      hrAttendanceData=await r.json();
+      const isMgrAtt=state.role==='manager'||state.role==='owner';
+      if(isMgrAtt){
+        const r=await api('/api/hr/time-entries/all');
+        hrAttendanceData=await r.json();
+      } else {
+        const r=await api('/api/hr/time-entries');
+        const entries=await r.json();
+        hrAttendanceData=entries.map(e=>({...e,staffName:state.displayName||state.username||'Me'}));
+      }
       renderAttendance();
     }catch(e){el('hrAttendanceContent').innerHTML='<p style="color:var(--red);padding:20px">Failed to load attendance records</p>';}
   }
@@ -4811,13 +4830,7 @@
   function renderAttendance(){
     const c=el('hrAttendanceContent');
     if(!hrAttendanceData.length){c.innerHTML='<p style="color:var(--text-2);padding:20px;text-align:center">No attendance records yet</p>';return;}
-
-    // Group by staff, compute weekly hours for WT Regs warning
-    const byStaff={};
-    hrAttendanceData.forEach(e=>{
-      if(!byStaff[e.staffId])byStaff[e.staffId]={name:e.staffName,entries:[]};
-      byStaff[e.staffId].entries.push(e);
-    });
+    const isMgrRender=state.role==='manager'||state.role==='owner';
 
     // Weekly hours (current week Mon–Sun)
     const now=new Date();
@@ -4830,9 +4843,10 @@
       }
     });
 
+    const staffColHdr=isMgrRender?`<th style="padding:10px 14px;text-align:left;border-bottom:1px solid var(--border)">Staff</th>`:'';
     let html=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="background:var(--surface-2)">
-        <th style="padding:10px 14px;text-align:left;border-bottom:1px solid var(--border)">Staff</th>
+        ${staffColHdr}
         <th style="padding:10px 14px;text-align:left;border-bottom:1px solid var(--border)">Clock In</th>
         <th style="padding:10px 14px;text-align:left;border-bottom:1px solid var(--border)">Clock Out</th>
         <th style="padding:10px 14px;text-align:right;border-bottom:1px solid var(--border)">Hours</th>
@@ -4843,8 +4857,9 @@
       const hrs=durationHrs(e);
       const weekHrs=weekMap[e.staffId]||0;
       const isThisWeek=new Date(e.clockedInAt)>=weekStart;
+      const staffCol=isMgrRender?`<td style="padding:10px 14px;font-weight:600">${esc(e.staffName||'')}</td>`:'';
       html+=`<tr style="border-bottom:1px solid var(--border);${e.status==='active'?'background:rgba(34,197,94,.05)':''}">
-        <td style="padding:10px 14px;font-weight:600">${esc(e.staffName||'')}</td>
+        ${staffCol}
         <td style="padding:10px 14px;color:var(--text-2)">${fmtDt(e.clockedInAt)}</td>
         <td style="padding:10px 14px;color:var(--text-2)">${e.clockedOutAt?fmtDt(e.clockedOutAt):'<span style="color:var(--green);font-weight:600">On shift</span>'}</td>
         <td style="padding:10px 14px;text-align:right;font-weight:700">${hrs?hrs+'h':'—'}</td>
@@ -4853,7 +4868,7 @@
         </td>
         <td style="padding:10px 14px;text-align:right">${isThisWeek?`<span style="font-weight:700;color:${wtColour(weekHrs)}">${weekHrs.toFixed(1)}h</span>`:'—'}</td>
       </tr>`;
-      if(weekHrs>=44&&isThisWeek){
+      if(isMgrRender&&weekHrs>=44&&isThisWeek){
         html+=`<tr style="background:rgba(239,68,68,.04)"><td colspan="6" style="padding:4px 14px;font-size:11px;color:var(--red)">⚠ ${esc(e.staffName||'')} is approaching/exceeding 48h limit (Working Time Regulations 1998)</td></tr>`;
       }
     });
@@ -4873,8 +4888,10 @@
   async function loadLeaveRequests(){
     el('hrLeaveContent').innerHTML='<div class="loading-state"><div class="spinner"></div>Loading…</div>';
     try{
-      const r=await api('/api/hr/leave-requests/all');
-      hrLeaveData=await r.json();
+      const isMgrLeave=state.role==='manager'||state.role==='owner';
+      const r=await api(isMgrLeave?'/api/hr/leave-requests/all':'/api/hr/leave-requests');
+      const data=await r.json();
+      hrLeaveData=data.map(r=>({...r,staffName:r.staffName||(isMgrLeave?'':state.displayName||state.username||'Me')}));
       renderLeave();
     }catch(e){el('hrLeaveContent').innerHTML='<p style="color:var(--red);padding:20px">Failed to load leave requests</p>';}
   }
@@ -4906,7 +4923,7 @@
           ${r.reason?`<div style="font-size:12px;color:var(--text-2);margin-top:4px;font-style:italic">"${esc(r.reason)}"</div>`:''}
           ${r.reviewNotes?`<div style="font-size:12px;color:var(--text-2);margin-top:4px">Manager: ${esc(r.reviewNotes)}</div>`:''}
         </div>
-        ${r.status==='pending'?`<button onclick="openLeaveReview(${r.id})" style="padding:9px 16px;border-radius:8px;border:none;background:var(--gold);color:#000;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap">Review</button>`:''}
+        ${r.status==='pending'&&(state.role==='manager'||state.role==='owner')?`<button onclick="openLeaveReview(${r.id})" style="padding:9px 16px;border-radius:8px;border:none;background:var(--gold);color:#000;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap">Review</button>`:''}
       </div>`).join('');
   }
 
