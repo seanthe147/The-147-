@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Modal, TextInput,
   ActivityIndicator, Alert, Platform, RefreshControl,
@@ -6,7 +6,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
 import { getApiUrl } from "@/lib/query-client";
@@ -83,7 +83,6 @@ export default function StaffHRScreen() {
   const [gdprAccepted, setGdprAccepted] = useState<boolean | null>(null);
   const [clockLoading, setClockLoading] = useState(false);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
-  const [showIncidentModal, setShowIncidentModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -309,14 +308,8 @@ export default function StaffHRScreen() {
             onPress={() => setShowLeaveModal(true)}
           />
           <ActionCard
-            icon="warning"
-            label="Report Incident"
-            colour="#DC2626"
-            onPress={() => setShowIncidentModal(true)}
-          />
-          <ActionCard
             icon="document-text-outline"
-            label="My Leave History"
+            label="Leave History"
             colour="#0369A1"
             onPress={() => setShowLeaveModal(true)}
           />
@@ -389,12 +382,6 @@ export default function StaffHRScreen() {
         onClose={() => setShowLeaveModal(false)}
         onSuccess={() => { refetchLeave(); refetchBalance(); }}
         leaveRequests={leaveRequests as any[]}
-      />
-
-      {/* Incident Report Modal */}
-      <IncidentModal
-        visible={showIncidentModal}
-        onClose={() => setShowIncidentModal(false)}
       />
 
       {/* Full Shift History Modal */}
@@ -580,74 +567,6 @@ function LeaveRequestModal({ visible, onClose, onSuccess, leaveRequests }: { vis
   );
 }
 
-// ── Incident Report Modal ─────────────────────────────────────────────────────
-function IncidentModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const [incidentDate, setIncidentDate] = useState(new Date().toISOString().split("T")[0]);
-  const [location, setLocation] = useState("");
-  const [description, setDescription] = useState("");
-  const [injuryType, setInjuryType] = useState("none");
-  const [personsInvolved, setPersonsInvolved] = useState("");
-  const [witnessNames, setWitnessNames] = useState("");
-  const [actionTaken, setActionTaken] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  async function submit() {
-    setError("");
-    if (!location.trim() || !description.trim()) { setError("Location and description are required."); return; }
-    setLoading(true);
-    try {
-      await hrApi("/api/hr/incidents", { method: "POST", body: JSON.stringify({ incidentDate, location, description, injuryType, personsInvolved, witnessNames, actionTaken }) });
-      Alert.alert("Report Submitted", "Your incident report has been logged and your manager has been notified. Retain a copy for your records.");
-      setLocation(""); setDescription(""); setInjuryType("none"); setPersonsInvolved(""); setWitnessNames(""); setActionTaken("");
-      onClose();
-    } catch (e: any) { setError(e.message || "Failed to submit report."); }
-    finally { setLoading(false); }
-  }
-
-  return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={styles.modalContainer}>
-        <View style={styles.modalHeader}>
-          <Text style={styles.modalTitle}>Incident Report</Text>
-          <Pressable onPress={onClose}><Ionicons name="close" size={24} color={Colors.light.textSecondary} /></Pressable>
-        </View>
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
-          <View style={styles.incidentWarning}>
-            <Ionicons name="warning" size={16} color="#B45309" />
-            <Text style={styles.incidentWarningText}>Report all accidents, near-misses and dangerous occurrences immediately, however minor. This is required by RIDDOR 2013.</Text>
-          </View>
-          <Text style={styles.fieldLabel}>Date of Incident</Text>
-          <TextInput style={styles.input} value={incidentDate} onChangeText={setIncidentDate} placeholder="YYYY-MM-DD" />
-          <Text style={styles.fieldLabel}>Location in venue</Text>
-          <TextInput style={styles.input} value={location} onChangeText={setLocation} placeholder="e.g. Table 4 area, kitchen, reception" />
-          <Text style={styles.fieldLabel}>What happened? <Text style={{ color: "#EF4444" }}>*</Text></Text>
-          <TextInput style={[styles.input, { height: 100 }]} value={description} onChangeText={setDescription} multiline placeholder="Describe the incident in detail..." />
-          <Text style={styles.fieldLabel}>Type of injury</Text>
-          <View style={styles.typeRow}>
-            {[["none", "None"], ["minor", "Minor"], ["medical_treatment", "Medical"], ["lost_time", "Lost Time"]].map(([val, lbl]) => (
-              <Pressable key={val} onPress={() => setInjuryType(val)} style={[styles.typePill, injuryType === val && styles.typePillActive]}>
-                <Text style={[styles.typePillText, injuryType === val && styles.typePillTextActive]}>{lbl}</Text>
-              </Pressable>
-            ))}
-          </View>
-          <Text style={styles.fieldLabel}>Persons involved</Text>
-          <TextInput style={styles.input} value={personsInvolved} onChangeText={setPersonsInvolved} placeholder="Names of staff/customers involved" />
-          <Text style={styles.fieldLabel}>Witness names</Text>
-          <TextInput style={styles.input} value={witnessNames} onChangeText={setWitnessNames} placeholder="Names of any witnesses" />
-          <Text style={styles.fieldLabel}>Immediate action taken</Text>
-          <TextInput style={[styles.input, { height: 80 }]} value={actionTaken} onChangeText={setActionTaken} multiline placeholder="First aid given, area secured, etc." />
-          {!!error && <Text style={styles.errorText}>{error}</Text>}
-          <Pressable onPress={submit} disabled={loading} style={[styles.submitBtn, { backgroundColor: "#DC2626" }, loading && { opacity: 0.6 }]}>
-            {loading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.submitBtnText}>Submit Report</Text>}
-          </Pressable>
-          <Text style={styles.riddorNote}>Lost-time injuries (3+ consecutive days away) must be reported to the HSE under RIDDOR 2013. Speak to your manager immediately.</Text>
-        </ScrollView>
-      </View>
-    </Modal>
-  );
-}
-
 // ── Shift History Modal ───────────────────────────────────────────────────────
 function ShiftHistoryModal({ visible, onClose, entries }: { visible: boolean; onClose: () => void; entries: any[] }) {
   const totalThisWeekMs = weekHoursMs(entries);
@@ -796,10 +715,6 @@ const styles = StyleSheet.create({
   leaveHistoryNotes: { fontFamily: "Montserrat_400Regular", fontSize: 11, color: Colors.light.textSecondary, marginTop: 4, fontStyle: "italic" },
   leaveStatusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   leaveStatusText: { fontFamily: "Montserrat_600SemiBold", fontSize: 11 },
-  incidentWarning: { flexDirection: "row", gap: 8, backgroundColor: "#FEF3C7", borderRadius: 10, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: "#F59E0B" },
-  incidentWarningText: { fontFamily: "Montserrat_500Medium", fontSize: 12, color: "#92400E", flex: 1, lineHeight: 18 },
-  riddorNote: { fontFamily: "Montserrat_400Regular", fontSize: 11, color: Colors.light.textSecondary, marginTop: 16, lineHeight: 17, fontStyle: "italic" },
-
   // History modal
   historyStatsRow: { flexDirection: "row", padding: 16, gap: 10, borderBottomWidth: 1, borderBottomColor: Colors.light.border },
   historyStatBox: { flex: 1, alignItems: "center", gap: 2 },

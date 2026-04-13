@@ -1047,7 +1047,59 @@
           <!-- Incidents Tab -->
           <div id="hrTabIncidents" style="display:none">
             <div class="menu-refresh-bar" style="margin-bottom:16px">
-              <p style="font-size:13px;color:var(--text-2);margin:0">All reported accidents, near-misses and incidents. Lost-time injuries must also be reported to HSE under RIDDOR 2013.</p>
+              <p style="font-size:13px;color:var(--text-2);margin:0">Log accidents, near-misses and dangerous occurrences. Lost-time injuries must also be reported to HSE under RIDDOR 2013.</p>
+              <button class="btn btn-primary btn-sm" onclick="toggleIncidentForm()">+ Log Incident</button>
+            </div>
+            <div id="incidentFormWrap" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px">
+              <div style="font-size:15px;font-weight:700;margin-bottom:14px;color:var(--text)">New Incident Report</div>
+              <div id="incidentFormErr" class="modal-err" style="display:none"></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Date of Incident</label>
+                  <input class="form-input" id="iDate" type="date">
+                </div>
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Staff Involved</label>
+                  <select class="form-input" id="iStaffId"><option value="">— select staff —</option></select>
+                </div>
+              </div>
+              <div class="form-group" style="margin-top:12px">
+                <label class="form-label">Location in venue</label>
+                <input class="form-input" id="iLocation" placeholder="e.g. Table 4 area, bar, main entrance">
+              </div>
+              <div class="form-group">
+                <label class="form-label">What happened? <span style="color:var(--red)">*</span></label>
+                <textarea class="form-input" id="iDescription" rows="3" placeholder="Describe the incident in detail…" style="resize:vertical"></textarea>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Type of injury</label>
+                  <select class="form-input" id="iInjuryType">
+                    <option value="none">None / near-miss</option>
+                    <option value="minor">Minor injury</option>
+                    <option value="medical_treatment">Required medical treatment</option>
+                    <option value="lost_time">Lost time (3+ days)</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Persons involved</label>
+                  <input class="form-input" id="iPersons" placeholder="Names">
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Witnesses</label>
+                  <input class="form-input" id="iWitnesses" placeholder="Names of witnesses">
+                </div>
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Immediate action taken</label>
+                  <input class="form-input" id="iAction" placeholder="First aid, area secured…">
+                </div>
+              </div>
+              <div style="display:flex;gap:10px;margin-top:16px">
+                <button class="btn btn-secondary" onclick="toggleIncidentForm()">Cancel</button>
+                <button class="btn btn-primary" onclick="submitIncident()">Submit Report</button>
+              </div>
             </div>
             <div id="hrIncidentsContent"><div class="loading-state"><div class="spinner"></div>Loading reports…</div></div>
           </div>
@@ -4584,6 +4636,45 @@
   window.submitLeaveReview=submitLeaveReview;
 
   // ── Incidents ───────────────────────────────────────────────────────────────
+  function toggleIncidentForm(){
+    const wrap=el('incidentFormWrap');
+    const open=wrap.style.display==='none';
+    wrap.style.display=open?'':'none';
+    el('incidentFormErr').style.display='none';
+    if(open){
+      el('iDate').value=new Date().toISOString().split('T')[0];
+      // populate staff dropdown
+      const sel=el('iStaffId');
+      sel.innerHTML='<option value="">— select staff —</option>';
+      api('/api/staff/users').then(r=>r.json()).then(users=>{
+        users.forEach(u=>{const o=document.createElement('option');o.value=u.id;o.textContent=u.displayName||u.username;sel.appendChild(o);});
+      }).catch(()=>{});
+    }
+  }
+  window.toggleIncidentForm=toggleIncidentForm;
+
+  async function submitIncident(){
+    el('incidentFormErr').style.display='none';
+    const location=el('iLocation').value.trim();
+    const description=el('iDescription').value.trim();
+    if(!location||!description){el('incidentFormErr').textContent='Location and description are required.';el('incidentFormErr').style.display='';return;}
+    const staffId=el('iStaffId').value;
+    try{
+      await api('/api/hr/incidents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        incidentDate:el('iDate').value||new Date().toISOString().split('T')[0],
+        staffId:staffId||undefined,
+        location,description,
+        injuryType:el('iInjuryType').value,
+        personsInvolved:el('iPersons').value.trim()||undefined,
+        witnessNames:el('iWitnesses').value.trim()||undefined,
+        actionTaken:el('iAction').value.trim()||undefined,
+      })});
+      toggleIncidentForm();
+      await loadIncidents();
+    }catch(e){el('incidentFormErr').textContent='Failed to save report. Please try again.';el('incidentFormErr').style.display='';}
+  }
+  window.submitIncident=submitIncident;
+
   async function loadIncidents(){
     el('hrIncidentsContent').innerHTML='<div class="loading-state"><div class="spinner"></div>Loading…</div>';
     try{
