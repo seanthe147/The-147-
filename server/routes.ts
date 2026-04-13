@@ -4096,7 +4096,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/membership/join", customerAuth, async (req, res) => {
     try {
       const customerId = (req as any).customerId as number;
-      const { planId, billingFrequency = "monthly" } = req.body ?? {};
+      const { planId, billingFrequency = "monthly", startDate } = req.body ?? {};
       if (!planId) return res.status(400).json({ message: "planId is required" });
       const isAnnual = billingFrequency === "annual";
 
@@ -4110,12 +4110,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!plan || !plan.active) return res.status(404).json({ message: "Plan not found" });
 
       const today = new Date().toISOString().slice(0, 10);
-      const periodEnd = new Date();
+      // Honour startDate if it is a valid future date (staff-only feature sent from app)
+      const periodStart = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) && startDate > today ? startDate : today;
+      const periodEndDate = new Date(periodStart + "T12:00:00Z");
       if (isAnnual) {
-        periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+        periodEndDate.setFullYear(periodEndDate.getFullYear() + 1);
       } else {
-        periodEnd.setMonth(periodEnd.getMonth() + 1);
+        periodEndDate.setMonth(periodEndDate.getMonth() + 1);
       }
+      const periodEnd = periodEndDate.toISOString().slice(0, 10);
 
       // If upgrading (existing sub on a different plan), cancel the old one
       if (existing && existing.id) {
@@ -4125,15 +4128,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // Deferred start: create as pending_start so benefits don't activate early
+      const initialStatus = periodStart > today ? "pending_start" : "pending";
+
       const sub = await storage.createMembershipSubscription({
         customerId,
         planId: plan.id,
-        status: "pending",
-        currentPeriodStart: today,
-        currentPeriodEnd: periodEnd.toISOString().slice(0, 10),
+        status: initialStatus,
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
         hoursUsedThisPeriod: 0,
         guestPassesUsed: 0,
-        staffNotes: null,
+        staffNotes: periodStart > today ? `[Deferred start: ${periodStart}]` : null,
         source: isAnnual ? "app_annual" : "app",
       });
 

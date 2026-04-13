@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  TextInput,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,6 +18,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Colors from "@/constants/colors";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
+import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import { getApiUrl } from "@/lib/query-client";
 
 const TOKEN_KEY = "customer_session_token";
@@ -90,12 +92,18 @@ async function getToken(): Promise<string> {
   return (await AsyncStorage.getItem(TOKEN_KEY)) || "";
 }
 
+function todayString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export default function MembershipScreen() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading: authLoading, customer } = useCustomerAuth();
+  const { isAuthenticated: isStaffLoggedIn } = useStaffAuth();
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [joining, setJoining] = useState(false);
   const [billingFrequency, setBillingFrequency] = useState<BillingFrequency>("monthly");
+  const [startDate, setStartDate] = useState<string>(todayString());
   const queryClient = useQueryClient();
 
   const { data: plans = [], isLoading: plansLoading } = useQuery<MembershipPlan[]>({
@@ -117,16 +125,18 @@ export default function MembershipScreen() {
   });
 
   const joinMutation = useMutation({
-    mutationFn: async ({ planId, frequency }: { planId: number; frequency: BillingFrequency }) => {
+    mutationFn: async ({ planId, frequency, chosenStartDate }: { planId: number; frequency: BillingFrequency; chosenStartDate?: string }) => {
       const token = await getToken();
       const url = new URL("/api/membership/join", getApiUrl());
+      const body: Record<string, unknown> = { planId, billingFrequency: frequency };
+      if (chosenStartDate && chosenStartDate !== todayString()) body.startDate = chosenStartDate;
       const res = await fetch(url.toString(), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ planId, billingFrequency: frequency }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to join");
@@ -176,14 +186,19 @@ export default function MembershipScreen() {
     const periodLabel = isAnnual ? "per year" : "per month";
     const saving = getPriceSaving(selectedPlan);
     const savingNote = isAnnual && saving ? `\n\nYou save £${(saving / 100).toFixed(2)} compared to paying monthly.` : "";
+    const today = todayString();
+    const isFuture = isStaffLoggedIn && startDate > today;
+    const startNote = isFuture
+      ? `\n\nMembership starts ${new Date(startDate + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}. First payment on that date.`
+      : "";
     Alert.alert(
       "Confirm Membership",
-      `Join the ${selectedPlan.name} plan for £${(price / 100).toFixed(2)} ${periodLabel}?${savingNote}\n\nYou'll be taken to a secure payment page to complete your sign-up.`,
+      `Join the ${selectedPlan.name} plan for £${(price / 100).toFixed(2)} ${periodLabel}?${savingNote}${startNote}\n\nYou'll be taken to a secure payment page to complete your sign-up.`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Continue to Payment",
-          onPress: () => joinMutation.mutate({ planId: selectedPlanId, frequency: billingFrequency }),
+          onPress: () => joinMutation.mutate({ planId: selectedPlanId, frequency: billingFrequency, chosenStartDate: isStaffLoggedIn ? startDate : undefined }),
         },
       ]
     );
@@ -315,6 +330,47 @@ export default function MembershipScreen() {
               </Pressable>
             );
           })}
+
+          {isAuthenticated && isStaffLoggedIn && selectedPlanId && (
+            <View style={styles.staffStartDate}>
+              <View style={styles.staffStartDateHeader}>
+                <Ionicons name="shield-checkmark" size={14} color="#7C3AED" />
+                <Text style={styles.staffStartDateLabel}>STAFF — SET START DATE</Text>
+              </View>
+              <View style={styles.staffDateRow}>
+                <Pressable
+                  style={[styles.staffDateBtn, startDate === todayString() && styles.staffDateBtnActive]}
+                  onPress={() => setStartDate(todayString())}
+                >
+                  <Text style={[styles.staffDateBtnText, startDate === todayString() && styles.staffDateBtnTextActive]}>Today</Text>
+                </Pressable>
+                <TextInput
+                  style={styles.staffDateInput}
+                  value={startDate}
+                  onChangeText={(v) => {
+                    if (/^\d{0,4}-?\d{0,2}-?\d{0,2}$/.test(v)) setStartDate(v);
+                  }}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={Colors.light.textSecondary}
+                  keyboardType="numbers-and-punctuation"
+                  maxLength={10}
+                />
+              </View>
+              {startDate > todayString() ? (
+                <View style={styles.staffDateHint}>
+                  <Ionicons name="time-outline" size={13} color="#7C3AED" />
+                  <Text style={styles.staffDateHintText}>
+                    Starts {new Date(startDate + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" })} — first payment on that date
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.staffDateHint}>
+                  <Ionicons name="flash-outline" size={13} color="#10B981" />
+                  <Text style={[styles.staffDateHintText, { color: "#10B981" }]}>Starts immediately — payment taken today</Text>
+                </View>
+              )}
+            </View>
+          )}
 
           {isAuthenticated ? (
             selectedPlanId ? (
@@ -784,4 +840,73 @@ const styles = StyleSheet.create({
     minWidth: 64,
   },
   retryBtnText: { fontFamily: "Montserrat_700Bold", fontSize: 12, color: "#fff" },
+  staffStartDate: {
+    backgroundColor: "#F5F3FF",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#7C3AED33",
+    padding: 14,
+    marginBottom: 12,
+  },
+  staffStartDateHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
+  },
+  staffStartDateLabel: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 11,
+    color: "#7C3AED",
+    letterSpacing: 0.8,
+  },
+  staffDateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  staffDateBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: "#7C3AED33",
+    backgroundColor: "#fff",
+  },
+  staffDateBtnActive: {
+    backgroundColor: "#7C3AED",
+    borderColor: "#7C3AED",
+  },
+  staffDateBtnText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: "#7C3AED",
+  },
+  staffDateBtnTextActive: {
+    color: "#fff",
+  },
+  staffDateInput: {
+    flex: 1,
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: "#7C3AED33",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 14,
+    color: Colors.light.text,
+  },
+  staffDateHint: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 8,
+  },
+  staffDateHintText: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 12,
+    color: "#7C3AED",
+    flex: 1,
+  },
 });
