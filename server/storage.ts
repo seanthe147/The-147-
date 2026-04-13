@@ -59,6 +59,14 @@ import {
   type AppOrder,
   orderAuditLog,
   type OrderAuditEntry,
+  staffTimeEntries,
+  type StaffTimeEntry,
+  staffLeaveRequests,
+  type StaffLeaveRequest,
+  staffLeaveAllowances,
+  type StaffLeaveAllowance,
+  staffIncidents,
+  type StaffIncident,
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
 
@@ -1155,6 +1163,137 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(orderAuditLog)
       .where(inArray(orderAuditLog.orderId, orderIds))
       .orderBy(desc(orderAuditLog.createdAt));
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // STAFF HR — TIME ENTRIES
+  // ══════════════════════════════════════════════════════════════════
+
+  async getActiveClockEntry(staffId: number): Promise<StaffTimeEntry | null> {
+    const [entry] = await db.select().from(staffTimeEntries)
+      .where(and(eq(staffTimeEntries.staffId, staffId), eq(staffTimeEntries.status, "active")))
+      .orderBy(desc(staffTimeEntries.clockedInAt))
+      .limit(1);
+    return entry ?? null;
+  }
+
+  async clockIn(staffId: number, lat?: string, lng?: string): Promise<StaffTimeEntry> {
+    const [entry] = await db.insert(staffTimeEntries).values({
+      staffId, clockedInAt: new Date(), status: "active",
+      clockInLat: lat ?? null, clockInLng: lng ?? null,
+    }).returning();
+    return entry;
+  }
+
+  async clockOut(entryId: number, lat?: string, lng?: string): Promise<StaffTimeEntry | null> {
+    const [entry] = await db.update(staffTimeEntries)
+      .set({ clockedOutAt: new Date(), status: "completed", clockOutLat: lat ?? null, clockOutLng: lng ?? null })
+      .where(eq(staffTimeEntries.id, entryId))
+      .returning();
+    return entry ?? null;
+  }
+
+  async getTimeEntriesForStaff(staffId: number, limit = 50): Promise<StaffTimeEntry[]> {
+    return db.select().from(staffTimeEntries)
+      .where(eq(staffTimeEntries.staffId, staffId))
+      .orderBy(desc(staffTimeEntries.clockedInAt))
+      .limit(limit);
+  }
+
+  async getAllTimeEntries(limit = 200): Promise<StaffTimeEntry[]> {
+    return db.select().from(staffTimeEntries)
+      .orderBy(desc(staffTimeEntries.clockedInAt))
+      .limit(limit);
+  }
+
+  async amendTimeEntry(id: number, amendedBy: number, reason: string, updates: Partial<Pick<StaffTimeEntry, "clockedInAt" | "clockedOutAt">>): Promise<StaffTimeEntry | null> {
+    const [entry] = await db.update(staffTimeEntries)
+      .set({ ...updates, status: "amended", amendedBy, amendedAt: new Date(), amendReason: reason })
+      .where(eq(staffTimeEntries.id, id))
+      .returning();
+    return entry ?? null;
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // STAFF HR — LEAVE REQUESTS
+  // ══════════════════════════════════════════════════════════════════
+
+  async createLeaveRequest(data: { staffId: number; leaveType: string; startDate: string; endDate: string; totalDays: string; reason?: string }): Promise<StaffLeaveRequest> {
+    const [req] = await db.insert(staffLeaveRequests).values({ ...data, status: "pending", reason: data.reason ?? null }).returning();
+    return req;
+  }
+
+  async getLeaveRequestsForStaff(staffId: number): Promise<StaffLeaveRequest[]> {
+    return db.select().from(staffLeaveRequests)
+      .where(eq(staffLeaveRequests.staffId, staffId))
+      .orderBy(desc(staffLeaveRequests.createdAt));
+  }
+
+  async getAllLeaveRequests(): Promise<StaffLeaveRequest[]> {
+    return db.select().from(staffLeaveRequests)
+      .orderBy(desc(staffLeaveRequests.createdAt));
+  }
+
+  async reviewLeaveRequest(id: number, reviewedBy: number, status: "approved" | "rejected", reviewNotes?: string): Promise<StaffLeaveRequest | null> {
+    const [req] = await db.update(staffLeaveRequests)
+      .set({ status, reviewedBy, reviewedAt: new Date(), reviewNotes: reviewNotes ?? null })
+      .where(eq(staffLeaveRequests.id, id))
+      .returning();
+    return req ?? null;
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // STAFF HR — LEAVE ALLOWANCES
+  // ══════════════════════════════════════════════════════════════════
+
+  async getLeaveAllowance(staffId: number, year: number): Promise<StaffLeaveAllowance | null> {
+    const [row] = await db.select().from(staffLeaveAllowances)
+      .where(and(eq(staffLeaveAllowances.staffId, staffId), eq(staffLeaveAllowances.year, year)));
+    return row ?? null;
+  }
+
+  async upsertLeaveAllowance(staffId: number, year: number, totalDays: string, carryOver: string): Promise<StaffLeaveAllowance> {
+    const existing = await this.getLeaveAllowance(staffId, year);
+    if (existing) {
+      const [row] = await db.update(staffLeaveAllowances)
+        .set({ totalDays, carryOver })
+        .where(eq(staffLeaveAllowances.id, existing.id))
+        .returning();
+      return row;
+    }
+    const [row] = await db.insert(staffLeaveAllowances).values({ staffId, year, totalDays, carryOver }).returning();
+    return row;
+  }
+
+  async getAllLeaveAllowances(year: number): Promise<StaffLeaveAllowance[]> {
+    return db.select().from(staffLeaveAllowances).where(eq(staffLeaveAllowances.year, year));
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // STAFF HR — INCIDENT REPORTS
+  // ══════════════════════════════════════════════════════════════════
+
+  async createIncident(data: Omit<typeof staffIncidents.$inferInsert, "id" | "createdAt">): Promise<StaffIncident> {
+    const [incident] = await db.insert(staffIncidents).values(data).returning();
+    return incident;
+  }
+
+  async getIncidentsForStaff(staffId: number): Promise<StaffIncident[]> {
+    return db.select().from(staffIncidents)
+      .where(eq(staffIncidents.reportedBy, staffId))
+      .orderBy(desc(staffIncidents.createdAt));
+  }
+
+  async getAllIncidents(): Promise<StaffIncident[]> {
+    return db.select().from(staffIncidents).orderBy(desc(staffIncidents.createdAt));
+  }
+
+  async updateIncidentStatus(id: number, status: string, closedBy?: number): Promise<StaffIncident | null> {
+    const [incident] = await db.update(staffIncidents)
+      .set({ status, ...(status === "closed" ? { closedAt: new Date(), closedBy: closedBy ?? null } : {}) })
+      .where(eq(staffIncidents.id, id))
+      .returning();
+    return incident ?? null;
   }
 }
 

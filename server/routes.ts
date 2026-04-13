@@ -4823,6 +4823,189 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ success: true, message: "If an account existed for that email, all data has been permanently deleted." });
   });
 
+  // ════════════════════════════════════════════════════════════════════════════
+  // STAFF HR MODULE
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // ── Geofence settings ────────────────────────────────────────────────────────
+  app.get("/api/hr/geofence", staffAuth, async (_req, res) => {
+    const lat = await storage.getSetting("geofence_lat");
+    const lng = await storage.getSetting("geofence_lng");
+    const radius = await storage.getSetting("geofence_radius");
+    res.json({ lat: lat ?? null, lng: lng ?? null, radius: radius ? Number(radius) : 200 });
+  });
+
+  app.put("/api/hr/geofence", staffAuth, managerAuth, async (req, res) => {
+    const { lat, lng, radius } = req.body;
+    if (!lat || !lng) return res.status(400).json({ message: "lat and lng are required" });
+    await storage.setSetting("geofence_lat", String(lat));
+    await storage.setSetting("geofence_lng", String(lng));
+    await storage.setSetting("geofence_radius", String(radius ?? 200));
+    res.json({ lat: String(lat), lng: String(lng), radius: Number(radius ?? 200) });
+  });
+
+  // ── Clock in / out ───────────────────────────────────────────────────────────
+  app.get("/api/hr/clock-status", staffAuth, async (req: any, res) => {
+    const active = await storage.getActiveClockEntry(req.staffUser.id);
+    res.json({ active: active ?? null });
+  });
+
+  app.post("/api/hr/clock-in", staffAuth, async (req: any, res) => {
+    const existing = await storage.getActiveClockEntry(req.staffUser.id);
+    if (existing) return res.status(409).json({ message: "Already clocked in" });
+    const { lat, lng } = req.body;
+    const entry = await storage.clockIn(req.staffUser.id, lat ? String(lat) : undefined, lng ? String(lng) : undefined);
+    res.status(201).json(entry);
+  });
+
+  app.post("/api/hr/clock-out", staffAuth, async (req: any, res) => {
+    const active = await storage.getActiveClockEntry(req.staffUser.id);
+    if (!active) return res.status(404).json({ message: "No active clock-in found" });
+    const { lat, lng } = req.body;
+    const entry = await storage.clockOut(active.id, lat ? String(lat) : undefined, lng ? String(lng) : undefined);
+    res.json(entry);
+  });
+
+  app.get("/api/hr/time-entries", staffAuth, async (req: any, res) => {
+    const entries = await storage.getTimeEntriesForStaff(req.staffUser.id);
+    res.json(entries);
+  });
+
+  app.get("/api/hr/time-entries/all", staffAuth, managerAuth, async (_req, res) => {
+    const entries = await storage.getAllTimeEntries();
+    const users = await storage.getAllStaffUsers();
+    const userMap = Object.fromEntries(users.map((u: any) => [u.id, u.displayName || u.username]));
+    const enriched = entries.map((e: any) => ({ ...e, staffName: userMap[e.staffId] || `Staff #${e.staffId}` }));
+    res.json(enriched);
+  });
+
+  app.patch("/api/hr/time-entries/:id/amend", staffAuth, managerAuth, async (req: any, res) => {
+    const id = parseInt(req.params.id);
+    const { reason, clockedInAt, clockedOutAt } = req.body;
+    if (!reason) return res.status(400).json({ message: "Amendment reason required" });
+    const updates: any = {};
+    if (clockedInAt) updates.clockedInAt = new Date(clockedInAt);
+    if (clockedOutAt) updates.clockedOutAt = new Date(clockedOutAt);
+    const entry = await storage.amendTimeEntry(id, req.staffUser.id, reason, updates);
+    if (!entry) return res.status(404).json({ message: "Entry not found" });
+    res.json(entry);
+  });
+
+  // ── Leave requests ───────────────────────────────────────────────────────────
+  app.post("/api/hr/leave-requests", staffAuth, async (req: any, res) => {
+    const { leaveType, startDate, endDate, totalDays, reason } = req.body;
+    if (!startDate || !endDate || !totalDays) return res.status(400).json({ message: "startDate, endDate, totalDays required" });
+    const leaveReq = await storage.createLeaveRequest({ staffId: req.staffUser.id, leaveType: leaveType || "annual", startDate, endDate, totalDays: String(totalDays), reason });
+    res.status(201).json(leaveReq);
+  });
+
+  app.get("/api/hr/leave-requests", staffAuth, async (req: any, res) => {
+    const requests = await storage.getLeaveRequestsForStaff(req.staffUser.id);
+    res.json(requests);
+  });
+
+  app.get("/api/hr/leave-requests/all", staffAuth, managerAuth, async (_req, res) => {
+    const requests = await storage.getAllLeaveRequests();
+    const users = await storage.getAllStaffUsers();
+    const userMap = Object.fromEntries(users.map((u: any) => [u.id, u.displayName || u.username]));
+    const enriched = requests.map((r: any) => ({ ...r, staffName: userMap[r.staffId] || `Staff #${r.staffId}` }));
+    res.json(enriched);
+  });
+
+  app.patch("/api/hr/leave-requests/:id/review", staffAuth, managerAuth, async (req: any, res) => {
+    const id = parseInt(req.params.id);
+    const { status, reviewNotes } = req.body;
+    if (!["approved", "rejected"].includes(status)) return res.status(400).json({ message: "status must be approved or rejected" });
+    const updated = await storage.reviewLeaveRequest(id, req.staffUser.id, status, reviewNotes);
+    if (!updated) return res.status(404).json({ message: "Leave request not found" });
+    res.json(updated);
+  });
+
+  // ── Leave allowances ─────────────────────────────────────────────────────────
+  app.get("/api/hr/leave-allowance", staffAuth, async (req: any, res) => {
+    const year = new Date().getFullYear();
+    let allowance = await storage.getLeaveAllowance(req.staffUser.id, year);
+    if (!allowance) allowance = await storage.upsertLeaveAllowance(req.staffUser.id, year, "28", "0");
+    const approvedRequests = (await storage.getLeaveRequestsForStaff(req.staffUser.id))
+      .filter((r: any) => r.status === "approved" && r.startDate.startsWith(String(year)));
+    const usedDays = approvedRequests.reduce((sum: number, r: any) => sum + parseFloat(r.totalDays || "0"), 0);
+    const totalEntitlement = parseFloat(allowance.totalDays) + parseFloat(allowance.carryOver);
+    res.json({ allowance, usedDays, remaining: totalEntitlement - usedDays, totalEntitlement });
+  });
+
+  app.put("/api/hr/leave-allowance/:staffId", staffAuth, managerAuth, async (req, res) => {
+    const staffId = parseInt(req.params.staffId);
+    const { year, totalDays, carryOver } = req.body;
+    const allowance = await storage.upsertLeaveAllowance(staffId, year || new Date().getFullYear(), String(totalDays ?? "28"), String(carryOver ?? "0"));
+    res.json(allowance);
+  });
+
+  app.get("/api/hr/leave-allowances/all", staffAuth, managerAuth, async (req, res) => {
+    const year = parseInt(String(req.query.year || new Date().getFullYear()));
+    const allowances = await storage.getAllLeaveAllowances(year);
+    const users = await storage.getAllStaffUsers();
+    const userMap = Object.fromEntries(users.map((u: any) => [u.id, u.displayName || u.username]));
+    const enriched = allowances.map((a: any) => ({ ...a, staffName: userMap[a.staffId] || `Staff #${a.staffId}` }));
+    res.json(enriched);
+  });
+
+  // ── Incident reports ─────────────────────────────────────────────────────────
+  app.post("/api/hr/incidents", staffAuth, async (req: any, res) => {
+    const { incidentDate, location, description, injuryType, personsInvolved, witnessNames, actionTaken } = req.body;
+    if (!incidentDate || !location || !description) return res.status(400).json({ message: "incidentDate, location, description required" });
+    const incident = await storage.createIncident({
+      reportedBy: req.staffUser.id,
+      incidentDate, location, description,
+      injuryType: injuryType ?? null,
+      personsInvolved: personsInvolved ?? null,
+      witnessNames: witnessNames ?? null,
+      actionTaken: actionTaken ?? null,
+      reportedToManager: true,
+      status: "open",
+    });
+    res.status(201).json(incident);
+  });
+
+  app.get("/api/hr/incidents", staffAuth, async (req: any, res) => {
+    const isManager = req.staffUser.role === "manager" || req.staffUser.role === "owner";
+    if (isManager) {
+      const incidents = await storage.getAllIncidents();
+      const users = await storage.getAllStaffUsers();
+      const userMap = Object.fromEntries(users.map((u: any) => [u.id, u.displayName || u.username]));
+      const enriched = incidents.map((i: any) => ({ ...i, reportedByName: userMap[i.reportedBy] || `Staff #${i.reportedBy}` }));
+      return res.json(enriched);
+    }
+    const incidents = await storage.getIncidentsForStaff(req.staffUser.id);
+    res.json(incidents);
+  });
+
+  app.patch("/api/hr/incidents/:id/status", staffAuth, managerAuth, async (req: any, res) => {
+    const id = parseInt(req.params.id);
+    const { status } = req.body;
+    if (!["open", "under_review", "closed"].includes(status)) return res.status(400).json({ message: "Invalid status" });
+    const incident = await storage.updateIncidentStatus(id, status, req.staffUser.id);
+    if (!incident) return res.status(404).json({ message: "Incident not found" });
+    res.json(incident);
+  });
+
+  // ── GDPR: staff data export & deletion ───────────────────────────────────────
+  app.get("/api/hr/my-data", staffAuth, async (req: any, res) => {
+    const staffId = req.staffUser.id;
+    const [timeEntries, leaveRequests, incidents] = await Promise.all([
+      storage.getTimeEntriesForStaff(staffId),
+      storage.getLeaveRequestsForStaff(staffId),
+      storage.getIncidentsForStaff(staffId),
+    ]);
+    res.json({
+      gdprNotice: "This is all personal data The 147 Bradford holds for your staff account under GDPR Article 15 (Right of Access).",
+      retentionPolicy: "Employment records are retained for 6 years after the end of employment as required by UK employment law.",
+      staffProfile: { id: req.staffUser.id, username: req.staffUser.username, displayName: req.staffUser.displayName, role: req.staffUser.role },
+      timeEntries,
+      leaveRequests,
+      incidents,
+    });
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

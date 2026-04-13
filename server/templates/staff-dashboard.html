@@ -496,6 +496,10 @@
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
           Offers
         </div>
+        <div class="nav-item" data-page="hr" id="navHR">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>
+          HR &amp; Attendance
+        </div>
         <div class="nav-section" style="margin-top:8px">Account</div>
         <div class="nav-item" data-page="settings">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -1000,6 +1004,99 @@
           <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
             <button class="btn btn-secondary" onclick="closeOfferModal()">Cancel</button>
             <button class="btn btn-primary" id="ofSaveBtn" onclick="saveOffer()">Save Offer</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- HR PAGE -->
+      <div class="page" id="pageHr">
+        <div class="page-body">
+          <!-- HR Tabs -->
+          <div class="menu-tabs" id="hrTabs" style="margin-bottom:20px">
+            <button class="menu-tab active" data-hr="attendance" onclick="switchHRTab('attendance')">Time & Attendance</button>
+            <button class="menu-tab" data-hr="leave" onclick="switchHRTab('leave')">Leave Requests</button>
+            <button class="menu-tab" data-hr="incidents" onclick="switchHRTab('incidents')">Incident Reports</button>
+            <button class="menu-tab" data-hr="geofence" onclick="switchHRTab('geofence')">Geofence</button>
+          </div>
+
+          <!-- Attendance Tab -->
+          <div id="hrTabAttendance">
+            <div class="menu-refresh-bar" style="margin-bottom:16px">
+              <p style="font-size:13px;color:var(--text-2);margin:0">All staff clock-in/out records. Hours are calculated automatically.</p>
+              <button class="btn btn-secondary btn-sm" onclick="exportAttendanceCSV()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Export CSV
+              </button>
+            </div>
+            <div id="hrAttendanceContent"><div class="loading-state"><div class="spinner"></div>Loading records…</div></div>
+          </div>
+
+          <!-- Leave Requests Tab -->
+          <div id="hrTabLeave" style="display:none">
+            <div style="margin-bottom:16px">
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-sm" id="leaveFilterAll" onclick="setLeaveFilter('all')" style="background:var(--gold);color:#000;font-weight:700">All</button>
+                <button class="btn btn-secondary btn-sm" id="leaveFilterPending" onclick="setLeaveFilter('pending')">Pending</button>
+                <button class="btn btn-secondary btn-sm" id="leaveFilterApproved" onclick="setLeaveFilter('approved')">Approved</button>
+                <button class="btn btn-secondary btn-sm" id="leaveFilterRejected" onclick="setLeaveFilter('rejected')">Rejected</button>
+              </div>
+            </div>
+            <div id="hrLeaveContent"><div class="loading-state"><div class="spinner"></div>Loading requests…</div></div>
+          </div>
+
+          <!-- Incidents Tab -->
+          <div id="hrTabIncidents" style="display:none">
+            <div class="menu-refresh-bar" style="margin-bottom:16px">
+              <p style="font-size:13px;color:var(--text-2);margin:0">All reported accidents, near-misses and incidents. Lost-time injuries must also be reported to HSE under RIDDOR 2013.</p>
+            </div>
+            <div id="hrIncidentsContent"><div class="loading-state"><div class="spinner"></div>Loading reports…</div></div>
+          </div>
+
+          <!-- Geofence Settings Tab -->
+          <div id="hrTabGeofence" style="display:none">
+            <div class="settings-section" style="max-width:500px">
+              <div class="settings-title">Venue Geofence</div>
+              <div class="settings-desc">Staff must be within the geofence radius to clock in or out via the app. Set your venue's coordinates below. You can get precise coordinates from Google Maps (right-click your venue → copy coordinates).</div>
+              <div id="hrGeofenceMsg" class="modal-err" style="display:none"></div>
+              <div id="hrGeofenceSuccess" style="display:none;color:var(--green);font-size:13px;font-weight:600;margin-bottom:14px;padding:10px 14px;background:var(--green-light);border-radius:var(--r)"></div>
+              <div class="form-group">
+                <label class="form-label">Latitude</label>
+                <input class="form-input" id="gfLat" type="number" step="any" placeholder="e.g. 53.7938" style="max-width:240px">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Longitude</label>
+                <input class="form-input" id="gfLng" type="number" step="any" placeholder="e.g. -1.7522" style="max-width:240px">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Radius (metres)</label>
+                <input class="form-input" id="gfRadius" type="number" min="50" max="1000" placeholder="200" style="max-width:160px">
+                <div style="font-size:11px;color:var(--text-3);margin-top:4px">Recommended: 150–300m. Staff must be within this distance to clock in.</div>
+              </div>
+              <button class="btn btn-primary" onclick="saveGeofence()">Save Geofence</button>
+              <div style="margin-top:16px;padding:12px;background:rgba(14,165,233,.07);border-radius:var(--r);border:1px solid rgba(14,165,233,.2)">
+                <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px">GDPR Notice</div>
+                <div style="font-size:12px;color:var(--text-2);line-height:1.6">GPS coordinates are collected only at the moment of clocking in or out for on-site verification. Location is not continuously tracked. Data is held under GDPR Article 6(1)(b) — necessary for employment contract. Retained for 6 years post-employment.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Leave Review Modal -->
+      <div class="overlay" id="leaveReviewModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:900;align-items:center;justify-content:center;padding:20px">
+        <div style="background:var(--bg);border-radius:16px;width:100%;max-width:460px;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+            <h2 id="leaveReviewTitle" style="margin:0;font-size:18px">Review Leave Request</h2>
+            <button onclick="closeLeaveReview()" style="background:none;border:none;cursor:pointer;color:var(--text-2)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          </div>
+          <div id="leaveReviewDetails" style="background:var(--surface);border-radius:10px;padding:14px;margin-bottom:16px;font-size:13px;line-height:1.7;color:var(--text)"></div>
+          <div class="form-group">
+            <label class="form-label">Notes <span style="font-weight:400;color:var(--text-2)">(optional)</span></label>
+            <input class="form-input" id="leaveReviewNotes" placeholder="Reason for decision…">
+          </div>
+          <div style="display:flex;gap:10px;margin-top:16px">
+            <button onclick="submitLeaveReview('rejected')" style="flex:1;padding:12px;border-radius:10px;border:2px solid var(--red);background:rgba(239,68,68,.08);color:var(--red);font-weight:700;font-size:14px;cursor:pointer">Reject</button>
+            <button onclick="submitLeaveReview('approved')" style="flex:1;padding:12px;border-radius:10px;border:none;background:var(--green);color:#fff;font-weight:700;font-size:14px;cursor:pointer">Approve</button>
           </div>
         </div>
       </div>
@@ -2000,7 +2097,7 @@
     closeSidebar();
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page'+cap(page)));
-    const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',banners:'App Banners',offers:'Offers'};
+    const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',banners:'App Banners',offers:'Offers',hr:'HR & Attendance'};
     el('topbarTitle').textContent=titles[page]||'';
     el('topbarSub').textContent='';
     if(page==='bookings'){el('topbarActions').style.display='';switchBookingsTab('bookings');loadBookings();loadDashboardNotices();startBookingsPolling();}
@@ -2012,6 +2109,7 @@
     if(page==='menu'){switchMenuTab('orders');loadOrders();loadOrderingSchedule();}
     if(page==='banners')loadBanners();
     if(page==='offers')loadOffers();
+    if(page==='hr')loadHR();
   }
   function cap(s){return s.charAt(0).toUpperCase()+s.slice(1)}
 
@@ -4319,6 +4417,238 @@
   window.saveOffer=saveOffer;
   window.toggleOffer=toggleOffer;
   window.deleteOffer=deleteOffer;
+
+  /* ════════════════════════════════════════════
+     HR & ATTENDANCE MODULE
+  ════════════════════════════════════════════ */
+  let hrAttendanceData=[];
+  let hrLeaveData=[];
+  let hrIncidentsData=[];
+  let hrLeaveFilter='all';
+  let reviewingLeaveId=null;
+  let currentHRTab='attendance';
+
+  function switchHRTab(tab){
+    currentHRTab=tab;
+    document.querySelectorAll('.menu-tab[data-hr]').forEach(b=>b.classList.toggle('active',b.dataset.hr===tab));
+    ['hrTabAttendance','hrTabLeave','hrTabIncidents','hrTabGeofence'].forEach(id=>el(id).style.display='none');
+    el('hrTab'+cap(tab)).style.display='';
+    if(tab==='geofence')loadGeofenceSettings();
+  }
+  window.switchHRTab=switchHRTab;
+
+  async function loadHR(){
+    switchHRTab('attendance');
+    await Promise.all([loadAttendance(),loadLeaveRequests(),loadIncidents()]);
+  }
+
+  // ── Attendance ──────────────────────────────────────────────────────────────
+  function fmtDt(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});}
+  function durationHrs(entry){if(!entry.clockedOutAt)return null;return((new Date(entry.clockedOutAt)-new Date(entry.clockedInAt))/3600000).toFixed(2);}
+  function wtColour(weekHrs){if(weekHrs>=48)return'var(--red)';if(weekHrs>=44)return'var(--amber)';return'var(--green)';}
+
+  async function loadAttendance(){
+    el('hrAttendanceContent').innerHTML='<div class="loading-state"><div class="spinner"></div>Loading…</div>';
+    try{
+      const r=await api('/api/hr/time-entries/all');
+      hrAttendanceData=await r.json();
+      renderAttendance();
+    }catch(e){el('hrAttendanceContent').innerHTML='<p style="color:var(--red);padding:20px">Failed to load attendance records</p>';}
+  }
+
+  function renderAttendance(){
+    const c=el('hrAttendanceContent');
+    if(!hrAttendanceData.length){c.innerHTML='<p style="color:var(--text-2);padding:20px;text-align:center">No attendance records yet</p>';return;}
+
+    // Group by staff, compute weekly hours for WT Regs warning
+    const byStaff={};
+    hrAttendanceData.forEach(e=>{
+      if(!byStaff[e.staffId])byStaff[e.staffId]={name:e.staffName,entries:[]};
+      byStaff[e.staffId].entries.push(e);
+    });
+
+    // Weekly hours (current week Mon–Sun)
+    const now=new Date();
+    const dow=now.getDay()===0?7:now.getDay();
+    const weekStart=new Date(now);weekStart.setDate(now.getDate()-(dow-1));weekStart.setHours(0,0,0,0);
+    const weekMap={};
+    hrAttendanceData.forEach(e=>{
+      if(new Date(e.clockedInAt)>=weekStart&&e.clockedOutAt){
+        weekMap[e.staffId]=(weekMap[e.staffId]||0)+((new Date(e.clockedOutAt)-new Date(e.clockedInAt))/3600000);
+      }
+    });
+
+    let html=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="background:var(--surface-2)">
+        <th style="padding:10px 14px;text-align:left;border-bottom:1px solid var(--border)">Staff</th>
+        <th style="padding:10px 14px;text-align:left;border-bottom:1px solid var(--border)">Clock In</th>
+        <th style="padding:10px 14px;text-align:left;border-bottom:1px solid var(--border)">Clock Out</th>
+        <th style="padding:10px 14px;text-align:right;border-bottom:1px solid var(--border)">Hours</th>
+        <th style="padding:10px 14px;text-align:center;border-bottom:1px solid var(--border)">Status</th>
+        <th style="padding:10px 14px;text-align:right;border-bottom:1px solid var(--border)">Week Total</th>
+      </tr></thead><tbody>`;
+    hrAttendanceData.forEach(e=>{
+      const hrs=durationHrs(e);
+      const weekHrs=weekMap[e.staffId]||0;
+      const isThisWeek=new Date(e.clockedInAt)>=weekStart;
+      html+=`<tr style="border-bottom:1px solid var(--border);${e.status==='active'?'background:rgba(34,197,94,.05)':''}">
+        <td style="padding:10px 14px;font-weight:600">${esc(e.staffName||'')}</td>
+        <td style="padding:10px 14px;color:var(--text-2)">${fmtDt(e.clockedInAt)}</td>
+        <td style="padding:10px 14px;color:var(--text-2)">${e.clockedOutAt?fmtDt(e.clockedOutAt):'<span style="color:var(--green);font-weight:600">On shift</span>'}</td>
+        <td style="padding:10px 14px;text-align:right;font-weight:700">${hrs?hrs+'h':'—'}</td>
+        <td style="padding:10px 14px;text-align:center">
+          <span style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;background:${e.status==='active'?'rgba(34,197,94,.12)':e.status==='amended'?'rgba(217,119,6,.12)':'rgba(148,163,184,.12)'};color:${e.status==='active'?'var(--green)':e.status==='amended'?'var(--amber)':'var(--text-2)'}">${e.status}</span>
+        </td>
+        <td style="padding:10px 14px;text-align:right">${isThisWeek?`<span style="font-weight:700;color:${wtColour(weekHrs)}">${weekHrs.toFixed(1)}h</span>`:'—'}</td>
+      </tr>`;
+      if(weekHrs>=44&&isThisWeek){
+        html+=`<tr style="background:rgba(239,68,68,.04)"><td colspan="6" style="padding:4px 14px;font-size:11px;color:var(--red)">⚠ ${esc(e.staffName||'')} is approaching/exceeding 48h limit (Working Time Regulations 1998)</td></tr>`;
+      }
+    });
+    html+='</tbody></table></div>';
+    c.innerHTML=html;
+  }
+
+  function exportAttendanceCSV(){
+    if(!hrAttendanceData.length){alert('No data to export');return;}
+    const rows=[['Staff','Clock In','Clock Out','Hours','Status']];
+    hrAttendanceData.forEach(e=>{const h=durationHrs(e);rows.push([e.staffName||'',e.clockedInAt,e.clockedOutAt||'',h||'',e.status]);});
+    const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);a.download='attendance.csv';a.click();
+  }
+
+  // ── Leave Requests ──────────────────────────────────────────────────────────
+  async function loadLeaveRequests(){
+    el('hrLeaveContent').innerHTML='<div class="loading-state"><div class="spinner"></div>Loading…</div>';
+    try{
+      const r=await api('/api/hr/leave-requests/all');
+      hrLeaveData=await r.json();
+      renderLeave();
+    }catch(e){el('hrLeaveContent').innerHTML='<p style="color:var(--red);padding:20px">Failed to load leave requests</p>';}
+  }
+
+  function setLeaveFilter(f){
+    hrLeaveFilter=f;
+    ['All','Pending','Approved','Rejected'].forEach(s=>{
+      const b=el('leaveFilter'+s);
+      if(b){b.style.background=f===s.toLowerCase()?'var(--gold)':'';b.style.color=f===s.toLowerCase()?'#000':'';}
+    });
+    renderLeave();
+  }
+  window.setLeaveFilter=setLeaveFilter;
+
+  function renderLeave(){
+    const c=el('hrLeaveContent');
+    const filtered=hrLeaveFilter==='all'?hrLeaveData:hrLeaveData.filter(r=>r.status===hrLeaveFilter);
+    if(!filtered.length){c.innerHTML='<p style="color:var(--text-2);padding:20px;text-align:center">No leave requests</p>';return;}
+    const statusColour={pending:'var(--amber)',approved:'var(--green)',rejected:'var(--red)'};
+    c.innerHTML=filtered.map(r=>`
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:12px;display:flex;gap:14px;align-items:center">
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <span style="font-weight:700;font-size:14px;color:var(--text)">${esc(r.staffName||'')}</span>
+            <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:${r.status==='approved'?'rgba(34,197,94,.1)':r.status==='rejected'?'rgba(239,68,68,.1)':'rgba(245,158,11,.1)'};color:${statusColour[r.status]}">${r.status}</span>
+            <span style="font-size:11px;color:var(--text-2);margin-left:4px">${r.leaveType} leave</span>
+          </div>
+          <div style="font-size:13px;color:var(--text-2)">${r.startDate} → ${r.endDate} &nbsp;•&nbsp; <strong>${r.totalDays} day${r.totalDays!=='1'?'s':''}</strong></div>
+          ${r.reason?`<div style="font-size:12px;color:var(--text-2);margin-top:4px;font-style:italic">"${esc(r.reason)}"</div>`:''}
+          ${r.reviewNotes?`<div style="font-size:12px;color:var(--text-2);margin-top:4px">Manager: ${esc(r.reviewNotes)}</div>`:''}
+        </div>
+        ${r.status==='pending'?`<button onclick="openLeaveReview(${r.id})" style="padding:9px 16px;border-radius:8px;border:none;background:var(--gold);color:#000;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap">Review</button>`:''}
+      </div>`).join('');
+  }
+
+  function openLeaveReview(id){
+    reviewingLeaveId=id;
+    const r=hrLeaveData.find(x=>x.id===id);
+    if(!r)return;
+    el('leaveReviewTitle').textContent=`Review — ${r.staffName}`;
+    el('leaveReviewDetails').innerHTML=`<strong>${r.leaveType} leave</strong><br>${r.startDate} to ${r.endDate}<br><strong>${r.totalDays} day${r.totalDays!=='1'?'s':''}</strong>${r.reason?`<br><em>"${esc(r.reason)}"</em>`:''}`;
+    el('leaveReviewNotes').value='';
+    el('leaveReviewModal').style.display='flex';
+  }
+  function closeLeaveReview(){el('leaveReviewModal').style.display='none';reviewingLeaveId=null;}
+  window.openLeaveReview=openLeaveReview;window.closeLeaveReview=closeLeaveReview;
+
+  async function submitLeaveReview(status){
+    if(!reviewingLeaveId)return;
+    const notes=el('leaveReviewNotes').value.trim();
+    try{
+      await api(`/api/hr/leave-requests/${reviewingLeaveId}/review`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status,reviewNotes:notes||undefined})});
+      const idx=hrLeaveData.findIndex(r=>r.id===reviewingLeaveId);
+      if(idx>-1){hrLeaveData[idx].status=status;hrLeaveData[idx].reviewNotes=notes;}
+      closeLeaveReview();
+      renderLeave();
+    }catch(e){alert('Failed to update leave request');}
+  }
+  window.submitLeaveReview=submitLeaveReview;
+
+  // ── Incidents ───────────────────────────────────────────────────────────────
+  async function loadIncidents(){
+    el('hrIncidentsContent').innerHTML='<div class="loading-state"><div class="spinner"></div>Loading…</div>';
+    try{
+      const r=await api('/api/hr/incidents');
+      hrIncidentsData=await r.json();
+      renderIncidents();
+    }catch(e){el('hrIncidentsContent').innerHTML='<p style="color:var(--red);padding:20px">Failed to load incidents</p>';}
+  }
+
+  function renderIncidents(){
+    const c=el('hrIncidentsContent');
+    if(!hrIncidentsData.length){c.innerHTML='<p style="color:var(--text-2);padding:20px;text-align:center">No incident reports</p>';return;}
+    const injuryColour={none:'var(--text-2)',minor:'var(--amber)',medical_treatment:'var(--red)',lost_time:'var(--red)'};
+    c.innerHTML=hrIncidentsData.map(i=>`
+      <div style="background:var(--surface);border:1px solid ${i.injuryType==='lost_time'||i.injuryType==='medical_treatment'?'rgba(239,68,68,.4)':'var(--border)'};border-radius:12px;padding:16px 18px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+          <span style="font-weight:700;font-size:14px">${fmtDt(i.incidentDate)}</span>
+          <span style="font-size:11px;color:var(--text-2)">reported by ${esc(i.reportedByName||'Staff')}</span>
+          <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:${i.status==='closed'?'rgba(148,163,184,.12)':'rgba(245,158,11,.1)'};color:${i.status==='closed'?'var(--text-2)':'var(--amber)'};margin-left:auto">${i.status}</span>
+        </div>
+        <div style="font-size:13px;margin-bottom:6px"><strong>📍 ${esc(i.location)}</strong></div>
+        <div style="font-size:13px;color:var(--text-2);margin-bottom:8px">${esc(i.description)}</div>
+        ${i.injuryType&&i.injuryType!=='none'?`<div style="font-size:12px;font-weight:700;color:${injuryColour[i.injuryType]};margin-bottom:4px">Injury: ${i.injuryType.replace('_',' ')}</div>`:''}
+        ${i.personsInvolved?`<div style="font-size:12px;color:var(--text-2)">Persons: ${esc(i.personsInvolved)}</div>`:''}
+        ${i.witnessNames?`<div style="font-size:12px;color:var(--text-2)">Witnesses: ${esc(i.witnessNames)}</div>`:''}
+        ${i.actionTaken?`<div style="font-size:12px;color:var(--text-2);margin-top:4px">Action taken: ${esc(i.actionTaken)}</div>`:''}
+        ${i.status!=='closed'?`<div style="margin-top:10px;display:flex;gap:8px"><button onclick="closeIncident(${i.id})" style="padding:6px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;font-weight:600;cursor:pointer">Mark Closed</button></div>`:''}
+        ${(i.injuryType==='lost_time')?'<div style="margin-top:8px;font-size:11px;font-weight:700;color:var(--red)">⚠ RIDDOR — Report to HSE if 3+ consecutive days absence results from this incident.</div>':''}</div>`).join('');
+  }
+
+  async function closeIncident(id){
+    if(!confirm('Mark this incident as closed?'))return;
+    try{
+      await api(`/api/hr/incidents/${id}/status`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'closed'})});
+      const idx=hrIncidentsData.findIndex(i=>i.id===id);
+      if(idx>-1)hrIncidentsData[idx].status='closed';
+      renderIncidents();
+    }catch(e){alert('Failed to update incident');}
+  }
+  window.closeIncident=closeIncident;
+
+  // ── Geofence ────────────────────────────────────────────────────────────────
+  async function loadGeofenceSettings(){
+    try{
+      const r=await api('/api/hr/geofence');
+      const g=await r.json();
+      if(g.lat)el('gfLat').value=g.lat;
+      if(g.lng)el('gfLng').value=g.lng;
+      el('gfRadius').value=g.radius||200;
+    }catch(e){console.warn('Could not load geofence settings');}
+  }
+
+  async function saveGeofence(){
+    el('hrGeofenceMsg').style.display='none';el('hrGeofenceSuccess').style.display='none';
+    const lat=el('gfLat').value.trim();const lng=el('gfLng').value.trim();const radius=el('gfRadius').value||200;
+    if(!lat||!lng){el('hrGeofenceMsg').textContent='Latitude and Longitude are required.';el('hrGeofenceMsg').style.display='';return;}
+    try{
+      await api('/api/hr/geofence',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({lat,lng,radius:Number(radius)})});
+      el('hrGeofenceSuccess').textContent='Geofence saved. Staff must be within '+radius+'m to clock in.';el('hrGeofenceSuccess').style.display='';
+    }catch(e){el('hrGeofenceMsg').textContent='Failed to save geofence settings.';el('hrGeofenceMsg').style.display='';}
+  }
+
+  window.saveGeofence=saveGeofence;
+  window.exportAttendanceCSV=exportAttendanceCSV;
+  window.loadHR=loadHR;
   loadOrderingStatus();
 
   /* ── Ordering Schedule & Overrides ────────────────────────────────────── */

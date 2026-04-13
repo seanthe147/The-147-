@@ -426,6 +426,14 @@ function DashboardScreen() {
             onPress={() => router.push("/admin-bookings")}
             testID="portal-bookings-calendar"
           />
+          <AdminTool
+            icon="time"
+            title="Time & HR"
+            description="Clock in/out, request leave, report incidents"
+            color="#0F766E"
+            onPress={() => router.push("/staff-hr")}
+            testID="portal-time-hr"
+          />
           {isManager && (
             <>
               <AdminTool

@@ -402,3 +402,81 @@ export const availabilityRules = pgTable("availability_rules", {
 });
 
 export type AvailabilityRule = typeof availabilityRules.$inferSelect;
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  STAFF HR MODULE
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Clock-in / Clock-out time entries ─────────────────────────────────────────
+export const staffTimeEntries = pgTable("staff_time_entries", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull(),             // references staffUsers.id
+  clockedInAt: timestamp("clocked_in_at").notNull(),
+  clockedOutAt: timestamp("clocked_out_at"),
+  clockInLat: text("clock_in_lat"),
+  clockInLng: text("clock_in_lng"),
+  clockOutLat: text("clock_out_lat"),
+  clockOutLng: text("clock_out_lng"),
+  notes: text("notes"),
+  status: text("status").notNull().default("active"),  // active | completed | amended
+  amendedBy: integer("amended_by"),
+  amendedAt: timestamp("amended_at"),
+  amendReason: text("amend_reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type StaffTimeEntry = typeof staffTimeEntries.$inferSelect;
+export const insertStaffTimeEntrySchema = createInsertSchema(staffTimeEntries).omit({ id: true, createdAt: true });
+
+// ── Leave requests ─────────────────────────────────────────────────────────────
+export const staffLeaveRequests = pgTable("staff_leave_requests", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull(),
+  leaveType: text("leave_type").notNull().default("annual"), // annual | sick | unpaid | other
+  startDate: text("start_date").notNull(),   // YYYY-MM-DD
+  endDate: text("end_date").notNull(),       // YYYY-MM-DD
+  totalDays: text("total_days").notNull(),   // stored as decimal string e.g. "2.5"
+  reason: text("reason"),
+  status: text("status").notNull().default("pending"), // pending | approved | rejected
+  reviewedBy: integer("reviewed_by"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewNotes: text("review_notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type StaffLeaveRequest = typeof staffLeaveRequests.$inferSelect;
+export const insertStaffLeaveRequestSchema = createInsertSchema(staffLeaveRequests).omit({ id: true, createdAt: true });
+
+// ── Annual leave allowances (per staff member, per year) ─────────────────────
+export const staffLeaveAllowances = pgTable("staff_leave_allowances", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull(),
+  year: integer("year").notNull(),
+  totalDays: text("total_days").notNull().default("28"),   // e.g. "28" for full-time UK statutory
+  carryOver: text("carry_over").notNull().default("0"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type StaffLeaveAllowance = typeof staffLeaveAllowances.$inferSelect;
+export const insertStaffLeaveAllowanceSchema = createInsertSchema(staffLeaveAllowances).omit({ id: true, createdAt: true });
+
+// ── Incident / accident reports ────────────────────────────────────────────────
+export const staffIncidents = pgTable("staff_incidents", {
+  id: serial("id").primaryKey(),
+  reportedBy: integer("reported_by").notNull(),
+  incidentDate: text("incident_date").notNull(),      // ISO datetime string
+  location: text("location").notNull(),
+  description: text("description").notNull(),
+  injuryType: text("injury_type"),                    // none | minor | medical_treatment | lost_time
+  personsInvolved: text("persons_involved"),
+  witnessNames: text("witness_names"),
+  actionTaken: text("action_taken"),
+  reportedToManager: boolean("reported_to_manager").notNull().default(false),
+  status: text("status").notNull().default("open"),   // open | under_review | closed
+  closedAt: timestamp("closed_at"),
+  closedBy: integer("closed_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type StaffIncident = typeof staffIncidents.$inferSelect;
+export const insertStaffIncidentSchema = createInsertSchema(staffIncidents).omit({ id: true, createdAt: true });
