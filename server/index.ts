@@ -257,6 +257,29 @@ function configureExpoAndLanding(app: express.Application) {
 
     const platform = req.header("expo-platform");
     if (platform && (platform === "ios" || platform === "android")) {
+      // In development, proxy the manifest request to the live Metro bundler
+      // so Expo Go loads the current code, not a stale static build.
+      if (process.env.NODE_ENV !== "production") {
+        const proxyReq = http.request(
+          {
+            hostname: "localhost",
+            port: 8081,
+            path: req.url,
+            method: req.method,
+            headers: { ...req.headers, host: "localhost:8081" },
+          },
+          (proxyRes) => {
+            res.writeHead(proxyRes.statusCode ?? 200, proxyRes.headers);
+            proxyRes.pipe(res, { end: true });
+          },
+        );
+        proxyReq.on("error", () => {
+          // Metro not ready — fall back to static manifest
+          return serveExpoManifest(platform, res);
+        });
+        req.pipe(proxyReq, { end: true });
+        return;
+      }
       return serveExpoManifest(platform, res);
     }
 
