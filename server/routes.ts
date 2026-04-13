@@ -192,7 +192,7 @@ async function sendEmailViaSMTP(to: string, subject: string, html: string): Prom
       port,
       secure: port === 465,
       auth: { user, pass },
-      tls: { rejectUnauthorized: false },
+      tls: { rejectUnauthorized: true },
     });
     await transporter.sendMail({ from: `"The 147" <${user}>`, to, subject, html });
     console.log(`[EMAIL SMTP] Sent to ${maskEmail(to)}`);

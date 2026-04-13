@@ -76,6 +76,31 @@ import {
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
 
+function decryptTimeEntry<T extends { clockInLat?: string | null; clockInLng?: string | null; clockOutLat?: string | null; clockOutLng?: string | null }>(entry: T): T {
+  return {
+    ...entry,
+    clockInLat: entry.clockInLat ? decrypt(entry.clockInLat) : entry.clockInLat,
+    clockInLng: entry.clockInLng ? decrypt(entry.clockInLng) : entry.clockInLng,
+    clockOutLat: entry.clockOutLat ? decrypt(entry.clockOutLat) : entry.clockOutLat,
+    clockOutLng: entry.clockOutLng ? decrypt(entry.clockOutLng) : entry.clockOutLng,
+  };
+}
+
+function decryptIncident<T extends { description?: string | null }>(incident: T): T {
+  return {
+    ...incident,
+    description: incident.description ? decrypt(incident.description) : incident.description,
+  };
+}
+
+function decryptLeaveRequest<T extends { reason?: string | null; reviewNotes?: string | null }>(req: T): T {
+  return {
+    ...req,
+    reason: req.reason ? decrypt(req.reason) : req.reason,
+    reviewNotes: req.reviewNotes ? decrypt(req.reviewNotes) : req.reviewNotes,
+  };
+}
+
 function buildPoolConfig() {
   const rawUrl = process.env.DATABASE_URL!;
   const url = new URL(rawUrl);
@@ -1198,30 +1223,35 @@ export class DatabaseStorage implements IStorage {
   async clockIn(staffId: number, lat?: string, lng?: string): Promise<StaffTimeEntry> {
     const [entry] = await db.insert(staffTimeEntries).values({
       staffId, clockedInAt: new Date(), status: "active",
-      clockInLat: lat ?? null, clockInLng: lng ?? null,
+      clockInLat: lat ? encrypt(lat) : null,
+      clockInLng: lng ? encrypt(lng) : null,
     }).returning();
-    return entry;
+    return decryptTimeEntry(entry);
   }
 
   async clockOut(entryId: number, lat?: string, lng?: string): Promise<StaffTimeEntry | null> {
     const [entry] = await db.update(staffTimeEntries)
-      .set({ clockedOutAt: new Date(), status: "completed", clockOutLat: lat ?? null, clockOutLng: lng ?? null })
+      .set({ clockedOutAt: new Date(), status: "completed",
+        clockOutLat: lat ? encrypt(lat) : null,
+        clockOutLng: lng ? encrypt(lng) : null })
       .where(eq(staffTimeEntries.id, entryId))
       .returning();
-    return entry ?? null;
+    return entry ? decryptTimeEntry(entry) : null;
   }
 
   async getTimeEntriesForStaff(staffId: number, limit = 50): Promise<StaffTimeEntry[]> {
-    return db.select().from(staffTimeEntries)
+    const rows = await db.select().from(staffTimeEntries)
       .where(eq(staffTimeEntries.staffId, staffId))
       .orderBy(desc(staffTimeEntries.clockedInAt))
       .limit(limit);
+    return rows.map(decryptTimeEntry);
   }
 
   async getAllTimeEntries(limit = 200): Promise<StaffTimeEntry[]> {
-    return db.select().from(staffTimeEntries)
+    const rows = await db.select().from(staffTimeEntries)
       .orderBy(desc(staffTimeEntries.clockedInAt))
       .limit(limit);
+    return rows.map(decryptTimeEntry);
   }
 
   async amendTimeEntry(id: number, amendedBy: number, reason: string, updates: Partial<Pick<StaffTimeEntry, "clockedInAt" | "clockedOutAt">>): Promise<StaffTimeEntry | null> {
@@ -1237,27 +1267,33 @@ export class DatabaseStorage implements IStorage {
   // ══════════════════════════════════════════════════════════════════
 
   async createLeaveRequest(data: { staffId: number; leaveType: string; startDate: string; endDate: string; totalDays: string; reason?: string }): Promise<StaffLeaveRequest> {
-    const [req] = await db.insert(staffLeaveRequests).values({ ...data, status: "pending", reason: data.reason ?? null }).returning();
-    return req;
+    const [req] = await db.insert(staffLeaveRequests).values({
+      ...data, status: "pending",
+      reason: data.reason ? encrypt(data.reason) : null,
+    }).returning();
+    return decryptLeaveRequest(req);
   }
 
   async getLeaveRequestsForStaff(staffId: number): Promise<StaffLeaveRequest[]> {
-    return db.select().from(staffLeaveRequests)
+    const rows = await db.select().from(staffLeaveRequests)
       .where(eq(staffLeaveRequests.staffId, staffId))
       .orderBy(desc(staffLeaveRequests.createdAt));
+    return rows.map(decryptLeaveRequest);
   }
 
   async getAllLeaveRequests(): Promise<StaffLeaveRequest[]> {
-    return db.select().from(staffLeaveRequests)
+    const rows = await db.select().from(staffLeaveRequests)
       .orderBy(desc(staffLeaveRequests.createdAt));
+    return rows.map(decryptLeaveRequest);
   }
 
   async reviewLeaveRequest(id: number, reviewedBy: number, status: "approved" | "rejected", reviewNotes?: string): Promise<StaffLeaveRequest | null> {
     const [req] = await db.update(staffLeaveRequests)
-      .set({ status, reviewedBy, reviewedAt: new Date(), reviewNotes: reviewNotes ?? null })
+      .set({ status, reviewedBy, reviewedAt: new Date(),
+        reviewNotes: reviewNotes ? encrypt(reviewNotes) : null })
       .where(eq(staffLeaveRequests.id, id))
       .returning();
-    return req ?? null;
+    return req ? decryptLeaveRequest(req) : null;
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -1292,18 +1328,21 @@ export class DatabaseStorage implements IStorage {
   // ══════════════════════════════════════════════════════════════════
 
   async createIncident(data: Omit<typeof staffIncidents.$inferInsert, "id" | "createdAt">): Promise<StaffIncident> {
-    const [incident] = await db.insert(staffIncidents).values(data).returning();
-    return incident;
+    const encrypted = { ...data, description: data.description ? encrypt(data.description) : data.description };
+    const [incident] = await db.insert(staffIncidents).values(encrypted).returning();
+    return decryptIncident(incident);
   }
 
   async getIncidentsForStaff(staffId: number): Promise<StaffIncident[]> {
-    return db.select().from(staffIncidents)
+    const rows = await db.select().from(staffIncidents)
       .where(eq(staffIncidents.reportedBy, staffId))
       .orderBy(desc(staffIncidents.createdAt));
+    return rows.map(decryptIncident);
   }
 
   async getAllIncidents(): Promise<StaffIncident[]> {
-    return db.select().from(staffIncidents).orderBy(desc(staffIncidents.createdAt));
+    const rows = await db.select().from(staffIncidents).orderBy(desc(staffIncidents.createdAt));
+    return rows.map(decryptIncident);
   }
 
   async updateIncidentStatus(id: number, status: string, closedBy?: number): Promise<StaffIncident | null> {
@@ -1311,7 +1350,7 @@ export class DatabaseStorage implements IStorage {
       .set({ status, ...(status === "closed" ? { closedAt: new Date(), closedBy: closedBy ?? null } : {}) })
       .where(eq(staffIncidents.id, id))
       .returning();
-    return incident ?? null;
+    return incident ? decryptIncident(incident) : null;
   }
 
   // ══════════════════════════════════════════════════════════════════
