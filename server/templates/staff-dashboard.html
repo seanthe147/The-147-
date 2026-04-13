@@ -2002,7 +2002,7 @@
     const username=el('lUsername').value.trim();
     const pin=el('lPin').value.trim();
     el('loginError').textContent='';el('loginSuccess').textContent='';
-    if(!username){el('loginError').textContent='Username is required';return}
+    if(isRegister&&!username){el('loginError').textContent='Username is required';return}
     if(!pin){el('loginError').textContent='PIN is required';return}
     el('loginBtn').disabled=true;
     try{
@@ -2022,7 +2022,8 @@
         el('loginBtn').textContent='Sign In';el('toggleMode').textContent='New staff? Create an account';
         el('lPin').value='';el('lConfirmPin').value='';el('lMasterPin').value='';
       } else {
-        const r=await fetch('/api/staff/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,pin})});
+        const body=username?{username,pin}:{pin};
+        const r=await fetch('/api/staff/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
         const d=await r.json();
         if(!r.ok){el('loginError').textContent=d.message||'Login failed';return}
         setToken(d.token);

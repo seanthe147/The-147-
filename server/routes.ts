@@ -651,9 +651,12 @@ async function staffAuth(req: Request, res: Response, next: NextFunction) {
     const user = await storage.getStaffUserByUsername(session.staffUsername);
     (req as any).staffRole = user?.role || "staff";
     (req as any).staffUsername = session.staffUsername;
+    (req as any).staffUser = user || null;
   } else {
+    // Master PIN session — synthetic user with manager-level access but no real ID
     (req as any).staffRole = "manager";
     (req as any).staffUsername = null;
+    (req as any).staffUser = { id: null, role: "manager", username: null, displayName: "System" };
   }
   next();
 }
