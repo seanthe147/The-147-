@@ -3201,28 +3201,38 @@
     }
   }
 
-  function renderMenuManagement(cats){
+  function buildCategoryHTML(cat,ci){
     const isMgr=state.role==='manager'||state.role==='owner';
+    const totalItems=cat.items.length;
+    const hiddenCount=cat.items.filter(i=>i.hidden).length;
+    const unavailCount=cat.items.filter(i=>i.soldOut).length;
+    let countParts=[totalItems+' item'+(totalItems!==1?'s':'')];
+    if(unavailCount)countParts.push(unavailCount+' unavailable');
+    if(hiddenCount)countParts.push(hiddenCount+' hidden');
+    const catBadge=cat.hidden?'<span class="badge-hidden">hidden</span>':'';
+    const catHideToggle=isMgr?`<label class="menu-toggle-label" onclick="event.stopPropagation()">Hide cat<label class="toggle-sw danger"><input type="checkbox" ${cat.hidden?'checked':''} onchange="menuToggleCatHidden('${cat.id}',this.checked)"><span class="toggle-sw-slider"></span></label></label>`:'';
+    const itemsHtml=cat.items.map(item=>{
+      const rowCls=['menu-item-row',item.soldOut?'sold-out':'',item.hidden?'hidden-item':''].filter(Boolean).join(' ');
+      const price=item.price?'£'+(item.price/100).toFixed(2):'—';
+      const varLabel=item.variationName?`<span class="menu-item-variation">${item.variationName}</span>`:'';
+      const hideTgl=isMgr?`<label class="menu-toggle-label">Hide<label class="toggle-sw danger"><input type="checkbox" ${item.hidden?'checked':''} onchange="menuToggleItemHidden('${item.variationId}','${item.itemId}',${JSON.stringify(item.name)},this.checked)"><span class="toggle-sw-slider"></span></label></label>`:'';
+      return `<div class="${rowCls}"><div class="menu-item-info"><span class="menu-item-name">${item.name}${varLabel}</span></div><span class="menu-item-price">${price}</span><div class="menu-toggle-group"><label class="menu-toggle-label">Available<label class="toggle-sw"><input type="checkbox" ${!item.soldOut?'checked':''} onchange="menuToggleItemSoldOut('${item.variationId}','${item.itemId}',${JSON.stringify(item.name)},!this.checked)"><span class="toggle-sw-slider"></span></label></label>${hideTgl}</div></div>`;
+    }).join('');
+    return `<div class="menu-cat" id="menuCat_${ci}"><div class="menu-cat-header" onclick="menuToggleCat(${ci})"><svg class="menu-cat-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg><span class="menu-cat-name">${cat.name}${catBadge}</span><span class="menu-cat-count">${countParts.join(' · ')}</span>${catHideToggle}</div><div class="menu-cat-items">${itemsHtml}</div></div>`;
+  }
+
+  function refreshCategoryInDOM(ci){
+    const node=document.getElementById('menuCat_'+ci);
+    if(!node)return;
+    const wasOpen=node.classList.contains('open');
+    node.outerHTML=buildCategoryHTML(menuMgmtData[ci],ci);
+    if(wasOpen){const updated=document.getElementById('menuCat_'+ci);if(updated)updated.classList.add('open');}
+  }
+
+  function renderMenuManagement(cats){
     const list=el('menuCategoriesList');
     if(!cats||!cats.length){list.innerHTML='<div class="menu-loading">No menu items found.</div>';return;}
-    list.innerHTML=cats.map((cat,ci)=>{
-      const totalItems=cat.items.length;
-      const hiddenCount=cat.items.filter(i=>i.hidden).length;
-      const unavailCount=cat.items.filter(i=>i.soldOut).length;
-      let countParts=[totalItems+' item'+(totalItems!==1?'s':'')];
-      if(unavailCount)countParts.push(unavailCount+' unavailable');
-      if(hiddenCount)countParts.push(hiddenCount+' hidden');
-      const catBadge=cat.hidden?'<span class="badge-hidden">hidden</span>':'';
-      const catHideToggle=isMgr?`<label class="menu-toggle-label" onclick="event.stopPropagation()">Hide cat<label class="toggle-sw danger"><input type="checkbox" ${cat.hidden?'checked':''} onchange="menuToggleCatHidden('${cat.id}',this.checked)"><span class="toggle-sw-slider"></span></label></label>`:'';
-      const itemsHtml=cat.items.map(item=>{
-        const rowCls=['menu-item-row',item.soldOut?'sold-out':'',item.hidden?'hidden-item':''].filter(Boolean).join(' ');
-        const price=item.price?'£'+(item.price/100).toFixed(2):'—';
-        const varLabel=item.variationName?`<span class="menu-item-variation">${item.variationName}</span>`:'';
-        const hideTgl=isMgr?`<label class="menu-toggle-label">Hide<label class="toggle-sw danger"><input type="checkbox" ${item.hidden?'checked':''} onchange="menuToggleItemHidden('${item.variationId}','${item.itemId}',${JSON.stringify(item.name)},this.checked)"><span class="toggle-sw-slider"></span></label></label>`:'';
-        return `<div class="${rowCls}"><div class="menu-item-info"><span class="menu-item-name">${item.name}${varLabel}</span></div><span class="menu-item-price">${price}</span><div class="menu-toggle-group"><label class="menu-toggle-label">Available<label class="toggle-sw"><input type="checkbox" ${!item.soldOut?'checked':''} onchange="menuToggleItemSoldOut('${item.variationId}','${item.itemId}',${JSON.stringify(item.name)},!this.checked)"><span class="toggle-sw-slider"></span></label></label>${hideTgl}</div></div>`;
-      }).join('');
-      return `<div class="menu-cat" id="menuCat_${ci}"><div class="menu-cat-header" onclick="menuToggleCat(${ci})"><svg class="menu-cat-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg><span class="menu-cat-name">${cat.name}${catBadge}</span><span class="menu-cat-count">${countParts.join(' · ')}</span>${catHideToggle}</div><div class="menu-cat-items">${itemsHtml}</div></div>`;
-    }).join('');
+    list.innerHTML=cats.map((cat,ci)=>buildCategoryHTML(cat,ci)).join('');
   }
 
   function menuToggleCat(idx){
@@ -3234,9 +3244,8 @@
     try{
       const r=await api('/api/staff/menu/categories/'+categoryId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({hidden})});
       if(!r.ok)throw new Error();
-      const cat=menuMgmtData.find(c=>c.id===categoryId);
-      if(cat)cat.hidden=hidden;
-      renderMenuManagement(menuMgmtData);
+      const ci=menuMgmtData.findIndex(c=>c.id===categoryId);
+      if(ci!==-1){menuMgmtData[ci].hidden=hidden;refreshCategoryInDOM(ci);}
     }catch(e){alert('Failed to update category. Please try again.');}
   }
 
@@ -3244,8 +3253,10 @@
     try{
       const r=await api('/api/staff/menu/items/'+variationId+'/sold-out',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({soldOut,itemId,name})});
       if(!r.ok)throw new Error();
-      for(const cat of menuMgmtData){const item=cat.items.find(i=>i.variationId===variationId);if(item){item.soldOut=soldOut;break;}}
-      renderMenuManagement(menuMgmtData);
+      for(let ci=0;ci<menuMgmtData.length;ci++){
+        const item=menuMgmtData[ci].items.find(i=>i.variationId===variationId);
+        if(item){item.soldOut=soldOut;refreshCategoryInDOM(ci);break;}
+      }
     }catch(e){alert('Failed to update item. Please try again.');}
   }
 
@@ -3253,8 +3264,10 @@
     try{
       const r=await api('/api/staff/menu/items/'+variationId+'/hidden',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({hidden,itemId,name})});
       if(!r.ok)throw new Error();
-      for(const cat of menuMgmtData){const item=cat.items.find(i=>i.variationId===variationId);if(item){item.hidden=hidden;break;}}
-      renderMenuManagement(menuMgmtData);
+      for(let ci=0;ci<menuMgmtData.length;ci++){
+        const item=menuMgmtData[ci].items.find(i=>i.variationId===variationId);
+        if(item){item.hidden=hidden;refreshCategoryInDOM(ci);break;}
+      }
     }catch(e){alert('Failed to update item. Please try again.');}
   }
 
