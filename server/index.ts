@@ -5,6 +5,7 @@ import { runStartupMigrations } from "./storage";
 import * as fs from "fs";
 import * as path from "path";
 import nodemailer from "nodemailer";
+import { createProxyMiddleware } from "http-proxy-middleware";
 
 const app = express();
 const log = console.log;
@@ -270,6 +271,41 @@ function configureExpoAndLanding(app: express.Application) {
 
     next();
   });
+
+  // In development, proxy Metro bundler requests (bundle.js, hot updates, _expo assets)
+  // to the Metro dev server on port 8081.
+  if (process.env.NODE_ENV !== "production") {
+    const metroProxy = createProxyMiddleware({
+      target: "http://localhost:8081",
+      changeOrigin: false,
+      ws: true,
+      on: {
+        error: (_err: Error, _req: unknown, res: unknown) => {
+          // Metro not ready yet — swallow silently
+          if (res && typeof (res as any).status === "function") {
+            (res as any).status(502).send("Metro bundler not ready");
+          }
+        },
+      },
+    });
+
+    // Match: /_expo/*, /hot, /symbolicate, /logs, /inspector,
+    //        and session-prefixed paths like /1234567890-12345/_expo/*
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      if (req.path.startsWith("/api")) return next();
+      if (
+        req.path.startsWith("/_expo") ||
+        req.path.startsWith("/hot") ||
+        req.path.startsWith("/symbolicate") ||
+        req.path.startsWith("/logs") ||
+        req.path.startsWith("/inspector") ||
+        /^\/\d+-\d+\//.test(req.path) // Metro session-prefixed paths
+      ) {
+        return (metroProxy as any)(req, res, next);
+      }
+      next();
+    });
+  }
 
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
   app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
