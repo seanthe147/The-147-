@@ -1349,6 +1349,11 @@
 
       <div id="amFormFields">
         <div class="form-group">
+          <label class="form-label">Start Date</label>
+          <input type="date" class="form-input" id="amStartDate">
+          <div style="margin-top:5px;font-size:12px;color:var(--text-2);line-height:1.5" id="amStartDateHint">Leave as today to start immediately. Set a future date to delay the first payment.</div>
+        </div>
+        <div class="form-group">
           <label class="form-label">Staff Notes (optional)</label>
           <textarea class="form-input" id="amNotes" placeholder="Any additional notes…" style="min-height:60px;resize:vertical"></textarea>
         </div>
@@ -4663,6 +4668,11 @@
     el('amCustomerDropdown').innerHTML='';
     el('amErr').classList.remove('show');
     el('amNotes').value='';
+    // Set start date to today
+    const todayStr=new Date().toISOString().slice(0,10);
+    el('amStartDate').value=todayStr;
+    el('amStartDate').min=todayStr;
+    el('amStartDateHint').textContent='Leave as today to start immediately. Set a future date to delay the first payment.';
     // Reset payment selection
     document.querySelectorAll('input[name="amPayMethod"]').forEach(r=>r.checked=false);
     document.querySelectorAll('.am-pay-option').forEach(o=>o.classList.remove('selected'));
@@ -4679,6 +4689,20 @@
     openOverlay('addMemberModal');
     setTimeout(()=>el('amCustomerSearch').focus(),100);
   };
+
+  el('amStartDate').addEventListener('change',function(){
+    const today=new Date().toISOString().slice(0,10);
+    const chosen=this.value;
+    if(!chosen||chosen<=today){
+      el('amStartDateHint').textContent='Leave as today to start immediately. Set a future date to delay the first payment.';
+      el('amStartDateHint').style.color='var(--text-2)';
+    }else{
+      const d=new Date(chosen+'T12:00:00Z');
+      const formatted=d.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+      el('amStartDateHint').textContent='⏳ Membership starts '+formatted+'. First payment taken on that date.';
+      el('amStartDateHint').style.color='var(--blue,#3b82f6)';
+    }
+  });
 
   /* ── Square Sync Modal ─────────────────────────────────────────────────────── */
   window.openSquareSyncModal=function(){
@@ -4816,13 +4840,14 @@
     const plan=membershipsData.plans.find(p=>p.id===parseInt(planId));
     let payLabel=payMethod==='complimentary'?'Payment: Complimentary':'Payment: Square Link (pending)';
     const staffNotes=[`[${payLabel}]`,notes].filter(Boolean).join(' ');
+    const startDate=el('amStartDate').value||new Date().toISOString().slice(0,10);
 
     el('amSaveBtn').disabled=true;
     el('amSaveBtn').textContent='Saving…';
     try{
       // 1. Create subscription
       const initialStatus=payMethod==='paylink'?'pending_payment':'active';
-      const r=await api('/api/staff/membership/subscriptions',{method:'POST',body:JSON.stringify({customerId,planId,staffNotes,status:initialStatus,source:'staff'})});
+      const r=await api('/api/staff/membership/subscriptions',{method:'POST',body:JSON.stringify({customerId,planId,staffNotes,status:initialStatus,source:'staff',startDate})});
       if(!r.ok){const d=await r.json();err.textContent=d.message||'Failed';err.classList.add('show');el('amSaveBtn').disabled=false;el('amSaveBtn').textContent='Add Member & Generate Link';return}
       const sub=await r.json();
 

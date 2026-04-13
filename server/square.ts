@@ -183,7 +183,8 @@ export async function createSquareSubscription(
   squareCustomerId: string,
   planVariationId: string,
   locationId: string,
-  cardId?: string
+  cardId?: string,
+  startDate?: string
 ) {
   const today = new Date().toISOString().slice(0, 10);
   const body: Record<string, unknown> = {
@@ -191,7 +192,7 @@ export async function createSquareSubscription(
     location_id: locationId,
     plan_variation_id: planVariationId,
     customer_id: squareCustomerId,
-    start_date: today,
+    start_date: startDate || today,
   };
   if (cardId) body.card_id = cardId;
   const data = await squareRequest("POST", "/v2/subscriptions", body);

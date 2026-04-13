@@ -4674,17 +4674,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/staff/membership/subscriptions", staffAuth, async (req, res) => {
-    const { customerId, planId, status = "active", staffNotes, source = "staff" } = req.body ?? {};
+    const { customerId, planId, status = "active", staffNotes, source = "staff", startDate } = req.body ?? {};
     if (!customerId || !planId) return res.status(400).json({ message: "customerId and planId are required" });
     const today = new Date().toISOString().slice(0, 10);
-    const nextMonth = new Date();
-    nextMonth.setMonth(nextMonth.getMonth() + 1);
+    // Use provided startDate if valid, else fall back to today
+    const periodStart = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) ? startDate : today;
+    const periodStartDate = new Date(periodStart + "T12:00:00Z");
+    const periodEndDate = new Date(periodStartDate);
+    periodEndDate.setMonth(periodEndDate.getMonth() + 1);
+    const periodEnd = periodEndDate.toISOString().slice(0, 10);
+    // If start date is in the future, create as pending until it starts
+    const effectiveStatus = startDate && startDate > today ? "pending_start" : status;
     const sub = await storage.createMembershipSubscription({
       customerId: parseInt(customerId),
       planId: parseInt(planId),
-      status,
-      currentPeriodStart: today,
-      currentPeriodEnd: nextMonth.toISOString().slice(0, 10),
+      status: effectiveStatus,
+      currentPeriodStart: periodStart,
+      currentPeriodEnd: periodEnd,
       hoursUsedThisPeriod: 0,
       guestPassesUsed: 0,
       staffNotes: staffNotes || null,
@@ -4700,7 +4706,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (!sqCustomer) sqCustomer = await square.createSquareCustomer(customer.name, customer.email, customer.phone || undefined);
           if (sqCustomer) {
             const locationId = (process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID)!;
-            const sqSub = await square.createSquareSubscription(sqCustomer.id, plan.squarePlanVariationId, locationId).catch(() => null);
+            const sqSub = await square.createSquareSubscription(sqCustomer.id, plan.squarePlanVariationId, locationId, undefined, periodStart).catch(() => null);
             if (sqSub) {
               await storage.updateMembershipSubscription(sub.id, {
                 squareSubscriptionId: sqSub.id,
