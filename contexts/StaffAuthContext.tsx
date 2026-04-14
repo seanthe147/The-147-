@@ -6,6 +6,7 @@ import { fetch } from "expo/fetch";
 const STORAGE_KEY = "staff_session_token";
 const USERNAME_KEY = "staff_username";
 const ROLE_KEY = "staff_role";
+const DISPLAY_NAME_KEY = "staff_display_name";
 
 type StaffRole = "staff" | "manager" | "owner";
 
@@ -33,15 +34,12 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    setStaffToken(token);
-  }, [token]);
-
-  useEffect(() => {
     (async () => {
       try {
         const stored = await AsyncStorage.getItem(STORAGE_KEY);
         const storedUsername = await AsyncStorage.getItem(USERNAME_KEY);
         const storedRole = await AsyncStorage.getItem(ROLE_KEY);
+        const storedDisplayName = await AsyncStorage.getItem(DISPLAY_NAME_KEY);
         if (stored) {
           const baseUrl = getApiUrl();
           const url = new URL("/api/staff/verify", baseUrl);
@@ -50,13 +48,18 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
           });
           if (res.ok) {
             const data = await res.json();
+            // Set in-memory token synchronously before updating React state
+            setStaffToken(stored);
             setToken(stored);
             setUsername(data.username || storedUsername);
             setRole((data.role as StaffRole) || (storedRole as StaffRole) || "staff");
+            setDisplayName(data.displayName || storedDisplayName || null);
           } else {
+            setStaffToken(null);
             await AsyncStorage.removeItem(STORAGE_KEY);
             await AsyncStorage.removeItem(USERNAME_KEY);
             await AsyncStorage.removeItem(ROLE_KEY);
+            await AsyncStorage.removeItem(DISPLAY_NAME_KEY);
           }
         }
       } catch {
@@ -86,7 +89,12 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
       if (data.username) {
         await AsyncStorage.setItem(USERNAME_KEY, data.username);
       }
+      if (data.displayName) {
+        await AsyncStorage.setItem(DISPLAY_NAME_KEY, data.displayName);
+      }
       await AsyncStorage.setItem(ROLE_KEY, data.role || "staff");
+      // Set in-memory token synchronously so it's available immediately
+      setStaffToken(data.token);
       setToken(data.token);
       setUsername(data.username || loginUsername);
       setDisplayName(data.displayName || null);
@@ -136,9 +144,12 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
       } catch {
       }
     }
+    // Clear in-memory token synchronously
+    setStaffToken(null);
     await AsyncStorage.removeItem(STORAGE_KEY);
     await AsyncStorage.removeItem(USERNAME_KEY);
     await AsyncStorage.removeItem(ROLE_KEY);
+    await AsyncStorage.removeItem(DISPLAY_NAME_KEY);
     setToken(null);
     setUsername(null);
     setDisplayName(null);

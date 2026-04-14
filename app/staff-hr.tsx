@@ -219,7 +219,17 @@ export default function StaffHRScreen() {
       }
       await Promise.all([refetchClock(), refetchEntries()]);
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to record attendance. Please try again.");
+      const msg: string = err.message || "";
+      const isAuthError = msg.toLowerCase().includes("authentication") || msg.toLowerCase().includes("expired") || msg.toLowerCase().includes("invalid");
+      if (isAuthError) {
+        Alert.alert(
+          "Session Expired",
+          "Your session has expired. Please log in again.",
+          [{ text: "Log In", onPress: () => router.replace("/staff-portal") }],
+        );
+      } else {
+        Alert.alert("Error", msg || "Failed to record attendance. Please try again.");
+      }
     } finally {
       setClockLoading(false);
     }

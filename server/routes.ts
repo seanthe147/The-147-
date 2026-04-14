@@ -837,7 +837,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       clearFailedLogins(clientIp);
       const token = randomBytes(32).toString("hex");
-      const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000);
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
       const session = await storage.createStaffSession(token, expiresAt, staffUser.id, staffUser.username);
       return res.json({
         token: session.token,
@@ -860,7 +860,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     clearFailedLogins(clientIp);
     const token = randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const session = await storage.createStaffSession(token, expiresAt);
 
     res.json({ token: session.token, expiresAt: session.expiresAt, role: "manager" });
