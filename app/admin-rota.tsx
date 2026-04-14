@@ -187,59 +187,69 @@ export default function AdminRotaScreen() {
 
   const deleteShift = useCallback(async () => {
     if (!modal.existingShift) return;
-    Alert.alert("Delete Shift", `Remove this shift for ${modal.staffName}?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete", style: "destructive", onPress: async () => {
-          setSaving(true);
-          try {
-            await hrApi(`/api/hr/rota/shifts/${modal.existingShift!.id}`, { method: "DELETE" });
-            closeModal();
-            await refetch();
-          } catch (e: any) {
-            Alert.alert("Error", e.message || "Failed to delete shift.");
-          } finally {
-            setSaving(false);
-          }
-        },
-      },
-    ]);
+    const doDelete = async () => {
+      setSaving(true);
+      try {
+        await hrApi(`/api/hr/rota/shifts/${modal.existingShift!.id}`, { method: "DELETE" });
+        closeModal();
+        await refetch();
+      } catch (e: any) {
+        if (Platform.OS === "web") window.alert("Error: " + (e.message || "Failed to delete shift."));
+        else Alert.alert("Error", e.message || "Failed to delete shift.");
+      } finally {
+        setSaving(false);
+      }
+    };
+    if (Platform.OS === "web") {
+      if (window.confirm(`Remove this shift for ${modal.staffName}?`)) await doDelete();
+    } else {
+      Alert.alert("Delete Shift", `Remove this shift for ${modal.staffName}?`, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: doDelete },
+      ]);
+    }
   }, [modal, refetch, closeModal]);
 
   const publishRota = useCallback(async () => {
     const shiftCount = rotaData?.shifts?.length ?? 0;
     if (shiftCount === 0) {
-      Alert.alert("No Shifts", "Add at least one shift before publishing the rota.");
+      if (Platform.OS === "web") window.alert("Add at least one shift before publishing the rota.");
+      else Alert.alert("No Shifts", "Add at least one shift before publishing the rota.");
       return;
     }
-    Alert.alert(
-      "Publish Rota",
-      `Publish the rota for the week of ${weekStr}?\n\nAll staff with shifts will receive a push notification.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Publish & Notify", onPress: async () => {
-            setPublishing(true);
-            try {
-              const result = await hrApi("/api/hr/rota/publish", {
-                method: "POST",
-                body: JSON.stringify({ weekStart: weekStr }),
-              });
-              const notified: number = result.staffNotified ?? 0;
-              Alert.alert(
-                "Rota Published",
-                `The rota has been published and ${notified} staff member${notified === 1 ? "" : "s"} ${notified === 1 ? "has" : "have"} been notified.`,
-              );
-              await refetch();
-            } catch (e: any) {
-              Alert.alert("Error", e.message || "Failed to publish rota.");
-            } finally {
-              setPublishing(false);
-            }
-          },
-        },
-      ],
-    );
+    const doPublish = async () => {
+      setPublishing(true);
+      try {
+        const result = await hrApi("/api/hr/rota/publish", {
+          method: "POST",
+          body: JSON.stringify({ weekStart: weekStr }),
+        });
+        const notified: number = result.staffNotified ?? 0;
+        const msg = `The rota has been published and ${notified} staff member${notified === 1 ? "" : "s"} ${notified === 1 ? "has" : "have"} been notified.`;
+        if (Platform.OS === "web") window.alert("Rota Published\n\n" + msg);
+        else Alert.alert("Rota Published", msg);
+        await refetch();
+      } catch (e: any) {
+        if (Platform.OS === "web") window.alert("Error: " + (e.message || "Failed to publish rota."));
+        else Alert.alert("Error", e.message || "Failed to publish rota.");
+      } finally {
+        setPublishing(false);
+      }
+    };
+    if (Platform.OS === "web") {
+      if (window.confirm(`Publish the rota for the week of ${weekStr}?\n\nAll staff with shifts will receive a push notification.`)) {
+        await doPublish();
+      }
+    } else {
+      Alert.alert(
+        "Publish Rota",
+        `Publish the rota for the week of ${weekStr}?\n\nAll staff with shifts will receive a push notification.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Publish & Notify", onPress: doPublish },
+        ],
+      );
+    }
   }, [rotaData, weekStr, refetch]);
 
   if (authLoading) {

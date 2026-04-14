@@ -80,9 +80,12 @@ function setupSecurityHeaders(app: express.Application) {
     }
     if (req.path === "/staff" || req.path.startsWith("/staff-portal") || req.path.startsWith("/admin-")) {
       res.setHeader("X-Frame-Options", "DENY");
+      // In development the Expo web app makes API calls to the Replit dev domain (different
+      // port/origin), so we allow all connections. In production, restrict to 'self'.
+      const connectSrc = isProd ? "'self'" : "*";
       res.setHeader(
         "Content-Security-Policy",
-        "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data: blob: https:; frame-ancestors 'none'"
+        `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src ${connectSrc}; img-src 'self' data: blob: https:; frame-ancestors 'none'`
       );
     } else if (req.path === "/widget/booking") {
       // Allow embedding anywhere (public booking widget for Wix and other websites)
@@ -332,6 +335,47 @@ function configureExpoAndLanding(app: express.Application) {
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
   app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
+
+  // SPA catch-all: any non-API, non-static path is an Expo Router client-side route.
+  // In development, proxy to Metro (which serves the web bundle). In production, serve
+  // the static build's index.html so deep links work.
+  if (process.env.NODE_ENV !== "production") {
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      if (req.path.startsWith("/api")) return next();
+      // Skip native mobile paths
+      const platform = req.header("expo-platform");
+      if (platform === "ios" || platform === "android") return next();
+      // Proxy all other web requests to Metro so Expo Router handles client-side routes
+      const proxyReq = http.request(
+        {
+          hostname: "localhost",
+          port: 8081,
+          path: req.url,
+          method: req.method,
+          headers: { ...req.headers, host: "localhost:8081" },
+        },
+        (proxyRes) => {
+          res.writeHead(proxyRes.statusCode ?? 200, proxyRes.headers);
+          proxyRes.pipe(res, { end: true });
+        },
+      );
+      proxyReq.on("error", () => {
+        if (!res.headersSent) res.status(502).send("Metro bundler not ready");
+      });
+      req.pipe(proxyReq, { end: true });
+    });
+  } else {
+    // Production: serve static build index.html as SPA fallback
+    const indexPath = path.resolve(process.cwd(), "static-build", "index.html");
+    app.use((_req: Request, res: Response, next: NextFunction) => {
+      if (res.headersSent) return next();
+      if (require("fs").existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        next();
+      }
+    });
+  }
 
   log("Expo routing: Checking expo-platform header on / and /manifest");
 }
