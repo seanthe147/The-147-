@@ -252,12 +252,21 @@ export default function AdminEventsScreen() {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
 
-  const upcoming = adminTab === "events"
-    ? filteredEvents.filter((e) => e.date && new Date(e.date + "T23:59:59") >= now)
+  function isEventPast(event: Event): boolean {
+    if (!event.date) return false;
+    return new Date(event.date + "T23:59:59") < now;
+  }
+
+  const sortedEvents = adminTab === "events"
+    ? [...filteredEvents].sort((a, b) => {
+        const aPast = isEventPast(a) ? 1 : 0;
+        const bPast = isEventPast(b) ? 1 : 0;
+        if (aPast !== bPast) return aPast - bPast;
+        if (!a.date) return 1;
+        if (!b.date) return -1;
+        return a.date.localeCompare(b.date);
+      })
     : filteredEvents;
-  const past = adminTab === "events"
-    ? filteredEvents.filter((e) => e.date && new Date(e.date + "T23:59:59") < now)
-    : [];
 
   function openNewForm() {
     setForm({ ...emptyForm, eventType: adminTab === "weekly" ? "weekly" : "event" });
@@ -541,44 +550,23 @@ export default function AdminEventsScreen() {
             </Text>
           </View>
         ) : (
-          <>
-            {upcoming.length > 0 && (
-              <View style={styles.eventSection}>
-                <Text style={styles.listHeading}>
-                  {adminTab === "weekly"
-                    ? `Weekly Events (${upcoming.length})`
-                    : `Upcoming Events (${upcoming.length})`}
-                </Text>
-                {upcoming.map((event) => (
-                  <EventRow
-                    key={event.id}
-                    event={event}
-                    onEdit={() => startEdit(event)}
-                    onDelete={() => handleDelete(event.id)}
-                    onToggleActive={() => toggleActive(event)}
-                  />
-                ))}
-              </View>
-            )}
-
-            {past.length > 0 && (
-              <View style={styles.eventSection}>
-                <Text style={styles.listHeading}>
-                  Past Events ({past.length})
-                </Text>
-                {past.map((event) => (
-                  <EventRow
-                    key={event.id}
-                    event={event}
-                    onEdit={() => startEdit(event)}
-                    onDelete={() => handleDelete(event.id)}
-                    onToggleActive={() => toggleActive(event)}
-                    isPast
-                  />
-                ))}
-              </View>
-            )}
-          </>
+          <View style={styles.eventSection}>
+            <Text style={styles.listHeading}>
+              {adminTab === "weekly"
+                ? `Weekly Events (${sortedEvents.length})`
+                : `All Events (${sortedEvents.length})`}
+            </Text>
+            {sortedEvents.map((event) => (
+              <EventRow
+                key={event.id}
+                event={event}
+                onEdit={() => startEdit(event)}
+                onDelete={() => handleDelete(event.id)}
+                onToggleActive={() => toggleActive(event)}
+                isPast={isEventPast(event)}
+              />
+            ))}
+          </View>
         )}
 
         <View style={{ height: Platform.OS === "web" ? 34 : 40 }} />
