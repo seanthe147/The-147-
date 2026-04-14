@@ -10,6 +10,7 @@ import {
   Alert,
   ActivityIndicator,
   Linking,
+  RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -90,22 +91,33 @@ export default function AdminEventsScreen() {
   const [showForm, setShowForm] = useState(false);
   const [adminTab, setAdminTab] = useState<"events" | "weekly">("events");
 
-  const { data: oneOffEvents, isLoading: loadingOneOff } = useQuery<Event[]>({
+  const { data: oneOffEvents, isLoading: loadingOneOff, isError: errorOneOff, refetch: refetchOneOff } = useQuery<Event[]>({
     queryKey: ["/api/events/all?type=event"],
     enabled: isAuthenticated,
+    staleTime: 0,
   });
 
-  const { data: weeklyEventsData, isLoading: loadingWeekly } = useQuery<Event[]>({
+  const { data: weeklyEventsData, isLoading: loadingWeekly, isError: errorWeekly, refetch: refetchWeekly } = useQuery<Event[]>({
     queryKey: ["/api/events/all?type=weekly"],
     enabled: isAuthenticated,
+    staleTime: 0,
   });
 
   const isLoading = loadingOneOff || loadingWeekly;
+  const isError = errorOneOff || errorWeekly;
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await Promise.all([refetchOneOff(), refetchWeekly()]);
+    setRefreshing(false);
+  }
 
   async function invalidateAll() {
     await queryClient.invalidateQueries({ queryKey: ["/api/events/all?type=event"] });
     await queryClient.invalidateQueries({ queryKey: ["/api/events/all?type=weekly"] });
-    await queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+    await queryClient.invalidateQueries({ queryKey: ["/api/events?type=event"] });
+    await queryClient.invalidateQueries({ queryKey: ["/api/events?type=weekly"] });
   }
 
   const createMutation = useMutation({
@@ -301,6 +313,9 @@ export default function AdminEventsScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.brand.blue} />
+        }
       >
         {showForm && (
           <View style={styles.formContainer}>
@@ -503,6 +518,18 @@ export default function AdminEventsScreen() {
 
         {isLoading ? (
           <ActivityIndicator size="large" color={Colors.brand.blue} style={{ marginTop: 40 }} />
+        ) : isError ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="cloud-offline-outline" size={48} color="#EF4444" />
+            <Text style={[styles.emptyText, { color: "#EF4444" }]}>Could not load events</Text>
+            <Text style={styles.emptySubtext}>Pull down to refresh, or log out and back in if this persists.</Text>
+            <Pressable
+              onPress={handleRefresh}
+              style={{ marginTop: 16, backgroundColor: Colors.brand.blue, borderRadius: 8, paddingHorizontal: 20, paddingVertical: 10 }}
+            >
+              <Text style={{ color: "#fff", fontWeight: "600" }}>Retry</Text>
+            </Pressable>
+          </View>
         ) : filteredEvents.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name={adminTab === "weekly" ? "repeat-outline" : "calendar-outline"} size={48} color="#D1D5DB" />
