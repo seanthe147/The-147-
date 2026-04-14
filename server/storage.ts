@@ -73,6 +73,8 @@ import {
   type StaffRotaPublished,
   staffPushTokens,
   type StaffPushToken,
+  staffDbsChecks,
+  type StaffDbsCheck,
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
 
@@ -1683,6 +1685,38 @@ export class DatabaseStorage implements IStorage {
   async removeStaffPushToken(token: string): Promise<boolean> {
     const result = await db.delete(staffPushTokens).where(eq(staffPushTokens.token, token)).returning();
     return result.length > 0;
+  }
+
+  // ── DBS checks ────────────────────────────────────────────────────────────────
+  async getAllDbsChecks(): Promise<StaffDbsCheck[]> {
+    return db.select().from(staffDbsChecks).orderBy(staffDbsChecks.staffId);
+  }
+
+  async getDbsCheckByStaff(staffId: number): Promise<StaffDbsCheck | undefined> {
+    const [row] = await db.select().from(staffDbsChecks).where(eq(staffDbsChecks.staffId, staffId));
+    return row;
+  }
+
+  async upsertDbsCheck(data: {
+    staffId: number;
+    checkType: string;
+    certificateNumber?: string | null;
+    issuedDate?: string | null;
+    expiryDate?: string | null;
+    status: string;
+    notes?: string | null;
+    addedByUsername?: string | null;
+  }): Promise<StaffDbsCheck> {
+    const existing = await this.getDbsCheckByStaff(data.staffId);
+    if (existing) {
+      const [updated] = await db.update(staffDbsChecks)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(staffDbsChecks.staffId, data.staffId))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(staffDbsChecks).values(data).returning();
+    return created;
   }
 }
 
