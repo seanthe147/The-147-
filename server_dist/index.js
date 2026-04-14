@@ -139,6 +139,7 @@ var init_schema = __esm({
       active: boolean("active").notNull().default(true),
       eventType: text("event_type").notNull().default("event"),
       dayOfWeek: text("day_of_week"),
+      source: text("source").notNull().default("staff"),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     insertEventSchema = createInsertSchema(events).omit({ id: true, createdAt: true });
@@ -1326,9 +1327,17 @@ var init_storage = __esm({
       async getMembershipSubscriptions() {
         const rows = await db.select().from(membershipSubscriptions).orderBy(desc(membershipSubscriptions.createdAt));
         const result = await Promise.all(rows.map(async (sub) => {
-          const [customer] = await db.select().from(customers).where(eq(customers.id, sub.customerId));
+          const [rawCustomer] = await db.select().from(customers).where(eq(customers.id, sub.customerId));
           const [plan] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, sub.planId));
-          return { ...sub, customer: customer || null, plan: plan || null };
+          let customer = null;
+          if (rawCustomer) {
+            try {
+              customer = decryptCustomer(rawCustomer);
+            } catch {
+              customer = rawCustomer;
+            }
+          }
+          return { ...sub, customer, plan: plan || null };
         }));
         return result;
       }
@@ -5396,11 +5405,24 @@ async function registerRoutes(app2) {
   });
   app2.get("/api/events/all", staffAuth, managerAuth, async (req, res) => {
     const { type } = req.query;
-    const allEvents = await storage.getEvents();
-    if (type === "event" || type === "weekly") {
-      return res.json(allEvents.filter((e) => e.eventType === type));
+    const dbEvents = await storage.getEvents();
+    if (type === "weekly") {
+      return res.json(dbEvents.filter((e) => e.eventType === "weekly"));
     }
-    res.json(allEvents);
+    const dbFiltered = type === "event" ? dbEvents.filter((e) => e.eventType === "event") : dbEvents;
+    try {
+      const tsEvents = await fetchTicketSourceEvents().catch(() => []);
+      const mapped = tsEvents.map(mapTsEvent);
+      const combined = [...dbFiltered, ...mapped];
+      combined.sort((a, b) => {
+        if (!a.date) return 1;
+        if (!b.date) return -1;
+        return a.date.localeCompare(b.date) || (a.time || "").localeCompare(b.time || "");
+      });
+      return res.json(combined);
+    } catch {
+      return res.json(dbFiltered);
+    }
   });
   app2.post("/api/events", staffAuth, managerAuth, async (req, res) => {
     const parsed = insertEventSchema.safeParse(req.body);
