@@ -90,17 +90,32 @@ export default function AdminEventsScreen() {
   const [showForm, setShowForm] = useState(false);
   const [adminTab, setAdminTab] = useState<"events" | "weekly">("events");
 
-  const { data: events, isLoading } = useQuery<Event[]>({
-    queryKey: ["/api/events/all"],
+  const { data: oneOffEvents, isLoading: loadingOneOff } = useQuery<Event[]>({
+    queryKey: ["/api/events/all?type=event"],
     enabled: isAuthenticated,
   });
+
+  const { data: weeklyEventsData, isLoading: loadingWeekly } = useQuery<Event[]>({
+    queryKey: ["/api/events/all?type=weekly"],
+    enabled: isAuthenticated,
+  });
+
+  const isLoading = loadingOneOff || loadingWeekly;
+
+  async function invalidateAll() {
+    await queryClient.invalidateQueries({ queryKey: ["/api/events/all?type=event"] });
+    await queryClient.invalidateQueries({ queryKey: ["/api/events/all?type=weekly"] });
+    await queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+  }
 
   const createMutation = useMutation({
     mutationFn: (data: EventForm) => apiRequest("POST", "/api/events", data),
     onSuccess: async () => {
       resetForm();
-      await queryClient.invalidateQueries({ queryKey: ["/api/events/all"] });
-      await queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      await invalidateAll();
+    },
+    onError: () => {
+      Alert.alert("Error", "Failed to create event. Please check your connection and try again.");
     },
   });
 
@@ -109,8 +124,10 @@ export default function AdminEventsScreen() {
       apiRequest("PUT", `/api/events/${id}`, data),
     onSuccess: async () => {
       resetForm();
-      await queryClient.invalidateQueries({ queryKey: ["/api/events/all"] });
-      await queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      await invalidateAll();
+    },
+    onError: () => {
+      Alert.alert("Error", "Failed to update event. Please try again.");
     },
   });
 
@@ -120,8 +137,7 @@ export default function AdminEventsScreen() {
       return id;
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["/api/events/all"] });
-      await queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      await invalidateAll();
     },
     onError: () => {
       Alert.alert("Error", "Failed to delete event. Please try again.");
@@ -209,8 +225,7 @@ export default function AdminEventsScreen() {
   async function toggleActive(event: Event) {
     try {
       await apiRequest("PUT", `/api/events/${event.id}`, { active: !event.active });
-      await queryClient.refetchQueries({ queryKey: ["/api/events/all"] });
-      await queryClient.refetchQueries({ queryKey: ["/api/events"] });
+      await invalidateAll();
     } catch {
       Alert.alert("Error", "Failed to update event visibility.");
     }
@@ -218,11 +233,9 @@ export default function AdminEventsScreen() {
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
-  const allEvents = events || [];
-  const filteredEvents = allEvents.filter((e) => {
-    const eType = e.eventType || "event";
-    return adminTab === "events" ? eType === "event" : eType === adminTab;
-  });
+  const filteredEvents = adminTab === "events"
+    ? (oneOffEvents || [])
+    : (weeklyEventsData || []);
 
   const now = new Date();
   now.setHours(0, 0, 0, 0);

@@ -3025,8 +3025,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/events/all", staffAuth, managerAuth, async (_req, res) => {
+  app.get("/api/events/all", staffAuth, managerAuth, async (req, res) => {
+    const { type } = req.query as { type?: string };
     const allEvents = await storage.getEvents();
+    if (type === "event" || type === "weekly") {
+      return res.json(allEvents.filter((e) => e.eventType === type));
+    }
     res.json(allEvents);
   });
 
