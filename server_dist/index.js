@@ -7573,7 +7573,7 @@ function getAppName() {
     return "App Landing Page";
   }
 }
-function serveExpoManifest(platform, res) {
+function serveExpoManifest(platform, res, req) {
   const manifestPath = path2.resolve(
     process.cwd(),
     "static-build",
@@ -7583,11 +7583,27 @@ function serveExpoManifest(platform, res) {
   if (!fs2.existsSync(manifestPath)) {
     return res.status(404).json({ error: `Manifest not found for platform: ${platform}` });
   }
+  let manifestStr = fs2.readFileSync(manifestPath, "utf-8");
+  try {
+    const manifest = JSON.parse(manifestStr);
+    const builtUrl = manifest?.launchAsset?.url;
+    if (builtUrl) {
+      const builtOrigin = new URL(builtUrl).origin;
+      const forwardedProto = req.header("x-forwarded-proto");
+      const protocol = forwardedProto || req.protocol || "https";
+      const forwardedHost = req.header("x-forwarded-host");
+      const host = forwardedHost || req.get("host") || "";
+      const currentOrigin = `${protocol}://${host}`;
+      if (builtOrigin !== currentOrigin) {
+        manifestStr = manifestStr.split(builtOrigin).join(currentOrigin);
+      }
+    }
+  } catch {
+  }
   res.setHeader("expo-protocol-version", "1");
   res.setHeader("expo-sfv-version", "0");
   res.setHeader("content-type", "application/json");
-  const manifest = fs2.readFileSync(manifestPath, "utf-8");
-  res.send(manifest);
+  res.send(manifestStr);
 }
 function serveLandingPage({
   req,
@@ -7641,12 +7657,12 @@ function configureExpoAndLanding(app2) {
           }
         );
         proxyReq.on("error", () => {
-          return serveExpoManifest(platform, res);
+          return serveExpoManifest(platform, res, req);
         });
         req.pipe(proxyReq, { end: true });
         return;
       }
-      return serveExpoManifest(platform, res);
+      return serveExpoManifest(platform, res, req);
     }
     if (req.path === "/") {
       return serveLandingPage({

@@ -189,7 +189,7 @@ function getAppName(): string {
   }
 }
 
-function serveExpoManifest(platform: string, res: Response) {
+function serveExpoManifest(platform: string, res: Response, req: Request) {
   const manifestPath = path.resolve(
     process.cwd(),
     "static-build",
@@ -203,12 +203,32 @@ function serveExpoManifest(platform: string, res: Response) {
       .json({ error: `Manifest not found for platform: ${platform}` });
   }
 
+  let manifestStr = fs.readFileSync(manifestPath, "utf-8");
+
+  // Dynamically rewrite the domain so a static build works on any deployment domain.
+  // The manifest was built with a specific base URL; replace it with the current host.
+  try {
+    const manifest = JSON.parse(manifestStr);
+    const builtUrl: string | undefined = manifest?.launchAsset?.url;
+    if (builtUrl) {
+      const builtOrigin = new URL(builtUrl).origin;
+      const forwardedProto = req.header("x-forwarded-proto");
+      const protocol = forwardedProto || req.protocol || "https";
+      const forwardedHost = req.header("x-forwarded-host");
+      const host = forwardedHost || req.get("host") || "";
+      const currentOrigin = `${protocol}://${host}`;
+      if (builtOrigin !== currentOrigin) {
+        manifestStr = manifestStr.split(builtOrigin).join(currentOrigin);
+      }
+    }
+  } catch {
+    // If rewriting fails, serve the manifest as-is
+  }
+
   res.setHeader("expo-protocol-version", "1");
   res.setHeader("expo-sfv-version", "0");
   res.setHeader("content-type", "application/json");
-
-  const manifest = fs.readFileSync(manifestPath, "utf-8");
-  res.send(manifest);
+  res.send(manifestStr);
 }
 
 function serveLandingPage({
@@ -282,12 +302,12 @@ function configureExpoAndLanding(app: express.Application) {
         );
         proxyReq.on("error", () => {
           // Metro not ready — fall back to static manifest
-          return serveExpoManifest(platform, res);
+          return serveExpoManifest(platform, res, req);
         });
         req.pipe(proxyReq, { end: true });
         return;
       }
-      return serveExpoManifest(platform, res);
+      return serveExpoManifest(platform, res, req);
     }
 
     if (req.path === "/") {
