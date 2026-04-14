@@ -527,22 +527,4 @@ export const staffPushTokens = pgTable("staff_push_tokens", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-// ── DBS (Disclosure & Barring Service) checks ─────────────────────────────────
-export const staffDbsChecks = pgTable("staff_dbs_checks", {
-  id: serial("id").primaryKey(),
-  staffId: integer("staff_id").notNull().unique(), // one active record per staff
-  checkType: text("check_type").notNull().default("enhanced"), // basic | standard | enhanced | enhanced_barred
-  certificateNumber: text("certificate_number"),
-  issuedDate: text("issued_date"),      // YYYY-MM-DD
-  expiryDate: text("expiry_date"),      // YYYY-MM-DD (employer-set renewal reminder)
-  status: text("status").notNull().default("not_checked"), // not_checked | valid | renewal_due | expired
-  notes: text("notes"),
-  addedByUsername: text("added_by_username"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-export type StaffDbsCheck = typeof staffDbsChecks.$inferSelect;
-export const insertStaffDbsCheckSchema = createInsertSchema(staffDbsChecks).omit({ id: true, createdAt: true, updatedAt: true });
-
 export type StaffPushToken = typeof staffPushTokens.$inferSelect;

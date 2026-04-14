@@ -5310,28 +5310,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(record);
   });
 
-  // ── DBS (Disclosure & Barring Service) ───────────────────────────────────────
-  app.get("/api/hr/dbs", staffAuth, managerAuth, async (_req, res) => {
-    const checks = await storage.getAllDbsChecks();
-    res.json(checks);
-  });
-
-  app.post("/api/hr/dbs", staffAuth, managerAuth, async (req: any, res) => {
-    const { staffId, checkType, certificateNumber, issuedDate, expiryDate, status, notes } = req.body;
-    if (!staffId || !status) return res.status(400).json({ message: "staffId and status are required" });
-    const record = await storage.upsertDbsCheck({
-      staffId: Number(staffId),
-      checkType: checkType || "enhanced",
-      certificateNumber: certificateNumber || null,
-      issuedDate: issuedDate || null,
-      expiryDate: expiryDate || null,
-      status,
-      notes: notes || null,
-      addedByUsername: req.staffUser?.username || null,
-    });
-    res.json(record);
-  });
-
   const httpServer = createServer(app);
   return httpServer;
 }
