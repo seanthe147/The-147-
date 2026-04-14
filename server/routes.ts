@@ -5102,7 +5102,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.put("/api/hr/leave-allowance/:staffId", staffAuth, managerAuth, async (req, res) => {
-    const staffId = parseInt(req.params.staffId);
+    const staffId = parseInt(String(req.params.staffId));
     const { year, totalDays, carryOver, leaveYearStart, maxCarryOverDays } = req.body;
     const allowance = await storage.upsertLeaveAllowance(
       staffId,
@@ -5117,7 +5117,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Update a staff member's contracted hours and employment start date (for pro-rata)
   app.put("/api/hr/staff/:staffId/employment", staffAuth, managerAuth, async (req, res) => {
-    const staffId = parseInt(req.params.staffId);
+    const staffId = parseInt(String(req.params.staffId));
     const { contractedDaysPerWeek, employmentStartDate } = req.body;
     if (contractedDaysPerWeek === undefined) return res.status(400).json({ message: "contractedDaysPerWeek is required" });
     const days = parseFloat(String(contractedDaysPerWeek));

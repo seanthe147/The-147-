@@ -891,6 +891,7 @@ export interface SelectedModifier {
 
 export interface OrderLineItem {
   variationId: string;
+  itemId?: string;
   name: string;
   price: number;
   quantity: number;

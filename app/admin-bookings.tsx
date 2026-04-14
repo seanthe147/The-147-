@@ -216,7 +216,10 @@ export default function AdminBookingsScreen() {
   });
 
   const completeMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("PATCH", `/api/bookings/${id}/complete`, {}),
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("PATCH", `/api/bookings/${id}/complete`, {});
+      return res.json() as Promise<{ depositRefunded?: boolean; refundError?: string }>;
+    },
     onSuccess: (data: { depositRefunded?: boolean; refundError?: string }) => {
       queryClient.refetchQueries({ queryKey: ["/api/bookings"] });
       if (data?.depositRefunded) {
