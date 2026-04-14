@@ -5158,8 +5158,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const data = await r.json() as { data?: Array<{ status: string }> };
         notified = data.data?.filter(d => d.status === "ok").length ?? 0;
       } catch { /* notification failure doesn't block publish */ }
-      // Update notified count
-      await storage.publishRota(weekStart, publishedBy);
     }
     res.json({ ...published, staffNotified: notified, tokenCount: tokens.length });
   });

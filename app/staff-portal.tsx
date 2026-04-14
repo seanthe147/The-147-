@@ -437,6 +437,14 @@ function DashboardScreen() {
           {isManager && (
             <>
               <AdminTool
+                icon="calendar-number"
+                title="Manage Rota"
+                description="Build weekly rotas, assign shifts and publish to staff"
+                color="#0F766E"
+                onPress={() => router.push("/admin-rota")}
+                testID="portal-manage-rota"
+              />
+              <AdminTool
                 icon="pricetag"
                 title="Manage Offers"
                 description="Create, edit and remove promotional offers"
