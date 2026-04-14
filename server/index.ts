@@ -373,7 +373,7 @@ function configureExpoAndLanding(app: express.Application) {
     const indexPath = path.resolve(process.cwd(), "static-build", "index.html");
     app.use((_req: Request, res: Response, next: NextFunction) => {
       if (res.headersSent) return next();
-      if (require("fs").existsSync(indexPath)) {
+      if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
       } else {
         next();

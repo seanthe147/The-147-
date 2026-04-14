@@ -13,7 +13,7 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, serial, timestamp, boolean, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules;
+var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffPushTokens;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
@@ -35,7 +35,12 @@ var init_schema = __esm({
       role: text("role").notNull().default("staff"),
       createdAt: timestamp("created_at").defaultNow().notNull(),
       active: boolean("active").notNull().default(true),
-      approvalStatus: text("approval_status").notNull().default("approved")
+      approvalStatus: text("approval_status").notNull().default("approved"),
+      // UK employment law fields
+      contractedDaysPerWeek: text("contracted_days_per_week").notNull().default("5"),
+      // decimal string, e.g. "5" full-time, "3" part-time
+      employmentStartDate: text("employment_start_date")
+      // YYYY-MM-DD, for new-starter accrual
     });
     offers = pgTable("offers", {
       id: serial("id").primaryKey(),
@@ -46,7 +51,9 @@ var init_schema = __esm({
       gradientStart: text("gradient_start").notNull().default("#0047AB"),
       gradientEnd: text("gradient_end").notNull().default("#1E6FD9"),
       icon: text("icon").notNull().default("pricetag"),
-      active: boolean("active").notNull().default(true)
+      active: boolean("active").notNull().default(true),
+      linkUrl: text("link_url"),
+      linkType: text("link_type")
     });
     insertOfferSchema = createInsertSchema(offers).omit({ id: true });
     pushTokens = pgTable("push_tokens", {
@@ -54,6 +61,7 @@ var init_schema = __esm({
       token: text("token").notNull().unique(),
       deviceName: text("device_name"),
       customerEmail: text("customer_email"),
+      customerEmailHash: text("customer_email_hash"),
       platform: text("platform"),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
@@ -141,7 +149,8 @@ var init_schema = __esm({
     });
     customers = pgTable("customers", {
       id: serial("id").primaryKey(),
-      email: text("email").notNull().unique(),
+      email: text("email").notNull(),
+      emailHash: text("email_hash").unique(),
       name: text("name").notNull(),
       phone: text("phone"),
       passwordHash: text("password_hash").notNull(),
@@ -165,6 +174,9 @@ var init_schema = __esm({
       active: boolean("active").notNull().default(true),
       linkType: text("link_type"),
       linkValue: text("link_value"),
+      showOnHome: boolean("show_on_home").notNull().default(true),
+      showOnOrder: boolean("show_on_order").notNull().default(true),
+      showOnEvents: boolean("show_on_events").notNull().default(true),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     insertBannerImageSchema = createInsertSchema(bannerImages).omit({ id: true, createdAt: true });
@@ -249,6 +261,7 @@ var init_schema = __esm({
       tableNote: text("table_note"),
       customerName: text("customer_name"),
       customerEmail: text("customer_email"),
+      customerEmailHash: text("customer_email_hash"),
       itemsJson: text("items_json").notNull(),
       totalPence: integer("total_pence").notNull().default(0),
       discountPercent: integer("discount_percent"),
@@ -306,6 +319,113 @@ var init_schema = __esm({
       note: text("note"),
       enabled: boolean("enabled").notNull().default(true),
       createdBy: text("created_by").notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    });
+    staffTimeEntries = pgTable("staff_time_entries", {
+      id: serial("id").primaryKey(),
+      staffId: integer("staff_id").notNull(),
+      // references staffUsers.id
+      clockedInAt: timestamp("clocked_in_at").notNull(),
+      clockedOutAt: timestamp("clocked_out_at"),
+      clockInLat: text("clock_in_lat"),
+      clockInLng: text("clock_in_lng"),
+      clockOutLat: text("clock_out_lat"),
+      clockOutLng: text("clock_out_lng"),
+      notes: text("notes"),
+      status: text("status").notNull().default("active"),
+      // active | completed | amended
+      amendedBy: integer("amended_by"),
+      amendedAt: timestamp("amended_at"),
+      amendReason: text("amend_reason"),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
+    insertStaffTimeEntrySchema = createInsertSchema(staffTimeEntries).omit({ id: true, createdAt: true });
+    staffLeaveRequests = pgTable("staff_leave_requests", {
+      id: serial("id").primaryKey(),
+      staffId: integer("staff_id").notNull(),
+      leaveType: text("leave_type").notNull().default("annual"),
+      // annual | sick | unpaid | other
+      startDate: text("start_date").notNull(),
+      // YYYY-MM-DD
+      endDate: text("end_date").notNull(),
+      // YYYY-MM-DD
+      totalDays: text("total_days").notNull(),
+      // stored as decimal string e.g. "2.5"
+      reason: text("reason"),
+      status: text("status").notNull().default("pending"),
+      // pending | approved | rejected
+      reviewedBy: integer("reviewed_by"),
+      reviewedAt: timestamp("reviewed_at"),
+      reviewNotes: text("review_notes"),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
+    insertStaffLeaveRequestSchema = createInsertSchema(staffLeaveRequests).omit({ id: true, createdAt: true });
+    staffLeaveAllowances = pgTable("staff_leave_allowances", {
+      id: serial("id").primaryKey(),
+      staffId: integer("staff_id").notNull(),
+      year: integer("year").notNull(),
+      totalDays: text("total_days").notNull().default("28"),
+      // pro-rata entitlement, e.g. "28" full-time
+      carryOver: text("carry_over").notNull().default("0"),
+      // days carried from previous year
+      leaveYearStart: text("leave_year_start").notNull().default("01-01"),
+      // MM-DD, e.g. "01-01" or "04-01"
+      maxCarryOverDays: text("max_carry_over_days").notNull().default("8"),
+      // UK discretionary cap (8 days normal, 20 if sick/family)
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
+    insertStaffLeaveAllowanceSchema = createInsertSchema(staffLeaveAllowances).omit({ id: true, createdAt: true });
+    staffIncidents = pgTable("staff_incidents", {
+      id: serial("id").primaryKey(),
+      reportedBy: integer("reported_by").notNull(),
+      incidentDate: text("incident_date").notNull(),
+      // ISO datetime string
+      location: text("location").notNull(),
+      description: text("description").notNull(),
+      injuryType: text("injury_type"),
+      // none | minor | medical_treatment | lost_time
+      personsInvolved: text("persons_involved"),
+      witnessNames: text("witness_names"),
+      actionTaken: text("action_taken"),
+      reportedToManager: boolean("reported_to_manager").notNull().default(false),
+      status: text("status").notNull().default("open"),
+      // open | under_review | closed
+      closedAt: timestamp("closed_at"),
+      closedBy: integer("closed_by"),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
+    staffRotaShifts = pgTable("staff_rota_shifts", {
+      id: serial("id").primaryKey(),
+      staffId: integer("staff_id").notNull(),
+      weekStart: text("week_start").notNull(),
+      // YYYY-MM-DD (Monday)
+      dayOfWeek: integer("day_of_week").notNull(),
+      // 0=Mon … 6=Sun
+      shiftStart: text("shift_start").notNull(),
+      // "HH:MM"
+      shiftEnd: text("shift_end").notNull(),
+      // "HH:MM"
+      role: text("role"),
+      // "Bar" | "Kitchen" | "Floor" | "Manager" etc.
+      notes: text("notes"),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    });
+    insertStaffRotaShiftSchema = createInsertSchema(staffRotaShifts).omit({ id: true, createdAt: true, updatedAt: true });
+    staffRotaPublished = pgTable("staff_rota_published", {
+      id: serial("id").primaryKey(),
+      weekStart: text("week_start").notNull().unique(),
+      // YYYY-MM-DD (Monday)
+      publishedAt: timestamp("published_at").defaultNow().notNull(),
+      publishedByUsername: text("published_by_username"),
+      notificationSent: boolean("notification_sent").notNull().default(false),
+      staffNotified: integer("staff_notified").notNull().default(0)
+    });
+    staffPushTokens = pgTable("staff_push_tokens", {
+      id: serial("id").primaryKey(),
+      staffId: integer("staff_id").notNull(),
+      token: text("token").notNull().unique(),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
   }
@@ -385,6 +505,58 @@ __export(storage_exports, {
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { eq, lt, lte, sql as sql2, and, gt, isNull, isNotNull, gte, desc, inArray, ne } from "drizzle-orm";
+function decryptCustomer(c) {
+  return {
+    ...c,
+    email: decrypt(c.email),
+    name: decrypt(c.name),
+    phone: c.phone ? decrypt(c.phone) : c.phone
+  };
+}
+function decryptContactMessage(m) {
+  return {
+    ...m,
+    name: decrypt(m.name),
+    email: decrypt(m.email),
+    phone: m.phone ? decrypt(m.phone) : m.phone,
+    message: decrypt(m.message)
+  };
+}
+function decryptPushToken(t) {
+  return {
+    ...t,
+    customerEmail: t.customerEmail ? decrypt(t.customerEmail) : t.customerEmail
+  };
+}
+function decryptAppOrder(o) {
+  return {
+    ...o,
+    customerName: o.customerName ? decrypt(o.customerName) : o.customerName,
+    customerEmail: o.customerEmail ? decrypt(o.customerEmail) : o.customerEmail
+  };
+}
+function decryptTimeEntry(entry) {
+  return {
+    ...entry,
+    clockInLat: entry.clockInLat ? decrypt(entry.clockInLat) : entry.clockInLat,
+    clockInLng: entry.clockInLng ? decrypt(entry.clockInLng) : entry.clockInLng,
+    clockOutLat: entry.clockOutLat ? decrypt(entry.clockOutLat) : entry.clockOutLat,
+    clockOutLng: entry.clockOutLng ? decrypt(entry.clockOutLng) : entry.clockOutLng
+  };
+}
+function decryptIncident(incident) {
+  return {
+    ...incident,
+    description: incident.description ? decrypt(incident.description) : incident.description
+  };
+}
+function decryptLeaveRequest(req) {
+  return {
+    ...req,
+    reason: req.reason ? decrypt(req.reason) : req.reason,
+    reviewNotes: req.reviewNotes ? decrypt(req.reviewNotes) : req.reviewNotes
+  };
+}
 function buildPoolConfig() {
   const rawUrl = process.env.DATABASE_URL;
   const url = new URL(rawUrl);
@@ -413,6 +585,41 @@ async function runStartupMigrations() {
         ADD COLUMN IF NOT EXISTS square_plan_variation_id_alt TEXT,
         ADD COLUMN IF NOT EXISTS square_customer_group_id TEXT,
         ADD COLUMN IF NOT EXISTS exclude_with_deals BOOLEAN NOT NULL DEFAULT FALSE;
+    `);
+    await client.query(`
+      ALTER TABLE customers
+        ADD COLUMN IF NOT EXISTS email_hash TEXT;
+    `);
+    await client.query(`
+      DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname IN ('customers_email_unique', 'customers_email_key')
+            AND conrelid = 'customers'::regclass
+        ) THEN
+          ALTER TABLE customers DROP CONSTRAINT IF EXISTS customers_email_unique;
+          ALTER TABLE customers DROP CONSTRAINT IF EXISTS customers_email_key;
+        END IF;
+      END $$;
+    `);
+    await client.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'customers_email_hash_unique'
+            AND conrelid = 'customers'::regclass
+        ) THEN
+          ALTER TABLE customers ADD CONSTRAINT customers_email_hash_unique UNIQUE (email_hash);
+        END IF;
+      END $$;
+    `);
+    await client.query(`
+      ALTER TABLE push_tokens
+        ADD COLUMN IF NOT EXISTS customer_email_hash TEXT;
+    `);
+    await client.query(`
+      ALTER TABLE app_orders
+        ADD COLUMN IF NOT EXISTS customer_email_hash TEXT;
     `);
     await client.query(`
       INSERT INTO membership_plans
@@ -500,25 +707,36 @@ var init_storage = __esm({
       }
       async registerPushToken(data) {
         const [existing] = await db.select().from(pushTokens).where(eq(pushTokens.token, data.token));
+        const encEmail = data.customerEmail ? encrypt(data.customerEmail) : null;
+        const emailHash = data.customerEmail ? hashEmail(data.customerEmail) : null;
         if (existing) {
-          if (data.customerEmail && existing.customerEmail !== data.customerEmail) {
-            const [updated] = await db.update(pushTokens).set({ customerEmail: data.customerEmail }).where(eq(pushTokens.token, data.token)).returning();
-            return updated;
+          if (data.customerEmail && existing.customerEmailHash !== emailHash) {
+            const [updated] = await db.update(pushTokens).set({ customerEmail: encEmail, customerEmailHash: emailHash }).where(eq(pushTokens.token, data.token)).returning();
+            return decryptPushToken(updated);
           }
-          return existing;
+          return decryptPushToken(existing);
         }
-        const [created] = await db.insert(pushTokens).values(data).returning();
-        return created;
+        const [created] = await db.insert(pushTokens).values({
+          ...data,
+          customerEmail: encEmail,
+          customerEmailHash: emailHash
+        }).returning();
+        return decryptPushToken(created);
       }
       async getAllPushTokens() {
-        return db.select().from(pushTokens);
+        const rows = await db.select().from(pushTokens);
+        return rows.map(decryptPushToken);
       }
       async removePushToken(token) {
         const result = await db.delete(pushTokens).where(eq(pushTokens.token, token)).returning();
         return result.length > 0;
       }
       async getPushTokensByEmail(email) {
-        return db.select().from(pushTokens).where(sql2`lower(${pushTokens.customerEmail}) = lower(${email})`);
+        const hash = hashEmail(email);
+        const byHash = await db.select().from(pushTokens).where(eq(pushTokens.customerEmailHash, hash));
+        if (byHash.length > 0) return byHash.map(decryptPushToken);
+        const byPlain = await db.select().from(pushTokens).where(sql2`lower(${pushTokens.customerEmail}) = lower(${email})`);
+        return byPlain.map(decryptPushToken);
       }
       async saveNotification(title, body, recipientCount, sentBy) {
         const [created] = await db.insert(notifications).values({ title, body, recipientCount, sentBy }).returning();
@@ -657,9 +875,13 @@ var init_storage = __esm({
         const activeHashes = new Set(
           recentBookings.map((b) => b.emailHash).filter(Boolean)
         );
-        const allCustomers = await db.select({ email: customers.email }).from(customers);
+        const allCustomers = await db.select({ emailHash: customers.emailHash, email: customers.email }).from(customers);
         for (const c of allCustomers) {
-          if (c.email) activeHashes.add(hashEmail(c.email));
+          if (c.emailHash) {
+            activeHashes.add(c.emailHash);
+          } else if (c.email && !c.email.startsWith("enc:")) {
+            activeHashes.add(hashEmail(c.email));
+          }
         }
         const oldBookings = await db.select().from(bookings).where(lt(bookings.date, cutoffStr));
         let count = 0;
@@ -697,6 +919,33 @@ var init_storage = __esm({
           lte(staffSessions.expiresAt, /* @__PURE__ */ new Date())
         ).returning();
         return result.length;
+      }
+      async anonymizeOldHRRecords() {
+        let count = 0;
+        const now = /* @__PURE__ */ new Date();
+        const gpsRetention = new Date(now);
+        gpsRetention.setFullYear(gpsRetention.getFullYear() - 3);
+        const oldTimeEntries = await db.select().from(staffTimeEntries).where(lt(staffTimeEntries.clockedInAt, gpsRetention));
+        for (const entry of oldTimeEntries) {
+          if (!entry.clockInLat && !entry.clockInLng && !entry.clockOutLat && !entry.clockOutLng) continue;
+          await db.update(staffTimeEntries).set({ clockInLat: null, clockInLng: null, clockOutLat: null, clockOutLng: null }).where(eq(staffTimeEntries.id, entry.id));
+          count++;
+        }
+        const hrRetention = new Date(now);
+        hrRetention.setFullYear(hrRetention.getFullYear() - 7);
+        const oldIncidents = await db.select().from(staffIncidents).where(lt(staffIncidents.createdAt, hrRetention));
+        for (const incident of oldIncidents) {
+          if (!incident.description || incident.description === "ANONYMIZED") continue;
+          await db.update(staffIncidents).set({ description: "ANONYMIZED" }).where(eq(staffIncidents.id, incident.id));
+          count++;
+        }
+        const oldLeaveRequests = await db.select().from(staffLeaveRequests).where(lt(staffLeaveRequests.createdAt, hrRetention));
+        for (const req of oldLeaveRequests) {
+          if (!req.reason || req.reason === "ANONYMIZED") continue;
+          await db.update(staffLeaveRequests).set({ reason: "ANONYMIZED", reviewNotes: req.reviewNotes ? "ANONYMIZED" : null }).where(eq(staffLeaveRequests.id, req.id));
+          count++;
+        }
+        return count;
       }
       async createStaffUser(username, pinHash, pinSalt, displayName, role, approvalStatus) {
         const [user] = await db.insert(staffUsers).values({
@@ -757,6 +1006,51 @@ var init_storage = __esm({
           migrated++;
         }
         return migrated;
+      }
+      async migrateEncryptExistingPII() {
+        const allCustomers = await db.select().from(customers);
+        for (const c of allCustomers) {
+          if (c.email.startsWith("enc:") || c.email === "ANONYMIZED") continue;
+          await db.update(customers).set({
+            email: encrypt(c.email),
+            emailHash: hashEmail(c.email),
+            name: c.name.startsWith("enc:") ? c.name : encrypt(c.name),
+            phone: c.phone && !c.phone.startsWith("enc:") ? encrypt(c.phone) : c.phone
+          }).where(eq(customers.id, c.id));
+        }
+        const allMessages = await db.select().from(contactMessages);
+        for (const m of allMessages) {
+          if (m.name === "ANONYMIZED" || m.name.startsWith("enc:")) continue;
+          await db.update(contactMessages).set({
+            name: encrypt(m.name),
+            email: encrypt(m.email),
+            phone: m.phone && !m.phone.startsWith("enc:") ? encrypt(m.phone) : m.phone,
+            message: m.message.startsWith("enc:") ? m.message : encrypt(m.message)
+          }).where(eq(contactMessages.id, m.id));
+        }
+        const allTokens = await db.select().from(pushTokens);
+        for (const t of allTokens) {
+          if (!t.customerEmail || t.customerEmail.startsWith("enc:")) continue;
+          await db.update(pushTokens).set({
+            customerEmail: encrypt(t.customerEmail),
+            customerEmailHash: hashEmail(t.customerEmail)
+          }).where(eq(pushTokens.id, t.id));
+        }
+        const allOrders = await db.select().from(appOrders);
+        for (const o of allOrders) {
+          if (!o.customerEmail && !o.customerName) continue;
+          if (o.customerEmail?.startsWith("enc:")) continue;
+          const updates = {};
+          if (o.customerName && !o.customerName.startsWith("enc:")) updates.customerName = encrypt(o.customerName);
+          if (o.customerEmail && !o.customerEmail.startsWith("enc:")) {
+            updates.customerEmail = encrypt(o.customerEmail);
+            updates.customerEmailHash = hashEmail(o.customerEmail);
+          }
+          if (Object.keys(updates).length > 0) {
+            await db.update(appOrders).set(updates).where(eq(appOrders.id, o.id));
+          }
+        }
+        console.log("[GDPR] Existing PII encryption migration complete");
       }
       async searchCustomers(query, limit = 6) {
         if (!query || query.trim().length < 2) return [];
@@ -822,23 +1116,31 @@ var init_storage = __esm({
         return result.length > 0;
       }
       async createContactMessage(data) {
-        const [created] = await db.insert(contactMessages).values(data).returning();
-        return created;
+        const encrypted = {
+          ...data,
+          name: encrypt(data.name),
+          email: encrypt(data.email),
+          phone: data.phone ? encrypt(data.phone) : void 0,
+          message: encrypt(data.message)
+        };
+        const [created] = await db.insert(contactMessages).values(encrypted).returning();
+        return decryptContactMessage(created);
       }
       async getContactMessages() {
-        return db.select().from(contactMessages).orderBy(contactMessages.createdAt);
+        const rows = await db.select().from(contactMessages).orderBy(contactMessages.createdAt);
+        return rows.map(decryptContactMessage);
       }
       async updateContactMessageStatus(id, status) {
         const [updated] = await db.update(contactMessages).set({ status }).where(eq(contactMessages.id, id)).returning();
-        return updated;
+        return updated ? decryptContactMessage(updated) : void 0;
       }
       async replyToContactMessage(id, replyText) {
         const [updated] = await db.update(contactMessages).set({ staffReply: replyText, repliedAt: /* @__PURE__ */ new Date(), status: "replied" }).where(eq(contactMessages.id, id)).returning();
-        return updated;
+        return updated ? decryptContactMessage(updated) : void 0;
       }
       async getContactMessage(id) {
         const [msg] = await db.select().from(contactMessages).where(eq(contactMessages.id, id));
-        return msg;
+        return msg ? decryptContactMessage(msg) : void 0;
       }
       async getSetting(key) {
         const [row] = await db.select().from(siteSettings).where(eq(siteSettings.key, key));
@@ -853,7 +1155,16 @@ var init_storage = __esm({
         for (const row of rows) result[row.key] = row.value;
         return result;
       }
-      async getBannerImages() {
+      async getBannerImages(page) {
+        if (page === "home") {
+          return db.select().from(bannerImages).where(and(eq(bannerImages.active, true), eq(bannerImages.showOnHome, true))).orderBy(bannerImages.sortOrder);
+        }
+        if (page === "order") {
+          return db.select().from(bannerImages).where(and(eq(bannerImages.active, true), eq(bannerImages.showOnOrder, true))).orderBy(bannerImages.sortOrder);
+        }
+        if (page === "events") {
+          return db.select().from(bannerImages).where(and(eq(bannerImages.active, true), eq(bannerImages.showOnEvents, true))).orderBy(bannerImages.sortOrder);
+        }
         return db.select().from(bannerImages).where(eq(bannerImages.active, true)).orderBy(bannerImages.sortOrder);
       }
       async getAllBannerImages() {
@@ -872,29 +1183,38 @@ var init_storage = __esm({
         return !!row;
       }
       async createCustomer(email, name, phone, passwordHash) {
+        const normalised = email.toLowerCase().trim();
         const [customer] = await db.insert(customers).values({
-          email: email.toLowerCase().trim(),
-          name,
-          phone,
+          email: encrypt(normalised),
+          emailHash: hashEmail(normalised),
+          name: encrypt(name),
+          phone: phone ? encrypt(phone) : null,
           passwordHash,
           privacyConsentAt: /* @__PURE__ */ new Date()
         }).returning();
-        return customer;
+        return decryptCustomer(customer);
       }
       async getCustomerByEmail(email) {
-        const [customer] = await db.select().from(customers).where(eq(customers.email, email.toLowerCase().trim()));
-        return customer;
+        const hash = hashEmail(email.toLowerCase().trim());
+        const [byHash] = await db.select().from(customers).where(eq(customers.emailHash, hash));
+        if (byHash) return decryptCustomer(byHash);
+        const [byPlain] = await db.select().from(customers).where(eq(customers.email, email.toLowerCase().trim()));
+        return byPlain ? decryptCustomer(byPlain) : void 0;
       }
       async getCustomerById(id) {
         const [customer] = await db.select().from(customers).where(eq(customers.id, id));
-        return customer;
+        return customer ? decryptCustomer(customer) : void 0;
       }
       async getAllCustomers() {
-        return db.select().from(customers).orderBy(customers.id);
+        const rows = await db.select().from(customers).orderBy(customers.id);
+        return rows.map(decryptCustomer);
       }
       async updateCustomer(id, data) {
-        const [updated] = await db.update(customers).set(data).where(eq(customers.id, id)).returning();
-        return updated;
+        const encData = {};
+        if (data.name) encData.name = encrypt(data.name);
+        if (data.phone) encData.phone = encrypt(data.phone);
+        const [updated] = await db.update(customers).set(encData).where(eq(customers.id, id)).returning();
+        return updated ? decryptCustomer(updated) : void 0;
       }
       async deleteCustomer(id) {
         await db.delete(customerSessions).where(eq(customerSessions.customerId, id));
@@ -1116,8 +1436,9 @@ var init_storage = __esm({
           squareOrderId: data.squareOrderId ?? null,
           squarePaymentId: null,
           tableNote: data.tableNote ?? null,
-          customerName: data.customerName ?? null,
-          customerEmail: data.customerEmail ?? null,
+          customerName: data.customerName ? encrypt(data.customerName) : null,
+          customerEmail: data.customerEmail ? encrypt(data.customerEmail) : null,
+          customerEmailHash: data.customerEmail ? hashEmail(data.customerEmail) : null,
           itemsJson: data.itemsJson,
           totalPence: data.totalPence,
           discountPercent: data.discountPercent ?? null,
@@ -1126,15 +1447,16 @@ var init_storage = __esm({
         });
       }
       async getRecentAppOrders(limit = 100) {
-        return db.select().from(appOrders).orderBy(desc(appOrders.createdAt)).limit(limit);
+        const rows = await db.select().from(appOrders).orderBy(desc(appOrders.createdAt)).limit(limit);
+        return rows.map(decryptAppOrder);
       }
       async getAppOrder(id) {
         const rows = await db.select().from(appOrders).where(eq(appOrders.id, id));
-        return rows[0] ?? null;
+        return rows[0] ? decryptAppOrder(rows[0]) : null;
       }
       async getOrderBySquareOrderId(squareOrderId) {
         const rows = await db.select().from(appOrders).where(eq(appOrders.squareOrderId, squareOrderId));
-        return rows[0] ?? null;
+        return rows[0] ? decryptAppOrder(rows[0]) : null;
       }
       async updateAppOrderPaid(squareOrderId, squarePaymentId) {
         await db.update(appOrders).set({ status: "paid", squarePaymentId }).where(eq(appOrders.squareOrderId, squareOrderId));
@@ -1143,11 +1465,17 @@ var init_storage = __esm({
         await db.update(appOrders).set({ status }).where(eq(appOrders.id, id));
       }
       async getCustomerOrders(email) {
-        return db.select().from(appOrders).where(and(
-          eq(appOrders.customerEmail, email),
-          // Never show expired (abandoned) orders to the customer
+        const emailHash = hashEmail(email);
+        const byHash = await db.select().from(appOrders).where(and(
+          eq(appOrders.customerEmailHash, emailHash),
           sql2`${appOrders.status} != 'expired'`
         )).orderBy(desc(appOrders.createdAt)).limit(50);
+        if (byHash.length > 0) return byHash.map(decryptAppOrder);
+        const byPlain = await db.select().from(appOrders).where(and(
+          eq(appOrders.customerEmail, email),
+          sql2`${appOrders.status} != 'expired'`
+        )).orderBy(desc(appOrders.createdAt)).limit(50);
+        return byPlain.map(decryptAppOrder);
       }
       async expireStaleOrders(olderThanMinutes = 30) {
         const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1e3);
@@ -1171,6 +1499,179 @@ var init_storage = __esm({
       async getAuditLogsForOrders(orderIds) {
         if (orderIds.length === 0) return [];
         return db.select().from(orderAuditLog).where(inArray(orderAuditLog.orderId, orderIds)).orderBy(desc(orderAuditLog.createdAt));
+      }
+      // ══════════════════════════════════════════════════════════════════
+      // STAFF HR — TIME ENTRIES
+      // ══════════════════════════════════════════════════════════════════
+      async getActiveClockEntry(staffId) {
+        const [entry] = await db.select().from(staffTimeEntries).where(and(eq(staffTimeEntries.staffId, staffId), eq(staffTimeEntries.status, "active"))).orderBy(desc(staffTimeEntries.clockedInAt)).limit(1);
+        return entry ?? null;
+      }
+      async clockIn(staffId, lat, lng) {
+        const [entry] = await db.insert(staffTimeEntries).values({
+          staffId,
+          clockedInAt: /* @__PURE__ */ new Date(),
+          status: "active",
+          clockInLat: lat ? encrypt(lat) : null,
+          clockInLng: lng ? encrypt(lng) : null
+        }).returning();
+        return decryptTimeEntry(entry);
+      }
+      async clockOut(entryId, lat, lng) {
+        const [entry] = await db.update(staffTimeEntries).set({
+          clockedOutAt: /* @__PURE__ */ new Date(),
+          status: "completed",
+          clockOutLat: lat ? encrypt(lat) : null,
+          clockOutLng: lng ? encrypt(lng) : null
+        }).where(eq(staffTimeEntries.id, entryId)).returning();
+        return entry ? decryptTimeEntry(entry) : null;
+      }
+      async getTimeEntriesForStaff(staffId, limit = 50) {
+        const rows = await db.select().from(staffTimeEntries).where(eq(staffTimeEntries.staffId, staffId)).orderBy(desc(staffTimeEntries.clockedInAt)).limit(limit);
+        return rows.map(decryptTimeEntry);
+      }
+      async getAllTimeEntries(limit = 200) {
+        const rows = await db.select().from(staffTimeEntries).orderBy(desc(staffTimeEntries.clockedInAt)).limit(limit);
+        return rows.map(decryptTimeEntry);
+      }
+      async amendTimeEntry(id, amendedBy, reason, updates) {
+        const [entry] = await db.update(staffTimeEntries).set({ ...updates, status: "amended", amendedBy, amendedAt: /* @__PURE__ */ new Date(), amendReason: reason }).where(eq(staffTimeEntries.id, id)).returning();
+        return entry ?? null;
+      }
+      // ══════════════════════════════════════════════════════════════════
+      // STAFF HR — LEAVE REQUESTS
+      // ══════════════════════════════════════════════════════════════════
+      async createLeaveRequest(data) {
+        const [req] = await db.insert(staffLeaveRequests).values({
+          ...data,
+          status: "pending",
+          reason: data.reason ? encrypt(data.reason) : null
+        }).returning();
+        return decryptLeaveRequest(req);
+      }
+      async getLeaveRequestsForStaff(staffId) {
+        const rows = await db.select().from(staffLeaveRequests).where(eq(staffLeaveRequests.staffId, staffId)).orderBy(desc(staffLeaveRequests.createdAt));
+        return rows.map(decryptLeaveRequest);
+      }
+      async getAllLeaveRequests() {
+        const rows = await db.select().from(staffLeaveRequests).orderBy(desc(staffLeaveRequests.createdAt));
+        return rows.map(decryptLeaveRequest);
+      }
+      async reviewLeaveRequest(id, reviewedBy, status, reviewNotes) {
+        const [req] = await db.update(staffLeaveRequests).set({
+          status,
+          reviewedBy,
+          reviewedAt: /* @__PURE__ */ new Date(),
+          reviewNotes: reviewNotes ? encrypt(reviewNotes) : null
+        }).where(eq(staffLeaveRequests.id, id)).returning();
+        return req ? decryptLeaveRequest(req) : null;
+      }
+      // ══════════════════════════════════════════════════════════════════
+      // STAFF HR — LEAVE ALLOWANCES
+      // ══════════════════════════════════════════════════════════════════
+      async getLeaveAllowance(staffId, year) {
+        const [row] = await db.select().from(staffLeaveAllowances).where(and(eq(staffLeaveAllowances.staffId, staffId), eq(staffLeaveAllowances.year, year)));
+        return row ?? null;
+      }
+      async upsertLeaveAllowance(staffId, year, totalDays, carryOver, leaveYearStart, maxCarryOverDays) {
+        const existing = await this.getLeaveAllowance(staffId, year);
+        const updateFields = { totalDays, carryOver };
+        if (leaveYearStart !== void 0) updateFields.leaveYearStart = leaveYearStart;
+        if (maxCarryOverDays !== void 0) updateFields.maxCarryOverDays = maxCarryOverDays;
+        if (existing) {
+          const [row2] = await db.update(staffLeaveAllowances).set(updateFields).where(eq(staffLeaveAllowances.id, existing.id)).returning();
+          return row2;
+        }
+        const [row] = await db.insert(staffLeaveAllowances).values({
+          staffId,
+          year,
+          totalDays,
+          carryOver,
+          leaveYearStart: leaveYearStart ?? "01-01",
+          maxCarryOverDays: maxCarryOverDays ?? "8"
+        }).returning();
+        return row;
+      }
+      async getAllLeaveAllowances(year) {
+        return db.select().from(staffLeaveAllowances).where(eq(staffLeaveAllowances.year, year));
+      }
+      async updateStaffEmployment(staffId, contractedDaysPerWeek, employmentStartDate) {
+        const [row] = await db.update(staffUsers).set({ contractedDaysPerWeek, employmentStartDate: employmentStartDate || null }).where(eq(staffUsers.id, staffId)).returning();
+        return row;
+      }
+      // ══════════════════════════════════════════════════════════════════
+      // STAFF HR — INCIDENT REPORTS
+      // ══════════════════════════════════════════════════════════════════
+      async createIncident(data) {
+        const encrypted = { ...data, description: data.description ? encrypt(data.description) : data.description };
+        const [incident] = await db.insert(staffIncidents).values(encrypted).returning();
+        return decryptIncident(incident);
+      }
+      async getIncidentsForStaff(staffId) {
+        const rows = await db.select().from(staffIncidents).where(eq(staffIncidents.reportedBy, staffId)).orderBy(desc(staffIncidents.createdAt));
+        return rows.map(decryptIncident);
+      }
+      async getAllIncidents() {
+        const rows = await db.select().from(staffIncidents).orderBy(desc(staffIncidents.createdAt));
+        return rows.map(decryptIncident);
+      }
+      async updateIncidentStatus(id, status, closedBy) {
+        const [incident] = await db.update(staffIncidents).set({ status, ...status === "closed" ? { closedAt: /* @__PURE__ */ new Date(), closedBy: closedBy ?? null } : {} }).where(eq(staffIncidents.id, id)).returning();
+        return incident ? decryptIncident(incident) : null;
+      }
+      // ══════════════════════════════════════════════════════════════════
+      // STAFF ROTA
+      // ══════════════════════════════════════════════════════════════════
+      async getRotaShifts(weekStart) {
+        return db.select().from(staffRotaShifts).where(eq(staffRotaShifts.weekStart, weekStart)).orderBy(staffRotaShifts.dayOfWeek, staffRotaShifts.shiftStart);
+      }
+      async getRotaShiftsForStaff(staffId, weekStart) {
+        return db.select().from(staffRotaShifts).where(and(eq(staffRotaShifts.staffId, staffId), eq(staffRotaShifts.weekStart, weekStart))).orderBy(staffRotaShifts.dayOfWeek, staffRotaShifts.shiftStart);
+      }
+      async upsertRotaShift(data, existingId) {
+        if (existingId) {
+          const [updated] = await db.update(staffRotaShifts).set({ ...data, updatedAt: /* @__PURE__ */ new Date() }).where(eq(staffRotaShifts.id, existingId)).returning();
+          return updated;
+        }
+        const [created] = await db.insert(staffRotaShifts).values(data).returning();
+        return created;
+      }
+      async deleteRotaShift(id) {
+        const result = await db.delete(staffRotaShifts).where(eq(staffRotaShifts.id, id)).returning();
+        return result.length > 0;
+      }
+      async publishRota(weekStart, publishedByUsername) {
+        const [existing] = await db.select().from(staffRotaPublished).where(eq(staffRotaPublished.weekStart, weekStart));
+        if (existing) {
+          const [updated] = await db.update(staffRotaPublished).set({ publishedAt: /* @__PURE__ */ new Date(), publishedByUsername, notificationSent: false }).where(eq(staffRotaPublished.weekStart, weekStart)).returning();
+          return updated;
+        }
+        const [created] = await db.insert(staffRotaPublished).values({ weekStart, publishedByUsername, notificationSent: false, staffNotified: 0 }).returning();
+        return created;
+      }
+      async getRotaPublished(weekStart) {
+        const [row] = await db.select().from(staffRotaPublished).where(eq(staffRotaPublished.weekStart, weekStart));
+        return row;
+      }
+      // ══════════════════════════════════════════════════════════════════
+      // STAFF PUSH TOKENS
+      // ══════════════════════════════════════════════════════════════════
+      async upsertStaffPushToken(staffId, token) {
+        const [existing] = await db.select().from(staffPushTokens).where(eq(staffPushTokens.token, token));
+        if (existing) {
+          const [updated] = await db.update(staffPushTokens).set({ staffId, updatedAt: /* @__PURE__ */ new Date() }).where(eq(staffPushTokens.token, token)).returning();
+          return updated;
+        }
+        const [created] = await db.insert(staffPushTokens).values({ staffId, token }).returning();
+        return created;
+      }
+      async getStaffPushTokens(staffIds) {
+        if (!staffIds.length) return [];
+        return db.select().from(staffPushTokens).where(inArray(staffPushTokens.staffId, staffIds));
+      }
+      async removeStaffPushToken(token) {
+        const result = await db.delete(staffPushTokens).where(eq(staffPushTokens.token, token)).returning();
+        return result.length > 0;
       }
     };
     storage = new DatabaseStorage();
@@ -1342,14 +1843,14 @@ async function findSquareCustomerByEmail(email) {
   });
   return data.customers?.[0] || null;
 }
-async function createSquareSubscription(squareCustomerId, planVariationId, locationId, cardId) {
+async function createSquareSubscription(squareCustomerId, planVariationId, locationId, cardId, startDate) {
   const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const body = {
     idempotency_key: `sub-${squareCustomerId}-${Date.now()}`,
     location_id: locationId,
     plan_variation_id: planVariationId,
     customer_id: squareCustomerId,
-    start_date: today
+    start_date: startDate || today
   };
   if (cardId) body.card_id = cardId;
   const data = await squareRequest("POST", "/v2/subscriptions", body);
@@ -2127,6 +2628,140 @@ async function fetchTicketSourceEvents() {
   }
 }
 
+// server/uk-leave-utils.ts
+function easterSunday(year) {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = (h + l - 7 * m + 114) % 31 + 1;
+  return new Date(Date.UTC(year, month - 1, day));
+}
+function addDays(d, n) {
+  const r = new Date(d);
+  r.setUTCDate(r.getUTCDate() + n);
+  return r;
+}
+function toIso(d) {
+  return d.toISOString().slice(0, 10);
+}
+function substituteWeekend(d) {
+  const dow = d.getUTCDay();
+  if (dow === 6) return addDays(d, 2);
+  if (dow === 0) return addDays(d, 1);
+  return d;
+}
+function getEnglandWalesBankHolidays(year) {
+  const holidays = [];
+  holidays.push(substituteWeekend(new Date(Date.UTC(year, 0, 1))));
+  const easter = easterSunday(year);
+  holidays.push(addDays(easter, -2));
+  holidays.push(addDays(easter, 1));
+  const may1 = new Date(Date.UTC(year, 4, 1));
+  const may1dow = may1.getUTCDay();
+  const firstMayMonday = may1dow === 1 ? may1 : addDays(may1, (8 - may1dow) % 7);
+  holidays.push(firstMayMonday);
+  const may31 = new Date(Date.UTC(year, 4, 31));
+  const may31dow = may31.getUTCDay();
+  const lastMayMonday = may31dow === 1 ? may31 : addDays(may31, -(may31dow === 0 ? 6 : may31dow - 1));
+  holidays.push(lastMayMonday);
+  const aug31 = new Date(Date.UTC(year, 7, 31));
+  const aug31dow = aug31.getUTCDay();
+  const lastAugMonday = aug31dow === 1 ? aug31 : addDays(aug31, -(aug31dow === 0 ? 6 : aug31dow - 1));
+  holidays.push(lastAugMonday);
+  const xmas = new Date(Date.UTC(year, 11, 25));
+  const boxing = new Date(Date.UTC(year, 11, 26));
+  const xmasDow = xmas.getUTCDay();
+  if (xmasDow === 6) {
+    holidays.push(addDays(xmas, 2));
+    holidays.push(addDays(xmas, 3));
+  } else if (xmasDow === 0) {
+    holidays.push(addDays(xmas, 2));
+    holidays.push(boxing);
+  } else if (xmasDow === 5) {
+    holidays.push(xmas);
+    holidays.push(addDays(boxing, 2));
+  } else {
+    holidays.push(xmas);
+    holidays.push(boxing);
+  }
+  return [...new Set(holidays.map(toIso))].sort();
+}
+function countWorkingDays(startDate, endDate) {
+  const s = /* @__PURE__ */ new Date(startDate + "T00:00:00Z");
+  const e = /* @__PURE__ */ new Date(endDate + "T00:00:00Z");
+  if (isNaN(s.getTime()) || isNaN(e.getTime()) || e < s) return 0;
+  const startYear = s.getUTCFullYear();
+  const endYear = e.getUTCFullYear();
+  const bankHolidaySet = /* @__PURE__ */ new Set();
+  for (let y = startYear; y <= endYear; y++) {
+    for (const d of getEnglandWalesBankHolidays(y)) bankHolidaySet.add(d);
+  }
+  let count = 0;
+  const cur = new Date(s);
+  while (cur <= e) {
+    const dow = cur.getUTCDay();
+    const iso = toIso(cur);
+    if (dow !== 0 && dow !== 6 && !bankHolidaySet.has(iso)) count++;
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return count;
+}
+function calculateLeaveYearBounds(leaveYearStart, referenceDate = /* @__PURE__ */ new Date()) {
+  const [mm, dd] = leaveYearStart.split("-").map(Number);
+  const refYear = referenceDate.getFullYear();
+  let yearStart = new Date(Date.UTC(refYear, mm - 1, dd));
+  if (referenceDate < yearStart) {
+    yearStart = new Date(Date.UTC(refYear - 1, mm - 1, dd));
+  }
+  const nextYearStart = new Date(yearStart);
+  nextYearStart.setUTCFullYear(nextYearStart.getUTCFullYear() + 1);
+  const yearEnd = addDays(nextYearStart, -1);
+  return { yearStart, yearEnd, leaveYear: yearStart.getUTCFullYear() };
+}
+function roundUpHalf(n) {
+  return Math.ceil(n * 2) / 2;
+}
+function calculateProRataEntitlement(contractedDaysPerWeek, employmentStartDate, leaveYearStart, referenceDate = /* @__PURE__ */ new Date()) {
+  const fullEntitlement = roundUpHalf(contractedDaysPerWeek * 5.6);
+  if (!employmentStartDate) {
+    return { fullEntitlement, actualEntitlement: fullEntitlement, isProRata: false, monthsAccrued: 12 };
+  }
+  const empStart = /* @__PURE__ */ new Date(employmentStartDate + "T00:00:00Z");
+  if (isNaN(empStart.getTime())) {
+    return { fullEntitlement, actualEntitlement: fullEntitlement, isProRata: false, monthsAccrued: 12 };
+  }
+  const { yearStart, yearEnd } = calculateLeaveYearBounds(leaveYearStart, referenceDate);
+  if (empStart <= yearStart) {
+    return { fullEntitlement, actualEntitlement: fullEntitlement, isProRata: false, monthsAccrued: 12 };
+  }
+  let months = 0;
+  const cur = new Date(empStart);
+  while (cur <= yearEnd) {
+    const next = new Date(cur);
+    next.setUTCMonth(next.getUTCMonth() + 1);
+    if (next > yearEnd) break;
+    months++;
+    cur.setUTCMonth(cur.getUTCMonth() + 1);
+  }
+  months++;
+  const monthsAccrued = Math.min(months, 12);
+  const actualEntitlement = roundUpHalf(monthsAccrued / 12 * fullEntitlement);
+  return { fullEntitlement, actualEntitlement, isProRata: empStart > yearStart, monthsAccrued };
+}
+function applyCarryOverCap(carryOver, maxCarryOverDays) {
+  return Math.min(carryOver, maxCarryOverDays);
+}
+
 // server/routes.ts
 function tsIdToNumber(tsId) {
   let hash = 5381;
@@ -2278,7 +2913,7 @@ async function sendEmailViaSMTP(to, subject, html) {
       port,
       secure: port === 465,
       auth: { user, pass },
-      tls: { rejectUnauthorized: false }
+      tls: { rejectUnauthorized: true }
     });
     await transporter.sendMail({ from: `"The 147" <${user}>`, to, subject, html });
     console.log(`[EMAIL SMTP] Sent to ${maskEmail(to)}`);
@@ -2663,9 +3298,11 @@ async function staffAuth(req, res, next) {
     const user = await storage.getStaffUserByUsername(session.staffUsername);
     req.staffRole = user?.role || "staff";
     req.staffUsername = session.staffUsername;
+    req.staffUser = user || null;
   } else {
     req.staffRole = "manager";
     req.staffUsername = null;
+    req.staffUser = { id: null, role: "manager", username: null, displayName: "System" };
   }
   next();
 }
@@ -2818,7 +3455,7 @@ async function registerRoutes(app2) {
       }
       clearFailedLogins(clientIp);
       const token2 = randomBytes2(32).toString("hex");
-      const expiresAt2 = new Date(Date.now() + 8 * 60 * 60 * 1e3);
+      const expiresAt2 = new Date(Date.now() + 24 * 60 * 60 * 1e3);
       const session2 = await storage.createStaffSession(token2, expiresAt2, staffUser.id, staffUser.username);
       return res.json({
         token: session2.token,
@@ -2838,7 +3475,7 @@ async function registerRoutes(app2) {
     }
     clearFailedLogins(clientIp);
     const token = randomBytes2(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1e3);
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1e3);
     const session = await storage.createStaffSession(token, expiresAt);
     res.json({ token: session.token, expiresAt: session.expiresAt, role: "manager" });
   });
@@ -4737,18 +5374,18 @@ async function registerRoutes(app2) {
         return res.json(weeklyEvents);
       }
       if (!eventType || eventType === "event") {
-        const tsEvents = await fetchTicketSourceEvents();
-        if (tsEvents.length > 0) {
-          const mapped = tsEvents.map(mapTsEvent);
-          mapped.sort((a, b) => {
-            if (!a.date) return 1;
-            if (!b.date) return -1;
-            return a.date.localeCompare(b.date) || (a.time || "").localeCompare(b.time || "");
-          });
-          return res.json(mapped);
-        }
-        const dbEvents = await storage.getActiveEvents(eventType);
-        return res.json(dbEvents);
+        const [tsEvents, dbEvents] = await Promise.all([
+          fetchTicketSourceEvents().catch(() => []),
+          storage.getActiveEvents("event")
+        ]);
+        const mapped = tsEvents.map(mapTsEvent);
+        const combined = [...dbEvents, ...mapped];
+        combined.sort((a, b) => {
+          if (!a.date) return 1;
+          if (!b.date) return -1;
+          return a.date.localeCompare(b.date) || (a.time || "").localeCompare(b.time || "");
+        });
+        return res.json(combined);
       }
       const allEvents = await storage.getActiveEvents(eventType);
       res.json(allEvents);
@@ -4757,8 +5394,12 @@ async function registerRoutes(app2) {
       res.json([]);
     }
   });
-  app2.get("/api/events/all", staffAuth, managerAuth, async (_req, res) => {
+  app2.get("/api/events/all", staffAuth, managerAuth, async (req, res) => {
+    const { type } = req.query;
     const allEvents = await storage.getEvents();
+    if (type === "event" || type === "weekly") {
+      return res.json(allEvents.filter((e) => e.eventType === type));
+    }
     res.json(allEvents);
   });
   app2.post("/api/events", staffAuth, managerAuth, async (req, res) => {
@@ -4799,8 +5440,9 @@ async function registerRoutes(app2) {
     await storage.setSetting(req.params.key, String(value));
     res.json({ key: req.params.key, value: String(value) });
   });
-  app2.get("/api/banner-images", async (_req, res) => {
-    const images = await storage.getBannerImages();
+  app2.get("/api/banner-images", async (req, res) => {
+    const page = typeof req.query.page === "string" ? req.query.page : void 0;
+    const images = await storage.getBannerImages(page);
     res.json(images);
   });
   app2.get("/api/banner-images/all", staffAuth, async (_req, res) => {
@@ -5745,7 +6387,7 @@ Phone: ${phone}` : ""}`,
   app2.post("/api/membership/join", customerAuth, async (req, res) => {
     try {
       const customerId = req.customerId;
-      const { planId, billingFrequency = "monthly" } = req.body ?? {};
+      const { planId, billingFrequency = "monthly", startDate } = req.body ?? {};
       if (!planId) return res.status(400).json({ message: "planId is required" });
       const isAnnual = billingFrequency === "annual";
       const existing = await storage.getMembershipSubscriptionByCustomer(customerId);
@@ -5755,27 +6397,30 @@ Phone: ${phone}` : ""}`,
       const plan = await storage.getMembershipPlan(parseInt(planId));
       if (!plan || !plan.active) return res.status(404).json({ message: "Plan not found" });
       const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-      const periodEnd = /* @__PURE__ */ new Date();
+      const periodStart = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) && startDate > today ? startDate : today;
+      const periodEndDate = /* @__PURE__ */ new Date(periodStart + "T12:00:00Z");
       if (isAnnual) {
-        periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+        periodEndDate.setFullYear(periodEndDate.getFullYear() + 1);
       } else {
-        periodEnd.setMonth(periodEnd.getMonth() + 1);
+        periodEndDate.setMonth(periodEndDate.getMonth() + 1);
       }
+      const periodEnd = periodEndDate.toISOString().slice(0, 10);
       if (existing && existing.id) {
         await storage.updateMembershipSubscription(existing.id, {
           status: "cancelled",
           cancelledAt: /* @__PURE__ */ new Date()
         });
       }
+      const initialStatus = periodStart > today ? "pending_start" : "pending";
       const sub = await storage.createMembershipSubscription({
         customerId,
         planId: plan.id,
-        status: "pending",
-        currentPeriodStart: today,
-        currentPeriodEnd: periodEnd.toISOString().slice(0, 10),
+        status: initialStatus,
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
         hoursUsedThisPeriod: 0,
         guestPassesUsed: 0,
-        staffNotes: null,
+        staffNotes: periodStart > today ? `[Deferred start: ${periodStart}]` : null,
         source: isAnnual ? "app_annual" : "app"
       });
       let checkoutUrl = null;
@@ -6233,17 +6878,21 @@ Phone: ${phone}` : ""}`,
     }
   });
   app2.post("/api/staff/membership/subscriptions", staffAuth, async (req, res) => {
-    const { customerId, planId, status = "active", staffNotes, source = "staff" } = req.body ?? {};
+    const { customerId, planId, status = "active", staffNotes, source = "staff", startDate } = req.body ?? {};
     if (!customerId || !planId) return res.status(400).json({ message: "customerId and planId are required" });
     const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-    const nextMonth = /* @__PURE__ */ new Date();
-    nextMonth.setMonth(nextMonth.getMonth() + 1);
+    const periodStart = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) ? startDate : today;
+    const periodStartDate = /* @__PURE__ */ new Date(periodStart + "T12:00:00Z");
+    const periodEndDate = new Date(periodStartDate);
+    periodEndDate.setMonth(periodEndDate.getMonth() + 1);
+    const periodEnd = periodEndDate.toISOString().slice(0, 10);
+    const effectiveStatus = startDate && startDate > today ? "pending_start" : status;
     const sub = await storage.createMembershipSubscription({
       customerId: parseInt(customerId),
       planId: parseInt(planId),
-      status,
-      currentPeriodStart: today,
-      currentPeriodEnd: nextMonth.toISOString().slice(0, 10),
+      status: effectiveStatus,
+      currentPeriodStart: periodStart,
+      currentPeriodEnd: periodEnd,
       hoursUsedThisPeriod: 0,
       guestPassesUsed: 0,
       staffNotes: staffNotes || null,
@@ -6258,7 +6907,7 @@ Phone: ${phone}` : ""}`,
           if (!sqCustomer) sqCustomer = await createSquareCustomer(customer.name, customer.email, customer.phone || void 0);
           if (sqCustomer) {
             const locationId = process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID;
-            const sqSub = await createSquareSubscription(sqCustomer.id, plan.squarePlanVariationId, locationId).catch(() => null);
+            const sqSub = await createSquareSubscription(sqCustomer.id, plan.squarePlanVariationId, locationId, void 0, periodStart).catch(() => null);
             if (sqSub) {
               await storage.updateMembershipSubscription(sub.id, {
                 squareSubscriptionId: sqSub.id,
@@ -6347,6 +6996,60 @@ Phone: ${phone}` : ""}`,
       res.status(500).send("Page unavailable");
     }
   });
+  app2.post("/api/admin/sar", staffAuth, managerAuth, async (req, res) => {
+    const { email } = req.body ?? {};
+    if (!email || typeof email !== "string" || !email.includes("@")) {
+      return res.status(400).json({ message: "A valid email address is required." });
+    }
+    const normalised = email.trim().toLowerCase();
+    const [customer, bookings2, pushTokens2, orders, allMessages] = await Promise.all([
+      storage.getCustomerByEmail(normalised),
+      storage.getBookingsByEmail(normalised),
+      storage.getPushTokensByEmail(normalised),
+      storage.getCustomerOrders(normalised),
+      storage.getContactMessages()
+    ]);
+    const contactMessages2 = allMessages.filter((m) => m.email.toLowerCase() === normalised);
+    const report = {
+      generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      subjectEmail: normalised,
+      customerAccount: customer ? {
+        id: customer.id,
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone ?? null,
+        createdAt: customer.createdAt,
+        privacyConsentAt: customer.privacyConsentAt ?? null
+      } : null,
+      bookings: bookings2.map((b) => ({
+        id: b.id,
+        date: b.date,
+        startTime: b.startTime,
+        tableNumber: b.tableNumber,
+        status: b.status,
+        createdAt: b.createdAt
+      })),
+      contactMessages: contactMessages2.map((m) => ({
+        id: m.id,
+        subject: m.subject,
+        message: m.message,
+        createdAt: m.createdAt,
+        status: m.status
+      })),
+      pushTokens: pushTokens2.map((t) => ({
+        platform: t.platform,
+        deviceName: t.deviceName,
+        createdAt: t.createdAt
+      })),
+      orders: orders.map((o) => ({
+        id: o.id,
+        totalPence: o.totalPence,
+        status: o.status,
+        createdAt: o.createdAt
+      }))
+    };
+    res.json(report);
+  });
   app2.post("/api/request-deletion", async (req, res) => {
     const { email } = req.body ?? {};
     if (!email || typeof email !== "string" || !email.includes("@")) {
@@ -6358,6 +7061,334 @@ Phone: ${phone}` : ""}`,
     if (customer) await storage.deleteCustomer(customer.id);
     res.json({ success: true, message: "If an account existed for that email, all data has been permanently deleted." });
   });
+  app2.get("/api/hr/geofence", staffAuth, async (_req, res) => {
+    const lat = await storage.getSetting("geofence_lat");
+    const lng = await storage.getSetting("geofence_lng");
+    const radius = await storage.getSetting("geofence_radius");
+    res.json({ lat: lat ?? null, lng: lng ?? null, radius: radius ? Number(radius) : 200 });
+  });
+  app2.put("/api/hr/geofence", staffAuth, managerAuth, async (req, res) => {
+    const { lat, lng, radius } = req.body;
+    if (!lat || !lng) return res.status(400).json({ message: "lat and lng are required" });
+    await storage.setSetting("geofence_lat", String(lat));
+    await storage.setSetting("geofence_lng", String(lng));
+    await storage.setSetting("geofence_radius", String(radius ?? 200));
+    res.json({ lat: String(lat), lng: String(lng), radius: Number(radius ?? 200) });
+  });
+  app2.get("/api/hr/clock-status", staffAuth, async (req, res) => {
+    const active = await storage.getActiveClockEntry(req.staffUser.id);
+    res.json({ active: active ?? null });
+  });
+  app2.post("/api/hr/clock-in", staffAuth, async (req, res) => {
+    const existing = await storage.getActiveClockEntry(req.staffUser.id);
+    if (existing) return res.status(409).json({ message: "Already clocked in" });
+    const { lat, lng } = req.body;
+    const entry = await storage.clockIn(req.staffUser.id, lat ? String(lat) : void 0, lng ? String(lng) : void 0);
+    res.status(201).json(entry);
+  });
+  app2.post("/api/hr/clock-out", staffAuth, async (req, res) => {
+    const active = await storage.getActiveClockEntry(req.staffUser.id);
+    if (!active) return res.status(404).json({ message: "No active clock-in found" });
+    const { lat, lng } = req.body;
+    const entry = await storage.clockOut(active.id, lat ? String(lat) : void 0, lng ? String(lng) : void 0);
+    res.json(entry);
+  });
+  app2.get("/api/hr/time-entries", staffAuth, async (req, res) => {
+    const entries = await storage.getTimeEntriesForStaff(req.staffUser.id);
+    res.json(entries);
+  });
+  app2.get("/api/hr/time-entries/all", staffAuth, managerAuth, async (_req, res) => {
+    const entries = await storage.getAllTimeEntries();
+    const users2 = await storage.getAllStaffUsers();
+    const userMap = Object.fromEntries(users2.map((u) => [u.id, u.displayName || u.username]));
+    const enriched = entries.map((e) => ({ ...e, staffName: userMap[e.staffId] || `Staff #${e.staffId}` }));
+    res.json(enriched);
+  });
+  app2.patch("/api/hr/time-entries/:id/amend", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const { reason, clockedInAt, clockedOutAt } = req.body;
+    if (!reason) return res.status(400).json({ message: "Amendment reason required" });
+    const updates = {};
+    if (clockedInAt) updates.clockedInAt = new Date(clockedInAt);
+    if (clockedOutAt) updates.clockedOutAt = new Date(clockedOutAt);
+    const entry = await storage.amendTimeEntry(id, req.staffUser.id, reason, updates);
+    if (!entry) return res.status(404).json({ message: "Entry not found" });
+    res.json(entry);
+  });
+  app2.get("/api/hr/bank-holidays", staffAuth, (req, res) => {
+    const year = parseInt(String(req.query.year || (/* @__PURE__ */ new Date()).getFullYear()));
+    const holidays = getEnglandWalesBankHolidays(year);
+    res.json({ year, holidays });
+  });
+  app2.post("/api/hr/leave-requests", staffAuth, async (req, res) => {
+    const { leaveType, startDate, endDate, reason } = req.body;
+    if (!startDate || !endDate) return res.status(400).json({ message: "startDate and endDate are required" });
+    const calculatedDays = countWorkingDays(startDate, endDate);
+    if (calculatedDays <= 0) {
+      return res.status(400).json({ message: "No working days found in the selected date range (weekends and bank holidays are excluded)" });
+    }
+    const leaveReq = await storage.createLeaveRequest({
+      staffId: req.staffUser.id,
+      leaveType: leaveType || "annual",
+      startDate,
+      endDate,
+      totalDays: String(calculatedDays),
+      reason
+    });
+    res.status(201).json(leaveReq);
+  });
+  app2.get("/api/hr/leave-preview", staffAuth, (req, res) => {
+    const { startDate, endDate } = req.query;
+    if (!startDate || !endDate) return res.status(400).json({ message: "startDate and endDate required" });
+    const days = countWorkingDays(startDate, endDate);
+    res.json({ workingDays: days });
+  });
+  app2.get("/api/hr/leave-requests", staffAuth, async (req, res) => {
+    const requests = await storage.getLeaveRequestsForStaff(req.staffUser.id);
+    res.json(requests);
+  });
+  app2.get("/api/hr/leave-requests/all", staffAuth, managerAuth, async (_req, res) => {
+    const requests = await storage.getAllLeaveRequests();
+    const users2 = await storage.getAllStaffUsers();
+    const userMap = Object.fromEntries(users2.map((u) => [u.id, u.displayName || u.username]));
+    const enriched = requests.map((r) => ({ ...r, staffName: userMap[r.staffId] || `Staff #${r.staffId}` }));
+    res.json(enriched);
+  });
+  app2.patch("/api/hr/leave-requests/:id/review", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const { status, reviewNotes } = req.body;
+    if (!["approved", "rejected"].includes(status)) return res.status(400).json({ message: "status must be approved or rejected" });
+    const updated = await storage.reviewLeaveRequest(id, req.staffUser.id, status, reviewNotes);
+    if (!updated) return res.status(404).json({ message: "Leave request not found" });
+    res.json(updated);
+  });
+  app2.get("/api/hr/leave-allowance", staffAuth, async (req, res) => {
+    const staffUser = req.staffUser;
+    if (!staffUser?.id) return res.status(403).json({ message: "Leave allowance not available for system sessions" });
+    const contractedDaysPerWeek = parseFloat(staffUser.contractedDaysPerWeek ?? "5");
+    const employmentStartDate = staffUser.employmentStartDate ?? null;
+    const today = /* @__PURE__ */ new Date();
+    let allowance = await storage.getLeaveAllowance(staffUser.id, today.getFullYear());
+    const leaveYearStart = allowance?.leaveYearStart ?? "01-01";
+    const maxCarryOverDays = parseFloat(allowance?.maxCarryOverDays ?? "8");
+    const { yearStart, yearEnd, leaveYear } = calculateLeaveYearBounds(leaveYearStart, today);
+    const { fullEntitlement, actualEntitlement, isProRata, monthsAccrued } = calculateProRataEntitlement(
+      contractedDaysPerWeek,
+      employmentStartDate,
+      leaveYearStart,
+      today
+    );
+    if (!allowance) {
+      allowance = await storage.upsertLeaveAllowance(
+        staffUser.id,
+        leaveYear,
+        String(actualEntitlement),
+        "0",
+        leaveYearStart,
+        "8"
+      );
+    }
+    const rawCarryOver = parseFloat(allowance.carryOver ?? "0");
+    const cappedCarryOver = applyCarryOverCap(rawCarryOver, maxCarryOverDays);
+    const totalEntitlement = parseFloat(allowance.totalDays) + cappedCarryOver;
+    const allRequests = await storage.getLeaveRequestsForStaff(staffUser.id);
+    const yearRequests = allRequests.filter(
+      (r) => r.startDate >= yearStart.toISOString().slice(0, 10) && r.startDate <= yearEnd.toISOString().slice(0, 10)
+    );
+    const annualLeaveUsed = yearRequests.filter((r) => r.status === "approved" && r.leaveType === "annual").reduce((sum, r) => sum + parseFloat(r.totalDays || "0"), 0);
+    const sickDaysThisYear = yearRequests.filter((r) => r.status === "approved" && r.leaveType === "sick").reduce((sum, r) => sum + parseFloat(r.totalDays || "0"), 0);
+    const unpaidDaysThisYear = yearRequests.filter((r) => r.status === "approved" && r.leaveType === "unpaid").reduce((sum, r) => sum + parseFloat(r.totalDays || "0"), 0);
+    const pendingAnnualDays = yearRequests.filter((r) => r.status === "pending" && r.leaveType === "annual").reduce((sum, r) => sum + parseFloat(r.totalDays || "0"), 0);
+    res.json({
+      allowance,
+      // Entitlement breakdown
+      contractedDaysPerWeek,
+      fullEntitlement,
+      actualEntitlement: parseFloat(allowance.totalDays),
+      // the stored (possibly manager-overridden) value
+      isProRata,
+      monthsAccrued,
+      carryOver: cappedCarryOver,
+      carryOverCapped: cappedCarryOver < rawCarryOver,
+      totalEntitlement,
+      // Usage — annual only counts against balance
+      annualLeaveUsed,
+      sickDaysThisYear,
+      unpaidDaysThisYear,
+      pendingAnnualDays,
+      remaining: totalEntitlement - annualLeaveUsed,
+      // Leave year info
+      leaveYearStart: allowance.leaveYearStart,
+      leaveYearLabel: `${yearStart.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} \u2013 ${yearEnd.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`
+    });
+  });
+  app2.put("/api/hr/leave-allowance/:staffId", staffAuth, managerAuth, async (req, res) => {
+    const staffId = parseInt(String(req.params.staffId));
+    const { year, totalDays, carryOver, leaveYearStart, maxCarryOverDays } = req.body;
+    const allowance = await storage.upsertLeaveAllowance(
+      staffId,
+      year || (/* @__PURE__ */ new Date()).getFullYear(),
+      String(totalDays ?? "28"),
+      String(carryOver ?? "0"),
+      leaveYearStart,
+      maxCarryOverDays !== void 0 ? String(maxCarryOverDays) : void 0
+    );
+    res.json(allowance);
+  });
+  app2.put("/api/hr/staff/:staffId/employment", staffAuth, managerAuth, async (req, res) => {
+    const staffId = parseInt(String(req.params.staffId));
+    const { contractedDaysPerWeek, employmentStartDate } = req.body;
+    if (contractedDaysPerWeek === void 0) return res.status(400).json({ message: "contractedDaysPerWeek is required" });
+    const days = parseFloat(String(contractedDaysPerWeek));
+    if (isNaN(days) || days <= 0 || days > 7) return res.status(400).json({ message: "contractedDaysPerWeek must be between 0.5 and 7" });
+    const updated = await storage.updateStaffEmployment(staffId, String(days), employmentStartDate || null);
+    if (!updated) return res.status(404).json({ message: "Staff member not found" });
+    res.json(updated);
+  });
+  app2.get("/api/hr/leave-allowances/all", staffAuth, managerAuth, async (req, res) => {
+    const year = parseInt(String(req.query.year || (/* @__PURE__ */ new Date()).getFullYear()));
+    const allowances = await storage.getAllLeaveAllowances(year);
+    const users2 = await storage.getAllStaffUsers();
+    const userMap = Object.fromEntries(users2.map((u) => [u.id, u.displayName || u.username]));
+    const enriched = allowances.map((a) => ({ ...a, staffName: userMap[a.staffId] || `Staff #${a.staffId}` }));
+    res.json(enriched);
+  });
+  app2.post("/api/hr/incidents", staffAuth, async (req, res) => {
+    const { incidentDate, location, description, injuryType, personsInvolved, witnessNames, actionTaken } = req.body;
+    if (!incidentDate || !location || !description) return res.status(400).json({ message: "incidentDate, location, description required" });
+    const incident = await storage.createIncident({
+      reportedBy: req.staffUser.id,
+      incidentDate,
+      location,
+      description,
+      injuryType: injuryType ?? null,
+      personsInvolved: personsInvolved ?? null,
+      witnessNames: witnessNames ?? null,
+      actionTaken: actionTaken ?? null,
+      reportedToManager: true,
+      status: "open"
+    });
+    res.status(201).json(incident);
+  });
+  app2.get("/api/hr/incidents", staffAuth, async (req, res) => {
+    const isManager = req.staffUser.role === "manager" || req.staffUser.role === "owner";
+    if (isManager) {
+      const incidents2 = await storage.getAllIncidents();
+      const users2 = await storage.getAllStaffUsers();
+      const userMap = Object.fromEntries(users2.map((u) => [u.id, u.displayName || u.username]));
+      const enriched = incidents2.map((i) => ({ ...i, reportedByName: userMap[i.reportedBy] || `Staff #${i.reportedBy}` }));
+      return res.json(enriched);
+    }
+    const incidents = await storage.getIncidentsForStaff(req.staffUser.id);
+    res.json(incidents);
+  });
+  app2.patch("/api/hr/incidents/:id/status", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const { status } = req.body;
+    if (!["open", "under_review", "closed"].includes(status)) return res.status(400).json({ message: "Invalid status" });
+    const incident = await storage.updateIncidentStatus(id, status, req.staffUser.id);
+    if (!incident) return res.status(404).json({ message: "Incident not found" });
+    res.json(incident);
+  });
+  app2.get("/api/hr/my-data", staffAuth, async (req, res) => {
+    const staffId = req.staffUser.id;
+    const [timeEntries, leaveRequests, incidents] = await Promise.all([
+      storage.getTimeEntriesForStaff(staffId),
+      storage.getLeaveRequestsForStaff(staffId),
+      storage.getIncidentsForStaff(staffId)
+    ]);
+    res.json({
+      gdprNotice: "This is all personal data The 147 Bradford holds for your staff account under GDPR Article 15 (Right of Access).",
+      retentionPolicy: "Employment records are retained for 6 years after the end of employment as required by UK employment law.",
+      staffProfile: { id: req.staffUser.id, username: req.staffUser.username, displayName: req.staffUser.displayName, role: req.staffUser.role },
+      timeEntries,
+      leaveRequests,
+      incidents
+    });
+  });
+  app2.get("/api/hr/rota", staffAuth, managerAuth, async (req, res) => {
+    const weekStart = String(req.query.weekStart || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+      return res.status(400).json({ message: "weekStart (YYYY-MM-DD) required" });
+    }
+    const [shifts, staffUsers2, published] = await Promise.all([
+      storage.getRotaShifts(weekStart),
+      storage.getAllStaffUsers(),
+      storage.getRotaPublished(weekStart)
+    ]);
+    const allLeave = await storage.getAllLeaveRequests();
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    const weekEndStr = weekEnd.toISOString().slice(0, 10);
+    const weekLeave = allLeave.filter(
+      (l) => l.status === "approved" && l.startDate <= weekEndStr && l.endDate >= weekStart
+    );
+    const userMap = Object.fromEntries(staffUsers2.map((u) => [u.id, { displayName: u.displayName || u.username, username: u.username, role: u.role, active: u.active }]));
+    res.json({ shifts, staffUsers: staffUsers2.filter((u) => u.active), userMap, weekLeave, published: published || null });
+  });
+  app2.get("/api/hr/rota/my", staffAuth, async (req, res) => {
+    const weekStart = String(req.query.weekStart || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart) || !req.staffUser?.id) {
+      return res.status(400).json({ message: "weekStart required and staff must be logged in" });
+    }
+    const shifts = await storage.getRotaShiftsForStaff(req.staffUser.id, weekStart);
+    const published = await storage.getRotaPublished(weekStart);
+    res.json({ shifts, published: published || null });
+  });
+  app2.post("/api/hr/rota/shifts", staffAuth, managerAuth, async (req, res) => {
+    const { staffId, weekStart, dayOfWeek, shiftStart, shiftEnd, role, notes, id } = req.body;
+    if (!staffId || !weekStart || dayOfWeek === void 0 || !shiftStart || !shiftEnd) {
+      return res.status(400).json({ message: "staffId, weekStart, dayOfWeek, shiftStart, shiftEnd required" });
+    }
+    const shift = await storage.upsertRotaShift(
+      { staffId: Number(staffId), weekStart, dayOfWeek: Number(dayOfWeek), shiftStart, shiftEnd, role: role || null, notes: notes || null },
+      id ? Number(id) : void 0
+    );
+    res.status(id ? 200 : 201).json(shift);
+  });
+  app2.delete("/api/hr/rota/shifts/:id", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const deleted = await storage.deleteRotaShift(id);
+    if (!deleted) return res.status(404).json({ message: "Shift not found" });
+    res.status(204).send();
+  });
+  app2.post("/api/hr/rota/publish", staffAuth, managerAuth, async (req, res) => {
+    const { weekStart } = req.body;
+    if (!weekStart) return res.status(400).json({ message: "weekStart required" });
+    const publishedBy = req.staffUser?.username || null;
+    const published = await storage.publishRota(weekStart, publishedBy);
+    const shifts = await storage.getRotaShifts(weekStart);
+    const staffIds = [...new Set(shifts.map((s) => s.staffId))];
+    const tokens = await storage.getStaffPushTokens(staffIds);
+    let notified = 0;
+    if (tokens.length > 0) {
+      const tokenStrings = tokens.map((t) => t.token);
+      const messages = tokenStrings.map((to) => ({
+        to,
+        sound: "default",
+        title: "Your Rota Has Been Published",
+        body: `The rota for the week of ${weekStart} has been published. Check the app to see your shifts.`
+      }));
+      try {
+        const r = await fetch("https://exp.host/--/api/v2/push/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(messages)
+        });
+        const data = await r.json();
+        notified = data.data?.filter((d) => d.status === "ok").length ?? 0;
+      } catch {
+      }
+    }
+    res.json({ ...published, staffNotified: notified, tokenCount: tokens.length });
+  });
+  app2.post("/api/hr/staff-push-token", staffAuth, async (req, res) => {
+    const { token } = req.body;
+    if (!token || typeof token !== "string") return res.status(400).json({ message: "token required" });
+    if (!req.staffUser?.id) return res.status(403).json({ message: "Must be logged in as a named staff user" });
+    const record = await storage.upsertStaffPushToken(req.staffUser.id, token);
+    res.json(record);
+  });
   const httpServer = createServer(app2);
   return httpServer;
 }
@@ -6367,6 +7398,7 @@ init_storage();
 import * as fs2 from "fs";
 import * as path2 from "path";
 import nodemailer2 from "nodemailer";
+import * as http from "http";
 var app = express();
 var log = console.log;
 function setupCors(app2) {
@@ -6413,11 +7445,13 @@ function setupSecurityHeaders(app2) {
     if (isProd) {
       res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
     }
-    if (req.path === "/staff" || req.path.startsWith("/staff-portal") || req.path.startsWith("/admin-")) {
+    const devConnectSrc = isProd ? null : "*";
+    if (req.path === "/staff" || req.path.startsWith("/staff-portal") || req.path.startsWith("/admin-") || req.path.startsWith("/staff-")) {
       res.setHeader("X-Frame-Options", "DENY");
+      const connectSrc = devConnectSrc ?? "'self'";
       res.setHeader(
         "Content-Security-Policy",
-        "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data: blob: https:; frame-ancestors 'none'"
+        `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src ${connectSrc}; img-src 'self' data: blob: https:; frame-ancestors 'none'`
       );
     } else if (req.path === "/widget/booking") {
       res.removeHeader("X-Frame-Options");
@@ -6427,9 +7461,10 @@ function setupSecurityHeaders(app2) {
       );
     } else if (!req.path.startsWith("/api")) {
       res.setHeader("X-Frame-Options", "SAMEORIGIN");
+      const genericConnectSrc = devConnectSrc ?? "'self' https://*.squareup.com https://*.resend.com";
       res.setHeader(
         "Content-Security-Policy",
-        "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://*.squareup.com https://*.resend.com; img-src 'self' data: https:; frame-src https://www.the147order.co.uk https://the147order.co.uk"
+        `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src ${genericConnectSrc}; img-src 'self' data: https:; frame-src https://www.the147order.co.uk https://the147order.co.uk`
       );
     } else {
       res.setHeader("X-Frame-Options", "DENY");
@@ -6569,6 +7604,26 @@ function configureExpoAndLanding(app2) {
     }
     const platform = req.header("expo-platform");
     if (platform && (platform === "ios" || platform === "android")) {
+      if (process.env.NODE_ENV !== "production") {
+        const proxyReq = http.request(
+          {
+            hostname: "localhost",
+            port: 8081,
+            path: req.url,
+            method: req.method,
+            headers: { ...req.headers, host: "localhost:8081" }
+          },
+          (proxyRes) => {
+            res.writeHead(proxyRes.statusCode ?? 200, proxyRes.headers);
+            proxyRes.pipe(res, { end: true });
+          }
+        );
+        proxyReq.on("error", () => {
+          return serveExpoManifest(platform, res);
+        });
+        req.pipe(proxyReq, { end: true });
+        return;
+      }
       return serveExpoManifest(platform, res);
     }
     if (req.path === "/") {
@@ -6581,9 +7636,67 @@ function configureExpoAndLanding(app2) {
     }
     next();
   });
+  if (process.env.NODE_ENV !== "production") {
+    app2.use((req, res, next) => {
+      if (req.path.startsWith("/api")) return next();
+      const isMetro = req.path.startsWith("/_expo") || req.path.startsWith("/hot") || req.path.startsWith("/symbolicate") || req.path.startsWith("/logs") || req.path.startsWith("/inspector") || /^\/\d+-\d+\//.test(req.path);
+      if (!isMetro) return next();
+      const proxyReq = http.request(
+        {
+          hostname: "localhost",
+          port: 8081,
+          path: req.url,
+          method: req.method,
+          headers: { ...req.headers, host: "localhost:8081" }
+        },
+        (proxyRes) => {
+          res.writeHead(proxyRes.statusCode ?? 200, proxyRes.headers);
+          proxyRes.pipe(res, { end: true });
+        }
+      );
+      proxyReq.on("error", () => {
+        if (!res.headersSent) res.status(502).send("Metro bundler not ready");
+      });
+      req.pipe(proxyReq, { end: true });
+    });
+  }
   app2.use("/assets", express.static(path2.resolve(process.cwd(), "assets")));
   app2.use("/uploads", express.static(path2.resolve(process.cwd(), "uploads")));
   app2.use(express.static(path2.resolve(process.cwd(), "static-build")));
+  if (process.env.NODE_ENV !== "production") {
+    app2.use((req, res, next) => {
+      if (req.path.startsWith("/api")) return next();
+      const platform = req.header("expo-platform");
+      if (platform === "ios" || platform === "android") return next();
+      const proxyReq = http.request(
+        {
+          hostname: "localhost",
+          port: 8081,
+          path: req.url,
+          method: req.method,
+          headers: { ...req.headers, host: "localhost:8081" }
+        },
+        (proxyRes) => {
+          res.writeHead(proxyRes.statusCode ?? 200, proxyRes.headers);
+          proxyRes.pipe(res, { end: true });
+        }
+      );
+      proxyReq.on("error", () => {
+        if (!res.headersSent) res.status(502).send("Metro bundler not ready");
+      });
+      req.pipe(proxyReq, { end: true });
+    });
+  } else {
+    const indexPath = path2.resolve(process.cwd(), "static-build", "index.html");
+    app2.use((_req, res, next) => {
+      if (res.headersSent) return next();
+      if (fs2.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        next();
+      }
+    });
+  }
   log("Expo routing: Checking expo-platform header on / and /manifest");
 }
 function setupErrorHandler(app2) {
@@ -6736,9 +7849,10 @@ function scheduleRetentionCleanup() {
     try {
       const { storage: store } = await Promise.resolve().then(() => (init_storage(), storage_exports));
       const anonymized = await store.anonymizeOldBookings(365);
+      const hrAnonymized = await store.anonymizeOldHRRecords();
       const sessionsCleared = await store.cleanupExpiredSessions();
-      if (anonymized > 0 || sessionsCleared > 0) {
-        log(`[GDPR Retention] Anonymized ${anonymized} old records, cleared ${sessionsCleared} expired sessions`);
+      if (anonymized > 0 || hrAnonymized > 0 || sessionsCleared > 0) {
+        log(`[GDPR Retention] Booking records: ${anonymized}, HR records: ${hrAnonymized}, sessions cleared: ${sessionsCleared}`);
       }
     } catch (err) {
       console.error("[GDPR Retention] Cleanup error:", err);
@@ -6767,24 +7881,44 @@ function scheduleRetentionCleanup() {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.status(200).send(privacyPolicyHtml);
   });
+  const staffPrivacyHtmlPath = path2.resolve(process.cwd(), "server", "templates", "staff-privacy-notice.html");
+  const staffPrivacyHtml = fs2.readFileSync(staffPrivacyHtmlPath, "utf-8");
+  app.get("/staff-privacy-notice", (_req, res) => {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.status(200).send(staffPrivacyHtml);
+  });
   configureExpoAndLanding(app);
   const server = await registerRoutes(app);
   setupErrorHandler(app);
+  const port = parseInt(process.env.PORT || "5000", 10);
+  await new Promise((resolve3) => {
+    server.listen(port, "0.0.0.0", () => {
+      log(`express server serving on port ${port}`);
+      resolve3();
+    });
+  });
+  if (process.env.NODE_ENV !== "production" && port !== 8082) {
+    const previewServer = http.createServer(app);
+    previewServer.listen(8082, "0.0.0.0", () => {
+      log("express also serving on port 8082 (Replit preview)");
+    });
+  }
   await runStartupMigrations();
+  const { storage: storeForMigration } = await Promise.resolve().then(() => (init_storage(), storage_exports));
+  await storeForMigration.migrateEncryptExistingPII();
   await bootstrapOwner();
   scheduleRetentionCleanup();
   scheduleBookingReminders();
   scheduleDepositAutoCancel();
   scheduleOrderExpiry();
-  const port = parseInt(process.env.PORT || "5000", 10);
-  server.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true
-    },
-    () => {
-      log(`express server serving on port ${port}`);
-    }
-  );
-})();
+})().catch((err) => {
+  console.error("FATAL SERVER ERROR:", err);
+  process.exit(1);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("UNHANDLED REJECTION:", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT EXCEPTION:", err);
+  process.exit(1);
+});
