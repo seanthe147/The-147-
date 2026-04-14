@@ -1188,9 +1188,17 @@ export class DatabaseStorage implements IStorage {
     const rows = await db.select().from(membershipSubscriptions)
       .orderBy(desc(membershipSubscriptions.createdAt));
     const result = await Promise.all(rows.map(async (sub) => {
-      const [customer] = await db.select().from(customers).where(eq(customers.id, sub.customerId));
+      const [rawCustomer] = await db.select().from(customers).where(eq(customers.id, sub.customerId));
       const [plan] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, sub.planId));
-      return { ...sub, customer: customer || null, plan: plan || null };
+      let customer: Customer | null = null;
+      if (rawCustomer) {
+        try {
+          customer = decryptCustomer(rawCustomer);
+        } catch {
+          customer = rawCustomer;
+        }
+      }
+      return { ...sub, customer, plan: plan || null };
     }));
     return result;
   }
