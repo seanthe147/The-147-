@@ -158,6 +158,7 @@ export const events = pgTable("events", {
   active: boolean("active").notNull().default(true),
   eventType: text("event_type").notNull().default("event"),
   dayOfWeek: text("day_of_week"),
+  source: text("source").notNull().default("staff"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

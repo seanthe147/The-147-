@@ -601,6 +601,7 @@ function EventRow({
   isPast?: boolean;
 }) {
   const isWeekly = event.eventType === "weekly";
+  const isTicketSource = event.source === "ticketsource";
   const dateDisplay = isWeekly
     ? `Every ${event.dayOfWeek || "week"}`
     : formatDisplayDate(event.date);
@@ -608,7 +609,7 @@ function EventRow({
 
   return (
     <View style={[styles.eventRow, isPast && { opacity: 0.6 }]}>
-      <View style={[styles.eventColorStrip, { backgroundColor: event.imageColor }]} />
+      <View style={[styles.eventColorStrip, { backgroundColor: event.imageColor || "#0047AB" }]} />
       <View style={styles.eventRowContent}>
         <View style={styles.eventRowTop}>
           <View style={{ flex: 1 }}>
@@ -631,12 +632,17 @@ function EventRow({
           </View>
 
           <View style={styles.badges}>
+            {isTicketSource && (
+              <View style={[styles.weeklyBadge, { backgroundColor: "#7C3AED" }]}>
+                <Text style={styles.weeklyBadgeText}>TICKETSOURCE</Text>
+              </View>
+            )}
             {isWeekly && (
               <View style={styles.weeklyBadge}>
                 <Text style={styles.weeklyBadgeText}>WEEKLY</Text>
               </View>
             )}
-            {!event.active && (
+            {!isTicketSource && !event.active && (
               <View style={styles.draftBadge}>
                 <Text style={styles.draftBadgeText}>HIDDEN</Text>
               </View>
@@ -644,21 +650,34 @@ function EventRow({
           </View>
         </View>
 
-        <View style={styles.eventRowActions}>
-          <Pressable onPress={onToggleActive} style={styles.actionBtn}>
-            <Ionicons
-              name={event.active ? "eye-outline" : "eye-off-outline"}
-              size={20}
-              color={event.active ? Colors.brand.green : Colors.light.textSecondary}
-            />
-          </Pressable>
-          <Pressable onPress={onEdit} style={styles.actionBtn}>
-            <Ionicons name="create-outline" size={20} color={Colors.brand.blue} />
-          </Pressable>
-          <Pressable onPress={onDelete} style={styles.actionBtn}>
-            <Ionicons name="trash-outline" size={20} color={Colors.brand.red} />
-          </Pressable>
-        </View>
+        {isTicketSource ? (
+          <View style={[styles.eventRowActions, { justifyContent: "flex-end" }]}>
+            <Text style={{ fontSize: 11, color: Colors.light.textSecondary, fontFamily: "Montserrat_500Medium", marginRight: 8 }}>
+              Managed on TicketSource
+            </Text>
+            {event.ticketUrl ? (
+              <Pressable onPress={() => Linking.openURL(event.ticketUrl!)} style={styles.actionBtn}>
+                <Ionicons name="open-outline" size={20} color="#7C3AED" />
+              </Pressable>
+            ) : null}
+          </View>
+        ) : (
+          <View style={styles.eventRowActions}>
+            <Pressable onPress={onToggleActive} style={styles.actionBtn}>
+              <Ionicons
+                name={event.active ? "eye-outline" : "eye-off-outline"}
+                size={20}
+                color={event.active ? Colors.brand.green : Colors.light.textSecondary}
+              />
+            </Pressable>
+            <Pressable onPress={onEdit} style={styles.actionBtn}>
+              <Ionicons name="create-outline" size={20} color={Colors.brand.blue} />
+            </Pressable>
+            <Pressable onPress={onDelete} style={styles.actionBtn}>
+              <Ionicons name="trash-outline" size={20} color={Colors.brand.red} />
+            </Pressable>
+          </View>
+        )}
       </View>
     </View>
   );

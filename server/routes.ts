@@ -3027,11 +3027,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/events/all", staffAuth, managerAuth, async (req, res) => {
     const { type } = req.query as { type?: string };
-    const allEvents = await storage.getEvents();
-    if (type === "event" || type === "weekly") {
-      return res.json(allEvents.filter((e) => e.eventType === type));
+    const dbEvents = await storage.getEvents();
+
+    if (type === "weekly") {
+      return res.json(dbEvents.filter((e) => e.eventType === "weekly"));
     }
-    res.json(allEvents);
+
+    // For "event" type (or no filter): merge DB events with TicketSource events
+    const dbFiltered = type === "event" ? dbEvents.filter((e) => e.eventType === "event") : dbEvents;
+    try {
+      const tsEvents = await fetchTicketSourceEvents().catch(() => [] as AppEvent[]);
+      const mapped = tsEvents.map(mapTsEvent);
+      const combined = [...dbFiltered, ...mapped];
+      combined.sort((a, b) => {
+        if (!a.date) return 1;
+        if (!b.date) return -1;
+        return a.date.localeCompare(b.date) || ((a.time || "").localeCompare(b.time || ""));
+      });
+      return res.json(combined);
+    } catch {
+      return res.json(dbFiltered);
+    }
   });
 
   app.post("/api/events", staffAuth, managerAuth, async (req, res) => {
