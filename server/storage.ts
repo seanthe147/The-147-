@@ -324,6 +324,10 @@ export interface IStorage {
   updateAvailabilityRule(id: number, rule: Partial<Omit<AvailabilityRule, 'id' | 'updatedAt'>>): Promise<AvailabilityRule | undefined>;
   deleteAvailabilityRule(id: number): Promise<boolean>;
   getAllLeaveRequests(): Promise<StaffLeaveRequest[]>;
+  getLeaveAllowance(staffId: number, year: number): Promise<StaffLeaveAllowance | null>;
+  upsertLeaveAllowance(staffId: number, year: number, totalDays: string, carryOver: string, leaveYearStart?: string, maxCarryOverDays?: string): Promise<StaffLeaveAllowance>;
+  getAllLeaveAllowances(year: number): Promise<StaffLeaveAllowance[]>;
+  updateStaffEmployment(staffId: number, contractedDaysPerWeek: string, employmentStartDate: string | null): Promise<StaffUser | undefined>;
   // Rota
   getRotaShifts(weekStart: string): Promise<StaffRotaShift[]>;
   getRotaShiftsForStaff(staffId: number, weekStart: string): Promise<StaffRotaShift[]>;
@@ -1531,21 +1535,36 @@ export class DatabaseStorage implements IStorage {
     return row ?? null;
   }
 
-  async upsertLeaveAllowance(staffId: number, year: number, totalDays: string, carryOver: string): Promise<StaffLeaveAllowance> {
+  async upsertLeaveAllowance(staffId: number, year: number, totalDays: string, carryOver: string, leaveYearStart?: string, maxCarryOverDays?: string): Promise<StaffLeaveAllowance> {
     const existing = await this.getLeaveAllowance(staffId, year);
+    const updateFields: Record<string, any> = { totalDays, carryOver };
+    if (leaveYearStart !== undefined) updateFields.leaveYearStart = leaveYearStart;
+    if (maxCarryOverDays !== undefined) updateFields.maxCarryOverDays = maxCarryOverDays;
     if (existing) {
       const [row] = await db.update(staffLeaveAllowances)
-        .set({ totalDays, carryOver })
+        .set(updateFields)
         .where(eq(staffLeaveAllowances.id, existing.id))
         .returning();
       return row;
     }
-    const [row] = await db.insert(staffLeaveAllowances).values({ staffId, year, totalDays, carryOver }).returning();
+    const [row] = await db.insert(staffLeaveAllowances).values({
+      staffId, year, totalDays, carryOver,
+      leaveYearStart: leaveYearStart ?? "01-01",
+      maxCarryOverDays: maxCarryOverDays ?? "8",
+    }).returning();
     return row;
   }
 
   async getAllLeaveAllowances(year: number): Promise<StaffLeaveAllowance[]> {
     return db.select().from(staffLeaveAllowances).where(eq(staffLeaveAllowances.year, year));
+  }
+
+  async updateStaffEmployment(staffId: number, contractedDaysPerWeek: string, employmentStartDate: string | null): Promise<StaffUser | undefined> {
+    const [row] = await db.update(staffUsers)
+      .set({ contractedDaysPerWeek, employmentStartDate: employmentStartDate || null })
+      .where(eq(staffUsers.id, staffId))
+      .returning();
+    return row;
   }
 
   // ══════════════════════════════════════════════════════════════════

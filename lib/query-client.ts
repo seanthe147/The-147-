@@ -3,7 +3,7 @@ import { Platform } from "react-native";
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 export function getApiUrl(): string {
-  if (Platform.OS === "web" && typeof window !== "undefined" && !__DEV__) {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
     return window.location.origin;
   }
 

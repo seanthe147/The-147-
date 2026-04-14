@@ -29,6 +29,9 @@ export const staffUsers = pgTable("staff_users", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   active: boolean("active").notNull().default(true),
   approvalStatus: text("approval_status").notNull().default("approved"),
+  // UK employment law fields
+  contractedDaysPerWeek: text("contracted_days_per_week").notNull().default("5"), // decimal string, e.g. "5" full-time, "3" part-time
+  employmentStartDate: text("employment_start_date"),                             // YYYY-MM-DD, for new-starter accrual
 });
 
 export type StaffUser = typeof staffUsers.$inferSelect;
@@ -455,8 +458,10 @@ export const staffLeaveAllowances = pgTable("staff_leave_allowances", {
   id: serial("id").primaryKey(),
   staffId: integer("staff_id").notNull(),
   year: integer("year").notNull(),
-  totalDays: text("total_days").notNull().default("28"),   // e.g. "28" for full-time UK statutory
-  carryOver: text("carry_over").notNull().default("0"),
+  totalDays: text("total_days").notNull().default("28"),         // pro-rata entitlement, e.g. "28" full-time
+  carryOver: text("carry_over").notNull().default("0"),          // days carried from previous year
+  leaveYearStart: text("leave_year_start").notNull().default("01-01"), // MM-DD, e.g. "01-01" or "04-01"
+  maxCarryOverDays: text("max_carry_over_days").notNull().default("8"), // UK discretionary cap (8 days normal, 20 if sick/family)
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

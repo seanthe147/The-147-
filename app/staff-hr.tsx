@@ -377,12 +377,22 @@ export default function StaffHRScreen() {
         {/* Leave balance detail */}
         {leaveBalance && (
           <>
-            <Text style={styles.sectionTitle}>Leave Allowance {new Date().getFullYear()}</Text>
+            <Text style={styles.sectionTitle}>Annual Leave — {leaveBalance.leaveYearLabel ?? new Date().getFullYear()}</Text>
             <View style={styles.leaveCard}>
-              <LeaveRow label="Annual entitlement" value={`${leaveBalance.allowance.totalDays} days`} />
-              <LeaveRow label="Carried over" value={`${leaveBalance.allowance.carryOver} days`} />
+              {leaveBalance.isProRata && (
+                <View style={[styles.leaveRow, { marginBottom: 4 }]}>
+                  <Text style={[styles.leaveRowLabel, { color: "#7C3AED", fontWeight: "600" as const }]}>Pro-rata ({leaveBalance.monthsAccrued}/12 months)</Text>
+                </View>
+              )}
+              <LeaveRow label={`Entitlement (${leaveBalance.contractedDaysPerWeek}d/week × 5.6 wks)`} value={`${leaveBalance.actualEntitlement} days`} />
+              {parseFloat(String(leaveBalance.carryOver ?? 0)) > 0 && (
+                <LeaveRow label={`Carried over${leaveBalance.carryOverCapped ? " (capped)" : ""}`} value={`+${(leaveBalance.carryOver as number).toFixed(1)} days`} />
+              )}
               <LeaveRow label="Total entitlement" value={`${(leaveBalance.totalEntitlement as number).toFixed(1)} days`} />
-              <LeaveRow label="Days taken" value={`${(leaveBalance.usedDays as number).toFixed(1)} days`} colour="#EF4444" />
+              <LeaveRow label="Annual leave taken" value={`−${(leaveBalance.annualLeaveUsed as number).toFixed(1)} days`} colour="#EF4444" />
+              {(leaveBalance.pendingAnnualDays as number) > 0 && (
+                <LeaveRow label="Pending approval" value={`${(leaveBalance.pendingAnnualDays as number).toFixed(1)} days`} colour="#F59E0B" />
+              )}
               <View style={[styles.leaveRow, styles.leaveRowTotal]}>
                 <Text style={styles.leaveRowLabelBold}>Remaining</Text>
                 <Text style={[styles.leaveRowValueBold, { color: leaveBalance.remaining < 5 ? "#EF4444" : "#22C55E" }]}>
@@ -390,6 +400,19 @@ export default function StaffHRScreen() {
                 </Text>
               </View>
             </View>
+            {((leaveBalance.sickDaysThisYear as number) > 0 || (leaveBalance.unpaidDaysThisYear as number) > 0) && (
+              <>
+                <Text style={[styles.sectionTitle, { marginTop: 16 }]}>Other Leave (not deducted from annual)</Text>
+                <View style={styles.leaveCard}>
+                  {(leaveBalance.sickDaysThisYear as number) > 0 && (
+                    <LeaveRow label="Sick leave recorded" value={`${(leaveBalance.sickDaysThisYear as number).toFixed(1)} days`} colour="#6B7280" />
+                  )}
+                  {(leaveBalance.unpaidDaysThisYear as number) > 0 && (
+                    <LeaveRow label="Unpaid leave recorded" value={`${(leaveBalance.unpaidDaysThisYear as number).toFixed(1)} days`} colour="#6B7280" />
+                  )}
+                </View>
+              </>
+            )}
           </>
         )}
 
@@ -582,6 +605,20 @@ function LeaveRow({ label, value, colour }: { label: string; value: string; colo
   );
 }
 
+const LEAVE_TYPE_LABELS: Record<string, string> = {
+  annual: "Annual Leave",
+  sick: "Sick Leave",
+  unpaid: "Unpaid Leave",
+  other: "Other",
+};
+
+const LEAVE_TYPE_COLOURS: Record<string, string> = {
+  annual: "#0047AB",
+  sick: "#DC2626",
+  unpaid: "#6B7280",
+  other: "#92400E",
+};
+
 // ── Leave Request Modal ───────────────────────────────────────────────────────
 function LeaveRequestModal({ visible, onClose, onSuccess, leaveRequests }: { visible: boolean; onClose: () => void; onSuccess: () => void; leaveRequests: any[] }) {
   const [tab, setTab] = useState<"request" | "history">("request");
@@ -592,32 +629,30 @@ function LeaveRequestModal({ visible, onClose, onSuccess, leaveRequests }: { vis
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  function calcWorkingDays(start: string, end: string): number {
-    if (!start || !end) return 0;
-    const s = new Date(start); const e = new Date(end);
-    if (isNaN(s.getTime()) || isNaN(e.getTime()) || e < s) return 0;
-    let days = 0;
-    const cur = new Date(s);
-    while (cur <= e) {
-      const dow = cur.getDay();
-      if (dow !== 0 && dow !== 6) days++;
-      cur.setDate(cur.getDate() + 1);
-    }
-    return days;
-  }
-
-  const totalDays = calcWorkingDays(startDate, endDate);
+  // Server-side working day preview (excludes weekends + England/Wales bank holidays)
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  const datesValid = dateRegex.test(startDate) && dateRegex.test(endDate) && endDate >= startDate;
+  const { data: previewData, isFetching: previewLoading } = useQuery({
+    queryKey: ["/api/hr/leave-preview", startDate, endDate],
+    queryFn: () => hrApi(`/api/hr/leave-preview?startDate=${startDate}&endDate=${endDate}`),
+    enabled: datesValid,
+    staleTime: 60_000,
+  });
+  const previewDays: number = previewData?.workingDays ?? 0;
 
   async function submit() {
     setError("");
     if (!startDate || !endDate) { setError("Please enter start and end dates."); return; }
-    if (totalDays <= 0) { setError("End date must be after start date and include working days."); return; }
+    if (!datesValid) { setError("End date must be on or after start date (YYYY-MM-DD format)."); return; }
+    if (previewDays <= 0) { setError("No working days in the selected range — weekends and bank holidays are excluded."); return; }
     setLoading(true);
     try {
-      await hrApi("/api/hr/leave-requests", { method: "POST", body: JSON.stringify({ leaveType, startDate, endDate, totalDays: String(totalDays), reason }) });
+      // totalDays is calculated server-side; we do NOT send it to prevent manipulation
+      await hrApi("/api/hr/leave-requests", { method: "POST", body: JSON.stringify({ leaveType, startDate, endDate, reason }) });
       setStartDate(""); setEndDate(""); setReason(""); setLeaveType("annual");
       onSuccess();
-      Alert.alert("Request Submitted", "Your leave request has been sent to your manager for approval.");
+      if (Platform.OS === "web") window.alert("Request Submitted\n\nYour leave request has been sent to your manager for approval.");
+      else Alert.alert("Request Submitted", "Your leave request has been sent to your manager for approval.");
       setTab("history");
     } catch (e: any) { setError(e.message || "Failed to submit. Please try again."); }
     finally { setLoading(false); }
@@ -648,20 +683,41 @@ function LeaveRequestModal({ visible, onClose, onSuccess, leaveRequests }: { vis
                   </Pressable>
                 ))}
               </View>
+              {leaveType === "sick" && (
+                <View style={styles.infoBox}>
+                  <Ionicons name="information-circle-outline" size={14} color="#0369A1" />
+                  <Text style={styles.infoBoxText}>Sick leave does not deduct from your annual leave allowance.</Text>
+                </View>
+              )}
+              {leaveType === "annual" && (
+                <View style={styles.infoBox}>
+                  <Ionicons name="information-circle-outline" size={14} color="#0369A1" />
+                  <Text style={styles.infoBoxText}>Working days only. Weekends and England & Wales bank holidays are automatically excluded.</Text>
+                </View>
+              )}
               <Text style={styles.fieldLabel}>Start Date</Text>
               <TextInput style={styles.input} value={startDate} onChangeText={setStartDate} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" />
               <Text style={styles.fieldLabel}>End Date</Text>
               <TextInput style={styles.input} value={endDate} onChangeText={setEndDate} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" />
-              {totalDays > 0 && (
+              {datesValid && (
                 <View style={styles.dayCountBanner}>
-                  <Ionicons name="calendar" size={14} color={Colors.brand.blue} />
-                  <Text style={styles.dayCountText}>{totalDays} working day{totalDays !== 1 ? "s" : ""}</Text>
+                  {previewLoading
+                    ? <ActivityIndicator size="small" color={Colors.brand.blue} />
+                    : <>
+                        <Ionicons name="calendar" size={14} color={Colors.brand.blue} />
+                        <Text style={styles.dayCountText}>
+                          {previewDays > 0
+                            ? `${previewDays} working day${previewDays !== 1 ? "s" : ""} (excl. weekends & bank holidays)`
+                            : "No working days in this range"}
+                        </Text>
+                      </>
+                  }
                 </View>
               )}
               <Text style={styles.fieldLabel}>Reason <Text style={{ color: Colors.light.textSecondary, fontWeight: "400" }}>(optional)</Text></Text>
               <TextInput style={[styles.input, { height: 80 }]} value={reason} onChangeText={setReason} multiline placeholder="Additional details..." />
               {!!error && <Text style={styles.errorText}>{error}</Text>}
-              <Pressable onPress={submit} disabled={loading} style={[styles.submitBtn, loading && { opacity: 0.6 }]}>
+              <Pressable onPress={submit} disabled={loading || (datesValid && previewDays <= 0)} style={[styles.submitBtn, (loading || (datesValid && previewDays <= 0)) && { opacity: 0.5 }]}>
                 {loading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.submitBtnText}>Submit Request</Text>}
               </Pressable>
             </>
@@ -673,19 +729,30 @@ function LeaveRequestModal({ visible, onClose, onSuccess, leaveRequests }: { vis
                   <Text style={styles.emptyText}>No leave requests yet</Text>
                 </View>
               )}
-              {leaveRequests.map((r) => (
-                <View key={r.id} style={styles.leaveHistoryRow}>
-                  <View style={[styles.leaveStatusDot, { backgroundColor: r.status === "approved" ? "#22C55E" : r.status === "rejected" ? "#EF4444" : "#F59E0B" }]} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.leaveHistoryTitle}>{r.leaveType.charAt(0).toUpperCase() + r.leaveType.slice(1)} leave — {r.totalDays}d</Text>
-                    <Text style={styles.leaveHistoryDates}>{r.startDate} → {r.endDate}</Text>
-                    {r.reviewNotes && <Text style={styles.leaveHistoryNotes}>Manager: {r.reviewNotes}</Text>}
+              {leaveRequests.map((r) => {
+                const typeLabel = LEAVE_TYPE_LABELS[r.leaveType] ?? r.leaveType;
+                const typeColour = LEAVE_TYPE_COLOURS[r.leaveType] ?? "#374151";
+                const countsTowardBalance = r.leaveType === "annual";
+                return (
+                  <View key={r.id} style={styles.leaveHistoryRow}>
+                    <View style={[styles.leaveStatusDot, { backgroundColor: r.status === "approved" ? "#22C55E" : r.status === "rejected" ? "#EF4444" : "#F59E0B" }]} />
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <Text style={[styles.leaveHistoryTitle, { color: typeColour }]}>{typeLabel}</Text>
+                        <Text style={styles.leaveHistoryTitle}>— {r.totalDays}d</Text>
+                      </View>
+                      <Text style={styles.leaveHistoryDates}>{r.startDate} → {r.endDate}</Text>
+                      {!countsTowardBalance && r.status === "approved" && (
+                        <Text style={{ fontSize: 11, color: "#6B7280" }}>Does not affect annual balance</Text>
+                      )}
+                      {r.reviewNotes && <Text style={styles.leaveHistoryNotes}>Manager: {r.reviewNotes}</Text>}
+                    </View>
+                    <View style={[styles.leaveStatusBadge, { backgroundColor: r.status === "approved" ? "#DCFCE7" : r.status === "rejected" ? "#FEE2E2" : "#FEF9C3" }]}>
+                      <Text style={[styles.leaveStatusText, { color: r.status === "approved" ? "#166534" : r.status === "rejected" ? "#991B1B" : "#92400E" }]}>{r.status}</Text>
+                    </View>
                   </View>
-                  <View style={[styles.leaveStatusBadge, { backgroundColor: r.status === "approved" ? "#DCFCE7" : r.status === "rejected" ? "#FEE2E2" : "#FEF9C3" }]}>
-                    <Text style={[styles.leaveStatusText, { color: r.status === "approved" ? "#166534" : r.status === "rejected" ? "#991B1B" : "#92400E" }]}>{r.status}</Text>
-                  </View>
-                </View>
-              ))}
+                );
+              })}
             </>
           )}
         </ScrollView>
@@ -831,7 +898,9 @@ const styles = StyleSheet.create({
   typePillText: { fontFamily: "Montserrat_600SemiBold", fontSize: 12, color: Colors.light.textSecondary },
   typePillTextActive: { color: "#fff" },
   dayCountBanner: { flexDirection: "row", gap: 6, alignItems: "center", backgroundColor: Colors.brand.blue + "10", borderRadius: 8, padding: 10, marginTop: 8 },
-  dayCountText: { fontFamily: "Montserrat_600SemiBold", fontSize: 13, color: Colors.brand.blue },
+  dayCountText: { fontFamily: "Montserrat_600SemiBold", fontSize: 12, color: Colors.brand.blue, flex: 1 },
+  infoBox: { flexDirection: "row", gap: 6, alignItems: "flex-start", backgroundColor: "#EFF6FF", borderRadius: 8, padding: 10, marginVertical: 8 },
+  infoBoxText: { fontFamily: "Montserrat_500Medium", fontSize: 12, color: "#0369A1", flex: 1, lineHeight: 17 },
   errorText: { fontFamily: "Montserrat_500Medium", fontSize: 13, color: "#EF4444", marginTop: 8 },
   submitBtn: { backgroundColor: Colors.brand.blue, borderRadius: 14, paddingVertical: 15, alignItems: "center", marginTop: 20 },
   submitBtnText: { fontFamily: "Montserrat_700Bold", fontSize: 15, color: "#fff" },

@@ -11,6 +11,7 @@ import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertCo
 import { hashPin, verifyPin } from "./encryption";
 import * as square from "./square";
 import { fetchTicketSourceEvents, type AppEvent } from "./ticketsource";
+import { countWorkingDays, calculateLeaveYearBounds, calculateProRataEntitlement, applyCarryOverCap, getEnglandWalesBankHolidays } from "./uk-leave-utils";
 
 function tsIdToNumber(tsId: string): number {
   let hash = 5381;
@@ -4955,12 +4956,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(entry);
   });
 
+  // ── Bank holidays (England & Wales) ──────────────────────────────────────────
+  app.get("/api/hr/bank-holidays", staffAuth, (req, res) => {
+    const year = parseInt(String(req.query.year || new Date().getFullYear()));
+    const holidays = getEnglandWalesBankHolidays(year);
+    res.json({ year, holidays });
+  });
+
   // ── Leave requests ───────────────────────────────────────────────────────────
   app.post("/api/hr/leave-requests", staffAuth, async (req: any, res) => {
-    const { leaveType, startDate, endDate, totalDays, reason } = req.body;
-    if (!startDate || !endDate || !totalDays) return res.status(400).json({ message: "startDate, endDate, totalDays required" });
-    const leaveReq = await storage.createLeaveRequest({ staffId: req.staffUser.id, leaveType: leaveType || "annual", startDate, endDate, totalDays: String(totalDays), reason });
+    const { leaveType, startDate, endDate, reason } = req.body;
+    if (!startDate || !endDate) return res.status(400).json({ message: "startDate and endDate are required" });
+
+    // Server-side working day calculation — never trust client-submitted totalDays
+    const calculatedDays = countWorkingDays(startDate, endDate);
+    if (calculatedDays <= 0) {
+      return res.status(400).json({ message: "No working days found in the selected date range (weekends and bank holidays are excluded)" });
+    }
+
+    const leaveReq = await storage.createLeaveRequest({
+      staffId: req.staffUser.id,
+      leaveType: leaveType || "annual",
+      startDate,
+      endDate,
+      totalDays: String(calculatedDays),
+      reason,
+    });
     res.status(201).json(leaveReq);
+  });
+
+  // Preview working days for a date range (used by frontend before submitting)
+  app.get("/api/hr/leave-preview", staffAuth, (req, res) => {
+    const { startDate, endDate } = req.query as { startDate?: string; endDate?: string };
+    if (!startDate || !endDate) return res.status(400).json({ message: "startDate and endDate required" });
+    const days = countWorkingDays(startDate, endDate);
+    res.json({ workingDays: days });
   });
 
   app.get("/api/hr/leave-requests", staffAuth, async (req: any, res) => {
@@ -4987,21 +5017,111 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Leave allowances ─────────────────────────────────────────────────────────
   app.get("/api/hr/leave-allowance", staffAuth, async (req: any, res) => {
-    const year = new Date().getFullYear();
-    let allowance = await storage.getLeaveAllowance(req.staffUser.id, year);
-    if (!allowance) allowance = await storage.upsertLeaveAllowance(req.staffUser.id, year, "28", "0");
-    const approvedRequests = (await storage.getLeaveRequestsForStaff(req.staffUser.id))
-      .filter((r: any) => r.status === "approved" && r.startDate.startsWith(String(year)));
-    const usedDays = approvedRequests.reduce((sum: number, r: any) => sum + parseFloat(r.totalDays || "0"), 0);
-    const totalEntitlement = parseFloat(allowance.totalDays) + parseFloat(allowance.carryOver);
-    res.json({ allowance, usedDays, remaining: totalEntitlement - usedDays, totalEntitlement });
+    const staffUser = req.staffUser;
+    if (!staffUser?.id) return res.status(403).json({ message: "Leave allowance not available for system sessions" });
+    const contractedDaysPerWeek = parseFloat(staffUser.contractedDaysPerWeek ?? "5");
+    const employmentStartDate = staffUser.employmentStartDate ?? null;
+
+    // Get or initialise allowance record
+    const today = new Date();
+    // We need the leave year start to determine the leave year — use stored value if available
+    let allowance = await storage.getLeaveAllowance(staffUser.id, today.getFullYear());
+    const leaveYearStart = allowance?.leaveYearStart ?? "01-01";
+    const maxCarryOverDays = parseFloat(allowance?.maxCarryOverDays ?? "8");
+
+    // Determine the leave year bounds and the leave year identifier
+    const { yearStart, yearEnd, leaveYear } = calculateLeaveYearBounds(leaveYearStart, today);
+
+    // Calculate pro-rata entitlement
+    const { fullEntitlement, actualEntitlement, isProRata, monthsAccrued } = calculateProRataEntitlement(
+      contractedDaysPerWeek, employmentStartDate, leaveYearStart, today
+    );
+
+    if (!allowance) {
+      // Auto-initialise with the pro-rata entitlement
+      allowance = await storage.upsertLeaveAllowance(
+        staffUser.id, leaveYear, String(actualEntitlement), "0", leaveYearStart, "8"
+      );
+    }
+
+    // Apply carry-over cap (UK law: max 8 days discretionary, max 20 if sick/family)
+    const rawCarryOver = parseFloat(allowance.carryOver ?? "0");
+    const cappedCarryOver = applyCarryOverCap(rawCarryOver, maxCarryOverDays);
+
+    // Total entitlement = pro-rata + capped carry-over
+    const totalEntitlement = parseFloat(allowance.totalDays) + cappedCarryOver;
+
+    // Fetch all leave requests for this staff member within the current leave year
+    const allRequests = await storage.getLeaveRequestsForStaff(staffUser.id);
+    const yearRequests = allRequests.filter((r: any) =>
+      r.startDate >= yearStart.toISOString().slice(0, 10) &&
+      r.startDate <= yearEnd.toISOString().slice(0, 10)
+    );
+
+    // CRITICAL: only annual leave deducts from entitlement (UK law — sick/unpaid are separate)
+    const annualLeaveUsed = yearRequests
+      .filter((r: any) => r.status === "approved" && r.leaveType === "annual")
+      .reduce((sum: number, r: any) => sum + parseFloat(r.totalDays || "0"), 0);
+
+    const sickDaysThisYear = yearRequests
+      .filter((r: any) => r.status === "approved" && r.leaveType === "sick")
+      .reduce((sum: number, r: any) => sum + parseFloat(r.totalDays || "0"), 0);
+
+    const unpaidDaysThisYear = yearRequests
+      .filter((r: any) => r.status === "approved" && r.leaveType === "unpaid")
+      .reduce((sum: number, r: any) => sum + parseFloat(r.totalDays || "0"), 0);
+
+    const pendingAnnualDays = yearRequests
+      .filter((r: any) => r.status === "pending" && r.leaveType === "annual")
+      .reduce((sum: number, r: any) => sum + parseFloat(r.totalDays || "0"), 0);
+
+    res.json({
+      allowance,
+      // Entitlement breakdown
+      contractedDaysPerWeek,
+      fullEntitlement,
+      actualEntitlement: parseFloat(allowance.totalDays), // the stored (possibly manager-overridden) value
+      isProRata,
+      monthsAccrued,
+      carryOver: cappedCarryOver,
+      carryOverCapped: cappedCarryOver < rawCarryOver,
+      totalEntitlement,
+      // Usage — annual only counts against balance
+      annualLeaveUsed,
+      sickDaysThisYear,
+      unpaidDaysThisYear,
+      pendingAnnualDays,
+      remaining: totalEntitlement - annualLeaveUsed,
+      // Leave year info
+      leaveYearStart: allowance.leaveYearStart,
+      leaveYearLabel: `${yearStart.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} – ${yearEnd.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`,
+    });
   });
 
   app.put("/api/hr/leave-allowance/:staffId", staffAuth, managerAuth, async (req, res) => {
     const staffId = parseInt(req.params.staffId);
-    const { year, totalDays, carryOver } = req.body;
-    const allowance = await storage.upsertLeaveAllowance(staffId, year || new Date().getFullYear(), String(totalDays ?? "28"), String(carryOver ?? "0"));
+    const { year, totalDays, carryOver, leaveYearStart, maxCarryOverDays } = req.body;
+    const allowance = await storage.upsertLeaveAllowance(
+      staffId,
+      year || new Date().getFullYear(),
+      String(totalDays ?? "28"),
+      String(carryOver ?? "0"),
+      leaveYearStart,
+      maxCarryOverDays !== undefined ? String(maxCarryOverDays) : undefined,
+    );
     res.json(allowance);
+  });
+
+  // Update a staff member's contracted hours and employment start date (for pro-rata)
+  app.put("/api/hr/staff/:staffId/employment", staffAuth, managerAuth, async (req, res) => {
+    const staffId = parseInt(req.params.staffId);
+    const { contractedDaysPerWeek, employmentStartDate } = req.body;
+    if (contractedDaysPerWeek === undefined) return res.status(400).json({ message: "contractedDaysPerWeek is required" });
+    const days = parseFloat(String(contractedDaysPerWeek));
+    if (isNaN(days) || days <= 0 || days > 7) return res.status(400).json({ message: "contractedDaysPerWeek must be between 0.5 and 7" });
+    const updated = await storage.updateStaffEmployment(staffId, String(days), employmentStartDate || null);
+    if (!updated) return res.status(404).json({ message: "Staff member not found" });
+    res.json(updated);
   });
 
   app.get("/api/hr/leave-allowances/all", staffAuth, managerAuth, async (req, res) => {

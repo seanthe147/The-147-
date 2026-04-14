@@ -78,11 +78,14 @@ function setupSecurityHeaders(app: express.Application) {
     if (isProd) {
       res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
     }
-    if (req.path === "/staff" || req.path.startsWith("/staff-portal") || req.path.startsWith("/admin-")) {
+    // In development, the Expo web app calls the API at the Replit dev domain (cross-origin
+    // from localhost). We need connect-src * in dev so API calls work from any SPA route.
+    const devConnectSrc = isProd ? null : "*";
+
+    if (req.path === "/staff" || req.path.startsWith("/staff-portal") || req.path.startsWith("/admin-") || req.path.startsWith("/staff-")) {
+      // All staff-facing SPA routes — locked down in production, open in dev
       res.setHeader("X-Frame-Options", "DENY");
-      // In development the Expo web app makes API calls to the Replit dev domain (different
-      // port/origin), so we allow all connections. In production, restrict to 'self'.
-      const connectSrc = isProd ? "'self'" : "*";
+      const connectSrc = devConnectSrc ?? "'self'";
       res.setHeader(
         "Content-Security-Policy",
         `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src ${connectSrc}; img-src 'self' data: blob: https:; frame-ancestors 'none'`
@@ -96,9 +99,10 @@ function setupSecurityHeaders(app: express.Application) {
       );
     } else if (!req.path.startsWith("/api")) {
       res.setHeader("X-Frame-Options", "SAMEORIGIN");
+      const genericConnectSrc = devConnectSrc ?? "'self' https://*.squareup.com https://*.resend.com";
       res.setHeader(
         "Content-Security-Policy",
-        "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://*.squareup.com https://*.resend.com; img-src 'self' data: https:; frame-src https://www.the147order.co.uk https://the147order.co.uk"
+        `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src ${genericConnectSrc}; img-src 'self' data: https:; frame-src https://www.the147order.co.uk https://the147order.co.uk`
       );
     } else {
       res.setHeader("X-Frame-Options", "DENY");
