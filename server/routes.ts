@@ -3000,22 +3000,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(weeklyEvents);
       }
 
-      // One-off events: try Ticket Source first, fall back to DB
+      // One-off events: merge Ticket Source events with DB events
       if (!eventType || eventType === "event") {
-        const tsEvents = await fetchTicketSourceEvents();
-        if (tsEvents.length > 0) {
-          const mapped = tsEvents.map(mapTsEvent);
-          // Sort by date ascending, undated events last
-          mapped.sort((a, b) => {
-            if (!a.date) return 1;
-            if (!b.date) return -1;
-            return a.date.localeCompare(b.date) || (a.time || "").localeCompare(b.time || "");
-          });
-          return res.json(mapped);
-        }
-        // Ticket Source not configured or returned nothing — fall back to DB
-        const dbEvents = await storage.getActiveEvents(eventType);
-        return res.json(dbEvents);
+        const [tsEvents, dbEvents] = await Promise.all([
+          fetchTicketSourceEvents().catch(() => [] as AppEvent[]),
+          storage.getActiveEvents("event"),
+        ]);
+        const mapped = tsEvents.map(mapTsEvent);
+        const combined = [...dbEvents, ...mapped];
+        // Sort by date ascending, undated events last
+        combined.sort((a, b) => {
+          if (!a.date) return 1;
+          if (!b.date) return -1;
+          return a.date.localeCompare(b.date) || ((a.time || "").localeCompare(b.time || ""));
+        });
+        return res.json(combined);
       }
 
       const allEvents = await storage.getActiveEvents(eventType);

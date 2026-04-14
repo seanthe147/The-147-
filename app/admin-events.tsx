@@ -92,14 +92,15 @@ export default function AdminEventsScreen() {
 
   const { data: events, isLoading } = useQuery<Event[]>({
     queryKey: ["/api/events/all"],
+    enabled: isAuthenticated,
   });
 
   const createMutation = useMutation({
     mutationFn: (data: EventForm) => apiRequest("POST", "/api/events", data),
     onSuccess: async () => {
-      await queryClient.refetchQueries({ queryKey: ["/api/events/all"] });
-      await queryClient.refetchQueries({ queryKey: ["/api/events"] });
       resetForm();
+      await queryClient.invalidateQueries({ queryKey: ["/api/events/all"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/events"] });
     },
   });
 
@@ -107,9 +108,9 @@ export default function AdminEventsScreen() {
     mutationFn: ({ id, data }: { id: number; data: EventForm }) =>
       apiRequest("PUT", `/api/events/${id}`, data),
     onSuccess: async () => {
-      await queryClient.refetchQueries({ queryKey: ["/api/events/all"] });
-      await queryClient.refetchQueries({ queryKey: ["/api/events"] });
       resetForm();
+      await queryClient.invalidateQueries({ queryKey: ["/api/events/all"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/events"] });
     },
   });
 
@@ -119,8 +120,8 @@ export default function AdminEventsScreen() {
       return id;
     },
     onSuccess: async () => {
-      await queryClient.refetchQueries({ queryKey: ["/api/events/all"] });
-      await queryClient.refetchQueries({ queryKey: ["/api/events"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/events/all"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/events"] });
     },
     onError: () => {
       Alert.alert("Error", "Failed to delete event. Please try again.");
@@ -218,7 +219,10 @@ export default function AdminEventsScreen() {
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
   const allEvents = events || [];
-  const filteredEvents = allEvents.filter((e) => (e.eventType || "event") === adminTab);
+  const filteredEvents = allEvents.filter((e) => {
+    const eType = e.eventType || "event";
+    return adminTab === "events" ? eType === "event" : eType === adminTab;
+  });
 
   const now = new Date();
   now.setHours(0, 0, 0, 0);
