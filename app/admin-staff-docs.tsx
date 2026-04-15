@@ -127,7 +127,7 @@ export default function AdminStaffDocsScreen() {
           reader.readAsDataURL(blob);
         });
       } else {
-        base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
+        base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: 'base64' as any });
       }
 
       setPickedFile({
@@ -198,8 +198,9 @@ export default function AdminStaffDocsScreen() {
         a.download = full.fileName;
         a.click();
       } else {
-        const path = FileSystem.cacheDirectory + full.fileName;
-        await FileSystem.writeAsStringAsync(path, full.fileData, { encoding: FileSystem.EncodingType.Base64 });
+        const cacheDir = (FileSystem as any).cacheDirectory || (FileSystem as any).documentDirectory || '';
+        const path = cacheDir + full.fileName;
+        await FileSystem.writeAsStringAsync(path, full.fileData, { encoding: 'base64' as any });
         Alert.alert("Saved", `Saved to ${path}`);
       }
     } catch (e: any) {

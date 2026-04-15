@@ -8,7 +8,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getApiUrl, getStaffToken } from "@/lib/query-client";
-import { Colors } from "@/constants/colors";
+import Colors from "@/constants/colors";
 
 const SSP_RATE_YEAR = "2025/26";
 const SSP_WEEKLY = 118.75;

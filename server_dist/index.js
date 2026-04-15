@@ -1020,6 +1020,10 @@ var init_storage = __esm({
         const [updated] = await db.update(staffUsers).set({ approvalStatus }).where(eq(staffUsers.id, id)).returning();
         return updated;
       }
+      async getStaffUserById(id) {
+        const [user] = await db.select().from(staffUsers).where(eq(staffUsers.id, id));
+        return user;
+      }
       async getStaffUserByUsername(username) {
         const [user] = await db.select().from(staffUsers).where(
           eq(staffUsers.username, username.toLowerCase().trim())
@@ -7720,7 +7724,7 @@ Phone: ${phone}` : ""}`,
     if (isNaN(staffId)) return res.status(400).json({ message: "Invalid staff ID" });
     const [pay, staffUser, allLeave] = await Promise.all([
       storage.getStaffPay(staffId),
-      storage.getStaffUser(staffId),
+      storage.getStaffUserById(staffId),
       storage.getLeaveRequestsForStaff(staffId)
     ]);
     if (!staffUser) return res.status(404).json({ message: "Staff member not found" });
@@ -7801,7 +7805,7 @@ Phone: ${phone}` : ""}`,
     if (isNaN(staffId)) return res.status(400).json({ message: "Invalid staff ID" });
     const [pay, staffUser, allLeave] = await Promise.all([
       storage.getStaffPay(staffId),
-      storage.getStaffUser(staffId),
+      storage.getStaffUserById(staffId),
       storage.getLeaveRequestsForStaff(staffId)
     ]);
     if (!staffUser) return res.status(404).json({ message: "Staff member not found" });

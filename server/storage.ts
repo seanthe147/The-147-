@@ -303,6 +303,7 @@ export interface IStorage {
   cleanupExpiredSessions(): Promise<number>;
   createStaffUser(username: string, pinHash: string, pinSalt: string, displayName?: string, role?: string, approvalStatus?: string): Promise<StaffUser>;
   updateStaffApproval(id: number, approvalStatus: string): Promise<StaffUser | undefined>;
+  getStaffUserById(id: number): Promise<StaffUser | undefined>;
   getStaffUserByUsername(username: string): Promise<StaffUser | undefined>;
   getAllStaffUsers(): Promise<StaffUser[]>;
   updateStaffPin(username: string, pinHash: string, pinSalt: string): Promise<StaffUser | undefined>;
@@ -726,6 +727,11 @@ export class DatabaseStorage implements IStorage {
       .where(eq(staffUsers.id, id))
       .returning();
     return updated;
+  }
+
+  async getStaffUserById(id: number): Promise<StaffUser | undefined> {
+    const [user] = await db.select().from(staffUsers).where(eq(staffUsers.id, id));
+    return user;
   }
 
   async getStaffUserByUsername(username: string): Promise<StaffUser | undefined> {

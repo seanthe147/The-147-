@@ -4979,14 +4979,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // List documents for a staff member (no file data — metadata only)
   app.get("/api/hr/staff/:id/documents", staffAuth, managerAuth, async (req, res) => {
-    const staffId = parseInt(req.params.id);
+    const staffId = parseInt(req.params.id as string);
     const docs = await storage.getDocumentsForStaff(staffId);
     res.json(docs);
   });
 
   // Download a specific document (returns base64 fileData)
   app.get("/api/hr/documents/:id/download", staffAuth, managerAuth, async (req, res) => {
-    const doc = await storage.getDocumentById(parseInt(req.params.id));
+    const doc = await storage.getDocumentById(parseInt(req.params.id as string));
     if (!doc) return res.status(404).json({ message: "Document not found" });
     res.json(doc);
   });
@@ -5013,7 +5013,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Delete a document
   app.delete("/api/hr/documents/:id", staffAuth, managerAuth, async (req, res) => {
-    const deleted = await storage.deleteDocument(parseInt(req.params.id));
+    const deleted = await storage.deleteDocument(parseInt(req.params.id as string));
     if (!deleted) return res.status(404).json({ message: "Document not found" });
     res.json({ success: true });
   });
@@ -5055,7 +5055,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Manager: view a staff member's onboarding record
   app.get("/api/hr/staff/:id/onboarding", staffAuth, managerAuth, async (req, res) => {
-    const record = await storage.getOnboarding(parseInt(req.params.id));
+    const record = await storage.getOnboarding(parseInt(req.params.id as string));
     res.json(record ?? null);
   });
 
@@ -5442,7 +5442,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const [pay, staffUser, allLeave] = await Promise.all([
       storage.getStaffPay(staffId),
-      storage.getStaffUser(staffId),
+      storage.getStaffUserById(staffId),
       storage.getLeaveRequestsForStaff(staffId),
     ]);
 
@@ -5561,7 +5561,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const [pay, staffUser, allLeave] = await Promise.all([
       storage.getStaffPay(staffId),
-      storage.getStaffUser(staffId),
+      storage.getStaffUserById(staffId),
       storage.getLeaveRequestsForStaff(staffId),
     ]);
 
