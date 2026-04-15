@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View, Text, ScrollView, StyleSheet, Pressable, TextInput,
   ActivityIndicator, Alert, Platform,
@@ -47,20 +47,22 @@ export default function AdminPayScreen() {
   const [weeklyHours, setWeeklyHours] = useState("37.5");
   const [payLoaded, setPayLoaded] = useState(false);
 
-  const { isLoading: payLoading } = useQuery({
+  const { isLoading: payLoading, data: payQueryData } = useQuery({
     queryKey: ["/api/hr/staff/pay", sid],
     queryFn: () => apiFetch(`/api/hr/staff/${sid}/pay`),
     enabled: sid > 0,
-    onSuccess: (d: any) => {
-      if (!payLoaded) {
-        setPayType(d.payType ?? "hourly");
-        setHourlyRate(d.hourlyRate ?? "");
-        setAnnualSalary(d.annualSalary ?? "");
-        setWeeklyHours(d.weeklyHours ?? "37.5");
-        setPayLoaded(true);
-      }
-    },
   });
+
+  useEffect(() => {
+    if (payQueryData && !payLoaded) {
+      const d = payQueryData as any;
+      setPayType(d.payType ?? "hourly");
+      setHourlyRate(d.hourlyRate ?? "");
+      setAnnualSalary(d.annualSalary ?? "");
+      setWeeklyHours(d.weeklyHours ?? "37.5");
+      setPayLoaded(true);
+    }
+  }, [payQueryData, payLoaded]);
 
   const savePay = useMutation({
     mutationFn: () => apiFetch(`/api/hr/staff/${sid}/pay`, {

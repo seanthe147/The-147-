@@ -283,7 +283,7 @@ export default function AdminStaffDocsScreen() {
                         <View style={[styles.expiryRow, expired && styles.expiryExpired, expiring && !expired && styles.expiryWarning]}>
                           <Ionicons name={expired ? "alert-circle" : "time-outline"} size={12} color={expired ? "#DC2626" : expiring ? "#D97706" : Colors.light.textSecondary} />
                           <Text style={[styles.expiryText, expired && { color: "#DC2626" }, expiring && !expired && { color: "#D97706" }]}>
-                            {expired ? "Expired" : expiring ? "Expiring soon"}: {fmtDate(doc.expiresAt)}
+                            {expired ? "Expired" : expiring ? "Expiring soon" : "Expires"}: {fmtDate(doc.expiresAt)}
                           </Text>
                         </View>
                       )}
