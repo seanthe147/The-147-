@@ -135,7 +135,7 @@ function normaliseTime(t: string): string {
 export default function AdminRotaScreen() {
   const insets = useSafeAreaInsets();
   const webTop = Platform.OS === "web" ? 67 : 0;
-  const { isAuthenticated, isManager, isLoading: authLoading } = useStaffAuth();
+  const { isAuthenticated, isManager, isOwner, isLoading: authLoading } = useStaffAuth();
   const qc = useQueryClient();
 
   const [activeView, setActiveView] = useState<"rota" | "completed">("rota");
@@ -424,13 +424,15 @@ export default function AdminRotaScreen() {
           <Ionicons name="calendar-number" size={15} color={activeView === "rota" ? Colors.brand.blue : Colors.light.textSecondary} />
           <Text style={[styles.tabBtnText, activeView === "rota" && styles.tabBtnTextActive]}>Rota Planner</Text>
         </Pressable>
-        <Pressable
-          onPress={() => setActiveView("completed")}
-          style={[styles.tabBtn, activeView === "completed" && styles.tabBtnActive]}
-        >
-          <Ionicons name="checkmark-circle" size={15} color={activeView === "completed" ? Colors.brand.blue : Colors.light.textSecondary} />
-          <Text style={[styles.tabBtnText, activeView === "completed" && styles.tabBtnTextActive]}>Completed Shifts</Text>
-        </Pressable>
+        {isOwner && (
+          <Pressable
+            onPress={() => setActiveView("completed")}
+            style={[styles.tabBtn, activeView === "completed" && styles.tabBtnActive]}
+          >
+            <Ionicons name="checkmark-circle" size={15} color={activeView === "completed" ? Colors.brand.blue : Colors.light.textSecondary} />
+            <Text style={[styles.tabBtnText, activeView === "completed" && styles.tabBtnTextActive]}>Completed Shifts</Text>
+          </Pressable>
+        )}
       </View>
 
       {/* Week nav + publish */}
@@ -471,8 +473,14 @@ export default function AdminRotaScreen() {
         </View>
       )}
 
-      {/* Completed Shifts View */}
-      {activeView === "completed" && (
+      {/* Completed Shifts View — owner only */}
+      {activeView === "completed" && !isOwner && (
+        <View style={styles.centered}>
+          <Ionicons name="lock-closed" size={36} color={Colors.light.textSecondary} />
+          <Text style={styles.accessDenied}>Owner access required</Text>
+        </View>
+      )}
+      {activeView === "completed" && isOwner && (
         entriesLoading ? (
           <View style={styles.centered}>
             <ActivityIndicator color={Colors.brand.blue} />
