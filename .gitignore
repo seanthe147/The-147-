@@ -14,6 +14,7 @@ ios/
 android/
 *.orig.*
 *.jks
+!credentials/android/keystore.jks
 *.p8
 *.p12
 *.key
@@ -42,7 +43,7 @@ yarn-error.*
 
 # iOS build credentials (sensitive - do not commit)
 ios-creds/
-credentials.json
+# credentials.json must be committed so EAS build servers can find Android keystore
 
 # Replit chat attachments (may contain sensitive files shared in chat)
 attached_assets/
