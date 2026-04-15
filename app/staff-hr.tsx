@@ -549,29 +549,36 @@ function GDPRNotice({ onAccept }: { onAccept: () => void }) {
   const insets = useSafeAreaInsets();
   const privacyUrl = `${getApiUrl().replace(/\/api$/, "")}/staff-privacy-notice`;
   return (
-    <View style={[styles.container, styles.centered, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20, paddingHorizontal: 24 }]}>
-      <Ionicons name="shield-checkmark" size={48} color={Colors.brand.blue} style={{ marginBottom: 20 }} />
-      <Text style={styles.gdprTitle}>Data & Privacy Notice</Text>
-      <Text style={styles.gdprBody}>
-        The 147 Bradford collects and stores your attendance and leave data to meet employment law obligations under the Working Time Regulations 1998.{"\n\n"}
-        <Text style={{ fontWeight: "700" }}>What we collect:</Text>
-        {"\n"}• Clock-in and clock-out times{"\n"}• GPS coordinates at clock-in/out (on-site verification only){"\n"}• Leave requests and approvals{"\n"}• Incident reports{"\n\n"}
-        <Text style={{ fontWeight: "700" }}>Your rights (UK GDPR):</Text>
-        {"\n"}• Access all data held about you{"\n"}• Request correction of errors{"\n"}• Request deletion when you leave (subject to legal retention){"\n\n"}
-        <Text style={{ fontWeight: "700" }}>Retention:</Text> GPS removed after 3 years. Employment records kept for 7 years as required by UK law.{"\n\n"}
-        Location is only captured at the moment of clocking in or out — not continuously tracked.
-      </Text>
-      <Pressable
-        onPress={() => Linking.openURL(privacyUrl)}
-        style={{ marginBottom: 12 }}
+    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) }]}>
+      <ScrollView
+        contentContainerStyle={styles.gdprScroll}
+        showsVerticalScrollIndicator={false}
       >
-        <Text style={{ fontSize: 13, color: Colors.brand.blue, textDecorationLine: "underline", textAlign: "center" }}>
-          View full Staff Privacy Notice →
+        <Ionicons name="shield-checkmark" size={48} color={Colors.brand.blue} style={{ marginBottom: 20, alignSelf: "center" }} />
+        <Text style={styles.gdprTitle}>Data & Privacy Notice</Text>
+        <Text style={styles.gdprBody}>
+          The 147 Bradford collects and stores your attendance and leave data to meet employment law obligations under the Working Time Regulations 1998.{"\n\n"}
+          <Text style={{ fontWeight: "700" }}>What we collect:</Text>
+          {"\n"}• Clock-in and clock-out times{"\n"}• GPS coordinates at clock-in/out (on-site verification only){"\n"}• Leave requests and approvals{"\n"}• Incident reports{"\n\n"}
+          <Text style={{ fontWeight: "700" }}>Your rights (UK GDPR):</Text>
+          {"\n"}• Access all data held about you{"\n"}• Request correction of errors{"\n"}• Request deletion when you leave (subject to legal retention){"\n\n"}
+          <Text style={{ fontWeight: "700" }}>Retention:</Text> GPS removed after 3 years. Employment records kept for 7 years as required by UK law.{"\n\n"}
+          Location is only captured at the moment of clocking in or out — not continuously tracked.
         </Text>
-      </Pressable>
-      <Pressable onPress={onAccept} style={styles.gdprBtn}>
-        <Text style={styles.gdprBtnText}>I Understand — Continue</Text>
-      </Pressable>
+      </ScrollView>
+      <View style={[styles.gdprFooter, { paddingHorizontal: 24, paddingBottom: 20 }]}>
+        <Pressable
+          onPress={() => Linking.openURL(privacyUrl)}
+          style={{ marginBottom: 14 }}
+        >
+          <Text style={{ fontSize: 13, color: Colors.brand.blue, textDecorationLine: "underline", textAlign: "center" }}>
+            View full Staff Privacy Notice →
+          </Text>
+        </Pressable>
+        <Pressable onPress={onAccept} style={styles.gdprBtn}>
+          <Text style={styles.gdprBtnText}>I Understand — Continue</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -882,8 +889,10 @@ const styles = StyleSheet.create({
   lawNoticeText: { fontFamily: "Montserrat_400Regular", fontSize: 11, color: Colors.light.textSecondary, flex: 1, lineHeight: 17 },
 
   // GDPR notice
+  gdprScroll: { padding: 24, paddingTop: 32 },
+  gdprFooter: { borderTopWidth: 1, borderTopColor: Colors.light.border, paddingTop: 16, backgroundColor: Colors.light.background },
   gdprTitle: { fontFamily: "Montserrat_700Bold", fontSize: 20, color: Colors.light.text, marginBottom: 16, textAlign: "center" },
-  gdprBody: { fontFamily: "Montserrat_400Regular", fontSize: 13, color: Colors.light.textSecondary, lineHeight: 21, marginBottom: 28 },
+  gdprBody: { fontFamily: "Montserrat_400Regular", fontSize: 13, color: Colors.light.textSecondary, lineHeight: 21, marginBottom: 12 },
   gdprBtn: { backgroundColor: Colors.brand.blue, borderRadius: 14, paddingVertical: 16, alignItems: "center", width: "100%" },
   gdprBtnText: { fontFamily: "Montserrat_700Bold", fontSize: 16, color: "#fff" },
 
