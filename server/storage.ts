@@ -1704,12 +1704,22 @@ export class DatabaseStorage implements IStorage {
       expiresAt: staffDocuments.expiresAt,
       createdAt: staffDocuments.createdAt,
     }).from(staffDocuments).where(eq(staffDocuments.staffId, staffId)).orderBy(desc(staffDocuments.createdAt));
-    return rows;
+    return rows.map(r => ({
+      ...r,
+      fileName: decrypt(r.fileName),
+      notes: r.notes ? decrypt(r.notes) : null,
+    }));
   }
 
   async getDocumentById(id: number): Promise<StaffDocument | null> {
     const [row] = await db.select().from(staffDocuments).where(eq(staffDocuments.id, id));
-    return row ?? null;
+    if (!row) return null;
+    return {
+      ...row,
+      fileData: decrypt(row.fileData),
+      fileName: decrypt(row.fileName),
+      notes: row.notes ? decrypt(row.notes) : null,
+    };
   }
 
   async uploadDocument(data: {
@@ -1723,8 +1733,19 @@ export class DatabaseStorage implements IStorage {
     notes?: string;
     expiresAt?: string;
   }): Promise<StaffDocument> {
-    const [doc] = await db.insert(staffDocuments).values(data).returning();
-    return doc;
+    const [doc] = await db.insert(staffDocuments).values({
+      ...data,
+      fileData: encrypt(data.fileData),          // AES-256-GCM encrypt file contents at rest
+      fileName: encrypt(data.fileName),          // encrypt filename (may reveal identity)
+      notes: data.notes ? encrypt(data.notes) : null,
+    }).returning();
+    // Return with decrypted values for immediate use
+    return {
+      ...doc,
+      fileData: data.fileData,
+      fileName: data.fileName,
+      notes: data.notes ?? null,
+    };
   }
 
   async deleteDocument(id: number): Promise<boolean> {
@@ -1733,7 +1754,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllDocuments(): Promise<Omit<StaffDocument, "fileData">[]> {
-    return db.select({
+    const rows = await db.select({
       id: staffDocuments.id,
       staffId: staffDocuments.staffId,
       uploadedBy: staffDocuments.uploadedBy,
@@ -1745,6 +1766,11 @@ export class DatabaseStorage implements IStorage {
       expiresAt: staffDocuments.expiresAt,
       createdAt: staffDocuments.createdAt,
     }).from(staffDocuments).orderBy(desc(staffDocuments.createdAt));
+    return rows.map(r => ({
+      ...r,
+      fileName: decrypt(r.fileName),
+      notes: r.notes ? decrypt(r.notes) : null,
+    }));
   }
 
   // ── Staff onboarding ────────────────────────────────────────────────────────
