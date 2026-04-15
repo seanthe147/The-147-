@@ -591,6 +591,27 @@ function scheduleRetentionCleanup() {
 }
 
 (async () => {
+  // Write Apple App Store Connect API key from secret to disk (needed for Expo Launch / EAS)
+  // The /tmp directory is ephemeral — re-write on every server start so it's always present.
+  const ascKeyContent = process.env.ASC_KEY_P8 || '';
+  if (ascKeyContent) {
+    try {
+      const keyId = process.env.EXPO_ASC_KEY_ID || 'PRH75PPG5Z';
+      const keyPath = process.env.EXPO_ASC_API_KEY_PATH || `/tmp/AuthKey_${keyId}.p8`;
+      const base64 = ascKeyContent
+        .replace(/-----BEGIN PRIVATE KEY-----/g, '')
+        .replace(/-----END PRIVATE KEY-----/g, '')
+        .replace(/\s+/g, '');
+      const lines = base64.match(/.{1,64}/g) || [];
+      const pem = '-----BEGIN PRIVATE KEY-----\n' + lines.join('\n') + '\n-----END PRIVATE KEY-----\n';
+      fs.mkdirSync(path.dirname(keyPath), { recursive: true });
+      fs.writeFileSync(keyPath, pem, { mode: 0o600 });
+      log(`✓ ASC .p8 key written to ${keyPath}`);
+    } catch (e) {
+      console.warn('⚠ Could not write ASC .p8 key:', e);
+    }
+  }
+
   setupCors(app);
   setupSecurityHeaders(app);
   setupBodyParsing(app);

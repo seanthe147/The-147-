@@ -8331,6 +8331,21 @@ function scheduleRetentionCleanup() {
   setInterval(runCleanup, 24 * 60 * 60 * 1e3);
 }
 (async () => {
+  const ascKeyContent = process.env.ASC_KEY_P8 || "";
+  if (ascKeyContent) {
+    try {
+      const keyId = process.env.EXPO_ASC_KEY_ID || "PRH75PPG5Z";
+      const keyPath = process.env.EXPO_ASC_API_KEY_PATH || `/tmp/AuthKey_${keyId}.p8`;
+      const base64 = ascKeyContent.replace(/-----BEGIN PRIVATE KEY-----/g, "").replace(/-----END PRIVATE KEY-----/g, "").replace(/\s+/g, "");
+      const lines = base64.match(/.{1,64}/g) || [];
+      const pem = "-----BEGIN PRIVATE KEY-----\n" + lines.join("\n") + "\n-----END PRIVATE KEY-----\n";
+      fs2.mkdirSync(path2.dirname(keyPath), { recursive: true });
+      fs2.writeFileSync(keyPath, pem, { mode: 384 });
+      log(`\u2713 ASC .p8 key written to ${keyPath}`);
+    } catch (e) {
+      console.warn("\u26A0 Could not write ASC .p8 key:", e);
+    }
+  }
   setupCors(app);
   setupSecurityHeaders(app);
   setupBodyParsing(app);
