@@ -551,6 +551,7 @@ function GDPRNotice({ onAccept }: { onAccept: () => void }) {
   return (
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) }]}>
       <ScrollView
+        style={{ flex: 1 }}
         contentContainerStyle={styles.gdprScroll}
         showsVerticalScrollIndicator={false}
       >
