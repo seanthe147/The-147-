@@ -14,6 +14,7 @@
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
       "ios": {
         "resourceClass": "m-medium"
       },
@@ -27,6 +28,7 @@
     "production": {
       "autoIncrement": true,
       "distribution": "store",
+      "channel": "production",
       "ios": {
         "resourceClass": "m-medium",
         "credentialsSource": "local"
@@ -42,6 +44,7 @@
     "production-android": {
       "autoIncrement": true,
       "distribution": "store",
+      "channel": "production",
       "android": {
         "buildType": "app-bundle",
         "credentialsSource": "local"
