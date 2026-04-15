@@ -43,7 +43,12 @@ The application features a mobile frontend built with Expo React Native, utilizi
 ## EAS Build Setup
 
 ### Current State (April 2026)
-**Android** uses **remote credentials** (`credentialsSource: "remote"`) — the keystore is stored on EAS servers (keystore ID `152c4249-c08f-4b5c-abc0-75d880af6baf`, alias `36b5163761ec2dcc8cff05b94a82462f`, JKS format, linked as default for `com.the147bradford.venue`). This is the correct approach for Replit-hosted EAS builds because the EAS worker receives a project archive and needs credentials independently of whether `credentials.json` is present.
+**Android credential strategy — multi-layer (belt-and-suspenders):**
+Replit's Expo Launch build infrastructure uses an older/different version of `eas-cli` that consistently reads `credentialsSource: "local"` regardless of `eas.json`, and then looks for `credentials.json` in the project root. To handle this, three redundant layers are in place:
+
+1. **`eas-build-pre-install.sh`** (primary fix) — runs before `build:internal` on the EAS worker. It reads four EAS project secrets (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`) and reconstructs `credentials.json` + `credentials/android/keystore.jks` from scratch. Gracefully skips if secrets are not available.
+2. **`credentials.json` committed to git** (direct fallback) — the file is tracked in git (not gitignored) and will be included in the build archive for any build that uses a recent commit.
+3. **EAS remote credentials** (`credentialsSource: "remote"` in `eas.json`) — keystore stored on EAS servers (keystore ID `152c4249-c08f-4b5c-abc0-75d880af6baf`, alias `36b5163761ec2dcc8cff05b94a82462f`, JKS, linked as default for `com.the147bradford.venue`). Works when the build server has `EXPO_TOKEN` and reads our current `eas.json`.
 
 **iOS** uses **local credentials** (`credentialsSource: "local"` in `eas.json`) to bypass EAS remote credential validation. This was required because the stored Apple API key (PRH75PPG5Z) in EAS was revoked, causing remote Apple authentication failures.
 
