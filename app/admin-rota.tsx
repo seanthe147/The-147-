@@ -61,6 +61,27 @@ interface RotaData {
   published: RotaPublished | null;
 }
 
+interface TimeEntry {
+  id: number;
+  staffId: number;
+  staffName: string;
+  clockedInAt: string;
+  clockedOutAt: string | null;
+  notes: string | null;
+  status: string;
+  amendedBy: number | null;
+  amendedAt: string | null;
+  amendReason: string | null;
+}
+
+interface AmendModalState {
+  visible: boolean;
+  entry: TimeEntry | null;
+  clockedInAt: string;
+  clockedOutAt: string;
+  reason: string;
+}
+
 interface ShiftModalState {
   visible: boolean;
   staffId: number;
@@ -113,6 +134,7 @@ export default function AdminRotaScreen() {
   const { isAuthenticated, isManager, isLoading: authLoading } = useStaffAuth();
   const qc = useQueryClient();
 
+  const [activeView, setActiveView] = useState<"rota" | "completed">("rota");
   const [weekStart, setWeekStart] = useState<Date>(() => getMonday());
   const weekStr = dateToStr(weekStart);
 
@@ -126,10 +148,21 @@ export default function AdminRotaScreen() {
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
 
+  const [amendModal, setAmendModal] = useState<AmendModalState>({
+    visible: false, entry: null, clockedInAt: "", clockedOutAt: "", reason: "",
+  });
+  const [amending, setAmending] = useState(false);
+
   const { data: rotaData, isLoading, refetch } = useQuery<RotaData>({
     queryKey: ["/api/hr/rota", weekStr],
     queryFn: () => hrApi(`/api/hr/rota?weekStart=${weekStr}`),
     enabled: isAuthenticated && isManager,
+  });
+
+  const { data: allEntries = [], isLoading: entriesLoading, refetch: refetchEntries } = useQuery<TimeEntry[]>({
+    queryKey: ["/api/hr/time-entries/all"],
+    queryFn: () => hrApi("/api/hr/time-entries/all"),
+    enabled: isAuthenticated && isManager && activeView === "completed",
   });
 
   const prevWeek = useCallback(() => {
@@ -252,6 +285,71 @@ export default function AdminRotaScreen() {
     }
   }, [rotaData, weekStr, refetch]);
 
+  // ── Amend helpers ─────────────────────────────────────────────────────────
+
+  function fmtForInput(iso: string | null | undefined): string {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function openAmend(entry: TimeEntry) {
+    setAmendModal({
+      visible: true,
+      entry,
+      clockedInAt: fmtForInput(entry.clockedInAt),
+      clockedOutAt: fmtForInput(entry.clockedOutAt),
+      reason: "",
+    });
+  }
+
+  async function submitAmend() {
+    if (!amendModal.entry) return;
+    if (!amendModal.reason.trim()) {
+      if (Platform.OS === "web") window.alert("Please enter a reason for the amendment.");
+      else Alert.alert("Required", "Please enter a reason for the amendment.");
+      return;
+    }
+    setAmending(true);
+    try {
+      await hrApi(`/api/hr/time-entries/${amendModal.entry.id}/amend`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          clockedInAt: amendModal.clockedInAt ? new Date(amendModal.clockedInAt).toISOString() : undefined,
+          clockedOutAt: amendModal.clockedOutAt ? new Date(amendModal.clockedOutAt).toISOString() : undefined,
+          reason: amendModal.reason.trim(),
+        }),
+      });
+      setAmendModal(m => ({ ...m, visible: false }));
+      refetchEntries();
+    } catch (e: any) {
+      if (Platform.OS === "web") window.alert("Error: " + (e.message || "Amendment failed."));
+      else Alert.alert("Error", e.message || "Amendment failed.");
+    } finally {
+      setAmending(false);
+    }
+  }
+
+  // ── Week-filtered entries ──────────────────────────────────────────────────
+
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  weekEnd.setHours(23, 59, 59, 999);
+
+  const weekEntries = allEntries.filter(e => {
+    const d = new Date(e.clockedInAt);
+    return d >= weekStart && d <= weekEnd;
+  });
+
+  function calcHours(entry: TimeEntry): string {
+    if (!entry.clockedOutAt) return "Active";
+    const ms = new Date(entry.clockedOutAt).getTime() - new Date(entry.clockedInAt).getTime();
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    return `${h}h ${m}m`;
+  }
+
   if (authLoading) {
     return (
       <View style={[styles.centered, { paddingTop: insets.top }]}>
@@ -313,6 +411,24 @@ export default function AdminRotaScreen() {
         <View style={{ width: 36 }} />
       </View>
 
+      {/* Tab switcher */}
+      <View style={styles.tabBar}>
+        <Pressable
+          onPress={() => setActiveView("rota")}
+          style={[styles.tabBtn, activeView === "rota" && styles.tabBtnActive]}
+        >
+          <Ionicons name="calendar-number" size={15} color={activeView === "rota" ? Colors.brand.blue : Colors.light.textSecondary} />
+          <Text style={[styles.tabBtnText, activeView === "rota" && styles.tabBtnTextActive]}>Rota Planner</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setActiveView("completed")}
+          style={[styles.tabBtn, activeView === "completed" && styles.tabBtnActive]}
+        >
+          <Ionicons name="checkmark-circle" size={15} color={activeView === "completed" ? Colors.brand.blue : Colors.light.textSecondary} />
+          <Text style={[styles.tabBtnText, activeView === "completed" && styles.tabBtnTextActive]}>Completed Shifts</Text>
+        </Pressable>
+      </View>
+
       {/* Week nav + publish */}
       <View style={styles.controls}>
         <View style={styles.weekNav}>
@@ -325,21 +441,23 @@ export default function AdminRotaScreen() {
           </Pressable>
         </View>
 
-        <Pressable
-          onPress={publishRota}
-          disabled={publishing}
-          style={({ pressed }) => [styles.publishBtn, pressed && { opacity: 0.7 }, published && styles.publishedBtn]}
-        >
-          {publishing
-            ? <ActivityIndicator color="#fff" size="small" />
-            : <>
-              <Ionicons name={published ? "checkmark-circle" : "megaphone"} size={15} color="#fff" />
-              <Text style={styles.publishBtnText}>{published ? "Re-publish" : "Publish & Notify"}</Text>
-            </>}
-        </Pressable>
+        {activeView === "rota" && (
+          <Pressable
+            onPress={publishRota}
+            disabled={publishing}
+            style={({ pressed }) => [styles.publishBtn, pressed && { opacity: 0.7 }, published && styles.publishedBtn]}
+          >
+            {publishing
+              ? <ActivityIndicator color="#fff" size="small" />
+              : <>
+                <Ionicons name={published ? "checkmark-circle" : "megaphone"} size={15} color="#fff" />
+                <Text style={styles.publishBtnText}>{published ? "Re-publish" : "Publish & Notify"}</Text>
+              </>}
+          </Pressable>
+        )}
       </View>
 
-      {published && (
+      {activeView === "rota" && published && (
         <View style={styles.publishedBanner}>
           <Ionicons name="checkmark-circle" size={14} color="#059669" />
           <Text style={styles.publishedBannerText}>
@@ -349,8 +467,84 @@ export default function AdminRotaScreen() {
         </View>
       )}
 
-      {/* Grid */}
-      {isLoading ? (
+      {/* Completed Shifts View */}
+      {activeView === "completed" && (
+        entriesLoading ? (
+          <View style={styles.centered}>
+            <ActivityIndicator color={Colors.brand.blue} />
+            <Text style={styles.loadingText}>Loading shifts…</Text>
+          </View>
+        ) : weekEntries.length === 0 ? (
+          <View style={styles.centered}>
+            <Ionicons name="time-outline" size={40} color={Colors.light.textSecondary} />
+            <Text style={styles.emptyText}>No completed shifts this week.</Text>
+          </View>
+        ) : (
+          <ScrollView style={styles.gridOuter} contentContainerStyle={{ paddingBottom: insets.bottom + 24, paddingHorizontal: 16 }}>
+            {weekEntries.map(entry => {
+              const isAmended = entry.status === "amended";
+              const isActive = !entry.clockedOutAt;
+              const clockIn = new Date(entry.clockedInAt);
+              const clockOut = entry.clockedOutAt ? new Date(entry.clockedOutAt) : null;
+              return (
+                <Pressable
+                  key={entry.id}
+                  onPress={() => openAmend(entry)}
+                  style={({ pressed }) => [styles.entryCard, pressed && { opacity: 0.8 }]}
+                  testID={`entry-${entry.id}`}
+                >
+                  <View style={styles.entryTop}>
+                    <View style={styles.entryNameRow}>
+                      <Ionicons name="person-circle-outline" size={18} color={Colors.light.textSecondary} />
+                      <Text style={styles.entryName}>{entry.staffName}</Text>
+                      {isAmended && (
+                        <View style={styles.amendedBadge}>
+                          <Text style={styles.amendedBadgeText}>Amended</Text>
+                        </View>
+                      )}
+                      {isActive && (
+                        <View style={styles.activeBadge}>
+                          <Text style={styles.activeBadgeText}>Active</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.entryHours}>
+                      <Text style={styles.entryHoursText}>{calcHours(entry)}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.entryTimes}>
+                    <View style={styles.entryTimeBlock}>
+                      <Text style={styles.entryTimeLabel}>CLOCKED IN</Text>
+                      <Text style={styles.entryTimeVal}>
+                        {clockIn.toLocaleDateString("en-GB", { day: "numeric", month: "short" })} {clockIn.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                      </Text>
+                    </View>
+                    <Ionicons name="arrow-forward" size={14} color={Colors.light.textSecondary} />
+                    <View style={styles.entryTimeBlock}>
+                      <Text style={styles.entryTimeLabel}>CLOCKED OUT</Text>
+                      <Text style={[styles.entryTimeVal, isActive && { color: Colors.brand.green }]}>
+                        {clockOut
+                          ? `${clockOut.toLocaleDateString("en-GB", { day: "numeric", month: "short" })} ${clockOut.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`
+                          : "Still clocked in"}
+                      </Text>
+                    </View>
+                  </View>
+                  {isAmended && entry.amendReason && (
+                    <Text style={styles.entryAmendNote}>Amendment: {entry.amendReason}</Text>
+                  )}
+                  <View style={styles.entryEditHint}>
+                    <Ionicons name="create-outline" size={13} color={Colors.brand.blue} />
+                    <Text style={styles.entryEditHintText}>Tap to edit</Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        )
+      )}
+
+      {/* Rota Grid */}
+      {activeView === "rota" && (isLoading ? (
         <View style={styles.centered}>
           <ActivityIndicator color={Colors.brand.blue} />
           <Text style={styles.loadingText}>Loading rota…</Text>
@@ -432,7 +626,7 @@ export default function AdminRotaScreen() {
             </View>
           </ScrollView>
         </ScrollView>
-      )}
+      ))}
 
       {/* Shift modal */}
       <Modal visible={modal.visible} transparent animationType="slide" onRequestClose={closeModal}>
@@ -534,6 +728,79 @@ export default function AdminRotaScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Amend modal */}
+      <Modal visible={amendModal.visible} transparent animationType="slide" onRequestClose={() => setAmendModal(m => ({ ...m, visible: false }))}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+        >
+          <Pressable style={styles.modalBackdrop} onPress={() => setAmendModal(m => ({ ...m, visible: false }))} />
+          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 16 }]}>
+            <View style={styles.dragHandle} />
+            <Text style={styles.modalTitle}>Edit Completed Shift</Text>
+            {amendModal.entry && (
+              <Text style={styles.modalSubtitle}>{amendModal.entry.staffName}</Text>
+            )}
+
+            <Text style={styles.fieldLabel}>Clock-in Date/Time</Text>
+            <TextInput
+              style={styles.amendInput}
+              value={amendModal.clockedInAt}
+              onChangeText={v => setAmendModal(m => ({ ...m, clockedInAt: v }))}
+              placeholder="YYYY-MM-DDTHH:MM"
+              placeholderTextColor={Colors.light.textSecondary}
+              autoCapitalize="none"
+            />
+
+            <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Clock-out Date/Time</Text>
+            <TextInput
+              style={styles.amendInput}
+              value={amendModal.clockedOutAt}
+              onChangeText={v => setAmendModal(m => ({ ...m, clockedOutAt: v }))}
+              placeholder="YYYY-MM-DDTHH:MM (leave blank if still active)"
+              placeholderTextColor={Colors.light.textSecondary}
+              autoCapitalize="none"
+            />
+
+            <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Reason for Amendment *</Text>
+            <TextInput
+              style={[styles.amendInput, { height: 72, textAlignVertical: "top" }]}
+              value={amendModal.reason}
+              onChangeText={v => setAmendModal(m => ({ ...m, reason: v }))}
+              placeholder="Explain why you are amending this shift…"
+              placeholderTextColor={Colors.light.textSecondary}
+              multiline
+            />
+
+            {amendModal.entry?.amendReason && (
+              <View style={styles.prevAmendNote}>
+                <Text style={styles.prevAmendLabel}>Previous amendment:</Text>
+                <Text style={styles.prevAmendText}>{amendModal.entry.amendReason}</Text>
+              </View>
+            )}
+
+            <View style={[styles.btnRow, { marginTop: 20 }]}>
+              <Pressable
+                onPress={() => setAmendModal(m => ({ ...m, visible: false }))}
+                style={({ pressed }) => [styles.cancelBtn, pressed && { opacity: 0.7 }]}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={submitAmend}
+                disabled={amending}
+                style={({ pressed }) => [styles.saveBtn, pressed && { opacity: 0.7 }]}
+                testID="amend-save-btn"
+              >
+                {amending
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={styles.saveBtnText}>Save Amendment</Text>}
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -618,4 +885,39 @@ const styles = StyleSheet.create({
   cancelBtnText: { color: Colors.light.text, fontSize: 14, fontWeight: "600" },
   saveBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: Colors.brand.blue },
   saveBtnText: { color: "#fff", fontSize: 14, fontWeight: "700" },
+  btnRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 10 },
+
+  // Tab bar
+  tabBar: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#E2E8F0", backgroundColor: "#fff" },
+  tabBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10 },
+  tabBtnActive: { borderBottomWidth: 2, borderBottomColor: Colors.brand.blue },
+  tabBtnText: { fontSize: 13, fontWeight: "600", color: Colors.light.textSecondary },
+  tabBtnTextActive: { color: Colors.brand.blue },
+
+  // Entry cards
+  entryCard: { backgroundColor: "#fff", borderRadius: 12, padding: 14, marginTop: 12, borderWidth: 1, borderColor: "#E2E8F0", shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 4, shadowOffset: { width: 0, height: 2 } },
+  entryTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
+  entryNameRow: { flexDirection: "row", alignItems: "center", gap: 6, flex: 1, flexWrap: "wrap" },
+  entryName: { fontSize: 14, fontWeight: "700", color: Colors.light.text },
+  entryHours: { backgroundColor: "#EFF6FF", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  entryHoursText: { fontSize: 12, fontWeight: "700", color: Colors.brand.blue },
+  entryTimes: { flexDirection: "row", alignItems: "center", gap: 8 },
+  entryTimeBlock: { flex: 1 },
+  entryTimeLabel: { fontSize: 10, fontWeight: "700", color: Colors.light.textSecondary, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 },
+  entryTimeVal: { fontSize: 13, fontWeight: "600", color: Colors.light.text },
+  entryAmendNote: { marginTop: 8, fontSize: 12, color: "#92400E", backgroundColor: "#FEF3C7", padding: 8, borderRadius: 8 },
+  entryEditHint: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 8, justifyContent: "flex-end" },
+  entryEditHintText: { fontSize: 11, color: Colors.brand.blue, fontWeight: "600" },
+
+  // Badges
+  amendedBadge: { backgroundColor: "#FEF3C7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  amendedBadgeText: { fontSize: 10, fontWeight: "700", color: "#92400E" },
+  activeBadge: { backgroundColor: "#D1FAE5", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  activeBadgeText: { fontSize: 10, fontWeight: "700", color: "#065F46" },
+
+  // Amend modal
+  amendInput: { borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 10, padding: 12, fontSize: 14, color: Colors.light.text, backgroundColor: "#F8FAFC", marginBottom: 4 },
+  prevAmendNote: { backgroundColor: "#FEF3C7", borderRadius: 8, padding: 10, marginTop: 12 },
+  prevAmendLabel: { fontSize: 11, fontWeight: "700", color: "#92400E", marginBottom: 2 },
+  prevAmendText: { fontSize: 12, color: "#78350F" },
 });
