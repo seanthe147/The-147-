@@ -9,9 +9,9 @@ dist/
 web-build/
 expo-env.d.ts
 
-# Native
-ios/
-android/
+# Native - anchor to project root so /credentials/android/ is not affected
+/ios/
+/android/
 *.orig.*
 *.jks
 !credentials/android/keystore.jks
