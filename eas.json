@@ -27,9 +27,13 @@
     "production": {
       "autoIncrement": true,
       "distribution": "store",
-      "credentialsSource": "local",
       "ios": {
-        "resourceClass": "m-medium"
+        "resourceClass": "m-medium",
+        "credentialsSource": "local"
+      },
+      "android": {
+        "buildType": "app-bundle",
+        "credentialsSource": "remote"
       },
       "env": {
         "EXPO_PUBLIC_DOMAIN": "the147bradford.replit.app"
