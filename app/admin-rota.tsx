@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef } from "react";
 import {
   View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator,
-  Modal, TextInput, Alert, Platform, KeyboardAvoidingView,
+  Modal, TextInput, Alert, Platform, KeyboardAvoidingView, Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -67,6 +67,10 @@ interface TimeEntry {
   staffName: string;
   clockedInAt: string;
   clockedOutAt: string | null;
+  clockInLat: string | null;
+  clockInLng: string | null;
+  clockOutLat: string | null;
+  clockOutLng: string | null;
   notes: string | null;
   status: string;
   amendedBy: number | null;
@@ -529,6 +533,60 @@ export default function AdminRotaScreen() {
                       </Text>
                     </View>
                   </View>
+                  {/* GPS locations */}
+                  {(entry.clockInLat || entry.clockOutLat) && (
+                    <View style={styles.entryGps}>
+                      {entry.clockInLat && entry.clockInLng && (
+                        <Pressable
+                          onPress={() => {
+                            const url = Platform.OS === "web"
+                              ? `https://www.google.com/maps?q=${entry.clockInLat},${entry.clockInLng}`
+                              : `https://maps.google.com/?q=${entry.clockInLat},${entry.clockInLng}`;
+                            Linking.openURL(url);
+                          }}
+                          style={styles.gpsChip}
+                        >
+                          <Ionicons name="location" size={12} color="#059669" />
+                          <Text style={styles.gpsChipText}>
+                            In: {parseFloat(entry.clockInLat).toFixed(5)}, {parseFloat(entry.clockInLng).toFixed(5)}
+                          </Text>
+                          <Ionicons name="open-outline" size={10} color="#059669" />
+                        </Pressable>
+                      )}
+                      {entry.clockOutLat && entry.clockOutLng && (
+                        <Pressable
+                          onPress={() => {
+                            const url = Platform.OS === "web"
+                              ? `https://www.google.com/maps?q=${entry.clockOutLat},${entry.clockOutLng}`
+                              : `https://maps.google.com/?q=${entry.clockOutLat},${entry.clockOutLng}`;
+                            Linking.openURL(url);
+                          }}
+                          style={[styles.gpsChip, styles.gpsChipOut]}
+                        >
+                          <Ionicons name="location-outline" size={12} color="#DC2626" />
+                          <Text style={[styles.gpsChipText, styles.gpsChipOutText]}>
+                            Out: {parseFloat(entry.clockOutLat).toFixed(5)}, {parseFloat(entry.clockOutLng).toFixed(5)}
+                          </Text>
+                          <Ionicons name="open-outline" size={10} color="#DC2626" />
+                        </Pressable>
+                      )}
+                      {!entry.clockInLat && (
+                        <View style={styles.gpsNoData}>
+                          <Ionicons name="location-outline" size={12} color={Colors.light.textSecondary} />
+                          <Text style={styles.gpsNoDataText}>No GPS recorded at clock-in</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                  {!entry.clockInLat && !entry.clockOutLat && (
+                    <View style={[styles.entryGps, { marginTop: 8 }]}>
+                      <View style={styles.gpsNoData}>
+                        <Ionicons name="location-outline" size={12} color={Colors.light.textSecondary} />
+                        <Text style={styles.gpsNoDataText}>No GPS data recorded</Text>
+                      </View>
+                    </View>
+                  )}
+
                   {isAmended && entry.amendReason && (
                     <Text style={styles.entryAmendNote}>Amendment: {entry.amendReason}</Text>
                   )}
@@ -920,4 +978,13 @@ const styles = StyleSheet.create({
   prevAmendNote: { backgroundColor: "#FEF3C7", borderRadius: 8, padding: 10, marginTop: 12 },
   prevAmendLabel: { fontSize: 11, fontWeight: "700", color: "#92400E", marginBottom: 2 },
   prevAmendText: { fontSize: 12, color: "#78350F" },
+
+  // GPS
+  entryGps: { marginTop: 8, gap: 4 },
+  gpsChip: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#F0FDF4", borderWidth: 1, borderColor: "#BBF7D0", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5, alignSelf: "flex-start" },
+  gpsChipText: { fontSize: 11, color: "#059669", fontWeight: "600", fontVariant: ["tabular-nums"] as any },
+  gpsChipOut: { backgroundColor: "#FFF5F5", borderColor: "#FECACA" },
+  gpsChipOutText: { color: "#DC2626" },
+  gpsNoData: { flexDirection: "row", alignItems: "center", gap: 5 },
+  gpsNoDataText: { fontSize: 11, color: Colors.light.textSecondary, fontStyle: "italic" },
 });
