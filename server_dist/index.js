@@ -13,7 +13,7 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, serial, timestamp, boolean, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffPushTokens;
+var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffDocuments, insertStaffDocumentSchema, staffOnboarding, insertStaffOnboardingSchema, staffPushTokens;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
@@ -39,8 +39,17 @@ var init_schema = __esm({
       // UK employment law fields
       contractedDaysPerWeek: text("contracted_days_per_week").notNull().default("5"),
       // decimal string, e.g. "5" full-time, "3" part-time
-      employmentStartDate: text("employment_start_date")
+      employmentStartDate: text("employment_start_date"),
       // YYYY-MM-DD, for new-starter accrual
+      // Pay rate fields (encrypted at rest)
+      payType: text("pay_type").default("hourly"),
+      // "hourly" | "salary"
+      hourlyRate: text("hourly_rate"),
+      // AES-256 encrypted decimal string, e.g. "enc:..." → "12.50"
+      annualSalary: text("annual_salary"),
+      // AES-256 encrypted decimal string, e.g. "enc:..." → "25000"
+      weeklyHours: text("weekly_hours").default("37.5")
+      // contracted hours per week (e.g. "37.5")
     });
     offers = pgTable("offers", {
       id: serial("id").primaryKey(),
@@ -422,6 +431,54 @@ var init_schema = __esm({
       notificationSent: boolean("notification_sent").notNull().default(false),
       staffNotified: integer("staff_notified").notNull().default(0)
     });
+    staffDocuments = pgTable("staff_documents", {
+      id: serial("id").primaryKey(),
+      staffId: integer("staff_id").notNull(),
+      uploadedBy: integer("uploaded_by").notNull(),
+      category: text("category").notNull().default("other"),
+      // contract | right-to-work | certification | id | onboarding | other
+      fileName: text("file_name").notNull(),
+      fileType: text("file_type").notNull(),
+      // MIME type e.g. application/pdf
+      fileData: text("file_data").notNull(),
+      // base64 encoded file content
+      fileSizeBytes: integer("file_size_bytes").notNull(),
+      notes: text("notes"),
+      expiresAt: text("expires_at"),
+      // YYYY-MM-DD, optional (e.g. for visas/certs)
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
+    insertStaffDocumentSchema = createInsertSchema(staffDocuments).omit({ id: true, createdAt: true });
+    staffOnboarding = pgTable("staff_onboarding", {
+      id: serial("id").primaryKey(),
+      staffId: integer("staff_id").notNull().unique(),
+      // Emergency contact
+      emergencyName: text("emergency_name"),
+      emergencyPhone: text("emergency_phone"),
+      emergencyRelation: text("emergency_relation"),
+      // Tax / HMRC (encrypted)
+      nationalInsurance: text("national_insurance"),
+      // enc: prefix when stored
+      starterDeclaration: text("starter_declaration"),
+      // A | B | C  (P46 equivalent)
+      taxCode: text("tax_code"),
+      // Bank details (encrypted)
+      bankAccountName: text("bank_account_name"),
+      // enc: prefix
+      bankSortCode: text("bank_sort_code"),
+      // enc: prefix
+      bankAccountNumber: text("bank_account_number"),
+      // enc: prefix
+      // Right to work
+      rightToWorkType: text("right_to_work_type"),
+      // british-passport | eu-settled | visa | other
+      rightToWorkExpiry: text("right_to_work_expiry"),
+      // YYYY-MM-DD or null (no expiry)
+      // Meta
+      completedAt: timestamp("completed_at"),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    });
+    insertStaffOnboardingSchema = createInsertSchema(staffOnboarding).omit({ id: true, updatedAt: true });
     staffPushTokens = pgTable("staff_push_tokens", {
       id: serial("id").primaryKey(),
       staffId: integer("staff_id").notNull(),
@@ -1681,6 +1738,141 @@ var init_storage = __esm({
       async removeStaffPushToken(token) {
         const result = await db.delete(staffPushTokens).where(eq(staffPushTokens.token, token)).returning();
         return result.length > 0;
+      }
+      // ── Pay rate ────────────────────────────────────────────────────────────────
+      async getStaffPay(staffId) {
+        const [user] = await db.select({
+          payType: staffUsers.payType,
+          hourlyRate: staffUsers.hourlyRate,
+          annualSalary: staffUsers.annualSalary,
+          weeklyHours: staffUsers.weeklyHours
+        }).from(staffUsers).where(eq(staffUsers.id, staffId));
+        if (!user) return null;
+        return {
+          payType: user.payType ?? "hourly",
+          hourlyRate: user.hourlyRate ? decrypt(user.hourlyRate) : null,
+          annualSalary: user.annualSalary ? decrypt(user.annualSalary) : null,
+          weeklyHours: user.weeklyHours ?? "37.5"
+        };
+      }
+      async updateStaffPay(staffId, data) {
+        await db.update(staffUsers).set({
+          payType: data.payType,
+          hourlyRate: data.hourlyRate ? encrypt(data.hourlyRate) : null,
+          annualSalary: data.annualSalary ? encrypt(data.annualSalary) : null,
+          weeklyHours: data.weeklyHours ?? "37.5"
+        }).where(eq(staffUsers.id, staffId));
+      }
+      // ── Document storage ────────────────────────────────────────────────────────
+      async getDocumentsForStaff(staffId) {
+        const rows = await db.select({
+          id: staffDocuments.id,
+          staffId: staffDocuments.staffId,
+          uploadedBy: staffDocuments.uploadedBy,
+          category: staffDocuments.category,
+          fileName: staffDocuments.fileName,
+          fileType: staffDocuments.fileType,
+          fileSizeBytes: staffDocuments.fileSizeBytes,
+          notes: staffDocuments.notes,
+          expiresAt: staffDocuments.expiresAt,
+          createdAt: staffDocuments.createdAt
+        }).from(staffDocuments).where(eq(staffDocuments.staffId, staffId)).orderBy(desc(staffDocuments.createdAt));
+        return rows.map((r) => ({
+          ...r,
+          fileName: decrypt(r.fileName),
+          notes: r.notes ? decrypt(r.notes) : null
+        }));
+      }
+      async getDocumentById(id) {
+        const [row] = await db.select().from(staffDocuments).where(eq(staffDocuments.id, id));
+        if (!row) return null;
+        return {
+          ...row,
+          fileData: decrypt(row.fileData),
+          fileName: decrypt(row.fileName),
+          notes: row.notes ? decrypt(row.notes) : null
+        };
+      }
+      async uploadDocument(data) {
+        const [doc] = await db.insert(staffDocuments).values({
+          ...data,
+          fileData: encrypt(data.fileData),
+          // AES-256-GCM encrypt file contents at rest
+          fileName: encrypt(data.fileName),
+          // encrypt filename (may reveal identity)
+          notes: data.notes ? encrypt(data.notes) : null
+        }).returning();
+        return {
+          ...doc,
+          fileData: data.fileData,
+          fileName: data.fileName,
+          notes: data.notes ?? null
+        };
+      }
+      async deleteDocument(id) {
+        const result = await db.delete(staffDocuments).where(eq(staffDocuments.id, id)).returning();
+        return result.length > 0;
+      }
+      async getAllDocuments() {
+        const rows = await db.select({
+          id: staffDocuments.id,
+          staffId: staffDocuments.staffId,
+          uploadedBy: staffDocuments.uploadedBy,
+          category: staffDocuments.category,
+          fileName: staffDocuments.fileName,
+          fileType: staffDocuments.fileType,
+          fileSizeBytes: staffDocuments.fileSizeBytes,
+          notes: staffDocuments.notes,
+          expiresAt: staffDocuments.expiresAt,
+          createdAt: staffDocuments.createdAt
+        }).from(staffDocuments).orderBy(desc(staffDocuments.createdAt));
+        return rows.map((r) => ({
+          ...r,
+          fileName: decrypt(r.fileName),
+          notes: r.notes ? decrypt(r.notes) : null
+        }));
+      }
+      // ── Staff onboarding ────────────────────────────────────────────────────────
+      decryptOnboarding(row) {
+        const d = (v) => v ? decrypt(v) : v;
+        return {
+          ...row,
+          nationalInsurance: d(row.nationalInsurance) ?? null,
+          bankAccountName: d(row.bankAccountName) ?? null,
+          bankSortCode: d(row.bankSortCode) ?? null,
+          bankAccountNumber: d(row.bankAccountNumber) ?? null
+        };
+      }
+      async getOnboarding(staffId) {
+        const [row] = await db.select().from(staffOnboarding).where(eq(staffOnboarding.staffId, staffId));
+        return row ? this.decryptOnboarding(row) : null;
+      }
+      async upsertOnboarding(staffId, data) {
+        const enc = (v) => v ? encrypt(v) : null;
+        const values = {
+          ...data,
+          staffId,
+          nationalInsurance: enc(data.nationalInsurance) ?? void 0,
+          bankAccountName: enc(data.bankAccountName) ?? void 0,
+          bankSortCode: enc(data.bankSortCode) ?? void 0,
+          bankAccountNumber: enc(data.bankAccountNumber) ?? void 0,
+          updatedAt: /* @__PURE__ */ new Date()
+        };
+        const existing = await this.getOnboarding(staffId);
+        if (existing) {
+          const [updated] = await db.update(staffOnboarding).set(values).where(eq(staffOnboarding.staffId, staffId)).returning();
+          return this.decryptOnboarding(updated);
+        } else {
+          const [created] = await db.insert(staffOnboarding).values(values).returning();
+          return this.decryptOnboarding(created);
+        }
+      }
+      async getAllOnboardingStatus() {
+        return db.select({
+          staffId: staffOnboarding.staffId,
+          completedAt: staffOnboarding.completedAt,
+          updatedAt: staffOnboarding.updatedAt
+        }).from(staffOnboarding);
       }
     };
     storage = new DatabaseStorage();
@@ -7137,6 +7329,91 @@ Phone: ${phone}` : ""}`,
     if (!entry) return res.status(404).json({ message: "Entry not found" });
     res.json(entry);
   });
+  app2.get("/api/hr/staff/:id/documents", staffAuth, managerAuth, async (req, res) => {
+    const staffId = parseInt(req.params.id);
+    const docs = await storage.getDocumentsForStaff(staffId);
+    res.json(docs);
+  });
+  app2.get("/api/hr/documents/:id/download", staffAuth, managerAuth, async (req, res) => {
+    const doc = await storage.getDocumentById(parseInt(req.params.id));
+    if (!doc) return res.status(404).json({ message: "Document not found" });
+    res.json(doc);
+  });
+  app2.post("/api/hr/staff/:id/documents", staffAuth, managerAuth, async (req, res) => {
+    const staffId = parseInt(req.params.id);
+    const { category, fileName, fileType, fileData, fileSizeBytes, notes, expiresAt } = req.body;
+    if (!fileName || !fileType || !fileData || !fileSizeBytes) {
+      return res.status(400).json({ message: "fileName, fileType, fileData and fileSizeBytes are required" });
+    }
+    if (fileSizeBytes > 10 * 1024 * 1024) {
+      return res.status(400).json({ message: "File too large \u2014 maximum 10 MB" });
+    }
+    const doc = await storage.uploadDocument({
+      staffId,
+      uploadedBy: req.staffUser.id,
+      category: category || "other",
+      fileName,
+      fileType,
+      fileData,
+      fileSizeBytes,
+      notes: notes || void 0,
+      expiresAt: expiresAt || void 0
+    });
+    res.status(201).json({ id: doc.id, fileName: doc.fileName, category: doc.category, createdAt: doc.createdAt });
+  });
+  app2.delete("/api/hr/documents/:id", staffAuth, managerAuth, async (req, res) => {
+    const deleted = await storage.deleteDocument(parseInt(req.params.id));
+    if (!deleted) return res.status(404).json({ message: "Document not found" });
+    res.json({ success: true });
+  });
+  app2.get("/api/hr/documents", staffAuth, managerAuth, async (_req, res) => {
+    const docs = await storage.getAllDocuments();
+    res.json(docs);
+  });
+  app2.get("/api/hr/onboarding/mine", staffAuth, async (req, res) => {
+    const record = await storage.getOnboarding(req.staffUser.id);
+    res.json(record ?? null);
+  });
+  app2.put("/api/hr/onboarding/mine", staffAuth, async (req, res) => {
+    const {
+      emergencyName,
+      emergencyPhone,
+      emergencyRelation,
+      nationalInsurance,
+      starterDeclaration,
+      taxCode,
+      bankAccountName,
+      bankSortCode,
+      bankAccountNumber,
+      rightToWorkType,
+      rightToWorkExpiry,
+      markComplete
+    } = req.body;
+    const data = {
+      emergencyName,
+      emergencyPhone,
+      emergencyRelation,
+      nationalInsurance,
+      starterDeclaration,
+      taxCode,
+      bankAccountName,
+      bankSortCode,
+      bankAccountNumber,
+      rightToWorkType,
+      rightToWorkExpiry
+    };
+    if (markComplete) data.completedAt = /* @__PURE__ */ new Date();
+    const record = await storage.upsertOnboarding(req.staffUser.id, data);
+    res.json(record);
+  });
+  app2.get("/api/hr/staff/:id/onboarding", staffAuth, managerAuth, async (req, res) => {
+    const record = await storage.getOnboarding(parseInt(req.params.id));
+    res.json(record ?? null);
+  });
+  app2.get("/api/hr/onboarding/status", staffAuth, managerAuth, async (_req, res) => {
+    const statuses = await storage.getAllOnboardingStatus();
+    res.json(statuses);
+  });
   app2.get("/api/hr/bank-holidays", staffAuth, (req, res) => {
     const year = parseInt(String(req.query.year || (/* @__PURE__ */ new Date()).getFullYear()));
     const holidays = getEnglandWalesBankHolidays(year);
@@ -7410,6 +7687,160 @@ Phone: ${phone}` : ""}`,
     if (!req.staffUser?.id) return res.status(403).json({ message: "Must be logged in as a named staff user" });
     const record = await storage.upsertStaffPushToken(req.staffUser.id, token);
     res.json(record);
+  });
+  app2.get("/api/hr/staff/:id/pay", staffAuth, managerAuth, async (req, res) => {
+    const staffId = parseInt(req.params.id, 10);
+    if (isNaN(staffId)) return res.status(400).json({ message: "Invalid staff ID" });
+    const pay = await storage.getStaffPay(staffId);
+    if (!pay) return res.status(404).json({ message: "Staff member not found" });
+    res.json(pay);
+  });
+  app2.put("/api/hr/staff/:id/pay", staffAuth, managerAuth, async (req, res) => {
+    const staffId = parseInt(req.params.id, 10);
+    if (isNaN(staffId)) return res.status(400).json({ message: "Invalid staff ID" });
+    const { payType, hourlyRate, annualSalary, weeklyHours } = req.body;
+    if (!payType || !["hourly", "salary"].includes(payType)) return res.status(400).json({ message: "payType must be 'hourly' or 'salary'" });
+    await storage.updateStaffPay(staffId, { payType, hourlyRate: hourlyRate || null, annualSalary: annualSalary || null, weeklyHours: weeklyHours || "37.5" });
+    res.json({ success: true });
+  });
+  const SSP_WEEKLY_RATE = 118.75;
+  const SSP_LEL_WEEKLY = 123;
+  const SSP_MIN_PIW_DAYS = 4;
+  const SSP_WAITING_CAL_DAYS = 3;
+  const SSP_LINK_GAP_DAYS = 56;
+  const SSP_MAX_WEEKS = 28;
+  function calDaysInPeriod(start, end) {
+    return Math.round((new Date(end).getTime() - new Date(start).getTime()) / 864e5) + 1;
+  }
+  function daysBetween(endDate, startDate) {
+    return Math.round((new Date(startDate).getTime() - new Date(endDate).getTime()) / 864e5);
+  }
+  app2.get("/api/hr/staff/:id/ssp", staffAuth, managerAuth, async (req, res) => {
+    const staffId = parseInt(req.params.id, 10);
+    if (isNaN(staffId)) return res.status(400).json({ message: "Invalid staff ID" });
+    const [pay, staffUser, allLeave] = await Promise.all([
+      storage.getStaffPay(staffId),
+      storage.getStaffUser(staffId),
+      storage.getLeaveRequestsForStaff(staffId)
+    ]);
+    if (!staffUser) return res.status(404).json({ message: "Staff member not found" });
+    const contractedDaysPerWeek = parseFloat(staffUser.contractedDaysPerWeek ?? "5");
+    const weeklyHours = parseFloat(pay?.weeklyHours ?? "37.5");
+    const hourlyRate = pay?.hourlyRate ? parseFloat(pay.hourlyRate) : null;
+    const annualSalary = pay?.annualSalary ? parseFloat(pay.annualSalary) : null;
+    const payType = pay?.payType ?? "hourly";
+    const weeklyEarnings = payType === "salary" && annualSalary ? annualSalary / 52 : payType === "hourly" && hourlyRate ? hourlyRate * weeklyHours : 0;
+    const qualifiesForSSP = weeklyEarnings >= SSP_LEL_WEEKLY;
+    const dailySSP = SSP_WEEKLY_RATE / contractedDaysPerWeek;
+    const sickPeriods = allLeave.filter((r) => r.leaveType === "sick" && r.status === "approved").sort((a, b) => a.startDate.localeCompare(b.startDate));
+    const results = [];
+    let totalPayableDays = 0;
+    let prevEnd = null;
+    let prevId = null;
+    for (const period of sickPeriods) {
+      const calDays = calDaysInPeriod(period.startDate, period.endDate);
+      const workingDays = parseFloat(period.totalDays || "0");
+      const isPIW = calDays >= SSP_MIN_PIW_DAYS;
+      let isLinked = false;
+      let linkedToId = null;
+      if (prevEnd && isPIW) {
+        const gap = daysBetween(prevEnd, period.startDate) - 1;
+        if (gap >= 0 && gap <= SSP_LINK_GAP_DAYS) {
+          isLinked = true;
+          linkedToId = prevId;
+        }
+      }
+      if (!isPIW) {
+        results.push({ id: period.id, startDate: period.startDate, endDate: period.endDate, calendarDays: calDays, workingDays, isPIW: false, isLinked: false, waitingWorkingDays: 0, payableDays: 0, dailySSP, sspAmount: 0, notes: `${calDays} calendar days \u2014 minimum 4 required for SSP` });
+        continue;
+      }
+      const waitingWorkingDays = isLinked ? 0 : Math.min(workingDays, Math.round(SSP_WAITING_CAL_DAYS / calDays * workingDays));
+      const rawPayable = Math.max(0, workingDays - waitingWorkingDays);
+      const maxPayable = SSP_MAX_WEEKS * contractedDaysPerWeek - totalPayableDays;
+      const payableDays = Math.min(rawPayable, Math.max(0, maxPayable));
+      const sspAmount = qualifiesForSSP ? parseFloat((payableDays * dailySSP).toFixed(2)) : 0;
+      totalPayableDays += payableDays;
+      prevEnd = period.endDate;
+      prevId = period.id;
+      results.push({
+        id: period.id,
+        startDate: period.startDate,
+        endDate: period.endDate,
+        calendarDays: calDays,
+        workingDays,
+        isPIW: true,
+        isLinked,
+        linkedToId,
+        waitingWorkingDays,
+        payableDays: parseFloat(payableDays.toFixed(2)),
+        dailySSP: parseFloat(dailySSP.toFixed(4)),
+        sspAmount,
+        notes: !qualifiesForSSP ? "Earnings below Lower Earnings Limit \u2014 does not qualify for SSP" : payableDays < rawPayable ? "28-week SSP limit reached" : isLinked ? "Linked PIW \u2014 waiting days not re-applied" : waitingWorkingDays > 0 ? `${SSP_WAITING_CAL_DAYS} waiting days applied` : ""
+      });
+    }
+    res.json({
+      staffId,
+      payType,
+      weeklyEarnings: parseFloat(weeklyEarnings.toFixed(2)),
+      lel: SSP_LEL_WEEKLY,
+      qualifiesForSSP,
+      dailySSP: parseFloat(dailySSP.toFixed(4)),
+      sspWeeklyRate: SSP_WEEKLY_RATE,
+      totalPayableDays: parseFloat(totalPayableDays.toFixed(2)),
+      totalSSPWeeks: parseFloat((totalPayableDays / contractedDaysPerWeek).toFixed(2)),
+      totalSSP: parseFloat(results.reduce((s, r) => s + r.sspAmount, 0).toFixed(2)),
+      limitReached: totalPayableDays >= SSP_MAX_WEEKS * contractedDaysPerWeek,
+      maxWeeks: SSP_MAX_WEEKS,
+      periods: results,
+      disclaimer: "Figures are estimates based on contracted days. Verify with your payroll provider before processing payments.",
+      rateYear: "2025/26"
+    });
+  });
+  app2.get("/api/hr/staff/:id/holiday-pay", staffAuth, managerAuth, async (req, res) => {
+    const staffId = parseInt(req.params.id, 10);
+    if (isNaN(staffId)) return res.status(400).json({ message: "Invalid staff ID" });
+    const [pay, staffUser, allLeave] = await Promise.all([
+      storage.getStaffPay(staffId),
+      storage.getStaffUser(staffId),
+      storage.getLeaveRequestsForStaff(staffId)
+    ]);
+    if (!staffUser) return res.status(404).json({ message: "Staff member not found" });
+    const contractedDaysPerWeek = parseFloat(staffUser.contractedDaysPerWeek ?? "5");
+    const weeklyHours = parseFloat(pay?.weeklyHours ?? "37.5");
+    const hourlyRate = pay?.hourlyRate ? parseFloat(pay.hourlyRate) : null;
+    const annualSalary = pay?.annualSalary ? parseFloat(pay.annualSalary) : null;
+    const payType = pay?.payType ?? "hourly";
+    const dailyRate = payType === "salary" && annualSalary ? annualSalary / 52 / contractedDaysPerWeek : payType === "hourly" && hourlyRate ? hourlyRate * (weeklyHours / contractedDaysPerWeek) : 0;
+    const annualLeave = allLeave.filter((r) => r.leaveType === "annual").sort((a, b) => b.startDate.localeCompare(a.startDate));
+    const results = annualLeave.map((req2) => {
+      const days = parseFloat(req2.totalDays || "0");
+      return {
+        id: req2.id,
+        startDate: req2.startDate,
+        endDate: req2.endDate,
+        days,
+        status: req2.status,
+        dailyRate: parseFloat(dailyRate.toFixed(4)),
+        holidayPay: parseFloat((days * dailyRate).toFixed(2))
+      };
+    });
+    const totalApproved = results.filter((r) => r.status === "approved").reduce((s, r) => s + r.holidayPay, 0);
+    const totalPending = results.filter((r) => r.status === "pending").reduce((s, r) => s + r.holidayPay, 0);
+    res.json({
+      staffId,
+      payType,
+      hourlyRate,
+      annualSalary,
+      weeklyHours,
+      contractedDaysPerWeek,
+      dailyRate: parseFloat(dailyRate.toFixed(4)),
+      hasPay: dailyRate > 0,
+      results,
+      totalApprovedHolidayPay: parseFloat(totalApproved.toFixed(2)),
+      totalPendingHolidayPay: parseFloat(totalPending.toFixed(2)),
+      note: payType === "salary" ? "Salaried staff receive normal pay during leave \u2014 this shows the equivalent daily cost." : "Holiday pay is calculated at your contracted daily rate. Under UK law variable-hours workers may be entitled to a 52-week average rate \u2014 verify with your payroll provider.",
+      disclaimer: "Figures are estimates. Verify with your payroll provider before processing payments."
+    });
   });
   const httpServer = createServer(app2);
   return httpServer;
