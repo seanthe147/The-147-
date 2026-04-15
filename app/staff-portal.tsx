@@ -443,7 +443,105 @@ function DashboardScreen() {
               testID="portal-view-rota"
             />
           )}
+
+          {/* Extra tools for regular staff on web only */}
+          {!isManager && Platform.OS === "web" && (
+            <>
+              <AdminTool
+                icon="calendar-clear"
+                title="Leave Booking"
+                description="Request holiday or time off"
+                color="#0F766E"
+                onPress={() => router.push("/staff-hr")}
+                testID="portal-leave-booking"
+              />
+              <AdminTool
+                icon="card"
+                title="Memberships"
+                description="View and set up customer memberships"
+                color={Colors.brand.blue}
+                onPress={() => router.push("/membership")}
+                testID="portal-memberships"
+              />
+            </>
+          )}
         </View>
+
+        {/* Admin tools — managers and owners, all platforms */}
+        {isManager && (
+          <>
+            <Text style={styles.sectionLabel}>ADMIN TOOLS</Text>
+            <View style={styles.toolsList}>
+              <AdminTool
+                icon="calendar"
+                title="Bookings Calendar"
+                description="View and manage table bookings"
+                color={Colors.brand.green}
+                onPress={() => router.push("/admin-bookings")}
+                testID="portal-bookings-calendar"
+              />
+              <AdminTool
+                icon="pricetag"
+                title="Manage Offers"
+                description="Create, edit and remove promotional offers"
+                color={Colors.brand.blue}
+                onPress={() => router.push("/admin-offers")}
+                testID="portal-manage-offers"
+              />
+              <AdminTool
+                icon="musical-notes"
+                title="Events"
+                description="Create and manage event listings"
+                color="#7C3AED"
+                onPress={() => router.push("/admin-events")}
+                testID="portal-manage-events"
+              />
+              <AdminTool
+                icon="notifications"
+                title="Push Notifications"
+                description="Send notifications to app users"
+                color={Colors.brand.gold}
+                onPress={() => router.push("/admin-notifications")}
+                testID="portal-push-notifications"
+              />
+              <AdminTool
+                icon="megaphone"
+                title="Staff Notices"
+                description="Post and manage notices for all staff"
+                color="#D97706"
+                onPress={() => router.push("/admin-notices")}
+                testID="portal-staff-notices"
+              />
+              <AdminTool
+                icon="images"
+                title="Banner Images"
+                description="Manage home screen banner photos"
+                color="#8B5CF6"
+                onPress={() => router.push("/admin-banner")}
+                testID="portal-banner-image"
+              />
+              <AdminTool
+                icon="ban"
+                title="Availability Blocks"
+                description="Block dates or times from being booked"
+                color="#DC2626"
+                onPress={() => router.push("/admin-availability")}
+                testID="portal-availability-blocks"
+              />
+              {/* Staff Accounts / Approval — owner only */}
+              {isOwner && (
+                <AdminTool
+                  icon="people"
+                  title="Staff Accounts"
+                  description="Approve accounts, manage roles, reset PINs"
+                  color="#F59E0B"
+                  onPress={() => router.push("/admin-staff")}
+                  testID="portal-staff-accounts"
+                />
+              )}
+            </View>
+          </>
+        )}
 
         <Text style={styles.sectionLabel}>SESSION</Text>
 
