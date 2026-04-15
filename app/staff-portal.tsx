@@ -373,7 +373,7 @@ function DashboardScreen() {
             {displayName || username ? `Welcome, ${displayName || username}` : "Dashboard"}
           </Text>
           <Text style={styles.welcomeSubtitle}>
-            {isOwner ? "Full venue owner access" : isManager ? "Full venue management access" : "Bookings management"}
+            {isOwner ? "Full venue owner access" : isManager ? "HR & rota management" : "Clock in/out and view your rota"}
           </Text>
         </View>
 
@@ -413,95 +413,34 @@ function DashboardScreen() {
           </View>
         )}
 
-        <Text style={styles.sectionLabel}>
-          {isManager ? "ADMIN TOOLS" : "YOUR TOOLS"}
-        </Text>
+        <Text style={styles.sectionLabel}>HR & ROTA</Text>
 
         <View style={styles.toolsList}>
           <AdminTool
-            icon="calendar"
-            title="Bookings Calendar"
-            description="View and manage table bookings"
-            color={Colors.brand.green}
-            onPress={() => router.push("/admin-bookings")}
-            testID="portal-bookings-calendar"
-          />
-          <AdminTool
             icon="time"
             title="Time & HR"
-            description="Clock in/out, request leave, report incidents"
+            description="Clock in/out, request leave, view your record"
             color="#0F766E"
             onPress={() => router.push("/staff-hr")}
             testID="portal-time-hr"
           />
-          {isManager && (
-            <>
-              <AdminTool
-                icon="calendar-number"
-                title="Manage Rota"
-                description="Build weekly rotas, assign shifts and publish to staff"
-                color="#0F766E"
-                onPress={() => router.push("/admin-rota")}
-                testID="portal-manage-rota"
-              />
-              <AdminTool
-                icon="pricetag"
-                title="Manage Offers"
-                description="Create, edit and remove promotional offers"
-                color={Colors.brand.blue}
-                onPress={() => router.push("/admin-offers")}
-                testID="portal-manage-offers"
-              />
-              <AdminTool
-                icon="musical-notes"
-                title="Events"
-                description="Create and manage event listings"
-                color="#7C3AED"
-                onPress={() => router.push("/admin-events")}
-                testID="portal-manage-events"
-              />
-              <AdminTool
-                icon="notifications"
-                title="Push Notifications"
-                description="Send notifications to app users"
-                color={Colors.brand.gold}
-                onPress={() => router.push("/admin-notifications")}
-                testID="portal-push-notifications"
-              />
-              <AdminTool
-                icon="megaphone"
-                title="Staff Notices"
-                description="Post and manage notices for all staff"
-                color="#D97706"
-                onPress={() => router.push("/admin-notices")}
-                testID="portal-staff-notices"
-              />
-              <AdminTool
-                icon="images"
-                title="Banner Images"
-                description="Manage home screen banner photos"
-                color="#8B5CF6"
-                onPress={() => router.push("/admin-banner")}
-                testID="portal-banner-image"
-              />
-              <AdminTool
-                icon="ban"
-                title="Availability Blocks"
-                description="Block dates or times from being booked"
-                color="#DC2626"
-                onPress={() => router.push("/admin-availability")}
-                testID="portal-availability-blocks"
-              />
-            </>
-          )}
-          {isManager && (
+          {isManager ? (
             <AdminTool
-              icon="people"
-              title="Staff Accounts"
-              description={isOwner ? "Approve accounts, manage roles, reset PINs" : "View accounts and reset PINs"}
-              color="#F59E0B"
-              onPress={() => router.push("/admin-staff")}
-              testID="portal-staff-accounts"
+              icon="calendar-number"
+              title="Manage Rota"
+              description="Build weekly rotas, assign shifts and publish to staff"
+              color="#0F766E"
+              onPress={() => router.push("/admin-rota")}
+              testID="portal-manage-rota"
+            />
+          ) : (
+            <AdminTool
+              icon="calendar-number"
+              title="My Rota"
+              description="View your upcoming shifts and schedule"
+              color="#0F766E"
+              onPress={() => router.push("/staff-hr")}
+              testID="portal-view-rota"
             />
           )}
         </View>
