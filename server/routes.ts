@@ -4975,6 +4975,96 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(entry);
   });
 
+  // ── Staff documents ───────────────────────────────────────────────────────────
+
+  // List documents for a staff member (no file data — metadata only)
+  app.get("/api/hr/staff/:id/documents", staffAuth, managerAuth, async (req, res) => {
+    const staffId = parseInt(req.params.id);
+    const docs = await storage.getDocumentsForStaff(staffId);
+    res.json(docs);
+  });
+
+  // Download a specific document (returns base64 fileData)
+  app.get("/api/hr/documents/:id/download", staffAuth, managerAuth, async (req, res) => {
+    const doc = await storage.getDocumentById(parseInt(req.params.id));
+    if (!doc) return res.status(404).json({ message: "Document not found" });
+    res.json(doc);
+  });
+
+  // Upload a document to a staff profile
+  app.post("/api/hr/staff/:id/documents", staffAuth, managerAuth, async (req: any, res) => {
+    const staffId = parseInt(req.params.id);
+    const { category, fileName, fileType, fileData, fileSizeBytes, notes, expiresAt } = req.body;
+    if (!fileName || !fileType || !fileData || !fileSizeBytes) {
+      return res.status(400).json({ message: "fileName, fileType, fileData and fileSizeBytes are required" });
+    }
+    if (fileSizeBytes > 10 * 1024 * 1024) {
+      return res.status(400).json({ message: "File too large — maximum 10 MB" });
+    }
+    const doc = await storage.uploadDocument({
+      staffId, uploadedBy: req.staffUser.id,
+      category: category || "other",
+      fileName, fileType, fileData, fileSizeBytes,
+      notes: notes || undefined,
+      expiresAt: expiresAt || undefined,
+    });
+    res.status(201).json({ id: doc.id, fileName: doc.fileName, category: doc.category, createdAt: doc.createdAt });
+  });
+
+  // Delete a document
+  app.delete("/api/hr/documents/:id", staffAuth, managerAuth, async (req, res) => {
+    const deleted = await storage.deleteDocument(parseInt(req.params.id));
+    if (!deleted) return res.status(404).json({ message: "Document not found" });
+    res.json({ success: true });
+  });
+
+  // All documents across all staff (manager overview)
+  app.get("/api/hr/documents", staffAuth, managerAuth, async (_req, res) => {
+    const docs = await storage.getAllDocuments();
+    res.json(docs);
+  });
+
+  // ── Staff onboarding ──────────────────────────────────────────────────────────
+
+  // Staff: get own onboarding record
+  app.get("/api/hr/onboarding/mine", staffAuth, async (req: any, res) => {
+    const record = await storage.getOnboarding(req.staffUser.id);
+    res.json(record ?? null);
+  });
+
+  // Staff: save/update own onboarding record
+  app.put("/api/hr/onboarding/mine", staffAuth, async (req: any, res) => {
+    const {
+      emergencyName, emergencyPhone, emergencyRelation,
+      nationalInsurance, starterDeclaration, taxCode,
+      bankAccountName, bankSortCode, bankAccountNumber,
+      rightToWorkType, rightToWorkExpiry, markComplete,
+    } = req.body;
+
+    const data: any = {
+      emergencyName, emergencyPhone, emergencyRelation,
+      nationalInsurance, starterDeclaration, taxCode,
+      bankAccountName, bankSortCode, bankAccountNumber,
+      rightToWorkType, rightToWorkExpiry,
+    };
+    if (markComplete) data.completedAt = new Date();
+
+    const record = await storage.upsertOnboarding(req.staffUser.id, data);
+    res.json(record);
+  });
+
+  // Manager: view a staff member's onboarding record
+  app.get("/api/hr/staff/:id/onboarding", staffAuth, managerAuth, async (req, res) => {
+    const record = await storage.getOnboarding(parseInt(req.params.id));
+    res.json(record ?? null);
+  });
+
+  // Manager: see completion status for all staff
+  app.get("/api/hr/onboarding/status", staffAuth, managerAuth, async (_req, res) => {
+    const statuses = await storage.getAllOnboardingStatus();
+    res.json(statuses);
+  });
+
   // ── Bank holidays (England & Wales) ──────────────────────────────────────────
   app.get("/api/hr/bank-holidays", staffAuth, (req, res) => {
     const year = parseInt(String(req.query.year || new Date().getFullYear()));

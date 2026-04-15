@@ -518,6 +518,51 @@ export const staffRotaPublished = pgTable("staff_rota_published", {
 
 export type StaffRotaPublished = typeof staffRotaPublished.$inferSelect;
 
+// ── Staff documents ────────────────────────────────────────────────────────────
+export const staffDocuments = pgTable("staff_documents", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull(),
+  uploadedBy: integer("uploaded_by").notNull(),
+  category: text("category").notNull().default("other"), // contract | right-to-work | certification | id | onboarding | other
+  fileName: text("file_name").notNull(),
+  fileType: text("file_type").notNull(),       // MIME type e.g. application/pdf
+  fileData: text("file_data").notNull(),        // base64 encoded file content
+  fileSizeBytes: integer("file_size_bytes").notNull(),
+  notes: text("notes"),
+  expiresAt: text("expires_at"),               // YYYY-MM-DD, optional (e.g. for visas/certs)
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type StaffDocument = typeof staffDocuments.$inferSelect;
+export const insertStaffDocumentSchema = createInsertSchema(staffDocuments).omit({ id: true, createdAt: true });
+
+// ── Staff onboarding ───────────────────────────────────────────────────────────
+export const staffOnboarding = pgTable("staff_onboarding", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull().unique(),
+  // Emergency contact
+  emergencyName: text("emergency_name"),
+  emergencyPhone: text("emergency_phone"),
+  emergencyRelation: text("emergency_relation"),
+  // Tax / HMRC (encrypted)
+  nationalInsurance: text("national_insurance"),  // enc: prefix when stored
+  starterDeclaration: text("starter_declaration"), // A | B | C  (P46 equivalent)
+  taxCode: text("tax_code"),
+  // Bank details (encrypted)
+  bankAccountName: text("bank_account_name"),   // enc: prefix
+  bankSortCode: text("bank_sort_code"),          // enc: prefix
+  bankAccountNumber: text("bank_account_number"), // enc: prefix
+  // Right to work
+  rightToWorkType: text("right_to_work_type"),  // british-passport | eu-settled | visa | other
+  rightToWorkExpiry: text("right_to_work_expiry"), // YYYY-MM-DD or null (no expiry)
+  // Meta
+  completedAt: timestamp("completed_at"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type StaffOnboarding = typeof staffOnboarding.$inferSelect;
+export const insertStaffOnboardingSchema = createInsertSchema(staffOnboarding).omit({ id: true, updatedAt: true });
+
 // ── Staff push tokens (for targeted staff notifications) ───────────────────────
 export const staffPushTokens = pgTable("staff_push_tokens", {
   id: serial("id").primaryKey(),

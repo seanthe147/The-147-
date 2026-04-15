@@ -73,6 +73,10 @@ import {
   type StaffRotaPublished,
   staffPushTokens,
   type StaffPushToken,
+  staffDocuments,
+  type StaffDocument,
+  staffOnboarding,
+  type StaffOnboarding,
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
 
@@ -1683,6 +1687,116 @@ export class DatabaseStorage implements IStorage {
   async removeStaffPushToken(token: string): Promise<boolean> {
     const result = await db.delete(staffPushTokens).where(eq(staffPushTokens.token, token)).returning();
     return result.length > 0;
+  }
+
+  // ── Document storage ────────────────────────────────────────────────────────
+
+  async getDocumentsForStaff(staffId: number): Promise<Omit<StaffDocument, "fileData">[]> {
+    const rows = await db.select({
+      id: staffDocuments.id,
+      staffId: staffDocuments.staffId,
+      uploadedBy: staffDocuments.uploadedBy,
+      category: staffDocuments.category,
+      fileName: staffDocuments.fileName,
+      fileType: staffDocuments.fileType,
+      fileSizeBytes: staffDocuments.fileSizeBytes,
+      notes: staffDocuments.notes,
+      expiresAt: staffDocuments.expiresAt,
+      createdAt: staffDocuments.createdAt,
+    }).from(staffDocuments).where(eq(staffDocuments.staffId, staffId)).orderBy(desc(staffDocuments.createdAt));
+    return rows;
+  }
+
+  async getDocumentById(id: number): Promise<StaffDocument | null> {
+    const [row] = await db.select().from(staffDocuments).where(eq(staffDocuments.id, id));
+    return row ?? null;
+  }
+
+  async uploadDocument(data: {
+    staffId: number;
+    uploadedBy: number;
+    category: string;
+    fileName: string;
+    fileType: string;
+    fileData: string;
+    fileSizeBytes: number;
+    notes?: string;
+    expiresAt?: string;
+  }): Promise<StaffDocument> {
+    const [doc] = await db.insert(staffDocuments).values(data).returning();
+    return doc;
+  }
+
+  async deleteDocument(id: number): Promise<boolean> {
+    const result = await db.delete(staffDocuments).where(eq(staffDocuments.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getAllDocuments(): Promise<Omit<StaffDocument, "fileData">[]> {
+    return db.select({
+      id: staffDocuments.id,
+      staffId: staffDocuments.staffId,
+      uploadedBy: staffDocuments.uploadedBy,
+      category: staffDocuments.category,
+      fileName: staffDocuments.fileName,
+      fileType: staffDocuments.fileType,
+      fileSizeBytes: staffDocuments.fileSizeBytes,
+      notes: staffDocuments.notes,
+      expiresAt: staffDocuments.expiresAt,
+      createdAt: staffDocuments.createdAt,
+    }).from(staffDocuments).orderBy(desc(staffDocuments.createdAt));
+  }
+
+  // ── Staff onboarding ────────────────────────────────────────────────────────
+
+  private decryptOnboarding<T extends Partial<StaffOnboarding>>(row: T): T {
+    const d = (v: string | null | undefined) => (v ? decrypt(v) : v);
+    return {
+      ...row,
+      nationalInsurance: d(row.nationalInsurance) ?? null,
+      bankAccountName: d(row.bankAccountName) ?? null,
+      bankSortCode: d(row.bankSortCode) ?? null,
+      bankAccountNumber: d(row.bankAccountNumber) ?? null,
+    } as T;
+  }
+
+  async getOnboarding(staffId: number): Promise<StaffOnboarding | null> {
+    const [row] = await db.select().from(staffOnboarding).where(eq(staffOnboarding.staffId, staffId));
+    return row ? this.decryptOnboarding(row) : null;
+  }
+
+  async upsertOnboarding(staffId: number, data: Partial<StaffOnboarding>): Promise<StaffOnboarding> {
+    const enc = (v: string | null | undefined) => (v ? encrypt(v) : null);
+    const values: Partial<StaffOnboarding> = {
+      ...data,
+      staffId,
+      nationalInsurance: enc(data.nationalInsurance) ?? undefined,
+      bankAccountName: enc(data.bankAccountName) ?? undefined,
+      bankSortCode: enc(data.bankSortCode) ?? undefined,
+      bankAccountNumber: enc(data.bankAccountNumber) ?? undefined,
+      updatedAt: new Date(),
+    };
+    const existing = await this.getOnboarding(staffId);
+    if (existing) {
+      const [updated] = await db.update(staffOnboarding)
+        .set(values)
+        .where(eq(staffOnboarding.staffId, staffId))
+        .returning();
+      return this.decryptOnboarding(updated);
+    } else {
+      const [created] = await db.insert(staffOnboarding)
+        .values(values as typeof staffOnboarding.$inferInsert)
+        .returning();
+      return this.decryptOnboarding(created);
+    }
+  }
+
+  async getAllOnboardingStatus(): Promise<{ staffId: number; completedAt: Date | null; updatedAt: Date }[]> {
+    return db.select({
+      staffId: staffOnboarding.staffId,
+      completedAt: staffOnboarding.completedAt,
+      updatedAt: staffOnboarding.updatedAt,
+    }).from(staffOnboarding);
   }
 
 }
