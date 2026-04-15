@@ -5400,6 +5400,232 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(record);
   });
 
+  // ── Pay rate routes ──────────────────────────────────────────────────────────
+
+  app.get("/api/hr/staff/:id/pay", staffAuth, managerAuth, async (req: any, res) => {
+    const staffId = parseInt(req.params.id, 10);
+    if (isNaN(staffId)) return res.status(400).json({ message: "Invalid staff ID" });
+    const pay = await storage.getStaffPay(staffId);
+    if (!pay) return res.status(404).json({ message: "Staff member not found" });
+    res.json(pay);
+  });
+
+  app.put("/api/hr/staff/:id/pay", staffAuth, managerAuth, async (req: any, res) => {
+    const staffId = parseInt(req.params.id, 10);
+    if (isNaN(staffId)) return res.status(400).json({ message: "Invalid staff ID" });
+    const { payType, hourlyRate, annualSalary, weeklyHours } = req.body;
+    if (!payType || !["hourly", "salary"].includes(payType)) return res.status(400).json({ message: "payType must be 'hourly' or 'salary'" });
+    await storage.updateStaffPay(staffId, { payType, hourlyRate: hourlyRate || null, annualSalary: annualSalary || null, weeklyHours: weeklyHours || "37.5" });
+    res.json({ success: true });
+  });
+
+  // ── SSP Calculator ───────────────────────────────────────────────────────────
+  // Uses HMRC 2025/26 rules: £118.75/week, 3 waiting days, 8-week PIW linking, 28-week max
+
+  const SSP_WEEKLY_RATE = 118.75;   // £118.75/week (April 2025–)
+  const SSP_LEL_WEEKLY = 123.00;    // Lower Earnings Limit 2025/26
+  const SSP_MIN_PIW_DAYS = 4;       // Minimum 4 consecutive calendar days = PIW
+  const SSP_WAITING_CAL_DAYS = 3;   // First 3 calendar days = waiting days (no SSP)
+  const SSP_LINK_GAP_DAYS = 56;     // Two PIWs within 56 calendar days (8 weeks) = linked
+  const SSP_MAX_WEEKS = 28;         // Maximum 28 weeks SSP in a linked PIW
+
+  function calDaysInPeriod(start: string, end: string): number {
+    return Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86400000) + 1;
+  }
+  function daysBetween(endDate: string, startDate: string): number {
+    return Math.round((new Date(startDate).getTime() - new Date(endDate).getTime()) / 86400000);
+  }
+
+  app.get("/api/hr/staff/:id/ssp", staffAuth, managerAuth, async (req: any, res) => {
+    const staffId = parseInt(req.params.id, 10);
+    if (isNaN(staffId)) return res.status(400).json({ message: "Invalid staff ID" });
+
+    const [pay, staffUser, allLeave] = await Promise.all([
+      storage.getStaffPay(staffId),
+      storage.getStaffUser(staffId),
+      storage.getLeaveRequestsForStaff(staffId),
+    ]);
+
+    if (!staffUser) return res.status(404).json({ message: "Staff member not found" });
+
+    const contractedDaysPerWeek = parseFloat(staffUser.contractedDaysPerWeek ?? "5");
+    const weeklyHours = parseFloat(pay?.weeklyHours ?? "37.5");
+    const hourlyRate = pay?.hourlyRate ? parseFloat(pay.hourlyRate) : null;
+    const annualSalary = pay?.annualSalary ? parseFloat(pay.annualSalary) : null;
+    const payType = pay?.payType ?? "hourly";
+
+    const weeklyEarnings = payType === "salary" && annualSalary
+      ? annualSalary / 52
+      : payType === "hourly" && hourlyRate
+      ? hourlyRate * weeklyHours
+      : 0;
+
+    const qualifiesForSSP = weeklyEarnings >= SSP_LEL_WEEKLY;
+    const dailySSP = SSP_WEEKLY_RATE / contractedDaysPerWeek;
+
+    // Only look at approved sick leave periods
+    const sickPeriods = allLeave
+      .filter((r: any) => r.leaveType === "sick" && r.status === "approved")
+      .sort((a: any, b: any) => a.startDate.localeCompare(b.startDate));
+
+    const results: any[] = [];
+    let totalPayableDays = 0;
+    let prevEnd: string | null = null;
+    let prevId: number | null = null;
+
+    for (const period of sickPeriods) {
+      const calDays = calDaysInPeriod(period.startDate, period.endDate);
+      const workingDays = parseFloat(period.totalDays || "0");
+      const isPIW = calDays >= SSP_MIN_PIW_DAYS;
+
+      // Check PIW linking (within 8 weeks of previous PIW end)
+      let isLinked = false;
+      let linkedToId: number | null = null;
+      if (prevEnd && isPIW) {
+        const gap = daysBetween(prevEnd, period.startDate) - 1;
+        if (gap >= 0 && gap <= SSP_LINK_GAP_DAYS) {
+          isLinked = true;
+          linkedToId = prevId;
+        }
+      }
+
+      if (!isPIW) {
+        results.push({ id: period.id, startDate: period.startDate, endDate: period.endDate, calendarDays: calDays, workingDays, isPIW: false, isLinked: false, waitingWorkingDays: 0, payableDays: 0, dailySSP, sspAmount: 0, notes: `${calDays} calendar days — minimum 4 required for SSP` });
+        continue;
+      }
+
+      // Waiting days: first 3 calendar days proportional to working days
+      const waitingWorkingDays = isLinked
+        ? 0
+        : Math.min(workingDays, Math.round((SSP_WAITING_CAL_DAYS / calDays) * workingDays));
+
+      const rawPayable = Math.max(0, workingDays - waitingWorkingDays);
+      // Cap at 28-week maximum
+      const maxPayable = SSP_MAX_WEEKS * contractedDaysPerWeek - totalPayableDays;
+      const payableDays = Math.min(rawPayable, Math.max(0, maxPayable));
+      const sspAmount = qualifiesForSSP ? parseFloat((payableDays * dailySSP).toFixed(2)) : 0;
+
+      totalPayableDays += payableDays;
+      prevEnd = period.endDate;
+      prevId = period.id;
+
+      results.push({
+        id: period.id,
+        startDate: period.startDate,
+        endDate: period.endDate,
+        calendarDays: calDays,
+        workingDays,
+        isPIW: true,
+        isLinked,
+        linkedToId,
+        waitingWorkingDays,
+        payableDays: parseFloat(payableDays.toFixed(2)),
+        dailySSP: parseFloat(dailySSP.toFixed(4)),
+        sspAmount,
+        notes: !qualifiesForSSP
+          ? "Earnings below Lower Earnings Limit — does not qualify for SSP"
+          : payableDays < rawPayable
+          ? "28-week SSP limit reached"
+          : isLinked
+          ? "Linked PIW — waiting days not re-applied"
+          : waitingWorkingDays > 0
+          ? `${SSP_WAITING_CAL_DAYS} waiting days applied`
+          : "",
+      });
+    }
+
+    res.json({
+      staffId,
+      payType,
+      weeklyEarnings: parseFloat(weeklyEarnings.toFixed(2)),
+      lel: SSP_LEL_WEEKLY,
+      qualifiesForSSP,
+      dailySSP: parseFloat(dailySSP.toFixed(4)),
+      sspWeeklyRate: SSP_WEEKLY_RATE,
+      totalPayableDays: parseFloat(totalPayableDays.toFixed(2)),
+      totalSSPWeeks: parseFloat((totalPayableDays / contractedDaysPerWeek).toFixed(2)),
+      totalSSP: parseFloat(results.reduce((s, r) => s + r.sspAmount, 0).toFixed(2)),
+      limitReached: totalPayableDays >= SSP_MAX_WEEKS * contractedDaysPerWeek,
+      maxWeeks: SSP_MAX_WEEKS,
+      periods: results,
+      disclaimer: "Figures are estimates based on contracted days. Verify with your payroll provider before processing payments.",
+      rateYear: "2025/26",
+    });
+  });
+
+  // ── Holiday Pay Calculator ───────────────────────────────────────────────────
+
+  app.get("/api/hr/staff/:id/holiday-pay", staffAuth, managerAuth, async (req: any, res) => {
+    const staffId = parseInt(req.params.id, 10);
+    if (isNaN(staffId)) return res.status(400).json({ message: "Invalid staff ID" });
+
+    const [pay, staffUser, allLeave] = await Promise.all([
+      storage.getStaffPay(staffId),
+      storage.getStaffUser(staffId),
+      storage.getLeaveRequestsForStaff(staffId),
+    ]);
+
+    if (!staffUser) return res.status(404).json({ message: "Staff member not found" });
+
+    const contractedDaysPerWeek = parseFloat(staffUser.contractedDaysPerWeek ?? "5");
+    const weeklyHours = parseFloat(pay?.weeklyHours ?? "37.5");
+    const hourlyRate = pay?.hourlyRate ? parseFloat(pay.hourlyRate) : null;
+    const annualSalary = pay?.annualSalary ? parseFloat(pay.annualSalary) : null;
+    const payType = pay?.payType ?? "hourly";
+
+    // Daily rate calculation
+    // Salaried: annual salary ÷ 52 weeks ÷ contracted days/week
+    // Hourly: hourly rate × (weekly hours ÷ contracted days/week) = daily hours × hourly rate
+    const dailyRate = payType === "salary" && annualSalary
+      ? annualSalary / 52 / contractedDaysPerWeek
+      : payType === "hourly" && hourlyRate
+      ? hourlyRate * (weeklyHours / contractedDaysPerWeek)
+      : 0;
+
+    const annualLeave = allLeave
+      .filter((r: any) => r.leaveType === "annual")
+      .sort((a: any, b: any) => b.startDate.localeCompare(a.startDate));
+
+    const results = annualLeave.map((req: any) => {
+      const days = parseFloat(req.totalDays || "0");
+      return {
+        id: req.id,
+        startDate: req.startDate,
+        endDate: req.endDate,
+        days,
+        status: req.status,
+        dailyRate: parseFloat(dailyRate.toFixed(4)),
+        holidayPay: parseFloat((days * dailyRate).toFixed(2)),
+      };
+    });
+
+    const totalApproved = results
+      .filter((r: any) => r.status === "approved")
+      .reduce((s: number, r: any) => s + r.holidayPay, 0);
+
+    const totalPending = results
+      .filter((r: any) => r.status === "pending")
+      .reduce((s: number, r: any) => s + r.holidayPay, 0);
+
+    res.json({
+      staffId,
+      payType,
+      hourlyRate,
+      annualSalary,
+      weeklyHours,
+      contractedDaysPerWeek,
+      dailyRate: parseFloat(dailyRate.toFixed(4)),
+      hasPay: dailyRate > 0,
+      results,
+      totalApprovedHolidayPay: parseFloat(totalApproved.toFixed(2)),
+      totalPendingHolidayPay: parseFloat(totalPending.toFixed(2)),
+      note: payType === "salary"
+        ? "Salaried staff receive normal pay during leave — this shows the equivalent daily cost."
+        : "Holiday pay is calculated at your contracted daily rate. Under UK law variable-hours workers may be entitled to a 52-week average rate — verify with your payroll provider.",
+      disclaimer: "Figures are estimates. Verify with your payroll provider before processing payments.",
+    });
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

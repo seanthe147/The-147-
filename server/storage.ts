@@ -1689,6 +1689,33 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
+  // ── Pay rate ────────────────────────────────────────────────────────────────
+
+  async getStaffPay(staffId: number): Promise<{ payType: string; hourlyRate: string | null; annualSalary: string | null; weeklyHours: string } | null> {
+    const [user] = await db.select({
+      payType: staffUsers.payType,
+      hourlyRate: staffUsers.hourlyRate,
+      annualSalary: staffUsers.annualSalary,
+      weeklyHours: staffUsers.weeklyHours,
+    }).from(staffUsers).where(eq(staffUsers.id, staffId));
+    if (!user) return null;
+    return {
+      payType: user.payType ?? "hourly",
+      hourlyRate: user.hourlyRate ? decrypt(user.hourlyRate) : null,
+      annualSalary: user.annualSalary ? decrypt(user.annualSalary) : null,
+      weeklyHours: user.weeklyHours ?? "37.5",
+    };
+  }
+
+  async updateStaffPay(staffId: number, data: { payType: string; hourlyRate?: string | null; annualSalary?: string | null; weeklyHours?: string }): Promise<void> {
+    await db.update(staffUsers).set({
+      payType: data.payType,
+      hourlyRate: data.hourlyRate ? encrypt(data.hourlyRate) : null,
+      annualSalary: data.annualSalary ? encrypt(data.annualSalary) : null,
+      weeklyHours: data.weeklyHours ?? "37.5",
+    }).where(eq(staffUsers.id, staffId));
+  }
+
   // ── Document storage ────────────────────────────────────────────────────────
 
   async getDocumentsForStaff(staffId: number): Promise<Omit<StaffDocument, "fileData">[]> {

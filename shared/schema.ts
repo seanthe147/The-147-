@@ -32,6 +32,11 @@ export const staffUsers = pgTable("staff_users", {
   // UK employment law fields
   contractedDaysPerWeek: text("contracted_days_per_week").notNull().default("5"), // decimal string, e.g. "5" full-time, "3" part-time
   employmentStartDate: text("employment_start_date"),                             // YYYY-MM-DD, for new-starter accrual
+  // Pay rate fields (encrypted at rest)
+  payType: text("pay_type").default("hourly"),    // "hourly" | "salary"
+  hourlyRate: text("hourly_rate"),                // AES-256 encrypted decimal string, e.g. "enc:..." → "12.50"
+  annualSalary: text("annual_salary"),            // AES-256 encrypted decimal string, e.g. "enc:..." → "25000"
+  weeklyHours: text("weekly_hours").default("37.5"), // contracted hours per week (e.g. "37.5")
 });
 
 export type StaffUser = typeof staffUsers.$inferSelect;

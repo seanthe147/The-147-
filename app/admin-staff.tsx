@@ -397,6 +397,13 @@ export default function AdminStaffScreen() {
                             <Text style={[styles.actionBtnText, { color: "#7C3AED" }]}>Documents</Text>
                           </Pressable>
                           <Pressable
+                            onPress={() => router.push({ pathname: "/admin-pay", params: { staffId: String(user.id), staffName: user.displayName || user.username } })}
+                            style={({ pressed }) => [styles.actionBtn, { borderColor: "#065F46", opacity: pressed ? 0.7 : 1 }]}
+                          >
+                            <Ionicons name="cash-outline" size={15} color="#065F46" />
+                            <Text style={[styles.actionBtnText, { color: "#065F46" }]}>Pay & SSP</Text>
+                          </Pressable>
+                          <Pressable
                             onPress={() => openResetPin(user)}
                             disabled={isBusy}
                             style={({ pressed }) => [styles.actionBtn, styles.actionBtnPrimary, { opacity: pressed ? 0.7 : 1 }]}
