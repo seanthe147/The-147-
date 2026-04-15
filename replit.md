@@ -40,15 +40,17 @@ The application features a mobile frontend built with Expo React Native, utilizi
 - **Resend:** Email service for sending OTP verification codes for loyalty program authentication and booking confirmation emails.
 - **Google Fonts:** For the Montserrat typeface.
 
-## EAS Build Setup (iOS Production Builds)
+## EAS Build Setup
 
-### Current State (March 2026)
-The iOS production build uses **local credentials** (`credentialsSource: "local"` in `eas.json`) to bypass EAS remote credential validation. This was required because the stored Apple API key (PRH75PPG5Z) in EAS was revoked, causing remote Apple authentication failures.
+### Current State (April 2026)
+**Android** uses **remote credentials** (`credentialsSource: "remote"`) — the keystore is stored on EAS servers (keystore ID `152c4249-c08f-4b5c-abc0-75d880af6baf`, alias `36b5163761ec2dcc8cff05b94a82462f`, JKS format, linked as default for `com.the147bradford.venue`). This is the correct approach for Replit-hosted EAS builds because the EAS worker receives a project archive and needs credentials independently of whether `credentials.json` is present.
 
-**Local credential files** (in `ios-creds/`, gitignored):
+**iOS** uses **local credentials** (`credentialsSource: "local"` in `eas.json`) to bypass EAS remote credential validation. This was required because the stored Apple API key (PRH75PPG5Z) in EAS was revoked, causing remote Apple authentication failures.
+
+**Local credential files** (in `ios-creds/`, committed to git with gitignore exceptions):
 - `ios-creds/dist.p12` — Distribution certificate (Team: 94LW5H4828, serial 7FF7BB4E8DEB3793A4B6A49C092806BC, valid 2027-03-17)
 - `ios-creds/dist.mobileprovision` — Provisioning profile 4LGFPVG9S2 (AppStore, com.the147bradford.app, valid 2027-03-17)
-- `credentials.json` — References above files with certificate password
+- `credentials.json` — References above iOS credential files
 
 **Apple API Key for submissions**: `BNL8D6UJKJ` (stored as `ASC_KEY_P8_NEW` secret, issuer `7cdddb46-b377-45c0-9cbe-e07c358d3cc5`)
 
