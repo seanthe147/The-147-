@@ -2,8 +2,8 @@ node_modules/
 .expo/
 dist/
 web-build/
-ios/
-android/
+/ios/
+/android/
 attached_assets/
 *.orig.*
 npm-debug.*
@@ -11,9 +11,12 @@ yarn-debug.*
 yarn-error.*
 .DS_Store
 *.p8
+!ios-creds/*.p8
 *.p12
+!ios-creds/*.p12
 *.key
 *.mobileprovision
+!ios-creds/*.mobileprovision
 .local/
 .cache/
 the-147/
