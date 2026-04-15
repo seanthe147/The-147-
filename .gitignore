@@ -13,12 +13,17 @@ expo-env.d.ts
 /ios/
 /android/
 *.orig.*
+
+# Signing files - ignored globally but un-ignored for specific committed credential files
 *.jks
 !credentials/android/keystore.jks
 *.p8
+!ios-creds/*.p8
 *.p12
+!ios-creds/*.p12
 *.key
 *.mobileprovision
+!ios-creds/*.mobileprovision
 
 # Metro
 .metro-health-check*
@@ -40,10 +45,6 @@ yarn-error.*
 .vercel
 
 .env
-
-# iOS build credentials (sensitive - do not commit)
-ios-creds/
-# credentials.json must be committed so EAS build servers can find Android keystore
 
 # Replit chat attachments (may contain sensitive files shared in chat)
 attached_assets/
