@@ -448,6 +448,14 @@ function DashboardScreen() {
           {!isManager && Platform.OS === "web" && (
             <>
               <AdminTool
+                icon="calendar"
+                title="Bookings"
+                description="View and manage table bookings"
+                color={Colors.brand.green}
+                onPress={() => router.push("/admin-bookings")}
+                testID="portal-bookings"
+              />
+              <AdminTool
                 icon="calendar-clear"
                 title="Leave Booking"
                 description="Request holiday or time off"
