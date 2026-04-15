@@ -372,6 +372,12 @@ export default function StaffHRScreen() {
             colour="#065F46"
             onPress={() => setShowHistoryModal(true)}
           />
+          <ActionCard
+            icon="person-circle-outline"
+            label="My Details"
+            colour="#B45309"
+            onPress={() => router.push("/staff-onboarding")}
+          />
         </View>
 
         {/* Leave balance detail */}

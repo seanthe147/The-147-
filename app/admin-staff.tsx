@@ -390,6 +390,13 @@ export default function AdminStaffScreen() {
                       {!isSelf && (
                         <View style={styles.actionsRow}>
                           <Pressable
+                            onPress={() => router.push({ pathname: "/admin-staff-docs", params: { staffId: String(user.id), staffName: user.displayName || user.username } })}
+                            style={({ pressed }) => [styles.actionBtn, { borderColor: "#7C3AED", opacity: pressed ? 0.7 : 1 }]}
+                          >
+                            <Ionicons name="documents-outline" size={15} color="#7C3AED" />
+                            <Text style={[styles.actionBtnText, { color: "#7C3AED" }]}>Documents</Text>
+                          </Pressable>
+                          <Pressable
                             onPress={() => openResetPin(user)}
                             disabled={isBusy}
                             style={({ pressed }) => [styles.actionBtn, styles.actionBtnPrimary, { opacity: pressed ? 0.7 : 1 }]}
