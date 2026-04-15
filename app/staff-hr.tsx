@@ -548,14 +548,15 @@ export default function StaffHRScreen() {
 function GDPRNotice({ onAccept }: { onAccept: () => void }) {
   const insets = useSafeAreaInsets();
   const privacyUrl = `${getApiUrl().replace(/\/api$/, "")}/staff-privacy-notice`;
+  const FOOTER_HEIGHT = 120 + insets.bottom;
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) }]}>
+    <View style={{ flex: 1, backgroundColor: Colors.light.background }}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={styles.gdprScroll}
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ padding: 24, paddingTop: 20, paddingBottom: FOOTER_HEIGHT + 16 }}
+        showsVerticalScrollIndicator={true}
       >
-        <Ionicons name="shield-checkmark" size={48} color={Colors.brand.blue} style={{ marginBottom: 20, alignSelf: "center" }} />
+        <Ionicons name="shield-checkmark" size={48} color={Colors.brand.blue} style={{ marginBottom: 16, alignSelf: "center" }} />
         <Text style={styles.gdprTitle}>Data & Privacy Notice</Text>
         <Text style={styles.gdprBody}>
           The 147 Bradford collects and stores your attendance and leave data to meet employment law obligations under the Working Time Regulations 1998.{"\n\n"}
@@ -567,11 +568,8 @@ function GDPRNotice({ onAccept }: { onAccept: () => void }) {
           Location is only captured at the moment of clocking in or out — not continuously tracked.
         </Text>
       </ScrollView>
-      <View style={[styles.gdprFooter, { paddingHorizontal: 24, paddingBottom: 20 }]}>
-        <Pressable
-          onPress={() => Linking.openURL(privacyUrl)}
-          style={{ marginBottom: 14 }}
-        >
+      <View style={[styles.gdprFooter, { paddingHorizontal: 24, paddingBottom: insets.bottom + 16, position: "absolute", bottom: 0, left: 0, right: 0 }]}>
+        <Pressable onPress={() => Linking.openURL(privacyUrl)} style={{ marginBottom: 12 }}>
           <Text style={{ fontSize: 13, color: Colors.brand.blue, textDecorationLine: "underline", textAlign: "center" }}>
             View full Staff Privacy Notice →
           </Text>
