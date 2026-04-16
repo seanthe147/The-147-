@@ -3,10 +3,16 @@ set -euo pipefail
 
 echo "[pre-install] Setting up Android signing credentials..."
 
-mkdir -p credentials/android
+# Absolute path to the project root (same directory as this script)
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+echo "[pre-install] Project root: $PROJECT_ROOT"
 
-# Decode embedded keystore (same content as credentials/android/keystore.jks in git)
-base64 -d > credentials/android/keystore.jks << 'KEYSTORE_EOF'
+mkdir -p "$PROJECT_ROOT/credentials/android"
+
+KEYSTORE_PATH="$PROJECT_ROOT/credentials/android/keystore.jks"
+
+# Decode embedded keystore to absolute path
+base64 -d > "$KEYSTORE_PATH" << 'KEYSTORE_EOF'
 /u3+7QAAAAIAAAABAAAAAQAgMzZiNTE2Mzc2MWVjMmRjYzhjZmYwNWI5NGE4MjQ2MmYAAAGdeRnW
 HgAABQEwggT9MA4GCisGAQQBKgIRAQEFAASCBOlS2NDDbEw71G5vH2u4cWpjuJltCwBaXHpoX8J/
 vE/MlsjJ0HivwqbgAehmhuAcnsYFJwYoTMZ6s4bfzmHR3K6nFvoI/R3fXhU0Fl8yhcLVqjQFccsR
@@ -48,28 +54,29 @@ NuUt/bjpzruzQJYT1Kolqk31dQM/YzkvGK6tXqnVVoZj0w27feIrE62VEpPvQljtdVqZgPvND07q
 3xKuFODcyAhqyTO4810dSFkGiiC8kdI=
 KEYSTORE_EOF
 
-echo "[pre-install] Keystore written: $(wc -c < credentials/android/keystore.jks) bytes"
+echo "[pre-install] Keystore written: $(wc -c < "$KEYSTORE_PATH") bytes at $KEYSTORE_PATH"
 
-# Write credentials.json unconditionally
-cat > credentials.json << 'CREDS_EOF'
+# Write credentials.json to absolute path, with absolute keystorePath inside
+cat > "$PROJECT_ROOT/credentials.json" << CREDS_EOF
 {
   "android": {
     "keystore": {
-      "keystorePath": "credentials/android/keystore.jks",
+      "keystorePath": "$KEYSTORE_PATH",
       "keystorePassword": "9021d3e50104805696704789b37a3284",
       "keyAlias": "36b5163761ec2dcc8cff05b94a82462f",
       "keyPassword": "b2af160569b7bdaff4e070f0fa3bf603"
     }
   },
   "ios": {
-    "provisioningProfilePath": "ios-creds/dist.mobileprovision",
+    "provisioningProfilePath": "$PROJECT_ROOT/ios-creds/dist.mobileprovision",
     "distributionCertificate": {
-      "path": "ios-creds/dist.p12",
+      "path": "$PROJECT_ROOT/ios-creds/dist.p12",
       "password": "ownCGrlMq1XbAIPZ1mj0hg=="
     }
   }
 }
 CREDS_EOF
 
-echo "[pre-install] credentials.json written."
+echo "[pre-install] credentials.json written to $PROJECT_ROOT/credentials.json"
+echo "[pre-install] Keystore path in credentials.json: $KEYSTORE_PATH"
 echo "[pre-install] Done."
