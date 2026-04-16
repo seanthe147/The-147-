@@ -2324,8 +2324,8 @@
     }catch(e){}
     setupUI();
     const isManagerUser=state.role==='manager'||state.role==='owner';
-    navigateTo(isManagerUser?'bookings':'hr');
-    if(isManagerUser)loadMessages();
+    navigateTo('bookings');
+    loadMessages();
     // Show any active login pop-ups after a short delay
     setTimeout(checkLoginPopups, 600);
   }
@@ -2336,8 +2336,8 @@
     el('sidebarName').textContent=state.displayName||state.username||'Staff';
     el('sidebarRole').textContent=state.role.charAt(0).toUpperCase()+state.role.slice(1);
     el('sidebarRole').className='sidebar-user-role role-'+state.role;
-    el('navBookings').classList.toggle('hidden',!isManager);
-    el('navMessages').classList.toggle('hidden',!isManager);
+    el('navBookings').classList.remove('hidden');
+    el('navMessages').classList.remove('hidden');
     el('navComms').classList.toggle('hidden',!isManager);
     el('navStaff').classList.toggle('hidden',!isOwner);
     el('navMemberships').classList.toggle('hidden',!isManager);
