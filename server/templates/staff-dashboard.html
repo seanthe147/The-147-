@@ -3888,7 +3888,7 @@
           ${setHoursBtn}
           ${imgBtn}
           ${removeImgBtn}
-          <button class="btn btn-secondary btn-sm" style="padding:4px 10px;font-size:11px" onclick="promptRenameCat('${cat.id}',${JSON.stringify(cat.displayName||cat.name)})">Rename</button>
+          <button class="btn btn-secondary btn-sm" style="padding:4px 10px;font-size:11px" onclick="promptRenameCat('${cat.id}',${JSON.stringify(cat.displayName||cat.name).replace(/"/g,'&quot;')})">Rename</button>
           <select style="font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)" onchange="mergeCat('${cat.id}',this.value)">
             <option value="">No merge</option>
             ${otherCats}
