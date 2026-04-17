@@ -3944,7 +3944,7 @@
   async function uploadCatImage(categoryId, input) {
     const file = input.files[0];
     if (!file) return;
-    const tok = localStorage.getItem('staffToken147') || '';
+    const tok = getToken() || '';
     const formData = new FormData();
     formData.append('image', file);
     try {
@@ -3963,7 +3963,7 @@
 
   async function removeCatImage(categoryId) {
     if (!confirm('Remove the custom photo for this category?')) return;
-    const tok = localStorage.getItem('staffToken147') || '';
+    const tok = getToken() || '';
     try {
       const r = await fetch(`/api/staff/menu/category-image/${categoryId}`, {
         method: 'PATCH',
