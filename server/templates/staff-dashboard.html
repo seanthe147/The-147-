@@ -3944,12 +3944,13 @@
   async function uploadCatImage(categoryId, input) {
     const file = input.files[0];
     if (!file) return;
+    const tok = localStorage.getItem('staffToken147') || '';
     const formData = new FormData();
     formData.append('image', file);
     try {
       const r = await fetch(`/api/staff/menu/category-image/${categoryId}`, {
         method: 'PATCH',
-        headers: { 'X-Staff-Token': localStorage.getItem('staffToken') || '' },
+        headers: { 'Authorization': 'Bearer ' + tok },
         body: formData,
       });
       if (!r.ok) throw new Error();
@@ -3962,10 +3963,11 @@
 
   async function removeCatImage(categoryId) {
     if (!confirm('Remove the custom photo for this category?')) return;
+    const tok = localStorage.getItem('staffToken147') || '';
     try {
       const r = await fetch(`/api/staff/menu/category-image/${categoryId}`, {
         method: 'PATCH',
-        headers: { 'X-Staff-Token': localStorage.getItem('staffToken') || '', 'Content-Type': 'application/x-www-form-urlencoded' },
+        headers: { 'Authorization': 'Bearer ' + tok, 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'remove=true',
       });
       if (!r.ok) throw new Error();
