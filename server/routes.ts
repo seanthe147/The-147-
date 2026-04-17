@@ -2372,10 +2372,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Get display name for the target (the category we're merging into)
           const targetSettings = catSettingsMap.get(targetId);
           const targetCat = categories.find(c => c.id === targetId);
+          // Custom imageUrl from settings takes priority over Square's imageUrl
+          const customImg = targetSettings?.imageUrl ?? catSettingsMap.get(cat.id)?.imageUrl ?? null;
           mergedMap.set(targetId, {
             id: targetId,
             name: targetSettings?.displayName ?? targetCat?.name ?? displayName,
-            imageUrl: targetCat?.imageUrl ?? cat.imageUrl,
+            imageUrl: customImg ?? targetCat?.imageUrl ?? cat.imageUrl,
             order: targetSettings?.displayOrder ?? targetCat ? (catSettingsMap.get(targetId)?.displayOrder ?? 99) : displayOrder,
             items: [],
           });
@@ -2517,7 +2519,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = categories.map(cat => ({
         id: cat.id,
         name: cat.name,
-        imageUrl: cat.imageUrl,
+        imageUrl: settingsMap.get(cat.id)?.imageUrl ?? cat.imageUrl ?? null,
+        customImageUrl: settingsMap.get(cat.id)?.imageUrl ?? null,
         displayName: settingsMap.get(cat.id)?.displayName ?? null,
         displayOrder: settingsMap.get(cat.id)?.displayOrder ?? 99,
         mergedIntoId: settingsMap.get(cat.id)?.mergedIntoId ?? null,
@@ -2539,6 +2542,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: any) {
       console.error("[STAFF MENU] Category settings error:", err.message);
       res.status(500).json({ message: "Failed to save category settings" });
+    }
+  });
+
+  // ── Category Image Upload ──────────────────────────────────────────────────
+
+  app.patch("/api/staff/menu/category-image/:categoryId", staffAuth, managerAuth, upload.single("image"), async (req: any, res) => {
+    const { categoryId } = req.params;
+    const updatedBy = req.staffUser?.username ?? "staff";
+    try {
+      if (req.file) {
+        const compressed = await sharp(req.file.buffer)
+          .resize({ width: 800, withoutEnlargement: true })
+          .jpeg({ quality: 75, mozjpeg: true })
+          .toBuffer();
+        const imageUrl = `data:image/jpeg;base64,${compressed.toString("base64")}`;
+        await storage.updateCategoryImage(categoryId, imageUrl, updatedBy);
+        square.invalidateMenuCache();
+        return res.json({ ok: true, imageUrl });
+      } else if (req.body.remove === "true") {
+        await storage.updateCategoryImage(categoryId, null, updatedBy);
+        square.invalidateMenuCache();
+        return res.json({ ok: true, imageUrl: null });
+      }
+      return res.status(400).json({ message: "No image provided" });
+    } catch (err: any) {
+      console.error("[CATEGORY IMAGE] Error:", err.message);
+      return res.status(500).json({ message: "Failed to update category image" });
     }
   });
 

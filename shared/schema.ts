@@ -389,6 +389,7 @@ export const categorySettings = pgTable("category_settings", {
   displayOrder: integer("display_order").notNull().default(99),
   mergedIntoId: text("merged_into_id"),
   displayName: text("display_name"),
+  imageUrl: text("image_url"),
   updatedBy: text("updated_by").notNull().default("system"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
