@@ -1130,8 +1130,10 @@ export default function OrderScreen() {
   const [cartVisible, setCartVisible] = useState(false);
   const [modifierItem, setModifierItem] = useState<MenuItem | null>(null);
   const [highlightItemId, setHighlightItemId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const { totalItems, totalPrice, addItem } = useCart();
   const categoryScrollRef = useRef<ScrollView>(null);
+  const searchRef = useRef<TextInput>(null);
 
   const { data: categories, isLoading, isError, refetch } = useQuery<MenuCategory[]>({
     queryKey: ["/api/menu"],
@@ -1175,8 +1177,28 @@ export default function OrderScreen() {
   );
 
   const headerHeight = insets.top + 56 + (Platform.OS === "web" ? webTopInset : 0);
+  const searchBarHeight = 52;
+  const categoryPageHeaderHeight = headerHeight + searchBarHeight;
   const categoryBarHeight = 52;
   const cartBarHeight = totalItems > 0 ? 72 : 0;
+
+  const searchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q || !categories) return [];
+    const results: Array<{ item: MenuItem; categoryName: string }> = [];
+    for (const cat of categories) {
+      for (const item of cat.items) {
+        if (
+          item.name.toLowerCase().includes(q) ||
+          item.description?.toLowerCase().includes(q) ||
+          item.variationName?.toLowerCase().includes(q)
+        ) {
+          results.push({ item, categoryName: cat.name });
+        }
+      }
+    }
+    return results;
+  }, [searchQuery, categories]);
 
   const handleOpenModifiers = useCallback((item: MenuItem) => {
     setModifierItem(item);
@@ -1277,6 +1299,7 @@ export default function OrderScreen() {
   }
 
   if (!activeCategory) {
+    const isSearching = searchQuery.trim().length > 0;
     return (
       <View style={styles.container}>
         <View style={[styles.header, { paddingTop: insets.top + webTopInset }]}>
@@ -1287,38 +1310,87 @@ export default function OrderScreen() {
             </View>
             <CartButton />
           </View>
+          <View style={styles.searchBar}>
+            <Ionicons name="search-outline" size={16} color={Colors.light.textSecondary} style={{ marginRight: 8 }} />
+            <TextInput
+              ref={searchRef}
+              style={styles.searchInput}
+              placeholder="Search food & drinks…"
+              placeholderTextColor={Colors.light.textSecondary}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+              autoCorrect={false}
+            />
+            {searchQuery.length > 0 && (
+              <Pressable onPress={() => setSearchQuery("")} hitSlop={8}>
+                <Ionicons name="close-circle" size={16} color={Colors.light.textSecondary} />
+              </Pressable>
+            )}
+          </View>
         </View>
 
         <ScrollView
-          contentContainerStyle={{ paddingTop: headerHeight, paddingBottom: tabBarHeight + cartBarHeight + 16 }}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ paddingTop: categoryPageHeaderHeight, paddingBottom: tabBarHeight + cartBarHeight + 16 }}
           showsVerticalScrollIndicator={false}
         >
-          {activeBanners.length > 0 && (
-            <BannerCarousel banners={activeBanners} />
-          )}
-
-          {!orderingEnabled && (
-            <View style={styles.orderingClosedBanner}>
-              <Ionicons name="time-outline" size={22} color="#92400e" />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.orderingClosedTitle}>Ordering is currently closed</Text>
-                <Text style={styles.orderingClosedSub}>
-                  {orderingStatus?.reason ?? "Please speak to a member of staff to place your order"}
+          {isSearching ? (
+            <>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>
+                  {searchResults.length > 0 ? `${searchResults.length} result${searchResults.length !== 1 ? "s" : ""} for "${searchQuery.trim()}"` : `No results for "${searchQuery.trim()}"`}
                 </Text>
-                {orderingStatus?.nextOpen && (
-                  <Text style={[styles.orderingClosedSub, { marginTop: 4, fontWeight: "700" as const, color: "#78350f" }]}>
-                    Next open: {orderingStatus.nextOpen}
-                  </Text>
-                )}
               </View>
-            </View>
+              {searchResults.length === 0 ? (
+                <View style={styles.searchEmpty}>
+                  <Ionicons name="search-outline" size={40} color={Colors.light.textSecondary} />
+                  <Text style={styles.searchEmptyText}>Try a different word</Text>
+                </View>
+              ) : (
+                <View style={{ paddingHorizontal: 16, gap: 0 }}>
+                  {searchResults.map(({ item, categoryName }) => (
+                    <View key={item.variationId}>
+                      <View style={styles.searchCatLabel}>
+                        <Text style={styles.searchCatLabelText}>{categoryName}</Text>
+                      </View>
+                      <ItemCard item={item} onOpenModifiers={handleOpenModifiers} />
+                    </View>
+                  ))}
+                </View>
+              )}
+            </>
+          ) : (
+            <>
+              {activeBanners.length > 0 && (
+                <BannerCarousel banners={activeBanners} />
+              )}
+
+              {!orderingEnabled && (
+                <View style={styles.orderingClosedBanner}>
+                  <Ionicons name="time-outline" size={22} color="#92400e" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.orderingClosedTitle}>Ordering is currently closed</Text>
+                    <Text style={styles.orderingClosedSub}>
+                      {orderingStatus?.reason ?? "Please speak to a member of staff to place your order"}
+                    </Text>
+                    {orderingStatus?.nextOpen && (
+                      <Text style={[styles.orderingClosedSub, { marginTop: 4, fontWeight: "700" as const, color: "#78350f" }]}>
+                        Next open: {orderingStatus.nextOpen}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              )}
+
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>What would you like?</Text>
+              </View>
+
+              <CategoryGrid categories={categories} onSelect={handleSelectCategory} />
+            </>
           )}
-
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>What would you like?</Text>
-          </View>
-
-          <CategoryGrid categories={categories} onSelect={handleSelectCategory} />
         </ScrollView>
 
         {totalItems > 0 && (
@@ -1543,6 +1615,45 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#a16207",
     lineHeight: 16,
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 6,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 36,
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 14,
+    color: "#fff",
+    height: 36,
+  },
+  searchEmpty: {
+    alignItems: "center",
+    paddingTop: 60,
+    gap: 12,
+  },
+  searchEmptyText: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 15,
+    color: Colors.light.textSecondary,
+  },
+  searchCatLabel: {
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  searchCatLabelText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 11,
+    color: Colors.light.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
   },
   sectionHeader: {
     paddingHorizontal: 16,
