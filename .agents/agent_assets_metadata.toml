@@ -77,3 +77,9 @@ id = "cwx5b0fcj8dA7vAIPo2_-"
 uri = "file://attached_assets/feature-graphic.png"
 type = "image"
 title = "Google Play Feature Graphic"
+
+[[outputs]]
+id = "4-XHOqINxA8R-Dj4FN86A"
+uri = "file://PCI_COMPLIANCE.md"
+type = "text"
+title = "PCI Compliance Note — The 147 Bradford"
