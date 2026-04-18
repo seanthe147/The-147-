@@ -1149,7 +1149,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         description: desc,
         // Branded receipt is sent ourselves on finalize — don't ask Stripe to send a duplicate
         payment_method_types: ["card"],
-        ...(moto ? { payment_method_options: { card: { moto: true } } } : {}),
+        // MOTO requires Stripe to enable the capability on the account first.
+        // Until then, the moto flag is informational only — sending it would cause
+        // "Received unknown parameter" errors. Set STRIPE_MOTO_ENABLED=true once
+        // Stripe support has activated MOTO on your account.
+        ...(moto && process.env.STRIPE_MOTO_ENABLED === "true"
+          ? { payment_method_options: { card: { moto: true } } }
+          : {}),
         metadata: {
           source: "staff_dashboard",
           staffUsername: staffUsername || "system",
