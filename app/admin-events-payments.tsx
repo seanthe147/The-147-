@@ -64,6 +64,9 @@ export default function AdminEventsPaymentsScreen() {
   const { data: config, isLoading: cfgLoading } = useQuery<PaymentConfig>({
     queryKey: ["/api/staff/payments/config"],
     enabled: isAuthenticated && isManager,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 
   const { data: logs, refetch: refetchLogs } = useQuery<PaymentLog[]>({
