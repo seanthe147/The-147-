@@ -580,3 +580,24 @@ export const staffPushTokens = pgTable("staff_push_tokens", {
 });
 
 export type StaffPushToken = typeof staffPushTokens.$inferSelect;
+
+// ── Staff payment log (Stripe phone payments taken via dashboard) ──────────────
+export const paymentLog = pgTable("payment_log", {
+  id: serial("id").primaryKey(),
+  amountPence: integer("amount_pence").notNull(),
+  currency: text("currency").notNull().default("gbp"),
+  description: text("description").notNull(),
+  customerName: text("customer_name"),
+  customerEmail: text("customer_email"),
+  customerPhone: text("customer_phone"),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  status: text("status").notNull().default("pending"), // pending | succeeded | failed
+  staffUsername: text("staff_username"),
+  staffDisplayName: text("staff_display_name"),
+  failureMessage: text("failure_message"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type PaymentLog = typeof paymentLog.$inferSelect;
+export const insertPaymentLogSchema = createInsertSchema(paymentLog).omit({ id: true, createdAt: true });
+export type InsertPaymentLog = z.infer<typeof insertPaymentLogSchema>;

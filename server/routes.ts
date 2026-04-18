@@ -11,6 +11,7 @@ import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertCo
 import { hashPin, verifyPin } from "./encryption";
 import * as square from "./square";
 import { fetchTicketSourceEvents, type AppEvent } from "./ticketsource";
+import { isStripeConfigured, getStripeClient, getPublishableKey } from "./stripe";
 import { countWorkingDays, calculateLeaveYearBounds, calculateProRataEntitlement, applyCarryOverCap, getEnglandWalesBankHolidays } from "./uk-leave-utils";
 
 function tsIdToNumber(tsId: string): number {
@@ -1065,6 +1066,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/staff/offers", staffAuth, async (_req, res) => {
     const offers = await storage.getAllOffers();
     res.json(offers);
+  });
+
+  // ── Staff Payments (Stripe phone payments + TicketSource Box Office) ─────────
+  // All payment endpoints are manager-only (staff role cannot take card payments).
+  const trim = (v: unknown, max: number) => {
+    const s = String(v ?? "").trim();
+    return s.length > max ? s.slice(0, max) : s;
+  };
+  const isEmail = (s: string) => /^[^\s@]{1,80}@[^\s@]{1,80}\.[^\s@]{1,40}$/.test(s);
+
+  app.get("/api/staff/payments/config", staffAuth, managerAuth, async (_req, res) => {
+    res.json({
+      stripeConfigured: isStripeConfigured(),
+      publishableKey: getPublishableKey(),
+      boxOfficeUrl: process.env.TICKETSOURCE_BOX_OFFICE_URL || "",
+    });
+  });
+
+  app.post("/api/staff/payments/create-intent", staffAuth, managerAuth, async (req, res) => {
+    if (!isStripeConfigured()) {
+      return res.status(503).json({ message: "Stripe is not configured. Please add STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY." });
+    }
+    const { amountPence, description, customerName, customerEmail, customerPhone, moto } = req.body || {};
+    const amt = Number(amountPence);
+    if (!Number.isFinite(amt) || amt < 50 || amt > 100000_00) {
+      return res.status(400).json({ message: "Amount must be between £0.50 and £100,000.00" });
+    }
+    const desc = trim(description, 200);
+    if (!desc) return res.status(400).json({ message: "Description is required" });
+    const name = trim(customerName, 120) || null;
+    const email = trim(customerEmail, 160) || null;
+    if (email && !isEmail(email)) return res.status(400).json({ message: "Invalid customer email" });
+    const phone = trim(customerPhone, 40) || null;
+
+    const staffUser = (req as any).staffUser;
+    const staffUsername = (req as any).staffUsername || null;
+
+    try {
+      const stripe = getStripeClient();
+      const intent = await stripe.paymentIntents.create({
+        amount: Math.round(amt),
+        currency: "gbp",
+        description: desc,
+        receipt_email: email || undefined,
+        payment_method_types: ["card"],
+        ...(moto ? { payment_method_options: { card: { moto: true } } } : {}),
+        metadata: {
+          source: "staff_dashboard",
+          staffUsername: staffUsername || "system",
+          customerName: name || "",
+          customerPhone: phone || "",
+        },
+      });
+
+      const log = await storage.createPaymentLog({
+        amountPence: Math.round(amt),
+        currency: "gbp",
+        description: desc,
+        customerName: name,
+        customerEmail: email,
+        customerPhone: phone,
+        stripePaymentIntentId: intent.id,
+        status: "pending",
+        staffUsername: staffUsername,
+        staffDisplayName: staffUser?.displayName || staffUser?.username || null,
+        failureMessage: null,
+      });
+
+      res.json({ clientSecret: intent.client_secret, paymentIntentId: intent.id, logId: log.id });
+    } catch (err: any) {
+      console.error("Stripe create-intent error:", err);
+      res.status(500).json({ message: err?.message || "Failed to create payment intent" });
+    }
+  });
+
+  // Server-verified finalize — fetches the real PaymentIntent from Stripe.
+  // Client-supplied status is ignored; truth comes from Stripe.
+  app.post("/api/staff/payments/finalize", staffAuth, managerAuth, async (req, res) => {
+    if (!isStripeConfigured()) return res.status(503).json({ message: "Stripe not configured" });
+    const piId = trim(req.body?.paymentIntentId, 120);
+    if (!piId || !/^pi_[A-Za-z0-9_]+$/.test(piId)) return res.status(400).json({ message: "Invalid paymentIntentId" });
+    const existing = await storage.getPaymentLogByIntent(piId);
+    if (!existing) return res.status(404).json({ message: "Payment record not found" });
+    try {
+      const stripe = getStripeClient();
+      const intent = await stripe.paymentIntents.retrieve(piId);
+      let status: "succeeded" | "failed" | "pending" = "pending";
+      if (intent.status === "succeeded") status = "succeeded";
+      else if (intent.status === "canceled" || intent.status === "requires_payment_method") status = "failed";
+      const failureMessage = intent.last_payment_error?.message || null;
+      const updated = await storage.updatePaymentLog(existing.id, { status, failureMessage });
+      res.json(updated);
+    } catch (err: any) {
+      console.error("Stripe finalize error:", err);
+      res.status(500).json({ message: err?.message || "Failed to verify payment" });
+    }
+  });
+
+  app.get("/api/staff/payments/log", staffAuth, managerAuth, async (_req, res) => {
+    const logs = await storage.listPaymentLogs(100);
+    res.json(logs);
   });
 
   // Staff: quick toggle active status

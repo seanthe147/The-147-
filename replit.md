@@ -109,3 +109,16 @@ This uses the `BNL8D6UJKJ` ASC API key configured in `eas.json` submit section.
 - **Metro watcher crash fix**: `metro.config.js` updated to exclude `.local/state/workflow-logs` from Metro's file watcher blockList, preventing ENOENT crashes when temporary workflow-log directories are created/deleted.
 - **STAFF_PIN**: Environment variable required for staff master PIN login (POST /api/staff/login).
 - **Apple compliance**: Account deletion at /account → Delete Account. Privacy policy at /privacy-policy and https://the147bradford.replit.app/privacy-policy. Push notification permission requested after 3s delay. GDPR consent banner on first launch. ITSAppUsesNonExemptEncryption=false set.
+## Events & Payments (Staff Dashboard)
+- New manager-only "Events & Payments" page in staff dashboard with two sub-tabs: **Sell Tickets** and **Take Payment**.
+- **Sell Tickets**: Embeds the TicketSource Box Office page in an iframe. URL is read from `TICKETSOURCE_BOX_OFFICE_URL` env var (managers can paste a URL session-only via the in-page input until set as a server secret). Iframe uses `allow="payment *"` so card-entry inside the frame works. If TicketSource sends `X-Frame-Options: DENY`, the iframe won't render — fall back to "Open in new tab".
+- **Take Payment**: Stripe Elements card form for staff phone/MOTO payments. Requires secrets `STRIPE_PUBLISHABLE_KEY` + `STRIPE_SECRET_KEY`. Page gracefully shows "Stripe not connected" message when missing.
+- **Backend** (`server/stripe.ts`): Lazy `getStripeClient()` — only instantiates Stripe when keys present. `isStripeConfigured()` for guards.
+- **Routes** (in `server/routes.ts`):
+  - `GET /api/staff/payments/config` — returns `{stripeConfigured, publishableKey, boxOfficeUrl}` (auth required)
+  - `POST /api/staff/payments/create-intent` — creates Stripe PaymentIntent + log row. Body: `{amountPence, description, customerName?, customerEmail?, customerPhone?, moto?}`. Sets `payment_method_options.card.moto=true` when phone payment ticked. Min £0.50 / max £100,000.
+  - `POST /api/staff/payments/finalize` — updates payment log status (succeeded/failed) after Stripe.js confirmCardPayment resolves.
+  - `GET /api/staff/payments/log` — last 100 transactions for the table view.
+- **Schema**: `paymentLog` table (`shared/schema.ts`) — id, amountPence, currency (default gbp), description, customer fields, stripePaymentIntentId, status (pending/succeeded/failed), staff fields, failureMessage, createdAt. Migrated via `npm run db:push --force`.
+- **MOTO note**: Stripe accounts need MOTO capability enabled to take card-not-present phone payments at standard rates. Without it, MOTO charges may be blocked or treated as e-commerce. Toggle in Stripe dashboard → Settings.
+- **PCI**: Card numbers go directly from browser to Stripe via Stripe.js — never touch our server. Server only sees PaymentIntent IDs.

@@ -85,10 +85,11 @@ function setupSecurityHeaders(app: express.Application) {
     if (req.path === "/staff" || req.path.startsWith("/staff-portal") || req.path.startsWith("/admin-") || req.path.startsWith("/staff-")) {
       // All staff-facing SPA routes — locked down in production, open in dev
       res.setHeader("X-Frame-Options", "DENY");
-      const connectSrc = devConnectSrc ?? "'self'";
+      // Allow Stripe.js + TicketSource Box Office iframe for the Events & Payments page
+      const connectSrc = devConnectSrc ?? "'self' https://api.stripe.com https://m.stripe.com https://m.stripe.network";
       res.setHeader(
         "Content-Security-Policy",
-        `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src ${connectSrc}; img-src 'self' data: blob: https:; frame-ancestors 'none'`
+        `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://m.stripe.network; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src ${connectSrc}; img-src 'self' data: blob: https:; frame-src https://js.stripe.com https://hooks.stripe.com https://*.ticketsource.co.uk https://*.ticketsource.com; frame-ancestors 'none'`
       );
     } else if (req.path === "/widget/booking") {
       // Allow embedding anywhere (public booking widget for Wix and other websites)

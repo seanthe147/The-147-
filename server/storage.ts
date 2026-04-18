@@ -77,6 +77,9 @@ import {
   type StaffDocument,
   staffOnboarding,
   type StaffOnboarding,
+  paymentLog,
+  type PaymentLog,
+  type InsertPaymentLog,
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
 
@@ -1877,6 +1880,26 @@ export class DatabaseStorage implements IStorage {
       completedAt: staffOnboarding.completedAt,
       updatedAt: staffOnboarding.updatedAt,
     }).from(staffOnboarding);
+  }
+
+  // ── Payment log ──────────────────────────────────────────────────────────────
+  async createPaymentLog(data: InsertPaymentLog): Promise<PaymentLog> {
+    const [row] = await db.insert(paymentLog).values(data).returning();
+    return row;
+  }
+
+  async updatePaymentLog(id: number, patch: Partial<InsertPaymentLog>): Promise<PaymentLog | null> {
+    const [row] = await db.update(paymentLog).set(patch).where(eq(paymentLog.id, id)).returning();
+    return row || null;
+  }
+
+  async listPaymentLogs(limit: number = 100): Promise<PaymentLog[]> {
+    return db.select().from(paymentLog).orderBy(desc(paymentLog.createdAt)).limit(limit);
+  }
+
+  async getPaymentLogByIntent(intentId: string): Promise<PaymentLog | null> {
+    const [row] = await db.select().from(paymentLog).where(eq(paymentLog.stripePaymentIntentId, intentId));
+    return row || null;
   }
 
 }
