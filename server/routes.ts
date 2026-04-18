@@ -181,6 +181,44 @@ const OTP_HTML = (code: string) => `<div style="font-family: Arial, sans-serif; 
   <p style="color: #999; font-size: 12px;">The 147 &mdash; Snooker, Bar &amp; Restaurant</p>
 </div>`;
 
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+}
+
+const PAYMENT_RECEIPT_HTML = (p: {
+  amountPence: number;
+  description: string;
+  customerName: string;
+  last4: string;
+  brand: string;
+  receiptNumber: string;
+  dateStr: string;
+}) => {
+  const amount = "£" + (p.amountPence / 100).toFixed(2);
+  const brandLabel = p.brand.charAt(0).toUpperCase() + p.brand.slice(1);
+  return `<div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px; background: #ffffff;">
+    <div style="text-align: center; padding-bottom: 20px; border-bottom: 2px solid #0047AB;">
+      <h1 style="color: #0A1628; margin: 0; font-size: 24px;">The 147 Bradford</h1>
+      <p style="color: #6B7280; margin: 4px 0 0; font-size: 13px;">Snooker, Bar &amp; Restaurant</p>
+    </div>
+    <h2 style="color: #1A1A2E; font-size: 20px; margin-top: 28px;">Payment receipt</h2>
+    <p style="color: #555; font-size: 15px; line-height: 1.5;">Hi ${escapeHtml(p.customerName)},</p>
+    <p style="color: #555; font-size: 15px; line-height: 1.5;">Thank you for your payment. Here are the details:</p>
+    <div style="background: #F8F9FB; border-radius: 12px; padding: 20px; margin: 20px 0;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 15px; color: #1A1A2E;">
+        <tr><td style="padding: 6px 0; color: #6B7280;">Amount paid</td><td style="padding: 6px 0; text-align: right; font-weight: 700; font-size: 20px; color: #0047AB;">${amount}</td></tr>
+        <tr><td style="padding: 6px 0; color: #6B7280;">For</td><td style="padding: 6px 0; text-align: right;">${escapeHtml(p.description)}</td></tr>
+        <tr><td style="padding: 6px 0; color: #6B7280;">Date</td><td style="padding: 6px 0; text-align: right;">${escapeHtml(p.dateStr)}</td></tr>
+        <tr><td style="padding: 6px 0; color: #6B7280;">Card</td><td style="padding: 6px 0; text-align: right;">${escapeHtml(brandLabel)} •••• ${escapeHtml(p.last4)}</td></tr>
+        <tr><td style="padding: 6px 0; color: #6B7280;">Receipt no.</td><td style="padding: 6px 0; text-align: right; font-family: monospace; font-size: 13px;">${escapeHtml(p.receiptNumber)}</td></tr>
+      </table>
+    </div>
+    <p style="color: #555; font-size: 14px; line-height: 1.5;">If you have any questions about this payment, just reply to this email and our team will be happy to help.</p>
+    <hr style="border: none; border-top: 1px solid #eee; margin: 28px 0;" />
+    <p style="color: #999; font-size: 12px; text-align: center; margin: 0;">The 147 Bradford &mdash; Snooker, Bar &amp; Restaurant<br />This is an automated receipt. Please keep it for your records.</p>
+  </div>`;
+};
+
 async function sendEmailViaSMTP(to: string, subject: string, html: string): Promise<boolean> {
   const host = process.env.SMTP_HOST;
   const user = process.env.SMTP_USER;
@@ -1109,7 +1147,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         amount: Math.round(amt),
         currency: "gbp",
         description: desc,
-        receipt_email: email || undefined,
+        // Branded receipt is sent ourselves on finalize — don't ask Stripe to send a duplicate
         payment_method_types: ["card"],
         ...(moto ? { payment_method_options: { card: { moto: true } } } : {}),
         metadata: {
@@ -1157,6 +1195,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       else if (intent.status === "canceled" || intent.status === "requires_payment_method") status = "failed";
       const failureMessage = intent.last_payment_error?.message || null;
       const updated = await storage.updatePaymentLog(existing.id, { status, failureMessage });
+
+      // Send branded receipt email on success (only once — guarded by status change)
+      if (status === "succeeded" && existing.status !== "succeeded" && existing.customerEmail) {
+        const charge = intent.latest_charge && typeof intent.latest_charge !== "string"
+          ? intent.latest_charge
+          : null;
+        const last4 = charge?.payment_method_details?.card?.last4 || "----";
+        const brand = charge?.payment_method_details?.card?.brand || "card";
+        const html = PAYMENT_RECEIPT_HTML({
+          amountPence: existing.amountPence,
+          description: existing.description,
+          customerName: existing.customerName || "Customer",
+          last4,
+          brand,
+          receiptNumber: charge?.receipt_number || `147-${existing.id}`,
+          dateStr: new Date().toLocaleString("en-GB", { dateStyle: "long", timeStyle: "short" }),
+        });
+        sendEmailViaSMTP(
+          existing.customerEmail,
+          `Receipt for your payment — The 147 Bradford`,
+          html,
+        ).catch((err) => console.error("[RECEIPT] send failed:", err));
+      }
+
       res.json(updated);
     } catch (err: any) {
       console.error("Stripe finalize error:", err);
