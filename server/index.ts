@@ -100,10 +100,10 @@ function setupSecurityHeaders(app: express.Application) {
       );
     } else if (!req.path.startsWith("/api")) {
       res.setHeader("X-Frame-Options", "SAMEORIGIN");
-      const genericConnectSrc = devConnectSrc ?? "'self' https://*.squareup.com https://*.resend.com";
+      const genericConnectSrc = devConnectSrc ?? "'self' https://*.squareup.com https://*.resend.com https://api.stripe.com https://m.stripe.com https://m.stripe.network";
       res.setHeader(
         "Content-Security-Policy",
-        `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src ${genericConnectSrc}; img-src 'self' data: https:; frame-src https://www.the147order.co.uk https://the147order.co.uk`
+        `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://js.stripe.com https://m.stripe.network; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src ${genericConnectSrc}; img-src 'self' data: https:; frame-src https://www.the147order.co.uk https://the147order.co.uk https://js.stripe.com https://hooks.stripe.com`
       );
     } else {
       res.setHeader("X-Frame-Options", "DENY");
