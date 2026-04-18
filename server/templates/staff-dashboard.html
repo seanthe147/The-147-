@@ -900,7 +900,7 @@
           <!-- CATEGORIES TAB -->
           <div id="menuTabPanelCategories" style="display:none">
             <div class="menu-refresh-bar">
-              <p style="font-size:13px;color:var(--text-2);margin:0">Drag to reorder categories, rename them, or merge two categories into one display group. Changes affect the app only — Square is unchanged.</p>
+              <p style="font-size:13px;color:var(--text-2);margin:0">Drag to reorder categories, rename them, group into a parent (sub-categories), or merge into one display group. Changes affect the app only — Square is unchanged.</p>
               <button class="btn btn-secondary btn-sm" onclick="loadCategorySettings()">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                 Refresh
@@ -3861,10 +3861,16 @@
     const isManager=state.role==='manager'||state.role==='owner';
     list.innerHTML=catSettingsData.map((cat,i)=>{
       const isMergedChild=!!cat.mergedIntoId;
+      const isSubChild=!!cat.parentCategoryId;
       const parentName=isMergedChild?(catSettingsData.find(c=>c.id===cat.mergedIntoId)?.displayName||catSettingsData.find(c=>c.id===cat.mergedIntoId)?.name||''):'';
+      const subParentName=isSubChild?(catSettingsData.find(c=>c.id===cat.parentCategoryId)?.displayName||catSettingsData.find(c=>c.id===cat.parentCategoryId)?.name||''):'';
       const displayedName=cat.displayName||cat.name;
-      const mergeNote=isMergedChild?`<span class="cat-sort-sub">merged into <em>${parentName}</em></span>`:`<span class="cat-sort-sub">${cat.name}</span>`;
+      const noteParts=[];
+      if(isMergedChild)noteParts.push(`merged into <em>${parentName}</em>`);
+      if(isSubChild)noteParts.push(`under <em>${subParentName}</em>`);
+      const mergeNote=noteParts.length?`<span class="cat-sort-sub">${noteParts.join(' · ')}</span>`:`<span class="cat-sort-sub">${cat.name}</span>`;
       const otherCats=catSettingsData.filter(c=>c.id!==cat.id&&!c.mergedIntoId).map(c=>`<option value="${c.id}"${cat.mergedIntoId===c.id?' selected':''}>${c.displayName||c.name}</option>`).join('');
+      const parentOpts=catSettingsData.filter(c=>c.id!==cat.id&&!c.parentCategoryId&&!c.mergedIntoId).map(c=>`<option value="${c.id}"${cat.parentCategoryId===c.id?' selected':''}>${c.displayName||c.name}</option>`).join('');
       const hoursBadge=catHoursBadge(cat.id);
       const setHoursBtn=isManager?`<button class="btn btn-secondary btn-sm" style="padding:4px 10px;font-size:11px" onclick="openCatHoursEditor('${cat.id}',${JSON.stringify(displayedName)})">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:3px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Hours</button>`:'';
@@ -3889,7 +3895,11 @@
           ${imgBtn}
           ${removeImgBtn}
           <button class="btn btn-secondary btn-sm" style="padding:4px 10px;font-size:11px" onclick="promptRenameCat('${cat.id}',${JSON.stringify(cat.displayName||cat.name).replace(/"/g,'&quot;')})">Rename</button>
-          <select style="font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)" onchange="mergeCat('${cat.id}',this.value)">
+          <select title="Group under parent (sub-category)" style="font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)" onchange="setCatParent('${cat.id}',this.value)">
+            <option value="">No parent</option>
+            ${parentOpts}
+          </select>
+          <select title="Merge into another category" style="font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)" onchange="mergeCat('${cat.id}',this.value)">
             <option value="">No merge</option>
             ${otherCats}
           </select>
@@ -3922,6 +3932,14 @@
     await saveCategorySettings();
   }
 
+  async function setCatParent(categoryId,parentCategoryId){
+    const cat=catSettingsData.find(c=>c.id===categoryId);
+    if(!cat)return;
+    cat.parentCategoryId=parentCategoryId||null;
+    renderCategorySettings();
+    await saveCategorySettings();
+  }
+
   async function promptRenameCat(categoryId,currentName){
     const newName=prompt('Rename category (leave blank to use Square name):',currentName);
     if(newName===null)return;
@@ -3934,7 +3952,7 @@
 
   async function saveCategorySettings(){
     try{
-      const r=await api('/api/staff/menu/category-settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({settings:catSettingsData.map((c,i)=>({categoryId:c.id,displayOrder:i+1,mergedIntoId:c.mergedIntoId??null,displayName:c.displayName??null}))})});
+      const r=await api('/api/staff/menu/category-settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({settings:catSettingsData.map((c,i)=>({categoryId:c.id,displayOrder:i+1,mergedIntoId:c.mergedIntoId??null,parentCategoryId:c.parentCategoryId??null,displayName:c.displayName??null}))})});
       if(!r.ok)throw new Error();
     }catch(e){alert('Failed to save category settings.');}
   }

@@ -234,28 +234,33 @@ function CategoryGrid({
             ]}
             testID={`cat-${cat.id}`}
           >
-            {hasImage ? (
-              <>
-                <Image
-                  source={{ uri: cat.imageUrl }}
-                  style={gridStyles.cardBgImage}
-                  resizeMode="cover"
-                />
-                <View style={gridStyles.cardImageOverlay} />
-                <View style={gridStyles.cardImageContent}>
-                  <Text style={gridStyles.cardNameLight} numberOfLines={2}>{cat.name}</Text>
-                  <Text style={gridStyles.cardCountLight}>{cat.items.length} items</Text>
-                </View>
-              </>
-            ) : (
-              <>
-                <View style={[gridStyles.iconWrap, { backgroundColor: catStyle.bg }]}>
-                  <Ionicons name={catStyle.icon as any} size={28} color={catStyle.color} />
-                </View>
-                <Text style={gridStyles.cardName} numberOfLines={2}>{cat.name}</Text>
-                <Text style={gridStyles.cardCount}>{cat.items.length} items</Text>
-              </>
-            )}
+            {(() => {
+              const subCount = cat.subcategories?.length ?? 0;
+              const itemCount = cat.items.length + (cat.subcategories?.reduce((s, c) => s + c.items.length, 0) ?? 0);
+              const countLabel = subCount > 0 ? `${subCount} group${subCount !== 1 ? "s" : ""} · ${itemCount} items` : `${itemCount} items`;
+              return hasImage ? (
+                <>
+                  <Image
+                    source={{ uri: cat.imageUrl }}
+                    style={gridStyles.cardBgImage}
+                    resizeMode="cover"
+                  />
+                  <View style={gridStyles.cardImageOverlay} />
+                  <View style={gridStyles.cardImageContent}>
+                    <Text style={gridStyles.cardNameLight} numberOfLines={2}>{cat.name}</Text>
+                    <Text style={gridStyles.cardCountLight}>{countLabel}</Text>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={[gridStyles.iconWrap, { backgroundColor: catStyle.bg }]}>
+                    <Ionicons name={catStyle.icon as any} size={28} color={catStyle.color} />
+                  </View>
+                  <Text style={gridStyles.cardName} numberOfLines={2}>{cat.name}</Text>
+                  <Text style={gridStyles.cardCount}>{countLabel}</Text>
+                </>
+              );
+            })()}
           </Pressable>
         );
       })}
@@ -1127,6 +1132,7 @@ export default function OrderScreen() {
   const params = useLocalSearchParams<{ hlCatId?: string; hlItemId?: string; hlItemName?: string }>();
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   const [cartVisible, setCartVisible] = useState(false);
   const [modifierItem, setModifierItem] = useState<MenuItem | null>(null);
   const [highlightItemId, setHighlightItemId] = useState<string | null>(null);
@@ -1158,22 +1164,28 @@ export default function OrderScreen() {
     [banners]
   );
 
-  const activeCategory = useMemo(() => {
+  const activeTopCategory = useMemo(() => {
     if (!categories || categories.length === 0) return null;
     if (selectedCategory && categories.find((c) => c.id === selectedCategory)) {
-      return selectedCategory;
+      return categories.find((c) => c.id === selectedCategory) ?? null;
     }
     return null;
   }, [categories, selectedCategory]);
 
-  const activeCategoryData = useMemo(
-    () => categories?.find((c) => c.id === activeCategory) ?? null,
-    [categories, activeCategory]
-  );
+  const activeSubcategory = useMemo(() => {
+    if (!activeTopCategory || !selectedSubcategory) return null;
+    return activeTopCategory.subcategories?.find((c) => c.id === selectedSubcategory) ?? null;
+  }, [activeTopCategory, selectedSubcategory]);
+
+  // The category whose ITEMS are being viewed (or whose subcategory grid is being viewed)
+  const activeCategoryData = activeSubcategory ?? activeTopCategory;
+  const activeCategory = activeCategoryData?.id ?? null;
+  // True when we are showing a sub-category grid (parent has children, no leaf selected)
+  const showingSubcategoryGrid = !!activeTopCategory && !activeSubcategory && (activeTopCategory.subcategories?.length ?? 0) > 0;
 
   const activeItems = useMemo(
-    () => activeCategoryData?.items ?? [],
-    [activeCategoryData]
+    () => (showingSubcategoryGrid ? [] : activeCategoryData?.items ?? []),
+    [activeCategoryData, showingSubcategoryGrid]
   );
 
   const headerHeight = insets.top + 56 + (Platform.OS === "web" ? webTopInset : 0);
@@ -1186,17 +1198,22 @@ export default function OrderScreen() {
     const q = searchQuery.trim().toLowerCase();
     if (!q || !categories) return [];
     const results: Array<{ item: MenuItem; categoryName: string }> = [];
-    for (const cat of categories) {
+    const walk = (cat: MenuCategory, prefix?: string) => {
+      const label = prefix ? `${prefix} › ${cat.name}` : cat.name;
       for (const item of cat.items) {
         if (
           item.name.toLowerCase().includes(q) ||
           item.description?.toLowerCase().includes(q) ||
           item.variationName?.toLowerCase().includes(q)
         ) {
-          results.push({ item, categoryName: cat.name });
+          results.push({ item, categoryName: label });
         }
       }
-    }
+      for (const sub of cat.subcategories ?? []) {
+        walk(sub, cat.name);
+      }
+    };
+    for (const cat of categories) walk(cat);
     return results;
   }, [searchQuery, categories]);
 
@@ -1235,11 +1252,20 @@ export default function OrderScreen() {
 
   const handleSelectCategory = useCallback((id: string) => {
     setSelectedCategory(id);
+    setSelectedSubcategory(null);
+  }, []);
+
+  const handleSelectSubcategory = useCallback((id: string) => {
+    setSelectedSubcategory(id);
   }, []);
 
   const handleBack = useCallback(() => {
-    setSelectedCategory(null);
-  }, []);
+    if (selectedSubcategory) {
+      setSelectedSubcategory(null);
+    } else {
+      setSelectedCategory(null);
+    }
+  }, [selectedSubcategory]);
 
   const CartButton = () => (
     <Pressable
@@ -1433,65 +1459,93 @@ export default function OrderScreen() {
             </Pressable>
             <View>
               <Text style={styles.headerTitle}>{activeCategoryData?.name ?? "Menu"}</Text>
-              <Text style={styles.headerSubtitle}>{activeItems.length} items</Text>
+              <Text style={styles.headerSubtitle}>
+                {showingSubcategoryGrid
+                  ? `${activeTopCategory?.subcategories?.length ?? 0} groups`
+                  : `${activeItems.length} items`}
+                {activeSubcategory && activeTopCategory ? ` · ${activeTopCategory.name}` : ""}
+              </Text>
             </View>
           </View>
           <CartButton />
         </View>
       </View>
 
-      <View style={[styles.categoryBar, { top: headerHeight }]}>
-        <ScrollView
-          ref={categoryScrollRef}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoryScroll}
-        >
-          {categories.map((cat) => {
-            const isActive = cat.id === activeCategory;
-            const catStyle = getCategoryStyle(cat.name);
-            return (
-              <Pressable
-                key={cat.id}
-                onPress={() => setSelectedCategory(cat.id)}
-                style={({ pressed }) => [
-                  styles.catPill,
-                  isActive && styles.catPillActive,
-                  { opacity: pressed ? 0.7 : 1 },
-                ]}
-              >
-                <Ionicons
-                  name={catStyle.icon as any}
-                  size={13}
-                  color={isActive ? "#fff" : Colors.light.textSecondary}
-                  style={{ marginRight: 4 }}
-                />
-                <Text style={[styles.catPillText, isActive && styles.catPillTextActive]}>
-                  {cat.name}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      <FlatList
-        data={activeItems}
-        keyExtractor={(item) => item.variationId}
-        renderItem={renderItem}
-        contentContainerStyle={{
-          paddingTop: headerHeight + categoryBarHeight + 8,
-          paddingBottom: tabBarHeight + cartBarHeight + 16,
-          paddingHorizontal: 16,
-        }}
-        showsVerticalScrollIndicator={false}
-        ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-        ListEmptyComponent={
-          <View style={styles.centred}>
-            <Text style={styles.errorSub}>No items in this category</Text>
+      {!showingSubcategoryGrid && (() => {
+        const pillCats = activeSubcategory && activeTopCategory
+          ? (activeTopCategory.subcategories ?? [])
+          : (categories.filter(c => !c.subcategories || c.subcategories.length === 0));
+        if (pillCats.length === 0) return null;
+        return (
+          <View style={[styles.categoryBar, { top: headerHeight }]}>
+            <ScrollView
+              ref={categoryScrollRef}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.categoryScroll}
+            >
+              {pillCats.map((cat) => {
+                const isActive = cat.id === activeCategory;
+                const catStyle = getCategoryStyle(cat.name);
+                return (
+                  <Pressable
+                    key={cat.id}
+                    onPress={() => activeSubcategory ? setSelectedSubcategory(cat.id) : handleSelectCategory(cat.id)}
+                    style={({ pressed }) => [
+                      styles.catPill,
+                      isActive && styles.catPillActive,
+                      { opacity: pressed ? 0.7 : 1 },
+                    ]}
+                  >
+                    <Ionicons
+                      name={catStyle.icon as any}
+                      size={13}
+                      color={isActive ? "#fff" : Colors.light.textSecondary}
+                      style={{ marginRight: 4 }}
+                    />
+                    <Text style={[styles.catPillText, isActive && styles.catPillTextActive]}>
+                      {cat.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
           </View>
-        }
-      />
+        );
+      })()}
+
+      {showingSubcategoryGrid ? (
+        <ScrollView
+          contentContainerStyle={{
+            paddingTop: headerHeight + 8,
+            paddingBottom: tabBarHeight + cartBarHeight + 16,
+          }}
+          showsVerticalScrollIndicator={false}
+        >
+          <CategoryGrid
+            categories={activeTopCategory!.subcategories!}
+            onSelect={handleSelectSubcategory}
+          />
+        </ScrollView>
+      ) : (
+        <FlatList
+          data={activeItems}
+          keyExtractor={(item) => item.variationId}
+          renderItem={renderItem}
+          contentContainerStyle={{
+            paddingTop: headerHeight + categoryBarHeight + 8,
+            paddingBottom: tabBarHeight + cartBarHeight + 16,
+            paddingHorizontal: 16,
+          }}
+          showsVerticalScrollIndicator={false}
+          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+          ListEmptyComponent={
+            <View style={styles.centred}>
+              <Text style={styles.errorSub}>No items in this category</Text>
+            </View>
+          }
+        />
+      )}
 
       {totalItems > 0 && (
         <Pressable

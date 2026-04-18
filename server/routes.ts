@@ -2408,8 +2408,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         mergedMap.get(targetId)!.items.push(...availableItems);
       }
 
-      const filtered = Array.from(mergedMap.values())
-        .filter(cat => cat.items.length > 0)
+      // Apply parent/child grouping (sub-categories)
+      type Node = { id: string; name: string; imageUrl?: string; order: number; items: any[]; subcategories?: any[] };
+      const nodes: Map<string, Node> = mergedMap as any;
+      const childrenByParent: Map<string, Node[]> = new Map();
+      const isChild: Set<string> = new Set();
+      for (const node of nodes.values()) {
+        const parentId = catSettingsMap.get(node.id)?.parentCategoryId ?? null;
+        if (parentId && nodes.has(parentId) && parentId !== node.id) {
+          if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
+          childrenByParent.get(parentId)!.push(node);
+          isChild.add(node.id);
+        }
+      }
+
+      const topLevel: Node[] = [];
+      for (const node of nodes.values()) {
+        if (isChild.has(node.id)) continue;
+        const kids = childrenByParent.get(node.id) ?? [];
+        if (kids.length > 0) {
+          kids.sort((a, b) => a.order !== b.order ? a.order - b.order : a.name.localeCompare(b.name));
+          node.subcategories = kids
+            .filter(k => k.items.length > 0)
+            .map(({ order, subcategories, ...rest }) => rest);
+        }
+        // Keep parent if it has items OR has at least one non-empty sub
+        if (node.items.length > 0 || (node.subcategories && node.subcategories.length > 0)) {
+          topLevel.push(node);
+        }
+      }
+
+      const filtered = topLevel
         .sort((a, b) => a.order !== b.order ? a.order - b.order : a.name.localeCompare(b.name))
         .map(({ order, ...rest }) => rest);
 
@@ -2524,6 +2553,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         displayName: settingsMap.get(cat.id)?.displayName ?? null,
         displayOrder: settingsMap.get(cat.id)?.displayOrder ?? 99,
         mergedIntoId: settingsMap.get(cat.id)?.mergedIntoId ?? null,
+        parentCategoryId: settingsMap.get(cat.id)?.parentCategoryId ?? null,
       }));
       res.json(result);
     } catch (err: any) {
@@ -2533,7 +2563,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/staff/menu/category-settings", staffAuth, managerAuth, async (req: any, res) => {
     try {
-      const { settings } = req.body; // array of { categoryId, displayOrder?, mergedIntoId?, displayName? }
+      const { settings } = req.body; // array of { categoryId, displayOrder?, mergedIntoId?, parentCategoryId?, displayName? }
       if (!Array.isArray(settings)) return res.status(400).json({ message: "settings must be an array" });
       const updatedBy = req.staffUser?.username ?? "staff";
       await storage.upsertCategorySettings(settings.map((s: any) => ({ ...s, updatedBy })));

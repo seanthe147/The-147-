@@ -36,4 +36,5 @@ export interface MenuCategory {
   name: string;
   imageUrl?: string;
   items: MenuItem[];
+  subcategories?: MenuCategory[];
 }

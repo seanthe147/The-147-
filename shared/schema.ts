@@ -388,6 +388,7 @@ export const categorySettings = pgTable("category_settings", {
   categoryId: text("category_id").primaryKey(),
   displayOrder: integer("display_order").notNull().default(99),
   mergedIntoId: text("merged_into_id"),
+  parentCategoryId: text("parent_category_id"),
   displayName: text("display_name"),
   imageUrl: text("image_url"),
   updatedBy: text("updated_by").notNull().default("system"),

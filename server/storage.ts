@@ -323,7 +323,7 @@ export interface IStorage {
   createBlockedPeriod(data: InsertBlockedPeriod): Promise<BlockedPeriod>;
   deleteBlockedPeriod(id: number): Promise<boolean>;
   getCategorySettings(): Promise<CategorySetting[]>;
-  upsertCategorySettings(settings: { categoryId: string; displayOrder?: number; mergedIntoId?: string | null; displayName?: string | null; imageUrl?: string | null; updatedBy: string }[]): Promise<void>;
+  upsertCategorySettings(settings: { categoryId: string; displayOrder?: number; mergedIntoId?: string | null; parentCategoryId?: string | null; displayName?: string | null; imageUrl?: string | null; updatedBy: string }[]): Promise<void>;
   updateCategoryImage(categoryId: string, imageUrl: string | null, updatedBy: string): Promise<void>;
   getAvailabilityRules(): Promise<AvailabilityRule[]>;
   createAvailabilityRule(rule: Omit<AvailabilityRule, 'id' | 'updatedAt'>): Promise<AvailabilityRule>;
@@ -1298,13 +1298,14 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(categorySettings);
   }
 
-  async upsertCategorySettings(settings: { categoryId: string; displayOrder?: number; mergedIntoId?: string | null; displayName?: string | null; imageUrl?: string | null; updatedBy: string }[]): Promise<void> {
+  async upsertCategorySettings(settings: { categoryId: string; displayOrder?: number; mergedIntoId?: string | null; parentCategoryId?: string | null; displayName?: string | null; imageUrl?: string | null; updatedBy: string }[]): Promise<void> {
     for (const s of settings) {
       await db.insert(categorySettings)
         .values({
           categoryId: s.categoryId,
           displayOrder: s.displayOrder ?? 99,
           mergedIntoId: s.mergedIntoId ?? null,
+          parentCategoryId: s.parentCategoryId ?? null,
           displayName: s.displayName ?? null,
           imageUrl: s.imageUrl ?? null,
           updatedBy: s.updatedBy,
@@ -1315,6 +1316,7 @@ export class DatabaseStorage implements IStorage {
           set: {
             ...(s.displayOrder !== undefined ? { displayOrder: s.displayOrder } : {}),
             ...(s.mergedIntoId !== undefined ? { mergedIntoId: s.mergedIntoId } : {}),
+            ...(s.parentCategoryId !== undefined ? { parentCategoryId: s.parentCategoryId } : {}),
             ...(s.displayName !== undefined ? { displayName: s.displayName } : {}),
             updatedBy: s.updatedBy,
             updatedAt: new Date(),
