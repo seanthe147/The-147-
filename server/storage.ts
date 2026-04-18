@@ -92,6 +92,15 @@ function decryptCustomer<T extends { email: string; name: string; phone?: string
   };
 }
 
+function decryptPaymentLog<T extends { customerName?: string | null; customerEmail?: string | null; customerPhone?: string | null }>(p: T): T {
+  return {
+    ...p,
+    customerName: p.customerName ? decrypt(p.customerName) : p.customerName,
+    customerEmail: p.customerEmail ? decrypt(p.customerEmail) : p.customerEmail,
+    customerPhone: p.customerPhone ? decrypt(p.customerPhone) : p.customerPhone,
+  };
+}
+
 function decryptContactMessage<T extends { name: string; email: string; phone?: string | null; message: string }>(m: T): T {
   return {
     ...m,
@@ -1883,23 +1892,35 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ── Payment log ──────────────────────────────────────────────────────────────
+  // Customer PII (name/email/phone) is encrypted at rest, matching the rest of the codebase.
   async createPaymentLog(data: InsertPaymentLog): Promise<PaymentLog> {
-    const [row] = await db.insert(paymentLog).values(data).returning();
-    return row;
+    const toStore: InsertPaymentLog = {
+      ...data,
+      customerName: data.customerName ? encrypt(data.customerName) : data.customerName,
+      customerEmail: data.customerEmail ? encrypt(data.customerEmail) : data.customerEmail,
+      customerPhone: data.customerPhone ? encrypt(data.customerPhone) : data.customerPhone,
+    };
+    const [row] = await db.insert(paymentLog).values(toStore).returning();
+    return decryptPaymentLog(row);
   }
 
   async updatePaymentLog(id: number, patch: Partial<InsertPaymentLog>): Promise<PaymentLog | null> {
-    const [row] = await db.update(paymentLog).set(patch).where(eq(paymentLog.id, id)).returning();
-    return row || null;
+    const toStore: Partial<InsertPaymentLog> = { ...patch };
+    if (patch.customerName !== undefined) toStore.customerName = patch.customerName ? encrypt(patch.customerName) : patch.customerName;
+    if (patch.customerEmail !== undefined) toStore.customerEmail = patch.customerEmail ? encrypt(patch.customerEmail) : patch.customerEmail;
+    if (patch.customerPhone !== undefined) toStore.customerPhone = patch.customerPhone ? encrypt(patch.customerPhone) : patch.customerPhone;
+    const [row] = await db.update(paymentLog).set(toStore).where(eq(paymentLog.id, id)).returning();
+    return row ? decryptPaymentLog(row) : null;
   }
 
   async listPaymentLogs(limit: number = 100): Promise<PaymentLog[]> {
-    return db.select().from(paymentLog).orderBy(desc(paymentLog.createdAt)).limit(limit);
+    const rows = await db.select().from(paymentLog).orderBy(desc(paymentLog.createdAt)).limit(limit);
+    return rows.map(decryptPaymentLog);
   }
 
   async getPaymentLogByIntent(intentId: string): Promise<PaymentLog | null> {
     const [row] = await db.select().from(paymentLog).where(eq(paymentLog.stripePaymentIntentId, intentId));
-    return row || null;
+    return row ? decryptPaymentLog(row) : null;
   }
 
 }

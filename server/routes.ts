@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "node:http";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual, createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import multer from "multer";
@@ -1143,6 +1143,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     try {
       const stripe = getStripeClient();
+      // Idempotency key: bucket by staff + amount + description in 60-second windows so
+      // a network retry of the same intent doesn't create a duplicate PaymentIntent.
+      const idemBucket = Math.floor(Date.now() / 60000);
+      const idemRaw = `${staffUsername || "system"}|${Math.round(amt)}|${desc}|${idemBucket}`;
+      const idempotencyKey = createHash("sha256").update(idemRaw).digest("hex");
       const intent = await stripe.paymentIntents.create({
         amount: Math.round(amt),
         currency: "gbp",
@@ -1162,7 +1167,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           customerName: name || "",
           customerPhone: phone || "",
         },
-      });
+      }, { idempotencyKey });
 
       const log = await storage.createPaymentLog({
         amountPence: Math.round(amt),
@@ -1180,7 +1185,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({ clientSecret: intent.client_secret, paymentIntentId: intent.id, logId: log.id });
     } catch (err: any) {
-      console.error("Stripe create-intent error:", err);
+      // Log only Stripe error metadata — never the full object, which can include PII
+      console.error("Stripe create-intent error:", {
+        type: err?.type,
+        code: err?.code,
+        statusCode: err?.statusCode,
+        requestId: err?.requestId,
+      });
       res.status(500).json({ message: err?.message || "Failed to create payment intent" });
     }
   });
