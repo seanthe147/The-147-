@@ -1119,7 +1119,110 @@ export async function registerRoutes(app: Express): Promise<Server> {
       stripeConfigured: isStripeConfigured(),
       publishableKey: getPublishableKey(),
       boxOfficeUrl: process.env.TICKETSOURCE_BOX_OFFICE_URL || "",
+      square: {
+        configured: square.isWebPaymentsConfigured(),
+        applicationId: square.getApplicationId(),
+        locationId: square.getPublicLocationId(),
+        environment: square.getEnvironment(),
+      },
     });
+  });
+
+  // Square: take a card payment using a tokenised source from the Web Payments SDK
+  app.post("/api/staff/payments/square/charge", staffAuth, managerAuth, async (req, res) => {
+    if (!square.isWebPaymentsConfigured()) {
+      return res.status(503).json({ message: "Square Web Payments is not configured. Add SQUARE_APPLICATION_ID, SQUARE_ACCESS_TOKEN, and SQUARE_LOC_ID." });
+    }
+    const { sourceId, amountPence, description, customerName, customerEmail, customerPhone, verificationToken } = req.body || {};
+    const sid = trim(sourceId, 200);
+    if (!sid) return res.status(400).json({ message: "Missing card token" });
+    const amt = Number(amountPence);
+    if (!Number.isFinite(amt) || amt < 50 || amt > 100000_00) {
+      return res.status(400).json({ message: "Amount must be between £0.50 and £100,000.00" });
+    }
+    const desc = trim(description, 200);
+    if (!desc) return res.status(400).json({ message: "Description is required" });
+    const name = trim(customerName, 120) || null;
+    const email = trim(customerEmail, 160) || null;
+    if (email && !isEmail(email)) return res.status(400).json({ message: "Invalid customer email" });
+    const phone = trim(customerPhone, 40) || null;
+
+    const staffUser = (req as any).staffUser;
+    const staffUsername = (req as any).staffUsername || null;
+
+    // Pre-create a pending log row so we have an ID for receipt numbering
+    const log = await storage.createPaymentLog({
+      amountPence: Math.round(amt),
+      currency: "gbp",
+      description: desc,
+      customerName: name,
+      customerEmail: email,
+      customerPhone: phone,
+      stripePaymentIntentId: `sq_pending_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      status: "pending",
+      staffUsername: staffUsername,
+      staffDisplayName: staffUser?.displayName || staffUser?.username || null,
+      failureMessage: null,
+    });
+
+    try {
+      // Idempotency: avoid duplicate charges on network retry. Square requires a UUID-like
+      // string up to 45 chars. We use a hash of the log id + source id which is unique.
+      const idemRaw = `${log.id}|${sid}`;
+      const idempotencyKey = createHash("sha256").update(idemRaw).digest("hex").slice(0, 45);
+      const payment = await square.createCardPayment({
+        sourceId: sid,
+        amountPence: Math.round(amt),
+        idempotencyKey,
+        note: desc,
+        referenceId: `staff-${log.id}`,
+        buyerEmail: email || undefined,
+        verificationToken: verificationToken || null,
+      });
+
+      const succeeded = payment.status === "COMPLETED" || payment.status === "APPROVED";
+      const status: "succeeded" | "failed" | "pending" = succeeded ? "succeeded" : payment.status === "FAILED" || payment.status === "CANCELED" ? "failed" : "pending";
+
+      await storage.updatePaymentLog(log.id, {
+        status,
+        stripePaymentIntentId: payment.id,
+        failureMessage: succeeded ? null : `Square status: ${payment.status}`,
+      });
+
+      // Send branded receipt email on success
+      if (succeeded && email) {
+        const last4 = payment.card_details?.card?.last_4 || "----";
+        const brand = payment.card_details?.card?.card_brand || "card";
+        try {
+          const html = PAYMENT_RECEIPT_HTML({
+            amountPence: Math.round(amt),
+            description: desc,
+            customerName: name || "Customer",
+            last4,
+            brand: String(brand).toLowerCase(),
+            receiptNumber: `147-${log.id}`,
+            dateStr: new Date().toLocaleString("en-GB", { dateStyle: "long", timeStyle: "short" }),
+          });
+          await sendEmailViaSMTP({
+            to: email,
+            subject: `Your receipt from The 147 Bradford — ${desc}`,
+            html,
+          });
+        } catch (mailErr) {
+          console.error("Square receipt email failed:", { message: (mailErr as any)?.message });
+        }
+      }
+
+      res.json({ ok: succeeded, status: payment.status, paymentId: payment.id, logId: log.id });
+    } catch (err: any) {
+      // Mark the log as failed and return a clean error
+      await storage.updatePaymentLog(log.id, {
+        status: "failed",
+        failureMessage: err?.message?.slice(0, 500) || "Square charge failed",
+      }).catch(() => {});
+      console.error("Square charge error:", { code: err?.code, statusCode: err?.statusCode });
+      res.status(400).json({ message: err?.message || "Card charge failed" });
+    }
   });
 
   app.post("/api/staff/payments/create-intent", staffAuth, managerAuth, async (req, res) => {

@@ -158,6 +158,52 @@ export function isConfigured(): boolean {
   return !!(process.env.SQUARE_ACCESS_TOKEN && (process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID));
 }
 
+// ── Web Payments SDK helpers (for staff card-not-present / MOTO payments) ─────
+// The Web Payments SDK needs the public Application ID + Location ID + environment.
+// These are safe to expose to the browser (unlike SQUARE_ACCESS_TOKEN).
+export function getApplicationId(): string | null {
+  return process.env.SQUARE_APPLICATION_ID || null;
+}
+
+export function getEnvironment(): "production" | "sandbox" {
+  return process.env.SQUARE_ENVIRONMENT === "production" ? "production" : "sandbox";
+}
+
+export function getPublicLocationId(): string | null {
+  return process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID || null;
+}
+
+export function isWebPaymentsConfigured(): boolean {
+  return !!(getApplicationId() && getPublicLocationId() && process.env.SQUARE_ACCESS_TOKEN);
+}
+
+// Charge a card token from the Web Payments SDK. For UK MOTO, the merchant must
+// have MOTO enabled on their Square account — the lower MOTO rate is then applied
+// automatically by Square based on entry method (no API flag required).
+export async function createCardPayment(opts: {
+  sourceId: string;
+  amountPence: number;
+  idempotencyKey: string;
+  note?: string;
+  referenceId?: string;
+  buyerEmail?: string | null;
+  verificationToken?: string | null;
+}): Promise<{ id: string; status: string; receipt_url?: string; card_details?: any }> {
+  const body: any = {
+    idempotency_key: opts.idempotencyKey,
+    source_id: opts.sourceId,
+    amount_money: { amount: opts.amountPence, currency: "GBP" },
+    location_id: getLocationId(),
+    autocomplete: true,
+  };
+  if (opts.note) body.note = opts.note.slice(0, 500);
+  if (opts.referenceId) body.reference_id = opts.referenceId.slice(0, 40);
+  if (opts.buyerEmail) body.buyer_email_address = opts.buyerEmail;
+  if (opts.verificationToken) body.verification_token = opts.verificationToken;
+  const data = await squareRequest("POST", "/v2/payments", body);
+  return data.payment;
+}
+
 // ── Subscription helpers ──────────────────────────────────────────────────────
 
 export async function createSquareCustomer(name: string, email: string, phone?: string) {

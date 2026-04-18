@@ -23,6 +23,12 @@ interface PaymentConfig {
   stripeConfigured: boolean;
   publishableKey: string | null;
   boxOfficeUrl: string;
+  square?: {
+    configured: boolean;
+    applicationId: string | null;
+    locationId: string | null;
+    environment: "production" | "sandbox";
+  };
 }
 
 interface PaymentLog {
@@ -138,6 +144,7 @@ export default function AdminEventsPaymentsScreen() {
         <PaymentTab
           stripeConfigured={!!config?.stripeConfigured}
           publishableKey={config?.publishableKey || null}
+          square={config?.square}
           logs={logs || []}
           onRefresh={refetchLogs}
         />
@@ -219,39 +226,50 @@ function TicketsTab({ boxOfficeUrl }: { boxOfficeUrl: string }) {
 // Payment tab — Stripe Elements (web only)
 // ─────────────────────────────────────────────────────────────────────────────
 
+type Processor = "stripe" | "square";
+
 function PaymentTab({
   stripeConfigured,
   publishableKey,
+  square,
   logs,
   onRefresh,
 }: {
   stripeConfigured: boolean;
   publishableKey: string | null;
+  square?: PaymentConfig["square"];
   logs: PaymentLog[];
   onRefresh: () => void;
 }) {
+  const squareReady = !!(square?.configured && square.applicationId && square.locationId);
+  // Default: Square if configured (recommended for MOTO), else Stripe
+  const [processor, setProcessor] = useState<Processor>(squareReady ? "square" : "stripe");
+
   if (Platform.OS !== "web") {
     return (
       <View style={styles.card}>
         <Ionicons name="laptop" size={32} color={Colors.light.textSecondary} />
         <Text style={styles.cardTitle}>Open on a computer</Text>
         <Text style={styles.cardSub}>
-          Card payments use Stripe Elements which only runs in a desktop browser. Open this page
+          Card payments require a desktop browser to load the secure card field. Open this page
           on a laptop to take phone or in-person card payments.
         </Text>
       </View>
     );
   }
 
-  if (!stripeConfigured || !publishableKey) {
+  const stripeReady = stripeConfigured && !!publishableKey;
+  const noneReady = !stripeReady && !squareReady;
+
+  if (noneReady) {
     return (
       <>
         <View style={[styles.card, styles.warnCard]}>
           <Ionicons name="warning" size={24} color="#B45309" />
-          <Text style={styles.cardTitle}>Stripe is not connected yet</Text>
+          <Text style={styles.cardTitle}>No payment processor connected</Text>
           <Text style={styles.cardSub}>
-            Add STRIPE_PUBLISHABLE_KEY and STRIPE_SECRET_KEY to enable card payments. Once
-            configured, the form below will activate.
+            Add Stripe keys (STRIPE_PUBLISHABLE_KEY, STRIPE_SECRET_KEY) or Square keys
+            (SQUARE_APPLICATION_ID, SQUARE_ACCESS_TOKEN, SQUARE_LOC_ID) to enable card payments.
           </Text>
         </View>
         <PaymentLogTable logs={logs} onRefresh={onRefresh} />
@@ -261,7 +279,48 @@ function PaymentTab({
 
   return (
     <>
-      <StripeForm publishableKey={publishableKey} onSuccess={onRefresh} />
+      <View style={styles.processorRow}>
+        <Pressable
+          style={[
+            styles.procBtn,
+            processor === "square" && styles.procBtnActive,
+            !squareReady && styles.procBtnDisabled,
+          ]}
+          disabled={!squareReady}
+          onPress={() => setProcessor("square")}
+        >
+          <Text style={[styles.procText, processor === "square" && styles.procTextActive]}>
+            Square{!squareReady ? " (not connected)" : ""}
+          </Text>
+          {squareReady && <Text style={styles.procHint}>MOTO ready · phone payments</Text>}
+        </Pressable>
+        <Pressable
+          style={[
+            styles.procBtn,
+            processor === "stripe" && styles.procBtnActive,
+            !stripeReady && styles.procBtnDisabled,
+          ]}
+          disabled={!stripeReady}
+          onPress={() => setProcessor("stripe")}
+        >
+          <Text style={[styles.procText, processor === "stripe" && styles.procTextActive]}>
+            Stripe{!stripeReady ? " (not connected)" : ""}
+          </Text>
+          {stripeReady && <Text style={styles.procHint}>Standard online card</Text>}
+        </Pressable>
+      </View>
+
+      {processor === "stripe" && stripeReady && (
+        <StripeForm publishableKey={publishableKey!} onSuccess={onRefresh} />
+      )}
+      {processor === "square" && squareReady && (
+        <SquareForm
+          applicationId={square!.applicationId!}
+          locationId={square!.locationId!}
+          environment={square!.environment}
+          onSuccess={onRefresh}
+        />
+      )}
       <PaymentLogTable logs={logs} onRefresh={onRefresh} />
     </>
   );
@@ -480,6 +539,226 @@ function StripeForm({ publishableKey, onSuccess }: { publishableKey: string; onS
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Square Web Payments SDK form — supports MOTO out of the box
+// ─────────────────────────────────────────────────────────────────────────────
+
+function SquareForm({
+  applicationId,
+  locationId,
+  environment,
+  onSuccess,
+}: {
+  applicationId: string;
+  locationId: string;
+  environment: "production" | "sandbox";
+  onSuccess: () => void;
+}) {
+  const [sdkReady, setSdkReady] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const stateRef = useRef<{ payments: any; card: any } | null>(null);
+
+  const [amount, setAmount] = useState("");
+  const [description, setDescription] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let cancelled = false;
+
+    const sdkUrl =
+      environment === "production"
+        ? "https://web.squarecdn.com/v1/square.js"
+        : "https://sandbox.web.squarecdn.com/v1/square.js";
+
+    async function init() {
+      const Square = (window as any).Square;
+      if (!Square) return;
+      try {
+        const payments = Square.payments(applicationId, locationId);
+        const card = await payments.card();
+        if (cancelled) return;
+        const tryAttach = async () => {
+          const node = document.getElementById("square-card-element");
+          if (node) {
+            await card.attach("#square-card-element");
+            if (!cancelled) {
+              stateRef.current = { payments, card };
+              setSdkReady(true);
+            }
+          } else {
+            setTimeout(tryAttach, 50);
+          }
+        };
+        await tryAttach();
+      } catch (e: any) {
+        setStatusMsg({ type: "err", text: "Could not load Square: " + (e?.message || "unknown error") });
+      }
+    }
+
+    if ((window as any).Square) {
+      init();
+    } else {
+      const script = document.createElement("script");
+      script.src = sdkUrl;
+      script.onload = init;
+      script.onerror = () =>
+        setStatusMsg({ type: "err", text: "Failed to load Square Web Payments SDK" });
+      document.head.appendChild(script);
+    }
+
+    return () => {
+      cancelled = true;
+      try {
+        stateRef.current?.card?.destroy();
+      } catch {}
+    };
+  }, [applicationId, locationId, environment]);
+
+  async function handleSubmit() {
+    setStatusMsg(null);
+    const amt = parseFloat(amount);
+    if (!Number.isFinite(amt) || amt < 0.5) {
+      setStatusMsg({ type: "err", text: "Enter an amount of at least £0.50" });
+      return;
+    }
+    if (!description.trim()) {
+      setStatusMsg({ type: "err", text: "Description is required" });
+      return;
+    }
+    if (!stateRef.current) {
+      setStatusMsg({ type: "err", text: "Square is still loading — try again in a moment" });
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const tokenResult = await stateRef.current.card.tokenize();
+      if (tokenResult.status !== "OK") {
+        const detail = tokenResult.errors?.[0]?.message || "Card details rejected";
+        setStatusMsg({ type: "err", text: detail });
+        setSubmitting(false);
+        return;
+      }
+      const res = await apiRequest("POST", "/api/staff/payments/square/charge", {
+        sourceId: tokenResult.token,
+        amountPence: Math.round(amt * 100),
+        description: description.trim(),
+        customerName: customerName.trim(),
+        customerEmail: customerEmail.trim(),
+        customerPhone: customerPhone.trim(),
+      });
+      const body = (await res.json()) as { ok?: boolean; status?: string; message?: string };
+      if (!res.ok || !body.ok) {
+        setStatusMsg({ type: "err", text: body.message || `Payment ${body.status || "failed"}` });
+      } else {
+        setStatusMsg({
+          type: "ok",
+          text: "✓ Charged " + formatGBP(Math.round(amt * 100)) + " successfully via Square",
+        });
+        setAmount("");
+        setDescription("");
+        setCustomerName("");
+        setCustomerEmail("");
+        setCustomerPhone("");
+        onSuccess();
+      }
+    } catch (err: any) {
+      setStatusMsg({ type: "err", text: err?.message || "Payment failed" });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <View style={styles.formCard}>
+      <Text style={styles.formTitle}>Take a card payment (Square)</Text>
+      <Text style={styles.helperMuted}>
+        Phone payments (MOTO) are processed at your Square MOTO rate when MOTO is enabled on your
+        account. No special toggle needed — Square detects card-not-present automatically.
+      </Text>
+
+      <View style={styles.row2}>
+        <View style={styles.field}>
+          <Text style={styles.label}>Amount (£)</Text>
+          <TextInput
+            style={styles.input}
+            value={amount}
+            onChangeText={setAmount}
+            placeholder="0.00"
+            keyboardType="decimal-pad"
+            placeholderTextColor={Colors.light.textSecondary}
+          />
+        </View>
+        <View style={styles.field}>
+          <Text style={styles.label}>Description / reference</Text>
+          <TextInput
+            style={styles.input}
+            value={description}
+            onChangeText={setDescription}
+            placeholder="e.g. Booking deposit – Smith"
+            placeholderTextColor={Colors.light.textSecondary}
+          />
+        </View>
+      </View>
+
+      <View style={styles.row2}>
+        <View style={styles.field}>
+          <Text style={styles.label}>Customer name (optional)</Text>
+          <TextInput style={styles.input} value={customerName} onChangeText={setCustomerName} placeholderTextColor={Colors.light.textSecondary} />
+        </View>
+        <View style={styles.field}>
+          <Text style={styles.label}>Email (optional, sends receipt)</Text>
+          <TextInput
+            style={styles.input}
+            value={customerEmail}
+            onChangeText={setCustomerEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            placeholderTextColor={Colors.light.textSecondary}
+          />
+        </View>
+      </View>
+
+      <View style={styles.field}>
+        <Text style={styles.label}>Phone (optional)</Text>
+        <TextInput style={styles.input} value={customerPhone} onChangeText={setCustomerPhone} keyboardType="phone-pad" placeholderTextColor={Colors.light.textSecondary} />
+      </View>
+
+      <View style={styles.field}>
+        <Text style={styles.label}>Card details</Text>
+        <View style={styles.cardElementWrap}>
+          {React.createElement("div" as any, {
+            id: "square-card-element",
+            style: { padding: "12px", background: "#fff", borderRadius: "6px", minHeight: 56 },
+          })}
+        </View>
+        {!sdkReady && <Text style={styles.helperMuted}>Loading secure card field…</Text>}
+      </View>
+
+      {statusMsg && (
+        <Text style={[styles.statusMsg, statusMsg.type === "ok" ? styles.statusOk : styles.statusErr]}>
+          {statusMsg.text}
+        </Text>
+      )}
+
+      <Pressable
+        style={[styles.primaryBtn, (!sdkReady || submitting) && styles.primaryBtnDisabled]}
+        disabled={!sdkReady || submitting}
+        onPress={handleSubmit}
+      >
+        {submitting ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.primaryBtnText}>Charge card</Text>
+        )}
+      </Pressable>
+    </View>
+  );
+}
+
 function PaymentLogTable({ logs, onRefresh }: { logs: PaymentLog[]; onRefresh: () => void }) {
   return (
     <View style={[styles.card, { marginTop: 16 }]}>
@@ -571,6 +850,23 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   formTitle: { fontSize: 16, fontWeight: "700", color: Colors.light.text, marginBottom: 4 },
+  processorRow: { flexDirection: "row", gap: 10, marginBottom: 12 },
+  procBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: Colors.light.surface,
+    borderWidth: 1.5,
+    borderColor: Colors.light.border,
+    alignItems: "center",
+    gap: 2,
+  },
+  procBtnActive: { borderColor: Colors.brand.blue, backgroundColor: "#EFF6FF" },
+  procBtnDisabled: { opacity: 0.45 },
+  procText: { fontSize: 14, fontWeight: "700", color: Colors.light.text },
+  procTextActive: { color: Colors.brand.blue },
+  procHint: { fontSize: 11, color: Colors.light.textSecondary },
   row2: { flexDirection: Platform.OS === "web" ? "row" : "column", gap: 12 },
   field: { flex: 1, gap: 6 },
   label: { fontSize: 13, fontWeight: "600", color: Colors.light.text },
