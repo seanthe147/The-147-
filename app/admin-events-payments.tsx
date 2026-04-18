@@ -183,33 +183,31 @@ function TicketsTab({ boxOfficeUrl }: { boxOfficeUrl: string }) {
     );
   }
 
-  // Web: render iframe via React.createElement
+  // TicketSource blocks embedding their storefront in iframes for security,
+  // so we present a prominent launch button instead of trying to embed it.
   return (
-    <View style={{ marginTop: 8 }}>
-      <View style={styles.iframeBar}>
-        <Text style={styles.iframeLabel}>TicketSource Box Office</Text>
-        <Pressable
-          style={styles.linkBtn}
-          onPress={() => {
-            if (typeof window !== "undefined") window.open(boxOfficeUrl, "_blank");
-          }}
-        >
-          <Ionicons name="open-outline" size={14} color={Colors.brand.blue} />
-          <Text style={styles.linkBtnText}>Open in new tab</Text>
-        </Pressable>
-      </View>
-      {React.createElement("iframe" as any, {
-        src: boxOfficeUrl,
-        style: {
-          width: "100%",
-          height: "calc(100vh - 220px)",
-          minHeight: 500,
-          border: "1px solid " + Colors.light.border,
-          borderRadius: 8,
-          background: "#fff",
-        },
-        title: "TicketSource Box Office",
-      })}
+    <View style={[styles.card, { marginTop: 8 }]}>
+      <Ionicons name="ticket" size={40} color={Colors.brand.blue} />
+      <Text style={styles.cardTitle}>TicketSource Box Office</Text>
+      <Text style={styles.cardSub}>
+        TicketSource opens in a new tab — log in there to sell tickets, take payment and check
+        attendees. (Their site can't be embedded inside other apps for security.)
+      </Text>
+      <View style={{ height: 4 }} />
+      <Pressable
+        style={[styles.primaryBtn, { paddingHorizontal: 28 }]}
+        onPress={() => {
+          if (Platform.OS === "web" && typeof window !== "undefined") {
+            window.open(boxOfficeUrl, "_blank", "noopener,noreferrer");
+          } else {
+            const Linking = require("react-native").Linking;
+            Linking.openURL(boxOfficeUrl);
+          }
+        }}
+      >
+        <Text style={styles.primaryBtnText}>Open Box Office</Text>
+      </Pressable>
+      <Text style={[styles.helperMuted, { marginTop: 12, textAlign: "center" }]}>{boxOfficeUrl}</Text>
     </View>
   );
 }
