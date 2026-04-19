@@ -390,10 +390,16 @@ function configureExpoAndLanding(app: express.Application) {
       req.pipe(proxyReq, { end: true });
     });
   } else {
-    // Production: serve static build index.html as SPA fallback
+    // Production: serve static build index.html as SPA fallback.
+    // IMPORTANT: skip /api paths and native-app manifest requests, otherwise
+    // we'd swallow API calls (registered after this middleware) and Expo Go
+    // manifest fetches, returning HTML with 200 OK instead of the real response.
     const indexPath = path.resolve(process.cwd(), "static-build", "index.html");
-    app.use((_req: Request, res: Response, next: NextFunction) => {
+    app.use((req: Request, res: Response, next: NextFunction) => {
       if (res.headersSent) return next();
+      if (req.path.startsWith("/api")) return next();
+      const platform = req.header("expo-platform");
+      if (platform === "ios" || platform === "android") return next();
       if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
       } else {
