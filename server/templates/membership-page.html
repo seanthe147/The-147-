@@ -380,6 +380,13 @@
         <div class="spinner" style="width:20px;height:20px;border-width:2px"></div>
         Redirecting to payment…
       </div>
+      <a id="manualPayBtn" href="#" target="_self" rel="noopener"
+         style="display:none;margin-top:18px;padding:14px 22px;background:#0047AB;color:#fff;border-radius:12px;font-weight:700;text-decoration:none;font-size:14px">
+        Open Payment Page
+      </a>
+      <div id="manualPayHint" style="display:none;margin-top:10px;font-size:12px;color:#64748B">
+        If you weren't taken to the payment page automatically, tap the button above.
+      </div>
     </div>
 
     <!-- Form pane -->
@@ -558,8 +565,16 @@
     document.getElementById('joinModal').classList.remove('open');
   }
 
-  // close on backdrop click
-  document.getElementById('joinModal').addEventListener('click',function(e){if(e.target===this)closeModal()});
+  // close on backdrop click — only when both press AND release happen on the backdrop itself
+  // (prevents the modal from closing when text-selecting, dragging, or interacting with form fields)
+  (function(){
+    const m=document.getElementById('joinModal');
+    let downOn=null;
+    m.addEventListener('mousedown',e=>{downOn=e.target});
+    m.addEventListener('mouseup',e=>{if(downOn===m && e.target===m)closeModal();downOn=null});
+    m.addEventListener('touchstart',e=>{downOn=e.target},{passive:true});
+    m.addEventListener('touchend',e=>{if(downOn===m && e.target===m)closeModal();downOn=null},{passive:true});
+  })();
 
   function switchTab(t){
     activeTab=t;
@@ -630,12 +645,22 @@
     if(!authToken||!selectedPlan)return;
     document.getElementById('formPane').style.display='none';
     document.getElementById('successPane').classList.add('show');
+    document.querySelector('.redirect-row').style.display='';
+    document.getElementById('manualPayBtn').style.display='none';
+    document.getElementById('manualPayHint').style.display='none';
+
+    // Watchdog: if the request takes longer than 30s, abort and show a recoverable error
+    const ac=new AbortController();
+    const watchdog=setTimeout(()=>ac.abort(),30000);
+
     try{
       const r=await fetch(API+'/api/membership/join',{
         method:'POST',
         headers:{'Content-Type':'application/json','Authorization':'Bearer '+authToken},
         body:JSON.stringify({planId:selectedPlan.id}),
+        signal:ac.signal,
       });
+      clearTimeout(watchdog);
       const d=await r.json();
       if(!r.ok){
         // bounce back to form with error
@@ -646,7 +671,18 @@
         return;
       }
       if(d.checkoutUrl){
-        setTimeout(()=>{window.location.href=d.checkoutUrl},1400);
+        // Show manual fallback button immediately so the user always has a way forward,
+        // even if the auto-redirect is blocked by the browser or an extension.
+        const btn=document.getElementById('manualPayBtn');
+        btn.href=d.checkoutUrl;
+        btn.style.display='inline-block';
+        // Reveal hint text after a short pause if we haven't already navigated away
+        setTimeout(()=>{document.getElementById('manualPayHint').style.display='block'},2500);
+        // Auto-redirect attempt
+        setTimeout(()=>{
+          try{window.location.assign(d.checkoutUrl)}
+          catch(_){window.location.href=d.checkoutUrl}
+        },1200);
       }else if(d.status==='active'){
         // Activated without payment (free plan or Square not configured)
         document.querySelector('.success-sub').textContent='Your membership is now active! Download The 147 app to book tables, track loyalty points, and manage your account.';
@@ -655,14 +691,19 @@
         // Payment link couldn't be generated — subscription is pending
         document.getElementById('successPane').querySelector('.success-ring').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
         document.getElementById('successPane').querySelector('h3').textContent='Account Created';
-        document.querySelector('.success-sub').textContent='Your account is ready but the payment link could not be generated. Please contact the club directly or visit us to complete your membership payment.';
+        document.querySelector('.success-sub').textContent='Your account is ready but the payment link could not be generated right now. Please contact the club to finish setting up your payment.';
         document.querySelector('.redirect-row').style.display='none';
       }
-    }catch{
+    }catch(err){
+      clearTimeout(watchdog);
+      const aborted=(err && err.name==='AbortError');
       document.getElementById('successPane').classList.remove('show');
       document.getElementById('formPane').style.display='';
       const errEl=activeTab==='reg'?document.getElementById('regErr'):document.getElementById('loginErr');
-      errEl.textContent='Network error — please try again.';errEl.classList.add('show');
+      errEl.textContent=aborted
+        ? 'The payment system took too long to respond. Please try again in a moment.'
+        : 'Network error — please try again.';
+      errEl.classList.add('show');
     }
   }
 

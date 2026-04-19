@@ -676,10 +676,11 @@ const styles = StyleSheet.create({
     padding: 18, borderWidth: 1.5, borderColor: Colors.light.border,
     position: "relative", overflow: "hidden",
   },
-  planCardPopular: { borderColor: "#D4A843" },
+  planCardPopular: { borderColor: "#D4A843", paddingTop: 36 },
   popularBadge: {
-    position: "absolute", top: 14, right: 14,
-    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12,
+    position: "absolute", top: 0, right: 14,
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderBottomLeftRadius: 10, borderBottomRightRadius: 10,
   },
   popularBadgeText: {
     fontFamily: "Montserrat_700Bold", fontSize: 10, color: "#fff", letterSpacing: 0.3,
@@ -710,9 +711,9 @@ const styles = StyleSheet.create({
   saveBadge: { backgroundColor: "#16A34A", borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 },
   saveBadgeText: { fontFamily: "Montserrat_700Bold", fontSize: 9, color: "#fff" },
   annualSavingBadge: {
-    position: "absolute", top: 0, left: 0,
+    position: "absolute", top: 0, left: 14,
     paddingHorizontal: 10, paddingVertical: 4,
-    borderTopLeftRadius: 12, borderBottomRightRadius: 10,
+    borderBottomLeftRadius: 10, borderBottomRightRadius: 10,
   },
   annualSavingText: { fontFamily: "Montserrat_700Bold", fontSize: 10, color: "#fff" },
   featureList: { gap: 8 },
