@@ -400,6 +400,16 @@ function configureExpoAndLanding(app: express.Application) {
       if (req.path.startsWith("/api")) return next();
       const platform = req.header("expo-platform");
       if (platform === "ios" || platform === "android") return next();
+      // Server-rendered HTML pages registered later in registerRoutes()
+      const serverPages = new Set([
+        "/staff",
+        "/membership",
+        "/delete-account",
+        "/privacy-policy",
+        "/staff-privacy-notice",
+        "/booking-widget",
+      ]);
+      if (serverPages.has(req.path)) return next();
       if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
       } else {
