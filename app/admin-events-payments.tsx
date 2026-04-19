@@ -102,6 +102,22 @@ export default function AdminEventsPaymentsScreen() {
     );
   }
 
+  if (Platform.OS !== "web") {
+    return (
+      <View style={[styles.center, { paddingTop: insets.top + webTopInset, paddingHorizontal: 24 }]}>
+        <Ionicons name="laptop-outline" size={48} color={Colors.light.textSecondary} />
+        <Text style={styles.lockTitle}>Use the web staff portal</Text>
+        <Text style={styles.lockSub}>
+          Card payments and ticket sales are only available on the web staff portal at
+          the147bradford.replit.app/staff-portal — please open it on a laptop or desktop browser.
+        </Text>
+        <Pressable style={styles.backBtn} onPress={() => router.back()}>
+          <Text style={styles.backBtnText}>Go back</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: Colors.light.background }}

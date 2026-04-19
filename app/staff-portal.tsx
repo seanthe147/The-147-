@@ -504,14 +504,16 @@ function DashboardScreen() {
                 onPress={() => router.push("/admin-events")}
                 testID="portal-manage-events"
               />
-              <AdminTool
-                icon="card"
-                title="Events & Payments"
-                description="Sell tickets and take card payments"
-                color="#0EA5E9"
-                onPress={() => router.push("/admin-events-payments")}
-                testID="portal-events-payments"
-              />
+              {Platform.OS === "web" && (
+                <AdminTool
+                  icon="card"
+                  title="Events & Payments"
+                  description="Sell tickets and take card payments"
+                  color="#0EA5E9"
+                  onPress={() => router.push("/admin-events-payments")}
+                  testID="portal-events-payments"
+                />
+              )}
               <AdminTool
                 icon="notifications"
                 title="Push Notifications"
