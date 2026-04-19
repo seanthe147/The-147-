@@ -324,7 +324,132 @@ function ProcessorCard({
   );
 }
 
-function StatusBanner({ msg }: { msg: { type: "ok" | "err"; text: string } }) {
+type StatusMsg = {
+  type: "ok" | "err";
+  text: string;
+  hint?: string; // What to tell the customer / next step
+};
+
+// ─── Friendly payment error mapper ───────────────────────────────────────────
+// Translates Stripe / Square error codes into a clear staff-facing message
+// PLUS a hint of what to say or do next, so staff can relay it to the customer
+// instead of staring at "payment declined".
+type FriendlyError = { text: string; hint: string };
+
+function friendlyStripeError(err: any): FriendlyError {
+  const code = err?.code as string | undefined;
+  const declineCode = err?.decline_code as string | undefined;
+  const fallback = err?.message || "Payment failed";
+
+  // Decline codes (most specific) take priority
+  switch (declineCode) {
+    case "insufficient_funds":
+      return { text: "Card declined — insufficient funds", hint: "Ask the customer to use a different card, or to top up and try again." };
+    case "lost_card":
+    case "stolen_card":
+      return { text: "Card declined by the bank", hint: "Don't give a reason. Ask the customer to use a different card." };
+    case "expired_card":
+      return { text: "Card has expired", hint: "Check the expiry date on the front of the card. Ask the customer for a different card if it's out of date." };
+    case "incorrect_cvc":
+      return { text: "Wrong CVC / security code", hint: "Ask the customer for the 3-digit number on the back of the card and re-enter." };
+    case "card_velocity_exceeded":
+      return { text: "Card declined — too many attempts", hint: "The bank has temporarily blocked the card. Ask the customer to try again later or use a different card." };
+    case "do_not_honor":
+    case "generic_decline":
+      return { text: "Card declined by the bank", hint: "We don't know the exact reason — ask the customer to call their bank or use a different card." };
+    case "fraudulent":
+    case "pickup_card":
+      return { text: "Card declined by the bank", hint: "Ask the customer to use a different card. Don't share the reason." };
+    case "issuer_not_available":
+    case "try_again_later":
+      return { text: "Bank temporarily unreachable", hint: "Try the payment again in a minute. If it keeps failing, use a different card." };
+    case "withdrawal_count_limit_exceeded":
+      return { text: "Card has reached its daily limit", hint: "Ask the customer to use a different card." };
+    case "currency_not_supported":
+      return { text: "This card doesn't support GBP", hint: "Ask for a different card." };
+  }
+
+  // Top-level codes
+  switch (code) {
+    case "card_declined":
+      return { text: "Card declined by the bank", hint: "Ask the customer to use a different card or contact their bank." };
+    case "expired_card":
+      return { text: "Card has expired", hint: "Check the expiry date — ask for a different card if needed." };
+    case "incorrect_cvc":
+    case "invalid_cvc":
+      return { text: "Wrong CVC / security code", hint: "Ask the customer for the 3 digits on the back of the card and re-enter." };
+    case "incorrect_number":
+    case "invalid_number":
+      return { text: "Card number isn't valid", hint: "Re-read each digit back to the customer carefully and re-enter." };
+    case "invalid_expiry_month":
+    case "invalid_expiry_year":
+      return { text: "Expiry date isn't valid", hint: "Confirm the MM/YY on the front of the card and re-enter." };
+    case "incomplete_number":
+    case "incomplete_cvc":
+    case "incomplete_expiry":
+      return { text: "Card details look incomplete", hint: "Double-check every field is filled in before charging." };
+    case "processing_error":
+      return { text: "Bank had a temporary problem", hint: "Wait a moment and try again. If it keeps happening, ask for a different card." };
+    case "authentication_required":
+      return { text: "Bank wants to verify the customer (3-D Secure)", hint: "For phone payments, this card can't be charged remotely. Ask for a different card or take the payment in person." };
+    case "rate_limit":
+      return { text: "Too many attempts — slow down", hint: "Wait 30 seconds and try again." };
+  }
+
+  return { text: fallback, hint: "Re-check every field. If it still fails, ask for a different card." };
+}
+
+function friendlySquareError(errorCode: string | null | undefined, fallbackMsg: string): FriendlyError {
+  switch (errorCode) {
+    // Tokenisation (client-side) — wrong fields entered
+    case "INVALID_CARD_NUMBER":
+      return { text: "Card number isn't valid", hint: "Re-read each digit carefully with the customer and re-enter." };
+    case "INVALID_EXPIRATION":
+    case "INVALID_EXPIRATION_DATE":
+    case "INVALID_EXPIRATION_YEAR":
+    case "INVALID_EXPIRATION_MONTH":
+      return { text: "Expiry date isn't valid", hint: "Confirm the MM/YY on the front of the card and re-enter." };
+    case "INVALID_CVV":
+      return { text: "Wrong CVC / security code", hint: "Ask the customer for the 3 digits on the back of the card." };
+    case "INVALID_POSTAL_CODE":
+      return { text: "Postcode doesn't match the card", hint: "Confirm the customer's billing postcode (the one on their card statement) and re-enter." };
+
+    // Charge (server-side) — bank declines
+    case "CARD_DECLINED":
+    case "GENERIC_DECLINE":
+      return { text: "Card declined by the bank", hint: "Ask the customer to use a different card or contact their bank." };
+    case "INSUFFICIENT_FUNDS":
+      return { text: "Card declined — insufficient funds", hint: "Ask the customer to use a different card or top up." };
+    case "CVV_FAILURE":
+      return { text: "CVC didn't match", hint: "Ask the customer to re-read the 3 digits on the back of the card." };
+    case "ADDRESS_VERIFICATION_FAILURE":
+      return { text: "Postcode didn't match the card", hint: "Confirm the customer's billing postcode and try again." };
+    case "INVALID_EXPIRATION_DATE":
+      return { text: "Expiry date is invalid or expired", hint: "Check the MM/YY — ask for a different card if it's out of date." };
+    case "CARD_EXPIRED":
+      return { text: "Card has expired", hint: "Ask the customer for a different card." };
+    case "CARD_NOT_SUPPORTED":
+      return { text: "We can't accept this card type", hint: "Ask for a Visa, Mastercard or Amex instead." };
+    case "VOICE_FAILURE":
+      return { text: "Bank wants the customer to call them", hint: "Ask the customer to ring the number on the back of their card to authorise — or use a different card." };
+    case "PAN_FAILURE":
+      return { text: "Card number is invalid", hint: "Re-read each digit carefully and re-enter." };
+    case "PAYMENT_LIMIT_EXCEEDED":
+      return { text: "This payment exceeds the daily limit", hint: "Take a smaller amount, or split the payment across two transactions." };
+    case "CHIP_INSERTION_REQUIRED":
+    case "INSERT_CHIP":
+      return { text: "Card needs to be inserted, not tapped", hint: "Take this payment in person on a card reader — phone payments aren't allowed for this card." };
+    case "CARD_TOKEN_USED":
+      return { text: "This card was already charged", hint: "Refresh the page before charging again." };
+    case "TEMPORARY_ERROR":
+      return { text: "Bank temporarily unreachable", hint: "Wait a moment and try again." };
+    case "ALLOWABLE_PIN_TRIES_EXCEEDED":
+      return { text: "Too many wrong PIN attempts", hint: "Card is locked — ask the customer to use a different card." };
+  }
+  return { text: fallbackMsg || "Card charge failed", hint: "Re-check every field. If it still fails, ask for a different card." };
+}
+
+function StatusBanner({ msg }: { msg: StatusMsg }) {
   const ok = msg.type === "ok";
   return (
     <View style={[styles.banner, ok ? styles.bannerOk : styles.bannerErr]}>
@@ -332,8 +457,14 @@ function StatusBanner({ msg }: { msg: { type: "ok" | "err"; text: string } }) {
         name={ok ? "checkmark-circle" : "alert-circle"}
         size={20}
         color={ok ? "#047857" : "#B91C1C"}
+        style={{ marginTop: 1 }}
       />
-      <Text style={[styles.bannerText, { color: ok ? "#065F46" : "#991B1B" }]}>{msg.text}</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.bannerText, { color: ok ? "#065F46" : "#991B1B" }]}>{msg.text}</Text>
+        {msg.hint && (
+          <Text style={[styles.bannerHint, { color: ok ? "#047857" : "#B91C1C" }]}>{msg.hint}</Text>
+        )}
+      </View>
     </View>
   );
 }
@@ -431,7 +562,7 @@ function StripeForm({ publishableKey, onSuccess }: { publishableKey: string; onS
   const formRef = useRef<HTMLDivElement | null>(null);
   const [stripeReady, setStripeReady] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [statusMsg, setStatusMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [statusMsg, setStatusMsg] = useState<StatusMsg | null>(null);
   const stateRef = useRef<{ stripe: any; elements: any; card: any } | null>(null);
 
   // Form fields
@@ -525,12 +656,13 @@ function StripeForm({ publishableKey, onSuccess }: { publishableKey: string; onS
         await apiRequest("POST", "/api/staff/payments/finalize", {
           paymentIntentId: intent.paymentIntentId,
         });
-        setStatusMsg({ type: "err", text: result.error.message || "Payment failed" });
+        const friendly = friendlyStripeError(result.error);
+        setStatusMsg({ type: "err", text: friendly.text, hint: friendly.hint });
       } else if (result.paymentIntent?.status === "succeeded") {
         await apiRequest("POST", "/api/staff/payments/finalize", {
           paymentIntentId: intent.paymentIntentId,
         });
-        setStatusMsg({ type: "ok", text: "✓ Charged " + formatGBP(Math.round(amt * 100)) + " successfully" });
+        setStatusMsg({ type: "ok", text: "Charged " + formatGBP(Math.round(amt * 100)) + " successfully", hint: customerEmail.trim() ? "A receipt has been emailed to the customer." : undefined });
         setAmount("");
         setDescription("");
         setCustomerName("");
@@ -685,7 +817,7 @@ function SquareForm({
 }) {
   const [sdkReady, setSdkReady] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [statusMsg, setStatusMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [statusMsg, setStatusMsg] = useState<StatusMsg | null>(null);
   const stateRef = useRef<{ payments: any; card: any } | null>(null);
 
   const [amount, setAmount] = useState("");
@@ -766,8 +898,10 @@ function SquareForm({
     try {
       const tokenResult = await stateRef.current.card.tokenize();
       if (tokenResult.status !== "OK") {
-        const detail = tokenResult.errors?.[0]?.message || "Card details rejected";
-        setStatusMsg({ type: "err", text: detail });
+        const errCode = tokenResult.errors?.[0]?.type as string | undefined;
+        const errDetail = tokenResult.errors?.[0]?.message || "Card details rejected";
+        const friendly = friendlySquareError(errCode || null, errDetail);
+        setStatusMsg({ type: "err", text: friendly.text, hint: friendly.hint });
         setSubmitting(false);
         return;
       }
@@ -779,13 +913,15 @@ function SquareForm({
         customerEmail: customerEmail.trim(),
         customerPhone: customerPhone.trim(),
       });
-      const body = (await res.json()) as { ok?: boolean; status?: string; message?: string };
+      const body = (await res.json()) as { ok?: boolean; status?: string; message?: string; errorCode?: string | null };
       if (!res.ok || !body.ok) {
-        setStatusMsg({ type: "err", text: body.message || `Payment ${body.status || "failed"}` });
+        const friendly = friendlySquareError(body.errorCode || null, body.message || `Payment ${body.status || "failed"}`);
+        setStatusMsg({ type: "err", text: friendly.text, hint: friendly.hint });
       } else {
         setStatusMsg({
           type: "ok",
-          text: "✓ Charged " + formatGBP(Math.round(amt * 100)) + " successfully via Square",
+          text: "Charged " + formatGBP(Math.round(amt * 100)) + " successfully",
+          hint: customerEmail.trim() ? "A receipt has been emailed to the customer." : undefined,
         });
         setAmount("");
         setDescription("");
@@ -1131,10 +1267,11 @@ const styles = StyleSheet.create({
   },
   checkboxOn: { backgroundColor: Colors.brand.blue, borderColor: Colors.brand.blue },
   checkLabel: { fontSize: 14, color: Colors.light.text, flex: 1 },
-  banner: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, borderRadius: 10, borderWidth: 1 },
+  banner: { flexDirection: "row", alignItems: "flex-start", gap: 10, padding: 12, borderRadius: 10, borderWidth: 1 },
   bannerOk: { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0" },
   bannerErr: { backgroundColor: "#FEF2F2", borderColor: "#FECACA" },
-  bannerText: { flex: 1, fontSize: 13, fontWeight: "600", lineHeight: 18 },
+  bannerText: { fontSize: 14, fontWeight: "700", lineHeight: 19 },
+  bannerHint: { fontSize: 13, fontWeight: "500", lineHeight: 18, marginTop: 4, opacity: 0.9 },
   primaryBtn: {
     flexDirection: "row",
     backgroundColor: Colors.brand.blue,

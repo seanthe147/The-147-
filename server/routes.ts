@@ -1203,11 +1203,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             receiptNumber: `147-${log.id}`,
             dateStr: new Date().toLocaleString("en-GB", { dateStyle: "long", timeStyle: "short" }),
           });
-          await sendEmailViaSMTP({
-            to: email,
-            subject: `Your receipt from The 147 Bradford — ${desc}`,
-            html,
-          });
+          await sendEmailViaSMTP(email, `Your receipt from The 147 Bradford — ${desc}`, html);
         } catch (mailErr) {
           console.error("Square receipt email failed:", { message: (mailErr as any)?.message });
         }
@@ -1215,13 +1211,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json({ ok: succeeded, status: payment.status, paymentId: payment.id, logId: log.id });
     } catch (err: any) {
-      // Mark the log as failed and return a clean error
+      // Square SDK errors expose `errors: [{ code, category, detail, field }]`
+      const squareErrors = Array.isArray(err?.errors) ? err.errors : (Array.isArray(err?.result?.errors) ? err.result.errors : []);
+      const first = squareErrors[0] || {};
+      const errorCode: string | undefined = first.code;
+      const errorDetail: string | undefined = first.detail || err?.message;
+      // Mark the log as failed and return a structured error so the client can
+      // map the code to a customer-friendly message
       await storage.updatePaymentLog(log.id, {
         status: "failed",
-        failureMessage: err?.message?.slice(0, 500) || "Square charge failed",
+        failureMessage: (errorCode ? `[${errorCode}] ` : "") + (errorDetail || "Square charge failed").slice(0, 500),
       }).catch(() => {});
-      console.error("Square charge error:", { code: err?.code, statusCode: err?.statusCode });
-      res.status(400).json({ message: err?.message || "Card charge failed" });
+      console.error("Square charge error:", { code: err?.code, statusCode: err?.statusCode, errorCode });
+      res.status(400).json({
+        message: errorDetail || "Card charge failed",
+        errorCode: errorCode || null,
+        provider: "square",
+      });
     }
   });
 
