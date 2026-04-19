@@ -2488,7 +2488,7 @@
     el('navMessages').classList.remove('hidden');
     el('navComms').classList.toggle('hidden',!isManager);
     el('navStaff').classList.toggle('hidden',!isOwner);
-    el('navMemberships').classList.toggle('hidden',!isManager);
+    el('navMemberships').classList.remove('hidden');
     el('navMenu').classList.toggle('hidden',!isManager);
     el('navBanners').classList.toggle('hidden',!isManager);
     el('navOffers').classList.toggle('hidden',!isManager);
@@ -5697,10 +5697,113 @@
     }
   }
 
+  /* ── Staff (non-manager) view: sign up + lookup only, no stats / no cancel / no totals ── */
+  function renderMembershipsStaff(plans,subs){
+    const activePlans=plans.filter(p=>p.active!==false);
+    let html=`
+      <div class="settings-section" style="margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div>
+          <div class="settings-title" style="margin-bottom:2px">Sign up a new member</div>
+          <div class="settings-desc" style="margin:0">Add a customer to a membership plan and send them a payment link.</div>
+        </div>
+        ${activePlans.length>0?`<button class="btn btn-primary" onclick="window.openAddMemberModal()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:6px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Sign Up Member
+        </button>`:`<span class="pill pill-gray">No plans available</span>`}
+      </div>`;
+
+    if(activePlans.length>0){
+      html+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:24px">`;
+      activePlans.forEach(p=>{
+        const perks=[];
+        if(p.hoursIncluded)perks.push(p.hoursIncluded+' hrs/'+(p.hoursUnit==='year'?'yr':'mo'));
+        else perks.push('Unlimited');
+        if(p.foodDrinkDiscount)perks.push(p.foodDrinkDiscount+'% F&D discount');
+        if(p.priorityBooking)perks.push('Priority booking');
+        if(p.guestPassesMonthly)perks.push(p.guestPassesMonthly+' guest pass'+(p.guestPassesMonthly>1?'es':''));
+        if(p.loyaltyMultiplier>1)perks.push(p.loyaltyMultiplier+'× loyalty pts');
+        html+=`<div class="settings-section" style="margin:0;padding:0;border-top:4px solid ${esc(p.color)};overflow:hidden">
+          <div style="padding:14px 16px">
+            <div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:4px">${esc(p.name)}</div>
+            ${p.description?`<div style="font-size:11px;color:var(--text-2);margin-bottom:8px;line-height:1.4">${esc(p.description)}</div>`:''}
+            <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+              <div style="font-size:22px;font-weight:800;color:${esc(p.color)}">£${(p.priceMonthly/100).toFixed(2)}<span style="font-size:12px;font-weight:600;color:var(--text-2)">/mo</span></div>
+              ${p.priceAnnual?`<div style="font-size:12px;font-weight:600;color:var(--text-2)">£${(p.priceAnnual/100).toFixed(2)}<span style="font-size:10px;font-weight:500;color:var(--text-3)">/yr</span></div>`:''}
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              ${perks.map(pk=>`<span style="font-size:11px;background:${esc(p.color)}18;color:${esc(p.color)};padding:3px 8px;border-radius:6px;font-weight:600">${esc(pk)}</span>`).join('')}
+            </div>
+          </div>
+        </div>`;
+      });
+      html+=`</div>`;
+    }
+
+    html+=`
+      <div class="settings-section" style="margin-bottom:14px">
+        <div class="settings-title" style="margin-bottom:2px">Check a member's status</div>
+        <div class="settings-desc" style="margin-bottom:10px">Search by name, email or phone to see if their membership is active.</div>
+        <input id="staffMemberSearch" type="search" placeholder="Type a name, email or phone…" autocomplete="off"
+          style="width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--bg2);color:var(--text);font-size:15px;outline:none">
+      </div>
+      <div id="staffMemberSearchResults"></div>`;
+
+    el('membershipsContent').innerHTML=html;
+
+    const input=el('staffMemberSearch');
+    const out=el('staffMemberSearchResults');
+    function renderResults(){
+      const q=(input.value||'').trim().toLowerCase();
+      if(q.length<2){
+        out.innerHTML='<div class="empty-state" style="padding:30px 20px"><div class="empty-title" style="font-size:14px">Start typing to look up a member</div><div class="empty-desc" style="font-size:12px">At least 2 characters.</div></div>';
+        return;
+      }
+      const matches=subs.filter(s=>{
+        const c=s.customer;if(!c)return false;
+        return (c.name||'').toLowerCase().includes(q)
+          || (c.email||'').toLowerCase().includes(q)
+          || (c.phone||'').toLowerCase().includes(q);
+      });
+      if(matches.length===0){
+        out.innerHTML='<div class="empty-state" style="padding:30px 20px"><div class="empty-title" style="font-size:14px">No member found</div><div class="empty-desc" style="font-size:12px">No active or past membership matches "'+esc(q)+'". They may not be a member — use Sign Up Member above.</div></div>';
+        return;
+      }
+      let h='<div class="staff-grid">';
+      matches.slice(0,20).forEach(sub=>{
+        const cust=sub.customer;
+        const plan=sub.plan;
+        const initials=cust?cust.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase():'?';
+        const planColor=plan?plan.color:'#888';
+        const statusClass=STATUS_COLORS[sub.status]||'pill-gray';
+        const statusLabel=STATUS_LABELS[sub.status]||sub.status;
+        h+=`<div class="staff-card">
+          <div class="staff-avatar" style="background:${esc(planColor)}">${esc(initials)}</div>
+          <div class="staff-info">
+            <div class="staff-name-row">
+              <span class="staff-name">${esc(cust?cust.name:'Unknown')}</span>
+              <span class="pill ${statusClass}">${statusLabel}</span>
+              ${plan?`<span class="pill" style="background:${esc(plan.color)}22;color:${esc(plan.color)}">${esc(plan.name)}</span>`:''}
+            </div>
+            <div class="staff-username">${esc(cust?cust.email:'')} ${cust&&cust.phone?'· '+esc(cust.phone):''}</div>
+            <div class="staff-joined">Joined ${new Date(sub.createdAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}
+              ${sub.currentPeriodEnd?' · Renews '+new Date(sub.currentPeriodEnd).toLocaleDateString('en-GB',{day:'numeric',month:'short'}):''}
+            </div>
+          </div>
+        </div>`;
+      });
+      h+='</div>';
+      if(matches.length>20)h+='<div style="text-align:center;color:var(--text-2);font-size:12px;margin-top:10px">Showing first 20 results — refine your search to narrow down.</div>';
+      out.innerHTML=h;
+    }
+    let t;input.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(renderResults,120)});
+    renderResults();
+  }
+
   function renderMemberships(stats,plans,subs){
     const isManager=state.role==='manager'||state.role==='owner';
     const mrr=(stats.mrr/100).toFixed(2);
     const needsSeed=plans.length===0;
+    if(!isManager){renderMembershipsStaff(plans,subs);return;}
     let html=`
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px">
         <div class="settings-section" style="margin:0;padding:18px 20px;text-align:center">
