@@ -115,8 +115,10 @@ export default function AdminEventsPaymentsScreen() {
         <Pressable onPress={() => router.back()} style={styles.iconBtn}>
           <Ionicons name="chevron-back" size={24} color={Colors.light.text} />
         </Pressable>
-        <Text style={styles.title}>Events & Payments</Text>
-        <View style={{ width: 32 }} />
+        <View style={{ flex: 1, marginLeft: 4 }}>
+          <Text style={styles.title}>Events & Payments</Text>
+          <Text style={styles.subtitle}>Sell tickets and take card payments</Text>
+        </View>
       </View>
 
       <View style={styles.tabsRow}>
@@ -124,14 +126,14 @@ export default function AdminEventsPaymentsScreen() {
           style={[styles.tabBtn, tab === "tickets" && styles.tabBtnActive]}
           onPress={() => setTab("tickets")}
         >
-          <Ionicons name="ticket" size={16} color={tab === "tickets" ? "#fff" : Colors.light.text} />
+          <Ionicons name="ticket-outline" size={18} color={tab === "tickets" ? "#fff" : Colors.light.textSecondary} />
           <Text style={[styles.tabText, tab === "tickets" && styles.tabTextActive]}>Sell Tickets</Text>
         </Pressable>
         <Pressable
           style={[styles.tabBtn, tab === "payment" && styles.tabBtnActive]}
           onPress={() => setTab("payment")}
         >
-          <Ionicons name="card" size={16} color={tab === "payment" ? "#fff" : Colors.light.text} />
+          <Ionicons name="card-outline" size={18} color={tab === "payment" ? "#fff" : Colors.light.textSecondary} />
           <Text style={[styles.tabText, tab === "payment" && styles.tabTextActive]}>Take Payment</Text>
         </Pressable>
       </View>
@@ -270,6 +272,72 @@ function normaliseTicketSourceUrl(url: string): string {
 
 type Processor = "stripe" | "square";
 
+function ProcessorCard({
+  label,
+  hint,
+  iconName,
+  accent,
+  active,
+  ready,
+  onPress,
+}: {
+  label: string;
+  hint: string;
+  iconName: any;
+  accent: string;
+  active: boolean;
+  ready: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      style={[
+        styles.procCard,
+        active && { borderColor: accent, backgroundColor: accent + "0D", shadowColor: accent },
+        !ready && styles.procBtnDisabled,
+      ]}
+      disabled={!ready}
+      onPress={onPress}
+    >
+      <View style={[styles.procIconWrap, { backgroundColor: accent + "1A" }]}>
+        <Ionicons name={iconName} size={22} color={accent} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <View style={styles.procTitleRow}>
+          <Text style={[styles.procText, active && { color: accent }]}>{label}</Text>
+          {ready ? (
+            active && (
+              <View style={[styles.procBadge, { backgroundColor: accent }]}>
+                <Ionicons name="checkmark" size={11} color="#fff" />
+                <Text style={styles.procBadgeText}>Selected</Text>
+              </View>
+            )
+          ) : (
+            <View style={styles.procBadgeDim}>
+              <Text style={styles.procBadgeDimText}>Not connected</Text>
+            </View>
+          )}
+        </View>
+        <Text style={styles.procHint}>{hint}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function StatusBanner({ msg }: { msg: { type: "ok" | "err"; text: string } }) {
+  const ok = msg.type === "ok";
+  return (
+    <View style={[styles.banner, ok ? styles.bannerOk : styles.bannerErr]}>
+      <Ionicons
+        name={ok ? "checkmark-circle" : "alert-circle"}
+        size={20}
+        color={ok ? "#047857" : "#B91C1C"}
+      />
+      <Text style={[styles.bannerText, { color: ok ? "#065F46" : "#991B1B" }]}>{msg.text}</Text>
+    </View>
+  );
+}
+
 function PaymentTab({
   stripeConfigured,
   publishableKey,
@@ -321,35 +389,26 @@ function PaymentTab({
 
   return (
     <>
+      <Text style={styles.sectionLabel}>Choose payment processor</Text>
       <View style={styles.processorRow}>
-        <Pressable
-          style={[
-            styles.procBtn,
-            processor === "square" && styles.procBtnActive,
-            !squareReady && styles.procBtnDisabled,
-          ]}
-          disabled={!squareReady}
+        <ProcessorCard
+          label="Square"
+          hint="MOTO ready · phone payments"
+          iconName="phone-portrait-outline"
+          accent="#006AFF"
+          active={processor === "square"}
+          ready={squareReady}
           onPress={() => setProcessor("square")}
-        >
-          <Text style={[styles.procText, processor === "square" && styles.procTextActive]}>
-            Square{!squareReady ? " (not connected)" : ""}
-          </Text>
-          {squareReady && <Text style={styles.procHint}>MOTO ready · phone payments</Text>}
-        </Pressable>
-        <Pressable
-          style={[
-            styles.procBtn,
-            processor === "stripe" && styles.procBtnActive,
-            !stripeReady && styles.procBtnDisabled,
-          ]}
-          disabled={!stripeReady}
+        />
+        <ProcessorCard
+          label="Stripe"
+          hint="Standard online card"
+          iconName="card-outline"
+          accent="#635BFF"
+          active={processor === "stripe"}
+          ready={stripeReady}
           onPress={() => setProcessor("stripe")}
-        >
-          <Text style={[styles.procText, processor === "stripe" && styles.procTextActive]}>
-            Stripe{!stripeReady ? " (not connected)" : ""}
-          </Text>
-          {stripeReady && <Text style={styles.procHint}>Standard online card</Text>}
-        </Pressable>
+        />
       </View>
 
       {processor === "stripe" && stripeReady && (
@@ -491,21 +550,37 @@ function StripeForm({ publishableKey, onSuccess }: { publishableKey: string; onS
     }
   }
 
+  const amtPence = Math.round((parseFloat(amount) || 0) * 100);
+
   return (
     <View style={styles.formCard}>
-      <Text style={styles.formTitle}>Take a card payment</Text>
+      <View style={styles.formHeader}>
+        <View style={[styles.formIconWrap, { backgroundColor: "#635BFF1A" }]}>
+          <Ionicons name="card" size={20} color="#635BFF" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.formTitle}>Take a card payment</Text>
+          <Text style={styles.formSubtitle}>Powered by Stripe · processed securely</Text>
+        </View>
+      </View>
+
+      <View style={styles.divider} />
+      <Text style={styles.formSection}>Amount</Text>
 
       <View style={styles.row2}>
         <View style={styles.field}>
-          <Text style={styles.label}>Amount (£)</Text>
-          <TextInput
-            style={styles.input}
-            value={amount}
-            onChangeText={setAmount}
-            placeholder="0.00"
-            keyboardType="decimal-pad"
-            placeholderTextColor={Colors.light.textSecondary}
-          />
+          <Text style={styles.label}>Amount</Text>
+          <View style={styles.inputPrefixWrap}>
+            <Text style={styles.inputPrefix}>£</Text>
+            <TextInput
+              style={styles.inputPrefixed}
+              value={amount}
+              onChangeText={setAmount}
+              placeholder="0.00"
+              keyboardType="decimal-pad"
+              placeholderTextColor={Colors.light.textSecondary}
+            />
+          </View>
         </View>
         <View style={styles.field}>
           <Text style={styles.label}>Description / reference</Text>
@@ -519,17 +594,21 @@ function StripeForm({ publishableKey, onSuccess }: { publishableKey: string; onS
         </View>
       </View>
 
+      <View style={styles.divider} />
+      <Text style={styles.formSection}>Customer details (optional)</Text>
+
       <View style={styles.row2}>
         <View style={styles.field}>
-          <Text style={styles.label}>Customer name (optional)</Text>
-          <TextInput style={styles.input} value={customerName} onChangeText={setCustomerName} placeholderTextColor={Colors.light.textSecondary} />
+          <Text style={styles.label}>Name</Text>
+          <TextInput style={styles.input} value={customerName} onChangeText={setCustomerName} placeholder="Full name" placeholderTextColor={Colors.light.textSecondary} />
         </View>
         <View style={styles.field}>
-          <Text style={styles.label}>Email (optional, sends receipt)</Text>
+          <Text style={styles.label}>Email <Text style={styles.labelHint}>(sends receipt)</Text></Text>
           <TextInput
             style={styles.input}
             value={customerEmail}
             onChangeText={setCustomerEmail}
+            placeholder="name@example.com"
             keyboardType="email-address"
             autoCapitalize="none"
             placeholderTextColor={Colors.light.textSecondary}
@@ -538,19 +617,26 @@ function StripeForm({ publishableKey, onSuccess }: { publishableKey: string; onS
       </View>
 
       <View style={styles.field}>
-        <Text style={styles.label}>Phone (optional)</Text>
-        <TextInput style={styles.input} value={customerPhone} onChangeText={setCustomerPhone} keyboardType="phone-pad" placeholderTextColor={Colors.light.textSecondary} />
+        <Text style={styles.label}>Phone</Text>
+        <TextInput style={styles.input} value={customerPhone} onChangeText={setCustomerPhone} placeholder="07…" keyboardType="phone-pad" placeholderTextColor={Colors.light.textSecondary} />
       </View>
 
+      <View style={styles.divider} />
+      <Text style={styles.formSection}>Card</Text>
+
       <View style={styles.field}>
-        <Text style={styles.label}>Card details</Text>
         <View ref={formRef as any} style={styles.cardElementWrap}>
           {React.createElement("div" as any, {
             id: "payment-card-element",
-            style: { padding: "12px", background: "#fff", borderRadius: "6px", minHeight: 24 },
+            style: { padding: "14px", background: "#fff", borderRadius: "8px", minHeight: 24 },
           })}
         </View>
-        {!stripeReady && <Text style={styles.helperMuted}>Loading secure card field…</Text>}
+        {!stripeReady && (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator size="small" color={Colors.light.textSecondary} />
+            <Text style={styles.helperMuted}>Loading secure card field…</Text>
+          </View>
+        )}
       </View>
 
       <Pressable style={styles.checkRow} onPress={() => setMoto((v) => !v)}>
@@ -560,11 +646,7 @@ function StripeForm({ publishableKey, onSuccess }: { publishableKey: string; onS
         <Text style={styles.checkLabel}>This is a phone / mail order payment (MOTO)</Text>
       </Pressable>
 
-      {statusMsg && (
-        <Text style={[styles.statusMsg, statusMsg.type === "ok" ? styles.statusOk : styles.statusErr]}>
-          {statusMsg.text}
-        </Text>
-      )}
+      {statusMsg && <StatusBanner msg={statusMsg} />}
 
       <Pressable
         style={[styles.primaryBtn, (!stripeReady || submitting) && styles.primaryBtnDisabled]}
@@ -574,7 +656,12 @@ function StripeForm({ publishableKey, onSuccess }: { publishableKey: string; onS
         {submitting ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.primaryBtnText}>Charge card</Text>
+          <>
+            <Ionicons name="lock-closed" size={15} color="#fff" />
+            <Text style={styles.primaryBtnText}>
+              {amtPence >= 50 ? `Charge ${formatGBP(amtPence)}` : "Charge card"}
+            </Text>
+          </>
         )}
       </Pressable>
     </View>
@@ -714,25 +801,44 @@ function SquareForm({
     }
   }
 
+  const amtPence = Math.round((parseFloat(amount) || 0) * 100);
+
   return (
     <View style={styles.formCard}>
-      <Text style={styles.formTitle}>Take a card payment (Square)</Text>
-      <Text style={styles.helperMuted}>
-        Phone payments (MOTO) are processed at your Square MOTO rate when MOTO is enabled on your
-        account. No special toggle needed — Square detects card-not-present automatically.
-      </Text>
+      <View style={styles.formHeader}>
+        <View style={[styles.formIconWrap, { backgroundColor: "#006AFF1A" }]}>
+          <Ionicons name="phone-portrait" size={20} color="#006AFF" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.formTitle}>Take a card payment</Text>
+          <Text style={styles.formSubtitle}>Powered by Square · MOTO auto-detected</Text>
+        </View>
+      </View>
+
+      <View style={styles.infoNote}>
+        <Ionicons name="information-circle" size={16} color={Colors.brand.blue} />
+        <Text style={styles.infoNoteText}>
+          Phone payments are charged at your Square MOTO rate automatically — no toggle needed.
+        </Text>
+      </View>
+
+      <View style={styles.divider} />
+      <Text style={styles.formSection}>Amount</Text>
 
       <View style={styles.row2}>
         <View style={styles.field}>
-          <Text style={styles.label}>Amount (£)</Text>
-          <TextInput
-            style={styles.input}
-            value={amount}
-            onChangeText={setAmount}
-            placeholder="0.00"
-            keyboardType="decimal-pad"
-            placeholderTextColor={Colors.light.textSecondary}
-          />
+          <Text style={styles.label}>Amount</Text>
+          <View style={styles.inputPrefixWrap}>
+            <Text style={styles.inputPrefix}>£</Text>
+            <TextInput
+              style={styles.inputPrefixed}
+              value={amount}
+              onChangeText={setAmount}
+              placeholder="0.00"
+              keyboardType="decimal-pad"
+              placeholderTextColor={Colors.light.textSecondary}
+            />
+          </View>
         </View>
         <View style={styles.field}>
           <Text style={styles.label}>Description / reference</Text>
@@ -746,17 +852,21 @@ function SquareForm({
         </View>
       </View>
 
+      <View style={styles.divider} />
+      <Text style={styles.formSection}>Customer details (optional)</Text>
+
       <View style={styles.row2}>
         <View style={styles.field}>
-          <Text style={styles.label}>Customer name (optional)</Text>
-          <TextInput style={styles.input} value={customerName} onChangeText={setCustomerName} placeholderTextColor={Colors.light.textSecondary} />
+          <Text style={styles.label}>Name</Text>
+          <TextInput style={styles.input} value={customerName} onChangeText={setCustomerName} placeholder="Full name" placeholderTextColor={Colors.light.textSecondary} />
         </View>
         <View style={styles.field}>
-          <Text style={styles.label}>Email (optional, sends receipt)</Text>
+          <Text style={styles.label}>Email <Text style={styles.labelHint}>(sends receipt)</Text></Text>
           <TextInput
             style={styles.input}
             value={customerEmail}
             onChangeText={setCustomerEmail}
+            placeholder="name@example.com"
             keyboardType="email-address"
             autoCapitalize="none"
             placeholderTextColor={Colors.light.textSecondary}
@@ -765,26 +875,29 @@ function SquareForm({
       </View>
 
       <View style={styles.field}>
-        <Text style={styles.label}>Phone (optional)</Text>
-        <TextInput style={styles.input} value={customerPhone} onChangeText={setCustomerPhone} keyboardType="phone-pad" placeholderTextColor={Colors.light.textSecondary} />
+        <Text style={styles.label}>Phone</Text>
+        <TextInput style={styles.input} value={customerPhone} onChangeText={setCustomerPhone} placeholder="07…" keyboardType="phone-pad" placeholderTextColor={Colors.light.textSecondary} />
       </View>
 
+      <View style={styles.divider} />
+      <Text style={styles.formSection}>Card</Text>
+
       <View style={styles.field}>
-        <Text style={styles.label}>Card details</Text>
         <View style={styles.cardElementWrap}>
           {React.createElement("div" as any, {
             id: "square-card-element",
-            style: { padding: "12px", background: "#fff", borderRadius: "6px", minHeight: 56 },
+            style: { padding: "14px", background: "#fff", borderRadius: "8px", minHeight: 56 },
           })}
         </View>
-        {!sdkReady && <Text style={styles.helperMuted}>Loading secure card field…</Text>}
+        {!sdkReady && (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator size="small" color={Colors.light.textSecondary} />
+            <Text style={styles.helperMuted}>Loading secure card field…</Text>
+          </View>
+        )}
       </View>
 
-      {statusMsg && (
-        <Text style={[styles.statusMsg, statusMsg.type === "ok" ? styles.statusOk : styles.statusErr]}>
-          {statusMsg.text}
-        </Text>
-      )}
+      {statusMsg && <StatusBanner msg={statusMsg} />}
 
       <Pressable
         style={[styles.primaryBtn, (!sdkReady || submitting) && styles.primaryBtnDisabled]}
@@ -794,7 +907,12 @@ function SquareForm({
         {submitting ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.primaryBtnText}>Charge card</Text>
+          <>
+            <Ionicons name="lock-closed" size={15} color="#fff" />
+            <Text style={styles.primaryBtnText}>
+              {amtPence >= 50 ? `Charge ${formatGBP(amtPence)}` : "Charge card"}
+            </Text>
+          </>
         )}
       </Pressable>
     </View>
@@ -802,42 +920,69 @@ function SquareForm({
 }
 
 function PaymentLogTable({ logs, onRefresh }: { logs: PaymentLog[]; onRefresh: () => void }) {
+  // Today's totals (succeeded only)
+  const todayKey = new Date().toDateString();
+  const todaysSucceeded = logs.filter(
+    (l) => l.status === "succeeded" && new Date(l.createdAt).toDateString() === todayKey
+  );
+  const todaysTotal = todaysSucceeded.reduce((sum, l) => sum + l.amountPence, 0);
+  const todaysCount = todaysSucceeded.length;
+
   return (
-    <View style={[styles.card, { marginTop: 16 }]}>
+    <View style={styles.logCard}>
       <View style={styles.logHeader}>
-        <Text style={styles.cardTitle}>Recent payments</Text>
-        <Pressable onPress={onRefresh} style={styles.iconBtn}>
-          <Ionicons name="refresh" size={18} color={Colors.light.text} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.cardTitle}>Recent payments</Text>
+          <Text style={styles.logSummary}>
+            {todaysCount === 0
+              ? "No payments today yet"
+              : `${todaysCount} payment${todaysCount === 1 ? "" : "s"} today · ${formatGBP(
+                  todaysTotal
+                )}`}
+          </Text>
+        </View>
+        <Pressable onPress={onRefresh} style={styles.refreshBtn}>
+          <Ionicons name="refresh" size={16} color={Colors.brand.blue} />
+          <Text style={styles.refreshBtnText}>Refresh</Text>
         </Pressable>
       </View>
       {logs.length === 0 ? (
-        <Text style={styles.cardSub}>No payments yet.</Text>
+        <View style={styles.emptyState}>
+          <Ionicons name="receipt-outline" size={32} color={Colors.light.textSecondary} />
+          <Text style={styles.cardSub}>No payments yet.{"\n"}Take a payment above to get started.</Text>
+        </View>
       ) : (
-        logs.slice(0, 25).map((log) => (
-          <View key={log.id} style={styles.logRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.logAmount}>{formatGBP(log.amountPence)}</Text>
-              <Text style={styles.logDesc}>{log.description}</Text>
-              <Text style={styles.logMeta}>
-                {formatDate(log.createdAt)}
-                {log.customerName ? " · " + log.customerName : ""}
-                {log.staffDisplayName ? " · " + log.staffDisplayName : ""}
-              </Text>
+        logs.slice(0, 25).map((log) => {
+          const isOk = log.status === "succeeded";
+          const isFail = log.status === "failed";
+          const pillStyle = isOk ? styles.pillOk : isFail ? styles.pillErr : styles.pillPending;
+          const pillTextStyle = isOk ? styles.pillTextOk : isFail ? styles.pillTextErr : styles.pillTextPending;
+          return (
+            <View key={log.id} style={styles.logRow}>
+              <View style={[styles.logIconCol, isOk ? styles.logIconOk : isFail ? styles.logIconErr : styles.logIconPending]}>
+                <Ionicons
+                  name={isOk ? "checkmark" : isFail ? "close" : "time"}
+                  size={16}
+                  color={isOk ? "#047857" : isFail ? "#B91C1C" : "#92400E"}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={styles.logTopRow}>
+                  <Text style={styles.logAmount}>{formatGBP(log.amountPence)}</Text>
+                  <View style={[styles.statusPill, pillStyle]}>
+                    <Text style={[styles.statusPillText, pillTextStyle]}>{log.status}</Text>
+                  </View>
+                </View>
+                <Text style={styles.logDesc} numberOfLines={1}>{log.description}</Text>
+                <Text style={styles.logMeta}>
+                  {formatDate(log.createdAt)}
+                  {log.customerName ? " · " + log.customerName : ""}
+                  {log.staffDisplayName ? " · " + log.staffDisplayName : ""}
+                </Text>
+              </View>
             </View>
-            <View
-              style={[
-                styles.statusPill,
-                log.status === "succeeded"
-                  ? styles.pillOk
-                  : log.status === "failed"
-                  ? styles.pillErr
-                  : styles.pillPending,
-              ]}
-            >
-              <Text style={styles.statusPillText}>{log.status}</Text>
-            </View>
-          </View>
-        ))
+          );
+        })
       )}
     </View>
   );
@@ -845,24 +990,26 @@ function PaymentLogTable({ logs, onRefresh }: { logs: PaymentLog[]; onRefresh: (
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 },
-  title: { fontSize: 22, fontWeight: "700", color: Colors.light.text },
+  header: { flexDirection: "row", alignItems: "center", marginBottom: 20, gap: 4 },
+  title: { fontSize: 24, fontWeight: "700", color: Colors.light.text, letterSpacing: -0.3 },
+  subtitle: { fontSize: 13, color: Colors.light.textSecondary, marginTop: 2 },
   iconBtn: { padding: 6, borderRadius: 8 },
-  tabsRow: { flexDirection: "row", gap: 8, marginBottom: 16 },
+  tabsRow: { flexDirection: "row", gap: 8, marginBottom: 20, padding: 4, backgroundColor: Colors.light.surface, borderRadius: 10, borderWidth: 1, borderColor: Colors.light.border },
   tabBtn: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 6,
     paddingVertical: 10,
     paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: Colors.light.surface,
-    borderWidth: 1,
-    borderColor: Colors.light.border,
+    borderRadius: 7,
+    backgroundColor: "transparent",
   },
-  tabBtnActive: { backgroundColor: Colors.brand.blue, borderColor: Colors.brand.blue },
-  tabText: { color: Colors.light.text, fontWeight: "600", fontSize: 14 },
+  tabBtnActive: { backgroundColor: Colors.brand.blue },
+  tabText: { color: Colors.light.textSecondary, fontWeight: "600", fontSize: 14 },
   tabTextActive: { color: "#fff" },
+  sectionLabel: { fontSize: 12, fontWeight: "700", color: Colors.light.textSecondary, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8, marginLeft: 2 },
   card: {
     backgroundColor: Colors.light.surface,
     borderRadius: 12,
@@ -887,33 +1034,61 @@ const styles = StyleSheet.create({
   linkBtnText: { color: Colors.brand.blue, fontSize: 13, fontWeight: "600" },
   formCard: {
     backgroundColor: Colors.light.surface,
-    borderRadius: 12,
-    padding: 20,
+    borderRadius: 14,
+    padding: 22,
     borderWidth: 1,
     borderColor: Colors.light.border,
-    gap: 12,
+    gap: 14,
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
-  formTitle: { fontSize: 16, fontWeight: "700", color: Colors.light.text, marginBottom: 4 },
-  processorRow: { flexDirection: "row", gap: 10, marginBottom: 12 },
-  procBtn: {
+  formHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
+  formIconWrap: { width: 40, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  formTitle: { fontSize: 17, fontWeight: "700", color: Colors.light.text },
+  formSubtitle: { fontSize: 12, color: Colors.light.textSecondary, marginTop: 2 },
+  formSection: { fontSize: 11, fontWeight: "700", color: Colors.light.textSecondary, textTransform: "uppercase", letterSpacing: 0.5 },
+  divider: { height: 1, backgroundColor: Colors.light.border, marginVertical: 2 },
+  infoNote: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: "#EFF6FF",
+    borderRadius: 8,
+    padding: 10,
+  },
+  infoNoteText: { flex: 1, fontSize: 12, color: "#1E3A8A", lineHeight: 17 },
+  processorRow: { flexDirection: Platform.OS === "web" ? "row" : "column", gap: 10, marginBottom: 16 },
+  procCard: {
     flex: 1,
-    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 14,
     paddingHorizontal: 14,
-    borderRadius: 10,
+    borderRadius: 12,
     backgroundColor: Colors.light.surface,
     borderWidth: 1.5,
     borderColor: Colors.light.border,
-    alignItems: "center",
-    gap: 2,
+    shadowOpacity: 0,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
   },
-  procBtnActive: { borderColor: Colors.brand.blue, backgroundColor: "#EFF6FF" },
-  procBtnDisabled: { opacity: 0.45 },
-  procText: { fontSize: 14, fontWeight: "700", color: Colors.light.text },
-  procTextActive: { color: Colors.brand.blue },
-  procHint: { fontSize: 11, color: Colors.light.textSecondary },
+  procIconWrap: { width: 38, height: 38, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  procTitleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6 },
+  procBtnDisabled: { opacity: 0.5 },
+  procText: { fontSize: 15, fontWeight: "700", color: Colors.light.text },
+  procHint: { fontSize: 12, color: Colors.light.textSecondary, marginTop: 2 },
+  procBadge: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10 },
+  procBadgeText: { fontSize: 10, fontWeight: "700", color: "#fff", textTransform: "uppercase", letterSpacing: 0.4 },
+  procBadgeDim: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10, backgroundColor: "#F1F5F9" },
+  procBadgeDimText: { fontSize: 10, fontWeight: "700", color: Colors.light.textSecondary, textTransform: "uppercase", letterSpacing: 0.4 },
   row2: { flexDirection: Platform.OS === "web" ? "row" : "column", gap: 12 },
   field: { flex: 1, gap: 6 },
   label: { fontSize: 13, fontWeight: "600", color: Colors.light.text },
+  labelHint: { fontWeight: "400", color: Colors.light.textSecondary, fontSize: 12 },
   input: {
     borderWidth: 1,
     borderColor: Colors.light.border,
@@ -924,18 +1099,30 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.light.text,
   },
+  inputPrefixWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    borderRadius: 8,
+    backgroundColor: "#fff",
+    overflow: "hidden",
+  },
+  inputPrefix: { paddingLeft: 12, paddingRight: 4, fontSize: 16, fontWeight: "600", color: Colors.light.textSecondary },
+  inputPrefixed: { flex: 1, paddingHorizontal: 8, paddingVertical: 10, fontSize: 16, color: Colors.light.text, fontWeight: "600" },
   cardElementWrap: {
     borderWidth: 1,
     borderColor: Colors.light.border,
     borderRadius: 8,
     backgroundColor: "#fff",
   },
-  helperMuted: { fontSize: 12, color: Colors.light.textSecondary, marginTop: 4 },
-  checkRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 4 },
+  helperMuted: { fontSize: 12, color: Colors.light.textSecondary },
+  loadingRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 },
+  checkRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 6 },
   checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
+    width: 22,
+    height: 22,
+    borderRadius: 5,
     borderWidth: 1.5,
     borderColor: Colors.light.border,
     alignItems: "center",
@@ -944,35 +1131,59 @@ const styles = StyleSheet.create({
   },
   checkboxOn: { backgroundColor: Colors.brand.blue, borderColor: Colors.brand.blue },
   checkLabel: { fontSize: 14, color: Colors.light.text, flex: 1 },
-  statusMsg: { fontSize: 14, fontWeight: "600", textAlign: "center", paddingVertical: 4 },
-  statusOk: { color: "#059669" },
-  statusErr: { color: "#dc2626" },
+  banner: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, borderRadius: 10, borderWidth: 1 },
+  bannerOk: { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0" },
+  bannerErr: { backgroundColor: "#FEF2F2", borderColor: "#FECACA" },
+  bannerText: { flex: 1, fontSize: 13, fontWeight: "600", lineHeight: 18 },
   primaryBtn: {
+    flexDirection: "row",
     backgroundColor: Colors.brand.blue,
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 20,
-    borderRadius: 8,
+    borderRadius: 10,
     alignItems: "center",
-    marginTop: 8,
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 4,
   },
   primaryBtnDisabled: { opacity: 0.5 },
   primaryBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
-  logHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", width: "100%", marginBottom: 8 },
+  logCard: {
+    backgroundColor: Colors.light.surface,
+    borderRadius: 14,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    marginTop: 16,
+  },
+  logHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", width: "100%", marginBottom: 12 },
+  logSummary: { fontSize: 12, color: Colors.light.textSecondary, marginTop: 3 },
+  refreshBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: "#EFF6FF", borderWidth: 1, borderColor: "#DBEAFE" },
+  refreshBtnText: { fontSize: 13, fontWeight: "600", color: Colors.brand.blue },
+  emptyState: { alignItems: "center", paddingVertical: 32, gap: 10 },
   logRow: {
     flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
+    alignItems: "flex-start",
+    paddingVertical: 12,
     borderTopWidth: 1,
     borderTopColor: Colors.light.border,
     width: "100%",
-    gap: 10,
+    gap: 12,
   },
-  logAmount: { fontSize: 15, fontWeight: "700", color: Colors.light.text },
-  logDesc: { fontSize: 13, color: Colors.light.text, marginTop: 2 },
-  logMeta: { fontSize: 12, color: Colors.light.textSecondary, marginTop: 2 },
-  statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  logIconCol: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", marginTop: 2 },
+  logIconOk: { backgroundColor: "#D1FAE5" },
+  logIconErr: { backgroundColor: "#FEE2E2" },
+  logIconPending: { backgroundColor: "#FEF3C7" },
+  logTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  logAmount: { fontSize: 16, fontWeight: "700", color: Colors.light.text },
+  logDesc: { fontSize: 13, color: Colors.light.text, marginTop: 3 },
+  logMeta: { fontSize: 12, color: Colors.light.textSecondary, marginTop: 3 },
+  statusPill: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12 },
   pillOk: { backgroundColor: "#D1FAE5" },
   pillErr: { backgroundColor: "#FEE2E2" },
   pillPending: { backgroundColor: "#FEF3C7" },
-  statusPillText: { fontSize: 11, fontWeight: "700", textTransform: "uppercase", color: "#065F46" },
+  statusPillText: { fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 },
+  pillTextOk: { color: "#065F46" },
+  pillTextErr: { color: "#991B1B" },
+  pillTextPending: { color: "#92400E" },
 });
