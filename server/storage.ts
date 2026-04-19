@@ -1252,6 +1252,48 @@ export class DatabaseStorage implements IStorage {
     return sub;
   }
 
+  // Pending memberships that need a payment reminder email.
+  // Returns subs that have been pending >= remindAfterHours and have not yet had a reminder sent.
+  async getPendingMembershipsNeedingReminder(remindAfterHours: number): Promise<(MembershipSubscription & { customer: Customer | null; plan: MembershipPlan | null })[]> {
+    const cutoff = new Date(Date.now() - remindAfterHours * 60 * 60 * 1000);
+    const rows = await db.select().from(membershipSubscriptions)
+      .where(and(
+        eq(membershipSubscriptions.status, "pending"),
+        isNull(membershipSubscriptions.paymentReminderSentAt),
+        lte(membershipSubscriptions.createdAt, cutoff),
+      ));
+    const out: (MembershipSubscription & { customer: Customer | null; plan: MembershipPlan | null })[] = [];
+    for (const sub of rows) {
+      const [customer] = await db.select().from(customers).where(eq(customers.id, sub.customerId));
+      const [plan] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, sub.planId));
+      out.push({ ...sub, customer: customer ?? null, plan: plan ?? null });
+    }
+    return out;
+  }
+
+  // Pending memberships old enough to auto-cancel (payment never completed).
+  async getPendingMembershipsToAutoCancel(maxAgeHours: number): Promise<(MembershipSubscription & { customer: Customer | null; plan: MembershipPlan | null })[]> {
+    const cutoff = new Date(Date.now() - maxAgeHours * 60 * 60 * 1000);
+    const rows = await db.select().from(membershipSubscriptions)
+      .where(and(
+        eq(membershipSubscriptions.status, "pending"),
+        lte(membershipSubscriptions.createdAt, cutoff),
+      ));
+    const out: (MembershipSubscription & { customer: Customer | null; plan: MembershipPlan | null })[] = [];
+    for (const sub of rows) {
+      const [customer] = await db.select().from(customers).where(eq(customers.id, sub.customerId));
+      const [plan] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, sub.planId));
+      out.push({ ...sub, customer: customer ?? null, plan: plan ?? null });
+    }
+    return out;
+  }
+
+  async markMembershipReminderSent(id: number): Promise<void> {
+    await db.update(membershipSubscriptions)
+      .set({ paymentReminderSentAt: new Date() } as any)
+      .where(eq(membershipSubscriptions.id, id));
+  }
+
   async getMembershipStats(): Promise<{ total: number; active: number; paused: number; cancelled: number; mrr: number }> {
     const all = await db.select().from(membershipSubscriptions);
     const active = all.filter(s => s.status === "active");

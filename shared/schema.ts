@@ -314,6 +314,7 @@ export const membershipSubscriptions = pgTable("membership_subscriptions", {
   hoursUsedThisPeriod: integer("hours_used_this_period").notNull().default(0),
   guestPassesUsed: integer("guest_passes_used").notNull().default(0),
   failedPaymentAttempts: integer("failed_payment_attempts").notNull().default(0),
+  paymentReminderSentAt: timestamp("payment_reminder_sent_at"),
   cancelledAt: timestamp("cancelled_at"),
   staffNotes: text("staff_notes"),
   source: text("source").notNull().default("staff"),
