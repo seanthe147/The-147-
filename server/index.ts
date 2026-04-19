@@ -586,6 +586,138 @@ function scheduleOrderExpiry() {
   setInterval(runExpiry, 15 * 60 * 1000);
 }
 
+function scheduleMembershipPaymentReminders() {
+  const REMIND_AFTER_HOURS = 24;
+  const CANCEL_AFTER_HOURS = 72;
+  const SITE_URL = "https://the147bradford.replit.app";
+
+  function buildTransport() {
+    const smtpHost = process.env.SMTP_HOST;
+    const smtpUser = process.env.SMTP_USER;
+    const smtpPass = process.env.SMTP_PASS?.replace(/\s+/g, "");
+    const smtpPort = parseInt(process.env.SMTP_PORT || "587");
+    if (!smtpHost || !smtpUser || !smtpPass) return null;
+    return {
+      transporter: nodemailer.createTransport({
+        host: smtpHost, port: smtpPort, secure: smtpPort === 465,
+        auth: { user: smtpUser, pass: smtpPass },
+        tls: { rejectUnauthorized: false },
+      }),
+      from: `"The 147" <${smtpUser}>`,
+    };
+  }
+
+  async function runReminders() {
+    try {
+      const { storage: store } = await import("./storage");
+      const due = await store.getPendingMembershipsNeedingReminder(REMIND_AFTER_HOURS);
+      if (!due.length) return;
+      const mail = buildTransport();
+      for (const sub of due) {
+        const customer = sub.customer;
+        const plan = sub.plan;
+        if (!customer?.email) {
+          // Can't email — still mark as reminded so we don't keep retrying
+          await store.markMembershipReminderSent(sub.id);
+          continue;
+        }
+        if (mail) {
+          try {
+            await mail.transporter.sendMail({
+              from: mail.from,
+              to: customer.email,
+              subject: `Finish setting up your ${plan?.name ?? "membership"} at The 147`,
+              html: `
+                <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
+                  <div style="background:#111827;padding:24px 32px;border-radius:8px 8px 0 0">
+                    <h1 style="color:#fff;margin:0;font-size:22px">The 147 Bradford</h1>
+                  </div>
+                  <div style="background:#fff;padding:32px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
+                    <h2 style="margin:0 0 16px">Your membership signup is incomplete</h2>
+                    <p style="margin:0 0 12px">Hi ${customer.name},</p>
+                    <p style="margin:0 0 12px">We noticed you started signing up for the <strong>${plan?.name ?? "membership"}</strong> plan at The 147 Bradford but didn't finish your payment.</p>
+                    <p style="margin:0 0 24px">Tap the button below to complete your signup and start enjoying member benefits:</p>
+                    <p style="margin:0 0 24px;text-align:center">
+                      <a href="${SITE_URL}/membership" style="display:inline-block;background:#0047AB;color:#fff;padding:14px 28px;border-radius:8px;font-weight:700;text-decoration:none">Complete My Membership</a>
+                    </p>
+                    <p style="margin:0 0 12px;color:#6b7280;font-size:13px">If you no longer wish to join, you can ignore this email — your incomplete signup will be cancelled automatically in a couple of days.</p>
+                    <p style="margin:24px 0 0;color:#6b7280;font-size:13px">The 147 Bradford &bull; Snooker &amp; Dining</p>
+                  </div>
+                </div>`,
+            });
+            log(`[MembershipReminder] Sent payment reminder to ${customer.email} for sub #${sub.id}`);
+          } catch (emailErr) {
+            console.error(`[MembershipReminder] Email failed for sub #${sub.id}:`, emailErr);
+            continue; // don't mark sent — try again next cycle
+          }
+        }
+        await store.markMembershipReminderSent(sub.id);
+      }
+    } catch (err) {
+      console.error("[MembershipReminder] Scheduler error:", err);
+    }
+  }
+
+  async function runAutoCancel() {
+    try {
+      const { storage: store } = await import("./storage");
+      const stale = await store.getPendingMembershipsToAutoCancel(CANCEL_AFTER_HOURS);
+      if (!stale.length) return;
+      const mail = buildTransport();
+      for (const sub of stale) {
+        try {
+          await store.updateMembershipSubscription(sub.id, {
+            status: "cancelled",
+            cancelledAt: new Date(),
+            staffNotes: (sub.staffNotes ? sub.staffNotes + "\n" : "") +
+              `Auto-cancelled — payment not completed within ${CANCEL_AFTER_HOURS}h of signup.`,
+          } as any);
+          log(`[MembershipAutoCancel] Cancelled sub #${sub.id} — payment not completed in ${CANCEL_AFTER_HOURS}h`);
+
+          const customer = sub.customer;
+          const plan = sub.plan;
+          if (mail && customer?.email) {
+            try {
+              await mail.transporter.sendMail({
+                from: mail.from,
+                to: customer.email,
+                subject: `Your membership signup at The 147 has been cancelled`,
+                html: `
+                  <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
+                    <div style="background:#111827;padding:24px 32px;border-radius:8px 8px 0 0">
+                      <h1 style="color:#fff;margin:0;font-size:22px">The 147 Bradford</h1>
+                    </div>
+                    <div style="background:#fff;padding:32px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
+                      <h2 style="margin:0 0 16px;color:#DC2626">Signup Cancelled</h2>
+                      <p style="margin:0 0 12px">Hi ${customer.name},</p>
+                      <p style="margin:0 0 12px">Your incomplete signup for the <strong>${plan?.name ?? "membership"}</strong> plan has been cancelled because no payment was received.</p>
+                      <p style="margin:0 0 24px">No charge has been made. If you'd still like to join, you're welcome to sign up again at any time:</p>
+                      <p style="margin:0 0 24px;text-align:center">
+                        <a href="${SITE_URL}/membership" style="display:inline-block;background:#0047AB;color:#fff;padding:14px 28px;border-radius:8px;font-weight:700;text-decoration:none">View Membership Plans</a>
+                      </p>
+                      <p style="margin:24px 0 0;color:#6b7280;font-size:13px">The 147 Bradford &bull; Snooker &amp; Dining</p>
+                    </div>
+                  </div>`,
+              });
+            } catch (emailErr) {
+              console.error(`[MembershipAutoCancel] Cancellation email failed for sub #${sub.id}:`, emailErr);
+            }
+          }
+        } catch (err) {
+          console.error(`[MembershipAutoCancel] Failed for sub #${sub.id}:`, err);
+        }
+      }
+    } catch (err) {
+      console.error("[MembershipAutoCancel] Scheduler error:", err);
+    }
+  }
+
+  // Run shortly after startup, then on regular intervals
+  setTimeout(() => { runReminders(); runAutoCancel(); }, 60 * 1000);
+  setInterval(runReminders, 30 * 60 * 1000);   // every 30 min
+  setInterval(runAutoCancel, 60 * 60 * 1000);  // every 1 hour
+}
+
 function scheduleRetentionCleanup() {
   // Run data retention cleanup immediately on startup, then every 24 hours
   // This ensures the 12-month anonymisation policy and session cleanup run automatically
@@ -701,6 +833,8 @@ function scheduleRetentionCleanup() {
   scheduleDepositAutoCancel();
   // Expire abandoned app orders (never paid within 30 minutes)
   scheduleOrderExpiry();
+  // Remind pending memberships at 24h and auto-cancel at 72h if payment never completed
+  scheduleMembershipPaymentReminders();
 })().catch((err) => {
   console.error("FATAL SERVER ERROR:", err);
   process.exit(1);
