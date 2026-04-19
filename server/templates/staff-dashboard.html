@@ -6399,9 +6399,21 @@
     }catch(e){if(e.message!=='Session expired')toast('Network error','error')}
   });
 
-  /* ── Close overlays on backdrop click ── */
+  /* ── Close overlays on backdrop click (only when both press AND release land on the backdrop) ── */
+  /* Using mousedown+mouseup avoids closing when the user starts a click inside a field, drags
+     slightly while selecting text, or releases over the overlay (e.g. native select menus). */
   document.querySelectorAll('.overlay').forEach(o=>{
-    o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open')});
+    let downOnBackdrop=false;
+    o.addEventListener('mousedown',e=>{downOnBackdrop=(e.target===o)});
+    o.addEventListener('mouseup',e=>{
+      if(downOnBackdrop && e.target===o) o.classList.remove('open');
+      downOnBackdrop=false;
+    });
+    o.addEventListener('touchstart',e=>{downOnBackdrop=(e.target===o)},{passive:true});
+    o.addEventListener('touchend',e=>{
+      if(downOnBackdrop && e.target===o) o.classList.remove('open');
+      downOnBackdrop=false;
+    },{passive:true});
   });
 
   /* ── Events & Payments page ── */
