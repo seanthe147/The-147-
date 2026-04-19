@@ -449,6 +449,67 @@ function friendlySquareError(errorCode: string | null | undefined, fallbackMsg: 
   return { text: fallbackMsg || "Card charge failed", hint: "Re-check every field. If it still fails, ask for a different card." };
 }
 
+// ─── Hero amount input with quick-pick chips ────────────────────────────────
+const QUICK_AMOUNTS = [10, 20, 50, 100];
+
+function AmountHero({
+  amount,
+  onAmount,
+  description,
+  onDescription,
+}: {
+  amount: string;
+  onAmount: (v: string) => void;
+  description: string;
+  onDescription: (v: string) => void;
+}) {
+  return (
+    <View style={styles.amountHero}>
+      <Text style={styles.amountHeroLabel}>Amount to charge</Text>
+      <View style={styles.amountHeroRow}>
+        <Text style={styles.amountHeroPrefix}>£</Text>
+        <TextInput
+          style={styles.amountHeroInput}
+          value={amount}
+          onChangeText={onAmount}
+          placeholder="0.00"
+          keyboardType="decimal-pad"
+          placeholderTextColor="#CBD5E1"
+        />
+      </View>
+      <View style={styles.quickRow}>
+        {QUICK_AMOUNTS.map((q) => {
+          const active = parseFloat(amount) === q;
+          return (
+            <Pressable
+              key={q}
+              onPress={() => onAmount(q.toFixed(2))}
+              style={[styles.quickChip, active && styles.quickChipActive]}
+            >
+              <Text style={[styles.quickChipText, active && styles.quickChipTextActive]}>£{q}</Text>
+            </Pressable>
+          );
+        })}
+        {amount !== "" && (
+          <Pressable onPress={() => onAmount("")} style={styles.quickClear}>
+            <Ionicons name="close" size={14} color={Colors.light.textSecondary} />
+          </Pressable>
+        )}
+      </View>
+      <View style={[styles.field, { marginTop: 12 }]}>
+        <Text style={styles.label}>What's this for?</Text>
+        <TextInput
+          style={styles.input}
+          value={description}
+          onChangeText={onDescription}
+          placeholder="e.g. Booking deposit – Smith"
+          placeholderTextColor={Colors.light.textSecondary}
+        />
+      </View>
+    </View>
+  );
+}
+
 function StatusBanner({ msg }: { msg: StatusMsg }) {
   const ok = msg.type === "ok";
   return (
@@ -518,8 +579,10 @@ function PaymentTab({
     );
   }
 
-  return (
-    <>
+  const isWide = Platform.OS === "web" && typeof window !== "undefined" && window.innerWidth >= 1024;
+
+  const formCol = (
+    <View style={{ flex: isWide ? 1.4 : undefined, minWidth: 0 }}>
       <Text style={styles.sectionLabel}>Choose payment processor</Text>
       <View style={styles.processorRow}>
         <ProcessorCard
@@ -553,8 +616,59 @@ function PaymentTab({
           onSuccess={onRefresh}
         />
       )}
+    </View>
+  );
+
+  const logCol = (
+    <View style={{ flex: isWide ? 1 : undefined, minWidth: 0 }}>
+      <PaymentStats logs={logs} />
       <PaymentLogTable logs={logs} onRefresh={onRefresh} />
-    </>
+    </View>
+  );
+
+  return (
+    <View style={{ flexDirection: isWide ? "row" : "column", gap: 20, alignItems: "flex-start" }}>
+      {formCol}
+      {logCol}
+    </View>
+  );
+}
+
+// ─── Stats row at the top of the payment log column ──────────────────────────
+function PaymentStats({ logs }: { logs: PaymentLog[] }) {
+  const now = new Date();
+  const todayKey = now.toDateString();
+  const weekStart = new Date(now);
+  weekStart.setDate(now.getDate() - 6);
+  weekStart.setHours(0, 0, 0, 0);
+
+  let todayPence = 0, todayCount = 0, weekPence = 0, weekCount = 0;
+  for (const l of logs) {
+    if (l.status !== "succeeded") continue;
+    const d = new Date(l.createdAt);
+    if (d.toDateString() === todayKey) {
+      todayPence += l.amountPence;
+      todayCount += 1;
+    }
+    if (d >= weekStart) {
+      weekPence += l.amountPence;
+      weekCount += 1;
+    }
+  }
+
+  return (
+    <View style={styles.statsRow}>
+      <View style={[styles.statCard, styles.statCardPrimary]}>
+        <Text style={styles.statLabel}>Today</Text>
+        <Text style={styles.statValue}>{formatGBP(todayPence)}</Text>
+        <Text style={styles.statSub}>{todayCount} payment{todayCount === 1 ? "" : "s"}</Text>
+      </View>
+      <View style={styles.statCard}>
+        <Text style={styles.statLabel}>Last 7 days</Text>
+        <Text style={styles.statValueSmall}>{formatGBP(weekPence)}</Text>
+        <Text style={styles.statSub}>{weekCount} payment{weekCount === 1 ? "" : "s"}</Text>
+      </View>
+    </View>
   );
 }
 
