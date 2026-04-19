@@ -5912,44 +5912,95 @@
 
     if(subs.length===0){
       html+=`<div class="empty-state"><div class="empty-icon">🪙</div><div class="empty-title">No members yet</div><div class="empty-desc">Members added here will appear in this list. The subscription service is not yet live for customers.</div></div>`;
-    }else{
-      html+=`<div class="staff-grid">`;
-      subs.forEach(sub=>{
-        const cust=sub.customer;
-        const plan=sub.plan;
-        const initials=cust?cust.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase():'?';
-        const planColor=plan?plan.color:'#888';
-        const statusClass=STATUS_COLORS[sub.status]||'pill-gray';
-        const statusLabel=STATUS_LABELS[sub.status]||sub.status;
-        html+=`<div class="staff-card">
-          <div class="staff-avatar" style="background:${esc(planColor)}">${esc(initials)}</div>
-          <div class="staff-info">
-            <div class="staff-name-row">
-              <span class="staff-name">${esc(cust?cust.name:'Unknown')}</span>
-              <span class="pill ${statusClass}">${statusLabel}</span>
-              ${plan?`<span class="pill" style="background:${esc(plan.color)}22;color:${esc(plan.color)}">${esc(plan.name)}</span>`:''}
-            </div>
-            <div class="staff-username">${esc(cust?cust.email:'')} ${cust&&cust.phone?'· '+esc(cust.phone):''}</div>
-            <div class="staff-joined">Joined ${new Date(sub.createdAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}
-              ${sub.currentPeriodEnd?' · Renews '+new Date(sub.currentPeriodEnd).toLocaleDateString('en-GB',{day:'numeric',month:'short'}):''}
-              ${plan&&plan.hoursIncluded?' · '+sub.hoursUsedThisPeriod+'/'+plan.hoursIncluded+' hrs used ('+(plan.hoursUnit==='year'?'yr':'mo')+')':''}
-              ${sub.staffNotes?'<br><em style="color:var(--text-2)">'+esc(sub.staffNotes)+'</em>':''}
-            </div>
-          </div>
-          <div class="staff-actions">
-            ${isManager
-              ? `<button class="btn btn-primary btn-sm" onclick="window.openManageSubModal(${sub.id})">Manage</button>`
-              : `${sub.status==='active'?`<button class="btn btn-secondary btn-sm" onclick="window.pauseMember(${sub.id})">Pause</button>`:''}
-                 ${sub.status==='paused'?`<button class="btn btn-secondary btn-sm" onclick="window.resumeMember(${sub.id})">Resume</button>`:''}
-                 ${sub.status!=='cancelled'?`<button class="btn btn-danger btn-sm" onclick="window.cancelMember(${sub.id})">Cancel</button>`:''}
-                 <button class="btn btn-secondary btn-sm" onclick="window.openMemberNoteModal(${sub.id})">Note</button>`
-            }
-          </div>
-        </div>`;
-      });
-      html+=`</div>`;
+      el('membershipsContent').innerHTML=html;
+      return;
     }
+
+    /* Filter tabs — default to Active so cancelled members are hidden by default */
+    const counts={
+      active:subs.filter(s=>s.status==='active').length,
+      paused:subs.filter(s=>s.status==='paused').length,
+      pending:subs.filter(s=>s.status==='pending'||s.status==='pending_payment'||s.status==='past_due').length,
+      cancelled:subs.filter(s=>s.status==='cancelled').length,
+      all:subs.length,
+    };
+    const tabs=[
+      {key:'active',label:'Active',count:counts.active},
+      {key:'paused',label:'Paused',count:counts.paused},
+      {key:'pending',label:'Pending',count:counts.pending},
+      {key:'cancelled',label:'Cancelled',count:counts.cancelled},
+      {key:'all',label:'All',count:counts.all},
+    ];
+    html+=`<div id="memberTabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:10px">`;
+    tabs.forEach(t=>{
+      html+=`<button class="member-tab" data-tab="${t.key}" style="background:transparent;border:1px solid var(--border);color:var(--text-2);padding:6px 12px;border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+        ${t.label}<span style="background:var(--bg2);color:var(--text-2);padding:1px 7px;border-radius:999px;font-size:11px;font-weight:800">${t.count}</span>
+      </button>`;
+    });
+    html+=`</div><div id="memberListContainer"></div>`;
     el('membershipsContent').innerHTML=html;
+
+    function cardHtml(sub){
+      const cust=sub.customer;
+      const plan=sub.plan;
+      const initials=cust?cust.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase():'?';
+      const planColor=plan?plan.color:'#888';
+      const statusClass=STATUS_COLORS[sub.status]||'pill-gray';
+      const statusLabel=STATUS_LABELS[sub.status]||sub.status;
+      return `<div class="staff-card">
+        <div class="staff-avatar" style="background:${esc(planColor)}">${esc(initials)}</div>
+        <div class="staff-info">
+          <div class="staff-name-row">
+            <span class="staff-name">${esc(cust?cust.name:'Unknown')}</span>
+            <span class="pill ${statusClass}">${statusLabel}</span>
+            ${plan?`<span class="pill" style="background:${esc(plan.color)}22;color:${esc(plan.color)}">${esc(plan.name)}</span>`:''}
+          </div>
+          <div class="staff-username">${esc(cust?cust.email:'')} ${cust&&cust.phone?'· '+esc(cust.phone):''}</div>
+          <div class="staff-joined">Joined ${new Date(sub.createdAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}
+            ${sub.currentPeriodEnd?' · Renews '+new Date(sub.currentPeriodEnd).toLocaleDateString('en-GB',{day:'numeric',month:'short'}):''}
+            ${plan&&plan.hoursIncluded?' · '+sub.hoursUsedThisPeriod+'/'+plan.hoursIncluded+' hrs used ('+(plan.hoursUnit==='year'?'yr':'mo')+')':''}
+            ${sub.staffNotes?'<br><em style="color:var(--text-2)">'+esc(sub.staffNotes)+'</em>':''}
+          </div>
+        </div>
+        <div class="staff-actions">
+          ${isManager
+            ? `<button class="btn btn-primary btn-sm" onclick="window.openManageSubModal(${sub.id})">Manage</button>`
+            : `${sub.status==='active'?`<button class="btn btn-secondary btn-sm" onclick="window.pauseMember(${sub.id})">Pause</button>`:''}
+               ${sub.status==='paused'?`<button class="btn btn-secondary btn-sm" onclick="window.resumeMember(${sub.id})">Resume</button>`:''}
+               ${sub.status!=='cancelled'?`<button class="btn btn-danger btn-sm" onclick="window.cancelMember(${sub.id})">Cancel</button>`:''}
+               <button class="btn btn-secondary btn-sm" onclick="window.openMemberNoteModal(${sub.id})">Note</button>`
+          }
+        </div>
+      </div>`;
+    }
+
+    function paint(tab){
+      let filtered;
+      if(tab==='all')filtered=subs;
+      else if(tab==='pending')filtered=subs.filter(s=>s.status==='pending'||s.status==='pending_payment'||s.status==='past_due');
+      else filtered=subs.filter(s=>s.status===tab);
+      const c=el('memberListContainer');
+      if(filtered.length===0){
+        c.innerHTML=`<div class="empty-state" style="padding:30px"><div class="empty-title" style="font-size:14px">No ${tab==='all'?'members':tab+' members'}</div></div>`;
+      }else{
+        c.innerHTML='<div class="staff-grid">'+filtered.map(cardHtml).join('')+'</div>';
+      }
+      document.querySelectorAll('#memberTabs .member-tab').forEach(b=>{
+        const on=b.dataset.tab===tab;
+        b.style.background=on?'var(--blue)':'transparent';
+        b.style.color=on?'#fff':'var(--text-2)';
+        b.style.borderColor=on?'var(--blue)':'var(--border)';
+      });
+      try{localStorage.setItem('membershipTab',tab)}catch(_){}
+    }
+
+    document.querySelectorAll('#memberTabs .member-tab').forEach(b=>{
+      b.addEventListener('click',()=>paint(b.dataset.tab));
+    });
+
+    let initial='active';
+    try{const saved=localStorage.getItem('membershipTab');if(saved&&tabs.some(t=>t.key===saved))initial=saved;}catch(_){}
+    paint(initial);
   }
 
   /* ── Create / Edit Plan ── */
