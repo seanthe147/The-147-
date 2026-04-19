@@ -448,6 +448,14 @@ function DashboardScreen() {
           {!isManager && Platform.OS === "web" && (
             <>
               <AdminTool
+                icon="card"
+                title="Take Payment"
+                description="Take a card payment for a booking or sale"
+                color="#0EA5E9"
+                onPress={() => router.push("/admin-events-payments")}
+                testID="portal-take-payment"
+              />
+              <AdminTool
                 icon="calendar"
                 title="Bookings"
                 description="View and manage table bookings"

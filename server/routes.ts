@@ -1114,7 +1114,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   };
   const isEmail = (s: string) => /^[^\s@]{1,80}@[^\s@]{1,80}\.[^\s@]{1,40}$/.test(s);
 
-  app.get("/api/staff/payments/config", staffAuth, managerAuth, async (_req, res) => {
+  app.get("/api/staff/payments/config", staffAuth, async (_req, res) => {
     res.json({
       stripeConfigured: isStripeConfigured(),
       publishableKey: getPublishableKey(),
@@ -1129,7 +1129,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Square: take a card payment using a tokenised source from the Web Payments SDK
-  app.post("/api/staff/payments/square/charge", staffAuth, managerAuth, async (req, res) => {
+  app.post("/api/staff/payments/square/charge", staffAuth, async (req, res) => {
     if (!square.isWebPaymentsConfigured()) {
       return res.status(503).json({ message: "Square Web Payments is not configured. Add SQUARE_APPLICATION_ID, SQUARE_ACCESS_TOKEN, and SQUARE_LOC_ID." });
     }
@@ -1231,7 +1231,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/staff/payments/create-intent", staffAuth, managerAuth, async (req, res) => {
+  app.post("/api/staff/payments/create-intent", staffAuth, async (req, res) => {
     if (!isStripeConfigured()) {
       return res.status(503).json({ message: "Stripe is not configured. Please add STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY." });
     }
@@ -1307,7 +1307,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Server-verified finalize — fetches the real PaymentIntent from Stripe.
   // Client-supplied status is ignored; truth comes from Stripe.
-  app.post("/api/staff/payments/finalize", staffAuth, managerAuth, async (req, res) => {
+  app.post("/api/staff/payments/finalize", staffAuth, async (req, res) => {
     if (!isStripeConfigured()) return res.status(503).json({ message: "Stripe not configured" });
     const piId = trim(req.body?.paymentIntentId, 120);
     if (!piId || !/^pi_[A-Za-z0-9_]+$/.test(piId)) return res.status(400).json({ message: "Invalid paymentIntentId" });

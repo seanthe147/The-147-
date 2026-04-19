@@ -1080,6 +1080,10 @@
             .pay-stat-light{background:#fff;color:var(--text);border-color:var(--border)}
             .pay-stat-light .pay-stat-label{color:var(--text-2)}
             .pay-stat-light .pay-stat-sub{color:var(--text-2)}
+            /* Hide payment reporting from non-managers */
+            body.role-staff-only #payStatsRow,
+            body.role-staff-only #payRecentTxCard{display:none !important}
+            body.role-staff-only .pay-grid{grid-template-columns:minmax(0,520px)}
           </style>
 
           <div class="pay-grid">
@@ -1142,7 +1146,7 @@
                 </div>
               </div>
 
-              <div class="pay-card" style="min-width:0">
+              <div class="pay-card" id="payRecentTxCard" style="min-width:0">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
                   <div style="font-size:15px;font-weight:700">Recent transactions</div>
                   <button class="btn btn-secondary btn-sm" onclick="loadPaymentLog()">Refresh</button>
@@ -2488,7 +2492,9 @@
     el('navMenu').classList.toggle('hidden',!isManager);
     el('navBanners').classList.toggle('hidden',!isManager);
     el('navOffers').classList.toggle('hidden',!isManager);
-    el('navPayments').classList.toggle('hidden',!isManager);
+    // Take Payment is available to all staff; reporting is hidden inside the page for non-managers
+    el('navPayments').classList.remove('hidden');
+    document.body.classList.toggle('role-staff-only',!isManager);
     el('navGDPR').classList.toggle('hidden',!isManager);
     el('navSettings').classList.toggle('hidden',!isManager);
     el('navSectionAccount').classList.toggle('hidden',!isManager);
@@ -6407,7 +6413,7 @@
     el('payTabBtnPay').classList.toggle('active',t==='pay');
     el('payTabTickets').style.display=t==='tickets'?'':'none';
     el('payTabPay').style.display=t==='pay'?'':'none';
-    if(t==='pay'){loadPaymentLog();ensureStripeMounted();}
+    if(t==='pay'){if(!document.body.classList.contains('role-staff-only'))loadPaymentLog();ensureStripeMounted();}
   }
   window.switchPayTab=switchPayTab;
 
@@ -6420,7 +6426,7 @@
     renderTicketsTab();
     el('payStripeMissing').style.display=payState.config.stripeConfigured?'none':'block';
     el('payChargeBtn').disabled=!payState.config.stripeConfigured;
-    if(payState.activeTab==='pay'){loadPaymentLog();ensureStripeMounted();}
+    if(payState.activeTab==='pay'){if(!document.body.classList.contains('role-staff-only'))loadPaymentLog();ensureStripeMounted();}
   }
 
   function renderTicketsTab(){

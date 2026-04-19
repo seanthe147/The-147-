@@ -69,7 +69,7 @@ export default function AdminEventsPaymentsScreen() {
 
   const { data: config, isLoading: cfgLoading } = useQuery<PaymentConfig>({
     queryKey: ["/api/staff/payments/config"],
-    enabled: isAuthenticated && isManager,
+    enabled: isAuthenticated,
     staleTime: 0,
     refetchOnMount: "always",
     refetchOnWindowFocus: true,
@@ -78,26 +78,13 @@ export default function AdminEventsPaymentsScreen() {
   const { data: logs, refetch: refetchLogs } = useQuery<PaymentLog[]>({
     queryKey: ["/api/staff/payments/log"],
     enabled: isAuthenticated && isManager && tab === "payment",
-    refetchInterval: tab === "payment" ? 15000 : false,
+    refetchInterval: isManager && tab === "payment" ? 15000 : false,
   });
 
   if (authLoading || !isAuthenticated) {
     return (
       <View style={[styles.center, { paddingTop: insets.top + webTopInset }]}>
         <ActivityIndicator />
-      </View>
-    );
-  }
-
-  if (!isManager) {
-    return (
-      <View style={[styles.center, { paddingTop: insets.top + webTopInset }]}>
-        <Ionicons name="lock-closed" size={48} color={Colors.light.textSecondary} />
-        <Text style={styles.lockTitle}>Manager access required</Text>
-        <Text style={styles.lockSub}>Only managers and owners can take payments.</Text>
-        <Pressable style={styles.backBtn} onPress={() => router.back()}>
-          <Text style={styles.backBtnText}>Go back</Text>
-        </Pressable>
       </View>
     );
   }
@@ -137,26 +124,28 @@ export default function AdminEventsPaymentsScreen() {
         </View>
       </View>
 
-      <View style={styles.tabsRow}>
-        <Pressable
-          style={[styles.tabBtn, tab === "tickets" && styles.tabBtnActive]}
-          onPress={() => setTab("tickets")}
-        >
-          <Ionicons name="ticket-outline" size={18} color={tab === "tickets" ? "#fff" : Colors.light.textSecondary} />
-          <Text style={[styles.tabText, tab === "tickets" && styles.tabTextActive]}>Sell Tickets</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.tabBtn, tab === "payment" && styles.tabBtnActive]}
-          onPress={() => setTab("payment")}
-        >
-          <Ionicons name="card-outline" size={18} color={tab === "payment" ? "#fff" : Colors.light.textSecondary} />
-          <Text style={[styles.tabText, tab === "payment" && styles.tabTextActive]}>Take Payment</Text>
-        </Pressable>
-      </View>
+      {isManager && (
+        <View style={styles.tabsRow}>
+          <Pressable
+            style={[styles.tabBtn, tab === "tickets" && styles.tabBtnActive]}
+            onPress={() => setTab("tickets")}
+          >
+            <Ionicons name="ticket-outline" size={18} color={tab === "tickets" ? "#fff" : Colors.light.textSecondary} />
+            <Text style={[styles.tabText, tab === "tickets" && styles.tabTextActive]}>Sell Tickets</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.tabBtn, tab === "payment" && styles.tabBtnActive]}
+            onPress={() => setTab("payment")}
+          >
+            <Ionicons name="card-outline" size={18} color={tab === "payment" ? "#fff" : Colors.light.textSecondary} />
+            <Text style={[styles.tabText, tab === "payment" && styles.tabTextActive]}>Take Payment</Text>
+          </Pressable>
+        </View>
+      )}
 
       {cfgLoading ? (
         <ActivityIndicator style={{ marginTop: 24 }} />
-      ) : tab === "tickets" ? (
+      ) : isManager && tab === "tickets" ? (
         <TicketsTab boxOfficeUrl={config?.boxOfficeUrl || ""} />
       ) : (
         <PaymentTab
@@ -165,6 +154,7 @@ export default function AdminEventsPaymentsScreen() {
           square={config?.square}
           logs={logs || []}
           onRefresh={refetchLogs}
+          showReporting={isManager}
         />
       )}
     </ScrollView>
@@ -552,12 +542,14 @@ function PaymentTab({
   square,
   logs,
   onRefresh,
+  showReporting = true,
 }: {
   stripeConfigured: boolean;
   publishableKey: string | null;
   square?: PaymentConfig["square"];
   logs: PaymentLog[];
   onRefresh: () => void;
+  showReporting?: boolean;
 }) {
   const squareReady = !!(square?.configured && square.applicationId && square.locationId);
   // Default: Square if configured (recommended for MOTO), else Stripe
@@ -590,12 +582,12 @@ function PaymentTab({
             (SQUARE_APPLICATION_ID, SQUARE_ACCESS_TOKEN, SQUARE_LOC_ID) to enable card payments.
           </Text>
         </View>
-        <PaymentLogTable logs={logs} onRefresh={onRefresh} />
+        {showReporting && <PaymentLogTable logs={logs} onRefresh={onRefresh} />}
       </>
     );
   }
 
-  const isWide = Platform.OS === "web" && typeof window !== "undefined" && window.innerWidth >= 1024;
+  const isWide = showReporting && Platform.OS === "web" && typeof window !== "undefined" && window.innerWidth >= 1024;
 
   const formCol = (
     <View style={{ flex: isWide ? 1.4 : undefined, minWidth: 0 }}>
@@ -635,12 +627,12 @@ function PaymentTab({
     </View>
   );
 
-  const logCol = (
+  const logCol = showReporting ? (
     <View style={{ flex: isWide ? 1 : undefined, minWidth: 0 }}>
       <PaymentStats logs={logs} />
       <PaymentLogTable logs={logs} onRefresh={onRefresh} />
     </View>
-  );
+  ) : null;
 
   return (
     <View style={{ flexDirection: isWide ? "row" : "column", gap: 20, alignItems: "flex-start" }}>
