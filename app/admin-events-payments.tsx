@@ -810,35 +810,12 @@ function StripeForm({ publishableKey, onSuccess }: { publishableKey: string; onS
         </View>
       </View>
 
-      <View style={styles.divider} />
-      <Text style={styles.formSection}>Amount</Text>
-
-      <View style={styles.row2}>
-        <View style={styles.field}>
-          <Text style={styles.label}>Amount</Text>
-          <View style={styles.inputPrefixWrap}>
-            <Text style={styles.inputPrefix}>£</Text>
-            <TextInput
-              style={styles.inputPrefixed}
-              value={amount}
-              onChangeText={setAmount}
-              placeholder="0.00"
-              keyboardType="decimal-pad"
-              placeholderTextColor={Colors.light.textSecondary}
-            />
-          </View>
-        </View>
-        <View style={styles.field}>
-          <Text style={styles.label}>Description / reference</Text>
-          <TextInput
-            style={styles.input}
-            value={description}
-            onChangeText={setDescription}
-            placeholder="e.g. Booking deposit – Smith"
-            placeholderTextColor={Colors.light.textSecondary}
-          />
-        </View>
-      </View>
+      <AmountHero
+        amount={amount}
+        onAmount={setAmount}
+        description={description}
+        onDescription={setDescription}
+      />
 
       <View style={styles.divider} />
       <Text style={styles.formSection}>Customer details (optional)</Text>
@@ -1072,35 +1049,12 @@ function SquareForm({
         </Text>
       </View>
 
-      <View style={styles.divider} />
-      <Text style={styles.formSection}>Amount</Text>
-
-      <View style={styles.row2}>
-        <View style={styles.field}>
-          <Text style={styles.label}>Amount</Text>
-          <View style={styles.inputPrefixWrap}>
-            <Text style={styles.inputPrefix}>£</Text>
-            <TextInput
-              style={styles.inputPrefixed}
-              value={amount}
-              onChangeText={setAmount}
-              placeholder="0.00"
-              keyboardType="decimal-pad"
-              placeholderTextColor={Colors.light.textSecondary}
-            />
-          </View>
-        </View>
-        <View style={styles.field}>
-          <Text style={styles.label}>Description / reference</Text>
-          <TextInput
-            style={styles.input}
-            value={description}
-            onChangeText={setDescription}
-            placeholder="e.g. Booking deposit – Smith"
-            placeholderTextColor={Colors.light.textSecondary}
-          />
-        </View>
-      </View>
+      <AmountHero
+        amount={amount}
+        onAmount={setAmount}
+        description={description}
+        onDescription={setDescription}
+      />
 
       <View style={styles.divider} />
       <Text style={styles.formSection}>Customer details (optional)</Text>
@@ -1386,6 +1340,124 @@ const styles = StyleSheet.create({
   bannerErr: { backgroundColor: "#FEF2F2", borderColor: "#FECACA" },
   bannerText: { fontSize: 14, fontWeight: "700", lineHeight: 19 },
   bannerHint: { fontSize: 13, fontWeight: "500", lineHeight: 18, marginTop: 4, opacity: 0.9 },
+
+  amountHero: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 14,
+    padding: 18,
+    marginTop: 18,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  amountHeroLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: Colors.light.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 6,
+  },
+  amountHeroRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  amountHeroPrefix: {
+    fontSize: 40,
+    fontWeight: "700",
+    color: Colors.light.text,
+  },
+  amountHeroInput: {
+    flex: 1,
+    fontSize: 44,
+    fontWeight: "700",
+    color: Colors.light.text,
+    paddingVertical: 4,
+    ...(Platform.OS === "web" ? ({ outlineStyle: "none" } as any) : {}),
+  },
+  quickRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 10,
+    alignItems: "center",
+  },
+  quickChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+  },
+  quickChipActive: {
+    backgroundColor: Colors.brand.blue,
+    borderColor: Colors.brand.blue,
+  },
+  quickChipText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: Colors.light.text,
+  },
+  quickChipTextActive: {
+    color: "#fff",
+  },
+  quickClear: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+
+  statsRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 4,
+    marginBottom: 14,
+  },
+  statCard: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+  },
+  statCardPrimary: {
+    backgroundColor: Colors.brand.blue,
+    borderColor: Colors.brand.blue,
+  },
+  statLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    color: "rgba(255,255,255,0.85)",
+    marginBottom: 6,
+  },
+  statValue: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: "#fff",
+    letterSpacing: -0.5,
+  },
+  statValueSmall: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: Colors.light.text,
+    letterSpacing: -0.5,
+  },
+  statSub: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.85)",
+    marginTop: 2,
+  },
+
   primaryBtn: {
     flexDirection: "row",
     backgroundColor: Colors.brand.blue,
