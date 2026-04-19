@@ -193,33 +193,75 @@ function TicketsTab({ boxOfficeUrl }: { boxOfficeUrl: string }) {
     );
   }
 
-  // TicketSource blocks embedding their storefront in iframes for security,
-  // so we present a prominent launch button instead of trying to embed it.
+  // TicketSource's *widget* URLs (widgets.ticketsource.co.uk / box-office paths)
+  // are explicitly embeddable. The plain storefront URL (www.ticketsource.com/...)
+  // is blocked from iframes by their X-Frame-Options header. We try to embed
+  // either way; if the URL turns out to be the storefront variant the user can
+  // still use the "Open in new tab" link below.
+  const embedUrl = normaliseTicketSourceUrl(boxOfficeUrl);
+  const openExternal = () => {
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      window.open(boxOfficeUrl, "_blank", "noopener,noreferrer");
+    } else {
+      const Linking = require("react-native").Linking;
+      Linking.openURL(boxOfficeUrl);
+    }
+  };
+
   return (
-    <View style={[styles.card, { marginTop: 8 }]}>
-      <Ionicons name="ticket" size={40} color={Colors.brand.blue} />
-      <Text style={styles.cardTitle}>TicketSource Box Office</Text>
-      <Text style={styles.cardSub}>
-        TicketSource opens in a new tab — log in there to sell tickets, take payment and check
-        attendees. (Their site can't be embedded inside other apps for security.)
+    <View style={{ marginTop: 8 }}>
+      <View style={styles.iframeBar}>
+        <Text style={styles.iframeLabel}>TicketSource Box Office</Text>
+        <Pressable onPress={openExternal} style={styles.openExternalBtn}>
+          <Ionicons name="open-outline" size={14} color={Colors.brand.blue} />
+          <Text style={styles.openExternalText}>Open in new tab</Text>
+        </Pressable>
+      </View>
+      {React.createElement("iframe" as any, {
+        src: embedUrl,
+        style: {
+          display: "block",
+          width: "100%",
+          height: "calc(100vh - 240px)",
+          minHeight: 520,
+          border: "1px solid " + Colors.light.border,
+          borderRadius: 8,
+          background: "#fff",
+        },
+        allow: "payment *",
+        title: "TicketSource Box Office",
+      })}
+      <Text style={[styles.helperMuted, { marginTop: 8, textAlign: "center" }]}>
+        If the box office doesn't load below, click "Open in new tab".
       </Text>
-      <View style={{ height: 4 }} />
-      <Pressable
-        style={[styles.primaryBtn, { paddingHorizontal: 28 }]}
-        onPress={() => {
-          if (Platform.OS === "web" && typeof window !== "undefined") {
-            window.open(boxOfficeUrl, "_blank", "noopener,noreferrer");
-          } else {
-            const Linking = require("react-native").Linking;
-            Linking.openURL(boxOfficeUrl);
-          }
-        }}
-      >
-        <Text style={styles.primaryBtnText}>Open Box Office</Text>
-      </Pressable>
-      <Text style={[styles.helperMuted, { marginTop: 12, textAlign: "center" }]}>{boxOfficeUrl}</Text>
     </View>
   );
+}
+
+// Convert common TicketSource storefront URLs to their embeddable widget form
+// where possible. Widget paths under widgets.ticketsource.co.uk and the
+// /box-office/<org> path on www.ticketsource.co.uk are iframe-friendly; the
+// plain /<org> storefront page sends X-Frame-Options and cannot be embedded.
+function normaliseTicketSourceUrl(url: string): string {
+  if (!url) return url;
+  try {
+    const u = new URL(url);
+    const host = u.host.toLowerCase();
+    // Already an embeddable widget URL — leave alone
+    if (host.startsWith("widgets.ticketsource")) return url;
+    if (u.pathname.startsWith("/box-office/")) return url;
+    // Storefront URL like https://www.ticketsource.com/the147 → try /box-office/the147
+    if (host.endsWith("ticketsource.com") || host.endsWith("ticketsource.co.uk")) {
+      const segments = u.pathname.split("/").filter(Boolean);
+      if (segments.length >= 1) {
+        const org = segments[0];
+        return `https://www.ticketsource.co.uk/box-office/${org}`;
+      }
+    }
+  } catch {
+    /* fall through */
+  }
+  return url;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -838,6 +880,8 @@ const styles = StyleSheet.create({
   backBtn: { marginTop: 16, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8, backgroundColor: Colors.brand.blue },
   backBtnText: { color: "#fff", fontWeight: "600" },
   iframeBar: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+  openExternalBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4 },
+  openExternalText: { fontSize: 13, fontWeight: "600", color: Colors.brand.blue },
   iframeLabel: { fontSize: 13, fontWeight: "600", color: Colors.light.textSecondary },
   linkBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 4, paddingHorizontal: 8 },
   linkBtnText: { color: Colors.brand.blue, fontSize: 13, fontWeight: "600" },
