@@ -1054,15 +1054,54 @@
             Add your Stripe keys to the project secrets as <code>STRIPE_PUBLISHABLE_KEY</code> and <code>STRIPE_SECRET_KEY</code>, then restart the server. The form below is disabled until Stripe is connected.
           </div>
 
-          <div style="display:grid;grid-template-columns:minmax(0,420px) 1fr;gap:24px;align-items:start">
-            <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px">
-              <div style="font-size:15px;font-weight:700;margin-bottom:14px">Take Card Payment</div>
-              <form id="payForm" onsubmit="return submitPayment(event)">
-                <label class="lbl">Amount (£)</label>
-                <input class="inp" type="number" id="payAmount" min="0.50" step="0.01" required placeholder="0.00">
+          <style>
+            .pay-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:24px;align-items:start}
+            @media (max-width:1023px){.pay-grid{grid-template-columns:1fr}}
+            .pay-card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:20px}
+            .pay-card-title{font-size:15px;font-weight:700;margin-bottom:16px;color:var(--text)}
+            .amount-hero{background:linear-gradient(180deg,#F8FAFC 0%,#FFFFFF 100%);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:16px}
+            .amount-hero-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-2);margin-bottom:8px}
+            .amount-hero-row{display:flex;align-items:baseline;gap:6px;margin-bottom:14px}
+            .amount-hero-prefix{font-size:32px;font-weight:600;color:var(--text-2)}
+            .amount-hero-input{font-size:44px;font-weight:700;border:0;outline:0;background:transparent;width:100%;padding:0;color:var(--text);font-family:inherit;line-height:1.1;letter-spacing:-1px}
+            .amount-hero-input::placeholder{color:#CBD5E1}
+            .quick-row{display:flex;gap:8px;flex-wrap:wrap}
+            .quick-chip{padding:8px 16px;border:1.5px solid var(--border);border-radius:999px;background:#fff;font-size:13px;font-weight:700;font-family:inherit;color:var(--text);cursor:pointer;transition:all .12s}
+            .quick-chip:hover{border-color:var(--blue);color:var(--blue)}
+            .quick-chip.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+            .quick-clear{padding:8px 12px;border:1.5px solid var(--border);border-radius:999px;background:#fff;color:var(--text-2);cursor:pointer;font-family:inherit;font-size:13px;line-height:1}
+            .quick-clear:hover{border-color:var(--red);color:var(--red)}
+            .pay-stats-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+            .pay-stat{border-radius:14px;padding:16px 18px;border:1px solid transparent}
+            .pay-stat .pay-stat-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px;opacity:.85}
+            .pay-stat .pay-stat-value{font-size:26px;font-weight:700;line-height:1.1;letter-spacing:-.5px}
+            .pay-stat .pay-stat-sub{font-size:12px;margin-top:4px;opacity:.75}
+            .pay-stat-primary{background:var(--blue);color:#fff;border-color:var(--blue)}
+            .pay-stat-light{background:#fff;color:var(--text);border-color:var(--border)}
+            .pay-stat-light .pay-stat-label{color:var(--text-2)}
+            .pay-stat-light .pay-stat-sub{color:var(--text-2)}
+          </style>
 
-                <label class="lbl">Description / reference</label>
-                <input class="inp" type="text" id="payDesc" maxlength="200" required placeholder="e.g. Table 4 deposit, Snooker membership">
+          <div class="pay-grid">
+            <div class="pay-card">
+              <div class="pay-card-title">Take Card Payment</div>
+              <form id="payForm" onsubmit="return submitPayment(event)">
+                <div class="amount-hero">
+                  <div class="amount-hero-label">Amount to charge</div>
+                  <div class="amount-hero-row">
+                    <span class="amount-hero-prefix">£</span>
+                    <input class="amount-hero-input" type="number" id="payAmount" min="0.50" step="0.01" required placeholder="0.00" inputmode="decimal" oninput="syncQuickChips()">
+                  </div>
+                  <div class="quick-row" id="payQuickRow">
+                    <button type="button" class="quick-chip" data-quick="10" onclick="setQuickAmount(10)">£10</button>
+                    <button type="button" class="quick-chip" data-quick="20" onclick="setQuickAmount(20)">£20</button>
+                    <button type="button" class="quick-chip" data-quick="50" onclick="setQuickAmount(50)">£50</button>
+                    <button type="button" class="quick-chip" data-quick="100" onclick="setQuickAmount(100)">£100</button>
+                    <button type="button" class="quick-clear" id="payQuickClear" onclick="setQuickAmount('')" style="display:none">✕</button>
+                  </div>
+                  <label class="lbl" style="margin-top:14px">What's this for?</label>
+                  <input class="inp" type="text" id="payDesc" maxlength="200" required placeholder="e.g. Booking deposit – Smith" style="margin-bottom:0">
+                </div>
 
                 <label class="lbl">Customer name</label>
                 <input class="inp" type="text" id="payName" maxlength="120" placeholder="Optional">
@@ -1089,13 +1128,28 @@
               </form>
             </div>
 
-            <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px;min-width:0">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-                <div style="font-size:15px;font-weight:700">Recent transactions</div>
-                <button class="btn btn-secondary btn-sm" onclick="loadPaymentLog()">Refresh</button>
+            <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+              <div class="pay-stats-row" id="payStatsRow">
+                <div class="pay-stat pay-stat-primary">
+                  <div class="pay-stat-label">Today</div>
+                  <div class="pay-stat-value" id="payStatToday">£0.00</div>
+                  <div class="pay-stat-sub" id="payStatTodaySub">0 payments</div>
+                </div>
+                <div class="pay-stat pay-stat-light">
+                  <div class="pay-stat-label">Last 7 days</div>
+                  <div class="pay-stat-value" id="payStatWeek">£0.00</div>
+                  <div class="pay-stat-sub" id="payStatWeekSub">0 payments</div>
+                </div>
               </div>
-              <div id="payLogWrap" style="overflow-x:auto">
-                <div style="color:var(--text-2);font-size:13px;padding:24px;text-align:center">Loading…</div>
+
+              <div class="pay-card" style="min-width:0">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                  <div style="font-size:15px;font-weight:700">Recent transactions</div>
+                  <button class="btn btn-secondary btn-sm" onclick="loadPaymentLog()">Refresh</button>
+                </div>
+                <div id="payLogWrap" style="overflow-x:auto">
+                  <div style="color:var(--text-2);font-size:13px;padding:24px;text-align:center">Loading…</div>
+                </div>
               </div>
             </div>
           </div>
@@ -6479,12 +6533,45 @@
   }
   window.submitPayment=submitPayment;
 
+  function setQuickAmount(v){
+    const inp=el('payAmount');if(!inp)return;
+    inp.value=v===''?'':Number(v).toFixed(2);
+    syncQuickChips();
+  }
+  function syncQuickChips(){
+    const inp=el('payAmount');if(!inp)return;
+    const v=parseFloat(inp.value);
+    document.querySelectorAll('#payQuickRow .quick-chip').forEach(c=>{
+      c.classList.toggle('active',Number(c.dataset.quick)===v);
+    });
+    const clr=el('payQuickClear');if(clr)clr.style.display=inp.value?'':'none';
+  }
+  window.setQuickAmount=setQuickAmount;
+  window.syncQuickChips=syncQuickChips;
+
+  function renderPayStats(rows){
+    const today=new Date();const todayKey=today.toDateString();
+    const weekStart=new Date(today);weekStart.setDate(today.getDate()-6);weekStart.setHours(0,0,0,0);
+    let tP=0,tC=0,wP=0,wC=0;
+    for(const r of rows){
+      if(r.status!=='succeeded')continue;
+      const d=new Date(r.createdAt);
+      if(d.toDateString()===todayKey){tP+=r.amountPence;tC++;}
+      if(d>=weekStart){wP+=r.amountPence;wC++;}
+    }
+    const fmt=(p)=>'£'+(p/100).toFixed(2);
+    const set=(id,v)=>{const e=el(id);if(e)e.textContent=v;};
+    set('payStatToday',fmt(tP));set('payStatTodaySub',tC+' payment'+(tC===1?'':'s'));
+    set('payStatWeek',fmt(wP));set('payStatWeekSub',wC+' payment'+(wC===1?'':'s'));
+  }
+
   async function loadPaymentLog(){
     const wrap=el('payLogWrap');
     try{
       const r=await api('/api/staff/payments/log');
       if(!r.ok)throw new Error('Failed');
       const rows=await r.json();
+      renderPayStats(rows);
       if(!rows.length){wrap.innerHTML='<div style="color:var(--text-2);font-size:13px;padding:24px;text-align:center">No payments yet</div>';return;}
       const fmt=(p)=>'£'+(p/100).toFixed(2);
       const fmtDate=(s)=>{const d=new Date(s);return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})};
