@@ -5704,24 +5704,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(204).send();
   });
 
-  // Publish rota + send push notifications to all staff with shifts that week
+  // Publish rota + send personalised push notifications to each staff member
+  // who has shifts that week. Each person sees their own shifts on the lock screen.
   app.post("/api/hr/rota/publish", staffAuth, managerAuth, async (req: any, res) => {
     const { weekStart } = req.body;
     if (!weekStart) return res.status(400).json({ message: "weekStart required" });
     const publishedBy = req.staffUser?.username || null;
     const published = await storage.publishRota(weekStart, publishedBy);
-    // Get all staff IDs that have shifts this week
+
+    // Group shifts by staff member so each gets a tailored push body
     const shifts = await storage.getRotaShifts(weekStart);
-    const staffIds = [...new Set(shifts.map((s: any) => s.staffId))];
+    const shiftsByStaff = new Map<number, typeof shifts>();
+    for (const s of shifts) {
+      const list = shiftsByStaff.get(s.staffId) || [];
+      list.push(s);
+      shiftsByStaff.set(s.staffId, list);
+    }
+
+    const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    function summariseShifts(staffShifts: typeof shifts): string {
+      // Sort by day then start time
+      const sorted = [...staffShifts].sort((a, b) =>
+        a.dayOfWeek - b.dayOfWeek || a.shiftStart.localeCompare(b.shiftStart)
+      );
+      const parts = sorted.map(s => `${dayNames[s.dayOfWeek] ?? "?"} ${s.shiftStart}–${s.shiftEnd}`);
+      let summary = parts.join(", ");
+      // Lock-screen previews truncate around 150 chars — keep it tidy
+      if (summary.length > 140) summary = summary.slice(0, 137) + "…";
+      return summary;
+    }
+
+    const staffIds = [...shiftsByStaff.keys()];
     const tokens = await storage.getStaffPushTokens(staffIds);
+
     let notified = 0;
     if (tokens.length > 0) {
-      const tokenStrings = tokens.map((t: any) => t.token);
-      const messages = tokenStrings.map((to: string) => ({
-        to, sound: "default" as const,
-        title: "Your Rota Has Been Published",
-        body: `The rota for the week of ${weekStart} has been published. Check the app to see your shifts.`,
-      }));
+      const messages = tokens.map((t: any) => {
+        const personShifts = shiftsByStaff.get(t.staffId) || [];
+        const summary = summariseShifts(personShifts);
+        const count = personShifts.length;
+        const body = count === 1
+          ? `You're working ${summary}. Tap to view.`
+          : `Your ${count} shifts: ${summary}`;
+        return {
+          to: t.token,
+          sound: "default" as const,
+          title: "Your Rota Has Been Published",
+          body,
+        };
+      });
       try {
         const r = await fetch("https://exp.host/--/api/v2/push/send", {
           method: "POST",
