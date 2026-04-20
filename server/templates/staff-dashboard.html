@@ -5716,6 +5716,7 @@
       const subs=await subsR.json();
       membershipsData={plans,subs};
       renderMemberships(stats,plans,subs);
+      if(state.role==='owner')loadWixMigration();
     }catch(e){
       if(e.message!=='Session expired')el('membershipsContent').innerHTML='<div class="empty-state"><div class="empty-title">Failed to load memberships</div></div>';
     }
@@ -5847,6 +5848,11 @@
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-top:4px">Cancelled</div>
         </div>
       </div>`;
+
+    const isOwnerRole=state.role==='owner';
+    if(isOwnerRole){
+      html+=`<div id="wixMigrationPanel" style="margin-bottom:24px"></div>`;
+    }
 
     if(isManager){
       const allHaveSquareIds=plans.length>0&&plans.every(p=>p.squarePlanVariationId);
@@ -6779,6 +6785,164 @@
     }catch(e){wrap.innerHTML='<div style="color:var(--red);font-size:13px;padding:24px;text-align:center">Failed to load payments</div>';}
   }
   window.loadPaymentLog=loadPaymentLog;
+
+  /* ── Wix → Square Migration (owner only) ── */
+  async function loadWixMigration(){
+    const panel=el('wixMigrationPanel');if(!panel)return;
+    try{
+      const r=await fetch('/api/staff/wix-migration/status',{headers:{Authorization:'Bearer '+getToken()}});
+      if(!r.ok)throw 0;
+      const {stats,list}=await r.json();
+      renderWixMigrationPanel(stats,list);
+    }catch(e){panel.innerHTML='';}
+  }
+  function renderWixMigrationPanel(stats,list){
+    const panel=el('wixMigrationPanel');
+    const empty=stats.total===0;
+    const headerColor='#7C3AED';
+    let html='<div class="settings-section" style="margin:0;border-left:4px solid '+headerColor+'">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">'+
+        '<div>'+
+          '<div class="settings-title" style="margin-bottom:2px;display:flex;align-items:center;gap:8px">'+
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="'+headerColor+'" stroke-width="2.5"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>'+
+            'Wix → Square Migration'+
+          '</div>'+
+          '<div class="settings-desc" style="margin:0">'+(empty?'Import paying members from a Wix CSV export. They get instant access; we then email them to set up their card on Square.':'Imported members are active straight away. Send them the migration email to switch their billing to Square.')+'</div>'+
+        '</div>'+
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+          (empty?'':'<button class="btn btn-secondary btn-sm" onclick="window.openWixSendAllModal()">Send unsent emails</button>')+
+          '<button class="btn btn-primary btn-sm" onclick="window.openWixImportModal()">Import from Wix CSV</button>'+
+        '</div>'+
+      '</div>';
+    if(!empty){
+      html+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:16px">'+
+        statBox('Imported',stats.total,'#7C3AED')+
+        statBox('Emailed',stats.emailed,'#3B82F6')+
+        statBox('Card set up',stats.completed,'#10B981')+
+        statBox('Awaiting',stats.pending-stats.emailed>0?(stats.pending-stats.emailed):0,'#F59E0B')+
+      '</div>';
+      html+='<div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px">'+
+        '<div style="font-size:12px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Members ('+list.length+')</div>'+
+        '<div style="display:flex;flex-direction:column;gap:8px;max-height:380px;overflow-y:auto">'+
+          list.map(m=>renderWixMigRow(m)).join('')+
+        '</div>'+
+      '</div>';
+    }
+    html+='</div>';
+    panel.innerHTML=html;
+  }
+  function statBox(label,n,color){
+    return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;text-align:center"><div style="font-size:22px;font-weight:800;color:'+color+'">'+n+'</div><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-top:2px">'+label+'</div></div>';
+  }
+  function renderWixMigRow(m){
+    let pill='<span class="pill pill-amber">Not emailed</span>';
+    if(m.completedAt)pill='<span class="pill pill-green">Card on file ✓</span>';
+    else if(m.emailedAt)pill='<span class="pill pill-blue">Emailed '+timeAgo(m.emailedAt)+'</span>';
+    const link=window.location.origin+'/migrate/'+(m.hasToken?'…':'(no token)');
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;flex-wrap:wrap">'+
+      '<div style="flex:1;min-width:200px">'+
+        '<div style="font-weight:700;font-size:13.5px;color:var(--text)">'+esc(m.customerName||m.customerEmail)+'</div>'+
+        '<div style="font-size:11.5px;color:var(--text-2);margin-top:2px">'+esc(m.customerEmail)+' · '+esc(m.planName)+' · £'+(m.priceMonthly/100).toFixed(2)+'/mo</div>'+
+      '</div>'+
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+        pill+
+        (m.completedAt?'':'<button class="btn btn-secondary btn-sm" onclick="window.sendWixEmail('+m.id+',this)">'+(m.emailedAt?'Resend':'Send email')+'</button>')+
+        (m.hasToken&&!m.completedAt?'<button class="btn btn-secondary btn-sm" title="Copy migration link" onclick="window.copyWixLink('+m.id+',this)">Copy link</button>':'')+
+      '</div>'+
+    '</div>';
+  }
+  function timeAgo(iso){
+    if(!iso)return'';
+    const d=new Date(iso);const s=Math.floor((Date.now()-d.getTime())/1000);
+    if(s<60)return 'just now';if(s<3600)return Math.floor(s/60)+'m ago';
+    if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago';
+  }
+  window.openWixImportModal=function(){
+    if(el('wixImportModal'))el('wixImportModal').remove();
+    const overlay=document.createElement('div');overlay.id='wixImportModal';
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto';
+    overlay.innerHTML='<div style="background:var(--surface);border-radius:16px;max-width:680px;width:100%;padding:28px;max-height:90vh;overflow-y:auto">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'+
+        '<h2 style="margin:0;font-size:19px;color:var(--text)">Import Wix members</h2>'+
+        '<button onclick="el(\'wixImportModal\').remove()" style="background:none;border:0;font-size:24px;color:var(--text-2);cursor:pointer;padding:0;line-height:1">&times;</button>'+
+      '</div>'+
+      '<p style="font-size:13px;color:var(--text-2);margin:0 0 16px;line-height:1.5">In Wix, go to Site Members → Pricing Plans → Members → Export. Paste the CSV below. We\'ll auto-detect Email, Name, Plan and Next Billing Date columns.</p>'+
+      '<textarea id="wixCsvInput" rows="9" placeholder="Email,First Name,Last Name,Plan Name,Next Billing Date&#10;jane@example.com,Jane,Doe,Century,2026-05-15&#10;..." style="width:100%;padding:12px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg2);color:var(--text);font-family:Menlo,Consolas,monospace;font-size:12px;resize:vertical"></textarea>'+
+      '<div style="display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap">'+
+        '<label style="font-size:13px;color:var(--text-2);font-weight:600">Default plan if not matched:</label>'+
+        '<select id="wixDefaultPlan" style="flex:1;min-width:180px;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text);font-size:13px"></select>'+
+      '</div>'+
+      '<div id="wixImportPreview" style="margin-top:16px"></div>'+
+      '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap">'+
+        '<button class="btn btn-secondary" onclick="el(\'wixImportModal\').remove()">Cancel</button>'+
+        '<button class="btn btn-secondary" onclick="window.previewWixCsv()">Preview</button>'+
+        '<button class="btn btn-primary" onclick="window.runWixImport()">Import all</button>'+
+      '</div>'+
+    '</div>';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove();});
+    const sel=el('wixDefaultPlan');
+    sel.innerHTML=membershipsData.plans.map(p=>'<option value="'+p.id+'">'+esc(p.name)+' (£'+(p.priceMonthly/100).toFixed(2)+'/mo)</option>').join('');
+  };
+  window.previewWixCsv=async function(){
+    const csv=el('wixCsvInput').value;
+    const out=el('wixImportPreview');
+    out.innerHTML='<div style="font-size:12px;color:var(--text-2);padding:8px">Parsing…</div>';
+    try{
+      const r=await fetch('/api/staff/wix-migration/preview',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+getToken()},body:JSON.stringify({csv})});
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.message||'Preview failed');
+      if(!d.rows.length){out.innerHTML='<div style="font-size:13px;color:var(--amber);padding:10px;background:#fef3c7;border-radius:8px">No valid rows found. Check your CSV has an Email column.</div>';return;}
+      out.innerHTML='<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px"><div style="font-size:12px;font-weight:700;margin-bottom:8px;color:var(--text)">Preview — '+d.rows.length+' rows</div><div style="max-height:200px;overflow-y:auto;font-size:12px;line-height:1.6">'+
+        d.rows.slice(0,20).map(r=>'<div style="padding:4px 0;border-bottom:1px solid var(--border)"><strong>'+esc(r.name)+'</strong> · '+esc(r.email)+(r.planHint?' · plan: <em>'+esc(r.planHint)+'</em>':'')+(r.nextBillingDate?' · renews '+esc(r.nextBillingDate):'')+'</div>').join('')+
+        (d.rows.length>20?'<div style="padding:6px 0;color:var(--text-2);font-style:italic">…and '+(d.rows.length-20)+' more</div>':'')+
+      '</div></div>';
+    }catch(e){out.innerHTML='<div style="font-size:13px;color:var(--red);padding:10px;background:#fee2e2;border-radius:8px">'+esc(e.message)+'</div>';}
+  };
+  window.runWixImport=async function(){
+    const csv=el('wixCsvInput').value;
+    const defaultPlanId=el('wixDefaultPlan').value;
+    if(!csv.trim()){toast('Paste your CSV first','error');return;}
+    if(!confirm('Import these members as already-active? This will create accounts for new emails.'))return;
+    try{
+      const r=await fetch('/api/staff/wix-migration/import',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+getToken()},body:JSON.stringify({csv,defaultPlanId})});
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.message||'Import failed');
+      toast('Imported '+(d.created+d.updated)+' member'+((d.created+d.updated)===1?'':'s')+(d.skipped.length?' · '+d.skipped.length+' skipped':''),'success');
+      el('wixImportModal').remove();
+      loadMemberships();
+    }catch(e){toast(e.message||'Import failed','error');}
+  };
+  window.sendWixEmail=async function(id,btn){
+    if(btn){btn.disabled=true;btn.textContent='Sending…';}
+    try{
+      const r=await fetch('/api/staff/wix-migration/send-email/'+id,{method:'POST',headers:{Authorization:'Bearer '+getToken()}});
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.message||'Send failed');
+      toast('Email sent','success');loadWixMigration();
+    }catch(e){toast(e.message||'Send failed','error');if(btn){btn.disabled=false;btn.textContent='Send email';}}
+  };
+  window.copyWixLink=async function(id,btn){
+    try{
+      const subs=await(await fetch('/api/staff/wix-migration/status',{headers:{Authorization:'Bearer '+getToken()}})).json();
+      const m=subs.list.find(x=>x.id===id);
+      if(!m||!m.hasToken){toast('No link available','error');return;}
+      // We don't expose the raw token; staff should send the email instead
+      toast('Use "Send email" — links are private to each member','info');
+    }catch(e){toast('Failed','error');}
+  };
+  window.openWixSendAllModal=async function(){
+    if(!confirm('Send the migration email to every imported member who hasn\'t had it yet?'))return;
+    toast('Sending emails…','info');
+    try{
+      const r=await fetch('/api/staff/wix-migration/send-all-emails',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+getToken()},body:JSON.stringify({onlyUnsent:true})});
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.message||'Bulk send failed');
+      toast('Sent '+d.sent+' email'+(d.sent===1?'':'s')+(d.failed?' · '+d.failed+' failed':''),d.failed?'error':'success');
+      loadWixMigration();
+    }catch(e){toast(e.message||'Failed','error');}
+  };
+  window.loadWixMigration=loadWixMigration;
 
   /* ── Website Editor (owner only) ── */
   const websiteState={pages:[],activeSlug:null,saveTimer:null,dirty:{}};

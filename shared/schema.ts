@@ -318,6 +318,10 @@ export const membershipSubscriptions = pgTable("membership_subscriptions", {
   cancelledAt: timestamp("cancelled_at"),
   staffNotes: text("staff_notes"),
   source: text("source").notNull().default("staff"),
+  migrationToken: text("migration_token"),
+  migrationEmailedAt: timestamp("migration_emailed_at"),
+  migrationCompletedAt: timestamp("migration_completed_at"),
+  legacyExternalRef: text("legacy_external_ref"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

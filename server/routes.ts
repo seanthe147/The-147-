@@ -243,6 +243,30 @@ async function sendEmailViaSMTP(to: string, subject: string, html: string): Prom
   }
 }
 
+// Send the Wix → Square migration email to a single member.
+// Returns success/message; updates migrationEmailedAt on success.
+async function sendMigrationEmail(subId: number, req: Request): Promise<{ success: boolean; message?: string }> {
+  const { buildMigrationEmail, makeMigrationToken } = await import("./wix-migration");
+  const subs = await storage.getMembershipSubscriptions();
+  const sub = subs.find(s => s.id === subId);
+  if (!sub || !sub.customer || !sub.plan) return { success: false, message: "Member not found" };
+  if (!sub.customer.email) return { success: false, message: "No email on file" };
+  // Issue a token if missing (e.g. legacy import)
+  let token = sub.migrationToken;
+  if (!token) {
+    token = makeMigrationToken();
+    await storage.updateMembershipSubscription(sub.id, { migrationToken: token } as any);
+  }
+  const host = req.headers.host || "the147bradford.replit.app";
+  const proto = (req.headers["x-forwarded-proto"] as string) || "https";
+  const migrateUrl = `${proto}://${host}/migrate/${token}`;
+  const { subject, html } = buildMigrationEmail({ name: sub.customer.name, plan: sub.plan, migrateUrl });
+  const sent = await sendEmailViaSMTP(sub.customer.email, subject, html);
+  if (!sent) return { success: false, message: "SMTP not configured or send failed" };
+  await storage.updateMembershipSubscription(sub.id, { migrationEmailedAt: new Date() } as any);
+  return { success: true };
+}
+
 async function sendOtpEmail(email: string, code: string): Promise<boolean> {
   const subject = "Your Loyalty Verification Code — The 147";
   const html = OTP_HTML(code);
@@ -1111,6 +1135,162 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Failed to save web content:", err);
       res.status(400).json({ message: err?.message || "Failed to save" });
     }
+  });
+
+  // ── Owner-only Wix membership migration ───────────────────────────────────
+  // Imports paying members from Wix as already-active records, then sends them
+  // a one-tap "save your card" link so they can re-enter card details on Square.
+  app.post("/api/staff/wix-migration/preview", staffAuth, ownerAuth, async (req, res) => {
+    try {
+      const { parseCsv } = await import("./wix-migration");
+      const { csv } = req.body || {};
+      if (typeof csv !== "string" || !csv.trim()) return res.status(400).json({ message: "Paste your CSV first" });
+      const rows = parseCsv(csv);
+      const plans = await storage.getMembershipPlans();
+      res.json({ rows, plans });
+    } catch (err: any) {
+      res.status(400).json({ message: err?.message || "Couldn't parse CSV" });
+    }
+  });
+
+  app.post("/api/staff/wix-migration/import", staffAuth, ownerAuth, async (req, res) => {
+    try {
+      const { parseCsv, importWixMembers } = await import("./wix-migration");
+      const { csv, defaultPlanId, planMap } = req.body || {};
+      if (typeof csv !== "string" || !csv.trim()) return res.status(400).json({ message: "CSV is required" });
+      if (!defaultPlanId) return res.status(400).json({ message: "Pick a default plan" });
+      const rows = parseCsv(csv);
+      const result = await importWixMembers({
+        rows,
+        defaultPlanId: parseInt(defaultPlanId),
+        planMap: planMap && typeof planMap === "object" ? planMap : {},
+      });
+      res.json(result);
+    } catch (err: any) {
+      console.error("[wix-migration/import]", err);
+      res.status(500).json({ message: err?.message || "Import failed" });
+    }
+  });
+
+  app.get("/api/staff/wix-migration/status", staffAuth, ownerAuth, async (_req, res) => {
+    try {
+      const subs = await storage.getMembershipSubscriptions();
+      const imported = subs.filter(s => s.source === "wix_import");
+      const stats = {
+        total: imported.length,
+        emailed: imported.filter(s => s.migrationEmailedAt).length,
+        completed: imported.filter(s => s.migrationCompletedAt).length,
+        pending: imported.filter(s => !s.migrationCompletedAt).length,
+      };
+      const list = imported.map(s => ({
+        id: s.id,
+        customerName: s.customer?.name || "",
+        customerEmail: s.customer?.email || "",
+        planName: s.plan?.name || "",
+        priceMonthly: s.plan?.priceMonthly || 0,
+        currentPeriodEnd: s.currentPeriodEnd,
+        emailedAt: s.migrationEmailedAt,
+        completedAt: s.migrationCompletedAt,
+        hasToken: !!s.migrationToken,
+      })).sort((a, b) => {
+        // Pending first, then completed
+        if (!a.completedAt && b.completedAt) return -1;
+        if (a.completedAt && !b.completedAt) return 1;
+        return (a.customerName || "").localeCompare(b.customerName || "");
+      });
+      res.json({ stats, list });
+    } catch (err: any) {
+      console.error("[wix-migration/status]", err);
+      res.status(500).json({ message: "Failed to load status" });
+    }
+  });
+
+  app.post("/api/staff/wix-migration/send-email/:id", staffAuth, ownerAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+      const ok = await sendMigrationEmail(id, req);
+      if (!ok.success) return res.status(400).json({ message: ok.message });
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[wix-migration/send-email]", err);
+      res.status(500).json({ message: "Failed to send" });
+    }
+  });
+
+  app.post("/api/staff/wix-migration/send-all-emails", staffAuth, ownerAuth, async (req, res) => {
+    try {
+      const { onlyUnsent } = req.body || {};
+      const subs = await storage.getMembershipSubscriptions();
+      const targets = subs.filter(s => s.source === "wix_import" && !s.migrationCompletedAt && (!onlyUnsent || !s.migrationEmailedAt));
+      let sent = 0, failed = 0;
+      for (const s of targets) {
+        const result = await sendMigrationEmail(s.id, req);
+        if (result.success) sent++; else failed++;
+      }
+      res.json({ sent, failed, total: targets.length });
+    } catch (err: any) {
+      console.error("[wix-migration/send-all-emails]", err);
+      res.status(500).json({ message: "Bulk send failed" });
+    }
+  });
+
+  // Public — start Square checkout from a migration link
+  app.post("/api/migrate/:token/checkout", async (req, res) => {
+    try {
+      const token = req.params.token;
+      if (!token || token.length < 16) return res.status(400).json({ message: "Invalid link" });
+      const subs = await storage.getMembershipSubscriptions();
+      const sub = subs.find(s => s.migrationToken === token);
+      if (!sub) return res.status(404).json({ message: "This link isn't valid anymore." });
+      if (sub.migrationCompletedAt) return res.status(400).json({ message: "This membership has already been activated." });
+      if (sub.squareSubscriptionId) return res.status(400).json({ message: "Your card is already set up — refresh this page to confirm." });
+      if (!sub.customer || !sub.plan) return res.status(404).json({ message: "Membership not found" });
+      if (!square.isConfigured()) return res.status(503).json({ message: "Payment system unavailable" });
+      const variationId = sub.plan.squarePlanVariationId;
+      if (!variationId) return res.status(503).json({ message: "Plan isn't set up for online payments yet — please contact us." });
+
+      // Ensure a Square customer exists and is linked
+      let sqCustomerId = sub.squareCustomerId;
+      if (!sqCustomerId) {
+        const sqCustomer = await square.findSquareCustomerByEmail(sub.customer.email).catch(() => null)
+          || await square.createSquareCustomer(sub.customer.name, sub.customer.email, sub.customer.phone || undefined).catch(() => null);
+        if (sqCustomer) {
+          sqCustomerId = sqCustomer.id;
+          await storage.updateMembershipSubscription(sub.id, { squareCustomerId: sqCustomerId });
+        }
+      }
+
+      const host = req.headers.host || "the147bradford.replit.app";
+      const proto = (req.headers["x-forwarded-proto"] as string) || "https";
+      const redirectUrl = `${proto}://${host}/migrate/${token}/done`;
+
+      const checkout = await square.createSubscriptionCheckoutLink({
+        planVariationId: variationId,
+        subscriptionId: sub.id,
+        buyerEmail: sub.customer.email,
+        redirectUrl,
+      });
+      res.json({ checkoutUrl: checkout.url });
+    } catch (err: any) {
+      console.error("[migrate/checkout]", err);
+      res.status(500).json({ message: "Couldn't start checkout — please try again." });
+    }
+  });
+
+  // Public — Square redirect after successful migration checkout
+  app.get("/migrate/:token/done", async (req, res) => {
+    try {
+      const subs = await storage.getMembershipSubscriptions();
+      const sub = subs.find(s => s.migrationToken === req.params.token);
+      if (sub && !sub.migrationCompletedAt) {
+        await storage.updateMembershipSubscription(sub.id, {
+          migrationCompletedAt: new Date(),
+          source: "wix_migrated",
+        } as any);
+      }
+    } catch (err) { /* non-fatal */ }
+    res.redirect(`/migrate/${req.params.token}`);
   });
 
   app.post("/api/staff/migrate-encryption", staffAuth, managerAuth, async (_req, res) => {
@@ -4744,16 +4924,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (sqSub?.id && sqSub?.customer_id) {
           const existingSubs = await storage.getMembershipSubscriptions();
           // Find the local pending sub for this Square customer
-          const local = existingSubs.find(s =>
+          let local = existingSubs.find(s =>
             s.squareCustomerId === sqSub.customer_id &&
             (s.status === "pending" || s.status === "pending_payment") &&
             !s.squareSubscriptionId
           );
+          // Wix migration: also match imported records (whether or not migrationCompletedAt
+          // was already set by the redirect handler — we still need to link the Square sub ID).
+          if (!local) {
+            local = existingSubs.find(s =>
+              s.squareCustomerId === sqSub.customer_id &&
+              !s.squareSubscriptionId &&
+              !!s.migrationToken
+            );
+          }
           if (local) {
             await storage.updateMembershipSubscription(local.id, {
               squareSubscriptionId: sqSub.id,
-            });
-            console.log(`[MEMBERSHIP WEBHOOK] Linked Square subscription ${sqSub.id} → local #${local.id}`);
+              ...(local.migrationToken && !local.migrationCompletedAt
+                ? { migrationCompletedAt: new Date(), source: "wix_migrated" }
+                : {}),
+            } as any);
+            console.log(`[MEMBERSHIP WEBHOOK] Linked Square subscription ${sqSub.id} → local #${local.id}${local.migrationToken ? " (Wix migration complete)" : ""}`);
           }
         }
       }

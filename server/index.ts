@@ -434,6 +434,30 @@ function configureExpoAndLanding(app: express.Application) {
     }
   });
 
+  // Public Wix-migration landing page — `/migrate/:token`
+  // Members click this from the migration email to set up their card on Square.
+  app.get("/migrate/:token", async (req: Request, res: Response) => {
+    try {
+      const { storage } = await import("./storage");
+      const { renderMigrationLandingPage, renderMigrationErrorPage } = await import("./wix-migration");
+      const subs = await storage.getMembershipSubscriptions();
+      const sub = subs.find(s => s.migrationToken === req.params.token);
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      if (!sub || !sub.customer || !sub.plan) {
+        return res.status(404).send(renderMigrationErrorPage("This link is no longer valid."));
+      }
+      res.send(renderMigrationLandingPage({
+        customer: sub.customer,
+        plan: sub.plan,
+        sub,
+        alreadyDone: !!sub.migrationCompletedAt,
+        token: req.params.token,
+      }));
+    } catch {
+      res.status(500).send("Page unavailable");
+    }
+  });
+
   // SPA catch-all: any non-API, non-static path is an Expo Router client-side route.
   // In development, proxy to Metro (which serves the web bundle). In production, serve
   // the static build's index.html so deep links work.
