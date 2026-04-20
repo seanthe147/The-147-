@@ -244,3 +244,31 @@ footer{background:var(--ink);color:#a0a0a0;padding:64px 24px 32px}
 .footer-col li{margin-bottom:10px;font-size:14px}
 .footer-col a:hover{color:var(--gold)}
 .footer-bottom{max-width:1180px;margin:0 auto;padding-top:32px;border-top:1px solid #222;display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;font-size:12px;color:#666}
+
+/* ── Embedded feature modal (booking / membership / order) ───────────── */
+.ts-modal{position:fixed;inset:0;z-index:200;display:none;align-items:stretch;justify-content:center}
+.ts-modal.open{display:flex}
+.ts-modal-backdrop{position:absolute;inset:0;background:rgba(13,13,13,.72);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);animation:tsFade .2s ease}
+.ts-modal-panel{position:relative;background:#fff;width:100%;max-width:1080px;margin:24px;border-radius:18px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.5);max-height:calc(100vh - 48px);animation:tsRise .25s cubic-bezier(.2,.8,.2,1)}
+@media (max-width:720px){.ts-modal-panel{margin:0;border-radius:0;max-height:100vh;height:100vh}}
+.ts-modal-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:#0d0d0d;color:#fff;flex-shrink:0}
+.ts-modal-title{font-family:'Playfair Display',serif;font-weight:700;font-size:18px;color:#fff}
+.ts-modal-title::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--gold);margin-right:10px;vertical-align:middle}
+.ts-modal-close{background:rgba(255,255,255,.08);border:0;color:#fff;width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s,transform .15s}
+.ts-modal-close:hover{background:rgba(255,255,255,.18);transform:rotate(90deg)}
+.ts-modal-body{flex:1;position:relative;background:#f6f8fb;min-height:520px;overflow:hidden}
+.ts-modal-iframe{width:100%;height:100%;border:0;background:#fff;display:block;position:absolute;inset:0;opacity:0;transition:opacity .25s}
+.ts-modal-iframe.ready{opacity:1}
+.ts-modal-loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#5a6573;gap:14px}
+.ts-spinner{width:38px;height:38px;border:3px solid #e7eaef;border-top-color:var(--blue);border-radius:50%;animation:tsSpin .9s linear infinite}
+.ts-modal-loading.hidden{display:none}
+.ts-modal-loading span{font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:700}
+
+@keyframes tsFade{from{opacity:0}to{opacity:1}}
+@keyframes tsRise{from{opacity:0;transform:translateY(20px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes tsSpin{to{transform:rotate(360deg)}}
+
+/* Order link in nav */
+.nav-links a.nav-order{color:#fff;background:rgba(255,255,255,.08);padding:9px 16px;border-radius:8px;font-weight:600;font-size:13px;display:inline-flex;align-items:center;gap:6px;transition:background .15s,color .15s}
+.nav-links a.nav-order:hover{background:rgba(217,169,60,.18);color:var(--gold)}
+.nav-links a.nav-order::before{content:"";width:6px;height:6px;border-radius:50%;background:#3ec46d;box-shadow:0 0 0 3px rgba(62,196,109,.18)}

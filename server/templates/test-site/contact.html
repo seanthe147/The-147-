@@ -28,7 +28,8 @@
       <a href="/test-site/function-rooms">Function Rooms</a>
       <a href="/test-site/gift-cards">Gift Cards</a>
       <a href="/test-site/contact" class="active">Contact</a>
-      <a href="/" class="nav-cta">Book a Table</a>
+      <a href="#" class="nav-order" data-modal="order">Order</a>
+      <a href="/widget/booking" class="nav-cta" data-modal="booking">Book a Table</a>
     </div>
     <button class="menu-toggle" onclick="document.getElementById('navLinks').classList.toggle('open')" aria-label="Menu">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
@@ -129,5 +130,6 @@
   </div>
   <div class="footer-bottom"><div>© The 147 Bradford. All rights reserved.</div><div><a href="/privacy-policy">Privacy</a> · <a href="#">Terms</a></div></div>
 </footer>
+<script src="/test-site/embed.js" defer></script>
 <script>document.querySelectorAll('#navLinks a').forEach(a=>a.addEventListener('click',()=>document.getElementById('navLinks').classList.remove('open')));</script>
 </body></html>

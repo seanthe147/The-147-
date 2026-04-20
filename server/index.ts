@@ -103,7 +103,7 @@ function setupSecurityHeaders(app: express.Application) {
       const genericConnectSrc = devConnectSrc ?? "'self' https://*.squareup.com https://*.resend.com https://api.stripe.com https://m.stripe.com https://m.stripe.network";
       res.setHeader(
         "Content-Security-Policy",
-        `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://js.stripe.com https://m.stripe.network; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src ${genericConnectSrc}; img-src 'self' data: https:; frame-src https://www.the147order.co.uk https://the147order.co.uk https://js.stripe.com https://hooks.stripe.com`
+        `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://js.stripe.com https://m.stripe.network; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src ${genericConnectSrc}; img-src 'self' data: https:; frame-src 'self' https://www.the147order.co.uk https://the147order.co.uk https://js.stripe.com https://hooks.stripe.com https://web.squarecdn.com https://sandbox.web.squarecdn.com`
       );
     } else {
       res.setHeader("X-Frame-Options", "DENY");
@@ -392,6 +392,17 @@ function configureExpoAndLanding(app: express.Application) {
     try {
       const p = path.resolve(process.cwd(), "server", "templates", "test-site", "styles.css");
       res.setHeader("Content-Type", "text/css; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=300");
+      res.send(fs.readFileSync(p, "utf-8"));
+    } catch {
+      res.status(404).end();
+    }
+  });
+  // Shared JS — embeds booking/membership/order in modals
+  app.get("/test-site/embed.js", (_req: Request, res: Response) => {
+    try {
+      const p = path.resolve(process.cwd(), "server", "templates", "test-site", "embed.js");
+      res.setHeader("Content-Type", "application/javascript; charset=utf-8");
       res.setHeader("Cache-Control", "public, max-age=300");
       res.send(fs.readFileSync(p, "utf-8"));
     } catch {

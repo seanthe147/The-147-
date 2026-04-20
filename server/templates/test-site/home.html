@@ -28,7 +28,8 @@
       <a href="/test-site/function-rooms">Function Rooms</a>
       <a href="/test-site/gift-cards">Gift Cards</a>
       <a href="/test-site/contact">Contact</a>
-      <a href="/" class="nav-cta">Book a Table</a>
+      <a href="#" class="nav-order" data-modal="order">Order</a>
+      <a href="/widget/booking" class="nav-cta" data-modal="booking">Book a Table</a>
     </div>
     <button class="menu-toggle" onclick="document.getElementById('navLinks').classList.toggle('open')" aria-label="Menu">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
@@ -45,11 +46,11 @@
       Full bar. Kitchen open late. Members welcome from £7.99 a month.
     </p>
     <div class="hero-cta">
-      <a href="/" class="btn btn-primary">
+      <a href="/widget/booking" data-modal="booking" class="btn btn-primary">
         Book a Table
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
       </a>
-      <a href="/membership" class="btn btn-ghost">Become a Member</a>
+      <a href="/membership" data-modal="membership" class="btn btn-ghost">Become a Member</a>
     </div>
   </div>
 </header>
@@ -145,20 +146,20 @@
         <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Loyalty rewards on food &amp; drink</li>
         <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Priority entry to members-only tournaments</li>
       </ul>
-      <a href="/membership" class="btn btn-primary">See All Plans
+      <a href="/membership" data-modal="membership" class="btn btn-primary">See All Plans
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
       </a>
     </div>
     <div class="plans-preview">
-      <a href="/membership" class="plan-row">
+      <a href="/membership" data-modal="membership" class="plan-row">
         <div><div class="plan-row-name">Rack</div><div class="plan-row-tag">Perfect for casual players</div></div>
         <div class="plan-row-price">£7.99<small>/mo</small></div>
       </a>
-      <a href="/membership" class="plan-row featured">
+      <a href="/membership" data-modal="membership" class="plan-row featured">
         <div><div class="plan-row-name">Century &nbsp;<span class="badge-pop">MOST POPULAR</span></div><div class="plan-row-tag">Most popular tier</div></div>
         <div class="plan-row-price">£24.99<small>/mo</small></div>
       </a>
-      <a href="/membership" class="plan-row">
+      <a href="/membership" data-modal="membership" class="plan-row">
         <div><div class="plan-row-name">Maximum</div><div class="plan-row-tag">The full experience</div></div>
         <div class="plan-row-price">£54.99<small>/mo</small></div>
       </a>
@@ -197,5 +198,6 @@
   </div>
   <div class="footer-bottom"><div>© The 147 Bradford. All rights reserved.</div><div><a href="/privacy-policy">Privacy</a> · <a href="#">Terms</a></div></div>
 </footer>
+<script src="/test-site/embed.js" defer></script>
 <script>document.querySelectorAll('#navLinks a').forEach(a=>a.addEventListener('click',()=>document.getElementById('navLinks').classList.remove('open')));</script>
 </body></html>
