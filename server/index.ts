@@ -386,6 +386,9 @@ function configureExpoAndLanding(app: express.Application) {
     "function-rooms": "function-rooms.html",
     "gift-cards": "gift-cards.html",
     "contact": "contact.html",
+    // Native web versions of interactive systems (used inside the modal)
+    "join": "membership-join.html",
+    "menu": "order-menu.html",
   };
   // Shared CSS file
   app.get("/test-site/styles.css", (_req: Request, res: Response) => {

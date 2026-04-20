@@ -6,8 +6,8 @@
 
   var URLS = {
     booking: "/widget/booking",
-    membership: "/membership",
-    order: "/order"
+    membership: "/test-site/join",
+    order: "/test-site/menu"
   };
   var TITLES = {
     booking: "Book a Table",
