@@ -94,7 +94,7 @@
           during opening hours.
         </p>
       </div>
-      <form class="contact-form" onsubmit="event.preventDefault();this.querySelector('button').textContent='Sent — we\\'ll be in touch';this.reset()">
+      <form class="contact-form" id="contactForm">
         <div class="field">
           <label for="cName">Your Name</label>
           <input id="cName" type="text" required>
@@ -115,8 +115,44 @@
           <label for="cMessage">Message</label>
           <textarea id="cMessage" required placeholder="Tell us a bit about what you're looking for..."></textarea>
         </div>
-        <button type="submit" class="btn btn-blue" style="width:100%">Send Message</button>
+        <label for="cGdpr" style="display:flex;align-items:flex-start;gap:10px;margin:6px 0 14px;cursor:pointer;user-select:none;font-size:13px;color:var(--muted);line-height:1.5">
+          <input type="checkbox" id="cGdpr" required style="margin-top:3px;width:18px;height:18px;flex-shrink:0;accent-color:var(--blue);cursor:pointer">
+          <span>I agree to The 147 storing the details I've entered to respond to this enquiry. See our <a href="/privacy-policy" target="_blank" style="color:var(--blue);font-weight:600">Privacy Policy</a>.</span>
+        </label>
+        <div id="cFormErr" style="display:none;background:#fef2f2;color:#dc2626;padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:12px"></div>
+        <button type="submit" id="cSubmitBtn" class="btn btn-blue" style="width:100%">Send Message</button>
       </form>
+<script>
+(function(){
+  var form=document.getElementById('contactForm');
+  var errEl=document.getElementById('cFormErr');
+  var btn=document.getElementById('cSubmitBtn');
+  function showErr(m){errEl.textContent=m;errEl.style.display='block';}
+  function hideErr(){errEl.style.display='none';}
+  form.addEventListener('submit',function(e){
+    e.preventDefault();
+    hideErr();
+    var name=document.getElementById('cName').value.trim();
+    var email=document.getElementById('cEmail').value.trim();
+    var phone=document.getElementById('cPhone').value.trim();
+    var subject=document.getElementById('cSubject').value.trim();
+    var message=document.getElementById('cMessage').value.trim();
+    var gdpr=document.getElementById('cGdpr').checked;
+    if(!name||!email||!subject||!message){return showErr('Please fill in name, email, subject and message.');}
+    if(!gdpr){return showErr('Please tick the box to agree to our Privacy Policy.');}
+    var orig=btn.textContent;
+    btn.disabled=true;btn.textContent='Sending…';
+    fetch('/api/contact',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:name,email:email,phone:phone||undefined,subject:subject,message:message,gdprConsent:true})
+    }).then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});}).then(function(res){
+      if(!res.ok){showErr(res.d.message||'Could not send message — please try again.');btn.disabled=false;btn.textContent=orig;return;}
+      form.reset();btn.textContent='Sent — we\'ll be in touch';
+    }).catch(function(){showErr('Network error — please try again.');btn.disabled=false;btn.textContent=orig;});
+  });
+})();
+</script>
     </div>
   </div>
 </section>

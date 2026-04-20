@@ -178,36 +178,13 @@ a{text-decoration:none;color:inherit}
   }
 
   function attachHandlers(){
+    // Joining requires an account (so the membership is linked to the customer).
+    // Send the user to the main /membership page where they can register/sign in
+    // and complete payment via the proper join modal.
     document.querySelectorAll('.join-btn').forEach(function(btn){
       btn.addEventListener('click', function(){
-        var planId = +btn.dataset.planId;
-        var freq = btn.closest('[data-billing]').dataset.billing || billing;
-        btn.disabled = true;
-        btn.textContent = 'Please wait…';
-        fetch('/api/membership/join', {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ planId: planId, billingFrequency: freq })
-        })
-        .then(function(r){ return r.json(); })
-        .then(function(data){
-          if(data.checkoutUrl){
-            // Redirect the outer page so Square checkout takes over fully
-            try { window.top.location.href = data.checkoutUrl; }
-            catch(e){ window.location.href = data.checkoutUrl; }
-          } else if(data.error || data.message){
-            toast(data.error || data.message || 'Something went wrong. Please try again.');
-            btn.disabled = false;
-            btn.textContent = 'Join';
-          } else {
-            toast('Joined! Welcome to The 147.');
-          }
-        })
-        .catch(function(){
-          toast('Network error — please check your connection.');
-          btn.disabled = false;
-          btn.textContent = 'Join';
-        });
+        try { window.top.location.href = '/membership'; }
+        catch(e){ window.location.href = '/membership'; }
       });
     });
   }

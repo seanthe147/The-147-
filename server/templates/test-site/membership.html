@@ -182,18 +182,11 @@
     setTimeout(function(){ el.classList.remove('show'); }, dur || 3000);
   }
   function attachHandlers(){
+    // Joining requires a customer account, so route to the main /membership page
+    // which has the full register/sign-in + Square checkout flow.
     document.querySelectorAll('.join-btn').forEach(function(btn){
       btn.addEventListener('click', function(){
-        var planId = +btn.dataset.planId;
-        var freq = btn.closest('[data-billing]').dataset.billing || billing;
-        btn.disabled = true; btn.textContent = 'Please wait…';
-        fetch('/api/membership/join', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ planId: planId, billingFrequency: freq })
-        }).then(function(r){ return r.json(); }).then(function(data){
-          if(data.checkoutUrl){ window.location.href = data.checkoutUrl; }
-          else { toast(data.error || data.message || 'Something went wrong. Please try again.'); btn.disabled = false; btn.textContent = 'Join'; }
-        }).catch(function(){ toast('Network error — please check your connection.'); btn.disabled = false; btn.textContent = 'Join'; });
+        window.location.href = '/membership';
       });
     });
   }

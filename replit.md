@@ -122,3 +122,73 @@ This uses the `BNL8D6UJKJ` ASC API key configured in `eas.json` submit section.
 - **Schema**: `paymentLog` table (`shared/schema.ts`) — id, amountPence, currency (default gbp), description, customer fields, stripePaymentIntentId, status (pending/succeeded/failed), staff fields, failureMessage, createdAt. Migrated via `npm run db:push --force`.
 - **MOTO note**: Stripe accounts need MOTO capability enabled to take card-not-present phone payments at standard rates. Without it, MOTO charges may be blocked or treated as e-commerce. Toggle in Stripe dashboard → Settings.
 - **PCI**: Card numbers go directly from browser to Stripe via Stripe.js — never touch our server. Server only sees PaymentIntent IDs.
+
+## Staff vs Customer App Split — Analysis & Recommendation (April 2026)
+
+**Current state (single codebase, role-gated):**
+- One Expo app + one Express backend serve both audiences:
+  - **Customers**: `app/(tabs)/*` — book, order, gift cards, membership, account.
+  - **Staff**: `app/staff*` — staff dashboard, kitchen view, manager tools, EPOS, etc.
+- Auth is split server-side (`/api/customers/*` vs `/api/staff/*`) with separate tokens & DB tables, but the *binary* shipped to phones is one and the same.
+- Public website (`server/templates/*` and `server/templates/test-site/*`) is served by the same Express process and shares the customer APIs (register / login / bookings / orders / membership / contact / interest).
+- Cross-platform single account: web modal (`membership-page.html`), mobile app (`CustomerAuthContext.tsx` → `app/account.tsx`) and the bookings widget all hit the **same** `/api/customers/register` + `/api/customers/login` endpoints with the same 6+ char password rule and Bearer token scheme. A customer who signs up on the website can immediately sign in on the mobile app with the same credentials, see the same bookings/orders/membership, and vice versa. ✅ Verified during Task #2.
+
+**Recommendation: Keep one codebase, but split the *published apps* into two App Store listings.**
+
+Reasons:
+1. **Reviewer & user clarity.** App Store review repeatedly flags "internal staff tools" inside a consumer app — confusing for reviewers and for customers who'd see "Kitchen Display" in their tab bar. Two listings (one consumer, one "The 147 Staff") solves this without forking the code.
+2. **Code reuse stays high.** ~80% of the code (auth, networking, theming, design system, API layer, payments) is shared. Splitting bundles ≠ splitting repos. Use a single Expo project with two `app.json` build profiles + an `EXPO_PUBLIC_APP_VARIANT=staff|customer` env flag that swaps the root layout (which set of tabs/screens to register).
+3. **Smaller customer download.** Customers don't need staff screens, and vice versa. Tree-shaking via the variant flag yields smaller bundles and faster cold-start.
+4. **Permissions hygiene.** Staff app can request POS/printer/biometric/notification permissions that would scare a consumer install. Customer app stays lean.
+5. **Independent release cadence.** Pushing a hot-fix to the kitchen view doesn't force a re-review of the consumer app, and vice versa.
+6. **Single backend, single DB.** Server stays untouched — staff and customer endpoints already isolated. Web (customers) and both mobile apps continue to share `/api/customers/*` so the cross-platform single-account guarantee is preserved.
+
+**What NOT to do:** A full repo split would double maintenance of theming, the API client, the design system and the icon/font pipeline, with no real upside given how much is shared.
+
+**Practical next steps when this is ready to do:**
+- Add `app.config`-style variants (or two `eas.json` profiles) for `customer` (bundle id `com.the147.app`) and `staff` (`com.the147.staff`).
+- Gate route registration in `app/_layout.tsx` on `process.env.EXPO_PUBLIC_APP_VARIANT`.
+- Ship the staff variant to internal TestFlight only; ship the customer variant publicly.
+- Web (`/membership`, `/test-site/*`, `/booking-widget`) remains customer-only — no change needed.
+
+## Public-Website Forms Audit & Cross-Platform Parity (Task #2, April 2026)
+
+### Forms audited and their status after this task
+
+| Surface | Endpoint | Required consent | Status |
+|---|---|---|---|
+| Membership join modal — `server/templates/membership-page.html` | `POST /api/customers/register` then `POST /api/membership/join` | `privacyConsent: true` | **FIXED** — added Privacy Policy + Terms & Conditions tickbox; CTA disabled until ticked; reset on each open. |
+| Booking widget — `server/templates/booking-widget.html` | `POST /api/bookings` | `gdprConsent: true` | **OK** — already sends `gdprConsent: true`. |
+| Test-site contact — `server/templates/test-site/contact.html` | `POST /api/contact` | `gdprConsent: true` | **FIXED** — was UI-only (`onsubmit` just reset). Wired to API with consent tickbox + error/success states. |
+| Test-site membership — `server/templates/test-site/membership.html`, `membership-join.html` | `POST /api/membership/join` (auth required) | Bearer token + `privacyConsent` on register | **FIXED** — Join buttons no longer POST unauthenticated (which silently failed). They redirect to `/membership` where the proper register/sign-in + Square checkout flow lives. |
+| Order page — `server/templates/test-site/order.html` | `POST /api/orders/*` (cart-only flows) | n/a | **OK** — no PII collection step in this surface. |
+| Book page — `server/templates/test-site/book.html` | embeds the `booking-widget` iframe | inherited | **OK** — inherits the widget's consent UI. |
+| Gift cards — `server/templates/test-site/gift-cards.html` | n/a (placeholder `href="#"` buttons, not wired to API) | n/a | **NO FIX NEEDED** — no live form to leak through. Flagged as future work. |
+| Login — `panelLogin` in `membership-page.html` and `app/account.tsx` | `POST /api/customers/login` | none required by API | **OK**. |
+| Test-site footer "Terms" links | n/a | n/a | **FLAGGED** — `href="#"` placeholders. There is no Terms page; only `/privacy-policy` exists. Membership consent text now links both labels to `/privacy-policy` as a fallback. Adding a real `/terms` page is a follow-up. |
+
+### Cross-platform single-account parity (web ↔ mobile app) — VERIFIED
+
+Both surfaces hit the **same** customer endpoints with the same contract:
+
+- **Register**: `POST /api/customers/register`
+  - Web modal (`membership-page.html` → `doRegister()`): sends `{ name, email, phone, password, privacyConsent: true }` ✅
+  - Mobile app (`contexts/CustomerAuthContext.tsx` → `register()`): sends the same shape with `privacyConsent: true` ✅
+  - Server validates `privacyConsent === true` (`server/routes.ts` ~L4122-4128) — 400 with "You must agree to the Privacy Policy" otherwise. Verified live via curl: with consent → 201; without → 400.
+
+- **Login**: `POST /api/customers/login`
+  - Same email/password (6+ chars), same Bearer token returned, same 30-day session.
+
+- **Bookings / Orders / Membership**: all `/api/customers/me/*` endpoints accept the same Bearer token; both surfaces query the same DB tables (`customers`, `customer_bookings`, `customer_orders`, `customer_memberships`).
+
+- **Live verification (curl against local backend, April 20 2026)**:
+  - `POST /api/customers/register` with `privacyConsent: true` → 201 + token returned ✅
+  - Same endpoint without consent → 400 + correct error message ✅
+  - Server log confirms requests routed correctly through the API layer.
+
+**Conclusion**: a customer registering on the website can immediately sign in on the mobile app (and vice versa), see the same bookings, orders and active membership. No data divergence between platforms.
+
+### Out of scope (proposed as follow-ups)
+- Email-verification step after signup (typo recovery).
+- Real Terms of Service page (`/terms`) and footer link cleanup.
+- Splitting staff tools into a separate App Store listing (see "Staff vs Customer App Split" section above).

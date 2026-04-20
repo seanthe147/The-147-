@@ -407,8 +407,18 @@
           <div class="fld"><label>Phone</label><input type="tel" id="rPhone" placeholder="07xxx xxxxxx" autocomplete="tel"></div>
           <div class="fld"><label>Password</label><input type="password" id="rPass" placeholder="Min. 6 characters" autocomplete="new-password"></div>
           <p class="form-note" style="margin-bottom:14px">Your account works across The 147 app and this website.</p>
+          <label for="rConsent" id="rConsentRow" style="display:flex;align-items:flex-start;gap:10px;margin:6px 0 14px;cursor:pointer;user-select:none">
+            <input type="checkbox" id="rConsent" style="margin-top:3px;width:18px;height:18px;flex-shrink:0;accent-color:#0047AB;cursor:pointer">
+            <span style="font-size:12.5px;color:#475569;line-height:1.5">
+              I agree to The 147's
+              <a href="/privacy-policy" target="_blank" rel="noopener" style="color:#0047AB;font-weight:600;text-decoration:underline">Privacy Policy</a>
+              and
+              <a href="/privacy-policy" target="_blank" rel="noopener" style="color:#0047AB;font-weight:600;text-decoration:underline">Terms &amp; Conditions</a>,
+              and consent to my personal data being processed to manage my account and membership.
+            </span>
+          </label>
           <div class="form-err" id="regErr"></div>
-          <button class="submit-btn" id="regBtn" style="background:#0047AB;color:#fff" onclick="doRegister()">
+          <button class="submit-btn" id="regBtn" style="background:#0047AB;color:#fff;opacity:.55;cursor:not-allowed" disabled onclick="doRegister()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
             Create Account &amp; Pay
           </button>
@@ -557,7 +567,10 @@
     // reset state
     document.getElementById('successPane').classList.remove('show');
     document.getElementById('formPane').style.display='';
+    const cb=document.getElementById('rConsent');
+    if(cb)cb.checked=false;
     switchTab('reg');
+    syncConsentBtn();
     document.getElementById('joinModal').classList.add('open');
   }
 
@@ -589,6 +602,27 @@
   window.openModal=openModal;
   window.closeModal=closeModal;
 
+  /* ── consent toggle: enable Create Account button only when ticked ── */
+  function syncConsentBtn(){
+    const cb=document.getElementById('rConsent');
+    const btn=document.getElementById('regBtn');
+    if(!cb||!btn)return;
+    if(cb.checked){
+      btn.disabled=false;
+      btn.style.opacity='1';
+      btn.style.cursor='pointer';
+    } else {
+      btn.disabled=true;
+      btn.style.opacity='.55';
+      btn.style.cursor='not-allowed';
+    }
+  }
+  (function initConsent(){
+    const cb=document.getElementById('rConsent');
+    if(cb)cb.addEventListener('change',syncConsentBtn);
+    syncConsentBtn();
+  })();
+
   /* ── register ── */
   async function doRegister(){
     const first=document.getElementById('rFirst').value.trim();
@@ -596,24 +630,26 @@
     const email=document.getElementById('rEmail').value.trim();
     const phone=document.getElementById('rPhone').value.trim();
     const pass=document.getElementById('rPass').value;
+    const consent=document.getElementById('rConsent').checked;
     const err=document.getElementById('regErr');
     err.classList.remove('show');
     if(!first||!last){err.textContent='Please enter your full name.';err.classList.add('show');return}
     if(!email||!email.includes('@')){err.textContent='Please enter a valid email address.';err.classList.add('show');return}
     if(pass.length<6){err.textContent='Password must be at least 6 characters.';err.classList.add('show');return}
+    if(!consent){err.textContent='Please tick the box to agree to the Privacy Policy.';err.classList.add('show');return}
     const btn=document.getElementById('regBtn');
     btn.disabled=true;btn.textContent='Creating account…';
     try{
       const r=await fetch(API+'/api/customers/register',{
         method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({name:first+' '+last,email,phone:phone||null,password:pass}),
+        body:JSON.stringify({name:first+' '+last,email,phone:phone||null,password:pass,privacyConsent:true}),
       });
       const d=await r.json();
       if(!r.ok){err.textContent=d.message||'Registration failed.';err.classList.add('show');return}
       authToken=d.token;
       await doJoin();
     }catch{err.textContent='Network error — please try again.';err.classList.add('show');}
-    finally{btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>Create Account & Pay';}
+    finally{btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>Create Account & Pay';syncConsentBtn();}
   }
   window.doRegister=doRegister;
 
