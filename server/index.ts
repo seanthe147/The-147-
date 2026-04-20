@@ -361,6 +361,18 @@ function configureExpoAndLanding(app: express.Application) {
   app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 
+  // Homepage mockup (preview only) — registered here, before SPA catch-all,
+  // so it is reachable in both development and production without depending on Metro.
+  app.get("/preview-home", (_req: Request, res: Response) => {
+    try {
+      const p = path.resolve(process.cwd(), "server", "templates", "home-mockup.html");
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.send(fs.readFileSync(p, "utf-8"));
+    } catch {
+      res.status(500).send("Mockup unavailable");
+    }
+  });
+
   // SPA catch-all: any non-API, non-static path is an Expo Router client-side route.
   // In development, proxy to Metro (which serves the web bundle). In production, serve
   // the static build's index.html so deep links work.
