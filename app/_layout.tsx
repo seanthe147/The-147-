@@ -67,6 +67,7 @@ function RootLayoutNav() {
           <>
             <Stack.Screen name="account" options={{ headerShown: false, presentation: "modal" }} />
             <Stack.Screen name="membership" options={{ headerShown: false, presentation: "modal" }} />
+            <Stack.Screen name="order-confirmation" options={{ headerShown: false, presentation: "modal", gestureEnabled: false }} />
           </>
         )}
       </Stack>

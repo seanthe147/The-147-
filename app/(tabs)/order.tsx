@@ -30,10 +30,12 @@ import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import Colors from "@/constants/colors";
 import { useCart } from "@/contexts/CartContext";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { getApiUrl } from "@/lib/query-client";
+import { SquarePaymentSheet } from "@/components/SquarePaymentSheet";
 import type { MenuCategory, MenuItem, ModifierList, SelectedModifier } from "@/types/menu";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -731,12 +733,30 @@ function CartSheet({
   const [guestEmail, setGuestEmail] = useState("");
   const [guestMode, setGuestMode] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [paymentSheetVisible, setPaymentSheetVisible] = useState(false);
+  const [pendingOrder, setPendingOrder] = useState<{ appOrderId: number; amountPence: number } | null>(null);
   const insets = useSafeAreaInsets();
+
+  // Square Web Payments SDK config (cached for the session)
+  const { data: squareConfig } = useQuery<{
+    applicationId: string | null;
+    locationId: string | null;
+    environment: "production" | "sandbox";
+    configured: boolean;
+  } | null>({
+    queryKey: ["/api/public/square-config"],
+    staleTime: 60 * 60 * 1000,
+  });
 
   useEffect(() => {
     if (!visible) {
       setStep("cart");
       setGuestMode(false);
+      setPayError(null);
+      setPaymentSheetVisible(false);
+      setPendingOrder(null);
     }
   }, [visible]);
 
@@ -777,8 +797,23 @@ function CartSheet({
     ? { name: guestName.trim() || undefined, email: guestEmail.trim() || undefined }
     : undefined;
 
-  const handleCheckout = async () => {
-    if (items.length === 0) return;
+  const buildOrderPayload = () => ({
+    items: items.map((i) => ({
+      variationId: i.variationId,
+      itemId: i.itemId,
+      name: i.name,
+      price: i.price,
+      quantity: i.quantity,
+      ...(i.modifiers?.length ? { modifiers: i.modifiers } : {}),
+    })),
+    tableNote: tableNote.trim() || undefined,
+    orderNote: orderNote.trim() || undefined,
+    customer: effectiveCustomer,
+  });
+
+  // Fallback path: hosted Square checkout via in-app browser modal.
+  // Used when the Web Payments SDK is not configured.
+  const fallbackToHostedCheckout = async () => {
     setLoading(true);
     try {
       const apiBase = getApiUrl();
@@ -786,23 +821,10 @@ function CartSheet({
       const res = await fetch(url.toString(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: items.map((i) => ({
-            variationId: i.variationId,
-            itemId: i.itemId,
-            name: i.name,
-            price: i.price,
-            quantity: i.quantity,
-            ...(i.modifiers?.length ? { modifiers: i.modifiers } : {}),
-          })),
-          tableNote: tableNote.trim() || undefined,
-          orderNote: orderNote.trim() || undefined,
-          customer: effectiveCustomer,
-        }),
+        body: JSON.stringify(buildOrderPayload()),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Checkout failed");
-
       onClose();
       clearCart();
       setTableNote("");
@@ -811,12 +833,115 @@ function CartSheet({
       setGuestEmail("");
       setStep("cart");
       setGuestMode(false);
-      await Linking.openURL(data.url);
+      // In-app browser modal — never fully leaves the app
+      try {
+        await WebBrowser.openBrowserAsync(data.url);
+      } catch {
+        await Linking.openURL(data.url);
+      }
     } catch (err: any) {
       Alert.alert("Checkout Error", err.message || "Please try again.");
     } finally {
       setLoading(false);
     }
+  };
+
+  // Snapshot the cart at order creation so confirmation shows what was paid for
+  const snapshottedItemsRef = React.useRef<{ name: string; quantity: number; price: number; modifiers?: string[] }[]>([]);
+  const snapshottedTableRef = React.useRef<string>("");
+
+  const handleCheckout = async () => {
+    if (items.length === 0) return;
+    if (!squareConfig?.configured) {
+      // Web Payments SDK not available — fall back to hosted checkout
+      return fallbackToHostedCheckout();
+    }
+    setLoading(true);
+    setPayError(null);
+    try {
+      const apiBase = getApiUrl();
+      const url = new URL("/api/orders/create", apiBase);
+      const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildOrderPayload()),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Could not start checkout");
+      // Snapshot for confirmation screen
+      snapshottedItemsRef.current = items.map((i) => ({
+        name: i.name,
+        quantity: i.quantity,
+        price: i.price,
+        ...(i.modifiers?.length ? { modifiers: i.modifiers.map((m) => m.name) } : {}),
+      }));
+      snapshottedTableRef.current = tableNote.trim();
+      setPendingOrder({ appOrderId: data.appOrderId, amountPence: data.amountPence });
+      setPaymentSheetVisible(true);
+    } catch (err: any) {
+      Alert.alert("Checkout Error", err.message || "Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTokenized = async (payload: { sourceId: string; verificationToken?: string | null }) => {
+    if (!pendingOrder) return;
+    setPaying(true);
+    setPayError(null);
+    try {
+      const apiBase = getApiUrl();
+      const url = new URL(`/api/orders/${pendingOrder.appOrderId}/pay`, apiBase);
+      const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceId: payload.sourceId,
+          verificationToken: payload.verificationToken ?? undefined,
+          buyerEmail: customer?.email || guestEmail.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      // Treat "already paid" (e.g. webhook beat us to it) as success.
+      const alreadyPaid =
+        res.status === 409 &&
+        typeof data?.message === "string" &&
+        /already.?paid|already.?processed/i.test(data.message);
+      if (!alreadyPaid && (!res.ok || !data.ok)) {
+        throw new Error(data.message || "Payment was declined.");
+      }
+      // Success — close everything, clear cart, route to confirmation
+      const confirmationParams = {
+        appOrderId: String(pendingOrder.appOrderId),
+        tableNote: snapshottedTableRef.current,
+        totalPence: String(pendingOrder.amountPence),
+        items: JSON.stringify(snapshottedItemsRef.current),
+      };
+      setPaymentSheetVisible(false);
+      setPendingOrder(null);
+      onClose();
+      clearCart();
+      setTableNote("");
+      setOrderNote("");
+      setGuestName("");
+      setGuestEmail("");
+      setStep("cart");
+      setGuestMode(false);
+      router.push({ pathname: "/order-confirmation" as any, params: confirmationParams });
+    } catch (err: any) {
+      setPayError(err.message || "Payment failed. Please try again.");
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  const handleClosePaymentSheet = () => {
+    if (paying) return;
+    setPaymentSheetVisible(false);
+    // Keep pendingOrder so the user could retry — but for safety, clear it.
+    // The Square Order itself stays "pending" and is benign.
+    setPendingOrder(null);
+    setPayError(null);
   };
 
   const handleClose = () => {
@@ -855,6 +980,7 @@ function CartSheet({
   );
 
   return (
+    <>
     <Modal
       visible={visible}
       animationType="slide"
@@ -1122,6 +1248,19 @@ function CartSheet({
         </View>
       </KeyboardAvoidingView>
     </Modal>
+    <SquarePaymentSheet
+      visible={paymentSheetVisible}
+      onClose={handleClosePaymentSheet}
+      onTokenized={handleTokenized}
+      applicationId={squareConfig?.applicationId ?? null}
+      locationId={squareConfig?.locationId ?? null}
+      environment={squareConfig?.environment ?? "sandbox"}
+      amountPence={pendingOrder?.amountPence ?? 0}
+      buyerEmail={customer?.email || guestEmail.trim() || null}
+      inProgress={paying}
+      errorMessage={payError}
+    />
+    </>
   );
 }
 

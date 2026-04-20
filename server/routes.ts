@@ -3526,6 +3526,162 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Public Square Web Payments SDK config ──────────────────────────────────
+  // Safe to expose: applicationId, locationId, environment are public values.
+  app.get("/api/public/square-config", (_req, res) => {
+    const applicationId = square.getApplicationId();
+    const locationId = square.getPublicLocationId();
+    const environment = square.getEnvironment();
+    res.json({
+      applicationId,
+      locationId,
+      environment,
+      configured: square.isWebPaymentsConfigured(),
+    });
+  });
+
+  // ── In-app order: create the Square Order (no hosted checkout) ─────────────
+  // Returns the orderId + computed total so the client can charge it via the
+  // Web Payments SDK and POST the resulting card token to /api/orders/:id/pay.
+  app.post("/api/orders/create", async (req, res) => {
+    const { items, tableNote, orderNote, customer } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: "Cart is empty" });
+    }
+    if (!square.isWebPaymentsConfigured()) {
+      return res.status(503).json({ message: "In-app payments are not configured." });
+    }
+    try {
+      const orderingEnabled = await getOrderingEnabled();
+      if (!orderingEnabled) {
+        return res.status(503).json({ message: "Online ordering is currently unavailable. Please order at the bar." });
+      }
+
+      // Resolve membership discount (same logic as /api/orders/checkout)
+      let discountPercent: number | undefined;
+      let discountLabel: string | undefined;
+      let excludeWithDeals = false;
+      if (customer?.email) {
+        try {
+          const cust = await storage.getCustomerByEmail(customer.email);
+          if (cust) {
+            const preSub = await storage.getMembershipSubscriptionByCustomer(cust.id);
+            const needsSync = !preSub || (preSub as any).source === "square_group_sync";
+            if (needsSync) {
+              await syncSquareMembershipForCustomer(cust.id, cust.email).catch((e: any) =>
+                console.warn("[ORDER] Pre-create sync failed:", e.message)
+              );
+            }
+            const sub = await storage.getMembershipSubscriptionByCustomer(cust.id);
+            const isActive = sub?.status === "active";
+            const notCancelled = !sub?.cancelledAt;
+            const periodValid = !sub?.currentPeriodEnd || new Date(sub.currentPeriodEnd) >= new Date();
+            const planActive = sub?.plan !== null;
+            const hasDiscount = (sub?.plan?.foodDrinkDiscount ?? 0) > 0;
+            if (sub && isActive && notCancelled && periodValid && planActive && hasDiscount) {
+              discountPercent = sub.plan!.foodDrinkDiscount;
+              discountLabel = `${sub.plan!.name} Member Discount`;
+              excludeWithDeals = !!((sub.plan as any)?.excludeWithDeals);
+            }
+          }
+        } catch (err: any) {
+          console.warn("[ORDER] Could not look up membership discount:", err.message);
+        }
+      }
+
+      const { orderId, totalPence } = await square.createSquareOrderForCheckout(
+        items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote,
+      );
+
+      // Save app_orders row (pending) so the webhook + staff dashboard see it
+      const appOrder = await storage.createAppOrder({
+        squareOrderId: orderId,
+        tableNote: tableNote || undefined,
+        customerName: customer?.name || undefined,
+        customerEmail: customer?.email || undefined,
+        itemsJson: JSON.stringify(
+          items.map((i: any) => ({
+            name: i.name ?? "Item",
+            quantity: i.quantity,
+            price: i.price,
+            ...(i.modifiers?.length ? { modifiers: i.modifiers.map((m: any) => m.name) } : {}),
+          }))
+        ),
+        totalPence,
+        discountPercent: discountPercent ?? undefined,
+        discountLabel: discountLabel ?? undefined,
+      });
+
+      res.json({
+        appOrderId: appOrder.id,
+        squareOrderId: orderId,
+        amountPence: totalPence,
+        discountPercent: discountPercent ?? null,
+        discountLabel: discountLabel ?? null,
+      });
+    } catch (err: any) {
+      console.error("[ORDER] Create order failed:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ── In-app order: pay with a Web Payments SDK card token ───────────────────
+  app.post("/api/orders/:appOrderId/pay", async (req, res) => {
+    const appOrderId = parseInt(String(req.params.appOrderId));
+    if (isNaN(appOrderId)) return res.status(400).json({ message: "Invalid order id" });
+    const { sourceId, verificationToken, buyerEmail } = req.body || {};
+    if (typeof sourceId !== "string" || !sourceId.trim()) {
+      return res.status(400).json({ message: "Missing payment token" });
+    }
+    if (!square.isWebPaymentsConfigured()) {
+      return res.status(503).json({ message: "In-app payments are not configured." });
+    }
+    try {
+      const order = await storage.getAppOrder(appOrderId);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      if (order.status !== "pending") {
+        return res.status(409).json({ message: `Order is already ${order.status}` });
+      }
+      if (!order.squareOrderId) {
+        return res.status(400).json({ message: "Order is missing Square reference" });
+      }
+      const idemRaw = `app-order-${appOrderId}|${sourceId}`;
+      const idempotencyKey = createHash("sha256").update(idemRaw).digest("hex").slice(0, 45);
+      const payment = await square.createCardPayment({
+        sourceId: sourceId.trim(),
+        amountPence: order.totalPence,
+        idempotencyKey,
+        note: order.tableNote ? `Order ${appOrderId} — ${order.tableNote}` : `Order ${appOrderId}`,
+        referenceId: `app-order-${appOrderId}`,
+        buyerEmail: (buyerEmail || order.customerEmail || null) as string | null,
+        verificationToken: verificationToken || null,
+        orderId: order.squareOrderId,
+      });
+      const succeeded = payment.status === "COMPLETED" || payment.status === "APPROVED";
+      if (succeeded) {
+        await storage.updateAppOrderPaid(order.squareOrderId, payment.id).catch((e: any) =>
+          console.error("[ORDER] Failed to mark paid:", e.message)
+        );
+      }
+      res.json({
+        ok: succeeded,
+        status: payment.status,
+        paymentId: payment.id,
+        appOrderId: order.id,
+      });
+    } catch (err: any) {
+      const squareErrors = Array.isArray(err?.errors) ? err.errors : (Array.isArray(err?.result?.errors) ? err.result.errors : []);
+      const first = squareErrors[0] || {};
+      const errorCode: string | undefined = first.code;
+      const errorDetail: string | undefined = first.detail || err?.message;
+      console.error("[ORDER] Pay failed:", { code: err?.code, errorCode, detail: errorDetail });
+      res.status(400).json({
+        message: errorDetail || "Card charge failed",
+        errorCode: errorCode || null,
+      });
+    }
+  });
+
   // ── Staff: recent app orders ─────────────────────────────────────────────────
   app.get("/api/staff/orders", staffAuth, async (req, res) => {
     try {

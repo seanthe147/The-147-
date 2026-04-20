@@ -188,6 +188,7 @@ export async function createCardPayment(opts: {
   referenceId?: string;
   buyerEmail?: string | null;
   verificationToken?: string | null;
+  orderId?: string | null;
 }): Promise<{ id: string; status: string; receipt_url?: string; card_details?: any }> {
   const body: any = {
     idempotency_key: opts.idempotencyKey,
@@ -200,6 +201,7 @@ export async function createCardPayment(opts: {
   if (opts.referenceId) body.reference_id = opts.referenceId.slice(0, 40);
   if (opts.buyerEmail) body.buyer_email_address = opts.buyerEmail;
   if (opts.verificationToken) body.verification_token = opts.verificationToken;
+  if (opts.orderId) body.order_id = opts.orderId;
   const data = await squareRequest("POST", "/v2/payments", body);
   return data.payment;
 }
@@ -959,19 +961,21 @@ function normalizeUkPhone(phone: string): string | undefined {
   return undefined;
 }
 
-export async function createOrderCheckoutLink(
+// Build the inner Square `order` body shared by checkout-link and standalone
+// order creation. Centralises line-item, modifier, deal, member-discount,
+// fulfillment, and note logic so both flows produce identical Square orders.
+async function buildSquareOrderBody(
   items: OrderLineItem[],
-  tableNote?: string,
-  customer?: CheckoutCustomer,
-  discountPercent?: number,
-  discountLabel?: string,
-  excludeWithDeals?: boolean,
-  orderNote?: string
-): Promise<{ url: string; linkId: string; squareOrderId: string }> {
+  tableNote: string | undefined,
+  customer: CheckoutCustomer | undefined,
+  discountPercent: number | undefined,
+  discountLabel: string | undefined,
+  excludeWithDeals: boolean | undefined,
+  orderNote: string | undefined,
+): Promise<{ order: any; prePopulated: Record<string, any> | undefined }> {
   const locationId = getLocationId();
-  const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-  // Build pre-populated buyer data for logged-in customers
+  // Build pre-populated buyer data for logged-in customers (used by checkout link only)
   let prePopulated: Record<string, any> | undefined;
   if (customer?.email || customer?.name || customer?.phone) {
     prePopulated = {};
@@ -990,12 +994,9 @@ export async function createOrderCheckoutLink(
     }
   }
 
-  // Recipient name: "Table 3" or customer name, shown on the KDS ticket
   const ticketName = tableNote || (customer?.name ? customer.name.split(" ")[0] : "Guest");
-
   const memberDiscountUid = "MEMBER-DISCOUNT";
 
-  // Auto-apply active Square deals that match items in this cart
   const activeDeals = await getSquareDeals().catch(() => [] as Deal[]);
   const dealByVariationId = new Map<string, Deal>();
   for (const deal of activeDeals) {
@@ -1004,24 +1005,15 @@ export async function createOrderCheckoutLink(
       if (!dealByVariationId.has(vid)) dealByVariationId.set(vid, deal);
     }
   }
-  const cartVariationIds = items.map((i) => i.variationId);
   const matchedDeals = items
     .filter((i) => dealByVariationId.has(i.variationId) || (i.itemId && dealByVariationId.has(i.itemId)))
     .map((i) => (dealByVariationId.get(i.variationId) ?? dealByVariationId.get(i.itemId!))!.name);
-  console.log(`[DEALS] Cart variation IDs: ${cartVariationIds.join(", ")} | Matched deals: ${matchedDeals.join(", ") || "none"} | Deal-linked IDs: ${[...dealByVariationId.keys()].join(", ") || "none"}`);
 
   const hasMemberDiscount = typeof discountPercent === "number" && discountPercent > 0;
   const dealsInCart = matchedDeals.length > 0;
-  // When excludeWithDeals is true and offers exist, apply discount item-by-item (skip items on offer)
-  // Otherwise apply as a standard ORDER-level discount
   const itemLevelMemberDiscount = hasMemberDiscount && excludeWithDeals && dealsInCart;
   const orderLevelMemberDiscount = hasMemberDiscount && !itemLevelMemberDiscount;
 
-  if (itemLevelMemberDiscount) {
-    console.log(`[ORDER] Member discount applied per-item — excluded from offer items: ${matchedDeals.join(", ")}`);
-  }
-
-  // Build line items with UIDs and collect auto-apply discounts
   const orderDiscounts: any[] = orderLevelMemberDiscount ? [{
     uid: memberDiscountUid,
     name: discountLabel ?? "Member Discount",
@@ -1029,7 +1021,6 @@ export async function createOrderCheckoutLink(
     percentage: String(discountPercent),
     scope: "ORDER",
   }] : itemLevelMemberDiscount ? [{
-    // LINE_ITEM scoped — will only be applied to items without a deal (referenced per line item)
     uid: memberDiscountUid,
     name: discountLabel ?? "Member Discount",
     type: "FIXED_PERCENTAGE",
@@ -1039,14 +1030,11 @@ export async function createOrderCheckoutLink(
 
   const lineItems = items.map((item, idx) => {
     const lineUid = `li-${idx}`;
-    // Match by variationId first, fall back to parent itemId (covers all sizes of an item)
     const deal = dealByVariationId.get(item.variationId) ?? (item.itemId ? dealByVariationId.get(item.itemId) : undefined);
     const appliedDiscounts: any[] = [];
-
     if (deal) {
       const discountUid = `deal-${idx}`;
       if (deal.discountType === "FIXED_AMOUNT" && deal.amountPence != null) {
-        // Scale the fixed amount by quantity so each unit gets the discount
         orderDiscounts.push({
           uid: discountUid,
           name: deal.name,
@@ -1065,14 +1053,10 @@ export async function createOrderCheckoutLink(
       }
       if (orderDiscounts.find((d) => d.uid === discountUid)) {
         appliedDiscounts.push({ discount_uid: discountUid });
-        // Item has a deal — do NOT apply member discount to it (for excludeWithDeals plans)
       }
     } else if (itemLevelMemberDiscount) {
-      // No deal on this item — apply member discount individually
       appliedDiscounts.push({ discount_uid: memberDiscountUid });
     }
-    // ORDER-scoped member discount applies automatically to all items — no need to reference it here
-
     return {
       uid: lineUid,
       catalog_object_id: item.variationId,
@@ -1090,43 +1074,80 @@ export async function createOrderCheckoutLink(
     };
   });
 
+  const noteParts = [tableNote, orderNote].filter(Boolean);
+  const combinedNote = noteParts.join(" | ");
+
+  const order: any = {
+    location_id: locationId,
+    line_items: lineItems,
+    ...(orderDiscounts.length ? { discounts: orderDiscounts } : {}),
+    fulfillments: [
+      {
+        type: "PICKUP",
+        state: "PROPOSED",
+        pickup_details: {
+          recipient: { display_name: ticketName.slice(0, 60) },
+          schedule_type: "ASAP",
+          is_curbside_pickup: false,
+          note: combinedNote || undefined,
+        },
+      },
+    ],
+    ...(combinedNote ? {
+      note: combinedNote.slice(0, 500),
+      reference_id: (tableNote || "ORDER").replace(/\s+/g, "-").toUpperCase().slice(0, 40),
+    } : {}),
+  };
+
+  return { order, prePopulated };
+}
+
+// Create a standalone Square Order (no hosted checkout) so we can charge it
+// in-app via the Web Payments SDK. Returns the Square order id and computed
+// total in pence (Square evaluates discounts server-side).
+export async function createSquareOrderForCheckout(
+  items: OrderLineItem[],
+  tableNote?: string,
+  customer?: CheckoutCustomer,
+  discountPercent?: number,
+  discountLabel?: string,
+  excludeWithDeals?: boolean,
+  orderNote?: string,
+): Promise<{ orderId: string; totalPence: number }> {
+  const idempotencyKey = `order-create-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const { order } = await buildSquareOrderBody(
+    items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote,
+  );
+  const data = await squareRequest("POST", "/v2/orders", {
+    idempotency_key: idempotencyKey,
+    order,
+  });
+  if (!data.order?.id) throw new Error("No order returned from Square");
+  const totalPence = Number(data.order.total_money?.amount ?? data.order.net_amounts?.total_money?.amount ?? 0);
+  return { orderId: data.order.id as string, totalPence };
+}
+
+export async function createOrderCheckoutLink(
+  items: OrderLineItem[],
+  tableNote?: string,
+  customer?: CheckoutCustomer,
+  discountPercent?: number,
+  discountLabel?: string,
+  excludeWithDeals?: boolean,
+  orderNote?: string
+): Promise<{ url: string; linkId: string; squareOrderId: string }> {
+  const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const { order, prePopulated } = await buildSquareOrderBody(
+    items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote,
+  );
   const body: any = {
     idempotency_key: idempotencyKey,
-    order: {
-      location_id: locationId,
-      line_items: lineItems,
-      ...(orderDiscounts.length ? { discounts: orderDiscounts } : {}),
-      // PICKUP fulfillment is required for Square KDS to display the order.
-      // KDS routing rules on each device then split food → kitchen and drinks → bar.
-      fulfillments: [
-        {
-          type: "PICKUP",
-          state: "PROPOSED",
-          pickup_details: {
-            recipient: {
-              display_name: ticketName.slice(0, 60),
-            },
-            schedule_type: "ASAP",
-            is_curbside_pickup: false,
-            note: [tableNote, orderNote].filter(Boolean).join(" | ") || undefined,
-          },
-        },
-      ],
-      ...(() => {
-        const noteParts = [tableNote, orderNote].filter(Boolean);
-        const combinedNote = noteParts.join(" | ");
-        return combinedNote ? {
-          note: combinedNote.slice(0, 500),
-          reference_id: (tableNote || "ORDER").replace(/\s+/g, "-").toUpperCase().slice(0, 40),
-        } : {};
-      })(),
-    },
+    order,
     checkout_options: {
       allow_tipping: false,
       ...(prePopulated ? { pre_populated_data: prePopulated } : {}),
     },
   };
-
   const data = await squareRequest("POST", "/v2/online-checkout/payment-links", body);
   if (!data.payment_link?.url) throw new Error("No checkout URL returned from Square");
   return {

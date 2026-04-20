@@ -1459,8 +1459,8 @@ export class DatabaseStorage implements IStorage {
     totalPence: number;
     discountPercent?: number;
     discountLabel?: string;
-  }): Promise<void> {
-    await db.insert(appOrders).values({
+  }): Promise<{ id: number }> {
+    const rows = await db.insert(appOrders).values({
       squareLinkId: data.squareLinkId ?? null,
       squareOrderId: data.squareOrderId ?? null,
       squarePaymentId: null,
@@ -1473,7 +1473,8 @@ export class DatabaseStorage implements IStorage {
       discountPercent: data.discountPercent ?? null,
       discountLabel: data.discountLabel ?? null,
       status: "pending",
-    });
+    }).returning({ id: appOrders.id });
+    return { id: rows[0].id };
   }
 
   async getRecentAppOrders(limit = 100): Promise<AppOrder[]> {
