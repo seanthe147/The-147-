@@ -373,6 +373,45 @@ function configureExpoAndLanding(app: express.Application) {
     }
   });
 
+  // ── Test website (multi-page mockup) ───────────────────────────────────────
+  // Lives under /test-site/* and is fully self-contained from the production app.
+  // Each page is a static HTML file in server/templates/test-site/. To edit any
+  // page, just open the matching .html file (e.g. snooker.html) and change the
+  // text — no rebuild needed.
+  const TEST_SITE_PAGES: Record<string, string> = {
+    "": "home.html",
+    "snooker": "snooker.html",
+    "dining": "dining.html",
+    "events": "events.html",
+    "function-rooms": "function-rooms.html",
+    "gift-cards": "gift-cards.html",
+    "contact": "contact.html",
+  };
+  // Shared CSS file
+  app.get("/test-site/styles.css", (_req: Request, res: Response) => {
+    try {
+      const p = path.resolve(process.cwd(), "server", "templates", "test-site", "styles.css");
+      res.setHeader("Content-Type", "text/css; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=300");
+      res.send(fs.readFileSync(p, "utf-8"));
+    } catch {
+      res.status(404).end();
+    }
+  });
+  // Page handler — `/test-site` and `/test-site/<page>`
+  app.get(["/test-site", "/test-site/:page"], (req: Request, res: Response) => {
+    const slug = (req.params.page ?? "").toLowerCase();
+    const file = TEST_SITE_PAGES[slug];
+    if (!file) return res.status(404).send("Page not found");
+    try {
+      const p = path.resolve(process.cwd(), "server", "templates", "test-site", file);
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.send(fs.readFileSync(p, "utf-8"));
+    } catch {
+      res.status(500).send("Page unavailable");
+    }
+  });
+
   // SPA catch-all: any non-API, non-static path is an Expo Router client-side route.
   // In development, proxy to Metro (which serves the web bundle). In production, serve
   // the static build's index.html so deep links work.
