@@ -89,7 +89,7 @@ interface AppOrder {
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const { isAuthenticated, isLoading: authLoading, customer, login, register, logout, updateProfile, deleteAccount } = useCustomerAuth();
+  const { isAuthenticated, isLoading: authLoading, customer, login, register, logout, updateProfile, deleteAccount, resendVerificationEmail } = useCustomerAuth();
 
   if (authLoading) {
     return (
@@ -109,7 +109,7 @@ export default function AccountScreen() {
         <View style={{ width: 40 }} />
       </View>
       {isAuthenticated && customer ? (
-        <LoggedInView customer={customer} logout={logout} updateProfile={updateProfile} deleteAccount={deleteAccount} />
+        <LoggedInView customer={customer} logout={logout} updateProfile={updateProfile} deleteAccount={deleteAccount} resendVerificationEmail={resendVerificationEmail} />
       ) : (
         <AuthView login={login} register={register} />
       )}
@@ -285,12 +285,29 @@ function AuthView({ login, register }: {
   );
 }
 
-function LoggedInView({ customer, logout, updateProfile, deleteAccount }: {
-  customer: { id: number; name: string; email: string; phone: string | null };
+function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVerificationEmail }: {
+  customer: { id: number; name: string; email: string; phone: string | null; emailVerified?: boolean };
   logout: () => Promise<void>;
   updateProfile: (data: { name?: string; phone?: string }) => Promise<{ success: boolean; error?: string }>;
   deleteAccount: () => Promise<{ success: boolean; error?: string }>;
+  resendVerificationEmail: () => Promise<{ success: boolean; error?: string }>;
 }) {
+  const [resendState, setResendState] = useState<"idle" | "sending" | "sent">("idle");
+  const [resendMessage, setResendMessage] = useState<string | null>(null);
+  const handleResend = async () => {
+    setResendState("sending");
+    setResendMessage(null);
+    const result = await resendVerificationEmail();
+    if (result.success) {
+      setResendState("sent");
+      setResendMessage("Verification email sent — check your inbox.");
+      // Re-enable the button after the server cooldown so users can resend again if needed.
+      setTimeout(() => setResendState("idle"), 60_000);
+    } else {
+      setResendState("idle");
+      setResendMessage(result.error || "Could not send verification email");
+    }
+  };
   const [editingProfile, setEditingProfile] = useState(false);
   const [editName, setEditName] = useState(customer.name);
   const [editPhone, setEditPhone] = useState(customer.phone || "");
@@ -479,6 +496,33 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount }: {
           )}
         </View>
       </View>
+
+      {customer.emailVerified === false && (
+        <View style={styles.verifyBanner} testID="verify-email-banner">
+          <View style={styles.verifyBannerHeader}>
+            <Ionicons name="mail-unread-outline" size={20} color="#92400E" />
+            <Text style={styles.verifyBannerTitle}>Confirm your email</Text>
+          </View>
+          <Text style={styles.verifyBannerText}>
+            We sent a link to {customer.email}. Click it so you can recover your bookings if you ever lose access. Bookings still work without it.
+          </Text>
+          {resendMessage ? (
+            <Text style={[styles.verifyBannerText, { color: resendState === "sent" ? "#166534" : "#B91C1C", marginTop: 6 }]}>
+              {resendMessage}
+            </Text>
+          ) : null}
+          <Pressable
+            onPress={handleResend}
+            disabled={resendState !== "idle"}
+            style={({ pressed }) => [styles.verifyBannerButton, { opacity: pressed || resendState !== "idle" ? 0.7 : 1 }]}
+            testID="resend-verification"
+          >
+            <Text style={styles.verifyBannerButtonText}>
+              {resendState === "sending" ? "Sending…" : resendState === "sent" ? "Email Sent" : "Resend Email"}
+            </Text>
+          </Pressable>
+        </View>
+      )}
 
       <View style={styles.actionRow}>
         <Pressable
@@ -1046,6 +1090,44 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 1,
     borderColor: "#E5E7EB",
+  },
+  verifyBanner: {
+    backgroundColor: "#FFFBEB",
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#FCD34D",
+    padding: 14,
+    marginBottom: 16,
+  },
+  verifyBannerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 6,
+  },
+  verifyBannerTitle: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 14,
+    color: "#92400E",
+  },
+  verifyBannerText: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 13,
+    color: "#92400E",
+    lineHeight: 18,
+  },
+  verifyBannerButton: {
+    marginTop: 10,
+    alignSelf: "flex-start",
+    backgroundColor: "#92400E",
+    borderRadius: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 16,
+  },
+  verifyBannerButtonText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 13,
+    color: "#FFFFFF",
   },
   profileRow: {
     flexDirection: "row",

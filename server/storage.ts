@@ -199,7 +199,11 @@ export async function runStartupMigrations() {
     // Add GDPR encryption helper columns (new — may already exist)
     await client.query(`
       ALTER TABLE customers
-        ADD COLUMN IF NOT EXISTS email_hash TEXT;
+        ADD COLUMN IF NOT EXISTS email_hash TEXT,
+        ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS email_verify_token_hash TEXT,
+        ADD COLUMN IF NOT EXISTS email_verify_token_expires_at TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS email_verify_last_sent_at TIMESTAMP;
     `);
     // Remove old unique constraint on customers.email (now stored encrypted; email_hash is the unique lookup)
     await client.query(`
@@ -322,7 +326,10 @@ export interface IStorage {
   migrateEncryptExistingBookings(): Promise<number>;
   migrateEncryptExistingPII(): Promise<void>;
   searchCustomers(query: string, limit?: number): Promise<Array<{ id?: number; name: string; phone: string; email: string }>>;
-  createCustomer(email: string, name: string, phone: string | null, passwordHash: string): Promise<Customer>;
+  createCustomer(email: string, name: string, phone: string | null, passwordHash: string, opts?: { emailVerifyTokenHash?: string; emailVerifyTokenExpiresAt?: Date }): Promise<Customer>;
+  setEmailVerificationToken(id: number, tokenHash: string, expiresAt: Date): Promise<void>;
+  getCustomerByVerifyTokenHash(tokenHash: string): Promise<Customer | undefined>;
+  markEmailVerified(id: number): Promise<void>;
   getCustomerByEmail(email: string): Promise<Customer | undefined>;
   getCustomerById(id: number): Promise<Customer | undefined>;
   getAllCustomers(): Promise<Customer[]>;
@@ -1016,7 +1023,7 @@ export class DatabaseStorage implements IStorage {
     return !!row;
   }
 
-  async createCustomer(email: string, name: string, phone: string | null, passwordHash: string): Promise<Customer> {
+  async createCustomer(email: string, name: string, phone: string | null, passwordHash: string, opts?: { emailVerifyTokenHash?: string; emailVerifyTokenExpiresAt?: Date }): Promise<Customer> {
     const normalised = email.toLowerCase().trim();
     const [customer] = await db.insert(customers).values({
       email: encrypt(normalised),
@@ -1025,8 +1032,32 @@ export class DatabaseStorage implements IStorage {
       phone: phone ? encrypt(phone) : null,
       passwordHash,
       privacyConsentAt: new Date(),
+      emailVerifyTokenHash: opts?.emailVerifyTokenHash ?? null,
+      emailVerifyTokenExpiresAt: opts?.emailVerifyTokenExpiresAt ?? null,
+      emailVerifyLastSentAt: opts?.emailVerifyTokenHash ? new Date() : null,
     }).returning();
     return decryptCustomer(customer);
+  }
+
+  async setEmailVerificationToken(id: number, tokenHash: string, expiresAt: Date): Promise<void> {
+    await db.update(customers).set({
+      emailVerifyTokenHash: tokenHash,
+      emailVerifyTokenExpiresAt: expiresAt,
+      emailVerifyLastSentAt: new Date(),
+    }).where(eq(customers.id, id));
+  }
+
+  async getCustomerByVerifyTokenHash(tokenHash: string): Promise<Customer | undefined> {
+    const [row] = await db.select().from(customers).where(eq(customers.emailVerifyTokenHash, tokenHash));
+    return row ? decryptCustomer(row) : undefined;
+  }
+
+  async markEmailVerified(id: number): Promise<void> {
+    await db.update(customers).set({
+      emailVerified: true,
+      emailVerifyTokenHash: null,
+      emailVerifyTokenExpiresAt: null,
+    }).where(eq(customers.id, id));
   }
 
   async getCustomerByEmail(email: string): Promise<Customer | undefined> {

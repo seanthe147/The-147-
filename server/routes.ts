@@ -367,6 +367,94 @@ async function sendDepositLinkEmail(booking: {
   return false;
 }
 
+function getPublicAppOrigin(): string {
+  // Trusted origin for email links — must NOT be derived from request headers
+  // (Host header is attacker-controllable and would let us mint phishing links).
+  const fromEnv = process.env.PUBLIC_APP_URL?.trim();
+  if (fromEnv) return fromEnv.replace(/\/+$/, "");
+  // In a deployed Replit, REPLIT_DOMAINS is a comma-separated list with the
+  // primary custom domain first. Prefer that over the dev preview domain.
+  const replitDomains = process.env.REPLIT_DOMAINS?.trim();
+  if (replitDomains) {
+    const primary = replitDomains.split(",")[0].trim();
+    if (primary) return `https://${primary}`;
+  }
+  const devDomain = process.env.REPLIT_DEV_DOMAIN?.trim();
+  if (devDomain) return `https://${devDomain}`;
+  return "https://the147bradford.replit.app";
+}
+
+function buildVerifyUrl(tokenRaw: string): string {
+  return `${getPublicAppOrigin()}/verify-email?token=${encodeURIComponent(tokenRaw)}`;
+}
+
+async function sendVerificationEmail(opts: { name: string; email: string; tokenRaw: string }): Promise<boolean> {
+  const verifyUrl = buildVerifyUrl(opts.tokenRaw);
+  const subject = "Confirm your email — The 147";
+  const html = `<div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px; background: #ffffff;">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="color: #0A1628; font-size: 24px; margin: 0;">The 147</h1>
+      <p style="color: #6b7280; font-size: 13px; margin: 4px 0 0;">Snooker, Bar &amp; Restaurant</p>
+    </div>
+    <div style="background: #EFF6FF; border: 1.5px solid #BFDBFE; border-radius: 12px; padding: 16px; text-align: center; margin-bottom: 24px;">
+      <span style="font-size: 28px;">✉️</span>
+      <h2 style="color: #1E40AF; font-size: 18px; margin: 8px 0 0;">Confirm your email address</h2>
+    </div>
+    <p style="color: #374151; font-size: 15px;">Hi ${escHtml(opts.name)},</p>
+    <p style="color: #374151; font-size: 15px;">Thanks for creating your account at The 147. Please confirm your email address so we can keep your account secure and let you recover bookings or your membership if you ever lose access.</p>
+    <div style="text-align: center; margin: 28px 0;">
+      <a href="${verifyUrl}" style="display: inline-block; background: #0047AB; color: #fff; font-size: 16px; font-weight: 700; padding: 14px 32px; border-radius: 12px; text-decoration: none;">Confirm Email →</a>
+    </div>
+    <p style="color: #6b7280; font-size: 13px; line-height: 1.6;">Or paste this link into your browser:<br/><span style="word-break: break-all; color: #0047AB;">${escHtml(verifyUrl)}</span></p>
+    <p style="color: #6b7280; font-size: 13px; line-height: 1.6;">This link expires in 7 days. You can keep using your account and bookings without verifying — but recovery features need a confirmed email.</p>
+    <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 12px; text-align: center;">If you didn't create an account at The 147, you can safely ignore this email.</p>
+  </div>`;
+  const sent = await sendEmailViaSMTP(opts.email, subject, html);
+  if (sent) {
+    console.log(`[VERIFY EMAIL] Sent via SMTP to ${maskEmail(opts.email)}`);
+    return true;
+  }
+  const resendKey = process.env.RESEND_API_KEY;
+  if (resendKey) {
+    const fromEmail = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+    const fromName = process.env.RESEND_FROM_NAME || "The 147";
+    try {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+        body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: opts.email, subject, html }),
+      });
+      if (response.ok) {
+        console.log(`[VERIFY EMAIL] Sent via Resend to ${maskEmail(opts.email)}`);
+        return true;
+      }
+    } catch (_) {}
+  }
+  console.warn(`[VERIFY EMAIL] Failed to send to ${maskEmail(opts.email)}`);
+  return false;
+}
+
+function renderVerifyResultPage(kind: "success" | "error", message: string): string {
+  const isSuccess = kind === "success";
+  const accent = isSuccess ? "#16A34A" : "#DC2626";
+  const bg = isSuccess ? "#DCFCE7" : "#FEE2E2";
+  const icon = isSuccess
+    ? `<svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="${accent}" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`
+    : `<svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="${accent}" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
+  const title = isSuccess ? "Email verified" : "We couldn't verify that link";
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${escHtml(title)} — The 147</title><style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;background:#F2F5FA;color:#0D1526;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .card{background:#fff;border-radius:24px;max-width:480px;width:100%;padding:40px 32px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.08)}
+  .ring{width:80px;height:80px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;margin:0 auto 20px}
+  h1{font-size:24px;font-weight:800;color:#0A1628;margin-bottom:12px}
+  p{color:#4B5A72;font-size:15px;line-height:1.6;margin-bottom:24px}
+  a.btn{display:inline-block;background:#0047AB;color:#fff;font-weight:700;font-size:14px;padding:12px 24px;border-radius:12px;text-decoration:none}
+  .brand{margin-top:24px;font-size:12px;color:#8EA0BB}
+  </style></head><body><div class="card"><div class="ring">${icon}</div><h1>${escHtml(title)}</h1><p>${escHtml(message)}</p><a class="btn" href="/">Back to The 147</a><div class="brand">The 147 — Snooker, Bar &amp; Restaurant</div></div></body></html>`;
+}
+
 async function sendMembershipPaymentLinkEmail(opts: {
   customerName: string;
   customerEmail: string;
@@ -4320,14 +4408,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const { hash, salt } = hashPin(password);
       const passwordHash = `${salt}:${hash}`;
-      const customer = await storage.createCustomer(email, name.trim(), phone?.trim() || null, passwordHash);
+      // Generate an email verification token (raw token sent in link, only its hash stored)
+      const verifyTokenRaw = randomBytes(32).toString("hex");
+      const verifyTokenHash = createHash("sha256").update(verifyTokenRaw).digest("hex");
+      const verifyExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const customer = await storage.createCustomer(email, name.trim(), phone?.trim() || null, passwordHash, {
+        emailVerifyTokenHash: verifyTokenHash,
+        emailVerifyTokenExpiresAt: verifyExpiresAt,
+      });
       const token = randomBytes(48).toString("hex");
       const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
       await storage.createCustomerSession(token, customer.id, expiresAt);
       res.status(201).json({
         token,
-        customer: { id: customer.id, name: customer.name, email: customer.email, phone: customer.phone },
+        customer: { id: customer.id, name: customer.name, email: customer.email, phone: customer.phone, emailVerified: false },
       });
+      // Non-blocking: send verification email
+      sendVerificationEmail({ name: customer.name, email: customer.email, tokenRaw: verifyTokenRaw });
       // Non-blocking: auto-link any existing Square membership for this email
       syncSquareMembershipForCustomer(customer.id, customer.email);
     } catch (err: any) {
@@ -4363,7 +4460,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.createCustomerSession(token, customer.id, expiresAt);
       res.json({
         token,
-        customer: { id: customer.id, name: customer.name, email: customer.email, phone: customer.phone },
+        customer: { id: customer.id, name: customer.name, email: customer.email, phone: customer.phone, emailVerified: customer.emailVerified },
       });
       // Non-blocking: auto-link any existing Square membership for this email
       syncSquareMembershipForCustomer(customer.id, customer.email);
@@ -4385,7 +4482,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!customer) {
       return res.status(404).json({ message: "Account not found" });
     }
-    res.json({ id: customer.id, name: customer.name, email: customer.email, phone: customer.phone });
+    res.json({ id: customer.id, name: customer.name, email: customer.email, phone: customer.phone, emailVerified: customer.emailVerified });
+  });
+
+  // Resend the email verification link (rate-limited per customer to one every 60s)
+  app.post("/api/customers/me/resend-verification", customerAuth, async (req: Request & { customerId?: number }, res) => {
+    const customerId = req.customerId;
+    if (!customerId) return res.status(401).json({ message: "Not signed in" });
+    const customer = await storage.getCustomerById(customerId);
+    if (!customer) return res.status(404).json({ message: "Account not found" });
+    if (customer.emailVerified) {
+      return res.json({ success: true, alreadyVerified: true });
+    }
+    const lastSent = customer.emailVerifyLastSentAt;
+    if (lastSent && Date.now() - lastSent.getTime() < 60_000) {
+      const retryAfter = Math.ceil((60_000 - (Date.now() - lastSent.getTime())) / 1000);
+      res.setHeader("Retry-After", String(retryAfter));
+      return res.status(429).json({ message: `Please wait ${retryAfter}s before requesting another email.` });
+    }
+    const verifyTokenRaw = randomBytes(32).toString("hex");
+    const verifyTokenHash = createHash("sha256").update(verifyTokenRaw).digest("hex");
+    const verifyExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await storage.setEmailVerificationToken(customerId, verifyTokenHash, verifyExpiresAt);
+    sendVerificationEmail({ name: customer.name, email: customer.email, tokenRaw: verifyTokenRaw });
+    res.json({ success: true });
+  });
+
+  // Confirmation landing page — clicked from the verification email
+  app.get("/verify-email", async (req, res) => {
+    const tokenRaw = String(req.query.token || "");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    if (!tokenRaw) {
+      return res.status(400).send(renderVerifyResultPage("error", "Missing verification token. Please use the link from your email."));
+    }
+    const tokenHash = createHash("sha256").update(tokenRaw).digest("hex");
+    const customer = await storage.getCustomerByVerifyTokenHash(tokenHash);
+    if (!customer) {
+      return res.status(400).send(renderVerifyResultPage("error", "This link is invalid or has already been used. If you've already verified, you're all set."));
+    }
+    const expiresAt = customer.emailVerifyTokenExpiresAt;
+    if (expiresAt && expiresAt.getTime() < Date.now()) {
+      return res.status(400).send(renderVerifyResultPage("error", "This verification link has expired. Sign in to your account and request a new one."));
+    }
+    await storage.markEmailVerified(customer.id);
+    res.send(renderVerifyResultPage("success", "Your email is verified. You can now use account recovery if you ever lose access."));
   });
 
   app.patch("/api/customers/me", customerAuth, async (req, res) => {

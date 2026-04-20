@@ -190,6 +190,10 @@ export const customers = pgTable("customers", {
   passwordHash: text("password_hash").notNull(),
   privacyConsentAt: timestamp("privacy_consent_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  emailVerified: boolean("email_verified").notNull().default(false),
+  emailVerifyTokenHash: text("email_verify_token_hash"),
+  emailVerifyTokenExpiresAt: timestamp("email_verify_token_expires_at"),
+  emailVerifyLastSentAt: timestamp("email_verify_last_sent_at"),
 });
 
 export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true, createdAt: true });

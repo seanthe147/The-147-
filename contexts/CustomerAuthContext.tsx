@@ -10,6 +10,7 @@ interface CustomerProfile {
   name: string;
   email: string;
   phone: string | null;
+  emailVerified?: boolean;
 }
 
 interface CustomerAuthContextValue {
@@ -22,6 +23,7 @@ interface CustomerAuthContextValue {
   updateProfile: (data: { name?: string; phone?: string }) => Promise<{ success: boolean; error?: string }>;
   deleteAccount: () => Promise<{ success: boolean; error?: string }>;
   refreshProfile: () => Promise<void>;
+  resendVerificationEmail: () => Promise<{ success: boolean; error?: string }>;
   getCustomerToken: () => string | null;
 }
 
@@ -188,6 +190,25 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     if (profile) setCustomer(profile);
   }, [token, fetchProfile]);
 
+  const resendVerificationEmail = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
+    if (!token) return { success: false, error: "Not logged in" };
+    try {
+      const baseUrl = getApiUrl();
+      const url = new URL("/api/customers/me/resend-verification", baseUrl);
+      const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return { success: false, error: data.message || "Could not send verification email" };
+      }
+      return { success: true };
+    } catch {
+      return { success: false, error: "Connection error" };
+    }
+  }, [token]);
+
   const getCustomerToken = useCallback(() => token, [token]);
 
   const value = useMemo(
@@ -201,9 +222,10 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       updateProfile,
       deleteAccount,
       refreshProfile,
+      resendVerificationEmail,
       getCustomerToken,
     }),
-    [token, isLoading, customer, login, register, logout, updateProfile, deleteAccount, refreshProfile, getCustomerToken]
+    [token, isLoading, customer, login, register, logout, updateProfile, deleteAccount, refreshProfile, resendVerificationEmail, getCustomerToken]
   );
 
   return (
