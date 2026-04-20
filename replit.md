@@ -192,3 +192,28 @@ Both surfaces hit the **same** customer endpoints with the same contract:
 - Email-verification step after signup (typo recovery).
 - Real Terms of Service page (`/terms`) and footer link cleanup.
 - Splitting staff tools into a separate App Store listing (see "Staff vs Customer App Split" section above).
+
+## Staff/Customer Build Variants (Task #4, April 2026)
+
+Infrastructure to ship the same codebase as **two App Store listings**: one for customers, one for staff. Single backend, single DB — only the *binary* differs.
+
+- **Variant flag**: `EXPO_PUBLIC_APP_VARIANT` env var (`customer` | `staff` | unset = combined). Read in `lib/app-variant.ts` which exports `isStaffVariant`, `showCustomerRoutes`, `showStaffRoutes`.
+- **Route gating** (`app/_layout.tsx`):
+  - Customer variant → registers `(tabs)`, `account`, `membership`, plus all staff routes (see note below).
+  - Staff variant → registers staff-only screens (`staff-portal`, `staff-hr`, `admin-*`); `(tabs)`, `account`, `membership` are not registered. Initial route is `staff-hr` (clock in/out) which redirects to `/staff-portal` for login if unauth.
+  - Combined (no flag) → registers everything (legacy / dev behavior).
+- **Important — staff still visible in customer build for now**: `lib/app-variant.ts` deliberately keeps `showStaffRoutes = true` even in the customer variant until the dedicated staff app is approved and live on the App Store. The `app/(tabs)/about.tsx` Staff Portal link is also gated on `showStaffRoutes`. Once the staff app is live, change the single line in `lib/app-variant.ts` (commented in the file) to remove staff from customer downloads.
+- **Build profiles** (`eas.json`):
+  - `production` / `preview` / `production-android` — customer variant (`EXPO_PUBLIC_APP_VARIANT=customer`), bundle id `com.the147bradford.app`, public App Store distribution.
+  - `production-staff` / `preview-staff` — staff variant (`EXPO_PUBLIC_APP_VARIANT=staff`), `distribution: internal` (TestFlight internal only). Submit profile `production-staff` defined; `ascAppId` left blank — fill in once the staff App Store record is created.
+- **Bundle id swap** (`eas-build-pre-install.sh`): static `app.json` (required for Expo Launch). When `EXPO_PUBLIC_APP_VARIANT=staff`, the pre-install script rewrites `app.json` on the EAS worker to use:
+  - `name: "The 147 Staff"`, `slug: "the-147-staff"`, `scheme: "the147staff"`
+  - `ios.bundleIdentifier: "com.the147bradford.staff"`
+  - `android.package: "com.the147bradford.staff"`
+- **Backend / web / DB**: untouched. Both variants hit the same `/api/customers/*` and `/api/staff/*` endpoints. Cross-platform single-account guarantee preserved.
+
+### Before publishing the staff app
+1. Create the staff App Store record (bundle `com.the147bradford.staff`) and put the `ascAppId` into `eas.json` → `submit.production-staff.ios.ascAppId`.
+2. Provision an iOS distribution certificate + provisioning profile for `com.the147bradford.staff`; either extend `ios-creds/` or use EAS remote credentials for the staff bundle.
+3. Run `eas build --profile production-staff --platform ios` (then submit to internal TestFlight).
+4. Once approved/live, flip `showStaffRoutes` in `lib/app-variant.ts` so the customer build no longer ships staff screens, and bump the customer app version.

@@ -79,4 +79,32 @@ CREDS_EOF
 
 echo "[pre-install] credentials.json written to $PROJECT_ROOT/credentials.json"
 echo "[pre-install] Keystore path in credentials.json: $KEYSTORE_PATH"
+
+# --- Variant rewrite (customer vs staff) ---------------------------------
+# When EXPO_PUBLIC_APP_VARIANT=staff, rewrite app.json to use the dedicated
+# staff bundle identifier, Android package and display name. This keeps a
+# single static app.json (Expo Launch requires static config) while still
+# producing two App Store / Play Store listings from the same codebase.
+VARIANT="${EXPO_PUBLIC_APP_VARIANT:-customer}"
+echo "[pre-install] App variant: $VARIANT"
+
+if [ "$VARIANT" = "staff" ]; then
+  APP_JSON="$PROJECT_ROOT/app.json"
+  echo "[pre-install] Rewriting app.json for staff variant..."
+  node -e "
+    const fs = require('fs');
+    const p = '$APP_JSON';
+    const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+    j.expo.name = 'The 147 Staff';
+    j.expo.slug = 'the-147-staff';
+    j.expo.scheme = 'the147staff';
+    j.expo.ios = j.expo.ios || {};
+    j.expo.ios.bundleIdentifier = 'com.the147bradford.staff';
+    j.expo.android = j.expo.android || {};
+    j.expo.android.package = 'com.the147bradford.staff';
+    fs.writeFileSync(p, JSON.stringify(j, null, 2) + '\n');
+    console.log('[pre-install] app.json rewritten: ' + j.expo.ios.bundleIdentifier);
+  "
+fi
+
 echo "[pre-install] Done."

@@ -13,6 +13,7 @@ import { NotificationProvider } from "@/contexts/NotificationContext";
 import { StaffAuthProvider } from "@/contexts/StaffAuthContext";
 import { CustomerAuthProvider } from "@/contexts/CustomerAuthContext";
 import { queryClient, prefetchAppData } from "@/lib/query-client";
+import { isStaffVariant, showCustomerRoutes, showStaffRoutes } from "@/lib/app-variant";
 import {
   useFonts,
   Montserrat_400Regular,
@@ -27,19 +28,47 @@ SplashScreen.preventAutoHideAsync();
 function RootLayoutNav() {
   return (
     <>
-      <Stack screenOptions={{ headerBackTitle: "Back" }}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="staff-portal" options={{ headerShown: false, presentation: "modal" }} />
-        <Stack.Screen name="admin-bookings" options={{ headerShown: false, presentation: "modal" }} />
-        <Stack.Screen name="admin-offers" options={{ headerShown: false, presentation: "modal" }} />
+      <Stack
+        screenOptions={{ headerBackTitle: "Back" }}
+        initialRouteName={isStaffVariant ? "staff-hr" : "(tabs)"}
+      >
+        {showCustomerRoutes && (
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        )}
+        {showStaffRoutes && (
+          <Stack.Screen
+            name="staff-portal"
+            options={{
+              headerShown: false,
+              presentation: isStaffVariant ? "card" : "modal",
+            }}
+          />
+        )}
+        {showStaffRoutes && (
+          <>
+            <Stack.Screen
+              name="staff-hr"
+              options={{
+                headerShown: false,
+                presentation: isStaffVariant ? "card" : "modal",
+              }}
+            />
+            <Stack.Screen name="admin-bookings" options={{ headerShown: false, presentation: "modal" }} />
+            <Stack.Screen name="admin-offers" options={{ headerShown: false, presentation: "modal" }} />
+            <Stack.Screen name="admin-notifications" options={{ headerShown: false, presentation: "modal" }} />
+            <Stack.Screen name="admin-banner" options={{ headerShown: false, presentation: "modal" }} />
+            <Stack.Screen name="admin-events" options={{ headerShown: false, presentation: "modal" }} />
+            <Stack.Screen name="admin-staff" options={{ headerShown: false, presentation: "modal" }} />
+          </>
+        )}
         <Stack.Screen name="privacy-policy" options={{ headerShown: false, presentation: "modal" }} />
-        <Stack.Screen name="admin-notifications" options={{ headerShown: false, presentation: "modal" }} />
         <Stack.Screen name="contact" options={{ headerShown: false, presentation: "modal" }} />
-        <Stack.Screen name="admin-banner" options={{ headerShown: false, presentation: "modal" }} />
-        <Stack.Screen name="admin-events" options={{ headerShown: false, presentation: "modal" }} />
-        <Stack.Screen name="admin-staff" options={{ headerShown: false, presentation: "modal" }} />
-        <Stack.Screen name="account" options={{ headerShown: false, presentation: "modal" }} />
-        <Stack.Screen name="membership" options={{ headerShown: false, presentation: "modal" }} />
+        {showCustomerRoutes && (
+          <>
+            <Stack.Screen name="account" options={{ headerShown: false, presentation: "modal" }} />
+            <Stack.Screen name="membership" options={{ headerShown: false, presentation: "modal" }} />
+          </>
+        )}
       </Stack>
       <ConsentBanner />
     </>

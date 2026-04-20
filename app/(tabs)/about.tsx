@@ -15,6 +15,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import Colors from "@/constants/colors";
 import { OPENING_HOURS } from "@/lib/data";
+import { showStaffRoutes } from "@/lib/app-variant";
 
 function InfoSection({
   icon,
@@ -180,18 +181,20 @@ export default function AboutScreen() {
           </Pressable>
         </InfoSection>
 
-        <Pressable
-          onPress={() => router.push("/staff-portal")}
-          style={({ pressed }) => [
-            styles.adminButton,
-            { opacity: pressed ? 0.8 : 1 },
-          ]}
-          testID="staff-portal-button"
-        >
-          <Ionicons name="shield-checkmark" size={20} color={Colors.brand.blue} />
-          <Text style={styles.adminButtonText}>Staff Portal</Text>
-          <Ionicons name="chevron-forward" size={18} color={Colors.light.textSecondary} />
-        </Pressable>
+        {showStaffRoutes && (
+          <Pressable
+            onPress={() => router.push("/staff-portal")}
+            style={({ pressed }) => [
+              styles.adminButton,
+              { opacity: pressed ? 0.8 : 1 },
+            ]}
+            testID="staff-portal-button"
+          >
+            <Ionicons name="shield-checkmark" size={20} color={Colors.brand.blue} />
+            <Text style={styles.adminButtonText}>Staff Portal</Text>
+            <Ionicons name="chevron-forward" size={18} color={Colors.light.textSecondary} />
+          </Pressable>
+        )}
 
         <View style={styles.socialRow}>
           <Pressable style={styles.socialBtn}>
