@@ -737,6 +737,7 @@ function CartSheet({
   const [payError, setPayError] = useState<string | null>(null);
   const [paymentSheetVisible, setPaymentSheetVisible] = useState(false);
   const [pendingOrder, setPendingOrder] = useState<{ appOrderId: number; amountPence: number } | null>(null);
+  const [cancelledNotice, setCancelledNotice] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
 
   // Square Web Payments SDK config (cached for the session)
@@ -757,8 +758,15 @@ function CartSheet({
       setPayError(null);
       setPaymentSheetVisible(false);
       setPendingOrder(null);
+      setCancelledNotice(null);
     }
   }, [visible]);
+
+  // Clear the cancellation notice as soon as the user changes the cart
+  useEffect(() => {
+    if (cancelledNotice) setCancelledNotice(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.length]);
 
   const { data: memberSub } = useQuery<{
     status: string;
@@ -927,7 +935,7 @@ function CartSheet({
       setGuestEmail("");
       setStep("cart");
       setGuestMode(false);
-      router.push({ pathname: "/order-confirmation" as any, params: confirmationParams });
+      router.push({ pathname: "/order-confirmation", params: confirmationParams });
     } catch (err: any) {
       setPayError(err.message || "Payment failed. Please try again.");
     } finally {
@@ -942,6 +950,20 @@ function CartSheet({
     // The Square Order itself stays "pending" and is benign.
     setPendingOrder(null);
     setPayError(null);
+    // Inline cancellation message so the user knows what happened. The cart
+    // is intentionally left intact so they can retry or change their order.
+    setCancelledNotice("Payment cancelled. Your cart has been kept — tap Pay to try again.");
+  };
+
+  const handleSheetUnavailable = async (reason: string) => {
+    // The in-app SDK could not load (offline, blocked, init failure).
+    // Fall back to the hosted checkout in the in-app browser, preserving
+    // the pending order so totals and discounts stay identical.
+    setPaymentSheetVisible(false);
+    setPendingOrder(null);
+    setPayError(null);
+    if (__DEV__) console.warn("Square SDK unavailable:", reason);
+    await fallbackToHostedCheckout();
   };
 
   const handleClose = () => {
@@ -1102,6 +1124,13 @@ function CartSheet({
 
               <TotalSummary />
 
+              {cancelledNotice ? (
+                <View style={styles.cancelledBanner}>
+                  <Ionicons name="information-circle" size={18} color="#0047AB" />
+                  <Text style={styles.cancelledBannerText}>{cancelledNotice}</Text>
+                </View>
+              ) : null}
+
               <Pressable
                 onPress={() => setStep("customer")}
                 style={({ pressed }) => [styles.checkoutBtn, { opacity: pressed ? 0.8 : 1 }]}
@@ -1252,6 +1281,7 @@ function CartSheet({
       visible={paymentSheetVisible}
       onClose={handleClosePaymentSheet}
       onTokenized={handleTokenized}
+      onUnavailable={handleSheetUnavailable}
       applicationId={squareConfig?.applicationId ?? null}
       locationId={squareConfig?.locationId ?? null}
       environment={squareConfig?.environment ?? "sandbox"}
@@ -2253,6 +2283,24 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingVertical: 16,
     alignItems: "center",
+  },
+  cancelledBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: "#E0EAFF",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginHorizontal: 20,
+    marginBottom: 8,
+    borderRadius: 10,
+  },
+  cancelledBannerText: {
+    flex: 1,
+    color: "#0A1628",
+    fontSize: 13,
+    fontFamily: "Montserrat_500Medium",
+    lineHeight: 18,
   },
   checkoutBtnText: {
     fontFamily: "Montserrat_700Bold",

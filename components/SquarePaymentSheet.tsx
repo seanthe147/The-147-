@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   Platform,
 } from "react-native";
-import { WebView } from "react-native-webview";
+import { WebView, type WebView as WebViewType } from "react-native-webview";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import Colors from "@/constants/colors";
@@ -17,6 +17,8 @@ export interface SquarePaymentSheetProps {
   visible: boolean;
   onClose: () => void;
   onTokenized: (payload: { sourceId: string; verificationToken?: string | null }) => void;
+  /** Called if the SDK fails to load/init so the caller can fall back to hosted checkout. */
+  onUnavailable?: (reason: string) => void;
   applicationId: string | null;
   locationId: string | null;
   environment: "production" | "sandbox";
@@ -26,6 +28,11 @@ export interface SquarePaymentSheetProps {
   inProgress?: boolean; // parent is charging the token
   errorMessage?: string | null;
 }
+
+type BridgeMessage =
+  | { type: "token"; token: string; verificationToken?: string | null }
+  | { type: "error"; message: string }
+  | { type: "fatal"; message: string };
 
 function formatPounds(pence: number): string {
   return `£${(pence / 100).toFixed(2)}`;
@@ -108,8 +115,11 @@ function buildPaymentSheetHtml(opts: {
           if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
             window.ReactNativeWebView.postMessage(s);
           } else if (window.parent && window.parent !== window) {
-            // srcDoc iframe origin is "null"; restrict to the parent's origin only.
-            window.parent.postMessage(s, window.location.origin || "*");
+            // srcDoc iframes have origin "null" so a specific targetOrigin
+            // would silently drop the message. The parent listener verifies
+            // e.source matches the expected iframe contentWindow, which is
+            // the actual trust boundary here.
+            window.parent.postMessage(s, "*");
           }
         } catch (e) {}
       }
@@ -120,7 +130,7 @@ function buildPaymentSheetHtml(opts: {
       if (!window.Square) {
         hideLoading();
         setStatus("Could not load the payment library. Please try again.");
-        send({ type: "error", message: "Square SDK failed to load" });
+        send({ type: "fatal", message: "Square SDK failed to load" });
         return;
       }
 
@@ -130,7 +140,7 @@ function buildPaymentSheetHtml(opts: {
       } catch (e) {
         hideLoading();
         setStatus("Payments are not configured: " + (e && e.message ? e.message : ""));
-        send({ type: "error", message: "Square.payments init failed: " + (e && e.message) });
+        send({ type: "fatal", message: "Square.payments init failed: " + (e && e.message) });
         return;
       }
 
@@ -179,7 +189,7 @@ function buildPaymentSheetHtml(opts: {
       }).catch(function (err) {
         hideLoading();
         setStatus("Could not load card form: " + (err && err.message ? err.message : ""));
-        send({ type: "error", message: "Card init failed: " + (err && err.message) });
+        send({ type: "fatal", message: "Card init failed: " + (err && err.message) });
       });
 
       // Apple Pay (iOS Safari/WebKit only, requires verified domain)
@@ -224,7 +234,7 @@ function buildPaymentSheetHtml(opts: {
 export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
   const insets = useSafeAreaInsets();
   const [internalError, setInternalError] = useState<string | null>(null);
-  const webRef = useRef<any>(null);
+  const webRef = useRef<WebViewType | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const html = useMemo(() => {
@@ -262,16 +272,28 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.visible, props.onTokenized]);
 
-  function handleMessage(msg: any) {
-    if (!msg || typeof msg !== "object") return;
-    if (msg.type === "token" && typeof msg.token === "string") {
-      props.onTokenized({ sourceId: msg.token, verificationToken: msg.verificationToken ?? null });
-    } else if (msg.type === "error" && typeof msg.message === "string") {
-      setInternalError(msg.message);
+  function handleMessage(raw: unknown) {
+    if (!raw || typeof raw !== "object") return;
+    const msg = raw as Partial<BridgeMessage> & { type?: string };
+    if (msg.type === "token" && typeof (msg as { token?: unknown }).token === "string") {
+      const m = msg as Extract<BridgeMessage, { type: "token" }>;
+      props.onTokenized({ sourceId: m.token, verificationToken: m.verificationToken ?? null });
+    } else if (msg.type === "error" && typeof (msg as { message?: unknown }).message === "string") {
+      setInternalError((msg as Extract<BridgeMessage, { type: "error" }>).message);
+    } else if (msg.type === "fatal" && typeof (msg as { message?: unknown }).message === "string") {
+      const m = msg as Extract<BridgeMessage, { type: "fatal" }>;
+      setInternalError(m.message);
+      props.onUnavailable?.(m.message);
     }
   }
 
   const displayError = props.errorMessage || internalError;
+  const iframeStyle: React.CSSProperties = {
+    flex: 1,
+    border: "none",
+    width: "100%",
+    height: "100%",
+  };
 
   return (
     <Modal
@@ -299,7 +321,7 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
           <iframe
             ref={iframeRef}
             srcDoc={html}
-            style={{ flex: 1, border: "none", width: "100%", height: "100%" } as any}
+            style={iframeStyle}
             title="Payment"
           />
         ) : (
