@@ -9335,6 +9335,7 @@ function configureExpoAndLanding(app2) {
         "/membership",
         "/delete-account",
         "/privacy-policy",
+        "/terms",
         "/staff-privacy-notice",
         "/booking-widget"
       ]);
@@ -9672,6 +9673,12 @@ function scheduleRetentionCleanup() {
   app.get("/privacy-policy", (_req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.status(200).send(privacyPolicyHtml);
+  });
+  const termsHtmlPath = path2.resolve(process.cwd(), "server", "templates", "terms-of-service.html");
+  const termsHtml = fs2.readFileSync(termsHtmlPath, "utf-8");
+  app.get("/terms", (_req, res) => {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.status(200).send(termsHtml);
   });
   const staffPrivacyHtmlPath = path2.resolve(process.cwd(), "server", "templates", "staff-privacy-notice.html");
   const staffPrivacyHtml = fs2.readFileSync(staffPrivacyHtmlPath, "utf-8");
