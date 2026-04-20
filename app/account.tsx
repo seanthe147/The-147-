@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Modal,
+  Linking,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -250,7 +251,15 @@ function AuthView({ login, register }: {
             <Text style={styles.consentLink} onPress={() => router.push("/privacy-policy")}>
               Privacy Policy
             </Text>
-            {" "}and consent to The 147 processing my personal data to manage my account. You can delete your account and all data at any time.
+            {" "}and{" "}
+            <Text
+              style={styles.consentLink}
+              onPress={() => Linking.openURL(`${getApiUrl().replace(/\/$/, "")}/terms`)}
+              testID="terms-link-signup"
+            >
+              Terms & Conditions
+            </Text>
+            , and consent to The 147 processing my personal data to manage my account. You can delete your account and all data at any time.
           </Text>
         </Pressable>
       )}
@@ -608,6 +617,14 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
         >
           <Ionicons name="shield-checkmark-outline" size={18} color={Colors.brand.blue} />
           <Text style={styles.privacyLinkText}>View Privacy Policy</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => Linking.openURL(`${getApiUrl().replace(/\/$/, "")}/terms`)}
+          style={({ pressed }) => [styles.privacyLink, { opacity: pressed ? 0.7 : 1 }]}
+          testID="terms-link-account"
+        >
+          <Ionicons name="reader-outline" size={18} color={Colors.brand.blue} />
+          <Text style={styles.privacyLinkText}>View Terms & Conditions</Text>
         </Pressable>
         <Pressable
           onPress={() => {

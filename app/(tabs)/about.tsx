@@ -15,6 +15,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import Colors from "@/constants/colors";
 import { OPENING_HOURS } from "@/lib/data";
+import { getApiUrl } from "@/lib/query-client";
 import { showStaffRoutes } from "@/lib/app-variant";
 
 function InfoSection({
@@ -170,6 +171,15 @@ export default function AboutScreen() {
             <Ionicons name="document-text-outline" size={18} color={Colors.brand.blue} />
             <Text style={styles.contactText}>Privacy Policy</Text>
             <Ionicons name="chevron-forward" size={14} color={Colors.light.textSecondary} />
+          </Pressable>
+          <Pressable
+            onPress={() => Linking.openURL(`${getApiUrl().replace(/\/$/, "")}/terms`)}
+            style={({ pressed }) => [styles.contactItem, { opacity: pressed ? 0.7 : 1 }]}
+            testID="terms-link"
+          >
+            <Ionicons name="reader-outline" size={18} color={Colors.brand.blue} />
+            <Text style={styles.contactText}>Terms & Conditions</Text>
+            <Ionicons name="open-outline" size={14} color={Colors.light.textSecondary} />
           </Pressable>
           <Pressable
             onPress={() => router.push("/privacy-policy")}

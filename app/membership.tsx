@@ -374,30 +374,49 @@ export default function MembershipScreen() {
 
           {isAuthenticated ? (
             selectedPlanId ? (
-              <Pressable
-                style={[styles.joinBtn, joinMutation.isPending && styles.joinBtnDisabled]}
-                onPress={handleJoin}
-                disabled={joinMutation.isPending}
-              >
-                {joinMutation.isPending ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <>
-                    <Ionicons name="card-outline" size={18} color="#fff" />
-                    <Text style={styles.joinBtnText}>
-                      {(() => {
-                        if (!selectedPlan) return "";
-                        const isAnnual = billingFrequency === "annual";
-                        const price = isAnnual && selectedPlan.priceAnnual != null
-                          ? selectedPlan.priceAnnual
-                          : selectedPlan.priceMonthly;
-                        const period = isAnnual ? "/yr" : "/mo";
-                        return `Join ${selectedPlan.name} — £${(price / 100).toFixed(2)}${period}`;
-                      })()}
-                    </Text>
-                  </>
-                )}
-              </Pressable>
+              <>
+                <Pressable
+                  style={[styles.joinBtn, joinMutation.isPending && styles.joinBtnDisabled]}
+                  onPress={handleJoin}
+                  disabled={joinMutation.isPending}
+                >
+                  {joinMutation.isPending ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="card-outline" size={18} color="#fff" />
+                      <Text style={styles.joinBtnText}>
+                        {(() => {
+                          if (!selectedPlan) return "";
+                          const isAnnual = billingFrequency === "annual";
+                          const price = isAnnual && selectedPlan.priceAnnual != null
+                            ? selectedPlan.priceAnnual
+                            : selectedPlan.priceMonthly;
+                          const period = isAnnual ? "/yr" : "/mo";
+                          return `Join ${selectedPlan.name} — £${(price / 100).toFixed(2)}${period}`;
+                        })()}
+                      </Text>
+                    </>
+                  )}
+                </Pressable>
+                <Text style={styles.legalNote} testID="membership-terms-note">
+                  By joining, you agree to our{" "}
+                  <Text
+                    style={styles.legalLink}
+                    onPress={() => Linking.openURL(`${getApiUrl().replace(/\/$/, "")}/terms`)}
+                  >
+                    Terms & Conditions
+                  </Text>
+                  {" "}covering memberships, deposits, and gift cards, and our{" "}
+                  <Text
+                    style={styles.legalLink}
+                    onPress={() => router.push("/privacy-policy")}
+                  >
+                    Privacy Policy
+                  </Text>
+                  .
+                </Text>
+              </>
             ) : (
               <View style={styles.selectHint}>
                 <Ionicons name="hand-left-outline" size={16} color={Colors.light.textSecondary} />
@@ -744,6 +763,13 @@ const styles = StyleSheet.create({
   },
   selectHintText: {
     fontFamily: "Montserrat_400Regular", fontSize: 13, color: Colors.light.textSecondary,
+  },
+  legalNote: {
+    fontFamily: "Montserrat_400Regular", fontSize: 12, color: Colors.light.textSecondary,
+    textAlign: "center", lineHeight: 18, marginTop: 10, paddingHorizontal: 8,
+  },
+  legalLink: {
+    fontFamily: "Montserrat_600SemiBold", color: Colors.brand.blue, textDecorationLine: "underline",
   },
   loginPrompt: {
     backgroundColor: Colors.light.surface, borderRadius: 16,
