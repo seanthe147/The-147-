@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Book a Table — The 147 Bradford</title>
+<meta name="description" content="Book a snooker, pool, dining or darts table at The 147 Bradford." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/test-site/styles.css">
+<style>
+  .booking-frame-wrap{background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.06)}
+  .booking-frame-wrap iframe{width:100%;height:760px;border:0;display:block;background:#fff}
+  @media(max-width:680px){.booking-frame-wrap iframe{height:880px}}
+  .help-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px 22px;display:flex;align-items:center;gap:16px}
+  .help-card svg{stroke:var(--gold);flex-shrink:0}
+  .help-card h4{font-size:15px;font-weight:700;color:var(--ink);margin-bottom:2px}
+  .help-card p{font-size:13.5px;color:var(--muted)}
+  .help-card a{color:var(--blue);font-weight:700}
+</style>
+</head>
+<body>
+
+<div class="preview-banner">Test Website — for review only · not yet live</div>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/test-site" class="brand">
+      <div class="brand-mark">147</div>
+      <div class="brand-text">The 1<span>4</span>7</div>
+    </a>
+    <div class="nav-links" id="navLinks">
+      <a href="/test-site">Home</a>
+      <a href="/test-site/snooker">Snooker</a>
+      <a href="/test-site/dining">Dining</a>
+      <a href="/test-site/events">Events</a>
+      <a href="/test-site/function-rooms">Function Rooms</a>
+      <a href="/test-site/gift-cards">Gift Cards</a>
+      <a href="/test-site/contact">Contact</a>
+      <a href="/test-site/order" class="nav-order">Order</a>
+      <a href="/test-site/book" class="nav-cta">Book a Table</a>
+    </div>
+    <button class="menu-toggle" onclick="document.getElementById('navLinks').classList.toggle('open')" aria-label="Menu">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+  </div>
+</nav>
+
+<header class="page-hero">
+  <span class="eyebrow">Book a Table</span>
+  <h1>Reserve your <em>frame</em>.</h1>
+  <p>Snooker, American pool, English 8-ball, darts or a dining table — pick your slot below and you're sorted.</p>
+</header>
+
+<section>
+  <div class="container">
+    <div class="booking-frame-wrap">
+      <iframe src="/widget/booking" title="Book a table" loading="eager" allow="payment"></iframe>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:24px" class="card-grid-2">
+      <div class="help-card">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
+        <div><h4>Need to book by phone?</h4><p>Call us on <a href="tel:01274000000">01274 000 000</a> during opening hours.</p></div>
+      </div>
+      <div class="help-card">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+        <div><h4>Group of more than 8?</h4><p>Use our <a href="/test-site/contact">enquiry form</a> for big group bookings &amp; private hire.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-grid">
+    <div><div class="footer-brand">The 1<span>4</span>7</div><p style="font-size:14px;color:#888;max-width:300px">Bradford's premier snooker, pool &amp; dining venue.</p></div>
+    <div class="footer-col"><h5>Visit</h5><ul><li><a href="/test-site/snooker">Snooker</a></li><li><a href="/test-site/dining">Dining</a></li><li><a href="/test-site/events">Events</a></li><li><a href="/test-site/function-rooms">Function Rooms</a></li></ul></div>
+    <div class="footer-col"><h5>Members</h5><ul><li><a href="/test-site/membership">Plans &amp; Pricing</a></li><li><a href="/test-site/book">Book a Table</a></li><li><a href="/test-site/gift-cards">Gift Cards</a></li></ul></div>
+    <div class="footer-col"><h5>Contact</h5><ul><li>01274 000 000</li><li>hello@the147bradford.co.uk</li><li>147 Example Street</li><li>Bradford BD1 1AA</li></ul></div>
+  </div>
+  <div class="footer-bottom"><div>© The 147 Bradford. All rights reserved.</div><div><a href="/privacy-policy">Privacy</a> · <a href="#">Terms</a></div></div>
+</footer>
+
+<script>document.querySelectorAll('#navLinks a').forEach(a=>a.addEventListener('click',()=>document.getElementById('navLinks').classList.remove('open')));</script>
+</body></html>

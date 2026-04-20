@@ -386,7 +386,11 @@ function configureExpoAndLanding(app: express.Application) {
     "function-rooms": "function-rooms.html",
     "gift-cards": "gift-cards.html",
     "contact": "contact.html",
-    // Native web versions of interactive systems (used inside the modal)
+    // Full native pages for interactive systems (replace modal popups)
+    "membership": "membership.html",
+    "order": "order.html",
+    "book": "book.html",
+    // Legacy minimal-chrome versions (kept for backwards compat)
     "join": "membership-join.html",
     "menu": "order-menu.html",
   };
