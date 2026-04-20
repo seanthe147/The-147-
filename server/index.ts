@@ -503,6 +503,7 @@ function configureExpoAndLanding(app: express.Application) {
         "/membership",
         "/delete-account",
         "/privacy-policy",
+        "/terms",
         "/staff-privacy-notice",
         "/booking-widget",
       ]);
@@ -880,6 +881,14 @@ function scheduleRetentionCleanup() {
   app.get("/privacy-policy", (_req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.status(200).send(privacyPolicyHtml);
+  });
+
+  // Terms & Conditions — public web page covering memberships, bookings, gift cards
+  const termsHtmlPath = path.resolve(process.cwd(), "server", "templates", "terms-of-service.html");
+  const termsHtml = fs.readFileSync(termsHtmlPath, "utf-8");
+  app.get("/terms", (_req, res) => {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.status(200).send(termsHtml);
   });
 
   // Staff privacy notice — internal page linked from GDPR portal and mobile HR app
