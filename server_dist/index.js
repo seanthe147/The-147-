@@ -1614,7 +1614,7 @@ var init_storage = __esm({
         return result.length > 0;
       }
       async createAppOrder(data) {
-        await db.insert(appOrders).values({
+        const rows = await db.insert(appOrders).values({
           squareLinkId: data.squareLinkId ?? null,
           squareOrderId: data.squareOrderId ?? null,
           squarePaymentId: null,
@@ -1627,7 +1627,8 @@ var init_storage = __esm({
           discountPercent: data.discountPercent ?? null,
           discountLabel: data.discountLabel ?? null,
           status: "pending"
-        });
+        }).returning({ id: appOrders.id });
+        return { id: rows[0].id };
       }
       async getRecentAppOrders(limit = 100) {
         const rows = await db.select().from(appOrders).orderBy(desc(appOrders.createdAt)).limit(limit);
@@ -2619,6 +2620,7 @@ async function createCardPayment(opts) {
   if (opts.referenceId) body.reference_id = opts.referenceId.slice(0, 40);
   if (opts.buyerEmail) body.buyer_email_address = opts.buyerEmail;
   if (opts.verificationToken) body.verification_token = opts.verificationToken;
+  if (opts.orderId) body.order_id = opts.orderId;
   const data = await squareRequest("POST", "/v2/payments", body);
   return data.payment;
 }
@@ -3167,9 +3169,8 @@ function normalizeUkPhone(phone) {
   if (digits.startsWith("7") && digits.length === 10) return "+44" + digits;
   return void 0;
 }
-async function createOrderCheckoutLink(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote) {
+async function buildSquareOrderBody(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote) {
   const locationId = getLocationId();
-  const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   let prePopulated;
   if (customer?.email || customer?.name || customer?.phone) {
     prePopulated = {};
@@ -3197,16 +3198,11 @@ async function createOrderCheckoutLink(items, tableNote, customer, discountPerce
       if (!dealByVariationId.has(vid)) dealByVariationId.set(vid, deal);
     }
   }
-  const cartVariationIds = items.map((i) => i.variationId);
   const matchedDeals = items.filter((i) => dealByVariationId.has(i.variationId) || i.itemId && dealByVariationId.has(i.itemId)).map((i) => (dealByVariationId.get(i.variationId) ?? dealByVariationId.get(i.itemId)).name);
-  console.log(`[DEALS] Cart variation IDs: ${cartVariationIds.join(", ")} | Matched deals: ${matchedDeals.join(", ") || "none"} | Deal-linked IDs: ${[...dealByVariationId.keys()].join(", ") || "none"}`);
   const hasMemberDiscount = typeof discountPercent === "number" && discountPercent > 0;
   const dealsInCart = matchedDeals.length > 0;
   const itemLevelMemberDiscount = hasMemberDiscount && excludeWithDeals && dealsInCart;
   const orderLevelMemberDiscount = hasMemberDiscount && !itemLevelMemberDiscount;
-  if (itemLevelMemberDiscount) {
-    console.log(`[ORDER] Member discount applied per-item \u2014 excluded from offer items: ${matchedDeals.join(", ")}`);
-  }
   const orderDiscounts = orderLevelMemberDiscount ? [{
     uid: memberDiscountUid,
     name: discountLabel ?? "Member Discount",
@@ -3214,7 +3210,6 @@ async function createOrderCheckoutLink(items, tableNote, customer, discountPerce
     percentage: String(discountPercent),
     scope: "ORDER"
   }] : itemLevelMemberDiscount ? [{
-    // LINE_ITEM scoped — will only be applied to items without a deal (referenced per line item)
     uid: memberDiscountUid,
     name: discountLabel ?? "Member Discount",
     type: "FIXED_PERCENTAGE",
@@ -3264,37 +3259,64 @@ async function createOrderCheckoutLink(items, tableNote, customer, discountPerce
       ...appliedDiscounts.length ? { applied_discounts: appliedDiscounts } : {}
     };
   });
+  const noteParts = [tableNote, orderNote].filter(Boolean);
+  const combinedNote = noteParts.join(" | ");
+  const order = {
+    location_id: locationId,
+    line_items: lineItems,
+    ...orderDiscounts.length ? { discounts: orderDiscounts } : {},
+    fulfillments: [
+      {
+        type: "PICKUP",
+        state: "PROPOSED",
+        pickup_details: {
+          recipient: { display_name: ticketName.slice(0, 60) },
+          schedule_type: "ASAP",
+          is_curbside_pickup: false,
+          note: combinedNote || void 0
+        }
+      }
+    ],
+    ...combinedNote ? {
+      note: combinedNote.slice(0, 500),
+      reference_id: (tableNote || "ORDER").replace(/\s+/g, "-").toUpperCase().slice(0, 40)
+    } : {}
+  };
+  return { order, prePopulated };
+}
+async function createSquareOrderForCheckout(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote) {
+  const idempotencyKey = `order-create-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const { order } = await buildSquareOrderBody(
+    items,
+    tableNote,
+    customer,
+    discountPercent,
+    discountLabel,
+    excludeWithDeals,
+    orderNote
+  );
+  const data = await squareRequest("POST", "/v2/orders", {
+    idempotency_key: idempotencyKey,
+    order
+  });
+  if (!data.order?.id) throw new Error("No order returned from Square");
+  const totalPence = Number(data.order.total_money?.amount ?? data.order.net_amounts?.total_money?.amount ?? 0);
+  return { orderId: data.order.id, totalPence };
+}
+async function createOrderCheckoutLink(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote) {
+  const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const { order, prePopulated } = await buildSquareOrderBody(
+    items,
+    tableNote,
+    customer,
+    discountPercent,
+    discountLabel,
+    excludeWithDeals,
+    orderNote
+  );
   const body = {
     idempotency_key: idempotencyKey,
-    order: {
-      location_id: locationId,
-      line_items: lineItems,
-      ...orderDiscounts.length ? { discounts: orderDiscounts } : {},
-      // PICKUP fulfillment is required for Square KDS to display the order.
-      // KDS routing rules on each device then split food → kitchen and drinks → bar.
-      fulfillments: [
-        {
-          type: "PICKUP",
-          state: "PROPOSED",
-          pickup_details: {
-            recipient: {
-              display_name: ticketName.slice(0, 60)
-            },
-            schedule_type: "ASAP",
-            is_curbside_pickup: false,
-            note: [tableNote, orderNote].filter(Boolean).join(" | ") || void 0
-          }
-        }
-      ],
-      ...(() => {
-        const noteParts = [tableNote, orderNote].filter(Boolean);
-        const combinedNote = noteParts.join(" | ");
-        return combinedNote ? {
-          note: combinedNote.slice(0, 500),
-          reference_id: (tableNote || "ORDER").replace(/\s+/g, "-").toUpperCase().slice(0, 40)
-        } : {};
-      })()
-    },
+    order,
     checkout_options: {
       allow_tipping: false,
       ...prePopulated ? { pre_populated_data: prePopulated } : {}
@@ -6634,6 +6656,153 @@ async function registerRoutes(app2) {
     } catch (err) {
       console.error("[ORDER] Checkout failed:", err.message);
       res.status(500).json({ message: err.message });
+    }
+  });
+  app2.get("/api/public/square-config", (_req, res) => {
+    const applicationId = getApplicationId();
+    const locationId = getPublicLocationId();
+    const environment = getEnvironment();
+    res.json({
+      applicationId,
+      locationId,
+      environment,
+      configured: isWebPaymentsConfigured()
+    });
+  });
+  app2.post("/api/orders/create", async (req, res) => {
+    const { items, tableNote, orderNote, customer } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: "Cart is empty" });
+    }
+    if (!isWebPaymentsConfigured()) {
+      return res.status(503).json({ message: "In-app payments are not configured." });
+    }
+    try {
+      const orderingEnabled = await getOrderingEnabled();
+      if (!orderingEnabled) {
+        return res.status(503).json({ message: "Online ordering is currently unavailable. Please order at the bar." });
+      }
+      let discountPercent;
+      let discountLabel;
+      let excludeWithDeals = false;
+      if (customer?.email) {
+        try {
+          const cust = await storage.getCustomerByEmail(customer.email);
+          if (cust) {
+            const preSub = await storage.getMembershipSubscriptionByCustomer(cust.id);
+            const needsSync = !preSub || preSub.source === "square_group_sync";
+            if (needsSync) {
+              await syncSquareMembershipForCustomer(cust.id, cust.email).catch(
+                (e) => console.warn("[ORDER] Pre-create sync failed:", e.message)
+              );
+            }
+            const sub = await storage.getMembershipSubscriptionByCustomer(cust.id);
+            const isActive = sub?.status === "active";
+            const notCancelled = !sub?.cancelledAt;
+            const periodValid = !sub?.currentPeriodEnd || new Date(sub.currentPeriodEnd) >= /* @__PURE__ */ new Date();
+            const planActive = sub?.plan !== null;
+            const hasDiscount = (sub?.plan?.foodDrinkDiscount ?? 0) > 0;
+            if (sub && isActive && notCancelled && periodValid && planActive && hasDiscount) {
+              discountPercent = sub.plan.foodDrinkDiscount;
+              discountLabel = `${sub.plan.name} Member Discount`;
+              excludeWithDeals = !!sub.plan?.excludeWithDeals;
+            }
+          }
+        } catch (err) {
+          console.warn("[ORDER] Could not look up membership discount:", err.message);
+        }
+      }
+      const { orderId, totalPence } = await createSquareOrderForCheckout(
+        items,
+        tableNote,
+        customer,
+        discountPercent,
+        discountLabel,
+        excludeWithDeals,
+        orderNote
+      );
+      const appOrder = await storage.createAppOrder({
+        squareOrderId: orderId,
+        tableNote: tableNote || void 0,
+        customerName: customer?.name || void 0,
+        customerEmail: customer?.email || void 0,
+        itemsJson: JSON.stringify(
+          items.map((i) => ({
+            name: i.name ?? "Item",
+            quantity: i.quantity,
+            price: i.price,
+            ...i.modifiers?.length ? { modifiers: i.modifiers.map((m) => m.name) } : {}
+          }))
+        ),
+        totalPence,
+        discountPercent: discountPercent ?? void 0,
+        discountLabel: discountLabel ?? void 0
+      });
+      res.json({
+        appOrderId: appOrder.id,
+        squareOrderId: orderId,
+        amountPence: totalPence,
+        discountPercent: discountPercent ?? null,
+        discountLabel: discountLabel ?? null
+      });
+    } catch (err) {
+      console.error("[ORDER] Create order failed:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app2.post("/api/orders/:appOrderId/pay", async (req, res) => {
+    const appOrderId = parseInt(String(req.params.appOrderId));
+    if (isNaN(appOrderId)) return res.status(400).json({ message: "Invalid order id" });
+    const { sourceId, verificationToken, buyerEmail } = req.body || {};
+    if (typeof sourceId !== "string" || !sourceId.trim()) {
+      return res.status(400).json({ message: "Missing payment token" });
+    }
+    if (!isWebPaymentsConfigured()) {
+      return res.status(503).json({ message: "In-app payments are not configured." });
+    }
+    try {
+      const order = await storage.getAppOrder(appOrderId);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      if (order.status !== "pending") {
+        return res.status(409).json({ message: `Order is already ${order.status}` });
+      }
+      if (!order.squareOrderId) {
+        return res.status(400).json({ message: "Order is missing Square reference" });
+      }
+      const idemRaw = `app-order-${appOrderId}|${sourceId}`;
+      const idempotencyKey = createHash2("sha256").update(idemRaw).digest("hex").slice(0, 45);
+      const payment = await createCardPayment({
+        sourceId: sourceId.trim(),
+        amountPence: order.totalPence,
+        idempotencyKey,
+        note: order.tableNote ? `Order ${appOrderId} \u2014 ${order.tableNote}` : `Order ${appOrderId}`,
+        referenceId: `app-order-${appOrderId}`,
+        buyerEmail: buyerEmail || order.customerEmail || null,
+        verificationToken: verificationToken || null,
+        orderId: order.squareOrderId
+      });
+      const succeeded = payment.status === "COMPLETED" || payment.status === "APPROVED";
+      if (succeeded) {
+        await storage.updateAppOrderPaid(order.squareOrderId, payment.id).catch(
+          (e) => console.error("[ORDER] Failed to mark paid:", e.message)
+        );
+      }
+      res.json({
+        ok: succeeded,
+        status: payment.status,
+        paymentId: payment.id,
+        appOrderId: order.id
+      });
+    } catch (err) {
+      const squareErrors = Array.isArray(err?.errors) ? err.errors : Array.isArray(err?.result?.errors) ? err.result.errors : [];
+      const first = squareErrors[0] || {};
+      const errorCode = first.code;
+      const errorDetail = first.detail || err?.message;
+      console.error("[ORDER] Pay failed:", { code: err?.code, errorCode, detail: errorDetail });
+      res.status(400).json({
+        message: errorDetail || "Card charge failed",
+        errorCode: errorCode || null
+      });
     }
   });
   app2.get("/api/staff/orders", staffAuth, async (req, res) => {
