@@ -1084,6 +1084,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ message: `Account ${finalStatus}`, user: { id: updated.id, username: updated.username, approvalStatus: updated.approvalStatus } });
   });
 
+  // ── Owner-only website content editor ─────────────────────────────────────
+  // Lets the owner edit hero text on each /test-site page from the staff portal.
+  // Overrides are stored in site_settings (key = "web:<page>:<block>") and
+  // substituted into the HTML at render time. Defaults remain in the templates.
+  app.get("/api/staff/web-content", staffAuth, ownerAuth, async (_req, res) => {
+    try {
+      const { getEditorPayload } = await import("./web-content");
+      res.json(await getEditorPayload());
+    } catch (err) {
+      console.error("Failed to load web content:", err);
+      res.status(500).json({ message: "Failed to load website content" });
+    }
+  });
+
+  app.put("/api/staff/web-content", staffAuth, ownerAuth, async (req, res) => {
+    try {
+      const { saveOverride } = await import("./web-content");
+      const { page, block, value } = req.body || {};
+      if (typeof page !== "string" || typeof block !== "string") {
+        return res.status(400).json({ message: "page and block are required" });
+      }
+      await saveOverride(page, block, typeof value === "string" ? value : "");
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("Failed to save web content:", err);
+      res.status(400).json({ message: err?.message || "Failed to save" });
+    }
+  });
+
   app.post("/api/staff/migrate-encryption", staffAuth, managerAuth, async (_req, res) => {
     try {
       const count = await storage.migrateEncryptExistingBookings();

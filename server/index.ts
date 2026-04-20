@@ -417,14 +417,18 @@ function configureExpoAndLanding(app: express.Application) {
     }
   });
   // Page handler — `/test-site` and `/test-site/<page>`
-  app.get(["/test-site", "/test-site/:page"], (req: Request, res: Response) => {
+  app.get(["/test-site", "/test-site/:page"], async (req: Request, res: Response) => {
     const slug = (req.params.page ?? "").toLowerCase();
     const file = TEST_SITE_PAGES[slug];
     if (!file) return res.status(404).send("Page not found");
     try {
+      const { applyWebContentOverrides } = await import("./web-content");
       const p = path.resolve(process.cwd(), "server", "templates", "test-site", file);
+      const raw = fs.readFileSync(p, "utf-8");
+      const overrideSlug = slug || "home";
+      const finalHtml = await applyWebContentOverrides(overrideSlug, raw);
       res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.send(fs.readFileSync(p, "utf-8"));
+      res.send(finalHtml);
     } catch {
       res.status(500).send("Page unavailable");
     }

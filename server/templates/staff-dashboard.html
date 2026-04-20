@@ -488,6 +488,10 @@
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
           Orders &amp; Menu
         </div>
+        <div class="nav-item hidden" data-page="website" id="navWebsite">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          Website
+        </div>
         <div class="nav-item hidden" data-page="banners" id="navBanners">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/></svg>
           App Banners
@@ -924,6 +928,24 @@
             </div>
             <div id="availRulesList" style="padding:0 0 24px"></div>
           </div>
+        </div>
+      </div>
+
+      <!-- WEBSITE EDITOR PAGE (owner only) -->
+      <div class="page" id="pageWebsite">
+        <div class="page-body">
+          <div class="menu-refresh-bar" style="align-items:flex-start">
+            <div style="flex:1">
+              <p style="font-size:13px;color:var(--text-2);margin:0 0 4px"><strong>Website Editor</strong> — change the headlines and intro text on the public website at <a href="/test-site" target="_blank" style="color:var(--accent);font-weight:700">the147.co.uk</a> without touching code.</p>
+              <p style="font-size:12px;color:var(--text-2);margin:0;opacity:.8">Wrap a word in <code style="background:var(--bg-2);padding:2px 5px;border-radius:4px;font-size:11px">*asterisks*</code> to highlight it in gold italic. Leave a field blank to use the default text.</p>
+            </div>
+            <a id="websitePreviewBtn" class="btn btn-secondary btn-sm" target="_blank" style="text-decoration:none">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              Preview Page
+            </a>
+          </div>
+          <div id="websiteTabs" style="display:flex;flex-wrap:wrap;gap:6px;padding:14px 0 18px;border-bottom:1px solid var(--border);margin-bottom:18px"></div>
+          <div id="websiteEditorBody" style="padding:0 0 24px"></div>
         </div>
       </div>
 
@@ -2490,6 +2512,7 @@
     el('navStaff').classList.toggle('hidden',!isOwner);
     el('navMemberships').classList.remove('hidden');
     el('navMenu').classList.toggle('hidden',!isManager);
+    el('navWebsite').classList.toggle('hidden',!isOwner);
     el('navBanners').classList.toggle('hidden',!isManager);
     el('navOffers').classList.toggle('hidden',!isManager);
     // Take Payment is available to all staff; reporting is hidden inside the page for non-managers
@@ -2579,7 +2602,7 @@
     closeSidebar();
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page'+cap(page)));
-    const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',banners:'App Banners',offers:'Offers',payments:'Events & Payments',hr:'HR & Attendance',gdpr:'GDPR & Compliance'};
+    const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',website:'Website',banners:'App Banners',offers:'Offers',payments:'Events & Payments',hr:'HR & Attendance',gdpr:'GDPR & Compliance'};
     el('topbarTitle').textContent=titles[page]||'';
     el('topbarSub').textContent='';
     if(page==='bookings'){el('topbarActions').style.display='';switchBookingsTab('bookings');loadBookings();loadDashboardNotices();startBookingsPolling();}
@@ -2590,6 +2613,7 @@
     if(page==='memberships')loadMemberships();
     if(page==='menu'){switchMenuTab('orders');loadOrders();loadOrderingSchedule();}
     if(page==='banners')loadBanners();
+    if(page==='website')loadWebsiteEditor();
     if(page==='offers')loadOffers();
     if(page==='hr')loadHR();
     if(page==='payments')loadPaymentsPage();
@@ -6755,6 +6779,85 @@
     }catch(e){wrap.innerHTML='<div style="color:var(--red);font-size:13px;padding:24px;text-align:center">Failed to load payments</div>';}
   }
   window.loadPaymentLog=loadPaymentLog;
+
+  /* ── Website Editor (owner only) ── */
+  const websiteState={pages:[],activeSlug:null,saveTimer:null,dirty:{}};
+  async function loadWebsiteEditor(){
+    const body=el('websiteEditorBody');
+    body.innerHTML='<div style="padding:60px 20px;text-align:center;color:var(--text-2);font-size:13px">Loading…</div>';
+    el('websiteTabs').innerHTML='';
+    try{
+      const r=await fetch('/api/staff/web-content',{headers:{Authorization:'Bearer '+getToken()}});
+      if(!r.ok)throw new Error('Load failed');
+      websiteState.pages=await r.json();
+      if(!websiteState.activeSlug && websiteState.pages.length){websiteState.activeSlug=websiteState.pages[0].slug;}
+      renderWebsiteTabs();renderWebsiteForm();
+    }catch(e){
+      body.innerHTML='<div style="padding:60px 20px;text-align:center;color:var(--text-2);font-size:13px">Couldn\'t load website content. <a href="#" onclick="loadWebsiteEditor();return false" style="color:var(--accent);font-weight:700">Try again</a>.</div>';
+    }
+  }
+  function renderWebsiteTabs(){
+    const wrap=el('websiteTabs');
+    wrap.innerHTML=websiteState.pages.map(p=>{
+      const active=p.slug===websiteState.activeSlug;
+      return '<button onclick="setWebsiteActive(\''+p.slug+'\')" class="btn btn-sm" style="border:1.5px solid '+(active?'var(--accent)':'var(--border)')+';background:'+(active?'var(--accent)':'transparent')+';color:'+(active?'#000':'var(--text-1)')+';font-weight:700;padding:7px 14px;font-size:12.5px;border-radius:8px">'+p.label+'</button>';
+    }).join('');
+    const slug=websiteState.activeSlug||'home';
+    const previewPath=slug==='home'?'/test-site':'/test-site/'+slug;
+    el('websitePreviewBtn').setAttribute('href',previewPath);
+  }
+  window.setWebsiteActive=function(slug){
+    websiteState.activeSlug=slug;
+    renderWebsiteTabs();renderWebsiteForm();
+  };
+  function renderWebsiteForm(){
+    const page=websiteState.pages.find(p=>p.slug===websiteState.activeSlug);
+    const body=el('websiteEditorBody');
+    if(!page){body.innerHTML='';return;}
+    let html='<div style="display:grid;gap:18px;max-width:720px">';
+    page.blocks.forEach(b=>{
+      const fid='wf-'+page.slug+'-'+b.key;
+      const sid='ws-'+page.slug+'-'+b.key;
+      const fieldHtml=b.type==='textarea'
+        ? '<textarea id="'+fid+'" rows="3" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg-1);color:var(--text-1);font-family:inherit;font-size:14px;line-height:1.5;resize:vertical" placeholder="Default text in HTML">'+escapeAttr(b.value||'')+'</textarea>'
+        : '<input type="text" id="'+fid+'" value="'+escapeAttr(b.value||'')+'" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg-1);color:var(--text-1);font-family:inherit;font-size:14px" placeholder="Default text in HTML" />';
+      html+='<div style="background:var(--bg-2);border:1px solid var(--border);border-radius:12px;padding:16px 18px">'+
+        '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;gap:12px">'+
+          '<label for="'+fid+'" style="font-size:12px;font-weight:700;color:var(--text-1);text-transform:uppercase;letter-spacing:.6px">'+b.label+'</label>'+
+          '<span id="'+sid+'" style="font-size:11px;color:var(--text-2);font-weight:600"></span>'+
+        '</div>'+
+        fieldHtml+
+        (b.hint?'<p style="font-size:11.5px;color:var(--text-2);margin:8px 0 0;opacity:.85">'+b.hint+'</p>':'')+
+      '</div>';
+    });
+    html+='</div>';
+    body.innerHTML=html;
+    page.blocks.forEach(b=>{
+      const fid='wf-'+page.slug+'-'+b.key;
+      const node=el(fid);
+      if(node)node.addEventListener('input',()=>queueWebsiteSave(page.slug,b.key,fid));
+    });
+  }
+  function queueWebsiteSave(slug,key,fid){
+    const sid='ws-'+slug+'-'+key;
+    const status=el(sid);if(status)status.textContent='Saving…';
+    const cacheKey=slug+':'+key;
+    clearTimeout(websiteState.dirty[cacheKey]);
+    websiteState.dirty[cacheKey]=setTimeout(async()=>{
+      const value=el(fid).value;
+      try{
+        const r=await fetch('/api/staff/web-content',{method:'PUT',headers:{'Content-Type':'application/json',Authorization:'Bearer '+getToken()},body:JSON.stringify({page:slug,block:key,value:value})});
+        if(!r.ok)throw new Error();
+        if(status){status.textContent='Saved ✓';status.style.color='var(--green,#3ec46d)';setTimeout(()=>{status.textContent='';status.style.color='';},2000);}
+        const page=websiteState.pages.find(p=>p.slug===slug);
+        if(page){const blk=page.blocks.find(b=>b.key===key);if(blk)blk.value=value;}
+      }catch(e){
+        if(status){status.textContent='Failed';status.style.color='#e05252';}
+      }
+    },550);
+  }
+  function escapeAttr(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+  window.loadWebsiteEditor=loadWebsiteEditor;
 
   /* ── Init ── */
   updateDateUI();
