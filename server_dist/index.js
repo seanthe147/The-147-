@@ -13,7 +13,7 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, serial, timestamp, boolean, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffDocuments, insertStaffDocumentSchema, staffOnboarding, insertStaffOnboardingSchema, staffPushTokens;
+var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffDocuments, insertStaffDocumentSchema, staffOnboarding, insertStaffOnboardingSchema, staffPushTokens, paymentLog, insertPaymentLogSchema;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
@@ -257,9 +257,14 @@ var init_schema = __esm({
       hoursUsedThisPeriod: integer("hours_used_this_period").notNull().default(0),
       guestPassesUsed: integer("guest_passes_used").notNull().default(0),
       failedPaymentAttempts: integer("failed_payment_attempts").notNull().default(0),
+      paymentReminderSentAt: timestamp("payment_reminder_sent_at"),
       cancelledAt: timestamp("cancelled_at"),
       staffNotes: text("staff_notes"),
       source: text("source").notNull().default("staff"),
+      migrationToken: text("migration_token"),
+      migrationEmailedAt: timestamp("migration_emailed_at"),
+      migrationCompletedAt: timestamp("migration_completed_at"),
+      legacyExternalRef: text("legacy_external_ref"),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     insertMembershipSubscriptionSchema = createInsertSchema(membershipSubscriptions).omit({ id: true, createdAt: true });
@@ -306,7 +311,9 @@ var init_schema = __esm({
       categoryId: text("category_id").primaryKey(),
       displayOrder: integer("display_order").notNull().default(99),
       mergedIntoId: text("merged_into_id"),
+      parentCategoryId: text("parent_category_id"),
       displayName: text("display_name"),
+      imageUrl: text("image_url"),
       updatedBy: text("updated_by").notNull().default("system"),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
@@ -486,6 +493,23 @@ var init_schema = __esm({
       createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
+    paymentLog = pgTable("payment_log", {
+      id: serial("id").primaryKey(),
+      amountPence: integer("amount_pence").notNull(),
+      currency: text("currency").notNull().default("gbp"),
+      description: text("description").notNull(),
+      customerName: text("customer_name"),
+      customerEmail: text("customer_email"),
+      customerPhone: text("customer_phone"),
+      stripePaymentIntentId: text("stripe_payment_intent_id"),
+      status: text("status").notNull().default("pending"),
+      // pending | succeeded | failed
+      staffUsername: text("staff_username"),
+      staffDisplayName: text("staff_display_name"),
+      failureMessage: text("failure_message"),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
+    insertPaymentLogSchema = createInsertSchema(paymentLog).omit({ id: true, createdAt: true });
   }
 });
 
@@ -569,6 +593,14 @@ function decryptCustomer(c) {
     email: decrypt(c.email),
     name: decrypt(c.name),
     phone: c.phone ? decrypt(c.phone) : c.phone
+  };
+}
+function decryptPaymentLog(p) {
+  return {
+    ...p,
+    customerName: p.customerName ? decrypt(p.customerName) : p.customerName,
+    customerEmail: p.customerEmail ? decrypt(p.customerEmail) : p.customerEmail,
+    customerPhone: p.customerPhone ? decrypt(p.customerPhone) : p.customerPhone
   };
 }
 function decryptContactMessage(m) {
@@ -1420,6 +1452,41 @@ var init_storage = __esm({
         const [sub] = await db.update(membershipSubscriptions).set(data).where(eq(membershipSubscriptions.id, id)).returning();
         return sub;
       }
+      // Pending memberships that need a payment reminder email.
+      // Returns subs that have been pending >= remindAfterHours and have not yet had a reminder sent.
+      async getPendingMembershipsNeedingReminder(remindAfterHours) {
+        const cutoff = new Date(Date.now() - remindAfterHours * 60 * 60 * 1e3);
+        const rows = await db.select().from(membershipSubscriptions).where(and(
+          eq(membershipSubscriptions.status, "pending"),
+          isNull(membershipSubscriptions.paymentReminderSentAt),
+          lte(membershipSubscriptions.createdAt, cutoff)
+        ));
+        const out = [];
+        for (const sub of rows) {
+          const [customer] = await db.select().from(customers).where(eq(customers.id, sub.customerId));
+          const [plan] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, sub.planId));
+          out.push({ ...sub, customer: customer ?? null, plan: plan ?? null });
+        }
+        return out;
+      }
+      // Pending memberships old enough to auto-cancel (payment never completed).
+      async getPendingMembershipsToAutoCancel(maxAgeHours) {
+        const cutoff = new Date(Date.now() - maxAgeHours * 60 * 60 * 1e3);
+        const rows = await db.select().from(membershipSubscriptions).where(and(
+          eq(membershipSubscriptions.status, "pending"),
+          lte(membershipSubscriptions.createdAt, cutoff)
+        ));
+        const out = [];
+        for (const sub of rows) {
+          const [customer] = await db.select().from(customers).where(eq(customers.id, sub.customerId));
+          const [plan] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, sub.planId));
+          out.push({ ...sub, customer: customer ?? null, plan: plan ?? null });
+        }
+        return out;
+      }
+      async markMembershipReminderSent(id) {
+        await db.update(membershipSubscriptions).set({ paymentReminderSentAt: /* @__PURE__ */ new Date() }).where(eq(membershipSubscriptions.id, id));
+      }
       async getMembershipStats() {
         const all = await db.select().from(membershipSubscriptions);
         const active = all.filter((s) => s.status === "active");
@@ -1470,7 +1537,9 @@ var init_storage = __esm({
             categoryId: s.categoryId,
             displayOrder: s.displayOrder ?? 99,
             mergedIntoId: s.mergedIntoId ?? null,
+            parentCategoryId: s.parentCategoryId ?? null,
             displayName: s.displayName ?? null,
+            imageUrl: s.imageUrl ?? null,
             updatedBy: s.updatedBy,
             updatedAt: /* @__PURE__ */ new Date()
           }).onConflictDoUpdate({
@@ -1478,12 +1547,27 @@ var init_storage = __esm({
             set: {
               ...s.displayOrder !== void 0 ? { displayOrder: s.displayOrder } : {},
               ...s.mergedIntoId !== void 0 ? { mergedIntoId: s.mergedIntoId } : {},
+              ...s.parentCategoryId !== void 0 ? { parentCategoryId: s.parentCategoryId } : {},
               ...s.displayName !== void 0 ? { displayName: s.displayName } : {},
               updatedBy: s.updatedBy,
               updatedAt: /* @__PURE__ */ new Date()
             }
           });
         }
+      }
+      async updateCategoryImage(categoryId, imageUrl, updatedBy) {
+        await db.insert(categorySettings).values({
+          categoryId,
+          displayOrder: 99,
+          mergedIntoId: null,
+          displayName: null,
+          imageUrl,
+          updatedBy,
+          updatedAt: /* @__PURE__ */ new Date()
+        }).onConflictDoUpdate({
+          target: categorySettings.categoryId,
+          set: { imageUrl, updatedBy, updatedAt: /* @__PURE__ */ new Date() }
+        });
       }
       async getAvailabilityRules() {
         return db.select().from(availabilityRules).orderBy(availabilityRules.id);
@@ -1878,8 +1962,459 @@ var init_storage = __esm({
           updatedAt: staffOnboarding.updatedAt
         }).from(staffOnboarding);
       }
+      // ── Payment log ──────────────────────────────────────────────────────────────
+      // Customer PII (name/email/phone) is encrypted at rest, matching the rest of the codebase.
+      async createPaymentLog(data) {
+        const toStore = {
+          ...data,
+          customerName: data.customerName ? encrypt(data.customerName) : data.customerName,
+          customerEmail: data.customerEmail ? encrypt(data.customerEmail) : data.customerEmail,
+          customerPhone: data.customerPhone ? encrypt(data.customerPhone) : data.customerPhone
+        };
+        const [row] = await db.insert(paymentLog).values(toStore).returning();
+        return decryptPaymentLog(row);
+      }
+      async updatePaymentLog(id, patch) {
+        const toStore = { ...patch };
+        if (patch.customerName !== void 0) toStore.customerName = patch.customerName ? encrypt(patch.customerName) : patch.customerName;
+        if (patch.customerEmail !== void 0) toStore.customerEmail = patch.customerEmail ? encrypt(patch.customerEmail) : patch.customerEmail;
+        if (patch.customerPhone !== void 0) toStore.customerPhone = patch.customerPhone ? encrypt(patch.customerPhone) : patch.customerPhone;
+        const [row] = await db.update(paymentLog).set(toStore).where(eq(paymentLog.id, id)).returning();
+        return row ? decryptPaymentLog(row) : null;
+      }
+      async listPaymentLogs(limit = 100) {
+        const rows = await db.select().from(paymentLog).orderBy(desc(paymentLog.createdAt)).limit(limit);
+        return rows.map(decryptPaymentLog);
+      }
+      async getPaymentLogByIntent(intentId) {
+        const [row] = await db.select().from(paymentLog).where(eq(paymentLog.stripePaymentIntentId, intentId));
+        return row ? decryptPaymentLog(row) : null;
+      }
     };
     storage = new DatabaseStorage();
+  }
+});
+
+// server/wix-migration.ts
+var wix_migration_exports = {};
+__export(wix_migration_exports, {
+  buildMigrationEmail: () => buildMigrationEmail,
+  importWixMembers: () => importWixMembers,
+  makeMigrationToken: () => makeMigrationToken,
+  parseCsv: () => parseCsv,
+  renderMigrationErrorPage: () => renderMigrationErrorPage,
+  renderMigrationLandingPage: () => renderMigrationLandingPage,
+  resolvePlanId: () => resolvePlanId
+});
+import { randomBytes as randomBytes2 } from "node:crypto";
+function parseCsv(text2) {
+  const lines = text2.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n").filter((l) => l.length > 0);
+  if (lines.length < 2) return [];
+  const splitLine = (line) => {
+    const out = [];
+    let cur = "";
+    let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQ) {
+        if (ch === '"' && line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else if (ch === '"') inQ = false;
+        else cur += ch;
+      } else {
+        if (ch === '"') inQ = true;
+        else if (ch === ",") {
+          out.push(cur);
+          cur = "";
+        } else cur += ch;
+      }
+    }
+    out.push(cur);
+    return out.map((s) => s.trim());
+  };
+  const headers = splitLine(lines[0]).map((h) => h.toLowerCase().replace(/[^a-z0-9]/g, ""));
+  const rows = [];
+  const findIdx = (...keys) => headers.findIndex((h) => keys.some((k) => h === k || h.includes(k)));
+  const idxEmail = findIdx("email", "memberemail", "contactemail");
+  const idxName = findIdx("name", "fullname", "membername", "firstname");
+  const idxLast = headers.findIndex((h) => h === "lastname" || h === "surname");
+  const idxPhone = findIdx("phone", "phonenumber", "mobile");
+  const idxPlan = findIdx("plan", "planname", "pricingplan", "membershipplan", "subscription");
+  const idxDate = findIdx("nextbilling", "nextpayment", "renewaldate", "expirydate", "nextcharge");
+  const idxRef = findIdx("subscriptionid", "orderid", "memberid", "externalid");
+  if (idxEmail < 0) {
+    throw new Error("CSV is missing an Email column");
+  }
+  for (let i = 1; i < lines.length; i++) {
+    const cells = splitLine(lines[i]);
+    const raw = {};
+    headers.forEach((h, idx) => {
+      raw[h] = cells[idx] ?? "";
+    });
+    const email = (cells[idxEmail] || "").trim().toLowerCase();
+    if (!email || !email.includes("@")) continue;
+    let name = idxName >= 0 ? (cells[idxName] || "").trim() : "";
+    if (idxLast >= 0) {
+      const last = (cells[idxLast] || "").trim();
+      if (last) name = (name + " " + last).trim();
+    }
+    if (!name) name = email.split("@")[0];
+    rows.push({
+      email,
+      name,
+      phone: idxPhone >= 0 ? (cells[idxPhone] || "").trim() || void 0 : void 0,
+      planHint: idxPlan >= 0 ? (cells[idxPlan] || "").trim() || void 0 : void 0,
+      nextBillingDate: idxDate >= 0 ? normaliseDate(cells[idxDate]) : void 0,
+      externalRef: idxRef >= 0 ? (cells[idxRef] || "").trim() || void 0 : void 0,
+      raw
+    });
+  }
+  return rows;
+}
+function normaliseDate(input) {
+  if (!input) return void 0;
+  const s = input.trim();
+  if (!s) return void 0;
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  if (m) {
+    const d = m[1].padStart(2, "0");
+    const mo = m[2].padStart(2, "0");
+    let y = m[3];
+    if (y.length === 2) y = "20" + y;
+    return `${y}-${mo}-${d}`;
+  }
+  const t = Date.parse(s);
+  if (!isNaN(t)) return new Date(t).toISOString().slice(0, 10);
+  return void 0;
+}
+function makeMigrationToken() {
+  return randomBytes2(18).toString("base64url");
+}
+function resolvePlanId(hint, defaultPlanId, planMap, plans) {
+  if (!hint) return defaultPlanId;
+  const key = hint.toLowerCase().trim();
+  if (planMap[key]) return planMap[key];
+  const direct = plans.find((p) => p.name.toLowerCase() === key);
+  if (direct) return direct.id;
+  const partial = plans.find((p) => key.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(key));
+  if (partial) return partial.id;
+  return defaultPlanId;
+}
+async function importWixMembers(opts) {
+  const seen = /* @__PURE__ */ new Map();
+  for (const r of opts.rows) seen.set(r.email.toLowerCase(), r);
+  const dedupedRows = Array.from(seen.values());
+  const result = { total: dedupedRows.length, created: 0, updated: 0, skipped: [], rows: [] };
+  const plans = await storage.getMembershipPlans();
+  for (const row of dedupedRows) {
+    try {
+      const planId = resolvePlanId(row.planHint, opts.defaultPlanId, opts.planMap, plans);
+      if (!plans.find((p) => p.id === planId)) {
+        result.skipped.push({ email: row.email, reason: "No matching plan" });
+        continue;
+      }
+      let customer = await storage.getCustomerByEmail(row.email);
+      if (!customer) {
+        const lockedHash = "!MIGRATED_NO_PASSWORD_" + makeMigrationToken();
+        customer = await storage.createCustomer(row.email, row.name, row.phone || null, lockedHash);
+      }
+      const existing = await storage.getMembershipSubscriptionByCustomer(customer.id).catch(() => null);
+      if (existing && existing.status === "active" && existing.source !== "wix_import" && existing.source !== "wix_migrated") {
+        result.skipped.push({ email: row.email, reason: "Already has an active membership on this system" });
+        continue;
+      }
+      const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+      const periodEnd = row.nextBillingDate || (() => {
+        const d = /* @__PURE__ */ new Date();
+        d.setMonth(d.getMonth() + 1);
+        return d.toISOString().slice(0, 10);
+      })();
+      const token = existing && existing.migrationToken || makeMigrationToken();
+      if (existing) {
+        await storage.updateMembershipSubscription(existing.id, {
+          planId,
+          status: existing.migrationCompletedAt ? existing.status : "active",
+          currentPeriodEnd: periodEnd,
+          source: existing.migrationCompletedAt ? existing.source : "wix_import",
+          migrationToken: token,
+          legacyExternalRef: row.externalRef ?? null
+        });
+        result.updated++;
+        result.rows.push({ email: row.email, subscriptionId: existing.id, planId, status: "updated" });
+      } else {
+        const sub = await storage.createMembershipSubscription({
+          customerId: customer.id,
+          planId,
+          status: "active",
+          currentPeriodStart: today,
+          currentPeriodEnd: periodEnd,
+          hoursUsedThisPeriod: 0,
+          guestPassesUsed: 0,
+          source: "wix_import",
+          migrationToken: token,
+          legacyExternalRef: row.externalRef ?? null
+        });
+        result.created++;
+        result.rows.push({ email: row.email, subscriptionId: sub.id, planId, status: "created" });
+      }
+    } catch (err) {
+      result.skipped.push({ email: row.email, reason: err?.message || "Unknown error" });
+    }
+  }
+  return result;
+}
+function buildMigrationEmail(opts) {
+  const firstName = opts.name.split(/\s+/)[0] || "there";
+  const priceMonthly = `\xA3${(opts.plan.priceMonthly / 100).toFixed(2)}`;
+  const subject = `Action needed: keep your 147 Bradford ${opts.plan.name} membership active`;
+  const html = `
+<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#f4f4f3;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif;color:#1a1a1a">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f3;padding:40px 20px">
+  <tr><td align="center">
+    <table role="presentation" width="540" cellpadding="0" cellspacing="0" style="max-width:540px;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
+      <tr><td style="background:#0a0a0a;padding:28px 32px;text-align:center">
+        <div style="color:#d4af37;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase">The 147 Bradford</div>
+      </td></tr>
+      <tr><td style="padding:36px 32px 24px">
+        <h1 style="margin:0 0 18px;font-size:22px;font-weight:700;color:#0a0a0a">Hi ${escapeHtml(firstName)},</h1>
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.55;color:#333">We've moved our membership system from our old website over to a brand new app and member dashboard \u2014 packed with new perks like priority booking, in-app ordering and loyalty points.</p>
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.55;color:#333">Your <strong>${escapeHtml(opts.plan.name)}</strong> membership has been moved across at the same price you pay today (<strong>${priceMonthly}/month</strong>) \u2014 all your benefits are already active. The only thing we need from you is to set up your card on the new system, since for security reasons we can't transfer your old card details.</p>
+        <p style="margin:0 0 28px;font-size:15px;line-height:1.55;color:#333">It only takes about a minute. Apple Pay and Google Pay are supported.</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto"><tr><td style="border-radius:10px;background:#d4af37">
+          <a href="${opts.migrateUrl}" style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:700;color:#0a0a0a;text-decoration:none;border-radius:10px">Set up my card \u2192</a>
+        </td></tr></table>
+        <p style="margin:28px 0 0;font-size:13px;line-height:1.5;color:#777">If the button doesn't work, copy this link into your browser:<br/><a href="${opts.migrateUrl}" style="color:#7a6a2e;word-break:break-all">${opts.migrateUrl}</a></p>
+      </td></tr>
+      <tr><td style="padding:20px 32px 32px;border-top:1px solid #ececec;font-size:12px;color:#999;line-height:1.5">
+        Questions? Just reply to this email \u2014 a real person will get back to you.<br/>
+        <strong style="color:#666">The 147 Bradford</strong> \xB7 Family-friendly snooker, pool &amp; darts venue.
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body></html>`;
+  return { subject, html };
+}
+function escapeHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function renderMigrationLandingPage(opts) {
+  const name = escapeHtml(opts.customer.name.split(/\s+/)[0] || "");
+  const priceMonthly = (opts.plan.priceMonthly / 100).toFixed(2);
+  const planName = escapeHtml(opts.plan.name);
+  const renews = opts.sub.currentPeriodEnd ? new Date(opts.sub.currentPeriodEnd).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "next month";
+  if (opts.alreadyDone) {
+    return wrapMigrationPage(`
+      <div style="text-align:center">
+        <div style="width:64px;height:64px;border-radius:50%;background:#e8f7ee;display:inline-flex;align-items:center;justify-content:center;margin-bottom:18px">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#22a960" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <h1 style="margin:0 0 10px;font-size:26px">You're all set, ${name}.</h1>
+        <p style="margin:0 0 26px;font-size:15px;color:#555;line-height:1.55">Your <strong>${planName}</strong> membership is fully active on the new system. We'll see you at the venue.</p>
+        <a href="/test-site" style="display:inline-block;padding:13px 28px;background:#0a0a0a;color:#fff;text-decoration:none;border-radius:10px;font-weight:700;font-size:14px">Visit site</a>
+      </div>
+    `);
+  }
+  return wrapMigrationPage(`
+    <h1 style="margin:0 0 10px;font-size:26px;font-weight:700">Welcome to the new system, ${name}.</h1>
+    <p style="margin:0 0 24px;font-size:15px;color:#555;line-height:1.55">Your membership has already been moved across \u2014 we just need you to set up your card so we can take next month's payment on <strong>${renews}</strong>.</p>
+    <div style="background:#faf6e8;border:1px solid #e8dcb1;border-radius:12px;padding:18px 20px;margin:0 0 26px">
+      <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#7a6a2e;margin-bottom:6px">Your plan</div>
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div style="font-size:19px;font-weight:700;color:#0a0a0a">${planName}</div>
+        <div style="font-size:18px;font-weight:700;color:#0a0a0a">\xA3${priceMonthly}<span style="font-size:13px;font-weight:500;color:#888">/month</span></div>
+      </div>
+    </div>
+    <button id="migrateBtn" style="width:100%;padding:15px;background:#d4af37;color:#0a0a0a;border:0;border-radius:12px;font-weight:700;font-size:15px;cursor:pointer">Set up my card with Square \u2192</button>
+    <div id="migrateErr" style="display:none;margin-top:14px;padding:12px;background:#fef0f0;border:1px solid #f5c2c2;border-radius:8px;color:#a02525;font-size:13px"></div>
+    <p style="margin:22px 0 0;font-size:12px;color:#888;line-height:1.5;text-align:center">Payment is processed securely by Square. We never see or store your card details. Apple Pay and Google Pay are supported.</p>
+    <script>
+      document.getElementById('migrateBtn').addEventListener('click', async function(){
+        var btn=this; var err=document.getElementById('migrateErr');
+        btn.disabled=true; btn.textContent='Loading\u2026'; err.style.display='none';
+        try{
+          var r=await fetch(${JSON.stringify(`/api/migrate/${opts.token}/checkout`)},{method:'POST'});
+          var d=await r.json();
+          if(!r.ok||!d.checkoutUrl)throw new Error(d.message||'Could not start checkout');
+          window.location.href=d.checkoutUrl;
+        }catch(e){
+          err.textContent=e.message||'Something went wrong. Please try again.';
+          err.style.display='block';
+          btn.disabled=false; btn.textContent='Set up my card with Square \u2192';
+        }
+      });
+    </script>
+  `);
+}
+function renderMigrationErrorPage(message) {
+  return wrapMigrationPage(`
+    <div style="text-align:center">
+      <h1 style="margin:0 0 12px;font-size:22px">Link not valid</h1>
+      <p style="margin:0 0 24px;color:#555;font-size:14px;line-height:1.5">${escapeHtml(message)}</p>
+      <p style="margin:0;font-size:13px;color:#888">If you think this is a mistake, please reply to the email we sent you and we'll sort it out.</p>
+    </div>
+  `);
+}
+function wrapMigrationPage(inner) {
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Activate your membership \xB7 The 147 Bradford</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;padding:0;background:#f4f4f3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1a1a1a;-webkit-font-smoothing:antialiased}
+  .page{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:40px 18px}
+  .brand{color:#d4af37;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:24px}
+  .card{width:100%;max-width:480px;background:#ffffff;border-radius:18px;padding:36px 32px;box-shadow:0 4px 18px rgba(0,0,0,0.06)}
+  @media (max-width:480px){.card{padding:28px 22px}}
+</style></head>
+<body><div class="page"><div class="brand">The 147 Bradford</div><div class="card">${inner}</div></div></body></html>`;
+}
+var init_wix_migration = __esm({
+  "server/wix-migration.ts"() {
+    "use strict";
+    init_storage();
+  }
+});
+
+// server/web-content.ts
+var web_content_exports = {};
+__export(web_content_exports, {
+  WEB_PAGES: () => WEB_PAGES,
+  applyWebContentOverrides: () => applyWebContentOverrides,
+  getEditorPayload: () => getEditorPayload,
+  renderWebText: () => renderWebText,
+  saveOverride: () => saveOverride
+});
+function renderWebText(value) {
+  return escapeHtml2(value).replace(/\*([^*\n]+)\*/g, "<em>$1</em>");
+}
+async function applyWebContentOverrides(slug, html) {
+  const overrides = await loadOverridesForPage(slug);
+  if (!overrides || Object.keys(overrides).length === 0) return html;
+  return html.replace(
+    /<!--WEB:([a-z0-9_\-]+):([a-z0-9_\-]+)-->[\s\S]*?<!--\/WEB-->/g,
+    (full, pageSlug, blockKey) => {
+      if (pageSlug !== slug) return full;
+      const v = overrides[blockKey];
+      if (v == null || v === "") return full;
+      return `<!--WEB:${pageSlug}:${blockKey}-->${renderWebText(v)}<!--/WEB-->`;
+    }
+  );
+}
+async function loadOverridesForPage(slug) {
+  const page = WEB_PAGES.find((p) => p.slug === slug);
+  if (!page) return {};
+  const out = {};
+  await Promise.all(
+    page.blocks.map(async (b) => {
+      try {
+        const v = await storage.getSetting(settingKey(slug, b.key));
+        if (v != null && v !== "") out[b.key] = v;
+      } catch {
+      }
+    })
+  );
+  return out;
+}
+async function getEditorPayload() {
+  return await Promise.all(
+    WEB_PAGES.map(async (page) => {
+      const blocks = await Promise.all(
+        page.blocks.map(async (b) => {
+          let value = "";
+          try {
+            const v = await storage.getSetting(settingKey(page.slug, b.key));
+            if (v != null) value = v;
+          } catch {
+          }
+          return { ...b, value };
+        })
+      );
+      return { slug: page.slug, label: page.label, blocks };
+    })
+  );
+}
+async function saveOverride(slug, key, value) {
+  const page = WEB_PAGES.find((p) => p.slug === slug);
+  if (!page) throw new Error("Unknown page");
+  if (!page.blocks.find((b) => b.key === key)) throw new Error("Unknown block");
+  await storage.setSetting(settingKey(slug, key), String(value ?? ""));
+}
+var WEB_PAGES, settingKey, escapeHtml2;
+var init_web_content = __esm({
+  "server/web-content.ts"() {
+    "use strict";
+    init_storage();
+    WEB_PAGES = [
+      {
+        slug: "home",
+        label: "Home",
+        blocks: [
+          { key: "hero_eyebrow", label: "Hero \xB7 small label", type: "text" },
+          { key: "hero_title", label: "Hero \xB7 headline", type: "text", hint: "Use *word* to highlight a word in gold italic." },
+          { key: "hero_sub", label: "Hero \xB7 subtitle", type: "textarea" }
+        ]
+      },
+      {
+        slug: "snooker",
+        label: "Snooker",
+        blocks: [
+          { key: "hero_eyebrow", label: "Hero \xB7 small label", type: "text" },
+          { key: "hero_title", label: "Hero \xB7 headline", type: "text", hint: "Use *word* to highlight a word in gold italic." },
+          { key: "hero_sub", label: "Hero \xB7 subtitle", type: "textarea" }
+        ]
+      },
+      {
+        slug: "dining",
+        label: "Dining",
+        blocks: [
+          { key: "hero_eyebrow", label: "Hero \xB7 small label", type: "text" },
+          { key: "hero_title", label: "Hero \xB7 headline", type: "text", hint: "Use *word* to highlight a word in gold italic." },
+          { key: "hero_sub", label: "Hero \xB7 subtitle", type: "textarea" }
+        ]
+      },
+      {
+        slug: "events",
+        label: "Events",
+        blocks: [
+          { key: "hero_eyebrow", label: "Hero \xB7 small label", type: "text" },
+          { key: "hero_title", label: "Hero \xB7 headline", type: "text", hint: "Use *word* to highlight a word in gold italic." },
+          { key: "hero_sub", label: "Hero \xB7 subtitle", type: "textarea" }
+        ]
+      },
+      {
+        slug: "function-rooms",
+        label: "Function Rooms",
+        blocks: [
+          { key: "hero_eyebrow", label: "Hero \xB7 small label", type: "text" },
+          { key: "hero_title", label: "Hero \xB7 headline", type: "text", hint: "Use *word* to highlight a word in gold italic." },
+          { key: "hero_sub", label: "Hero \xB7 subtitle", type: "textarea" }
+        ]
+      },
+      {
+        slug: "gift-cards",
+        label: "Gift Cards",
+        blocks: [
+          { key: "hero_eyebrow", label: "Hero \xB7 small label", type: "text" },
+          { key: "hero_title", label: "Hero \xB7 headline", type: "text", hint: "Use *word* to highlight a word in gold italic." },
+          { key: "hero_sub", label: "Hero \xB7 subtitle", type: "textarea" }
+        ]
+      },
+      {
+        slug: "contact",
+        label: "Contact",
+        blocks: [
+          { key: "hero_eyebrow", label: "Hero \xB7 small label", type: "text" },
+          { key: "hero_title", label: "Hero \xB7 headline", type: "text", hint: "Use *word* to highlight a word in gold italic." },
+          { key: "hero_sub", label: "Hero \xB7 subtitle", type: "textarea" }
+        ]
+      }
+    ];
+    settingKey = (slug, key) => `web:${slug}:${key}`;
+    escapeHtml2 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
 });
 
@@ -1891,7 +2426,7 @@ init_storage();
 init_schema();
 init_encryption();
 import { createServer } from "node:http";
-import { randomBytes as randomBytes2, timingSafeEqual } from "node:crypto";
+import { randomBytes as randomBytes3, timingSafeEqual, createHash as createHash2 } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import multer from "multer";
@@ -2030,6 +2565,33 @@ async function searchIssuedRewards(accountId) {
 }
 function isConfigured() {
   return !!(process.env.SQUARE_ACCESS_TOKEN && (process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID));
+}
+function getApplicationId() {
+  return process.env.SQUARE_APPLICATION_ID || null;
+}
+function getEnvironment() {
+  return process.env.SQUARE_ENVIRONMENT === "production" ? "production" : "sandbox";
+}
+function getPublicLocationId() {
+  return process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID || null;
+}
+function isWebPaymentsConfigured() {
+  return !!(getApplicationId() && getPublicLocationId() && process.env.SQUARE_ACCESS_TOKEN);
+}
+async function createCardPayment(opts) {
+  const body = {
+    idempotency_key: opts.idempotencyKey,
+    source_id: opts.sourceId,
+    amount_money: { amount: opts.amountPence, currency: "GBP" },
+    location_id: getLocationId(),
+    autocomplete: true
+  };
+  if (opts.note) body.note = opts.note.slice(0, 500);
+  if (opts.referenceId) body.reference_id = opts.referenceId.slice(0, 40);
+  if (opts.buyerEmail) body.buyer_email_address = opts.buyerEmail;
+  if (opts.verificationToken) body.verification_token = opts.verificationToken;
+  const data = await squareRequest("POST", "/v2/payments", body);
+  return data.payment;
 }
 async function createSquareCustomer(name, email, phone) {
   const data = await squareRequest("POST", "/v2/customers", {
@@ -2833,6 +3395,28 @@ async function fetchTicketSourceEvents() {
   }
 }
 
+// server/stripe.ts
+import Stripe from "stripe";
+var cachedClient = null;
+var cachedKey = null;
+function isStripeConfigured() {
+  return !!(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PUBLISHABLE_KEY);
+}
+function getStripeClient() {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) {
+    throw new Error("Stripe is not configured. Set STRIPE_SECRET_KEY.");
+  }
+  if (!cachedClient || cachedKey !== key) {
+    cachedClient = new Stripe(key, { apiVersion: "2024-11-20.acacia" });
+    cachedKey = key;
+  }
+  return cachedClient;
+}
+function getPublishableKey() {
+  return process.env.STRIPE_PUBLISHABLE_KEY || null;
+}
+
 // server/uk-leave-utils.ts
 function easterSunday(year) {
   const a = year % 19;
@@ -3065,7 +3649,7 @@ var OTP_EXPIRY = 5 * 60 * 1e3;
 var OTP_MAX_ATTEMPTS = 3;
 var LOYALTY_SESSION_EXPIRY = 30 * 24 * 60 * 60 * 1e3;
 function generateOtp() {
-  const bytes = randomBytes2(3);
+  const bytes = randomBytes3(3);
   const num = (bytes[0] * 65536 + bytes[1] * 256 + bytes[2]) % 1e6;
   return num.toString().padStart(6, "0");
 }
@@ -3106,6 +3690,34 @@ var OTP_HTML = (code) => `<div style="font-family: Arial, sans-serif; max-width:
   <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
   <p style="color: #999; font-size: 12px;">The 147 &mdash; Snooker, Bar &amp; Restaurant</p>
 </div>`;
+function escapeHtml3(s) {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+var PAYMENT_RECEIPT_HTML = (p) => {
+  const amount = "\xA3" + (p.amountPence / 100).toFixed(2);
+  const brandLabel = p.brand.charAt(0).toUpperCase() + p.brand.slice(1);
+  return `<div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px; background: #ffffff;">
+    <div style="text-align: center; padding-bottom: 20px; border-bottom: 2px solid #0047AB;">
+      <h1 style="color: #0A1628; margin: 0; font-size: 24px;">The 147 Bradford</h1>
+      <p style="color: #6B7280; margin: 4px 0 0; font-size: 13px;">Snooker, Bar &amp; Restaurant</p>
+    </div>
+    <h2 style="color: #1A1A2E; font-size: 20px; margin-top: 28px;">Payment receipt</h2>
+    <p style="color: #555; font-size: 15px; line-height: 1.5;">Hi ${escapeHtml3(p.customerName)},</p>
+    <p style="color: #555; font-size: 15px; line-height: 1.5;">Thank you for your payment. Here are the details:</p>
+    <div style="background: #F8F9FB; border-radius: 12px; padding: 20px; margin: 20px 0;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 15px; color: #1A1A2E;">
+        <tr><td style="padding: 6px 0; color: #6B7280;">Amount paid</td><td style="padding: 6px 0; text-align: right; font-weight: 700; font-size: 20px; color: #0047AB;">${amount}</td></tr>
+        <tr><td style="padding: 6px 0; color: #6B7280;">For</td><td style="padding: 6px 0; text-align: right;">${escapeHtml3(p.description)}</td></tr>
+        <tr><td style="padding: 6px 0; color: #6B7280;">Date</td><td style="padding: 6px 0; text-align: right;">${escapeHtml3(p.dateStr)}</td></tr>
+        <tr><td style="padding: 6px 0; color: #6B7280;">Card</td><td style="padding: 6px 0; text-align: right;">${escapeHtml3(brandLabel)} \u2022\u2022\u2022\u2022 ${escapeHtml3(p.last4)}</td></tr>
+        <tr><td style="padding: 6px 0; color: #6B7280;">Receipt no.</td><td style="padding: 6px 0; text-align: right; font-family: monospace; font-size: 13px;">${escapeHtml3(p.receiptNumber)}</td></tr>
+      </table>
+    </div>
+    <p style="color: #555; font-size: 14px; line-height: 1.5;">If you have any questions about this payment, just reply to this email and our team will be happy to help.</p>
+    <hr style="border: none; border-top: 1px solid #eee; margin: 28px 0;" />
+    <p style="color: #999; font-size: 12px; text-align: center; margin: 0;">The 147 Bradford &mdash; Snooker, Bar &amp; Restaurant<br />This is an automated receipt. Please keep it for your records.</p>
+  </div>`;
+};
 async function sendEmailViaSMTP(to, subject, html) {
   const host = process.env.SMTP_HOST;
   const user = process.env.SMTP_USER;
@@ -3127,6 +3739,26 @@ async function sendEmailViaSMTP(to, subject, html) {
     console.error("[EMAIL SMTP] Error:", err);
     return false;
   }
+}
+async function sendMigrationEmail(subId, req) {
+  const { buildMigrationEmail: buildMigrationEmail2, makeMigrationToken: makeMigrationToken2 } = await Promise.resolve().then(() => (init_wix_migration(), wix_migration_exports));
+  const subs = await storage.getMembershipSubscriptions();
+  const sub = subs.find((s) => s.id === subId);
+  if (!sub || !sub.customer || !sub.plan) return { success: false, message: "Member not found" };
+  if (!sub.customer.email) return { success: false, message: "No email on file" };
+  let token = sub.migrationToken;
+  if (!token) {
+    token = makeMigrationToken2();
+    await storage.updateMembershipSubscription(sub.id, { migrationToken: token });
+  }
+  const host = req.headers.host || "the147bradford.replit.app";
+  const proto = req.headers["x-forwarded-proto"] || "https";
+  const migrateUrl = `${proto}://${host}/migrate/${token}`;
+  const { subject, html } = buildMigrationEmail2({ name: sub.customer.name, plan: sub.plan, migrateUrl });
+  const sent = await sendEmailViaSMTP(sub.customer.email, subject, html);
+  if (!sent) return { success: false, message: "SMTP not configured or send failed" };
+  await storage.updateMembershipSubscription(sub.id, { migrationEmailedAt: /* @__PURE__ */ new Date() });
+  return { success: true };
 }
 async function sendOtpEmail(email, code) {
   const subject = "Your Loyalty Verification Code \u2014 The 147";
@@ -3659,7 +4291,7 @@ async function registerRoutes(app2) {
         return res.status(401).json({ message: "Invalid credentials" });
       }
       clearFailedLogins(clientIp);
-      const token2 = randomBytes2(32).toString("hex");
+      const token2 = randomBytes3(32).toString("hex");
       const expiresAt2 = new Date(Date.now() + 24 * 60 * 60 * 1e3);
       const session2 = await storage.createStaffSession(token2, expiresAt2, staffUser.id, staffUser.username);
       return res.json({
@@ -3679,7 +4311,7 @@ async function registerRoutes(app2) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
     clearFailedLogins(clientIp);
-    const token = randomBytes2(32).toString("hex");
+    const token = randomBytes3(32).toString("hex");
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1e3);
     const session = await storage.createStaffSession(token, expiresAt);
     res.json({ token: session.token, expiresAt: session.expiresAt, role: "manager" });
@@ -3839,6 +4471,169 @@ async function registerRoutes(app2) {
     if (!updated) return res.status(404).json({ message: "Staff user not found" });
     res.json({ message: `Account ${finalStatus}`, user: { id: updated.id, username: updated.username, approvalStatus: updated.approvalStatus } });
   });
+  app2.get("/api/staff/web-content", staffAuth, ownerAuth, async (_req, res) => {
+    try {
+      const { getEditorPayload: getEditorPayload2 } = await Promise.resolve().then(() => (init_web_content(), web_content_exports));
+      res.json(await getEditorPayload2());
+    } catch (err) {
+      console.error("Failed to load web content:", err);
+      res.status(500).json({ message: "Failed to load website content" });
+    }
+  });
+  app2.put("/api/staff/web-content", staffAuth, ownerAuth, async (req, res) => {
+    try {
+      const { saveOverride: saveOverride2 } = await Promise.resolve().then(() => (init_web_content(), web_content_exports));
+      const { page, block, value } = req.body || {};
+      if (typeof page !== "string" || typeof block !== "string") {
+        return res.status(400).json({ message: "page and block are required" });
+      }
+      await saveOverride2(page, block, typeof value === "string" ? value : "");
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Failed to save web content:", err);
+      res.status(400).json({ message: err?.message || "Failed to save" });
+    }
+  });
+  app2.post("/api/staff/wix-migration/preview", staffAuth, ownerAuth, async (req, res) => {
+    try {
+      const { parseCsv: parseCsv2 } = await Promise.resolve().then(() => (init_wix_migration(), wix_migration_exports));
+      const { csv } = req.body || {};
+      if (typeof csv !== "string" || !csv.trim()) return res.status(400).json({ message: "Paste your CSV first" });
+      const rows = parseCsv2(csv);
+      const plans = await storage.getMembershipPlans();
+      res.json({ rows, plans });
+    } catch (err) {
+      res.status(400).json({ message: err?.message || "Couldn't parse CSV" });
+    }
+  });
+  app2.post("/api/staff/wix-migration/import", staffAuth, ownerAuth, async (req, res) => {
+    try {
+      const { parseCsv: parseCsv2, importWixMembers: importWixMembers2 } = await Promise.resolve().then(() => (init_wix_migration(), wix_migration_exports));
+      const { csv, defaultPlanId, planMap } = req.body || {};
+      if (typeof csv !== "string" || !csv.trim()) return res.status(400).json({ message: "CSV is required" });
+      if (!defaultPlanId) return res.status(400).json({ message: "Pick a default plan" });
+      const rows = parseCsv2(csv);
+      const result = await importWixMembers2({
+        rows,
+        defaultPlanId: parseInt(defaultPlanId),
+        planMap: planMap && typeof planMap === "object" ? planMap : {}
+      });
+      res.json(result);
+    } catch (err) {
+      console.error("[wix-migration/import]", err);
+      res.status(500).json({ message: err?.message || "Import failed" });
+    }
+  });
+  app2.get("/api/staff/wix-migration/status", staffAuth, ownerAuth, async (_req, res) => {
+    try {
+      const subs = await storage.getMembershipSubscriptions();
+      const imported = subs.filter((s) => s.source === "wix_import");
+      const stats = {
+        total: imported.length,
+        emailed: imported.filter((s) => s.migrationEmailedAt).length,
+        completed: imported.filter((s) => s.migrationCompletedAt).length,
+        pending: imported.filter((s) => !s.migrationCompletedAt).length
+      };
+      const list = imported.map((s) => ({
+        id: s.id,
+        customerName: s.customer?.name || "",
+        customerEmail: s.customer?.email || "",
+        planName: s.plan?.name || "",
+        priceMonthly: s.plan?.priceMonthly || 0,
+        currentPeriodEnd: s.currentPeriodEnd,
+        emailedAt: s.migrationEmailedAt,
+        completedAt: s.migrationCompletedAt,
+        hasToken: !!s.migrationToken
+      })).sort((a, b) => {
+        if (!a.completedAt && b.completedAt) return -1;
+        if (a.completedAt && !b.completedAt) return 1;
+        return (a.customerName || "").localeCompare(b.customerName || "");
+      });
+      res.json({ stats, list });
+    } catch (err) {
+      console.error("[wix-migration/status]", err);
+      res.status(500).json({ message: "Failed to load status" });
+    }
+  });
+  app2.post("/api/staff/wix-migration/send-email/:id", staffAuth, ownerAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+      const ok = await sendMigrationEmail(id, req);
+      if (!ok.success) return res.status(400).json({ message: ok.message });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[wix-migration/send-email]", err);
+      res.status(500).json({ message: "Failed to send" });
+    }
+  });
+  app2.post("/api/staff/wix-migration/send-all-emails", staffAuth, ownerAuth, async (req, res) => {
+    try {
+      const { onlyUnsent } = req.body || {};
+      const subs = await storage.getMembershipSubscriptions();
+      const targets = subs.filter((s) => s.source === "wix_import" && !s.migrationCompletedAt && (!onlyUnsent || !s.migrationEmailedAt));
+      let sent = 0, failed = 0;
+      for (const s of targets) {
+        const result = await sendMigrationEmail(s.id, req);
+        if (result.success) sent++;
+        else failed++;
+      }
+      res.json({ sent, failed, total: targets.length });
+    } catch (err) {
+      console.error("[wix-migration/send-all-emails]", err);
+      res.status(500).json({ message: "Bulk send failed" });
+    }
+  });
+  app2.post("/api/migrate/:token/checkout", async (req, res) => {
+    try {
+      const token = req.params.token;
+      if (!token || token.length < 16) return res.status(400).json({ message: "Invalid link" });
+      const subs = await storage.getMembershipSubscriptions();
+      const sub = subs.find((s) => s.migrationToken === token);
+      if (!sub) return res.status(404).json({ message: "This link isn't valid anymore." });
+      if (sub.migrationCompletedAt) return res.status(400).json({ message: "This membership has already been activated." });
+      if (sub.squareSubscriptionId) return res.status(400).json({ message: "Your card is already set up \u2014 refresh this page to confirm." });
+      if (!sub.customer || !sub.plan) return res.status(404).json({ message: "Membership not found" });
+      if (!isConfigured()) return res.status(503).json({ message: "Payment system unavailable" });
+      const variationId = sub.plan.squarePlanVariationId;
+      if (!variationId) return res.status(503).json({ message: "Plan isn't set up for online payments yet \u2014 please contact us." });
+      let sqCustomerId = sub.squareCustomerId;
+      if (!sqCustomerId) {
+        const sqCustomer = await findSquareCustomerByEmail(sub.customer.email).catch(() => null) || await createSquareCustomer(sub.customer.name, sub.customer.email, sub.customer.phone || void 0).catch(() => null);
+        if (sqCustomer) {
+          sqCustomerId = sqCustomer.id;
+          await storage.updateMembershipSubscription(sub.id, { squareCustomerId: sqCustomerId });
+        }
+      }
+      const host = req.headers.host || "the147bradford.replit.app";
+      const proto = req.headers["x-forwarded-proto"] || "https";
+      const redirectUrl = `${proto}://${host}/migrate/${token}/done`;
+      const checkout = await createSubscriptionCheckoutLink({
+        planVariationId: variationId,
+        subscriptionId: sub.id,
+        buyerEmail: sub.customer.email,
+        redirectUrl
+      });
+      res.json({ checkoutUrl: checkout.url });
+    } catch (err) {
+      console.error("[migrate/checkout]", err);
+      res.status(500).json({ message: "Couldn't start checkout \u2014 please try again." });
+    }
+  });
+  app2.get("/migrate/:token/done", async (req, res) => {
+    try {
+      const subs = await storage.getMembershipSubscriptions();
+      const sub = subs.find((s) => s.migrationToken === req.params.token);
+      if (sub && !sub.migrationCompletedAt) {
+        await storage.updateMembershipSubscription(sub.id, {
+          migrationCompletedAt: /* @__PURE__ */ new Date(),
+          source: "wix_migrated"
+        });
+      }
+    } catch (err) {
+    }
+    res.redirect(`/migrate/${req.params.token}`);
+  });
   app2.post("/api/staff/migrate-encryption", staffAuth, managerAuth, async (_req, res) => {
     try {
       const count = await storage.migrateEncryptExistingBookings();
@@ -3855,6 +4650,219 @@ async function registerRoutes(app2) {
   app2.get("/api/staff/offers", staffAuth, async (_req, res) => {
     const offers2 = await storage.getAllOffers();
     res.json(offers2);
+  });
+  const trim = (v, max) => {
+    const s = String(v ?? "").trim();
+    return s.length > max ? s.slice(0, max) : s;
+  };
+  const isEmail = (s) => /^[^\s@]{1,80}@[^\s@]{1,80}\.[^\s@]{1,40}$/.test(s);
+  app2.get("/api/staff/payments/config", staffAuth, async (_req, res) => {
+    res.json({
+      stripeConfigured: isStripeConfigured(),
+      publishableKey: getPublishableKey(),
+      boxOfficeUrl: process.env.TICKETSOURCE_BOX_OFFICE_URL || "",
+      square: {
+        configured: isWebPaymentsConfigured(),
+        applicationId: getApplicationId(),
+        locationId: getPublicLocationId(),
+        environment: getEnvironment()
+      }
+    });
+  });
+  app2.post("/api/staff/payments/square/charge", staffAuth, async (req, res) => {
+    if (!isWebPaymentsConfigured()) {
+      return res.status(503).json({ message: "Square Web Payments is not configured. Add SQUARE_APPLICATION_ID, SQUARE_ACCESS_TOKEN, and SQUARE_LOC_ID." });
+    }
+    const { sourceId, amountPence, description, customerName, customerEmail, customerPhone, verificationToken } = req.body || {};
+    const sid = trim(sourceId, 200);
+    if (!sid) return res.status(400).json({ message: "Missing card token" });
+    const amt = Number(amountPence);
+    if (!Number.isFinite(amt) || amt < 50 || amt > 1e7) {
+      return res.status(400).json({ message: "Amount must be between \xA30.50 and \xA3100,000.00" });
+    }
+    const desc2 = trim(description, 200);
+    if (!desc2) return res.status(400).json({ message: "Description is required" });
+    const name = trim(customerName, 120) || null;
+    const email = trim(customerEmail, 160) || null;
+    if (email && !isEmail(email)) return res.status(400).json({ message: "Invalid customer email" });
+    const phone = trim(customerPhone, 40) || null;
+    const staffUser = req.staffUser;
+    const staffUsername = req.staffUsername || null;
+    const log2 = await storage.createPaymentLog({
+      amountPence: Math.round(amt),
+      currency: "gbp",
+      description: desc2,
+      customerName: name,
+      customerEmail: email,
+      customerPhone: phone,
+      stripePaymentIntentId: `sq_pending_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      status: "pending",
+      staffUsername,
+      staffDisplayName: staffUser?.displayName || staffUser?.username || null,
+      failureMessage: null
+    });
+    try {
+      const idemRaw = `${log2.id}|${sid}`;
+      const idempotencyKey = createHash2("sha256").update(idemRaw).digest("hex").slice(0, 45);
+      const payment = await createCardPayment({
+        sourceId: sid,
+        amountPence: Math.round(amt),
+        idempotencyKey,
+        note: desc2,
+        referenceId: `staff-${log2.id}`,
+        buyerEmail: email || void 0,
+        verificationToken: verificationToken || null
+      });
+      const succeeded = payment.status === "COMPLETED" || payment.status === "APPROVED";
+      const status = succeeded ? "succeeded" : payment.status === "FAILED" || payment.status === "CANCELED" ? "failed" : "pending";
+      await storage.updatePaymentLog(log2.id, {
+        status,
+        stripePaymentIntentId: payment.id,
+        failureMessage: succeeded ? null : `Square status: ${payment.status}`
+      });
+      if (succeeded && email) {
+        const last4 = payment.card_details?.card?.last_4 || "----";
+        const brand = payment.card_details?.card?.card_brand || "card";
+        try {
+          const html = PAYMENT_RECEIPT_HTML({
+            amountPence: Math.round(amt),
+            description: desc2,
+            customerName: name || "Customer",
+            last4,
+            brand: String(brand).toLowerCase(),
+            receiptNumber: `147-${log2.id}`,
+            dateStr: (/* @__PURE__ */ new Date()).toLocaleString("en-GB", { dateStyle: "long", timeStyle: "short" })
+          });
+          await sendEmailViaSMTP(email, `Your receipt from The 147 Bradford \u2014 ${desc2}`, html);
+        } catch (mailErr) {
+          console.error("Square receipt email failed:", { message: mailErr?.message });
+        }
+      }
+      res.json({ ok: succeeded, status: payment.status, paymentId: payment.id, logId: log2.id });
+    } catch (err) {
+      const squareErrors = Array.isArray(err?.errors) ? err.errors : Array.isArray(err?.result?.errors) ? err.result.errors : [];
+      const first = squareErrors[0] || {};
+      const errorCode = first.code;
+      const errorDetail = first.detail || err?.message;
+      await storage.updatePaymentLog(log2.id, {
+        status: "failed",
+        failureMessage: (errorCode ? `[${errorCode}] ` : "") + (errorDetail || "Square charge failed").slice(0, 500)
+      }).catch(() => {
+      });
+      console.error("Square charge error:", { code: err?.code, statusCode: err?.statusCode, errorCode });
+      res.status(400).json({
+        message: errorDetail || "Card charge failed",
+        errorCode: errorCode || null,
+        provider: "square"
+      });
+    }
+  });
+  app2.post("/api/staff/payments/create-intent", staffAuth, async (req, res) => {
+    if (!isStripeConfigured()) {
+      return res.status(503).json({ message: "Stripe is not configured. Please add STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY." });
+    }
+    const { amountPence, description, customerName, customerEmail, customerPhone, moto } = req.body || {};
+    const amt = Number(amountPence);
+    if (!Number.isFinite(amt) || amt < 50 || amt > 1e7) {
+      return res.status(400).json({ message: "Amount must be between \xA30.50 and \xA3100,000.00" });
+    }
+    const desc2 = trim(description, 200);
+    if (!desc2) return res.status(400).json({ message: "Description is required" });
+    const name = trim(customerName, 120) || null;
+    const email = trim(customerEmail, 160) || null;
+    if (email && !isEmail(email)) return res.status(400).json({ message: "Invalid customer email" });
+    const phone = trim(customerPhone, 40) || null;
+    const staffUser = req.staffUser;
+    const staffUsername = req.staffUsername || null;
+    try {
+      const stripe = getStripeClient();
+      const idemBucket = Math.floor(Date.now() / 6e4);
+      const idemRaw = `${staffUsername || "system"}|${Math.round(amt)}|${desc2}|${idemBucket}`;
+      const idempotencyKey = createHash2("sha256").update(idemRaw).digest("hex");
+      const intent = await stripe.paymentIntents.create({
+        amount: Math.round(amt),
+        currency: "gbp",
+        description: desc2,
+        // Branded receipt is sent ourselves on finalize — don't ask Stripe to send a duplicate
+        payment_method_types: ["card"],
+        // MOTO requires Stripe to enable the capability on the account first.
+        // Until then, the moto flag is informational only — sending it would cause
+        // "Received unknown parameter" errors. Set STRIPE_MOTO_ENABLED=true once
+        // Stripe support has activated MOTO on your account.
+        ...moto && process.env.STRIPE_MOTO_ENABLED === "true" ? { payment_method_options: { card: { moto: true } } } : {},
+        metadata: {
+          source: "staff_dashboard",
+          staffUsername: staffUsername || "system",
+          customerName: name || "",
+          customerPhone: phone || ""
+        }
+      }, { idempotencyKey });
+      const log2 = await storage.createPaymentLog({
+        amountPence: Math.round(amt),
+        currency: "gbp",
+        description: desc2,
+        customerName: name,
+        customerEmail: email,
+        customerPhone: phone,
+        stripePaymentIntentId: intent.id,
+        status: "pending",
+        staffUsername,
+        staffDisplayName: staffUser?.displayName || staffUser?.username || null,
+        failureMessage: null
+      });
+      res.json({ clientSecret: intent.client_secret, paymentIntentId: intent.id, logId: log2.id });
+    } catch (err) {
+      console.error("Stripe create-intent error:", {
+        type: err?.type,
+        code: err?.code,
+        statusCode: err?.statusCode,
+        requestId: err?.requestId
+      });
+      res.status(500).json({ message: err?.message || "Failed to create payment intent" });
+    }
+  });
+  app2.post("/api/staff/payments/finalize", staffAuth, async (req, res) => {
+    if (!isStripeConfigured()) return res.status(503).json({ message: "Stripe not configured" });
+    const piId = trim(req.body?.paymentIntentId, 120);
+    if (!piId || !/^pi_[A-Za-z0-9_]+$/.test(piId)) return res.status(400).json({ message: "Invalid paymentIntentId" });
+    const existing = await storage.getPaymentLogByIntent(piId);
+    if (!existing) return res.status(404).json({ message: "Payment record not found" });
+    try {
+      const stripe = getStripeClient();
+      const intent = await stripe.paymentIntents.retrieve(piId);
+      let status = "pending";
+      if (intent.status === "succeeded") status = "succeeded";
+      else if (intent.status === "canceled" || intent.status === "requires_payment_method") status = "failed";
+      const failureMessage = intent.last_payment_error?.message || null;
+      const updated = await storage.updatePaymentLog(existing.id, { status, failureMessage });
+      if (status === "succeeded" && existing.status !== "succeeded" && existing.customerEmail) {
+        const charge = intent.latest_charge && typeof intent.latest_charge !== "string" ? intent.latest_charge : null;
+        const last4 = charge?.payment_method_details?.card?.last4 || "----";
+        const brand = charge?.payment_method_details?.card?.brand || "card";
+        const html = PAYMENT_RECEIPT_HTML({
+          amountPence: existing.amountPence,
+          description: existing.description,
+          customerName: existing.customerName || "Customer",
+          last4,
+          brand,
+          receiptNumber: charge?.receipt_number || `147-${existing.id}`,
+          dateStr: (/* @__PURE__ */ new Date()).toLocaleString("en-GB", { dateStyle: "long", timeStyle: "short" })
+        });
+        sendEmailViaSMTP(
+          existing.customerEmail,
+          `Receipt for your payment \u2014 The 147 Bradford`,
+          html
+        ).catch((err) => console.error("[RECEIPT] send failed:", err));
+      }
+      res.json(updated);
+    } catch (err) {
+      console.error("Stripe finalize error:", err);
+      res.status(500).json({ message: err?.message || "Failed to verify payment" });
+    }
+  });
+  app2.get("/api/staff/payments/log", staffAuth, managerAuth, async (_req, res) => {
+    const logs = await storage.listPaymentLogs(100);
+    res.json(logs);
   });
   app2.patch("/api/staff/offers/:id/toggle", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id);
@@ -5034,10 +6042,11 @@ async function registerRoutes(app2) {
         if (!mergedMap.has(targetId)) {
           const targetSettings = catSettingsMap.get(targetId);
           const targetCat = categories.find((c) => c.id === targetId);
+          const customImg = targetSettings?.imageUrl ?? catSettingsMap.get(cat.id)?.imageUrl ?? null;
           mergedMap.set(targetId, {
             id: targetId,
             name: targetSettings?.displayName ?? targetCat?.name ?? displayName,
-            imageUrl: targetCat?.imageUrl ?? cat.imageUrl,
+            imageUrl: customImg ?? targetCat?.imageUrl ?? cat.imageUrl,
             order: targetSettings?.displayOrder ?? targetCat ? catSettingsMap.get(targetId)?.displayOrder ?? 99 : displayOrder,
             items: []
           });
@@ -5063,7 +6072,30 @@ async function registerRoutes(app2) {
         });
         mergedMap.get(targetId).items.push(...availableItems);
       }
-      const filtered = Array.from(mergedMap.values()).filter((cat) => cat.items.length > 0).sort((a, b) => a.order !== b.order ? a.order - b.order : a.name.localeCompare(b.name)).map(({ order, ...rest }) => rest);
+      const nodes = mergedMap;
+      const childrenByParent = /* @__PURE__ */ new Map();
+      const isChild = /* @__PURE__ */ new Set();
+      for (const node of nodes.values()) {
+        const parentId = catSettingsMap.get(node.id)?.parentCategoryId ?? null;
+        if (parentId && nodes.has(parentId) && parentId !== node.id) {
+          if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
+          childrenByParent.get(parentId).push(node);
+          isChild.add(node.id);
+        }
+      }
+      const topLevel = [];
+      for (const node of nodes.values()) {
+        if (isChild.has(node.id)) continue;
+        const kids = childrenByParent.get(node.id) ?? [];
+        if (kids.length > 0) {
+          kids.sort((a, b) => a.order !== b.order ? a.order - b.order : a.name.localeCompare(b.name));
+          node.subcategories = kids.filter((k) => k.items.length > 0).map(({ order, subcategories, ...rest }) => rest);
+        }
+        if (node.items.length > 0 || node.subcategories && node.subcategories.length > 0) {
+          topLevel.push(node);
+        }
+      }
+      const filtered = topLevel.sort((a, b) => a.order !== b.order ? a.order - b.order : a.name.localeCompare(b.name)).map(({ order, ...rest }) => rest);
       res.json(filtered);
     } catch (err) {
       console.error("[MENU] Failed to fetch menu:", err.message);
@@ -5154,10 +6186,12 @@ async function registerRoutes(app2) {
       const result = categories.map((cat) => ({
         id: cat.id,
         name: cat.name,
-        imageUrl: cat.imageUrl,
+        imageUrl: settingsMap.get(cat.id)?.imageUrl ?? cat.imageUrl ?? null,
+        customImageUrl: settingsMap.get(cat.id)?.imageUrl ?? null,
         displayName: settingsMap.get(cat.id)?.displayName ?? null,
         displayOrder: settingsMap.get(cat.id)?.displayOrder ?? 99,
-        mergedIntoId: settingsMap.get(cat.id)?.mergedIntoId ?? null
+        mergedIntoId: settingsMap.get(cat.id)?.mergedIntoId ?? null,
+        parentCategoryId: settingsMap.get(cat.id)?.parentCategoryId ?? null
       }));
       res.json(result);
     } catch (err) {
@@ -5175,6 +6209,27 @@ async function registerRoutes(app2) {
     } catch (err) {
       console.error("[STAFF MENU] Category settings error:", err.message);
       res.status(500).json({ message: "Failed to save category settings" });
+    }
+  });
+  app2.patch("/api/staff/menu/category-image/:categoryId", staffAuth, managerAuth, upload.single("image"), async (req, res) => {
+    const { categoryId } = req.params;
+    const updatedBy = req.staffUser?.username ?? "staff";
+    try {
+      if (req.file) {
+        const compressed = await sharp(req.file.buffer).resize({ width: 800, withoutEnlargement: true }).jpeg({ quality: 75, mozjpeg: true }).toBuffer();
+        const imageUrl = `data:image/jpeg;base64,${compressed.toString("base64")}`;
+        await storage.updateCategoryImage(categoryId, imageUrl, updatedBy);
+        invalidateMenuCache();
+        return res.json({ ok: true, imageUrl });
+      } else if (req.body.remove === "true") {
+        await storage.updateCategoryImage(categoryId, null, updatedBy);
+        invalidateMenuCache();
+        return res.json({ ok: true, imageUrl: null });
+      }
+      return res.status(400).json({ message: "No image provided" });
+    } catch (err) {
+      console.error("[CATEGORY IMAGE] Error:", err.message);
+      return res.status(500).json({ message: "Failed to update category image" });
     }
   });
   app2.get("/api/staff/menu/availability", staffAuth, managerAuth, async (_req, res) => {
@@ -5836,7 +6891,7 @@ async function registerRoutes(app2) {
     }
     try {
       cleanupExpiredLoyaltySessions();
-      const sessionToken = randomBytes2(32).toString("hex");
+      const sessionToken = randomBytes3(32).toString("hex");
       loyaltySessions.set(sessionToken, { phone: phoneCleaned, expiresAt: Date.now() + LOYALTY_SESSION_EXPIRY });
       const account = await searchLoyaltyAccount(phoneCleaned);
       if (!account) {
@@ -5928,7 +6983,7 @@ async function registerRoutes(app2) {
     }
     loyaltyOtps.delete(otpKey);
     cleanupExpiredLoyaltySessions();
-    const sessionToken = randomBytes2(32).toString("hex");
+    const sessionToken = randomBytes3(32).toString("hex");
     loyaltySessions.set(sessionToken, { phone: phoneCleaned, expiresAt: Date.now() + LOYALTY_SESSION_EXPIRY });
     res.json({ verified: true, sessionToken, expiresIn: LOYALTY_SESSION_EXPIRY / 1e3 });
   });
@@ -6276,7 +7331,7 @@ async function registerRoutes(app2) {
       const { hash, salt } = hashPin(password);
       const passwordHash = `${salt}:${hash}`;
       const customer = await storage.createCustomer(email, name.trim(), phone?.trim() || null, passwordHash);
-      const token = randomBytes2(48).toString("hex");
+      const token = randomBytes3(48).toString("hex");
       const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3);
       await storage.createCustomerSession(token, customer.id, expiresAt);
       res.status(201).json({
@@ -6311,7 +7366,7 @@ async function registerRoutes(app2) {
         recordCustomerLoginFailure(clientIp);
         return res.status(401).json({ message: "Invalid email or password" });
       }
-      const token = randomBytes2(48).toString("hex");
+      const token = randomBytes3(48).toString("hex");
       const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3);
       await storage.createCustomerSession(token, customer.id, expiresAt);
       res.json({
@@ -6795,14 +7850,20 @@ Phone: ${phone}` : ""}`,
         const sqSub = event?.data?.object?.subscription;
         if (sqSub?.id && sqSub?.customer_id) {
           const existingSubs = await storage.getMembershipSubscriptions();
-          const local = existingSubs.find(
+          let local = existingSubs.find(
             (s) => s.squareCustomerId === sqSub.customer_id && (s.status === "pending" || s.status === "pending_payment") && !s.squareSubscriptionId
           );
+          if (!local) {
+            local = existingSubs.find(
+              (s) => s.squareCustomerId === sqSub.customer_id && !s.squareSubscriptionId && !!s.migrationToken
+            );
+          }
           if (local) {
             await storage.updateMembershipSubscription(local.id, {
-              squareSubscriptionId: sqSub.id
+              squareSubscriptionId: sqSub.id,
+              ...local.migrationToken && !local.migrationCompletedAt ? { migrationCompletedAt: /* @__PURE__ */ new Date(), source: "wix_migrated" } : {}
             });
-            console.log(`[MEMBERSHIP WEBHOOK] Linked Square subscription ${sqSub.id} \u2192 local #${local.id}`);
+            console.log(`[MEMBERSHIP WEBHOOK] Linked Square subscription ${sqSub.id} \u2192 local #${local.id}${local.migrationToken ? " (Wix migration complete)" : ""}`);
           }
         }
       }
@@ -7661,17 +8722,38 @@ Phone: ${phone}` : ""}`,
     const publishedBy = req.staffUser?.username || null;
     const published = await storage.publishRota(weekStart, publishedBy);
     const shifts = await storage.getRotaShifts(weekStart);
-    const staffIds = [...new Set(shifts.map((s) => s.staffId))];
+    const shiftsByStaff = /* @__PURE__ */ new Map();
+    for (const s of shifts) {
+      const list = shiftsByStaff.get(s.staffId) || [];
+      list.push(s);
+      shiftsByStaff.set(s.staffId, list);
+    }
+    const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    function summariseShifts(staffShifts) {
+      const sorted = [...staffShifts].sort(
+        (a, b) => a.dayOfWeek - b.dayOfWeek || a.shiftStart.localeCompare(b.shiftStart)
+      );
+      const parts = sorted.map((s) => `${dayNames[s.dayOfWeek] ?? "?"} ${s.shiftStart}\u2013${s.shiftEnd}`);
+      let summary = parts.join(", ");
+      if (summary.length > 140) summary = summary.slice(0, 137) + "\u2026";
+      return summary;
+    }
+    const staffIds = [...shiftsByStaff.keys()];
     const tokens = await storage.getStaffPushTokens(staffIds);
     let notified = 0;
     if (tokens.length > 0) {
-      const tokenStrings = tokens.map((t) => t.token);
-      const messages = tokenStrings.map((to) => ({
-        to,
-        sound: "default",
-        title: "Your Rota Has Been Published",
-        body: `The rota for the week of ${weekStart} has been published. Check the app to see your shifts.`
-      }));
+      const messages = tokens.map((t) => {
+        const personShifts = shiftsByStaff.get(t.staffId) || [];
+        const summary = summariseShifts(personShifts);
+        const count = personShifts.length;
+        const body = count === 1 ? `You're working ${summary}. Tap to view.` : `Your ${count} shifts: ${summary}`;
+        return {
+          to: t.token,
+          sound: "default",
+          title: "Your Rota Has Been Published",
+          body
+        };
+      });
       try {
         const r = await fetch("https://exp.host/--/api/v2/push/send", {
           method: "POST",
@@ -7905,10 +8987,10 @@ function setupSecurityHeaders(app2) {
     const devConnectSrc = isProd ? null : "*";
     if (req.path === "/staff" || req.path.startsWith("/staff-portal") || req.path.startsWith("/admin-") || req.path.startsWith("/staff-")) {
       res.setHeader("X-Frame-Options", "DENY");
-      const connectSrc = devConnectSrc ?? "'self'";
+      const connectSrc = devConnectSrc ?? "'self' https://api.stripe.com https://m.stripe.com https://m.stripe.network https://pci-connect.squareup.com https://pci-connect.squareupsandbox.com https://connect.squareup.com https://connect.squareupsandbox.com https://o160250.ingest.sentry.io";
       res.setHeader(
         "Content-Security-Policy",
-        `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src ${connectSrc}; img-src 'self' data: blob: https:; frame-ancestors 'none'`
+        `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://m.stripe.network https://web.squarecdn.com https://sandbox.web.squarecdn.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://web.squarecdn.com https://sandbox.web.squarecdn.com; font-src 'self' data: https://fonts.gstatic.com https://square-fonts-production-f.squarecdn.com https://d1g145x70srn7h.cloudfront.net; connect-src ${connectSrc}; img-src 'self' data: blob: https:; frame-src https://js.stripe.com https://hooks.stripe.com https://*.ticketsource.co.uk https://*.ticketsource.com https://web.squarecdn.com https://sandbox.web.squarecdn.com; frame-ancestors 'none'`
       );
     } else if (req.path === "/widget/booking") {
       res.removeHeader("X-Frame-Options");
@@ -7918,10 +9000,10 @@ function setupSecurityHeaders(app2) {
       );
     } else if (!req.path.startsWith("/api")) {
       res.setHeader("X-Frame-Options", "SAMEORIGIN");
-      const genericConnectSrc = devConnectSrc ?? "'self' https://*.squareup.com https://*.resend.com";
+      const genericConnectSrc = devConnectSrc ?? "'self' https://*.squareup.com https://*.resend.com https://api.stripe.com https://m.stripe.com https://m.stripe.network";
       res.setHeader(
         "Content-Security-Policy",
-        `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src ${genericConnectSrc}; img-src 'self' data: https:; frame-src https://www.the147order.co.uk https://the147order.co.uk`
+        `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://js.stripe.com https://m.stripe.network; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src ${genericConnectSrc}; img-src 'self' data: https:; frame-src 'self' https://www.the147order.co.uk https://the147order.co.uk https://js.stripe.com https://hooks.stripe.com https://web.squarecdn.com https://sandbox.web.squarecdn.com`
       );
     } else {
       res.setHeader("X-Frame-Options", "DENY");
@@ -8136,6 +9218,88 @@ function configureExpoAndLanding(app2) {
   app2.use("/assets", express.static(path2.resolve(process.cwd(), "assets")));
   app2.use("/uploads", express.static(path2.resolve(process.cwd(), "uploads")));
   app2.use(express.static(path2.resolve(process.cwd(), "static-build")));
+  app2.get("/preview-home", (_req, res) => {
+    try {
+      const p = path2.resolve(process.cwd(), "server", "templates", "home-mockup.html");
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.send(fs2.readFileSync(p, "utf-8"));
+    } catch {
+      res.status(500).send("Mockup unavailable");
+    }
+  });
+  const TEST_SITE_PAGES = {
+    "": "home.html",
+    "snooker": "snooker.html",
+    "dining": "dining.html",
+    "events": "events.html",
+    "function-rooms": "function-rooms.html",
+    "gift-cards": "gift-cards.html",
+    "contact": "contact.html",
+    // Full native pages for interactive systems (replace modal popups)
+    "membership": "membership.html",
+    "order": "order.html",
+    "book": "book.html",
+    // Legacy minimal-chrome versions (kept for backwards compat)
+    "join": "membership-join.html",
+    "menu": "order-menu.html"
+  };
+  app2.get("/test-site/styles.css", (_req, res) => {
+    try {
+      const p = path2.resolve(process.cwd(), "server", "templates", "test-site", "styles.css");
+      res.setHeader("Content-Type", "text/css; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=300");
+      res.send(fs2.readFileSync(p, "utf-8"));
+    } catch {
+      res.status(404).end();
+    }
+  });
+  app2.get("/test-site/embed.js", (_req, res) => {
+    try {
+      const p = path2.resolve(process.cwd(), "server", "templates", "test-site", "embed.js");
+      res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=300");
+      res.send(fs2.readFileSync(p, "utf-8"));
+    } catch {
+      res.status(404).end();
+    }
+  });
+  app2.get(["/test-site", "/test-site/:page"], async (req, res) => {
+    const slug = (req.params.page ?? "").toLowerCase();
+    const file = TEST_SITE_PAGES[slug];
+    if (!file) return res.status(404).send("Page not found");
+    try {
+      const { applyWebContentOverrides: applyWebContentOverrides2 } = await Promise.resolve().then(() => (init_web_content(), web_content_exports));
+      const p = path2.resolve(process.cwd(), "server", "templates", "test-site", file);
+      const raw = fs2.readFileSync(p, "utf-8");
+      const overrideSlug = slug || "home";
+      const finalHtml = await applyWebContentOverrides2(overrideSlug, raw);
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.send(finalHtml);
+    } catch {
+      res.status(500).send("Page unavailable");
+    }
+  });
+  app2.get("/migrate/:token", async (req, res) => {
+    try {
+      const { storage: storage2 } = await Promise.resolve().then(() => (init_storage(), storage_exports));
+      const { renderMigrationLandingPage: renderMigrationLandingPage2, renderMigrationErrorPage: renderMigrationErrorPage2 } = await Promise.resolve().then(() => (init_wix_migration(), wix_migration_exports));
+      const subs = await storage2.getMembershipSubscriptions();
+      const sub = subs.find((s) => s.migrationToken === req.params.token);
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      if (!sub || !sub.customer || !sub.plan) {
+        return res.status(404).send(renderMigrationErrorPage2("This link is no longer valid."));
+      }
+      res.send(renderMigrationLandingPage2({
+        customer: sub.customer,
+        plan: sub.plan,
+        sub,
+        alreadyDone: !!sub.migrationCompletedAt,
+        token: req.params.token
+      }));
+    } catch {
+      res.status(500).send("Page unavailable");
+    }
+  });
   if (process.env.NODE_ENV !== "production") {
     app2.use((req, res, next) => {
       if (req.path.startsWith("/api")) return next();
@@ -8161,8 +9325,20 @@ function configureExpoAndLanding(app2) {
     });
   } else {
     const indexPath = path2.resolve(process.cwd(), "static-build", "index.html");
-    app2.use((_req, res, next) => {
+    app2.use((req, res, next) => {
       if (res.headersSent) return next();
+      if (req.path.startsWith("/api")) return next();
+      const platform = req.header("expo-platform");
+      if (platform === "ios" || platform === "android") return next();
+      const serverPages = /* @__PURE__ */ new Set([
+        "/staff",
+        "/membership",
+        "/delete-account",
+        "/privacy-policy",
+        "/staff-privacy-notice",
+        "/booking-widget"
+      ]);
+      if (serverPages.has(req.path)) return next();
       if (fs2.existsSync(indexPath)) {
         res.sendFile(indexPath);
       } else {
@@ -8317,6 +9493,134 @@ function scheduleOrderExpiry() {
   runExpiry();
   setInterval(runExpiry, 15 * 60 * 1e3);
 }
+function scheduleMembershipPaymentReminders() {
+  const REMIND_AFTER_HOURS = 24;
+  const CANCEL_AFTER_HOURS = 72;
+  const SITE_URL = "https://the147bradford.replit.app";
+  function buildTransport() {
+    const smtpHost = process.env.SMTP_HOST;
+    const smtpUser = process.env.SMTP_USER;
+    const smtpPass = process.env.SMTP_PASS?.replace(/\s+/g, "");
+    const smtpPort = parseInt(process.env.SMTP_PORT || "587");
+    if (!smtpHost || !smtpUser || !smtpPass) return null;
+    return {
+      transporter: nodemailer2.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpPort === 465,
+        auth: { user: smtpUser, pass: smtpPass },
+        tls: { rejectUnauthorized: false }
+      }),
+      from: `"The 147" <${smtpUser}>`
+    };
+  }
+  async function runReminders() {
+    try {
+      const { storage: store } = await Promise.resolve().then(() => (init_storage(), storage_exports));
+      const due = await store.getPendingMembershipsNeedingReminder(REMIND_AFTER_HOURS);
+      if (!due.length) return;
+      const mail = buildTransport();
+      for (const sub of due) {
+        const customer = sub.customer;
+        const plan = sub.plan;
+        if (!customer?.email) {
+          await store.markMembershipReminderSent(sub.id);
+          continue;
+        }
+        if (mail) {
+          try {
+            await mail.transporter.sendMail({
+              from: mail.from,
+              to: customer.email,
+              subject: `Finish setting up your ${plan?.name ?? "membership"} at The 147`,
+              html: `
+                <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
+                  <div style="background:#111827;padding:24px 32px;border-radius:8px 8px 0 0">
+                    <h1 style="color:#fff;margin:0;font-size:22px">The 147 Bradford</h1>
+                  </div>
+                  <div style="background:#fff;padding:32px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
+                    <h2 style="margin:0 0 16px">Your membership signup is incomplete</h2>
+                    <p style="margin:0 0 12px">Hi ${customer.name},</p>
+                    <p style="margin:0 0 12px">We noticed you started signing up for the <strong>${plan?.name ?? "membership"}</strong> plan at The 147 Bradford but didn't finish your payment.</p>
+                    <p style="margin:0 0 24px">Tap the button below to complete your signup and start enjoying member benefits:</p>
+                    <p style="margin:0 0 24px;text-align:center">
+                      <a href="${SITE_URL}/membership" style="display:inline-block;background:#0047AB;color:#fff;padding:14px 28px;border-radius:8px;font-weight:700;text-decoration:none">Complete My Membership</a>
+                    </p>
+                    <p style="margin:0 0 12px;color:#6b7280;font-size:13px">If you no longer wish to join, you can ignore this email \u2014 your incomplete signup will be cancelled automatically in a couple of days.</p>
+                    <p style="margin:24px 0 0;color:#6b7280;font-size:13px">The 147 Bradford &bull; Snooker &amp; Dining</p>
+                  </div>
+                </div>`
+            });
+            log(`[MembershipReminder] Sent payment reminder to ${customer.email} for sub #${sub.id}`);
+          } catch (emailErr) {
+            console.error(`[MembershipReminder] Email failed for sub #${sub.id}:`, emailErr);
+            continue;
+          }
+        }
+        await store.markMembershipReminderSent(sub.id);
+      }
+    } catch (err) {
+      console.error("[MembershipReminder] Scheduler error:", err);
+    }
+  }
+  async function runAutoCancel() {
+    try {
+      const { storage: store } = await Promise.resolve().then(() => (init_storage(), storage_exports));
+      const stale = await store.getPendingMembershipsToAutoCancel(CANCEL_AFTER_HOURS);
+      if (!stale.length) return;
+      const mail = buildTransport();
+      for (const sub of stale) {
+        try {
+          await store.updateMembershipSubscription(sub.id, {
+            status: "cancelled",
+            cancelledAt: /* @__PURE__ */ new Date(),
+            staffNotes: (sub.staffNotes ? sub.staffNotes + "\n" : "") + `Auto-cancelled \u2014 payment not completed within ${CANCEL_AFTER_HOURS}h of signup.`
+          });
+          log(`[MembershipAutoCancel] Cancelled sub #${sub.id} \u2014 payment not completed in ${CANCEL_AFTER_HOURS}h`);
+          const customer = sub.customer;
+          const plan = sub.plan;
+          if (mail && customer?.email) {
+            try {
+              await mail.transporter.sendMail({
+                from: mail.from,
+                to: customer.email,
+                subject: `Your membership signup at The 147 has been cancelled`,
+                html: `
+                  <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
+                    <div style="background:#111827;padding:24px 32px;border-radius:8px 8px 0 0">
+                      <h1 style="color:#fff;margin:0;font-size:22px">The 147 Bradford</h1>
+                    </div>
+                    <div style="background:#fff;padding:32px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
+                      <h2 style="margin:0 0 16px;color:#DC2626">Signup Cancelled</h2>
+                      <p style="margin:0 0 12px">Hi ${customer.name},</p>
+                      <p style="margin:0 0 12px">Your incomplete signup for the <strong>${plan?.name ?? "membership"}</strong> plan has been cancelled because no payment was received.</p>
+                      <p style="margin:0 0 24px">No charge has been made. If you'd still like to join, you're welcome to sign up again at any time:</p>
+                      <p style="margin:0 0 24px;text-align:center">
+                        <a href="${SITE_URL}/membership" style="display:inline-block;background:#0047AB;color:#fff;padding:14px 28px;border-radius:8px;font-weight:700;text-decoration:none">View Membership Plans</a>
+                      </p>
+                      <p style="margin:24px 0 0;color:#6b7280;font-size:13px">The 147 Bradford &bull; Snooker &amp; Dining</p>
+                    </div>
+                  </div>`
+              });
+            } catch (emailErr) {
+              console.error(`[MembershipAutoCancel] Cancellation email failed for sub #${sub.id}:`, emailErr);
+            }
+          }
+        } catch (err) {
+          console.error(`[MembershipAutoCancel] Failed for sub #${sub.id}:`, err);
+        }
+      }
+    } catch (err) {
+      console.error("[MembershipAutoCancel] Scheduler error:", err);
+    }
+  }
+  setTimeout(() => {
+    runReminders();
+    runAutoCancel();
+  }, 60 * 1e3);
+  setInterval(runReminders, 30 * 60 * 1e3);
+  setInterval(runAutoCancel, 60 * 60 * 1e3);
+}
 function scheduleRetentionCleanup() {
   async function runCleanup() {
     try {
@@ -8399,6 +9703,7 @@ function scheduleRetentionCleanup() {
   scheduleBookingReminders();
   scheduleDepositAutoCancel();
   scheduleOrderExpiry();
+  scheduleMembershipPaymentReminders();
 })().catch((err) => {
   console.error("FATAL SERVER ERROR:", err);
   process.exit(1);
