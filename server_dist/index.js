@@ -3368,11 +3368,28 @@ async function buildSquareOrderBody(items, tableNote, customer, discountPercent,
       reference_id: (tableNote || "ORDER").replace(/\s+/g, "-").toUpperCase().slice(0, 40)
     } : {}
   };
-  return { order, prePopulated };
+  const pricedItems = items.map((item) => {
+    const itemPrice = catalogPriceById.get(item.variationId) ?? 0;
+    const mods = (item.modifiers ?? []).map((m) => ({
+      name: m.name ?? "",
+      pricePence: catalogPriceById.get(m.catalogObjectId) ?? 0
+    }));
+    return {
+      name: item.name ?? "Item",
+      quantity: item.quantity,
+      pricePence: itemPrice,
+      modifiers: mods
+    };
+  });
+  const rawTotalPence = pricedItems.reduce((sum, p) => {
+    const modSum = p.modifiers.reduce((s, m) => s + m.pricePence, 0);
+    return sum + (p.pricePence + modSum) * p.quantity;
+  }, 0);
+  return { order, prePopulated, pricedItems, rawTotalPence };
 }
 async function createSquareOrderForCheckout(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote) {
   const idempotencyKey = `order-create-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  const { order } = await buildSquareOrderBody(
+  const { order, pricedItems } = await buildSquareOrderBody(
     items,
     tableNote,
     customer,
@@ -3387,11 +3404,11 @@ async function createSquareOrderForCheckout(items, tableNote, customer, discount
   });
   if (!data.order?.id) throw new Error("No order returned from Square");
   const totalPence = Number(data.order.total_money?.amount ?? data.order.net_amounts?.total_money?.amount ?? 0);
-  return { orderId: data.order.id, totalPence };
+  return { orderId: data.order.id, totalPence, pricedItems };
 }
 async function createOrderCheckoutLink(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote) {
   const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  const { order, prePopulated } = await buildSquareOrderBody(
+  const { order, prePopulated, pricedItems, rawTotalPence } = await buildSquareOrderBody(
     items,
     tableNote,
     customer,
@@ -3413,7 +3430,9 @@ async function createOrderCheckoutLink(items, tableNote, customer, discountPerce
   return {
     url: data.payment_link.url,
     linkId: data.payment_link.id ?? "",
-    squareOrderId: data.payment_link.order_id ?? ""
+    squareOrderId: data.payment_link.order_id ?? "",
+    pricedItems,
+    rawTotalPence
   };
 }
 async function createRefund(opts) {
@@ -6926,7 +6945,7 @@ async function registerRoutes(app2) {
         return res.status(503).json({ message: "Online ordering is currently unavailable. Please order at the bar." });
       }
       const { discountPercent, discountLabel, excludeWithDeals } = await resolveMemberDiscountImpl(req, customer, syncSquareMembershipForCustomer);
-      const { url, linkId, squareOrderId } = await createOrderCheckoutLink(
+      const { url, linkId, squareOrderId, pricedItems, rawTotalPence } = await createOrderCheckoutLink(
         items,
         tableNote,
         customer,
@@ -6935,8 +6954,7 @@ async function registerRoutes(app2) {
         excludeWithDeals,
         orderNote
       );
-      const rawTotal = items.reduce((sum, i) => sum + Number(i.price) * Number(i.quantity), 0);
-      const discountedTotal = discountPercent ? Math.round(rawTotal * (1 - discountPercent / 100)) : rawTotal;
+      const discountedTotal = discountPercent ? Math.round(rawTotalPence * (1 - discountPercent / 100)) : rawTotalPence;
       storage.createAppOrder({
         squareLinkId: linkId || void 0,
         squareOrderId: squareOrderId || void 0,
@@ -6944,11 +6962,11 @@ async function registerRoutes(app2) {
         customerName: customer?.name || void 0,
         customerEmail: customer?.email || void 0,
         itemsJson: JSON.stringify(
-          items.map((i) => ({
-            name: i.name ?? "Item",
-            quantity: i.quantity,
-            price: i.price,
-            ...i.modifiers?.length ? { modifiers: i.modifiers.map((m) => m.name) } : {}
+          pricedItems.map((p) => ({
+            name: p.name,
+            quantity: p.quantity,
+            price: p.pricePence,
+            ...p.modifiers.length ? { modifiers: p.modifiers.map((m) => m.name) } : {}
           }))
         ),
         totalPence: discountedTotal,
@@ -6987,7 +7005,7 @@ async function registerRoutes(app2) {
         return res.status(503).json({ message: "Online ordering is currently unavailable. Please order at the bar." });
       }
       const { discountPercent, discountLabel, excludeWithDeals } = await resolveMemberDiscountImpl(req, customer, syncSquareMembershipForCustomer);
-      const { orderId, totalPence } = await createSquareOrderForCheckout(
+      const { orderId, totalPence, pricedItems } = await createSquareOrderForCheckout(
         items,
         tableNote,
         customer,
@@ -7003,11 +7021,11 @@ async function registerRoutes(app2) {
         customerName: customer?.name || void 0,
         customerEmail: customer?.email || void 0,
         itemsJson: JSON.stringify(
-          items.map((i) => ({
-            name: i.name ?? "Item",
-            quantity: i.quantity,
-            price: i.price,
-            ...i.modifiers?.length ? { modifiers: i.modifiers.map((m) => m.name) } : {}
+          pricedItems.map((p) => ({
+            name: p.name,
+            quantity: p.quantity,
+            price: p.pricePence,
+            ...p.modifiers.length ? { modifiers: p.modifiers.map((m) => m.name) } : {}
           }))
         ),
         totalPence,
