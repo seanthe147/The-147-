@@ -289,6 +289,14 @@ var init_schema = __esm({
       totalPence: integer("total_pence").notNull().default(0),
       discountPercent: integer("discount_percent"),
       discountLabel: text("discount_label"),
+      // Lifecycle:
+      //   pending  → order created, awaiting payment
+      //   paid     → payment captured (kitchen sees it)
+      //   preparing→ kitchen has started the order
+      //   ready    → ready to collect from the bar
+      //   delivered→ taken to the customer's table (terminal)
+      //   collected→ picked up by the customer (terminal)
+      //   cancelled/refunded/expired → terminal failure states
       status: text("status").notNull().default("pending"),
       confirmationToken: text("confirmation_token"),
       createdAt: timestamp("created_at").defaultNow().notNull()
@@ -7119,7 +7127,16 @@ async function registerRoutes(app2) {
       if (!tokenOk) {
         return res.status(404).json({ message: "Order not found" });
       }
-      if (order.status !== "paid") {
+      const VISIBLE_STATUSES = /* @__PURE__ */ new Set([
+        "paid",
+        "preparing",
+        "ready",
+        "delivered",
+        "collected",
+        "cancelled",
+        "refunded"
+      ]);
+      if (!VISIBLE_STATUSES.has(order.status)) {
         return res.status(404).json({ message: "Order not paid" });
       }
       const ageMs = Date.now() - new Date(order.createdAt).getTime();
@@ -7131,11 +7148,26 @@ async function registerRoutes(app2) {
         items = JSON.parse(order.itemsJson);
       } catch {
       }
+      const tableNote = order.tableNote ?? "";
+      const hasTable = tableNote.trim().length > 0;
+      const STATUS_META = {
+        paid: { label: "Order received", detail: "We've sent your order to the bar and kitchen.", isTerminal: false },
+        preparing: { label: "Being prepared", detail: "The kitchen is working on your order now.", isTerminal: false },
+        ready: { label: hasTable ? "Ready \u2014 on its way" : "Ready to collect", detail: hasTable ? `A team member is bringing it to ${tableNote}.` : "Please come to the bar to collect your order.", isTerminal: false },
+        delivered: { label: "Enjoy!", detail: hasTable ? `Your order has been delivered to ${tableNote}.` : "Your order has been served.", isTerminal: true },
+        collected: { label: "Enjoy!", detail: "Thanks \u2014 your order has been collected.", isTerminal: true },
+        cancelled: { label: "Cancelled", detail: "This order was cancelled by staff.", isTerminal: true },
+        refunded: { label: "Refunded", detail: "This order has been refunded.", isTerminal: true }
+      };
+      const meta = STATUS_META[order.status] ?? STATUS_META.paid;
       res.json({
         appOrderId: order.id,
         status: order.status,
+        statusLabel: meta.label,
+        statusDetail: meta.detail,
+        isTerminal: meta.isTerminal,
         totalPence: order.totalPence,
-        tableNote: order.tableNote ?? "",
+        tableNote,
         items
       });
     } catch (err) {
