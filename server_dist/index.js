@@ -290,6 +290,7 @@ var init_schema = __esm({
       discountPercent: integer("discount_percent"),
       discountLabel: text("discount_label"),
       status: text("status").notNull().default("pending"),
+      confirmationToken: text("confirmation_token"),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     orderAuditLog = pgTable("order_audit_log", {
@@ -725,6 +726,10 @@ async function runStartupMigrations() {
     await client.query(`
       ALTER TABLE app_orders
         ADD COLUMN IF NOT EXISTS customer_email_hash TEXT;
+    `);
+    await client.query(`
+      ALTER TABLE app_orders
+        ADD COLUMN IF NOT EXISTS confirmation_token TEXT;
     `);
     await client.query(`
       INSERT INTO membership_plans
@@ -1652,7 +1657,8 @@ var init_storage = __esm({
           totalPence: data.totalPence,
           discountPercent: data.discountPercent ?? null,
           discountLabel: data.discountLabel ?? null,
-          status: "pending"
+          status: "pending",
+          confirmationToken: data.confirmationToken ?? null
         }).returning({ id: appOrders.id });
         return { id: rows[0].id };
       }
@@ -6937,6 +6943,7 @@ async function registerRoutes(app2) {
         excludeWithDeals,
         orderNote
       );
+      const confirmationToken = randomBytes3(24).toString("hex");
       const appOrder = await storage.createAppOrder({
         squareOrderId: orderId,
         tableNote: tableNote || void 0,
@@ -6952,12 +6959,14 @@ async function registerRoutes(app2) {
         ),
         totalPence,
         discountPercent: discountPercent ?? void 0,
-        discountLabel: discountLabel ?? void 0
+        discountLabel: discountLabel ?? void 0,
+        confirmationToken
       });
       res.json({
         appOrderId: appOrder.id,
         squareOrderId: orderId,
         amountPence: totalPence,
+        confirmationToken,
         discountPercent: discountPercent ?? null,
         discountLabel: discountLabel ?? null
       });
@@ -7020,6 +7029,47 @@ async function registerRoutes(app2) {
         message: errorDetail || "Card charge failed",
         errorCode: errorCode || null
       });
+    }
+  });
+  app2.get("/api/orders/:appOrderId/confirmation", async (req, res) => {
+    const appOrderId = parseInt(String(req.params.appOrderId));
+    if (isNaN(appOrderId)) return res.status(400).json({ message: "Invalid order id" });
+    const providedToken = typeof req.query.token === "string" ? req.query.token : "";
+    if (!providedToken) {
+      return res.status(401).json({ message: "Missing confirmation token" });
+    }
+    try {
+      const order = await storage.getAppOrder(appOrderId);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      const expected = order.confirmationToken ?? "";
+      const a = Buffer.from(providedToken);
+      const b = Buffer.from(expected);
+      const tokenOk = !!expected && a.length === b.length && timingSafeEqual(a, b);
+      if (!tokenOk) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+      if (order.status !== "paid") {
+        return res.status(404).json({ message: "Order not paid" });
+      }
+      const ageMs = Date.now() - new Date(order.createdAt).getTime();
+      if (ageMs > 24 * 60 * 60 * 1e3) {
+        return res.status(404).json({ message: "Order too old" });
+      }
+      let items = [];
+      try {
+        items = JSON.parse(order.itemsJson);
+      } catch {
+      }
+      res.json({
+        appOrderId: order.id,
+        status: order.status,
+        totalPence: order.totalPence,
+        tableNote: order.tableNote ?? "",
+        items
+      });
+    } catch (err) {
+      console.error("[ORDER] confirmation lookup failed:", err.message);
+      res.status(500).json({ message: "Lookup failed" });
     }
   });
   app2.get("/api/staff/orders", staffAuth, async (req, res) => {
