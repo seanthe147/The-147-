@@ -905,40 +905,35 @@ export class DatabaseStorage implements IStorage {
   async searchCustomers(query: string, limit = 6): Promise<Array<{ id?: number; name: string; phone: string; email: string }>> {
     if (!query || query.trim().length < 2) return [];
     const q = query.trim().toLowerCase();
-    // Fetch all bookings (decrypted) and search in-memory (data is encrypted at rest)
-    const allBookings = await db.select().from(bookings).orderBy(bookings.createdAt);
+    const qClean = q.replace(/\s/g, "");
+    // Search the customers table directly so accounts without bookings are included.
+    // Data is encrypted at rest, so we decrypt and filter in-memory.
+    const allCustomers = await db.select().from(customers).orderBy(customers.id);
     const seen = new Set<string>();
-    const matches: Array<{ name: string; phone: string; email: string; score: number }> = [];
-    for (const raw of allBookings) {
+    const matches: Array<{ id: number; name: string; phone: string; email: string; score: number }> = [];
+    for (const raw of allCustomers) {
       try {
-        const name = decrypt(raw.customerName);
-        const email = decrypt(raw.customerEmail);
-        const phone = decrypt(raw.customerPhone);
+        const dec = decryptCustomer(raw);
+        const name = dec.name || "";
+        const email = dec.email || "";
+        const phone = dec.phone || "";
         if (name === "ANONYMIZED" || email.includes("@removed.local")) continue;
-        const dedupeKey = email.toLowerCase();
-        if (seen.has(dedupeKey)) continue;
+        const emailLower = email.toLowerCase();
+        if (seen.has(emailLower)) continue;
         const nameLower = name.toLowerCase();
         const phoneLower = phone.toLowerCase().replace(/\s/g, "");
-        const qClean = q.replace(/\s/g, "");
-        const emailMatch = email.toLowerCase().includes(q);
+        const emailMatch = emailLower.includes(q);
         const nameMatch = nameLower.includes(q);
-        const phoneMatch = phoneLower.includes(qClean);
+        const phoneMatch = qClean.length > 0 && phoneLower.includes(qClean);
         if (nameMatch || phoneMatch || emailMatch) {
-          seen.add(dedupeKey);
+          seen.add(emailLower);
           const score = (nameLower.startsWith(q) ? 2 : 0) + (phoneMatch ? 1 : 0);
-          matches.push({ name, phone, email, score });
-          if (matches.length >= limit * 3) break; // collect enough to sort then trim
+          matches.push({ id: dec.id, name, phone, email, score });
         }
       } catch { continue; }
     }
     matches.sort((a, b) => b.score - a.score);
-    const top = matches.slice(0, limit);
-    // Enrich with customer account IDs (customers table stores plain lowercase email)
-    const enriched = await Promise.all(top.map(async ({ name, phone, email }) => {
-      const customer = await this.getCustomerByEmail(email).catch(() => undefined);
-      return { id: customer?.id, name, phone, email };
-    }));
-    return enriched;
+    return matches.slice(0, limit).map(({ id, name, phone, email }) => ({ id, name, phone, email }));
   }
 
   async getEvents(): Promise<Event[]> {
