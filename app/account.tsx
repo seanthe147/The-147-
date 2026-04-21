@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import {
   StyleSheet,
   View,
@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { apiRequest, queryClient, getApiUrl } from "@/lib/query-client";
@@ -93,6 +93,25 @@ export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { isAuthenticated, isLoading: authLoading, customer, login, register, logout, updateProfile, deleteAccount, resendVerificationEmail, requestPasswordReset, resendVerificationEmailFor } = useCustomerAuth();
+  const params = useLocalSearchParams<{ returnTo?: string; prefillEmail?: string }>();
+  const returnTo = typeof params.returnTo === "string" ? params.returnTo : undefined;
+  const prefillEmail = typeof params.prefillEmail === "string" ? params.prefillEmail : undefined;
+
+  // If we have a return target and the user is (now) signed in, deep-link
+  // back to the originating screen. Covers both "already signed in when
+  // arriving" and "signed in via the form on this screen" flows.
+  const redirectedRef = useRef(false);
+  useEffect(() => {
+    if (redirectedRef.current) return;
+    if (!isAuthenticated) return;
+    if (returnTo === "order") {
+      redirectedRef.current = true;
+      router.replace({
+        pathname: "/(tabs)/order",
+        params: { openCheckout: "1", checkoutStep: "customer" },
+      });
+    }
+  }, [isAuthenticated, returnTo]);
 
   if (authLoading) {
     return (
@@ -119,17 +138,19 @@ export default function AccountScreen() {
           register={register}
           requestPasswordReset={requestPasswordReset}
           resendVerificationEmailFor={resendVerificationEmailFor}
+          prefillEmail={prefillEmail}
         />
       )}
     </View>
   );
 }
 
-function AuthView({ login, register, requestPasswordReset, resendVerificationEmailFor }: {
+function AuthView({ login, register, requestPasswordReset, resendVerificationEmailFor, prefillEmail }: {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (name: string, email: string, phone: string, password: string) => Promise<{ success: boolean; error?: string }>;
   requestPasswordReset: (email: string) => Promise<{ success: boolean; error?: string; needsVerification?: boolean }>;
   resendVerificationEmailFor: (email: string) => Promise<{ success: boolean; error?: string }>;
+  prefillEmail?: string;
 }) {
   const [mode, setMode] = useState<AuthMode>("login");
   const [showForgot, setShowForgot] = useState(false);
@@ -138,7 +159,7 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
   const [forgotMessage, setForgotMessage] = useState<string | null>(null);
   const [resendingVerify, setResendingVerify] = useState(false);
   const [resendVerifyMsg, setResendVerifyMsg] = useState<string | null>(null);
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(prefillEmail ?? "");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");

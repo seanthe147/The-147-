@@ -727,9 +727,15 @@ function ItemCard({
 function CartSheet({
   visible,
   onClose,
+  initialStep,
+  initialGuestEmail,
+  onInitialConsumed,
 }: {
   visible: boolean;
   onClose: () => void;
+  initialStep?: "cart" | "customer";
+  initialGuestEmail?: string;
+  onInitialConsumed?: () => void;
 }) {
   const { items, updateQuantity, clearCart, totalPrice } = useCart();
   const { customer, getCustomerToken } = useCustomerAuth();
@@ -766,7 +772,19 @@ function CartSheet({
       setPaymentSheetVisible(false);
       setPendingOrder(null);
       setCancelledNotice(null);
+    } else {
+      // Apply deep-link state when the sheet opens (e.g. after returning
+      // from /account during the member-discount sign-in flow).
+      if (initialStep === "customer") {
+        setStep("customer");
+        if (!customer && initialGuestEmail) {
+          setGuestMode(true);
+          setGuestEmail(initialGuestEmail);
+        }
+      }
+      onInitialConsumed?.();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   // Clear the cancellation notice as soon as the user changes the cart
@@ -1286,7 +1304,17 @@ function CartSheet({
                           </View>
                         </View>
                         <Pressable
-                          onPress={() => { handleClose(); router.push("/account"); }}
+                          onPress={() => {
+                            const email = guestEmail.trim();
+                            handleClose();
+                            router.push({
+                              pathname: "/account",
+                              params: {
+                                returnTo: "order",
+                                prefillEmail: email,
+                              },
+                            });
+                          }}
                           style={({ pressed }) => [styles.memberPromptBtn, { opacity: pressed ? 0.85 : 1 }]}
                           testID="member-signin-btn"
                         >
@@ -1367,11 +1395,24 @@ export default function OrderScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const params = useLocalSearchParams<{ hlCatId?: string; hlItemId?: string; hlItemName?: string }>();
+  const params = useLocalSearchParams<{ hlCatId?: string; hlItemId?: string; hlItemName?: string; openCheckout?: string; checkoutStep?: string; prefillEmail?: string }>();
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   const [cartVisible, setCartVisible] = useState(false);
+  const [pendingCheckoutStep, setPendingCheckoutStep] = useState<"cart" | "customer" | undefined>();
+  const [pendingPrefillEmail, setPendingPrefillEmail] = useState<string | undefined>();
+
+  // Re-open the cart sheet at the customer step after the user signs in
+  // from the member-discount prompt (deep-linked back from /account).
+  useEffect(() => {
+    if (params.openCheckout === "1") {
+      setPendingCheckoutStep((params.checkoutStep as "cart" | "customer") || "customer");
+      setPendingPrefillEmail(typeof params.prefillEmail === "string" ? params.prefillEmail : undefined);
+      setCartVisible(true);
+      router.setParams({ openCheckout: undefined, checkoutStep: undefined, prefillEmail: undefined });
+    }
+  }, [params.openCheckout, params.checkoutStep, params.prefillEmail]);
   const [modifierItem, setModifierItem] = useState<MenuItem | null>(null);
   const [highlightItemId, setHighlightItemId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1733,7 +1774,16 @@ export default function OrderScreen() {
           </Pressable>
         )}
 
-        <CartSheet visible={cartVisible} onClose={() => setCartVisible(false)} />
+        <CartSheet
+          visible={cartVisible}
+          onClose={() => setCartVisible(false)}
+          initialStep={pendingCheckoutStep}
+          initialGuestEmail={pendingPrefillEmail}
+          onInitialConsumed={() => {
+            setPendingCheckoutStep(undefined);
+            setPendingPrefillEmail(undefined);
+          }}
+        />
         <ModifierModal
           item={modifierItem}
           visible={!!modifierItem}
@@ -1861,7 +1911,16 @@ export default function OrderScreen() {
         </Pressable>
       )}
 
-      <CartSheet visible={cartVisible} onClose={() => setCartVisible(false)} />
+      <CartSheet
+        visible={cartVisible}
+        onClose={() => setCartVisible(false)}
+        initialStep={pendingCheckoutStep}
+        initialGuestEmail={pendingPrefillEmail}
+        onInitialConsumed={() => {
+          setPendingCheckoutStep(undefined);
+          setPendingPrefillEmail(undefined);
+        }}
+      />
       <ModifierModal
         item={modifierItem}
         visible={!!modifierItem}
