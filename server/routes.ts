@@ -2056,9 +2056,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(tokens);
   });
 
-  async function sendTargetedPush(tokens: string[], title: string, body: string) {
+  // Both legacy ("ExponentPushToken[…]") and current ("ExpoPushToken[…]")
+  // formats are emitted by Expo depending on SDK version. Accept either so
+  // we don't silently drop notifications for some installs.
+  function isValidExpoPushToken(token: unknown): token is string {
+    return typeof token === "string"
+      && (token.startsWith("ExponentPushToken[") || token.startsWith("ExpoPushToken["));
+  }
+
+  async function sendTargetedPush(tokens: string[], title: string, body: string, data?: Record<string, unknown>) {
     if (!tokens.length) return { successCount: 0, failureCount: 0 };
-    const messages = tokens.map(to => ({ to, sound: "default" as const, title, body }));
+    const messages = tokens.map(to => ({
+      to,
+      sound: "default" as const,
+      title,
+      body,
+      ...(data ? { data } : {}),
+    }));
     let successCount = 0, failureCount = 0;
     try {
       const response = await fetch("https://exp.host/--/api/v2/push/send", {
@@ -3768,7 +3782,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Order Checkout ─────────────────────────────────────────────────────────
   app.post("/api/orders/checkout", async (req, res) => {
-    const { items, tableNote, orderNote, customer } = req.body;
+    const { items, tableNote, orderNote, customer, pushToken } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "Cart is empty" });
     }
@@ -3805,6 +3819,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         totalPence: discountedTotal,
         discountPercent: discountPercent ?? undefined,
         discountLabel: discountLabel ?? undefined,
+        pushToken: isValidExpoPushToken(pushToken) ? pushToken : undefined,
       }).catch((err: any) => console.error("[ORDER] Failed to save order record:", err.message));
 
       res.json({ url, discountPercent: discountPercent ?? null, discountLabel: discountLabel ?? null });
@@ -3835,7 +3850,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Returns the orderId + computed total so the client can charge it via the
   // Web Payments SDK and POST the resulting card token to /api/orders/:id/pay.
   app.post("/api/orders/create", async (req, res) => {
-    const { items, tableNote, orderNote, customer } = req.body;
+    const { items, tableNote, orderNote, customer, pushToken } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "Cart is empty" });
     }
@@ -3878,6 +3893,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         discountPercent: discountPercent ?? undefined,
         discountLabel: discountLabel ?? undefined,
         confirmationToken,
+        pushToken: isValidExpoPushToken(pushToken) ? pushToken : undefined,
       });
 
       res.json({
@@ -4117,6 +4133,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.updateAppOrderStatus(id, target);
       await storage.logOrderAction({ orderId: id, staffUsername: actor, action: `advance:${target}` });
       console.log(`[ORDERS] Order #${id} advanced ${order.status}→${target} by ${actor}`);
+
+      // Notify the device that placed the order. Live receipt polling only
+      // works while the screen is open in the foreground — a push closes
+      // that gap so customers know the moment their order is ready (or has
+      // been delivered/collected) even if they've closed the app. We send
+      // ONLY to the originating device's token, not every device on the
+      // account, so other phones the customer is signed into stay quiet.
+      const NOTIFY: Record<string, { title: string; body: string }> = {
+        ready: {
+          title: "Your order is ready 🎉",
+          body: order.tableNote
+            ? `Order #${id.toString().padStart(5, "0")} is on its way to ${order.tableNote}.`
+            : `Order #${id.toString().padStart(5, "0")} is ready to collect from the bar.`,
+        },
+        delivered: {
+          title: "Enjoy your order!",
+          body: order.tableNote
+            ? `Order #${id.toString().padStart(5, "0")} has been delivered to ${order.tableNote}.`
+            : `Order #${id.toString().padStart(5, "0")} has been served. Enjoy!`,
+        },
+        collected: {
+          title: "Thanks!",
+          body: `Order #${id.toString().padStart(5, "0")} collected — enjoy!`,
+        },
+      };
+      const message = NOTIFY[target];
+      if (message && order.pushToken) {
+        // Tapping the notification deep-links back into the receipt screen
+        // for THIS order. The confirmationToken is required by the
+        // /confirmation endpoint so the deep link stays scoped to the
+        // device that originally placed the order.
+        const data = {
+          type: "order-status" as const,
+          appOrderId: id,
+          token: order.confirmationToken ?? "",
+          status: target,
+        };
+        sendTargetedPush([order.pushToken], message.title, message.body, data).catch((err: any) => {
+          console.error("[Push] Order status notification failed:", err?.message ?? err);
+        });
+      }
+
       res.json({ status: target, isTerminal: TERMINAL.has(target) });
     } catch (err: any) {
       console.error("[ORDERS] Advance failed:", err.message);

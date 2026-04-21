@@ -5,7 +5,29 @@ import * as Device from "expo-device";
 import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { EventSubscription } from "expo-modules-core";
+import { router } from "expo-router";
 import { apiRequest } from "@/lib/query-client";
+
+// Routes a notification tap to the appropriate in-app screen. Today the
+// only typed payload is `order-status`, sent when staff advance an order to
+// ready / delivered / collected — we deep-link straight back into the
+// receipt for that specific order so the customer sees the full status,
+// items, and total without re-navigating.
+function handleNotificationResponse(response: Notifications.NotificationResponse) {
+  const data = response?.notification?.request?.content?.data as
+    | { type?: string; appOrderId?: number | string; token?: string }
+    | undefined;
+  if (!data || data.type !== "order-status") return;
+  const appOrderId = data.appOrderId != null ? String(data.appOrderId) : "";
+  if (!appOrderId) return;
+  const params: Record<string, string> = { appOrderId };
+  if (typeof data.token === "string" && data.token.length > 0) {
+    params.token = data.token;
+  }
+  // Use push so the user can back out to where they were if they had the
+  // app open. The receipt screen is presented as a modal in _layout.tsx.
+  router.push({ pathname: "/order-confirmation", params });
+}
 
 const NOTIFICATION_ASKED_KEY = "notifications_asked";
 const NOTIFICATION_PROMPT_DELAY = 3000;
@@ -130,8 +152,20 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       setNotification(n);
     });
 
-    responseListener.current = Notifications.addNotificationResponseReceivedListener((_response) => {
+    responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
+      handleNotificationResponse(response);
     });
+
+    // Cold-start: if the app was launched by tapping a notification,
+    // addNotificationResponseReceivedListener may miss it. Replay the last
+    // response on mount so deep links survive a full app restart, then
+    // clear it so subsequent cold starts (e.g. user reopens the app a day
+    // later) don't re-trigger the same deep link.
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (!response) return;
+      handleNotificationResponse(response);
+      Notifications.clearLastNotificationResponseAsync?.().catch(() => {});
+    }).catch(() => {});
 
     return () => {
       if (notificationListener.current) {

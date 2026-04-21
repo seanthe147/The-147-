@@ -247,6 +247,10 @@ export async function runStartupMigrations() {
       ALTER TABLE app_orders
         ADD COLUMN IF NOT EXISTS confirmation_token TEXT;
     `);
+    await client.query(`
+      ALTER TABLE app_orders
+        ADD COLUMN IF NOT EXISTS push_token TEXT;
+    `);
 
     // Audit trail of staff-initiated password resets (Task #27)
     await client.query(`
@@ -1511,6 +1515,7 @@ export class DatabaseStorage implements IStorage {
     discountPercent?: number;
     discountLabel?: string;
     confirmationToken?: string;
+    pushToken?: string;
   }): Promise<{ id: number }> {
     const rows = await db.insert(appOrders).values({
       squareLinkId: data.squareLinkId ?? null,
@@ -1526,6 +1531,7 @@ export class DatabaseStorage implements IStorage {
       discountLabel: data.discountLabel ?? null,
       status: "pending",
       confirmationToken: data.confirmationToken ?? null,
+      pushToken: data.pushToken ?? null,
     }).returning({ id: appOrders.id });
     return { id: rows[0].id };
   }

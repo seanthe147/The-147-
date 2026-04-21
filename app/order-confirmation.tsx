@@ -21,6 +21,9 @@ interface ConfirmationStatus {
   statusLabel: string;
   statusDetail: string;
   isTerminal: boolean;
+  totalPence?: number;
+  tableNote?: string;
+  items?: ConfirmationItem[];
 }
 
 // How often to ask the server for the latest status while the screen is open.
@@ -54,12 +57,12 @@ export default function OrderConfirmationScreen() {
   }>();
 
   const appOrderId = params.appOrderId ? parseInt(String(params.appOrderId)) : null;
-  const totalPence = params.totalPence ? parseInt(String(params.totalPence)) : 0;
-  const tableNote = params.tableNote ? String(params.tableNote) : "";
+  const paramTotalPence = params.totalPence ? parseInt(String(params.totalPence)) : 0;
+  const paramTableNote = params.tableNote ? String(params.tableNote) : "";
   const token = params.token ? String(params.token) : "";
-  let items: ConfirmationItem[] = [];
+  let paramItems: ConfirmationItem[] = [];
   try {
-    if (params.items) items = JSON.parse(String(params.items));
+    if (params.items) paramItems = JSON.parse(String(params.items));
   } catch {}
 
   const orderRef = appOrderId ? `#${appOrderId.toString().padStart(5, "0")}` : "—";
@@ -100,6 +103,9 @@ export default function OrderConfirmationScreen() {
         statusLabel: json.statusLabel ?? "Order received",
         statusDetail: json.statusDetail ?? "",
         isTerminal: !!json.isTerminal,
+        totalPence: typeof json.totalPence === "number" ? json.totalPence : undefined,
+        tableNote: typeof json.tableNote === "string" ? json.tableNote : undefined,
+        items: Array.isArray(json.items) ? (json.items as ConfirmationItem[]) : undefined,
       };
     },
     refetchInterval: (query) => {
@@ -112,6 +118,14 @@ export default function OrderConfirmationScreen() {
     staleTime: 0,
   });
 
+  // Prefer values from the route params (set by the checkout flow) but
+  // fall back to the API response so deep links from a push notification
+  // still render the receipt with full detail (items, total, table).
+  const tableNote = paramTableNote || statusData?.tableNote || "";
+  const totalPence = paramTotalPence || statusData?.totalPence || 0;
+  const items: ConfirmationItem[] = paramItems.length > 0
+    ? paramItems
+    : (statusData?.items ?? []);
   const status = statusData?.status ?? "paid";
   const statusLabel = statusData?.statusLabel ?? "Order received";
   const statusDetail = statusData?.statusDetail ?? (tableNote

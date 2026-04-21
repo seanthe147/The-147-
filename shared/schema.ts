@@ -363,6 +363,12 @@ export const appOrders = pgTable("app_orders", {
   //   cancelled/refunded/expired → terminal failure states
   status: text("status").notNull().default("pending"),
   confirmationToken: text("confirmation_token"),
+  // Expo push token of the device that placed the order. Used to notify
+  // ONLY that device when the order's status changes (e.g. "ready"). We
+  // intentionally store the originating device's token rather than every
+  // token associated with the customer's email — a customer may have the
+  // app on multiple devices and only the one that ordered should buzz.
+  pushToken: text("push_token"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

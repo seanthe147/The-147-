@@ -36,6 +36,7 @@ import * as WebBrowser from "expo-web-browser";
 import Colors from "@/constants/colors";
 import { useCart } from "@/contexts/CartContext";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
+import { useNotifications } from "@/contexts/NotificationContext";
 import { getApiUrl } from "@/lib/query-client";
 import { SquarePaymentSheet } from "@/components/SquarePaymentSheet";
 import {
@@ -739,6 +740,7 @@ function CartSheet({
 }) {
   const { items, updateQuantity, clearCart, totalPrice } = useCart();
   const { customer, getCustomerToken } = useCustomerAuth();
+  const { expoPushToken } = useNotifications();
   const [step, setStep] = useState<"cart" | "customer">("cart");
   const [tableNote, setTableNote] = useState("");
   const [orderNote, setOrderNote] = useState("");
@@ -873,6 +875,11 @@ function CartSheet({
     tableNote: tableNote.trim() || undefined,
     orderNote: orderNote.trim() || undefined,
     customer: effectiveCustomer,
+    // Send the originating device's Expo push token so the server can
+    // notify ONLY this device when the order is ready / delivered /
+    // collected — without bothering the customer's other signed-in
+    // devices. The server validates the token format before storing.
+    pushToken: expoPushToken || undefined,
   });
 
   // Fallback path: hosted Square checkout via in-app browser modal.
