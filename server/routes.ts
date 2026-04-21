@@ -5216,8 +5216,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/membership/join", customerAuth, async (req, res) => {
     try {
       const customerId = (req as any).customerId as number;
-      const { planId, billingFrequency = "monthly", startDate } = req.body ?? {};
+      const { planId, billingFrequency = "monthly", startDate, termsAccepted } = req.body ?? {};
       if (!planId) return res.status(400).json({ message: "planId is required" });
+      if (termsAccepted !== true) return res.status(400).json({ message: "You must accept the Terms & Conditions to join" });
       const isAnnual = billingFrequency === "annual";
 
       // Check if already an active member on this same plan
@@ -5261,6 +5262,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         guestPassesUsed: 0,
         staffNotes: periodStart > today ? `[Deferred start: ${periodStart}]` : null,
         source: isAnnual ? "app_annual" : "app",
+        termsAcceptedAt: new Date(),
       });
 
       let checkoutUrl: string | null = null;

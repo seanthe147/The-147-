@@ -104,6 +104,7 @@ export default function MembershipScreen() {
   const [joining, setJoining] = useState(false);
   const [billingFrequency, setBillingFrequency] = useState<BillingFrequency>("monthly");
   const [startDate, setStartDate] = useState<string>(todayString());
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: plans = [], isLoading: plansLoading } = useQuery<MembershipPlan[]>({
@@ -125,10 +126,10 @@ export default function MembershipScreen() {
   });
 
   const joinMutation = useMutation({
-    mutationFn: async ({ planId, frequency, chosenStartDate }: { planId: number; frequency: BillingFrequency; chosenStartDate?: string }) => {
+    mutationFn: async ({ planId, frequency, chosenStartDate, accepted }: { planId: number; frequency: BillingFrequency; chosenStartDate?: string; accepted: boolean }) => {
       const token = await getToken();
       const url = new URL("/api/membership/join", getApiUrl());
-      const body: Record<string, unknown> = { planId, billingFrequency: frequency };
+      const body: Record<string, unknown> = { planId, billingFrequency: frequency, termsAccepted: accepted };
       if (chosenStartDate && chosenStartDate !== todayString()) body.startDate = chosenStartDate;
       const res = await fetch(url.toString(), {
         method: "POST",
@@ -146,6 +147,7 @@ export default function MembershipScreen() {
       queryClient.invalidateQueries({ queryKey: ["/api/membership/my-subscription"] });
       setJoining(false);
       setSelectedPlanId(null);
+      setTermsAccepted(false);
       if (data?.checkoutUrl) {
         Linking.openURL(data.checkoutUrl).catch(() => {
           Alert.alert("Payment", "Please complete your payment to activate your membership.", [{ text: "OK" }]);
@@ -179,6 +181,10 @@ export default function MembershipScreen() {
 
   const handleJoin = () => {
     if (!selectedPlanId || !selectedPlan) return;
+    if (!termsAccepted) {
+      Alert.alert("Terms required", "Please tick the box to confirm you agree to the Terms & Conditions before joining.");
+      return;
+    }
     const isAnnual = billingFrequency === "annual";
     const price = isAnnual && selectedPlan.priceAnnual != null
       ? selectedPlan.priceAnnual
@@ -198,7 +204,7 @@ export default function MembershipScreen() {
         { text: "Cancel", style: "cancel" },
         {
           text: "Continue to Payment",
-          onPress: () => joinMutation.mutate({ planId: selectedPlanId, frequency: billingFrequency, chosenStartDate: isStaffLoggedIn ? startDate : undefined }),
+          onPress: () => joinMutation.mutate({ planId: selectedPlanId, frequency: billingFrequency, chosenStartDate: isStaffLoggedIn ? startDate : undefined, accepted: termsAccepted }),
         },
       ]
     );
@@ -275,7 +281,10 @@ export default function MembershipScreen() {
             return (
               <Pressable
                 key={plan.id}
-                onPress={() => setSelectedPlanId(isSelected ? null : plan.id)}
+                onPress={() => {
+                  setSelectedPlanId(isSelected ? null : plan.id);
+                  setTermsAccepted(false);
+                }}
                 style={[
                   styles.planCard,
                   meta.popular && styles.planCardPopular,
@@ -376,9 +385,31 @@ export default function MembershipScreen() {
             selectedPlanId ? (
               <>
                 <Pressable
-                  style={[styles.joinBtn, joinMutation.isPending && styles.joinBtnDisabled]}
+                  style={styles.termsCheckRow}
+                  onPress={() => setTermsAccepted((v) => !v)}
+                  testID="membership-terms-checkbox"
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: termsAccepted }}
+                >
+                  <View style={[styles.termsCheckbox, termsAccepted && styles.termsCheckboxChecked]}>
+                    {termsAccepted && <Ionicons name="checkmark" size={14} color="#fff" />}
+                  </View>
+                  <Text style={styles.termsCheckLabel}>
+                    I have read and agree to the{" "}
+                    <Text
+                      style={styles.legalLink}
+                      onPress={() => Linking.openURL(`${getApiUrl().replace(/\/$/, "")}/terms`)}
+                    >
+                      Terms & Conditions
+                    </Text>
+                    , including the membership deposit, recurring billing, and gift card terms.
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.joinBtn, (joinMutation.isPending || !termsAccepted) && styles.joinBtnDisabled]}
                   onPress={handleJoin}
-                  disabled={joinMutation.isPending}
+                  disabled={joinMutation.isPending || !termsAccepted}
+                  testID="membership-join-button"
                 >
                   {joinMutation.isPending ? (
                     <ActivityIndicator size="small" color="#fff" />
@@ -767,6 +798,23 @@ const styles = StyleSheet.create({
   legalNote: {
     fontFamily: "Montserrat_400Regular", fontSize: 12, color: Colors.light.textSecondary,
     textAlign: "center", lineHeight: 18, marginTop: 10, paddingHorizontal: 8,
+  },
+  termsCheckRow: {
+    flexDirection: "row", alignItems: "flex-start", gap: 10,
+    paddingVertical: 12, paddingHorizontal: 4, marginBottom: 4,
+  },
+  termsCheckbox: {
+    width: 22, height: 22, borderRadius: 6,
+    borderWidth: 2, borderColor: Colors.light.border,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: "#fff", marginTop: 1,
+  },
+  termsCheckboxChecked: {
+    backgroundColor: Colors.brand.blue, borderColor: Colors.brand.blue,
+  },
+  termsCheckLabel: {
+    flex: 1, fontFamily: "Montserrat_400Regular",
+    fontSize: 13, color: Colors.light.text, lineHeight: 19,
   },
   legalLink: {
     fontFamily: "Montserrat_600SemiBold", color: Colors.brand.blue, textDecorationLine: "underline",

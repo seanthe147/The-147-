@@ -329,6 +329,7 @@ export const membershipSubscriptions = pgTable("membership_subscriptions", {
   migrationEmailedAt: timestamp("migration_emailed_at"),
   migrationCompletedAt: timestamp("migration_completed_at"),
   legacyExternalRef: text("legacy_external_ref"),
+  termsAcceptedAt: timestamp("terms_accepted_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
