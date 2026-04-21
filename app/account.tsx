@@ -93,9 +93,10 @@ export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { isAuthenticated, isLoading: authLoading, customer, login, register, logout, updateProfile, deleteAccount, resendVerificationEmail, requestPasswordReset, resendVerificationEmailFor } = useCustomerAuth();
-  const params = useLocalSearchParams<{ returnTo?: string; prefillEmail?: string }>();
+  const params = useLocalSearchParams<{ returnTo?: string; prefillEmail?: string; authMode?: string }>();
   const returnTo = typeof params.returnTo === "string" ? params.returnTo : undefined;
   const prefillEmail = typeof params.prefillEmail === "string" ? params.prefillEmail : undefined;
+  const initialAuthMode: AuthMode = params.authMode === "register" ? "register" : "login";
 
   // If we have a return target and the user is (now) signed in, deep-link
   // back to the originating screen. Covers both "already signed in when
@@ -139,20 +140,22 @@ export default function AccountScreen() {
           requestPasswordReset={requestPasswordReset}
           resendVerificationEmailFor={resendVerificationEmailFor}
           prefillEmail={prefillEmail}
+          initialMode={initialAuthMode}
         />
       )}
     </View>
   );
 }
 
-function AuthView({ login, register, requestPasswordReset, resendVerificationEmailFor, prefillEmail }: {
+function AuthView({ login, register, requestPasswordReset, resendVerificationEmailFor, prefillEmail, initialMode }: {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (name: string, email: string, phone: string, password: string) => Promise<{ success: boolean; error?: string }>;
   requestPasswordReset: (email: string) => Promise<{ success: boolean; error?: string; needsVerification?: boolean }>;
   resendVerificationEmailFor: (email: string) => Promise<{ success: boolean; error?: string }>;
   prefillEmail?: string;
+  initialMode?: AuthMode;
 }) {
-  const [mode, setMode] = useState<AuthMode>("login");
+  const [mode, setMode] = useState<AuthMode>(initialMode ?? "login");
   const [showForgot, setShowForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotState, setForgotState] = useState<"idle" | "sending" | "sent" | "needs-verification">("idle");

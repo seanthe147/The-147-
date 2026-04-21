@@ -1247,14 +1247,26 @@ function CartSheet({
                     </Text>
                     <Pressable
                       style={({ pressed }) => [styles.coOptionBtn, styles.coOptionBtnPrimary, { opacity: pressed ? 0.85 : 1 }]}
-                      onPress={() => { handleClose(); router.push("/account"); }}
+                      onPress={() => {
+                        handleClose();
+                        router.push({
+                          pathname: "/account",
+                          params: { returnTo: "order", authMode: "login" },
+                        });
+                      }}
                     >
                       <Ionicons name="person-circle-outline" size={20} color="#fff" />
                       <Text style={styles.coOptionBtnTextPrimary}>Sign In to My Account</Text>
                     </Pressable>
                     <Pressable
                       style={({ pressed }) => [styles.coOptionBtn, styles.coOptionBtnSecondary, { opacity: pressed ? 0.85 : 1 }]}
-                      onPress={() => { handleClose(); router.push("/account"); }}
+                      onPress={() => {
+                        handleClose();
+                        router.push({
+                          pathname: "/account",
+                          params: { returnTo: "order", authMode: "register" },
+                        });
+                      }}
                     >
                       <Ionicons name="person-add-outline" size={20} color={Colors.brand.blue} />
                       <Text style={styles.coOptionBtnTextSecondary}>Create an Account</Text>
