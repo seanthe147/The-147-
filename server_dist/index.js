@@ -3216,6 +3216,56 @@ async function buildSquareOrderBody(items, tableNote, customer, discountPercent,
   }
   const ticketName = tableNote || (customer?.name ? customer.name.split(" ")[0] : "Guest");
   const memberDiscountUid = "MEMBER-DISCOUNT";
+  const catalogIds = /* @__PURE__ */ new Set();
+  for (const item of items) {
+    if (!item.variationId) {
+      throw new SquareError("Order contained an item with no variation id", "INVALID_CATALOG_ID", 400);
+    }
+    catalogIds.add(item.variationId);
+    for (const m of item.modifiers ?? []) {
+      if (!m.catalogObjectId) {
+        throw new SquareError("Order contained a modifier with no catalog id", "INVALID_CATALOG_ID", 400);
+      }
+      catalogIds.add(m.catalogObjectId);
+    }
+  }
+  const catalogPriceById = /* @__PURE__ */ new Map();
+  const catalogTypeById = /* @__PURE__ */ new Map();
+  const idsToFetch = Array.from(catalogIds);
+  for (let i = 0; i < idsToFetch.length; i += 100) {
+    const chunk = idsToFetch.slice(i, i + 100);
+    const data = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
+      object_ids: chunk
+    });
+    for (const o of data.objects || []) {
+      if (o.is_deleted) continue;
+      if (o.type === "ITEM_VARIATION") {
+        catalogPriceById.set(o.id, o.item_variation_data?.price_money?.amount ?? 0);
+        catalogTypeById.set(o.id, "ITEM_VARIATION");
+      } else if (o.type === "MODIFIER") {
+        catalogPriceById.set(o.id, o.modifier_data?.price_money?.amount ?? 0);
+        catalogTypeById.set(o.id, "MODIFIER");
+      }
+    }
+  }
+  for (const item of items) {
+    if (catalogTypeById.get(item.variationId) !== "ITEM_VARIATION") {
+      throw new SquareError(
+        `Unknown or unavailable menu item (id ${item.variationId})`,
+        "INVALID_CATALOG_ID",
+        400
+      );
+    }
+    for (const m of item.modifiers ?? []) {
+      if (catalogTypeById.get(m.catalogObjectId) !== "MODIFIER") {
+        throw new SquareError(
+          `Unknown or unavailable modifier (id ${m.catalogObjectId})`,
+          "INVALID_CATALOG_ID",
+          400
+        );
+      }
+    }
+  }
   const activeDeals = await getSquareDeals().catch(() => []);
   const dealByVariationId = /* @__PURE__ */ new Map();
   for (const deal of activeDeals) {
@@ -3271,15 +3321,19 @@ async function buildSquareOrderBody(items, tableNote, customer, discountPercent,
     } else if (itemLevelMemberDiscount) {
       appliedDiscounts.push({ discount_uid: memberDiscountUid });
     }
+    const catalogItemPrice = catalogPriceById.get(item.variationId) ?? 0;
     return {
       uid: lineUid,
       catalog_object_id: item.variationId,
       quantity: String(item.quantity),
-      base_price_money: { amount: item.price, currency: "GBP" },
+      base_price_money: { amount: catalogItemPrice, currency: "GBP" },
       ...item.modifiers?.length ? {
         modifiers: item.modifiers.map((m) => ({
           catalog_object_id: m.catalogObjectId,
-          base_price_money: { amount: m.price, currency: "GBP" }
+          base_price_money: {
+            amount: catalogPriceById.get(m.catalogObjectId) ?? 0,
+            currency: "GBP"
+          }
         }))
       } : {},
       ...appliedDiscounts.length ? { applied_discounts: appliedDiscounts } : {}
@@ -6785,7 +6839,8 @@ async function registerRoutes(app2) {
       res.json({ url, discountPercent: discountPercent ?? null, discountLabel: discountLabel ?? null });
     } catch (err) {
       console.error("[ORDER] Checkout failed:", err.message);
-      res.status(500).json({ message: err.message });
+      const status = err instanceof SquareError && err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 500;
+      res.status(status).json({ message: err.message });
     }
   });
   app2.get("/api/public/square-config", (_req, res) => {
@@ -6877,7 +6932,8 @@ async function registerRoutes(app2) {
       });
     } catch (err) {
       console.error("[ORDER] Create order failed:", err.message);
-      res.status(500).json({ message: err.message });
+      const status = err instanceof SquareError && err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 500;
+      res.status(status).json({ message: err.message });
     }
   });
   app2.post("/api/orders/:appOrderId/pay", async (req, res) => {
