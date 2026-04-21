@@ -980,6 +980,133 @@ async function customerAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+type MemberDiscountResult = {
+  discountPercent?: number;
+  discountLabel?: string;
+  excludeWithDeals: boolean;
+};
+
+// Resolve a membership discount for an order. The discount is granted only when
+// the buyer is signed in and the membership belongs to that signed-in account.
+// The form-supplied email is *never* trusted on its own; we always log the
+// attempted-vs-applied discount for auditing.
+async function resolveMemberDiscountImpl(
+  req: Request,
+  formCustomer: { email?: string; name?: string } | undefined,
+  syncSquareMembership: (customerId: number, email: string) => Promise<void>,
+): Promise<MemberDiscountResult> {
+  const result: { discountPercent?: number; discountLabel?: string; excludeWithDeals: boolean } =
+    { excludeWithDeals: false };
+
+  // Compute the "attempted" discount — what the buyer would have received under
+  // the old, email-only lookup. Used for audit logging only.
+  const attemptedEmail = (formCustomer?.email || "").toLowerCase().trim();
+  let attempted: { percent: number; label: string; customerId: number } | null = null;
+  if (attemptedEmail) {
+    try {
+      const cust = await storage.getCustomerByEmail(attemptedEmail);
+      if (cust) {
+        const sub = await storage.getMembershipSubscriptionByCustomer(cust.id);
+        const isActive = sub?.status === "active";
+        const notCancelled = !sub?.cancelledAt;
+        const periodValid = !sub?.currentPeriodEnd || new Date(sub.currentPeriodEnd) >= new Date();
+        const planActive = sub?.plan !== null;
+        const hasDiscount = (sub?.plan?.foodDrinkDiscount ?? 0) > 0;
+        if (sub && isActive && notCancelled && periodValid && planActive && hasDiscount) {
+          attempted = {
+            percent: sub.plan!.foodDrinkDiscount!,
+            label: `${sub.plan!.name} Member Discount`,
+            customerId: cust.id,
+          };
+        }
+      }
+    } catch (err: any) {
+      console.warn("[ORDER] Attempted-discount lookup failed:", err.message);
+    }
+  }
+
+  // Resolve the signed-in customer (if any) from the Authorization header.
+  // Auth is *optional* here — guests can still place orders, just without a discount.
+  let signedInCustomerId: number | null = null;
+  let signedInEmail: string | null = null;
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.slice(7);
+    if (token.length >= 32 && token.length <= 128) {
+      try {
+        const session = await storage.validateCustomerSession(token);
+        if (session) {
+          const cust = await storage.getCustomerById(session.customerId);
+          if (cust) {
+            signedInCustomerId = cust.id;
+            signedInEmail = cust.email;
+          }
+        }
+      } catch (err: any) {
+        console.warn("[ORDER] Session validation failed:", err.message);
+      }
+    }
+  }
+
+  // Apply discount only if the signed-in account itself owns a valid membership.
+  if (signedInCustomerId) {
+    try {
+      const preSub = await storage.getMembershipSubscriptionByCustomer(signedInCustomerId);
+      const needsSync = !preSub || (preSub as any).source === "square_group_sync";
+      if (needsSync && signedInEmail) {
+        await syncSquareMembership(signedInCustomerId, signedInEmail).catch((e: any) =>
+          console.warn("[ORDER] Pre-checkout sync failed:", e.message),
+        );
+      }
+      const sub = await storage.getMembershipSubscriptionByCustomer(signedInCustomerId);
+      const isActive = sub?.status === "active";
+      const notCancelled = !sub?.cancelledAt;
+      const periodValid = !sub?.currentPeriodEnd || new Date(sub.currentPeriodEnd) >= new Date();
+      const planActive = sub?.plan !== null;
+      const hasDiscount = (sub?.plan?.foodDrinkDiscount ?? 0) > 0;
+      if (sub && isActive && notCancelled && periodValid && planActive && hasDiscount) {
+        result.discountPercent = sub.plan!.foodDrinkDiscount;
+        result.discountLabel = `${sub.plan!.name} Member Discount`;
+        result.excludeWithDeals = !!((sub.plan as any)?.excludeWithDeals);
+      }
+    } catch (err: any) {
+      console.warn("[ORDER] Could not look up signed-in member discount:", err.message);
+    }
+  }
+
+  // Audit: attempted vs applied. Flag the suspicious case where someone typed a
+  // member's email but is either not signed in or signed in as a different account.
+  const appliedSummary = result.discountPercent
+    ? `${result.discountPercent}% (${result.discountLabel})`
+    : "none";
+  if (attempted) {
+    const ownsAttempted = signedInCustomerId === attempted.customerId;
+    if (!signedInCustomerId) {
+      console.warn(
+        `[ORDER][AUDIT] Email ${attemptedEmail} would have received ${attempted.percent}% ` +
+        `but buyer is a guest. Applied=${appliedSummary}.`,
+      );
+    } else if (!ownsAttempted) {
+      console.warn(
+        `[ORDER][AUDIT] Email ${attemptedEmail} would have received ${attempted.percent}% ` +
+        `but signed-in account #${signedInCustomerId} (${signedInEmail}) does not own that membership. ` +
+        `Applied=${appliedSummary}.`,
+      );
+    } else {
+      console.log(
+        `[ORDER][AUDIT] Member discount applied for #${signedInCustomerId} (${signedInEmail}): ${appliedSummary}.`,
+      );
+    }
+  } else if (result.discountPercent) {
+    console.log(
+      `[ORDER][AUDIT] Member discount applied for #${signedInCustomerId} (${signedInEmail}): ${appliedSummary} ` +
+      `(form email: ${attemptedEmail || "none"}).`,
+    );
+  }
+
+  return result;
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/staff/register", async (req, res) => {
     const clientIp = getClientIp(req);
@@ -3555,47 +3682,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(503).json({ message: "Online ordering is currently unavailable. Please order at the bar." });
       }
 
-      // Look up active membership discount for the customer
-      let discountPercent: number | undefined;
-      let discountLabel: string | undefined;
-      let excludeWithDeals = false;
-      if (customer?.email) {
-        try {
-          const cust = await storage.getCustomerByEmail(customer.email);
-          if (cust) {
-            // Sync with Square before checking — ensures group-based members (e.g. VIP)
-            // get their discount even if they haven't logged in recently to trigger the
-            // normal login sync. Only sync if no subscription or if it came from a group
-            // sync (may be stale). Non-blocking: a sync failure never blocks the order.
-            const preSub = await storage.getMembershipSubscriptionByCustomer(cust.id);
-            const needsSync = !preSub || (preSub as any).source === "square_group_sync";
-            if (needsSync) {
-              await syncSquareMembershipForCustomer(cust.id, cust.email).catch((e: any) =>
-                console.warn("[ORDER] Pre-checkout sync failed:", e.message)
-              );
-            }
-
-            const sub = await storage.getMembershipSubscriptionByCustomer(cust.id);
-            // Validate: subscription active + not cancelled + billing period current + plan is active in staff portal + plan has a discount
-            const isActive = sub?.status === "active";
-            const notCancelled = !sub?.cancelledAt;
-            const periodValid = !sub?.currentPeriodEnd || new Date(sub.currentPeriodEnd) >= new Date();
-            const planActive = sub?.plan !== null; // storage already filters plan by active=true; null means inactive plan
-            const hasDiscount = (sub?.plan?.foodDrinkDiscount ?? 0) > 0;
-            if (sub && isActive && notCancelled && periodValid && planActive && hasDiscount) {
-              discountPercent = sub.plan!.foodDrinkDiscount;
-              discountLabel = `${sub.plan!.name} Member Discount`;
-              excludeWithDeals = !!((sub.plan as any)?.excludeWithDeals);
-            } else if (sub) {
-              console.log(
-                `[ORDER] Discount withheld for ${customer.email}: status=${sub.status}, cancelledAt=${sub.cancelledAt}, periodEnd=${sub.currentPeriodEnd}, planActive=${planActive}, discount=${sub.plan?.foodDrinkDiscount}`
-              );
-            }
-          }
-        } catch (err: any) {
-          console.warn("[ORDER] Could not look up membership discount:", err.message);
-        }
-      }
+      const { discountPercent, discountLabel, excludeWithDeals } =
+        await resolveMemberDiscountImpl(req, customer, syncSquareMembershipForCustomer);
       const { url, linkId, squareOrderId } = await square.createOrderCheckoutLink(
         items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote
       );
@@ -3665,37 +3753,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(503).json({ message: "Online ordering is currently unavailable. Please order at the bar." });
       }
 
-      // Resolve membership discount (same logic as /api/orders/checkout)
-      let discountPercent: number | undefined;
-      let discountLabel: string | undefined;
-      let excludeWithDeals = false;
-      if (customer?.email) {
-        try {
-          const cust = await storage.getCustomerByEmail(customer.email);
-          if (cust) {
-            const preSub = await storage.getMembershipSubscriptionByCustomer(cust.id);
-            const needsSync = !preSub || (preSub as any).source === "square_group_sync";
-            if (needsSync) {
-              await syncSquareMembershipForCustomer(cust.id, cust.email).catch((e: any) =>
-                console.warn("[ORDER] Pre-create sync failed:", e.message)
-              );
-            }
-            const sub = await storage.getMembershipSubscriptionByCustomer(cust.id);
-            const isActive = sub?.status === "active";
-            const notCancelled = !sub?.cancelledAt;
-            const periodValid = !sub?.currentPeriodEnd || new Date(sub.currentPeriodEnd) >= new Date();
-            const planActive = sub?.plan !== null;
-            const hasDiscount = (sub?.plan?.foodDrinkDiscount ?? 0) > 0;
-            if (sub && isActive && notCancelled && periodValid && planActive && hasDiscount) {
-              discountPercent = sub.plan!.foodDrinkDiscount;
-              discountLabel = `${sub.plan!.name} Member Discount`;
-              excludeWithDeals = !!((sub.plan as any)?.excludeWithDeals);
-            }
-          }
-        } catch (err: any) {
-          console.warn("[ORDER] Could not look up membership discount:", err.message);
-        }
-      }
+      const { discountPercent, discountLabel, excludeWithDeals } =
+        await resolveMemberDiscountImpl(req, customer, syncSquareMembershipForCustomer);
 
       const { orderId, totalPence } = await square.createSquareOrderForCheckout(
         items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote,
