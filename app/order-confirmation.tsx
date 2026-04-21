@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
+import { clearPendingConfirmation } from "@/lib/pending-order";
 
 interface ConfirmationItem {
   name: string;
@@ -34,6 +35,12 @@ export default function OrderConfirmationScreen() {
   } catch {}
 
   const orderRef = appOrderId ? `#${appOrderId.toString().padStart(5, "0")}` : "—";
+
+  // Once the user has actually seen the receipt, clear the pending marker so
+  // the Order tab won't surface it again on the next launch.
+  useEffect(() => {
+    if (appOrderId) void clearPendingConfirmation(appOrderId);
+  }, [appOrderId]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>

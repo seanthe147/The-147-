@@ -241,6 +241,10 @@ export async function runStartupMigrations() {
       ALTER TABLE app_orders
         ADD COLUMN IF NOT EXISTS customer_email_hash TEXT;
     `);
+    await client.query(`
+      ALTER TABLE app_orders
+        ADD COLUMN IF NOT EXISTS confirmation_token TEXT;
+    `);
 
     // Ensure VIP plan exists (10% food & drink, group-based, excludes stacking with deals)
     await client.query(`
@@ -1488,6 +1492,7 @@ export class DatabaseStorage implements IStorage {
     totalPence: number;
     discountPercent?: number;
     discountLabel?: string;
+    confirmationToken?: string;
   }): Promise<{ id: number }> {
     const rows = await db.insert(appOrders).values({
       squareLinkId: data.squareLinkId ?? null,
@@ -1502,6 +1507,7 @@ export class DatabaseStorage implements IStorage {
       discountPercent: data.discountPercent ?? null,
       discountLabel: data.discountLabel ?? null,
       status: "pending",
+      confirmationToken: data.confirmationToken ?? null,
     }).returning({ id: appOrders.id });
     return { id: rows[0].id };
   }

@@ -24,18 +24,25 @@ import {
   NativeScrollEvent,
   TextInput,
   KeyboardAvoidingView,
+  AppState,
+  type AppStateStatus,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import Colors from "@/constants/colors";
 import { useCart } from "@/contexts/CartContext";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { getApiUrl } from "@/lib/query-client";
 import { SquarePaymentSheet } from "@/components/SquarePaymentSheet";
+import {
+  setPendingConfirmation,
+  getPendingConfirmation,
+  clearPendingConfirmation,
+} from "@/lib/pending-order";
 import type { MenuCategory, MenuItem, ModifierList, SelectedModifier } from "@/types/menu";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -885,6 +892,13 @@ function CartSheet({
       }));
       snapshottedTableRef.current = tableNote.trim();
       setPendingOrder({ appOrderId: data.appOrderId, amountPence: data.amountPence });
+      // Persist the pending order id + confirmation token so we can recover
+      // the receipt if the app is closed/backgrounded before the in-app
+      // confirmation appears. The token is required by the server; without
+      // it, knowing an order id alone reveals nothing.
+      if (typeof data.confirmationToken === "string" && data.confirmationToken.length > 0) {
+        void setPendingConfirmation({ appOrderId: data.appOrderId, token: data.confirmationToken });
+      }
       setPaymentSheetVisible(true);
     } catch (err: any) {
       Alert.alert("Checkout Error", err.message || "Please try again.");
@@ -1404,6 +1418,62 @@ export default function OrderScreen() {
     });
     setModifierItem(null);
   }, [modifierItem, addItem]);
+
+  // Recover a confirmation screen for a paid order we created on this device
+  // but never showed (e.g. app was backgrounded mid-payment, or the webhook
+  // completed the order before the in-app response returned). Runs on Order
+  // tab focus AND when the app returns from the background — the tab can
+  // stay mounted across foreground cycles, so a mount-only check would miss
+  // the most common "user backgrounded then came back" case.
+  const recoveringRef = useRef(false);
+  const recoverPendingConfirmation = useCallback(async () => {
+    if (recoveringRef.current) return;
+    recoveringRef.current = true;
+    try {
+      const pending = await getPendingConfirmation();
+      if (!pending) return;
+      const url = new URL(`/api/orders/${pending.appOrderId}/confirmation`, getApiUrl());
+      url.searchParams.set("token", pending.token);
+      const res = await fetch(url.toString());
+      if (!res.ok) {
+        // 404 = not paid yet (or too old) — leave the marker alone so
+        // we'll try again on the next focus/foreground.
+        return;
+      }
+      const data = await res.json();
+      router.push({
+        pathname: "/order-confirmation",
+        params: {
+          appOrderId: String(data.appOrderId),
+          tableNote: data.tableNote ?? "",
+          totalPence: String(data.totalPence ?? 0),
+          items: JSON.stringify(data.items ?? []),
+        },
+      });
+      // Clear after navigation. The confirmation screen also clears the
+      // marker on mount (belt-and-braces) so it never re-prompts.
+      await clearPendingConfirmation(pending.appOrderId);
+    } catch {
+      // Network error — try again next time.
+    } finally {
+      recoveringRef.current = false;
+    }
+  }, []);
+
+  // Fire on every Order-tab focus (covers initial mount + tab switches).
+  useFocusEffect(
+    useCallback(() => {
+      void recoverPendingConfirmation();
+    }, [recoverPendingConfirmation])
+  );
+
+  // Fire when the app returns from the background while the tab is mounted.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
+      if (next === "active") void recoverPendingConfirmation();
+    });
+    return () => sub.remove();
+  }, [recoverPendingConfirmation]);
 
   useEffect(() => {
     if (params.hlCatId && params.hlItemId && categories && categories.length > 0) {

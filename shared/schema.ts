@@ -354,6 +354,7 @@ export const appOrders = pgTable("app_orders", {
   discountPercent: integer("discount_percent"),
   discountLabel: text("discount_label"),
   status: text("status").notNull().default("pending"),
+  confirmationToken: text("confirmation_token"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

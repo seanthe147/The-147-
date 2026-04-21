@@ -3760,6 +3760,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote,
       );
 
+      // Generate a per-order confirmation token. The client stores this
+      // alongside the appOrderId on the device and presents it later to the
+      // /confirmation endpoint so we don't expose paid orders by ID alone.
+      const confirmationToken = randomBytes(24).toString("hex");
+
       // Save app_orders row (pending) so the webhook + staff dashboard see it
       const appOrder = await storage.createAppOrder({
         squareOrderId: orderId,
@@ -3777,12 +3782,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         totalPence,
         discountPercent: discountPercent ?? undefined,
         discountLabel: discountLabel ?? undefined,
+        confirmationToken,
       });
 
       res.json({
         appOrderId: appOrder.id,
         squareOrderId: orderId,
         amountPence: totalPence,
+        confirmationToken,
         discountPercent: discountPercent ?? null,
         discountLabel: discountLabel ?? null,
       });
@@ -3849,6 +3856,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: errorDetail || "Card charge failed",
         errorCode: errorCode || null,
       });
+    }
+  });
+
+  // ── Public: fetch a confirmation payload for an order, only when paid ──────
+  // The client persists the appOrderId locally when an order is created. On
+  // launch (or focus), the Order tab calls this to detect a payment that
+  // completed while the app was backgrounded (or the webhook beat the in-app
+  // response). Returns 404 until the order is paid; never leaks customer info.
+  app.get("/api/orders/:appOrderId/confirmation", async (req, res) => {
+    const appOrderId = parseInt(String(req.params.appOrderId));
+    if (isNaN(appOrderId)) return res.status(400).json({ message: "Invalid order id" });
+    const providedToken = typeof req.query.token === "string" ? req.query.token : "";
+    if (!providedToken) {
+      return res.status(401).json({ message: "Missing confirmation token" });
+    }
+    try {
+      const order = await storage.getAppOrder(appOrderId);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      // Constant-time token check — prevents IDOR enumeration of orders.
+      const expected = order.confirmationToken ?? "";
+      const a = Buffer.from(providedToken);
+      const b = Buffer.from(expected);
+      const tokenOk = !!expected && a.length === b.length && timingSafeEqual(a, b);
+      if (!tokenOk) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+      if (order.status !== "paid") {
+        return res.status(404).json({ message: "Order not paid" });
+      }
+      // Don't surface ancient receipts.
+      const ageMs = Date.now() - new Date(order.createdAt).getTime();
+      if (ageMs > 24 * 60 * 60 * 1000) {
+        return res.status(404).json({ message: "Order too old" });
+      }
+      let items: Array<{ name: string; quantity: number; price: number; modifiers?: string[] }> = [];
+      try { items = JSON.parse(order.itemsJson); } catch {}
+      res.json({
+        appOrderId: order.id,
+        status: order.status,
+        totalPence: order.totalPence,
+        tableNote: order.tableNote ?? "",
+        items,
+      });
+    } catch (err: any) {
+      console.error("[ORDER] confirmation lookup failed:", err.message);
+      res.status(500).json({ message: "Lookup failed" });
     }
   });
 
