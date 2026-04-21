@@ -997,6 +997,61 @@ async function buildSquareOrderBody(
   const ticketName = tableNote || (customer?.name ? customer.name.split(" ")[0] : "Guest");
   const memberDiscountUid = "MEMBER-DISCOUNT";
 
+  // ── Server-side price validation ────────────────────────────────────────────
+  // Look up every variation and modifier from the Square catalog so customers
+  // can only ever be charged the published menu price — never a value supplied
+  // in the request body. Reject any unknown IDs with a clear error.
+  const catalogIds = new Set<string>();
+  for (const item of items) {
+    if (!item.variationId) {
+      throw new SquareError("Order contained an item with no variation id", "INVALID_CATALOG_ID", 400);
+    }
+    catalogIds.add(item.variationId);
+    for (const m of item.modifiers ?? []) {
+      if (!m.catalogObjectId) {
+        throw new SquareError("Order contained a modifier with no catalog id", "INVALID_CATALOG_ID", 400);
+      }
+      catalogIds.add(m.catalogObjectId);
+    }
+  }
+  const catalogPriceById = new Map<string, number>();
+  const catalogTypeById = new Map<string, string>();
+  const idsToFetch = Array.from(catalogIds);
+  for (let i = 0; i < idsToFetch.length; i += 100) {
+    const chunk = idsToFetch.slice(i, i + 100);
+    const data = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
+      object_ids: chunk,
+    });
+    for (const o of (data.objects || []) as any[]) {
+      if (o.is_deleted) continue;
+      if (o.type === "ITEM_VARIATION") {
+        catalogPriceById.set(o.id, o.item_variation_data?.price_money?.amount ?? 0);
+        catalogTypeById.set(o.id, "ITEM_VARIATION");
+      } else if (o.type === "MODIFIER") {
+        catalogPriceById.set(o.id, o.modifier_data?.price_money?.amount ?? 0);
+        catalogTypeById.set(o.id, "MODIFIER");
+      }
+    }
+  }
+  for (const item of items) {
+    if (catalogTypeById.get(item.variationId) !== "ITEM_VARIATION") {
+      throw new SquareError(
+        `Unknown or unavailable menu item (id ${item.variationId})`,
+        "INVALID_CATALOG_ID",
+        400,
+      );
+    }
+    for (const m of item.modifiers ?? []) {
+      if (catalogTypeById.get(m.catalogObjectId) !== "MODIFIER") {
+        throw new SquareError(
+          `Unknown or unavailable modifier (id ${m.catalogObjectId})`,
+          "INVALID_CATALOG_ID",
+          400,
+        );
+      }
+    }
+  }
+
   const activeDeals = await getSquareDeals().catch(() => [] as Deal[]);
   const dealByVariationId = new Map<string, Deal>();
   for (const deal of activeDeals) {
@@ -1057,16 +1112,21 @@ async function buildSquareOrderBody(
     } else if (itemLevelMemberDiscount) {
       appliedDiscounts.push({ discount_uid: memberDiscountUid });
     }
+    // Use the catalog price we just looked up — never the request value.
+    const catalogItemPrice = catalogPriceById.get(item.variationId) ?? 0;
     return {
       uid: lineUid,
       catalog_object_id: item.variationId,
       quantity: String(item.quantity),
-      base_price_money: { amount: item.price, currency: "GBP" },
+      base_price_money: { amount: catalogItemPrice, currency: "GBP" },
       ...(item.modifiers?.length
         ? {
             modifiers: item.modifiers.map((m) => ({
               catalog_object_id: m.catalogObjectId,
-              base_price_money: { amount: m.price, currency: "GBP" },
+              base_price_money: {
+                amount: catalogPriceById.get(m.catalogObjectId) ?? 0,
+                currency: "GBP",
+              },
             })),
           }
         : {}),

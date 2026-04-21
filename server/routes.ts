@@ -3627,7 +3627,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ url, discountPercent: discountPercent ?? null, discountLabel: discountLabel ?? null });
     } catch (err: any) {
       console.error("[ORDER] Checkout failed:", err.message);
-      res.status(500).json({ message: err.message });
+      const status = err instanceof square.SquareError && err.statusCode >= 400 && err.statusCode < 500
+        ? err.statusCode
+        : 500;
+      res.status(status).json({ message: err.message });
     }
   });
 
@@ -3726,7 +3729,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (err: any) {
       console.error("[ORDER] Create order failed:", err.message);
-      res.status(500).json({ message: err.message });
+      const status = err instanceof square.SquareError && err.statusCode >= 400 && err.statusCode < 500
+        ? err.statusCode
+        : 500;
+      res.status(status).json({ message: err.message });
     }
   });
 
