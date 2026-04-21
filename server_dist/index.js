@@ -299,6 +299,12 @@ var init_schema = __esm({
       //   cancelled/refunded/expired → terminal failure states
       status: text("status").notNull().default("pending"),
       confirmationToken: text("confirmation_token"),
+      // Expo push token of the device that placed the order. Used to notify
+      // ONLY that device when the order's status changes (e.g. "ready"). We
+      // intentionally store the originating device's token rather than every
+      // token associated with the customer's email — a customer may have the
+      // app on multiple devices and only the one that ordered should buzz.
+      pushToken: text("push_token"),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     orderAuditLog = pgTable("order_audit_log", {
@@ -747,6 +753,10 @@ async function runStartupMigrations() {
     await client.query(`
       ALTER TABLE app_orders
         ADD COLUMN IF NOT EXISTS confirmation_token TEXT;
+    `);
+    await client.query(`
+      ALTER TABLE app_orders
+        ADD COLUMN IF NOT EXISTS push_token TEXT;
     `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS password_reset_audit_log (
@@ -1689,7 +1699,8 @@ var init_storage = __esm({
           discountPercent: data.discountPercent ?? null,
           discountLabel: data.discountLabel ?? null,
           status: "pending",
-          confirmationToken: data.confirmationToken ?? null
+          confirmationToken: data.confirmationToken ?? null,
+          pushToken: data.pushToken ?? null
         }).returning({ id: appOrders.id });
         return { id: rows[0].id };
       }
@@ -5494,9 +5505,18 @@ async function registerRoutes(app2) {
     const tokens = await storage.getAllPushTokens();
     res.json(tokens);
   });
-  async function sendTargetedPush(tokens, title, body) {
+  function isValidExpoPushToken(token) {
+    return typeof token === "string" && (token.startsWith("ExponentPushToken[") || token.startsWith("ExpoPushToken["));
+  }
+  async function sendTargetedPush(tokens, title, body, data) {
     if (!tokens.length) return { successCount: 0, failureCount: 0 };
-    const messages = tokens.map((to) => ({ to, sound: "default", title, body }));
+    const messages = tokens.map((to) => ({
+      to,
+      sound: "default",
+      title,
+      body,
+      ...data ? { data } : {}
+    }));
     let successCount = 0, failureCount = 0;
     try {
       const response = await fetch("https://exp.host/--/api/v2/push/send", {
@@ -5504,9 +5524,9 @@ async function registerRoutes(app2) {
         headers: { "Content-Type": "application/json", "Accept": "application/json" },
         body: JSON.stringify(messages)
       });
-      const data = await response.json();
-      if (data.data) {
-        for (const r of data.data) {
+      const data2 = await response.json();
+      if (data2.data) {
+        for (const r of data2.data) {
           if (r.status === "ok") successCount++;
           else {
             failureCount++;
@@ -7016,7 +7036,7 @@ async function registerRoutes(app2) {
     res.json({ success: true });
   });
   app2.post("/api/orders/checkout", async (req, res) => {
-    const { items, tableNote, orderNote, customer } = req.body;
+    const { items, tableNote, orderNote, customer, pushToken } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "Cart is empty" });
     }
@@ -7052,7 +7072,8 @@ async function registerRoutes(app2) {
         ),
         totalPence: discountedTotal,
         discountPercent: discountPercent ?? void 0,
-        discountLabel: discountLabel ?? void 0
+        discountLabel: discountLabel ?? void 0,
+        pushToken: isValidExpoPushToken(pushToken) ? pushToken : void 0
       }).catch((err) => console.error("[ORDER] Failed to save order record:", err.message));
       res.json({ url, discountPercent: discountPercent ?? null, discountLabel: discountLabel ?? null });
     } catch (err) {
@@ -7073,7 +7094,7 @@ async function registerRoutes(app2) {
     });
   });
   app2.post("/api/orders/create", async (req, res) => {
-    const { items, tableNote, orderNote, customer } = req.body;
+    const { items, tableNote, orderNote, customer, pushToken } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "Cart is empty" });
     }
@@ -7112,7 +7133,8 @@ async function registerRoutes(app2) {
         totalPence,
         discountPercent: discountPercent ?? void 0,
         discountLabel: discountLabel ?? void 0,
-        confirmationToken
+        confirmationToken,
+        pushToken: isValidExpoPushToken(pushToken) ? pushToken : void 0
       });
       res.json({
         appOrderId: appOrder.id,
@@ -7326,6 +7348,32 @@ async function registerRoutes(app2) {
       await storage.updateAppOrderStatus(id, target);
       await storage.logOrderAction({ orderId: id, staffUsername: actor, action: `advance:${target}` });
       console.log(`[ORDERS] Order #${id} advanced ${order.status}\u2192${target} by ${actor}`);
+      const NOTIFY = {
+        ready: {
+          title: "Your order is ready \u{1F389}",
+          body: order.tableNote ? `Order #${id.toString().padStart(5, "0")} is on its way to ${order.tableNote}.` : `Order #${id.toString().padStart(5, "0")} is ready to collect from the bar.`
+        },
+        delivered: {
+          title: "Enjoy your order!",
+          body: order.tableNote ? `Order #${id.toString().padStart(5, "0")} has been delivered to ${order.tableNote}.` : `Order #${id.toString().padStart(5, "0")} has been served. Enjoy!`
+        },
+        collected: {
+          title: "Thanks!",
+          body: `Order #${id.toString().padStart(5, "0")} collected \u2014 enjoy!`
+        }
+      };
+      const message = NOTIFY[target];
+      if (message && order.pushToken) {
+        const data = {
+          type: "order-status",
+          appOrderId: id,
+          token: order.confirmationToken ?? "",
+          status: target
+        };
+        sendTargetedPush([order.pushToken], message.title, message.body, data).catch((err) => {
+          console.error("[Push] Order status notification failed:", err?.message ?? err);
+        });
+      }
       res.json({ status: target, isTerminal: TERMINAL.has(target) });
     } catch (err) {
       console.error("[ORDERS] Advance failed:", err.message);
