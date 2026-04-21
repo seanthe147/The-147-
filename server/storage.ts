@@ -203,7 +203,10 @@ export async function runStartupMigrations() {
         ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE,
         ADD COLUMN IF NOT EXISTS email_verify_token_hash TEXT,
         ADD COLUMN IF NOT EXISTS email_verify_token_expires_at TIMESTAMP,
-        ADD COLUMN IF NOT EXISTS email_verify_last_sent_at TIMESTAMP;
+        ADD COLUMN IF NOT EXISTS email_verify_last_sent_at TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS password_reset_token_hash TEXT,
+        ADD COLUMN IF NOT EXISTS password_reset_token_expires_at TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS password_reset_last_sent_at TIMESTAMP;
     `);
     // Remove old unique constraint on customers.email (now stored encrypted; email_hash is the unique lookup)
     await client.query(`
@@ -330,6 +333,9 @@ export interface IStorage {
   setEmailVerificationToken(id: number, tokenHash: string, expiresAt: Date): Promise<void>;
   getCustomerByVerifyTokenHash(tokenHash: string): Promise<Customer | undefined>;
   markEmailVerified(id: number): Promise<void>;
+  setPasswordResetToken(id: number, tokenHash: string, expiresAt: Date): Promise<void>;
+  getCustomerByPasswordResetTokenHash(tokenHash: string): Promise<Customer | undefined>;
+  setCustomerPassword(id: number, passwordHash: string): Promise<void>;
   getCustomerByEmail(email: string): Promise<Customer | undefined>;
   getCustomerById(id: number): Promise<Customer | undefined>;
   getAllCustomers(): Promise<Customer[]>;
@@ -1058,6 +1064,29 @@ export class DatabaseStorage implements IStorage {
       emailVerifyTokenHash: null,
       emailVerifyTokenExpiresAt: null,
     }).where(eq(customers.id, id));
+  }
+
+  async setPasswordResetToken(id: number, tokenHash: string, expiresAt: Date): Promise<void> {
+    await db.update(customers).set({
+      passwordResetTokenHash: tokenHash,
+      passwordResetTokenExpiresAt: expiresAt,
+      passwordResetLastSentAt: new Date(),
+    }).where(eq(customers.id, id));
+  }
+
+  async getCustomerByPasswordResetTokenHash(tokenHash: string): Promise<Customer | undefined> {
+    const [row] = await db.select().from(customers).where(eq(customers.passwordResetTokenHash, tokenHash));
+    return row ? decryptCustomer(row) : undefined;
+  }
+
+  async setCustomerPassword(id: number, passwordHash: string): Promise<void> {
+    await db.update(customers).set({
+      passwordHash,
+      passwordResetTokenHash: null,
+      passwordResetTokenExpiresAt: null,
+    }).where(eq(customers.id, id));
+    // Invalidate all existing sessions for this customer
+    await db.update(customerSessions).set({ active: false }).where(eq(customerSessions.customerId, id));
   }
 
   async getCustomerByEmail(email: string): Promise<Customer | undefined> {

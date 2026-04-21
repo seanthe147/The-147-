@@ -435,6 +435,111 @@ async function sendVerificationEmail(opts: { name: string; email: string; tokenR
   return false;
 }
 
+async function sendPasswordResetEmail(opts: { name: string; email: string; tokenRaw: string }): Promise<boolean> {
+  const resetUrl = `${getPublicAppOrigin()}/reset-password?token=${encodeURIComponent(opts.tokenRaw)}`;
+  const subject = "Reset your password — The 147";
+  const html = `<div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px; background: #ffffff;">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <h1 style="color: #0A1628; font-size: 24px; margin: 0;">The 147</h1>
+      <p style="color: #6b7280; font-size: 13px; margin: 4px 0 0;">Snooker, Bar &amp; Restaurant</p>
+    </div>
+    <div style="background: #EFF6FF; border: 1.5px solid #BFDBFE; border-radius: 12px; padding: 16px; text-align: center; margin-bottom: 24px;">
+      <span style="font-size: 28px;">🔑</span>
+      <h2 style="color: #1E40AF; font-size: 18px; margin: 8px 0 0;">Reset your password</h2>
+    </div>
+    <p style="color: #374151; font-size: 15px;">Hi ${escHtml(opts.name)},</p>
+    <p style="color: #374151; font-size: 15px;">We received a request to reset the password on your The 147 account. Click the button below to choose a new password.</p>
+    <div style="text-align: center; margin: 28px 0;">
+      <a href="${resetUrl}" style="display: inline-block; background: #0047AB; color: #fff; font-size: 16px; font-weight: 700; padding: 14px 32px; border-radius: 12px; text-decoration: none;">Reset Password →</a>
+    </div>
+    <p style="color: #6b7280; font-size: 13px; line-height: 1.6;">Or paste this link into your browser:<br/><span style="word-break: break-all; color: #0047AB;">${escHtml(resetUrl)}</span></p>
+    <p style="color: #6b7280; font-size: 13px; line-height: 1.6;">This link expires in 1 hour. If you didn't request this, you can safely ignore this email — your password won't change.</p>
+    <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+    <p style="color: #9ca3af; font-size: 12px; text-align: center;">The 147 &mdash; Snooker, Bar &amp; Restaurant</p>
+  </div>`;
+  const sent = await sendEmailViaSMTP(opts.email, subject, html);
+  if (sent) {
+    console.log(`[RESET EMAIL] Sent via SMTP to ${maskEmail(opts.email)}`);
+    return true;
+  }
+  const resendKey = process.env.RESEND_API_KEY;
+  if (resendKey) {
+    const fromEmail = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+    const fromName = process.env.RESEND_FROM_NAME || "The 147";
+    try {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+        body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: opts.email, subject, html }),
+      });
+      if (response.ok) {
+        console.log(`[RESET EMAIL] Sent via Resend to ${maskEmail(opts.email)}`);
+        return true;
+      }
+    } catch (_) {}
+  }
+  console.warn(`[RESET EMAIL] Failed to send to ${maskEmail(opts.email)}`);
+  return false;
+}
+
+function renderResetPasswordPage(opts: { token: string; error?: string; success?: boolean }): string {
+  const { token, error, success } = opts;
+  if (success) {
+    return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Password updated — The 147</title><style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;background:#F2F5FA;color:#0D1526;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.card{background:#fff;border-radius:24px;max-width:480px;width:100%;padding:40px 32px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.08)}
+.ring{width:80px;height:80px;border-radius:50%;background:#DCFCE7;display:flex;align-items:center;justify-content:center;margin:0 auto 20px}
+h1{font-size:24px;font-weight:800;color:#0A1628;margin-bottom:12px}
+p{color:#4B5A72;font-size:15px;line-height:1.6;margin-bottom:24px}
+a.btn{display:inline-block;background:#0047AB;color:#fff;font-weight:700;font-size:14px;padding:12px 24px;border-radius:12px;text-decoration:none}
+</style></head><body><div class="card"><div class="ring"><svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="#16A34A" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div><h1>Password updated</h1><p>Your password has been reset. You can now sign in with your new password.</p><a class="btn" href="/membership">Back to The 147</a></div></body></html>`;
+  }
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Reset password — The 147</title><style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;background:#F2F5FA;color:#0D1526;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.card{background:#fff;border-radius:24px;max-width:440px;width:100%;padding:36px 28px;box-shadow:0 8px 32px rgba(0,0,0,.08)}
+h1{font-size:22px;font-weight:800;color:#0A1628;margin-bottom:8px;text-align:center}
+.sub{color:#4B5A72;font-size:14px;line-height:1.5;margin-bottom:24px;text-align:center}
+label{display:block;font-size:13px;font-weight:600;color:#0A1628;margin-bottom:6px}
+input{width:100%;padding:12px 14px;border:1.5px solid #D6DCEA;border-radius:10px;font-size:15px;margin-bottom:16px}
+input:focus{outline:none;border-color:#0047AB}
+button{width:100%;background:#0047AB;color:#fff;font-weight:700;font-size:15px;padding:13px;border:0;border-radius:12px;cursor:pointer}
+button:disabled{opacity:.6;cursor:not-allowed}
+.err{background:#FEE2E2;border:1px solid #FCA5A5;color:#B91C1C;padding:10px 12px;border-radius:10px;font-size:13px;margin-bottom:16px;display:${error?'block':'none'}}
+</style></head><body><div class="card">
+<h1>Choose a new password</h1>
+<p class="sub">Enter a new password for your The 147 account. It must be at least 6 characters.</p>
+<div class="err" id="err">${escHtml(error||'')}</div>
+<form id="rf" onsubmit="return false;">
+  <label>New password</label>
+  <input type="password" id="p1" autocomplete="new-password" placeholder="Min. 6 characters" minlength="6" required>
+  <label>Confirm new password</label>
+  <input type="password" id="p2" autocomplete="new-password" placeholder="Re-enter password" minlength="6" required>
+  <button type="submit" id="b">Update password</button>
+</form>
+<script>
+const tok=${JSON.stringify(token)};
+const err=document.getElementById('err');
+const btn=document.getElementById('b');
+document.getElementById('rf').addEventListener('submit',async()=>{
+  const p1=document.getElementById('p1').value;
+  const p2=document.getElementById('p2').value;
+  err.style.display='none';
+  if(p1.length<6){err.textContent='Password must be at least 6 characters.';err.style.display='block';return;}
+  if(p1!==p2){err.textContent='Passwords do not match.';err.style.display='block';return;}
+  btn.disabled=true;btn.textContent='Updating…';
+  try{
+    const r=await fetch('/api/customers/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:tok,password:p1})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok){err.textContent=d.message||'Could not reset password.';err.style.display='block';btn.disabled=false;btn.textContent='Update password';return;}
+    window.location.href='/reset-password?done=1';
+  }catch{err.textContent='Network error — please try again.';err.style.display='block';btn.disabled=false;btn.textContent='Update password';}
+});
+</script>
+</div></body></html>`;
+}
+
 function renderVerifyResultPage(kind: "success" | "error", message: string): string {
   const isSuccess = kind === "success";
   const accent = isSuccess ? "#16A34A" : "#DC2626";
@@ -4682,6 +4787,143 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     await storage.markEmailVerified(customer.id);
     res.send(renderVerifyResultPage("success", "Your email is verified. You can now use account recovery if you ever lose access."));
+  });
+
+  // Public resend-verification — used by the password recovery flow when the account
+  // exists but the email isn't verified yet. Always returns 200 (don't leak existence).
+  app.post("/api/customers/resend-verification-public", async (req, res) => {
+    const clientIp = getClientIp(req);
+    if (!checkSensitiveRateLimit(clientIp)) {
+      return res.status(429).json({ message: "Too many requests. Please try again later." });
+    }
+    const email = String(req.body?.email || "").trim();
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+    try {
+      const customer = await storage.getCustomerByEmail(email);
+      if (customer && !customer.emailVerified) {
+        const lastSent = customer.emailVerifyLastSentAt;
+        if (!lastSent || Date.now() - lastSent.getTime() >= 60_000) {
+          const verifyTokenRaw = randomBytes(32).toString("hex");
+          const verifyTokenHash = createHash("sha256").update(verifyTokenRaw).digest("hex");
+          const verifyExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+          await storage.setEmailVerificationToken(customer.id, verifyTokenHash, verifyExpiresAt);
+          sendVerificationEmail({ name: customer.name, email: customer.email, tokenRaw: verifyTokenRaw });
+        }
+      }
+    } catch (err: any) {
+      console.error("Public resend verification error:", err.message);
+    }
+    res.json({ success: true });
+  });
+
+  // Forgot password — request a reset link.
+  // Privacy: when the email isn't registered we still return 200 (no enumeration).
+  // BUT when the account exists and the email is NOT verified, we refuse and tell
+  // the UI so it can prompt the user to finish verification first.
+  app.post("/api/customers/forgot-password", async (req, res) => {
+    const clientIp = getClientIp(req);
+    if (!checkSensitiveRateLimit(clientIp)) {
+      return res.status(429).json({ message: "Too many requests. Please try again later." });
+    }
+    const email = String(req.body?.email || "").trim();
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: "Invalid email address" });
+    }
+    try {
+      const customer = await storage.getCustomerByEmail(email);
+      if (!customer) {
+        // Don't disclose whether the email is registered.
+        return res.json({ success: true });
+      }
+      if (!customer.emailVerified) {
+        return res.status(403).json({
+          code: "EMAIL_NOT_VERIFIED",
+          message: "Please verify your email address before resetting your password. We can resend the verification link.",
+          email: customer.email,
+        });
+      }
+      // Per-account cooldown — one reset email per 60s
+      const lastSent = customer.passwordResetLastSentAt;
+      if (lastSent && Date.now() - lastSent.getTime() < 60_000) {
+        // Still report success to avoid enumeration / spamming feedback
+        return res.json({ success: true });
+      }
+      const tokenRaw = randomBytes(32).toString("hex");
+      const tokenHash = createHash("sha256").update(tokenRaw).digest("hex");
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      await storage.setPasswordResetToken(customer.id, tokenHash, expiresAt);
+      sendPasswordResetEmail({ name: customer.name, email: customer.email, tokenRaw });
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Forgot password error:", err.message);
+      res.status(500).json({ message: "Could not process the request" });
+    }
+  });
+
+  // Reset password using the emailed token
+  app.post("/api/customers/reset-password", async (req, res) => {
+    const clientIp = getClientIp(req);
+    if (!checkSensitiveRateLimit(clientIp)) {
+      return res.status(429).json({ message: "Too many requests. Please try again later." });
+    }
+    const token = String(req.body?.token || "");
+    const password = String(req.body?.password || "");
+    if (!token || !password) {
+      return res.status(400).json({ message: "Token and password are required" });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters" });
+    }
+    try {
+      const tokenHash = createHash("sha256").update(token).digest("hex");
+      const customer = await storage.getCustomerByPasswordResetTokenHash(tokenHash);
+      if (!customer) {
+        return res.status(400).json({ message: "This reset link is invalid or has already been used." });
+      }
+      const expiresAt = customer.passwordResetTokenExpiresAt;
+      if (!expiresAt || expiresAt.getTime() < Date.now()) {
+        return res.status(400).json({ message: "This reset link has expired. Please request a new one." });
+      }
+      // Defensive: only verified accounts can hit this point because tokens are only issued to verified emails.
+      if (!customer.emailVerified) {
+        return res.status(403).json({ code: "EMAIL_NOT_VERIFIED", message: "Please verify your email address before resetting your password." });
+      }
+      const { hash, salt } = hashPin(password);
+      const passwordHash = `${salt}:${hash}`;
+      await storage.setCustomerPassword(customer.id, passwordHash);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Reset password error:", err.message);
+      res.status(500).json({ message: "Could not reset password" });
+    }
+  });
+
+  // Landing page rendered when the user clicks the email link
+  app.get("/reset-password", async (req, res) => {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    if (req.query.done === "1") {
+      return res.send(renderResetPasswordPage({ token: "", success: true }));
+    }
+    const tokenRaw = String(req.query.token || "");
+    if (!tokenRaw) {
+      return res.status(400).send(renderResetPasswordPage({ token: "", error: "Missing reset token. Please use the link from your email." }));
+    }
+    const tokenHash = createHash("sha256").update(tokenRaw).digest("hex");
+    const customer = await storage.getCustomerByPasswordResetTokenHash(tokenHash);
+    if (!customer) {
+      return res.status(400).send(renderResetPasswordPage({ token: "", error: "This reset link is invalid or has already been used." }));
+    }
+    const expiresAt = customer.passwordResetTokenExpiresAt;
+    if (!expiresAt || expiresAt.getTime() < Date.now()) {
+      return res.status(400).send(renderResetPasswordPage({ token: "", error: "This reset link has expired. Please request a new one." }));
+    }
+    res.send(renderResetPasswordPage({ token: tokenRaw }));
   });
 
   app.patch("/api/customers/me", customerAuth, async (req, res) => {

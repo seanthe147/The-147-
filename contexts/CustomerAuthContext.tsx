@@ -24,6 +24,8 @@ interface CustomerAuthContextValue {
   deleteAccount: () => Promise<{ success: boolean; error?: string }>;
   refreshProfile: () => Promise<void>;
   resendVerificationEmail: () => Promise<{ success: boolean; error?: string }>;
+  requestPasswordReset: (email: string) => Promise<{ success: boolean; error?: string; needsVerification?: boolean }>;
+  resendVerificationEmailFor: (email: string) => Promise<{ success: boolean; error?: string }>;
   getCustomerToken: () => string | null;
 }
 
@@ -209,6 +211,47 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
   }, [token]);
 
+  const requestPasswordReset = useCallback(async (email: string): Promise<{ success: boolean; error?: string; needsVerification?: boolean }> => {
+    try {
+      const baseUrl = getApiUrl();
+      const url = new URL("/api/customers/forgot-password", baseUrl);
+      const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data: { message?: string; code?: string; email?: string } = await res.json().catch(() => ({}));
+      if (res.status === 403 && data.code === "EMAIL_NOT_VERIFIED") {
+        return { success: false, needsVerification: true, error: data.message || "Please verify your email first." };
+      }
+      if (!res.ok) {
+        return { success: false, error: data.message || "Could not send reset link" };
+      }
+      return { success: true };
+    } catch {
+      return { success: false, error: "Connection error" };
+    }
+  }, []);
+
+  const resendVerificationEmailFor = useCallback(async (email: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const baseUrl = getApiUrl();
+      const url = new URL("/api/customers/resend-verification-public", baseUrl);
+      const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (!res.ok) {
+        const data: { message?: string } = await res.json().catch(() => ({}));
+        return { success: false, error: data.message || "Could not send verification email" };
+      }
+      return { success: true };
+    } catch {
+      return { success: false, error: "Connection error" };
+    }
+  }, []);
+
   const getCustomerToken = useCallback(() => token, [token]);
 
   const value = useMemo(
@@ -223,9 +266,11 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       deleteAccount,
       refreshProfile,
       resendVerificationEmail,
+      requestPasswordReset,
+      resendVerificationEmailFor,
       getCustomerToken,
     }),
-    [token, isLoading, customer, login, register, logout, updateProfile, deleteAccount, refreshProfile, resendVerificationEmail, getCustomerToken]
+    [token, isLoading, customer, login, register, logout, updateProfile, deleteAccount, refreshProfile, resendVerificationEmail, requestPasswordReset, resendVerificationEmailFor, getCustomerToken]
   );
 
   return (

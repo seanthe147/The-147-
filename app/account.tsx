@@ -90,7 +90,7 @@ interface AppOrder {
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const { isAuthenticated, isLoading: authLoading, customer, login, register, logout, updateProfile, deleteAccount, resendVerificationEmail } = useCustomerAuth();
+  const { isAuthenticated, isLoading: authLoading, customer, login, register, logout, updateProfile, deleteAccount, resendVerificationEmail, requestPasswordReset, resendVerificationEmailFor } = useCustomerAuth();
 
   if (authLoading) {
     return (
@@ -112,17 +112,30 @@ export default function AccountScreen() {
       {isAuthenticated && customer ? (
         <LoggedInView customer={customer} logout={logout} updateProfile={updateProfile} deleteAccount={deleteAccount} resendVerificationEmail={resendVerificationEmail} />
       ) : (
-        <AuthView login={login} register={register} />
+        <AuthView
+          login={login}
+          register={register}
+          requestPasswordReset={requestPasswordReset}
+          resendVerificationEmailFor={resendVerificationEmailFor}
+        />
       )}
     </View>
   );
 }
 
-function AuthView({ login, register }: {
+function AuthView({ login, register, requestPasswordReset, resendVerificationEmailFor }: {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (name: string, email: string, phone: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  requestPasswordReset: (email: string) => Promise<{ success: boolean; error?: string; needsVerification?: boolean }>;
+  resendVerificationEmailFor: (email: string) => Promise<{ success: boolean; error?: string }>;
 }) {
   const [mode, setMode] = useState<AuthMode>("login");
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotState, setForgotState] = useState<"idle" | "sending" | "sent" | "needs-verification">("idle");
+  const [forgotMessage, setForgotMessage] = useState<string | null>(null);
+  const [resendingVerify, setResendingVerify] = useState(false);
+  const [resendVerifyMsg, setResendVerifyMsg] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -130,6 +143,129 @@ function AuthView({ login, register }: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [privacyConsent, setPrivacyConsent] = useState(false);
+
+  const handleForgot = async () => {
+    const email = forgotEmail.trim();
+    setForgotMessage(null);
+    setResendVerifyMsg(null);
+    if (!email || !email.includes("@")) {
+      setForgotMessage("Please enter a valid email address.");
+      return;
+    }
+    setForgotState("sending");
+    const result = await requestPasswordReset(email);
+    if (result.needsVerification) {
+      setForgotState("needs-verification");
+      setForgotMessage(result.error || "Please verify your email first.");
+      return;
+    }
+    if (result.success) {
+      setForgotState("sent");
+      setForgotMessage("If an account exists for that email, we've sent a reset link. Please check your inbox.");
+      return;
+    }
+    setForgotState("idle");
+    setForgotMessage(result.error || "Could not send reset link.");
+  };
+
+  const [resendVerifySent, setResendVerifySent] = useState(false);
+
+  const handleResendVerify = async () => {
+    setResendingVerify(true);
+    setResendVerifyMsg(null);
+    const result = await resendVerificationEmailFor(forgotEmail.trim());
+    setResendingVerify(false);
+    if (result.success) {
+      setResendVerifySent(true);
+      setResendVerifyMsg("Verification email sent — check your inbox.");
+    } else {
+      setResendVerifySent(false);
+      setResendVerifyMsg(result.error || "Could not send verification email.");
+    }
+  };
+
+  if (showForgot) {
+    return (
+      <ScrollView style={styles.scrollContent} contentContainerStyle={styles.scrollInner} keyboardShouldPersistTaps="handled">
+        <View style={styles.authIcon}>
+          <Ionicons name="key-outline" size={70} color={Colors.brand.blue} />
+        </View>
+        <Text style={styles.authTitle}>Reset Password</Text>
+        <Text style={styles.authSubtitle}>
+          Enter the email on your account and we'll send you a reset link. For your security, your email must be verified before we can send the link.
+        </Text>
+
+        <Text style={styles.inputLabel}>Email Address</Text>
+        <TextInput
+          style={styles.input}
+          value={forgotEmail}
+          onChangeText={setForgotEmail}
+          placeholder="your@email.com"
+          placeholderTextColor="#9CA3AF"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          testID="forgot-email"
+        />
+
+        {forgotMessage && forgotState !== "needs-verification" ? (
+          <View style={forgotState === "sent" ? styles.infoBanner : styles.errorBanner}>
+            <Ionicons
+              name={forgotState === "sent" ? "checkmark-circle" : "alert-circle"}
+              size={18}
+              color={forgotState === "sent" ? "#16A34A" : "#DC2626"}
+            />
+            <Text style={forgotState === "sent" ? styles.infoText : styles.errorText}>{forgotMessage}</Text>
+          </View>
+        ) : null}
+
+        {forgotState === "needs-verification" ? (
+          <View style={styles.warningBanner}>
+            <Text style={styles.warningTitle}>Verify your email first</Text>
+            <Text style={styles.warningText}>{forgotMessage}</Text>
+            <Pressable
+              onPress={handleResendVerify}
+              disabled={resendingVerify}
+              style={({ pressed }) => [styles.warningButton, { opacity: pressed || resendingVerify ? 0.7 : 1 }]}
+              testID="forgot-resend-verification"
+            >
+              <Text style={styles.warningButtonText}>
+                {resendingVerify ? "Sending..." : resendVerifySent ? "Verification email sent ✓" : "Resend verification email"}
+              </Text>
+            </Pressable>
+            {resendVerifyMsg ? <Text style={styles.warningHint}>{resendVerifyMsg}</Text> : null}
+          </View>
+        ) : null}
+
+        <Pressable
+          onPress={handleForgot}
+          disabled={forgotState === "sending"}
+          style={({ pressed }) => [styles.submitButton, { opacity: pressed || forgotState === "sending" ? 0.7 : 1 }]}
+          testID="forgot-submit"
+        >
+          {forgotState === "sending" ? (
+            <ActivityIndicator color="#FFFFFF" size="small" />
+          ) : (
+            <Text style={styles.submitButtonText}>Send Reset Link</Text>
+          )}
+        </Pressable>
+
+        <Pressable
+          onPress={() => {
+            setShowForgot(false);
+            setForgotState("idle");
+            setForgotMessage(null);
+            setResendVerifyMsg(null);
+          }}
+          style={styles.switchMode}
+        >
+          <Text style={styles.switchModeText}>
+            <Text style={styles.switchModeLink}>← Back to sign in</Text>
+          </Text>
+        </Pressable>
+      </ScrollView>
+    );
+  }
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
@@ -278,6 +414,24 @@ function AuthView({ login, register }: {
           </Text>
         )}
       </Pressable>
+
+      {mode === "login" ? (
+        <Pressable
+          onPress={() => {
+            setShowForgot(true);
+            setForgotEmail(email.trim());
+            setForgotState("idle");
+            setForgotMessage(null);
+            setError("");
+          }}
+          style={styles.switchMode}
+          testID="forgot-password-link"
+        >
+          <Text style={styles.switchModeText}>
+            <Text style={styles.switchModeLink}>Forgot password?</Text>
+          </Text>
+        </Pressable>
+      ) : null}
 
       <Pressable
         onPress={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}
@@ -1057,6 +1211,60 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#DC2626",
     flex: 1,
+  },
+  infoBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#DCFCE7",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+  },
+  infoText: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 13,
+    color: "#166534",
+    flex: 1,
+  },
+  warningBanner: {
+    backgroundColor: "#FEF3C7",
+    borderColor: "#FCD34D",
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 16,
+  },
+  warningTitle: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 14,
+    color: "#92400E",
+    marginBottom: 6,
+  },
+  warningText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 13,
+    color: "#92400E",
+    lineHeight: 18,
+    marginBottom: 10,
+  },
+  warningButton: {
+    alignSelf: "flex-start",
+    backgroundColor: Colors.brand.blue,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  warningButtonText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 13,
+    color: "#FFFFFF",
+  },
+  warningHint: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: "#92400E",
+    marginTop: 8,
   },
   inputLabel: {
     fontFamily: "Montserrat_600SemiBold",

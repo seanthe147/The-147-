@@ -194,6 +194,9 @@ export const customers = pgTable("customers", {
   emailVerifyTokenHash: text("email_verify_token_hash"),
   emailVerifyTokenExpiresAt: timestamp("email_verify_token_expires_at"),
   emailVerifyLastSentAt: timestamp("email_verify_last_sent_at"),
+  passwordResetTokenHash: text("password_reset_token_hash"),
+  passwordResetTokenExpiresAt: timestamp("password_reset_token_expires_at"),
+  passwordResetLastSentAt: timestamp("password_reset_last_sent_at"),
 });
 
 export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true, createdAt: true });
