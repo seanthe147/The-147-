@@ -13,7 +13,7 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, serial, timestamp, boolean, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffDocuments, insertStaffDocumentSchema, staffOnboarding, insertStaffOnboardingSchema, staffPushTokens, paymentLog, insertPaymentLogSchema;
+var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, passwordResetAuditLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffDocuments, insertStaffDocumentSchema, staffOnboarding, insertStaffOnboardingSchema, staffPushTokens, paymentLog, insertPaymentLogSchema;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
@@ -307,6 +307,15 @@ var init_schema = __esm({
       staffUsername: text("staff_username").notNull(),
       action: text("action").notNull(),
       reason: text("reason"),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
+    passwordResetAuditLog = pgTable("password_reset_audit_log", {
+      id: serial("id").primaryKey(),
+      staffUsername: text("staff_username").notNull(),
+      customerId: integer("customer_id"),
+      customerEmail: text("customer_email"),
+      customerName: text("customer_name"),
+      outcome: text("outcome").notNull(),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     menuCategoryVisibility = pgTable("menu_category_visibility", {
@@ -738,6 +747,25 @@ async function runStartupMigrations() {
     await client.query(`
       ALTER TABLE app_orders
         ADD COLUMN IF NOT EXISTS confirmation_token TEXT;
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS password_reset_audit_log (
+        id SERIAL PRIMARY KEY,
+        staff_username TEXT NOT NULL,
+        customer_id INTEGER,
+        customer_email TEXT,
+        customer_name TEXT,
+        outcome TEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS password_reset_audit_log_created_at_idx
+        ON password_reset_audit_log (created_at DESC);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS password_reset_audit_log_staff_username_idx
+        ON password_reset_audit_log (staff_username);
     `);
     await client.query(`
       INSERT INTO membership_plans
@@ -1723,6 +1751,24 @@ var init_storage = __esm({
       async getAuditLogsForOrders(orderIds) {
         if (orderIds.length === 0) return [];
         return db.select().from(orderAuditLog).where(inArray(orderAuditLog.orderId, orderIds)).orderBy(desc(orderAuditLog.createdAt));
+      }
+      // ── Password reset audit ──────────────────────────────────────────────────
+      async logPasswordResetAttempt(data) {
+        await db.insert(passwordResetAuditLog).values({
+          staffUsername: data.staffUsername,
+          customerId: data.customerId ?? null,
+          customerEmail: data.customerEmail ? encrypt(data.customerEmail) : null,
+          customerName: data.customerName ? encrypt(data.customerName) : null,
+          outcome: data.outcome
+        });
+      }
+      async listPasswordResetAuditLog(limit = 50) {
+        const rows = await db.select().from(passwordResetAuditLog).orderBy(desc(passwordResetAuditLog.createdAt)).limit(limit);
+        return rows.map((r) => ({
+          ...r,
+          customerEmail: r.customerEmail ? decrypt(r.customerEmail) : null,
+          customerName: r.customerName ? decrypt(r.customerName) : null
+        }));
       }
       // ══════════════════════════════════════════════════════════════════
       // STAFF HR — TIME ENTRIES
@@ -4889,8 +4935,24 @@ async function registerRoutes(app2) {
     }
   });
   app2.post("/api/staff/customers/forgot-password", staffAuth, managerAuth, async (req, res) => {
+    const staffActor = req.staffUser;
+    const actorUsername = staffActor?.username || "system";
+    const recordAudit = async (outcome, customer, fallbackEmail) => {
+      try {
+        await storage.logPasswordResetAttempt({
+          staffUsername: actorUsername,
+          customerId: customer?.id ?? null,
+          customerEmail: customer?.email ?? (fallbackEmail || null),
+          customerName: customer?.name ?? null,
+          outcome
+        });
+      } catch (auditErr) {
+        console.error("[staff-pwreset] failed to write audit entry:", auditErr?.message);
+      }
+    };
     const clientIp = getClientIp(req);
     if (!checkSensitiveRateLimit(clientIp)) {
+      await recordAudit("rate_limited", null, String(req.body?.email || "").trim() || void 0);
       return res.status(429).json({ message: "Too many requests. Please try again later." });
     }
     const rawId = req.body?.customerId;
@@ -4910,9 +4972,11 @@ async function registerRoutes(app2) {
         customer = await storage.getCustomerByEmail(rawEmail);
       }
       if (!customer) {
+        await recordAudit("not_found", null, rawEmail || void 0);
         return res.status(404).json({ message: "Customer not found" });
       }
       if (!customer.emailVerified) {
+        await recordAudit("email_not_verified", customer);
         return res.status(403).json({
           code: "EMAIL_NOT_VERIFIED",
           message: "This customer's email is not verified. They must verify their email before a password reset can be sent.",
@@ -4921,6 +4985,7 @@ async function registerRoutes(app2) {
       }
       const lastSent = customer.passwordResetLastSentAt;
       if (lastSent && Date.now() - lastSent.getTime() < 6e4) {
+        await recordAudit("rate_limited_recent_send", customer);
         return res.status(429).json({
           message: "A reset email was sent to this customer in the last minute. Please wait before trying again."
         });
@@ -4931,14 +4996,27 @@ async function registerRoutes(app2) {
       await storage.setPasswordResetToken(customer.id, tokenHash, expiresAt);
       const sent = await sendPasswordResetEmail({ name: customer.name, email: customer.email, tokenRaw });
       if (!sent) {
+        await recordAudit("send_failed", customer);
         return res.status(502).json({ message: "Could not send the reset email. Please try again later." });
       }
-      const staffActor = req.staffUser;
-      console.log(`[staff-pwreset] Manager '${staffActor?.username || "system"}' triggered reset for customer ${customer.id} <${customer.email}>`);
+      await recordAudit("sent", customer);
+      console.log(`[staff-pwreset] Manager '${actorUsername}' triggered reset for customer ${customer.id} <${customer.email}>`);
       res.json({ success: true, email: customer.email });
     } catch (err) {
       console.error("Staff forgot-password error:", err.message);
+      await recordAudit("error", null, rawEmail || void 0);
       res.status(500).json({ message: "Could not process the request" });
+    }
+  });
+  app2.get("/api/staff/customers/password-reset-history", staffAuth, managerAuth, async (req, res) => {
+    const limitRaw = parseInt(String(req.query.limit ?? "50"), 10);
+    const limit = isNaN(limitRaw) ? 50 : Math.min(Math.max(limitRaw, 1), 200);
+    try {
+      const entries = await storage.listPasswordResetAuditLog(limit);
+      res.json(entries);
+    } catch (err) {
+      console.error("[staff-pwreset] history fetch failed:", err?.message);
+      res.status(500).json({ message: "Could not load reset history" });
     }
   });
   app2.patch("/api/staff/approve", staffAuth, ownerAuth, async (req, res) => {
