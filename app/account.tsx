@@ -18,7 +18,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
+import { useCart } from "@/contexts/CartContext";
 import { apiRequest, queryClient, getApiUrl } from "@/lib/query-client";
+import type { SelectedModifier } from "@/types/menu";
 import Colors from "@/constants/colors";
 import { TABLE_TYPES } from "@/lib/data";
 import { fetch } from "expo/fetch";
@@ -903,6 +905,18 @@ function BookingCard({ booking, onCancel, onReschedule, showCancel }: { booking:
   );
 }
 
+interface ReorderResponse {
+  items: Array<{
+    variationId: string;
+    itemId: string;
+    name: string;
+    price: number;
+    quantity: number;
+    modifiers?: SelectedModifier[];
+  }>;
+  skipped: string[];
+}
+
 function OrderCard({ order, active }: { order: AppOrder; active?: boolean }) {
   const date = new Date(order.createdAt);
   const dateStr = date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
@@ -910,6 +924,62 @@ function OrderCard({ order, active }: { order: AppOrder; active?: boolean }) {
   const total = `£${(order.totalPence / 100).toFixed(2)}`;
   let items: AppOrderItem[] = [];
   try { items = JSON.parse(order.itemsJson); } catch {}
+  const { addItems } = useCart();
+  const [reordering, setReordering] = useState(false);
+  // Per spec: every non-cancelled, non-refunded order in the history list
+  // gets a Reorder button. The endpoint also requires the per-order
+  // confirmation token (same auth as the receipt route), so hide the button
+  // for legacy orders that never had a token issued.
+  const canReorder =
+    !!order.confirmationToken &&
+    order.status !== "cancelled" &&
+    order.status !== "refunded";
+
+  const handleReorder = async () => {
+    if (!canReorder || reordering) return;
+    setReordering(true);
+    try {
+      const url = new URL(`/api/orders/${order.id}/reorder`, getApiUrl());
+      url.searchParams.set("token", order.confirmationToken ?? "");
+      const res = await fetch(url.toString());
+      if (res.status === 409) {
+        Alert.alert(
+          "Can't reorder this order",
+          "This order has been cancelled or refunded, so we can't rebuild it.",
+        );
+        return;
+      }
+      if (!res.ok) throw new Error("Reorder unavailable");
+      const data = (await res.json()) as ReorderResponse;
+      if (!data.items || data.items.length === 0) {
+        Alert.alert(
+          "Nothing to reorder",
+          "None of the items from this order are available on the menu right now.",
+        );
+        return;
+      }
+      addItems(data.items);
+      const skipped = data.skipped ?? [];
+      const goToOrder = () => router.replace("/(tabs)/order");
+      if (skipped.length > 0) {
+        const list = skipped.slice(0, 5).join(", ") + (skipped.length > 5 ? "…" : "");
+        Alert.alert(
+          "Some items were skipped",
+          `These aren't available on the menu right now: ${list}`,
+          [{ text: "Continue", onPress: goToOrder }],
+        );
+      } else {
+        goToOrder();
+      }
+    } catch {
+      Alert.alert(
+        "Couldn't reorder",
+        "We couldn't rebuild your cart from this order. Please try again in a moment.",
+      );
+    } finally {
+      setReordering(false);
+    }
+  };
 
   const statusConfig: Record<string, { label: string; bg: string; text: string }> = {
     pending:   { label: "Awaiting Payment", bg: "#FEF3C7", text: "#92400E" },
@@ -985,10 +1055,37 @@ function OrderCard({ order, active }: { order: AppOrder; active?: boolean }) {
           <Text style={styles.orderDiscountText}>{order.discountLabel}</Text>
         </View>
       )}
-      {canOpenReceipt && (
+      {(canOpenReceipt || canReorder) && (
         <View style={styles.viewReceiptRow}>
-          <Text style={styles.viewReceiptText}>View receipt</Text>
-          <Ionicons name="chevron-forward" size={14} color={Colors.brand.blue} />
+          {canReorder ? (
+            <Pressable
+              onPress={handleReorder}
+              disabled={reordering}
+              accessibilityRole="button"
+              accessibilityLabel={`Reorder items from order on ${dateStr}`}
+              testID={`reorder-btn-${order.id}`}
+              hitSlop={6}
+              style={({ pressed }) => [
+                styles.reorderInlineBtn,
+                { opacity: pressed || reordering ? 0.7 : 1 },
+              ]}
+            >
+              {reordering ? (
+                <ActivityIndicator size="small" color={Colors.brand.blue} />
+              ) : (
+                <>
+                  <Ionicons name="repeat-outline" size={14} color={Colors.brand.blue} />
+                  <Text style={styles.reorderInlineText}>Reorder</Text>
+                </>
+              )}
+            </Pressable>
+          ) : <View />}
+          {canOpenReceipt ? (
+            <View style={styles.viewReceiptInner}>
+              <Text style={styles.viewReceiptText}>View receipt</Text>
+              <Ionicons name="chevron-forward" size={14} color={Colors.brand.blue} />
+            </View>
+          ) : null}
         </View>
       )}
     </>
@@ -1688,14 +1785,37 @@ const styles = StyleSheet.create({
   viewReceiptRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-end",
+    justifyContent: "space-between",
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: "#E5E7EB",
     gap: 4,
   },
+  viewReceiptInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginLeft: "auto",
+  },
   viewReceiptText: {
+    fontSize: 12,
+    fontFamily: "Montserrat_600SemiBold",
+    color: Colors.brand.blue,
+  },
+  reorderInlineBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.brand.blue,
+    backgroundColor: "#fff",
+    minHeight: 30,
+  },
+  reorderInlineText: {
     fontSize: 12,
     fontFamily: "Montserrat_600SemiBold",
     color: Colors.brand.blue,
