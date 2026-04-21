@@ -3432,12 +3432,15 @@ async function buildSquareOrderBody(items, tableNote, customer, discountPercent,
     const itemPrice = catalogPriceById.get(item.variationId) ?? 0;
     const mods = (item.modifiers ?? []).map((m) => ({
       name: m.name ?? "",
-      pricePence: catalogPriceById.get(m.catalogObjectId) ?? 0
+      pricePence: catalogPriceById.get(m.catalogObjectId) ?? 0,
+      catalogObjectId: m.catalogObjectId
     }));
     return {
       name: item.name ?? "Item",
       quantity: item.quantity,
       pricePence: itemPrice,
+      variationId: item.variationId,
+      ...item.itemId ? { itemId: item.itemId } : {},
       modifiers: mods
     };
   });
@@ -3552,8 +3555,18 @@ function findMenuItemForReorder(flat, rawName, rawVariation) {
 function buildReorderPayload(flat, rawItems, isUnavailable) {
   const items = [];
   const skipped = [];
+  const byVariationId = /* @__PURE__ */ new Map();
+  for (const m of flat) {
+    if (m.variationId && !byVariationId.has(m.variationId)) byVariationId.set(m.variationId, m);
+  }
   for (const raw of rawItems) {
-    const match = findMenuItemForReorder(flat, raw.name, raw.variationName);
+    let match = null;
+    if (raw.variationId) {
+      match = byVariationId.get(raw.variationId) ?? null;
+    }
+    if (!match) {
+      match = findMenuItemForReorder(flat, raw.name, raw.variationName);
+    }
     if (!match) {
       skipped.push(raw.name);
       continue;
@@ -3564,8 +3577,15 @@ function buildReorderPayload(flat, rawItems, isUnavailable) {
     }
     const modOptions = (match.modifiers ?? []).flatMap((ml) => ml.options);
     const resolvedMods = [];
-    for (const modName of raw.modifiers ?? []) {
-      const opt = modOptions.find((o) => norm(o.name) === norm(modName));
+    const rawModNames = raw.modifiers ?? [];
+    const rawModIds = raw.modifierIds ?? [];
+    const modCount = Math.max(rawModNames.length, rawModIds.length);
+    for (let i = 0; i < modCount; i++) {
+      const modId = rawModIds[i];
+      const modName = rawModNames[i];
+      let opt;
+      if (modId) opt = modOptions.find((o) => o.id === modId);
+      if (!opt && modName) opt = modOptions.find((o) => norm(o.name) === norm(modName));
       if (opt) resolvedMods.push({ catalogObjectId: opt.id, name: opt.name, price: opt.price });
     }
     items.push({
@@ -7139,7 +7159,12 @@ async function registerRoutes(app2) {
             name: p.name,
             quantity: p.quantity,
             price: p.pricePence,
-            ...p.modifiers.length ? { modifiers: p.modifiers.map((m) => m.name) } : {}
+            variationId: p.variationId,
+            ...p.itemId ? { itemId: p.itemId } : {},
+            ...p.modifiers.length ? {
+              modifiers: p.modifiers.map((m) => m.name),
+              modifierIds: p.modifiers.map((m) => m.catalogObjectId)
+            } : {}
           }))
         ),
         totalPence: discountedTotal,
@@ -7199,7 +7224,12 @@ async function registerRoutes(app2) {
             name: p.name,
             quantity: p.quantity,
             price: p.pricePence,
-            ...p.modifiers.length ? { modifiers: p.modifiers.map((m) => m.name) } : {}
+            variationId: p.variationId,
+            ...p.itemId ? { itemId: p.itemId } : {},
+            ...p.modifiers.length ? {
+              modifiers: p.modifiers.map((m) => m.name),
+              modifierIds: p.modifiers.map((m) => m.catalogObjectId)
+            } : {}
           }))
         ),
         totalPence,
