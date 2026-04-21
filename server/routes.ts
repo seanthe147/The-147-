@@ -4250,6 +4250,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Staff: revert an accidental kitchen status change ─────────────────────
+  // The advance route is forward-only, so a mistap (e.g. "Delivered" instead
+  // of "Mark ready") would lock the order in a terminal state and jump the
+  // customer's receipt ahead. This route undoes the most recent forward
+  // transition. To keep blast radius small:
+  //   • Within a 60-second window after the mistake, ANY signed-in staff can
+  //     revert without a manager's approval — this covers the common
+  //     "oops, undo that" case.
+  //   • After the window, only managers/owners may revert, and they must
+  //     supply a reason which is recorded in `order_audit_log`.
+  // The previous status is reconstructed by walking the order's audit log so
+  // it correctly handles skipped statuses (e.g. paid → delivered reverts
+  // back to paid, not ready).
+  app.post("/api/staff/orders/:id/revert", staffAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid order ID" });
+    const reason = String((req.body || {}).reason || "").trim();
+    const staffUsername = (req as any).staffUsername as string | null;
+    const staffRole = ((req as any).staffRole as string | null) || "staff";
+    const isManager = staffRole === "manager" || staffRole === "owner";
+    const UNDO_WINDOW_MS = 60_000;
+    try {
+      const order = await storage.getAppOrder(id);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      // Only kitchen-lifecycle statuses can be reverted. Cancel/refund/expire
+      // have their own dedicated routes and require different handling.
+      const REVERTABLE = new Set(["preparing", "ready", "delivered", "collected"]);
+      if (!REVERTABLE.has(order.status)) {
+        return res.status(400).json({ message: `Cannot revert an order that is ${order.status}` });
+      }
+      // Walk the audit log forward to reconstruct the status history.
+      // Stack semantics: each "advance:X" pushes a state, each "revert:X→Y"
+      // pops back. The current state is the top of the stack; the previous
+      // state (what we revert to) is one below.
+      const auditAsc = (await storage.getOrderAuditLog(id)).slice().reverse();
+      const history: Array<{ state: string; at: Date }> = [
+        { state: "paid", at: order.createdAt },
+      ];
+      for (const entry of auditAsc) {
+        if (entry.action.startsWith("advance:")) {
+          const target = entry.action.slice("advance:".length);
+          history.push({ state: target, at: entry.createdAt });
+        } else if (entry.action.startsWith("revert:")) {
+          if (history.length > 1) history.pop();
+        }
+      }
+      const top = history[history.length - 1];
+      if (history.length < 2 || top.state !== order.status) {
+        // Either no forward step to undo, or the audit log is out of sync
+        // with the order row — bail out rather than guess.
+        return res.status(400).json({ message: "Nothing to undo for this order" });
+      }
+      const previous = history[history.length - 2].state;
+      const ageMs = Date.now() - new Date(top.at).getTime();
+      const withinWindow = ageMs <= UNDO_WINDOW_MS;
+      if (!withinWindow && !isManager) {
+        return res.status(403).json({
+          message: `Only a manager can undo this — the change was ${Math.round(ageMs / 1000)}s ago (limit 60s).`,
+        });
+      }
+      if (!withinWindow && !reason) {
+        return res.status(400).json({ message: "A reason is required for manager reverts." });
+      }
+      const actor = staffUsername || "admin";
+      await storage.updateAppOrderStatus(id, previous);
+      await storage.logOrderAction({
+        orderId: id,
+        staffUsername: actor,
+        action: `revert:${order.status}->${previous}`,
+        reason: reason || undefined,
+      });
+      console.log(`[ORDERS] Order #${id} reverted ${order.status}→${previous} by ${actor}${reason ? ` (${reason})` : ""}`);
+      res.json({ status: previous, from: order.status });
+    } catch (err: any) {
+      console.error("[ORDERS] Revert failed:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ── Staff: refund a paid app order (PIN-authorised) ───────────────────────────
   app.post("/api/staff/orders/:id/refund", staffAuth, async (req, res) => {
     const id = parseInt(String(req.params.id));

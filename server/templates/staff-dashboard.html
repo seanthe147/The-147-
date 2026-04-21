@@ -4536,6 +4536,32 @@
     }
   }
 
+  /* Undo the most recent kitchen status change.
+     • Within 60s of the change: any staff member can undo silently
+       (we just send the request and the server enforces the window).
+     • After 60s: the server requires a reason and a manager/owner
+       account, so we prompt for the reason here. */
+  async function revertOrder(id,fromLabel){
+    const tryRevert=async(reason)=>{
+      const body=reason?{reason}:{};
+      const r=await api(`/api/staff/orders/${id}/revert`,{method:'POST',body:JSON.stringify(body),headers:{'Content-Type':'application/json'}});
+      if(!r.ok){
+        const j=await r.json().catch(()=>({}));
+        const msg=j.message||'Failed to undo';
+        // The server sends a 400 asking for a reason once the 60s
+        // window has lapsed — re-prompt the user instead of failing.
+        if(r.status===400&&/reason is required/i.test(msg)&&!reason){
+          const r2=prompt(`Undoing "${fromLabel}" needs a reason (manager-only after 60s):`,'');
+          if(r2&&r2.trim())return tryRevert(r2.trim());
+          return;
+        }
+        throw new Error(msg);
+      }
+      loadOrders();
+    };
+    try{await tryRevert();}catch(e){alert('Undo: '+(e.message||'Failed'));}
+  }
+
   function refundOrder(id,tableNote,total){
     const summary=`Order #${id} · ${tableNote||'No table'} · £${(total/100).toFixed(2)}`;
     openOrderAuthModal({
@@ -4593,11 +4619,18 @@
       };
       const cancelBtn=`<button class="btn btn-secondary btn-sm" style="font-size:11px;padding:4px 10px" onclick="cancelOrder(${o.id},'${(o.tableNote||'').replace(/'/g,"\\'")}',${o.totalPence})">Cancel</button>`;
       const refundBtn=`<button class="btn btn-sm" style="font-size:11px;padding:4px 10px;background:var(--red);color:#fff;border:none;border-radius:var(--r);cursor:pointer" onclick="refundOrder(${o.id},'${(o.tableNote||'').replace(/'/g,"\\'")}',${o.totalPence})">Refund</button>`;
+      // "Undo" rolls the order back one kitchen step. Always offered while
+      // the order is in a kitchen state (preparing/ready/delivered/collected)
+      // — the server enforces the 60s window for non-managers and prompts
+      // for a reason after that, so we don't need to gate it client-side.
+      const curLabel=(ORDER_STATUS[o.status]||{}).label||o.status;
+      const undoBtn=`<button class="btn btn-secondary btn-sm" title="Undo the last status change" style="font-size:11px;padding:4px 10px" onclick="revertOrder(${o.id},'${esc(curLabel)}')">Undo</button>`;
       const wrap=(...btns)=>`<div style="display:flex;gap:6px;flex-wrap:wrap">${btns.join('')}</div>`;
       if(o.status==='pending') return cancelBtn;
       if(o.status==='paid')    return wrap(advBtn('Start preparing','preparing',true), refundBtn);
-      if(o.status==='preparing') return wrap(advBtn('Mark ready','ready',true));
-      if(o.status==='ready')   return wrap(advBtn(finalLabel, finalStatus, true));
+      if(o.status==='preparing') return wrap(advBtn('Mark ready','ready',true), undoBtn);
+      if(o.status==='ready')   return wrap(advBtn(finalLabel, finalStatus, true), undoBtn);
+      if(o.status==='delivered'||o.status==='collected') return wrap(undoBtn);
       if(o.audit){
         const by=o.audit.staffUsername||'admin';
         const note=o.audit.reason?` — "${o.audit.reason}"`:'';
@@ -4632,6 +4665,7 @@
   window.cancelOrder=cancelOrder;
   window.refundOrder=refundOrder;
   window.advanceOrder=advanceOrder;
+  window.revertOrder=revertOrder;
 
   /* ── Banner Management ── */
   let bannersData=[];
