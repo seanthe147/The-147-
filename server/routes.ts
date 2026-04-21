@@ -3741,13 +3741,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { discountPercent, discountLabel, excludeWithDeals } =
         await resolveMemberDiscountImpl(req, customer, syncSquareMembershipForCustomer);
-      const { url, linkId, squareOrderId } = await square.createOrderCheckoutLink(
+      const { url, linkId, squareOrderId, pricedItems, rawTotalPence } = await square.createOrderCheckoutLink(
         items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote
       );
-      const rawTotal = items.reduce((sum: number, i: any) => sum + (Number(i.price) * Number(i.quantity)), 0);
       const discountedTotal = discountPercent
-        ? Math.round(rawTotal * (1 - discountPercent / 100))
-        : rawTotal;
+        ? Math.round(rawTotalPence * (1 - discountPercent / 100))
+        : rawTotalPence;
 
       // Store order record (non-blocking — don't fail checkout if DB write fails)
       storage.createAppOrder({
@@ -3757,11 +3756,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         customerName: customer?.name || undefined,
         customerEmail: customer?.email || undefined,
         itemsJson: JSON.stringify(
-          items.map((i: any) => ({
-            name: i.name ?? "Item",
-            quantity: i.quantity,
-            price: i.price,
-            ...(i.modifiers?.length ? { modifiers: i.modifiers.map((m: any) => m.name) } : {}),
+          pricedItems.map((p) => ({
+            name: p.name,
+            quantity: p.quantity,
+            price: p.pricePence,
+            ...(p.modifiers.length ? { modifiers: p.modifiers.map((m) => m.name) } : {}),
           }))
         ),
         totalPence: discountedTotal,
@@ -3813,7 +3812,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { discountPercent, discountLabel, excludeWithDeals } =
         await resolveMemberDiscountImpl(req, customer, syncSquareMembershipForCustomer);
 
-      const { orderId, totalPence } = await square.createSquareOrderForCheckout(
+      const { orderId, totalPence, pricedItems } = await square.createSquareOrderForCheckout(
         items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote,
       );
 
@@ -3829,11 +3828,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         customerName: customer?.name || undefined,
         customerEmail: customer?.email || undefined,
         itemsJson: JSON.stringify(
-          items.map((i: any) => ({
-            name: i.name ?? "Item",
-            quantity: i.quantity,
-            price: i.price,
-            ...(i.modifiers?.length ? { modifiers: i.modifiers.map((m: any) => m.name) } : {}),
+          pricedItems.map((p) => ({
+            name: p.name,
+            quantity: p.quantity,
+            price: p.pricePence,
+            ...(p.modifiers.length ? { modifiers: p.modifiers.map((m) => m.name) } : {}),
           }))
         ),
         totalPence,

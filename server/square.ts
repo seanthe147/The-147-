@@ -952,6 +952,13 @@ interface CheckoutCustomer {
   phone?: string;
 }
 
+export interface PricedLineItem {
+  name: string;
+  quantity: number;
+  pricePence: number;
+  modifiers: Array<{ name: string; pricePence: number }>;
+}
+
 function normalizeUkPhone(phone: string): string | undefined {
   const digits = phone.replace(/[\s\-\(\)]/g, "");
   if (digits.startsWith("+44")) return digits;
@@ -972,7 +979,12 @@ async function buildSquareOrderBody(
   discountLabel: string | undefined,
   excludeWithDeals: boolean | undefined,
   orderNote: string | undefined,
-): Promise<{ order: any; prePopulated: Record<string, any> | undefined }> {
+): Promise<{
+  order: any;
+  prePopulated: Record<string, any> | undefined;
+  pricedItems: PricedLineItem[];
+  rawTotalPence: number;
+}> {
   const locationId = getLocationId();
 
   // Build pre-populated buyer data for logged-in customers (used by checkout link only)
@@ -1159,7 +1171,25 @@ async function buildSquareOrderBody(
     } : {}),
   };
 
-  return { order, prePopulated };
+  const pricedItems: PricedLineItem[] = items.map((item) => {
+    const itemPrice = catalogPriceById.get(item.variationId) ?? 0;
+    const mods = (item.modifiers ?? []).map((m) => ({
+      name: m.name ?? "",
+      pricePence: catalogPriceById.get(m.catalogObjectId) ?? 0,
+    }));
+    return {
+      name: item.name ?? "Item",
+      quantity: item.quantity,
+      pricePence: itemPrice,
+      modifiers: mods,
+    };
+  });
+  const rawTotalPence = pricedItems.reduce((sum, p) => {
+    const modSum = p.modifiers.reduce((s, m) => s + m.pricePence, 0);
+    return sum + (p.pricePence + modSum) * p.quantity;
+  }, 0);
+
+  return { order, prePopulated, pricedItems, rawTotalPence };
 }
 
 // Create a standalone Square Order (no hosted checkout) so we can charge it
@@ -1173,9 +1203,9 @@ export async function createSquareOrderForCheckout(
   discountLabel?: string,
   excludeWithDeals?: boolean,
   orderNote?: string,
-): Promise<{ orderId: string; totalPence: number }> {
+): Promise<{ orderId: string; totalPence: number; pricedItems: PricedLineItem[] }> {
   const idempotencyKey = `order-create-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  const { order } = await buildSquareOrderBody(
+  const { order, pricedItems } = await buildSquareOrderBody(
     items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote,
   );
   const data = await squareRequest("POST", "/v2/orders", {
@@ -1184,7 +1214,7 @@ export async function createSquareOrderForCheckout(
   });
   if (!data.order?.id) throw new Error("No order returned from Square");
   const totalPence = Number(data.order.total_money?.amount ?? data.order.net_amounts?.total_money?.amount ?? 0);
-  return { orderId: data.order.id as string, totalPence };
+  return { orderId: data.order.id as string, totalPence, pricedItems };
 }
 
 export async function createOrderCheckoutLink(
@@ -1195,9 +1225,9 @@ export async function createOrderCheckoutLink(
   discountLabel?: string,
   excludeWithDeals?: boolean,
   orderNote?: string
-): Promise<{ url: string; linkId: string; squareOrderId: string }> {
+): Promise<{ url: string; linkId: string; squareOrderId: string; pricedItems: PricedLineItem[]; rawTotalPence: number }> {
   const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  const { order, prePopulated } = await buildSquareOrderBody(
+  const { order, prePopulated, pricedItems, rawTotalPence } = await buildSquareOrderBody(
     items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote,
   );
   const body: any = {
@@ -1214,6 +1244,8 @@ export async function createOrderCheckoutLink(
     url: data.payment_link.url as string,
     linkId: (data.payment_link.id ?? "") as string,
     squareOrderId: (data.payment_link.order_id ?? "") as string,
+    pricedItems,
+    rawTotalPence,
   };
 }
 
