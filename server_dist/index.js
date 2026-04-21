@@ -3508,6 +3508,78 @@ async function createRefund(opts) {
   return data.refund;
 }
 
+// server/reorder-matching.ts
+var norm = (s) => (s ?? "").trim().toLowerCase();
+function splitName(raw) {
+  const parts = raw.split(" \u2014 ");
+  if (parts.length >= 2) {
+    return {
+      base: parts.slice(0, -1).join(" \u2014 ").trim(),
+      variation: parts[parts.length - 1].trim()
+    };
+  }
+  return { base: raw.trim() };
+}
+function findMenuItemForReorder(flat, rawName, rawVariation) {
+  const { base, variation: nameVariation } = splitName(rawName);
+  const baseN = norm(base);
+  const wantedVariation = norm(rawVariation || nameVariation);
+  if (wantedVariation) {
+    const exact = flat.find(
+      (m) => norm(m.name) === baseN && norm(m.variationName) === wantedVariation
+    );
+    if (exact) return exact;
+  }
+  const baseCandidates = flat.filter((m) => norm(m.name) === baseN);
+  if (baseCandidates.length === 1) return baseCandidates[0];
+  if (baseCandidates.length > 1) {
+    const noVariation = baseCandidates.find((m) => !m.variationName);
+    if (noVariation) return noVariation;
+    if (wantedVariation) {
+      const fuzzy = baseCandidates.find(
+        (m) => m.variationName && norm(m.variationName).includes(wantedVariation)
+      );
+      if (fuzzy) return fuzzy;
+    }
+    return baseCandidates[0];
+  }
+  const fullN = norm(rawName);
+  const fullMatch = flat.find(
+    (m) => norm(m.variationName ? `${m.name} \u2014 ${m.variationName}` : m.name) === fullN
+  );
+  return fullMatch ?? null;
+}
+function buildReorderPayload(flat, rawItems, isUnavailable) {
+  const items = [];
+  const skipped = [];
+  for (const raw of rawItems) {
+    const match = findMenuItemForReorder(flat, raw.name, raw.variationName);
+    if (!match) {
+      skipped.push(raw.name);
+      continue;
+    }
+    if (isUnavailable(match.variationId)) {
+      skipped.push(raw.name);
+      continue;
+    }
+    const modOptions = (match.modifiers ?? []).flatMap((ml) => ml.options);
+    const resolvedMods = [];
+    for (const modName of raw.modifiers ?? []) {
+      const opt = modOptions.find((o) => norm(o.name) === norm(modName));
+      if (opt) resolvedMods.push({ catalogObjectId: opt.id, name: opt.name, price: opt.price });
+    }
+    items.push({
+      variationId: match.variationId,
+      itemId: match.id,
+      name: match.variationName ? `${match.name} \u2014 ${match.variationName}` : match.name,
+      price: match.price,
+      quantity: Math.max(1, raw.quantity || 1),
+      ...resolvedMods.length > 0 ? { modifiers: resolvedMods } : {}
+    });
+  }
+  return { items, skipped };
+}
+
 // server/ticketsource.ts
 var cachedEvents = [];
 var lastFetchTime = 0;
@@ -7267,6 +7339,59 @@ async function registerRoutes(app2) {
       });
     } catch (err) {
       console.error("[ORDER] confirmation lookup failed:", err.message);
+      res.status(500).json({ message: "Lookup failed" });
+    }
+  });
+  app2.get("/api/orders/:appOrderId/reorder", async (req, res) => {
+    const appOrderId = parseInt(String(req.params.appOrderId));
+    if (isNaN(appOrderId)) return res.status(400).json({ message: "Invalid order id" });
+    const providedToken = typeof req.query.token === "string" ? req.query.token : "";
+    if (!providedToken) return res.status(401).json({ message: "Missing confirmation token" });
+    try {
+      const order = await storage.getAppOrder(appOrderId);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      const expected = order.confirmationToken ?? "";
+      const a = Buffer.from(providedToken);
+      const b = Buffer.from(expected);
+      const tokenOk = !!expected && a.length === b.length && timingSafeEqual(a, b);
+      if (!tokenOk) return res.status(404).json({ message: "Order not found" });
+      if (order.status === "cancelled" || order.status === "refunded") {
+        return res.status(409).json({ message: "Order cannot be reordered" });
+      }
+      let rawItems = [];
+      try {
+        rawItems = JSON.parse(order.itemsJson);
+      } catch {
+      }
+      if (rawItems.length === 0) {
+        return res.json({ items: [], skipped: [] });
+      }
+      const [menu, itemOverrides] = await Promise.all([
+        getMenuFromSquare(),
+        storage.getMenuItemOverrides()
+      ]);
+      const overrideByVariation = new Map(itemOverrides.map((o) => [o.variationId, o]));
+      const flat = [];
+      const seen = /* @__PURE__ */ new Set();
+      const walk = (cats) => {
+        for (const cat of cats) {
+          for (const it of cat.items ?? []) {
+            const key = `${it.id}::${it.variationId}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            flat.push(it);
+          }
+          if (cat.subcategories?.length) walk(cat.subcategories);
+        }
+      };
+      walk(menu);
+      const result = buildReorderPayload(flat, rawItems, (variationId) => {
+        const ovr = overrideByVariation.get(variationId);
+        return !!(ovr?.hidden || ovr?.soldOut);
+      });
+      res.json(result);
+    } catch (err) {
+      console.error("[ORDER] Reorder lookup failed:", err.message);
       res.status(500).json({ message: "Lookup failed" });
     }
   });
