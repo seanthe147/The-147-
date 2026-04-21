@@ -1205,40 +1205,35 @@ var init_storage = __esm({
       async searchCustomers(query, limit = 6) {
         if (!query || query.trim().length < 2) return [];
         const q = query.trim().toLowerCase();
-        const allBookings = await db.select().from(bookings).orderBy(bookings.createdAt);
+        const qClean = q.replace(/\s/g, "");
+        const allCustomers = await db.select().from(customers).orderBy(customers.id);
         const seen = /* @__PURE__ */ new Set();
         const matches = [];
-        for (const raw of allBookings) {
+        for (const raw of allCustomers) {
           try {
-            const name = decrypt(raw.customerName);
-            const email = decrypt(raw.customerEmail);
-            const phone = decrypt(raw.customerPhone);
+            const dec = decryptCustomer(raw);
+            const name = dec.name || "";
+            const email = dec.email || "";
+            const phone = dec.phone || "";
             if (name === "ANONYMIZED" || email.includes("@removed.local")) continue;
-            const dedupeKey = email.toLowerCase();
-            if (seen.has(dedupeKey)) continue;
+            const emailLower = email.toLowerCase();
+            if (seen.has(emailLower)) continue;
             const nameLower = name.toLowerCase();
             const phoneLower = phone.toLowerCase().replace(/\s/g, "");
-            const qClean = q.replace(/\s/g, "");
-            const emailMatch = email.toLowerCase().includes(q);
+            const emailMatch = emailLower.includes(q);
             const nameMatch = nameLower.includes(q);
-            const phoneMatch = phoneLower.includes(qClean);
+            const phoneMatch = qClean.length > 0 && phoneLower.includes(qClean);
             if (nameMatch || phoneMatch || emailMatch) {
-              seen.add(dedupeKey);
+              seen.add(emailLower);
               const score = (nameLower.startsWith(q) ? 2 : 0) + (phoneMatch ? 1 : 0);
-              matches.push({ name, phone, email, score });
-              if (matches.length >= limit * 3) break;
+              matches.push({ id: dec.id, name, phone, email, score });
             }
           } catch {
             continue;
           }
         }
         matches.sort((a, b) => b.score - a.score);
-        const top = matches.slice(0, limit);
-        const enriched = await Promise.all(top.map(async ({ name, phone, email }) => {
-          const customer = await this.getCustomerByEmail(email).catch(() => void 0);
-          return { id: customer?.id, name, phone, email };
-        }));
-        return enriched;
+        return matches.slice(0, limit).map(({ id, name, phone, email }) => ({ id, name, phone, email }));
       }
       async getEvents() {
         return db.select().from(events).orderBy(events.date);
