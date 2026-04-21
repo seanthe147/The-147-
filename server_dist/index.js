@@ -272,6 +272,7 @@ var init_schema = __esm({
       migrationEmailedAt: timestamp("migration_emailed_at"),
       migrationCompletedAt: timestamp("migration_completed_at"),
       legacyExternalRef: text("legacy_external_ref"),
+      termsAcceptedAt: timestamp("terms_accepted_at"),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     insertMembershipSubscriptionSchema = createInsertSchema(membershipSubscriptions).omit({ id: true, createdAt: true });
@@ -8233,8 +8234,9 @@ Phone: ${phone}` : ""}`,
   app2.post("/api/membership/join", customerAuth, async (req, res) => {
     try {
       const customerId = req.customerId;
-      const { planId, billingFrequency = "monthly", startDate } = req.body ?? {};
+      const { planId, billingFrequency = "monthly", startDate, termsAccepted } = req.body ?? {};
       if (!planId) return res.status(400).json({ message: "planId is required" });
+      if (termsAccepted !== true) return res.status(400).json({ message: "You must accept the Terms & Conditions to join" });
       const isAnnual = billingFrequency === "annual";
       const existing = await storage.getMembershipSubscriptionByCustomer(customerId);
       if (existing && existing.planId === parseInt(planId) && existing.status === "active") {
@@ -8267,7 +8269,8 @@ Phone: ${phone}` : ""}`,
         hoursUsedThisPeriod: 0,
         guestPassesUsed: 0,
         staffNotes: periodStart > today ? `[Deferred start: ${periodStart}]` : null,
-        source: isAnnual ? "app_annual" : "app"
+        source: isAnnual ? "app_annual" : "app",
+        termsAcceptedAt: /* @__PURE__ */ new Date()
       });
       let checkoutUrl = null;
       if (isConfigured()) {
