@@ -16,9 +16,10 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.the147bradford.app",
-      "buildNumber": "12",
+      "buildNumber": "13",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSFaceIDUsageDescription": "Use Face ID to sign in to your 147 Bradford account quickly and securely."
       },
       "privacyManifests": {
         "NSPrivacyAccessedAPITypes": [
