@@ -4084,6 +4084,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Staff: advance an app order through its kitchen lifecycle ───────────────
+  // Forward-only transitions used by the kitchen view to keep the customer's
+  // receipt status banner in sync. Cancel/refund remain on their own routes
+  // because they require PIN authorisation and may issue a refund. This route
+  // intentionally does not require a PIN — it is a routine, low-risk action
+  // performed many times per shift.
+  app.post("/api/staff/orders/:id/advance", staffAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid order ID" });
+    const target = String((req.body || {}).status || "").trim();
+    // Allowed forward transitions. "delivered" is for table service, "collected"
+    // for bar pickup — staff pick whichever applies.
+    const ALLOWED: Record<string, string[]> = {
+      paid:      ["preparing", "ready", "delivered", "collected"],
+      preparing: ["ready", "delivered", "collected"],
+      ready:     ["delivered", "collected"],
+    };
+    const TERMINAL = new Set(["delivered", "collected"]);
+    const staffUsername = (req as any).staffUsername as string | null;
+    try {
+      const order = await storage.getAppOrder(id);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      const next = ALLOWED[order.status];
+      if (!next) {
+        return res.status(400).json({ message: `Cannot advance an order that is ${order.status}` });
+      }
+      if (!next.includes(target)) {
+        return res.status(400).json({ message: `Invalid transition from ${order.status} to ${target || "(none)"}` });
+      }
+      const actor = staffUsername || "admin";
+      await storage.updateAppOrderStatus(id, target);
+      await storage.logOrderAction({ orderId: id, staffUsername: actor, action: `advance:${target}` });
+      console.log(`[ORDERS] Order #${id} advanced ${order.status}→${target} by ${actor}`);
+      res.json({ status: target, isTerminal: TERMINAL.has(target) });
+    } catch (err: any) {
+      console.error("[ORDERS] Advance failed:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ── Staff: refund a paid app order (PIN-authorised) ───────────────────────────
   app.post("/api/staff/orders/:id/refund", staffAuth, async (req, res) => {
     const id = parseInt(String(req.params.id));

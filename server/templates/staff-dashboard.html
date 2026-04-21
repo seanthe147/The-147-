@@ -4455,11 +4455,15 @@
 
   /* ── App Orders ── */
   const ORDER_STATUS={
-    pending:  {label:'Pending',  cls:'pill-amber'},
-    paid:     {label:'Paid',     cls:'pill-green'},
-    cancelled:{label:'Cancelled',cls:'pill-red'},
-    refunded: {label:'Refunded', cls:'pill-amber'},
-    expired:  {label:'Expired',  cls:'pill-gray'},
+    pending:  {label:'Pending',   cls:'pill-amber'},
+    paid:     {label:'Paid',      cls:'pill-green'},
+    preparing:{label:'Preparing', cls:'pill-amber'},
+    ready:    {label:'Ready',     cls:'pill-green'},
+    delivered:{label:'Delivered', cls:'pill-gray'},
+    collected:{label:'Collected', cls:'pill-gray'},
+    cancelled:{label:'Cancelled', cls:'pill-red'},
+    refunded: {label:'Refunded',  cls:'pill-amber'},
+    expired:  {label:'Expired',   cls:'pill-gray'},
   };
 
   // ── Order auth modal state ────────────────────────────────────────────────
@@ -4519,6 +4523,19 @@
     });
   }
 
+  async function advanceOrder(id,status,label){
+    try{
+      const r=await api(`/api/staff/orders/${id}/advance`,{method:'POST',body:JSON.stringify({status}),headers:{'Content-Type':'application/json'}});
+      if(!r.ok){
+        const j=await r.json().catch(()=>({}));
+        throw new Error(j.message||'Failed to update order');
+      }
+      loadOrders();
+    }catch(e){
+      alert((label?label+': ':'')+(e.message||'Failed to update order'));
+    }
+  }
+
   function refundOrder(id,tableNote,total){
     const summary=`Order #${id} · ${tableNote||'No table'} · £${(total/100).toFixed(2)}`;
     openOrderAuthModal({
@@ -4562,8 +4579,25 @@
       }catch(e){return'—';}
     }
     function fmtActions(o){
-      if(o.status==='pending') return`<button class="btn btn-secondary btn-sm" style="font-size:11px;padding:4px 10px" onclick="cancelOrder(${o.id},'${(o.tableNote||'').replace(/'/g,"\\'")}',${o.totalPence})">Cancel</button>`;
-      if(o.status==='paid')    return`<button class="btn btn-sm" style="font-size:11px;padding:4px 10px;background:var(--red);color:#fff;border:none;border-radius:var(--r);cursor:pointer" onclick="refundOrder(${o.id},'${(o.tableNote||'').replace(/'/g,"\\'")}',${o.totalPence})">Refund</button>`;
+      // Kitchen lifecycle controls — forward-only transitions. The final
+      // step is "Delivered" when the order has a table note (table service)
+      // and "Collected" otherwise (bar pickup).
+      const finalLabel = (o.tableNote||'').trim() ? 'Delivered' : 'Collected';
+      const finalStatus = (o.tableNote||'').trim() ? 'delivered' : 'collected';
+      const advBtn=(label,status,primary)=>{
+        const style=primary
+          ? 'font-size:11px;padding:4px 10px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);cursor:pointer'
+          : 'font-size:11px;padding:4px 10px';
+        const cls=primary?'btn btn-sm':'btn btn-secondary btn-sm';
+        return `<button class="${cls}" style="${style}" onclick="advanceOrder(${o.id},'${status}','${esc(label)}')">${label}</button>`;
+      };
+      const cancelBtn=`<button class="btn btn-secondary btn-sm" style="font-size:11px;padding:4px 10px" onclick="cancelOrder(${o.id},'${(o.tableNote||'').replace(/'/g,"\\'")}',${o.totalPence})">Cancel</button>`;
+      const refundBtn=`<button class="btn btn-sm" style="font-size:11px;padding:4px 10px;background:var(--red);color:#fff;border:none;border-radius:var(--r);cursor:pointer" onclick="refundOrder(${o.id},'${(o.tableNote||'').replace(/'/g,"\\'")}',${o.totalPence})">Refund</button>`;
+      const wrap=(...btns)=>`<div style="display:flex;gap:6px;flex-wrap:wrap">${btns.join('')}</div>`;
+      if(o.status==='pending') return cancelBtn;
+      if(o.status==='paid')    return wrap(advBtn('Start preparing','preparing',true), refundBtn);
+      if(o.status==='preparing') return wrap(advBtn('Mark ready','ready',true));
+      if(o.status==='ready')   return wrap(advBtn(finalLabel, finalStatus, true));
       if(o.audit){
         const by=o.audit.staffUsername||'admin';
         const note=o.audit.reason?` — "${o.audit.reason}"`:'';
@@ -4597,6 +4631,7 @@
   window.loadOrders=loadOrders;
   window.cancelOrder=cancelOrder;
   window.refundOrder=refundOrder;
+  window.advanceOrder=advanceOrder;
 
   /* ── Banner Management ── */
   let bannersData=[];
