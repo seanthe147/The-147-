@@ -1407,8 +1407,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Mirrors POST /api/customers/forgot-password but requires staff manager auth
   // and identifies the customer by id (preferred) or email.
   app.post("/api/staff/customers/forgot-password", staffAuth, managerAuth, async (req, res) => {
+    const staffActor = (req as any).staffUser;
+    const actorUsername: string = staffActor?.username || "system";
+    const recordAudit = async (
+      outcome: string,
+      customer?: { id?: number | null; email?: string | null; name?: string | null } | null,
+      fallbackEmail?: string,
+    ) => {
+      try {
+        await storage.logPasswordResetAttempt({
+          staffUsername: actorUsername,
+          customerId: customer?.id ?? null,
+          customerEmail: customer?.email ?? (fallbackEmail || null),
+          customerName: customer?.name ?? null,
+          outcome,
+        });
+      } catch (auditErr: any) {
+        console.error("[staff-pwreset] failed to write audit entry:", auditErr?.message);
+      }
+    };
+
     const clientIp = getClientIp(req);
     if (!checkSensitiveRateLimit(clientIp)) {
+      await recordAudit("rate_limited", null, String(req.body?.email || "").trim() || undefined);
       return res.status(429).json({ message: "Too many requests. Please try again later." });
     }
     const rawId = req.body?.customerId;
@@ -1428,9 +1449,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         customer = await storage.getCustomerByEmail(rawEmail);
       }
       if (!customer) {
+        await recordAudit("not_found", null, rawEmail || undefined);
         return res.status(404).json({ message: "Customer not found" });
       }
       if (!customer.emailVerified) {
+        await recordAudit("email_not_verified", customer);
         return res.status(403).json({
           code: "EMAIL_NOT_VERIFIED",
           message: "This customer's email is not verified. They must verify their email before a password reset can be sent.",
@@ -1439,6 +1462,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const lastSent = customer.passwordResetLastSentAt;
       if (lastSent && Date.now() - lastSent.getTime() < 60_000) {
+        await recordAudit("rate_limited_recent_send", customer);
         return res.status(429).json({
           message: "A reset email was sent to this customer in the last minute. Please wait before trying again.",
         });
@@ -1449,14 +1473,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.setPasswordResetToken(customer.id, tokenHash, expiresAt);
       const sent = await sendPasswordResetEmail({ name: customer.name, email: customer.email, tokenRaw });
       if (!sent) {
+        await recordAudit("send_failed", customer);
         return res.status(502).json({ message: "Could not send the reset email. Please try again later." });
       }
-      const staffActor = (req as any).staffUser;
-      console.log(`[staff-pwreset] Manager '${staffActor?.username || "system"}' triggered reset for customer ${customer.id} <${customer.email}>`);
+      await recordAudit("sent", customer);
+      console.log(`[staff-pwreset] Manager '${actorUsername}' triggered reset for customer ${customer.id} <${customer.email}>`);
       res.json({ success: true, email: customer.email });
     } catch (err: any) {
       console.error("Staff forgot-password error:", err.message);
+      await recordAudit("error", null, rawEmail || undefined);
       res.status(500).json({ message: "Could not process the request" });
+    }
+  });
+
+  // Manager-only audit history of staff-initiated password resets.
+  app.get("/api/staff/customers/password-reset-history", staffAuth, managerAuth, async (req, res) => {
+    const limitRaw = parseInt(String(req.query.limit ?? "50"), 10);
+    const limit = isNaN(limitRaw) ? 50 : Math.min(Math.max(limitRaw, 1), 200);
+    try {
+      const entries = await storage.listPasswordResetAuditLog(limit);
+      res.json(entries);
+    } catch (err: any) {
+      console.error("[staff-pwreset] history fetch failed:", err?.message);
+      res.status(500).json({ message: "Could not load reset history" });
     }
   });
 

@@ -59,6 +59,8 @@ import {
   type AppOrder,
   orderAuditLog,
   type OrderAuditEntry,
+  passwordResetAuditLog,
+  type PasswordResetAuditEntry,
   staffTimeEntries,
   type StaffTimeEntry,
   staffLeaveRequests,
@@ -244,6 +246,27 @@ export async function runStartupMigrations() {
     await client.query(`
       ALTER TABLE app_orders
         ADD COLUMN IF NOT EXISTS confirmation_token TEXT;
+    `);
+
+    // Audit trail of staff-initiated password resets (Task #27)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS password_reset_audit_log (
+        id SERIAL PRIMARY KEY,
+        staff_username TEXT NOT NULL,
+        customer_id INTEGER,
+        customer_email TEXT,
+        customer_name TEXT,
+        outcome TEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS password_reset_audit_log_created_at_idx
+        ON password_reset_audit_log (created_at DESC);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS password_reset_audit_log_staff_username_idx
+        ON password_reset_audit_log (staff_username);
     `);
 
     // Ensure VIP plan exists (10% food & drink, group-based, excludes stacking with deals)
@@ -1595,6 +1618,34 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(orderAuditLog)
       .where(inArray(orderAuditLog.orderId, orderIds))
       .orderBy(desc(orderAuditLog.createdAt));
+  }
+
+  // ── Password reset audit ──────────────────────────────────────────────────
+  async logPasswordResetAttempt(data: {
+    staffUsername: string;
+    customerId?: number | null;
+    customerEmail?: string | null;
+    customerName?: string | null;
+    outcome: string;
+  }): Promise<void> {
+    await db.insert(passwordResetAuditLog).values({
+      staffUsername: data.staffUsername,
+      customerId: data.customerId ?? null,
+      customerEmail: data.customerEmail ? encrypt(data.customerEmail) : null,
+      customerName: data.customerName ? encrypt(data.customerName) : null,
+      outcome: data.outcome,
+    });
+  }
+
+  async listPasswordResetAuditLog(limit = 50): Promise<PasswordResetAuditEntry[]> {
+    const rows = await db.select().from(passwordResetAuditLog)
+      .orderBy(desc(passwordResetAuditLog.createdAt))
+      .limit(limit);
+    return rows.map((r) => ({
+      ...r,
+      customerEmail: r.customerEmail ? decrypt(r.customerEmail) : null,
+      customerName: r.customerName ? decrypt(r.customerName) : null,
+    }));
   }
 
   // ══════════════════════════════════════════════════════════════════

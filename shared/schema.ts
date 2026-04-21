@@ -381,6 +381,23 @@ export const orderAuditLog = pgTable("order_audit_log", {
 
 export type OrderAuditEntry = typeof orderAuditLog.$inferSelect;
 
+// ── Staff-initiated password reset audit log ─────────────────────────────────
+// Tracks every attempt by a manager to send a password reset email to a customer
+// (whether it succeeded or not), so abuse can be detected and support can follow up.
+// customerEmail / customerName are stored encrypted using the same encrypt() helper
+// applied to the customers table, so this log doesn't leak plaintext PII at rest.
+export const passwordResetAuditLog = pgTable("password_reset_audit_log", {
+  id: serial("id").primaryKey(),
+  staffUsername: text("staff_username").notNull(),
+  customerId: integer("customer_id"),
+  customerEmail: text("customer_email"),
+  customerName: text("customer_name"),
+  outcome: text("outcome").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type PasswordResetAuditEntry = typeof passwordResetAuditLog.$inferSelect;
+
 // ── Menu visibility overrides ─────────────────────────────────────────────────
 
 export const menuCategoryVisibility = pgTable("menu_category_visibility", {
