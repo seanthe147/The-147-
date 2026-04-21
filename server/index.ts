@@ -468,7 +468,7 @@ function configureExpoAndLanding(app: express.Application) {
       const platform = req.header("expo-platform");
       if (platform === "ios" || platform === "android") return next();
       // Server-rendered routes registered in registerRoutes()
-      if (req.path === "/verify-email") return next();
+      if (req.path === "/verify-email" || req.path === "/reset-password") return next();
       // Proxy all other web requests to Metro so Expo Router handles client-side routes
       const proxyReq = http.request(
         {
@@ -509,6 +509,7 @@ function configureExpoAndLanding(app: express.Application) {
         "/staff-privacy-notice",
         "/booking-widget",
         "/verify-email",
+        "/reset-password",
       ]);
       if (serverPages.has(req.path)) return next();
       if (fs.existsSync(indexPath)) {
