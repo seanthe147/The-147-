@@ -7301,6 +7301,37 @@ async function registerRoutes(app2) {
       res.status(500).json({ message: err.message });
     }
   });
+  app2.post("/api/staff/orders/:id/advance", staffAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid order ID" });
+    const target = String((req.body || {}).status || "").trim();
+    const ALLOWED = {
+      paid: ["preparing", "ready", "delivered", "collected"],
+      preparing: ["ready", "delivered", "collected"],
+      ready: ["delivered", "collected"]
+    };
+    const TERMINAL = /* @__PURE__ */ new Set(["delivered", "collected"]);
+    const staffUsername = req.staffUsername;
+    try {
+      const order = await storage.getAppOrder(id);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      const next = ALLOWED[order.status];
+      if (!next) {
+        return res.status(400).json({ message: `Cannot advance an order that is ${order.status}` });
+      }
+      if (!next.includes(target)) {
+        return res.status(400).json({ message: `Invalid transition from ${order.status} to ${target || "(none)"}` });
+      }
+      const actor = staffUsername || "admin";
+      await storage.updateAppOrderStatus(id, target);
+      await storage.logOrderAction({ orderId: id, staffUsername: actor, action: `advance:${target}` });
+      console.log(`[ORDERS] Order #${id} advanced ${order.status}\u2192${target} by ${actor}`);
+      res.json({ status: target, isTerminal: TERMINAL.has(target) });
+    } catch (err) {
+      console.error("[ORDERS] Advance failed:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
   app2.post("/api/staff/orders/:id/refund", staffAuth, async (req, res) => {
     const id = parseInt(String(req.params.id));
     if (isNaN(id)) return res.status(400).json({ message: "Invalid order ID" });
