@@ -7262,7 +7262,7 @@ async function registerRoutes(app2) {
       res.status(500).json({ message: err.message });
     }
   });
-  app2.get("/api/customers/orders", customerAuth, async (req, res) => {
+  const customerOrdersHandler = async (req, res) => {
     try {
       const email = req.customerEmail;
       if (!email) return res.status(400).json({ message: "No customer email" });
@@ -7272,7 +7272,9 @@ async function registerRoutes(app2) {
       console.error("[ORDERS] Customer orders failed:", err.message);
       res.status(500).json({ message: err.message });
     }
-  });
+  };
+  app2.get("/api/customers/orders", customerAuth, customerOrdersHandler);
+  app2.get("/api/orders/mine", customerAuth, customerOrdersHandler);
   app2.get("/api/events", async (req, res) => {
     try {
       const eventType = req.query.type;
