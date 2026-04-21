@@ -109,5 +109,71 @@ assert(
   "items flagged as unavailable by the override callback are skipped",
 );
 
+// ── ID-based matching (newer orders persist variation/modifier IDs) ──────────
+// The receipt names below are the OLD names — the menu has since been renamed.
+// With saved IDs, reorder should still resolve correctly.
+const renamedMenu: ReorderMenuItem[] = [
+  {
+    id: "ITEM_PIZZA",
+    variationId: "VAR_PIZZA_LARGE",
+    name: "Margherita Pizza (rebrand)",
+    variationName: "Large 12in",
+    price: 1500,
+    modifiers: [
+      {
+        id: "ML_TOPPINGS",
+        options: [
+          { id: "OPT_OLIVES", name: "Black Olives (renamed)", price: 120 },
+        ],
+      },
+    ],
+  },
+];
+
+const idResult = buildReorderPayload(renamedMenu, [
+  {
+    name: "Pepperoni Pizza — Large",
+    quantity: 1,
+    price: 1400,
+    variationId: "VAR_PIZZA_LARGE",
+    itemId: "ITEM_PIZZA",
+    modifiers: ["Olives"],
+    modifierIds: ["OPT_OLIVES"],
+  },
+], () => false);
+
+assert(idResult.items.length === 1 && idResult.skipped.length === 0, "renamed item resolved via saved variation id");
+assert(idResult.items[0].variationId === "VAR_PIZZA_LARGE", "matched line points at the same variation id");
+assert(
+  idResult.items[0].name === "Margherita Pizza (rebrand) — Large 12in",
+  "resolved line uses the live menu name, not the stale receipt name",
+);
+assert(
+  !!idResult.items[0].modifiers && idResult.items[0].modifiers[0].catalogObjectId === "OPT_OLIVES",
+  "renamed modifier resolved via saved catalog id",
+);
+
+// ID lookup wins even if there's a name collision elsewhere.
+const collisionMenu: ReorderMenuItem[] = [
+  { id: "ITEM_A", variationId: "VAR_A", name: "Coke", price: 200 },
+  { id: "ITEM_B", variationId: "VAR_B", name: "Coke", price: 250 },
+];
+const collisionResult = buildReorderPayload(collisionMenu, [
+  { name: "Coke", quantity: 1, price: 250, variationId: "VAR_B", itemId: "ITEM_B" },
+], () => false);
+assert(
+  collisionResult.items.length === 1 && collisionResult.items[0].variationId === "VAR_B",
+  "ID lookup picks the exact variation even when names collide",
+);
+
+// If the saved variation id is gone from the menu, fall back to name match.
+const fallbackResult = buildReorderPayload(menu, [
+  { name: "Fries", quantity: 1, price: 350, variationId: "VAR_DELETED", itemId: "ITEM_DELETED" },
+], () => false);
+assert(
+  fallbackResult.items.length === 1 && fallbackResult.items[0].variationId === "VAR_FRIES_REG",
+  "stale variation id falls back to name matching",
+);
+
 console.log(`\nResult: ${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

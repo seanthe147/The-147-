@@ -28,6 +28,11 @@ export interface ReorderRawItem {
   price: number;
   modifiers?: string[];
   variationName?: string;
+  // Newer orders persist these IDs alongside names so reorder survives renames.
+  // Older orders won't have them — we fall back to name matching in that case.
+  variationId?: string;
+  itemId?: string;
+  modifierIds?: string[];
 }
 
 export interface ReorderResolvedLine {
@@ -107,8 +112,22 @@ export function buildReorderPayload(
   const items: ReorderResolvedLine[] = [];
   const skipped: string[] = [];
 
+  // Index by variation id for fast ID-based lookup (preferred over name match).
+  const byVariationId = new Map<string, ReorderMenuItem>();
+  for (const m of flat) {
+    if (m.variationId && !byVariationId.has(m.variationId)) byVariationId.set(m.variationId, m);
+  }
+
   for (const raw of rawItems) {
-    const match = findMenuItemForReorder(flat, raw.name, raw.variationName);
+    // Prefer the saved catalog IDs — they survive menu renames. Fall back to
+    // name matching for receipts saved before we started persisting IDs.
+    let match: ReorderMenuItem | null = null;
+    if (raw.variationId) {
+      match = byVariationId.get(raw.variationId) ?? null;
+    }
+    if (!match) {
+      match = findMenuItemForReorder(flat, raw.name, raw.variationName);
+    }
     if (!match) {
       skipped.push(raw.name);
       continue;
@@ -120,8 +139,15 @@ export function buildReorderPayload(
 
     const modOptions = (match.modifiers ?? []).flatMap((ml) => ml.options);
     const resolvedMods: Array<{ catalogObjectId: string; name: string; price: number }> = [];
-    for (const modName of raw.modifiers ?? []) {
-      const opt = modOptions.find((o) => norm(o.name) === norm(modName));
+    const rawModNames = raw.modifiers ?? [];
+    const rawModIds = raw.modifierIds ?? [];
+    const modCount = Math.max(rawModNames.length, rawModIds.length);
+    for (let i = 0; i < modCount; i++) {
+      const modId = rawModIds[i];
+      const modName = rawModNames[i];
+      let opt: ReorderModifierOption | undefined;
+      if (modId) opt = modOptions.find((o) => o.id === modId);
+      if (!opt && modName) opt = modOptions.find((o) => norm(o.name) === norm(modName));
       if (opt) resolvedMods.push({ catalogObjectId: opt.id, name: opt.name, price: opt.price });
     }
 

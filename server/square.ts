@@ -956,7 +956,9 @@ export interface PricedLineItem {
   name: string;
   quantity: number;
   pricePence: number;
-  modifiers: Array<{ name: string; pricePence: number }>;
+  variationId: string;
+  itemId?: string;
+  modifiers: Array<{ name: string; pricePence: number; catalogObjectId: string }>;
 }
 
 function normalizeUkPhone(phone: string): string | undefined {
@@ -1176,11 +1178,14 @@ async function buildSquareOrderBody(
     const mods = (item.modifiers ?? []).map((m) => ({
       name: m.name ?? "",
       pricePence: catalogPriceById.get(m.catalogObjectId) ?? 0,
+      catalogObjectId: m.catalogObjectId,
     }));
     return {
       name: item.name ?? "Item",
       quantity: item.quantity,
       pricePence: itemPrice,
+      variationId: item.variationId,
+      ...(item.itemId ? { itemId: item.itemId } : {}),
       modifiers: mods,
     };
   });

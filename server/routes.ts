@@ -3814,7 +3814,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             name: p.name,
             quantity: p.quantity,
             price: p.pricePence,
-            ...(p.modifiers.length ? { modifiers: p.modifiers.map((m) => m.name) } : {}),
+            variationId: p.variationId,
+            ...(p.itemId ? { itemId: p.itemId } : {}),
+            ...(p.modifiers.length
+              ? {
+                  modifiers: p.modifiers.map((m) => m.name),
+                  modifierIds: p.modifiers.map((m) => m.catalogObjectId),
+                }
+              : {}),
           }))
         ),
         totalPence: discountedTotal,
@@ -3887,7 +3894,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             name: p.name,
             quantity: p.quantity,
             price: p.pricePence,
-            ...(p.modifiers.length ? { modifiers: p.modifiers.map((m) => m.name) } : {}),
+            variationId: p.variationId,
+            ...(p.itemId ? { itemId: p.itemId } : {}),
+            ...(p.modifiers.length
+              ? {
+                  modifiers: p.modifiers.map((m) => m.name),
+                  modifierIds: p.modifiers.map((m) => m.catalogObjectId),
+                }
+              : {}),
           }))
         ),
         totalPence,
