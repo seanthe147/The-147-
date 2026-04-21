@@ -59,6 +59,7 @@ function RootLayoutNav() {
             <Stack.Screen name="admin-banner" options={{ headerShown: false, presentation: "modal" }} />
             <Stack.Screen name="admin-events" options={{ headerShown: false, presentation: "modal" }} />
             <Stack.Screen name="admin-staff" options={{ headerShown: false, presentation: "modal" }} />
+            <Stack.Screen name="admin-customers" options={{ headerShown: false, presentation: "modal" }} />
           </>
         )}
         <Stack.Screen name="privacy-policy" options={{ headerShown: false, presentation: "modal" }} />

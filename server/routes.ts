@@ -1403,6 +1403,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Manager-initiated password reset — emails the verified customer a reset link.
+  // Mirrors POST /api/customers/forgot-password but requires staff manager auth
+  // and identifies the customer by id (preferred) or email.
+  app.post("/api/staff/customers/forgot-password", staffAuth, managerAuth, async (req, res) => {
+    const clientIp = getClientIp(req);
+    if (!checkSensitiveRateLimit(clientIp)) {
+      return res.status(429).json({ message: "Too many requests. Please try again later." });
+    }
+    const rawId = req.body?.customerId;
+    const rawEmail = String(req.body?.email || "").trim();
+    if (rawId === undefined && !rawEmail) {
+      return res.status(400).json({ message: "customerId or email is required" });
+    }
+    try {
+      let customer: import("@shared/schema").Customer | undefined;
+      if (rawId !== undefined && rawId !== null) {
+        const numId = typeof rawId === "number" ? rawId : parseInt(String(rawId), 10);
+        if (!isNaN(numId)) {
+          customer = await storage.getCustomerById(numId);
+        }
+      }
+      if (!customer && rawEmail) {
+        customer = await storage.getCustomerByEmail(rawEmail);
+      }
+      if (!customer) {
+        return res.status(404).json({ message: "Customer not found" });
+      }
+      if (!customer.emailVerified) {
+        return res.status(403).json({
+          code: "EMAIL_NOT_VERIFIED",
+          message: "This customer's email is not verified. They must verify their email before a password reset can be sent.",
+          email: customer.email,
+        });
+      }
+      const lastSent = customer.passwordResetLastSentAt;
+      if (lastSent && Date.now() - lastSent.getTime() < 60_000) {
+        return res.status(429).json({
+          message: "A reset email was sent to this customer in the last minute. Please wait before trying again.",
+        });
+      }
+      const tokenRaw = randomBytes(32).toString("hex");
+      const tokenHash = createHash("sha256").update(tokenRaw).digest("hex");
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+      await storage.setPasswordResetToken(customer.id, tokenHash, expiresAt);
+      const sent = await sendPasswordResetEmail({ name: customer.name, email: customer.email, tokenRaw });
+      if (!sent) {
+        return res.status(502).json({ message: "Could not send the reset email. Please try again later." });
+      }
+      const staffActor = (req as any).staffUser;
+      console.log(`[staff-pwreset] Manager '${staffActor?.username || "system"}' triggered reset for customer ${customer.id} <${customer.email}>`);
+      res.json({ success: true, email: customer.email });
+    } catch (err: any) {
+      console.error("Staff forgot-password error:", err.message);
+      res.status(500).json({ message: "Could not process the request" });
+    }
+  });
+
   app.patch("/api/staff/approve", staffAuth, ownerAuth, async (req, res) => {
     console.log("[approve] req.body:", JSON.stringify(req.body));
     // Accept both formats: {username, approvalStatus} (new) and {id, status} (legacy)

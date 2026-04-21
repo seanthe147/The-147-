@@ -554,6 +554,15 @@ function DashboardScreen() {
                 onPress={() => router.push("/admin-availability")}
                 testID="portal-availability-blocks"
               />
+              {/* Customer support tools — manager+ */}
+              <AdminTool
+                icon="person-circle"
+                title="Customers"
+                description="Look up a customer and send a password reset email"
+                color="#0EA5E9"
+                onPress={() => router.push("/admin-customers")}
+                testID="portal-customers"
+              />
               {/* Staff Accounts / Approval — owner only */}
               {isOwner && (
                 <AdminTool
