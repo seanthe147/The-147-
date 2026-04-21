@@ -7505,6 +7505,63 @@ async function registerRoutes(app2) {
       res.status(500).json({ message: err.message });
     }
   });
+  app2.post("/api/staff/orders/:id/revert", staffAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid order ID" });
+    const reason = String((req.body || {}).reason || "").trim();
+    const staffUsername = req.staffUsername;
+    const staffRole = req.staffRole || "staff";
+    const isManager = staffRole === "manager" || staffRole === "owner";
+    const UNDO_WINDOW_MS = 6e4;
+    try {
+      const order = await storage.getAppOrder(id);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      const REVERTABLE = /* @__PURE__ */ new Set(["preparing", "ready", "delivered", "collected"]);
+      if (!REVERTABLE.has(order.status)) {
+        return res.status(400).json({ message: `Cannot revert an order that is ${order.status}` });
+      }
+      const auditAsc = (await storage.getOrderAuditLog(id)).slice().reverse();
+      const history = [
+        { state: "paid", at: order.createdAt }
+      ];
+      for (const entry of auditAsc) {
+        if (entry.action.startsWith("advance:")) {
+          const target = entry.action.slice("advance:".length);
+          history.push({ state: target, at: entry.createdAt });
+        } else if (entry.action.startsWith("revert:")) {
+          if (history.length > 1) history.pop();
+        }
+      }
+      const top = history[history.length - 1];
+      if (history.length < 2 || top.state !== order.status) {
+        return res.status(400).json({ message: "Nothing to undo for this order" });
+      }
+      const previous = history[history.length - 2].state;
+      const ageMs = Date.now() - new Date(top.at).getTime();
+      const withinWindow = ageMs <= UNDO_WINDOW_MS;
+      if (!withinWindow && !isManager) {
+        return res.status(403).json({
+          message: `Only a manager can undo this \u2014 the change was ${Math.round(ageMs / 1e3)}s ago (limit 60s).`
+        });
+      }
+      if (!withinWindow && !reason) {
+        return res.status(400).json({ message: "A reason is required for manager reverts." });
+      }
+      const actor = staffUsername || "admin";
+      await storage.updateAppOrderStatus(id, previous);
+      await storage.logOrderAction({
+        orderId: id,
+        staffUsername: actor,
+        action: `revert:${order.status}->${previous}`,
+        reason: reason || void 0
+      });
+      console.log(`[ORDERS] Order #${id} reverted ${order.status}\u2192${previous} by ${actor}${reason ? ` (${reason})` : ""}`);
+      res.json({ status: previous, from: order.status });
+    } catch (err) {
+      console.error("[ORDERS] Revert failed:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
   app2.post("/api/staff/orders/:id/refund", staffAuth, async (req, res) => {
     const id = parseInt(String(req.params.id));
     if (isNaN(id)) return res.status(400).json({ message: "Invalid order ID" });
