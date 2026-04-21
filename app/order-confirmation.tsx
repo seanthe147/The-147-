@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Alert } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -8,6 +8,20 @@ import { fetch } from "expo/fetch";
 import Colors from "@/constants/colors";
 import { clearPendingConfirmation } from "@/lib/pending-order";
 import { getApiUrl } from "@/lib/query-client";
+import { useCart } from "@/contexts/CartContext";
+import type { SelectedModifier } from "@/types/menu";
+
+interface ReorderResponse {
+  items: Array<{
+    variationId: string;
+    itemId: string;
+    name: string;
+    price: number;
+    quantity: number;
+    modifiers?: SelectedModifier[];
+  }>;
+  skipped: string[];
+}
 
 interface ConfirmationItem {
   name: string;
@@ -135,6 +149,58 @@ export default function OrderConfirmationScreen() {
   const isWaiting = canPoll && !pollExpired && !isTerminal;
   const tone = STATUS_TONE[status] ?? STATUS_TONE.paid;
 
+  // Reorder: rebuild the cart from this past receipt and bounce the
+  // customer back to the order tab so they can pick a table and pay.
+  const { addItems } = useCart();
+  const [reordering, setReordering] = useState(false);
+  const canReorder = !!appOrderId && !!token && status !== "cancelled" && status !== "refunded";
+
+  const handleReorder = async () => {
+    if (!canReorder || reordering) return;
+    setReordering(true);
+    try {
+      const url = new URL(`/api/orders/${appOrderId}/reorder`, getApiUrl());
+      url.searchParams.set("token", token);
+      const res = await fetch(url.toString());
+      if (res.status === 409) {
+        Alert.alert(
+          "Can't reorder this order",
+          "This order has been cancelled or refunded, so we can't rebuild it.",
+        );
+        return;
+      }
+      if (!res.ok) throw new Error("Reorder unavailable");
+      const data = (await res.json()) as ReorderResponse;
+      if (!data.items || data.items.length === 0) {
+        Alert.alert(
+          "Nothing to reorder",
+          "None of the items from this order are available on the menu right now.",
+        );
+        return;
+      }
+      addItems(data.items);
+      const skipped = data.skipped ?? [];
+      const goToOrder = () => router.replace("/(tabs)/order");
+      if (skipped.length > 0) {
+        const list = skipped.slice(0, 5).join(", ") + (skipped.length > 5 ? "…" : "");
+        Alert.alert(
+          "Some items were skipped",
+          `These aren't available on the menu right now: ${list}`,
+          [{ text: "Continue", onPress: goToOrder }],
+        );
+      } else {
+        goToOrder();
+      }
+    } catch {
+      Alert.alert(
+        "Couldn't reorder",
+        "We couldn't rebuild your cart from this order. Please try again in a moment.",
+      );
+    } finally {
+      setReordering(false);
+    }
+  };
+
   return (
     <View style={[styles.container, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>
       <View style={styles.header}>
@@ -201,6 +267,27 @@ export default function OrderConfirmationScreen() {
         ) : null}
       </ScrollView>
 
+      {canReorder ? (
+        <Pressable
+          onPress={handleReorder}
+          disabled={reordering}
+          style={({ pressed }) => [
+            styles.reorderBtn,
+            { opacity: pressed || reordering ? 0.85 : 1 },
+          ]}
+          testID="reorder-btn"
+        >
+          {reordering ? (
+            <ActivityIndicator color={Colors.brand.blue} size="small" />
+          ) : (
+            <>
+              <Ionicons name="repeat-outline" size={18} color={Colors.brand.blue} />
+              <Text style={styles.reorderText}>Reorder these items</Text>
+            </>
+          )}
+        </Pressable>
+      ) : null}
+
       <Pressable
         onPress={() => router.replace("/(tabs)")}
         style={({ pressed }) => [styles.doneBtn, { opacity: pressed ? 0.85 : 1 }]}
@@ -232,6 +319,20 @@ const styles = StyleSheet.create({
   itemQty: { fontSize: 14, fontWeight: "700" as const, color: Colors.brand.blue, minWidth: 28 },
   itemName: { fontSize: 14, color: "#0A1628", fontWeight: "500" as const },
   itemMods: { fontSize: 12, color: "#6B7280", marginTop: 2 },
+  reorderBtn: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    gap: 8,
+    backgroundColor: "#fff",
+    borderWidth: 1.5,
+    borderColor: Colors.brand.blue,
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginTop: 8,
+    minHeight: 50,
+  },
+  reorderText: { color: Colors.brand.blue, fontWeight: "700" as const, fontSize: 15 },
   doneBtn: { backgroundColor: Colors.brand.blue, paddingVertical: 16, borderRadius: 14, alignItems: "center" as const, marginTop: 8 },
   doneText: { color: "#fff", fontWeight: "700" as const, fontSize: 16 },
 });

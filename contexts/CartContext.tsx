@@ -22,11 +22,13 @@ interface AddItemPayload {
   name: string;
   price: number;
   modifiers?: SelectedModifier[];
+  quantity?: number;
 }
 
 interface CartContextType {
   items: CartItem[];
   addItem: (item: AddItemPayload) => void;
+  addItems: (items: AddItemPayload[]) => void;
   removeItem: (cartKey: string) => void;
   updateQuantity: (cartKey: string, delta: number) => void;
   clearCart: () => void;
@@ -42,14 +44,34 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const addItem = useCallback((item: AddItemPayload) => {
     const cartKey = makeCartKey(item.variationId, item.modifiers);
+    const addQty = Math.max(1, item.quantity ?? 1);
     setItems((prev) => {
       const existing = prev.find((i) => i.cartKey === cartKey);
       if (existing) {
         return prev.map((i) =>
-          i.cartKey === cartKey ? { ...i, quantity: i.quantity + 1 } : i
+          i.cartKey === cartKey ? { ...i, quantity: i.quantity + addQty } : i
         );
       }
-      return [...prev, { ...item, cartKey, quantity: 1 }];
+      const { quantity: _q, ...rest } = item;
+      return [...prev, { ...rest, cartKey, quantity: addQty }];
+    });
+  }, []);
+
+  const addItems = useCallback((payloads: AddItemPayload[]) => {
+    setItems((prev) => {
+      const next = [...prev];
+      for (const item of payloads) {
+        const cartKey = makeCartKey(item.variationId, item.modifiers);
+        const addQty = Math.max(1, item.quantity ?? 1);
+        const idx = next.findIndex((i) => i.cartKey === cartKey);
+        if (idx >= 0) {
+          next[idx] = { ...next[idx], quantity: next[idx].quantity + addQty };
+        } else {
+          const { quantity: _q, ...rest } = item;
+          next.push({ ...rest, cartKey, quantity: addQty });
+        }
+      }
+      return next;
     });
   }, []);
 
@@ -88,6 +110,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       value={{
         items,
         addItem,
+        addItems,
         removeItem,
         updateQuantity,
         clearCart,

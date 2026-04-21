@@ -10,6 +10,7 @@ import { storage } from "./storage";
 import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema } from "@shared/schema";
 import { hashPin, verifyPin } from "./encryption";
 import * as square from "./square";
+import { buildReorderPayload, type ReorderMenuItem, type ReorderRawItem } from "./reorder-matching";
 import { fetchTicketSourceEvents, type AppEvent } from "./ticketsource";
 import { isStripeConfigured, getStripeClient, getPublishableKey } from "./stripe";
 import { countWorkingDays, calculateLeaveYearBounds, calculateProRataEntitlement, applyCarryOverCap, getEnglandWalesBankHolidays } from "./uk-leave-utils";
@@ -4035,6 +4036,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (err: any) {
       console.error("[ORDER] confirmation lookup failed:", err.message);
+      res.status(500).json({ message: "Lookup failed" });
+    }
+  });
+
+  // ── Public: build a "reorder" payload from a past order ───────────────────
+  // Looks up each line on the live menu by name (and variation name) so the
+  // client can drop the items straight into the cart. Items that no longer
+  // exist on the menu (or are hidden / sold out) are returned in `skipped`
+  // so the customer sees a small notice. Same token check as the receipt
+  // endpoint so we never leak orders by ID alone.
+  app.get("/api/orders/:appOrderId/reorder", async (req, res) => {
+    const appOrderId = parseInt(String(req.params.appOrderId));
+    if (isNaN(appOrderId)) return res.status(400).json({ message: "Invalid order id" });
+    const providedToken = typeof req.query.token === "string" ? req.query.token : "";
+    if (!providedToken) return res.status(401).json({ message: "Missing confirmation token" });
+    try {
+      const order = await storage.getAppOrder(appOrderId);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      const expected = order.confirmationToken ?? "";
+      const a = Buffer.from(providedToken);
+      const b = Buffer.from(expected);
+      const tokenOk = !!expected && a.length === b.length && timingSafeEqual(a, b);
+      if (!tokenOk) return res.status(404).json({ message: "Order not found" });
+      // Don't allow reordering a cancelled / refunded receipt — the items may
+      // never have been served, and surfacing a "Reorder" CTA would be jarring.
+      if (order.status === "cancelled" || order.status === "refunded") {
+        return res.status(409).json({ message: "Order cannot be reordered" });
+      }
+
+      let rawItems: ReorderRawItem[] = [];
+      try { rawItems = JSON.parse(order.itemsJson); } catch {}
+      if (rawItems.length === 0) {
+        return res.json({ items: [], skipped: [] });
+      }
+
+      const [menu, itemOverrides] = await Promise.all([
+        square.getMenuFromSquare(),
+        storage.getMenuItemOverrides(),
+      ]);
+      const overrideByVariation = new Map(itemOverrides.map((o) => [o.variationId, o]));
+
+      // Flatten every variation across categories and subcategories. The same
+      // item id can appear in multiple categories — that's fine, we just need
+      // any matching live variation.
+      const flat: ReorderMenuItem[] = [];
+      const seen = new Set<string>();
+      const walk = (cats: any[]) => {
+        for (const cat of cats) {
+          for (const it of cat.items ?? []) {
+            const key = `${it.id}::${it.variationId}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            flat.push(it as ReorderMenuItem);
+          }
+          if (cat.subcategories?.length) walk(cat.subcategories);
+        }
+      };
+      walk(menu);
+
+      const result = buildReorderPayload(flat, rawItems, (variationId) => {
+        const ovr = overrideByVariation.get(variationId);
+        return !!(ovr?.hidden || ovr?.soldOut);
+      });
+
+      res.json(result);
+    } catch (err: any) {
+      console.error("[ORDER] Reorder lookup failed:", err.message);
       res.status(500).json({ message: "Lookup failed" });
     }
   });
