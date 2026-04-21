@@ -5379,6 +5379,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(plans);
   });
 
+  // ── Membership — check whether an email is registered to an active member ───
+  // Used by the checkout UI so we can prompt members who are typing their email
+  // as a guest to sign in and claim their discount instead of silently paying
+  // full price. Returns only a boolean — never the plan, name, or any other
+  // membership detail — to limit usefulness for enumeration.
+  app.post("/api/membership/check-email", async (req, res) => {
+    const ip = getClientIp(req);
+    // Rate limit: 20 lookups per minute per IP. Plenty for a real checkout
+    // (one debounced lookup per email entered) and tight enough to discourage
+    // bulk enumeration of the customer table.
+    const limit = checkRateLimit(`member-check:${ip}`, 20, 60 * 1000);
+    if (!limit.allowed) {
+      res.setHeader("Retry-After", String(limit.retryAfter));
+      return res.status(429).json({ isMember: false });
+    }
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    // Cheap email shape check — no need to lookup nonsense strings.
+    if (!email || email.length < 5 || email.length > 254 || !email.includes("@") || !email.includes(".")) {
+      return res.json({ isMember: false });
+    }
+    res.set("Cache-Control", "no-store");
+    try {
+      const cust = await storage.getCustomerByEmail(email);
+      if (!cust) return res.json({ isMember: false });
+      const sub = await storage.getMembershipSubscriptionByCustomer(cust.id);
+      const isActive = sub?.status === "active";
+      const notCancelled = !sub?.cancelledAt;
+      const periodValid = !sub?.currentPeriodEnd || new Date(sub.currentPeriodEnd) >= new Date();
+      const hasDiscount = (sub?.plan?.foodDrinkDiscount ?? 0) > 0;
+      const isMember = !!(sub && isActive && notCancelled && periodValid && hasDiscount);
+      return res.json({ isMember });
+    } catch (err: any) {
+      console.warn("[MEMBERSHIP] check-email failed:", err.message);
+      return res.json({ isMember: false });
+    }
+  });
+
   // ── Membership — customer: get own subscription ──────────────────────────────
   app.get("/api/membership/my-subscription", customerAuth, async (req, res) => {
     const customerId = (req as any).customerId as number;
