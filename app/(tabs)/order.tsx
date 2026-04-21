@@ -743,7 +743,7 @@ function CartSheet({
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
   const [paymentSheetVisible, setPaymentSheetVisible] = useState(false);
-  const [pendingOrder, setPendingOrder] = useState<{ appOrderId: number; amountPence: number } | null>(null);
+  const [pendingOrder, setPendingOrder] = useState<{ appOrderId: number; amountPence: number; confirmationToken?: string } | null>(null);
   const [cancelledNotice, setCancelledNotice] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
 
@@ -922,7 +922,7 @@ function CartSheet({
         ...(i.modifiers?.length ? { modifiers: i.modifiers.map((m) => m.name) } : {}),
       }));
       snapshottedTableRef.current = tableNote.trim();
-      setPendingOrder({ appOrderId: data.appOrderId, amountPence: data.amountPence });
+      setPendingOrder({ appOrderId: data.appOrderId, amountPence: data.amountPence, confirmationToken: data.confirmationToken });
       // Persist the pending order id + confirmation token so we can recover
       // the receipt if the app is closed/backgrounded before the in-app
       // confirmation appears. The token is required by the server; without
@@ -964,12 +964,15 @@ function CartSheet({
         throw new Error(data.message || "Payment was declined.");
       }
       // Success — close everything, clear cart, route to confirmation
-      const confirmationParams = {
+      const confirmationParams: Record<string, string> = {
         appOrderId: String(pendingOrder.appOrderId),
         tableNote: snapshottedTableRef.current,
         totalPence: String(pendingOrder.amountPence),
         items: JSON.stringify(snapshottedItemsRef.current),
       };
+      if (pendingOrder.confirmationToken) {
+        confirmationParams.token = pendingOrder.confirmationToken;
+      }
       setPaymentSheetVisible(false);
       setPendingOrder(null);
       onClose();
@@ -1500,6 +1503,7 @@ export default function OrderScreen() {
           tableNote: data.tableNote ?? "",
           totalPence: String(data.totalPence ?? 0),
           items: JSON.stringify(data.items ?? []),
+          token: pending.token,
         },
       });
       // Clear after navigation. The confirmation screen also clears the

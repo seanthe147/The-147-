@@ -353,6 +353,14 @@ export const appOrders = pgTable("app_orders", {
   totalPence: integer("total_pence").notNull().default(0),
   discountPercent: integer("discount_percent"),
   discountLabel: text("discount_label"),
+  // Lifecycle:
+  //   pending  → order created, awaiting payment
+  //   paid     → payment captured (kitchen sees it)
+  //   preparing→ kitchen has started the order
+  //   ready    → ready to collect from the bar
+  //   delivered→ taken to the customer's table (terminal)
+  //   collected→ picked up by the customer (terminal)
+  //   cancelled/refunded/expired → terminal failure states
   status: text("status").notNull().default("pending"),
   confirmationToken: text("confirmation_token"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

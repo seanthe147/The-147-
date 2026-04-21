@@ -3938,7 +3938,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!tokenOk) {
         return res.status(404).json({ message: "Order not found" });
       }
-      if (order.status !== "paid") {
+      // Statuses visible on the receipt: anything from "paid" onwards, plus
+      // terminal failure states. "pending" is hidden so we don't leak unpaid
+      // orders.
+      const VISIBLE_STATUSES = new Set([
+        "paid", "preparing", "ready", "delivered", "collected",
+        "cancelled", "refunded",
+      ]);
+      if (!VISIBLE_STATUSES.has(order.status)) {
         return res.status(404).json({ message: "Order not paid" });
       }
       // Don't surface ancient receipts.
@@ -3948,11 +3955,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       let items: Array<{ name: string; quantity: number; price: number; modifiers?: string[] }> = [];
       try { items = JSON.parse(order.itemsJson); } catch {}
+      const tableNote = order.tableNote ?? "";
+      const hasTable = tableNote.trim().length > 0;
+      // Customer-friendly labels for the receipt's live status banner.
+      const STATUS_META: Record<string, { label: string; detail: string; isTerminal: boolean }> = {
+        paid:      { label: "Order received",   detail: "We've sent your order to the bar and kitchen.", isTerminal: false },
+        preparing: { label: "Being prepared",   detail: "The kitchen is working on your order now.",      isTerminal: false },
+        ready:     { label: hasTable ? "Ready — on its way" : "Ready to collect", detail: hasTable ? `A team member is bringing it to ${tableNote}.` : "Please come to the bar to collect your order.", isTerminal: false },
+        delivered: { label: "Enjoy!",           detail: hasTable ? `Your order has been delivered to ${tableNote}.` : "Your order has been served.", isTerminal: true },
+        collected: { label: "Enjoy!",           detail: "Thanks — your order has been collected.",        isTerminal: true },
+        cancelled: { label: "Cancelled",        detail: "This order was cancelled by staff.",             isTerminal: true },
+        refunded:  { label: "Refunded",         detail: "This order has been refunded.",                  isTerminal: true },
+      };
+      const meta = STATUS_META[order.status] ?? STATUS_META.paid;
       res.json({
         appOrderId: order.id,
         status: order.status,
+        statusLabel: meta.label,
+        statusDetail: meta.detail,
+        isTerminal: meta.isTerminal,
         totalPence: order.totalPence,
-        tableNote: order.tableNote ?? "",
+        tableNote,
         items,
       });
     } catch (err: any) {

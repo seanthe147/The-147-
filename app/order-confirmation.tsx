@@ -1,10 +1,13 @@
-import React, { useEffect } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQuery } from "@tanstack/react-query";
+import { fetch } from "expo/fetch";
 import Colors from "@/constants/colors";
 import { clearPendingConfirmation } from "@/lib/pending-order";
+import { getApiUrl } from "@/lib/query-client";
 
 interface ConfirmationItem {
   name: string;
@@ -13,9 +16,32 @@ interface ConfirmationItem {
   modifiers?: string[];
 }
 
+interface ConfirmationStatus {
+  status: string;
+  statusLabel: string;
+  statusDetail: string;
+  isTerminal: boolean;
+}
+
+// How often to ask the server for the latest status while the screen is open.
+const POLL_INTERVAL_MS = 8000;
+// Stop polling after this long even if the order isn't terminal — staff can
+// still progress it, but we don't want a forever-open screen hammering the API.
+const POLL_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
 function formatPrice(pence: number): string {
   return `£${(pence / 100).toFixed(2)}`;
 }
+
+const STATUS_TONE: Record<string, { bg: string; fg: string; icon: keyof typeof Ionicons.glyphMap }> = {
+  paid:      { bg: "#DBEAFE", fg: "#1D4ED8", icon: "receipt-outline" },
+  preparing: { bg: "#FEF3C7", fg: "#B45309", icon: "restaurant-outline" },
+  ready:     { bg: "#DCFCE7", fg: "#15803D", icon: "checkmark-done-outline" },
+  delivered: { bg: "#DCFCE7", fg: "#15803D", icon: "happy-outline" },
+  collected: { bg: "#DCFCE7", fg: "#15803D", icon: "happy-outline" },
+  cancelled: { bg: "#FEE2E2", fg: "#B91C1C", icon: "close-circle-outline" },
+  refunded:  { bg: "#FEE2E2", fg: "#B91C1C", icon: "return-down-back-outline" },
+};
 
 export default function OrderConfirmationScreen() {
   const insets = useSafeAreaInsets();
@@ -24,11 +50,13 @@ export default function OrderConfirmationScreen() {
     tableNote?: string;
     totalPence?: string;
     items?: string;
+    token?: string;
   }>();
 
   const appOrderId = params.appOrderId ? parseInt(String(params.appOrderId)) : null;
   const totalPence = params.totalPence ? parseInt(String(params.totalPence)) : 0;
   const tableNote = params.tableNote ? String(params.tableNote) : "";
+  const token = params.token ? String(params.token) : "";
   let items: ConfirmationItem[] = [];
   try {
     if (params.items) items = JSON.parse(String(params.items));
@@ -41,6 +69,57 @@ export default function OrderConfirmationScreen() {
   useEffect(() => {
     if (appOrderId) void clearPendingConfirmation(appOrderId);
   }, [appOrderId]);
+
+  // Stop polling after a sensible timeout so a forgotten receipt screen
+  // doesn't hammer the API forever.
+  const [pollExpired, setPollExpired] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setPollExpired(true), POLL_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const canPoll = !!appOrderId && !!token;
+
+  const statusUrl = useMemo(() => {
+    if (!canPoll) return "";
+    const url = new URL(`/api/orders/${appOrderId}/confirmation`, getApiUrl());
+    url.searchParams.set("token", token);
+    return url.toString();
+  }, [appOrderId, token, canPoll]);
+
+  const { data: statusData } = useQuery<ConfirmationStatus | null>({
+    queryKey: ["order-confirmation-status", appOrderId, token],
+    enabled: canPoll,
+    queryFn: async () => {
+      const res = await fetch(statusUrl);
+      if (!res.ok) return null;
+      const json = (await res.json()) as Partial<ConfirmationStatus> | null;
+      if (!json || typeof json.status !== "string") return null;
+      return {
+        status: json.status,
+        statusLabel: json.statusLabel ?? "Order received",
+        statusDetail: json.statusDetail ?? "",
+        isTerminal: !!json.isTerminal,
+      };
+    },
+    refetchInterval: (query) => {
+      if (pollExpired) return false;
+      const data = query.state.data;
+      if (data?.isTerminal) return false;
+      return POLL_INTERVAL_MS;
+    },
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+  });
+
+  const status = statusData?.status ?? "paid";
+  const statusLabel = statusData?.statusLabel ?? "Order received";
+  const statusDetail = statusData?.statusDetail ?? (tableNote
+    ? `We've sent it to the bar and kitchen. We'll bring it to ${tableNote}.`
+    : "We've sent it to the bar and kitchen — pick it up at the bar when it's ready.");
+  const isTerminal = !!statusData?.isTerminal;
+  const isWaiting = canPoll && !pollExpired && !isTerminal;
+  const tone = STATUS_TONE[status] ?? STATUS_TONE.paid;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>
@@ -56,8 +135,22 @@ export default function OrderConfirmationScreen() {
         </View>
         <Text style={styles.title}>Order placed!</Text>
         <Text style={styles.subtitle}>
-          Your order has been sent to the bar and kitchen. {tableNote ? `We'll bring it to ${tableNote}.` : "Pick it up at the bar when it's ready."}
+          {tableNote ? `We'll bring your order to ${tableNote}.` : "Pick it up at the bar when it's ready."}
         </Text>
+
+        <View style={[styles.statusCard, { backgroundColor: tone.bg }]}>
+          <View style={styles.statusRow}>
+            <Ionicons name={tone.icon} size={22} color={tone.fg} />
+            <Text style={[styles.statusLabel, { color: tone.fg }]}>{statusLabel}</Text>
+            {isWaiting ? <ActivityIndicator size="small" color={tone.fg} style={{ marginLeft: 8 }} /> : null}
+          </View>
+          {statusDetail ? <Text style={[styles.statusDetail, { color: tone.fg }]}>{statusDetail}</Text> : null}
+          {pollExpired && !isTerminal ? (
+            <Text style={[styles.statusDetail, { color: tone.fg, marginTop: 6 }]}>
+              Tap close and reopen the receipt for the latest update, or ask a team member.
+            </Text>
+          ) : null}
+        </View>
 
         <View style={styles.refCard}>
           <View style={styles.refRow}>
@@ -110,7 +203,11 @@ const styles = StyleSheet.create({
   scroll: { paddingTop: 12, paddingBottom: 24, alignItems: "center" as const },
   iconRing: { width: 88, height: 88, borderRadius: 44, backgroundColor: "#DCFCE7", alignItems: "center" as const, justifyContent: "center" as const, marginBottom: 16 },
   title: { fontSize: 26, fontWeight: "800" as const, color: "#0A1628", marginBottom: 8 },
-  subtitle: { fontSize: 15, color: "#6B7280", textAlign: "center" as const, lineHeight: 22, marginBottom: 22, paddingHorizontal: 8 },
+  subtitle: { fontSize: 15, color: "#6B7280", textAlign: "center" as const, lineHeight: 22, marginBottom: 18, paddingHorizontal: 8 },
+  statusCard: { width: "100%", borderRadius: 16, padding: 14, marginBottom: 14 },
+  statusRow: { flexDirection: "row" as const, alignItems: "center" as const, gap: 8 },
+  statusLabel: { fontSize: 15, fontWeight: "700" as const, flexShrink: 1 },
+  statusDetail: { fontSize: 13, marginTop: 6, lineHeight: 18 },
   refCard: { width: "100%", backgroundColor: "#fff", borderRadius: 16, padding: 16, marginBottom: 14, gap: 10 },
   refRow: { flexDirection: "row" as const, justifyContent: "space-between" as const, alignItems: "center" as const },
   refLabel: { color: "#6B7280", fontSize: 13, fontWeight: "600" as const },
