@@ -99,6 +99,7 @@
     },
     "production-staff": {
       "ios": {
+        "ascAppId": "REPLACE_WITH_STAFF_ASC_APP_ID",
         "ascApiKeyIssuerId": "7cdddb46-b377-45c0-9cbe-e07c358d3cc5",
         "ascApiKeyId": "URDY56X3U2",
         "ascApiKeyPath": "ios-creds/AuthKey_URDY56X3U2.p8"

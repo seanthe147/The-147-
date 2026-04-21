@@ -212,8 +212,21 @@ Infrastructure to ship the same codebase as **two App Store listings**: one for 
   - `android.package: "com.the147bradford.staff"`
 - **Backend / web / DB**: untouched. Both variants hit the same `/api/customers/*` and `/api/staff/*` endpoints. Cross-platform single-account guarantee preserved.
 
-### Before publishing the staff app
-1. Create the staff App Store record (bundle `com.the147bradford.staff`) and put the `ascAppId` into `eas.json` → `submit.production-staff.ios.ascAppId`.
-2. Provision an iOS distribution certificate + provisioning profile for `com.the147bradford.staff`; either extend `ios-creds/` or use EAS remote credentials for the staff bundle.
-3. Run `eas build --profile production-staff --platform ios` (then submit to internal TestFlight).
-4. Once approved/live, flip `showStaffRoutes` in `lib/app-variant.ts` so the customer build no longer ships staff screens, and bump the customer app version.
+### Staff App Store listing & signing — status (Task #11, April 2026)
+
+Provisioned via App Store Connect API using key `URDY56X3U2`:
+
+- **Bundle ID** `com.the147bradford.staff` (record id `U7HC8688XM`, Team `94LW5H4828`) — created.
+- **iOS App Store provisioning profile** `the147 Staff AppStore` (id `5KBD9KPHJU`, valid until 2027-03-17) — created and saved to `ios-creds/staff.mobileprovision` (committed via the existing `!ios-creds/*.mobileprovision` gitignore exception).
+- **iOS distribution certificate** — reuses the existing `ios-creds/dist.p12` (cert id `9955JYGA8A`, "iOS Distribution: Cue Gardens Ltd", valid 2027-03-17). The same cert can sign multiple bundle ids on the same Apple team, so no new `.p12` is needed.
+- **`eas-build-pre-install.sh`** — now variant-aware. When `EXPO_PUBLIC_APP_VARIANT=staff`, `credentials.json` is written with `provisioningProfilePath` pointing at `ios-creds/staff.mobileprovision`; otherwise it points at the customer `dist.mobileprovision`. Both variants share the same `dist.p12`.
+- **`eas.json` → `submit.production-staff.ios.ascAppId`** — placeholder `REPLACE_WITH_STAFF_ASC_APP_ID`. Must be filled in once the App Store Connect app record is created (see manual step below).
+
+#### Remaining manual step (cannot be done via API)
+The App Store Connect REST API does **not** allow programmatic creation of new app records. A human must create the staff app once in App Store Connect:
+
+1. Sign in to App Store Connect → My Apps → `+` → New App.
+2. Platform: iOS. Bundle ID: select `com.the147bradford.staff` (already registered). Name: `The 147 Staff`. Primary Language: English (UK). SKU: `the147staff001` (or any unique string). User Access: Full Access.
+3. Copy the new app's numeric Apple ID (visible under App Information → General Information → "Apple ID") and replace `REPLACE_WITH_STAFF_ASC_APP_ID` in `eas.json` → `submit.production-staff.ios.ascAppId`.
+4. Trigger the first staff build: `eas build --profile production-staff --platform ios` then `eas submit --profile production-staff --platform ios --latest`. The build will pick up `staff.mobileprovision` automatically thanks to the variant-aware pre-install script.
+5. Once the staff app is approved and live on TestFlight/the Store, flip `showStaffRoutes` in `lib/app-variant.ts` so the customer build no longer ships staff screens, and bump the customer app version.

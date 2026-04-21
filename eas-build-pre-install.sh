@@ -56,6 +56,20 @@ KEYSTORE_EOF
 
 echo "[pre-install] Keystore written: $(wc -c < "$KEYSTORE_PATH") bytes at $KEYSTORE_PATH"
 
+# --- Variant detection (customer vs staff) -------------------------------
+# When EXPO_PUBLIC_APP_VARIANT=staff, we ship the staff App Store listing
+# (bundle id com.the147bradford.staff). Both variants share the same iOS
+# distribution certificate (.p12) — only the provisioning profile differs.
+VARIANT="${EXPO_PUBLIC_APP_VARIANT:-customer}"
+echo "[pre-install] App variant: $VARIANT"
+
+if [ "$VARIANT" = "staff" ]; then
+  IOS_PROFILE_PATH="$PROJECT_ROOT/ios-creds/staff.mobileprovision"
+else
+  IOS_PROFILE_PATH="$PROJECT_ROOT/ios-creds/dist.mobileprovision"
+fi
+echo "[pre-install] iOS provisioning profile: $IOS_PROFILE_PATH"
+
 # Write credentials.json to absolute path, with absolute keystorePath inside
 cat > "$PROJECT_ROOT/credentials.json" << CREDS_EOF
 {
@@ -68,7 +82,7 @@ cat > "$PROJECT_ROOT/credentials.json" << CREDS_EOF
     }
   },
   "ios": {
-    "provisioningProfilePath": "$PROJECT_ROOT/ios-creds/dist.mobileprovision",
+    "provisioningProfilePath": "$IOS_PROFILE_PATH",
     "distributionCertificate": {
       "path": "$PROJECT_ROOT/ios-creds/dist.p12",
       "password": "ownCGrlMq1XbAIPZ1mj0hg=="
@@ -80,14 +94,9 @@ CREDS_EOF
 echo "[pre-install] credentials.json written to $PROJECT_ROOT/credentials.json"
 echo "[pre-install] Keystore path in credentials.json: $KEYSTORE_PATH"
 
-# --- Variant rewrite (customer vs staff) ---------------------------------
-# When EXPO_PUBLIC_APP_VARIANT=staff, rewrite app.json to use the dedicated
-# staff bundle identifier, Android package and display name. This keeps a
-# single static app.json (Expo Launch requires static config) while still
-# producing two App Store / Play Store listings from the same codebase.
-VARIANT="${EXPO_PUBLIC_APP_VARIANT:-customer}"
-echo "[pre-install] App variant: $VARIANT"
-
+# --- app.json rewrite for staff variant ----------------------------------
+# Static app.json is required for Expo Launch; rewrite at build time to swap
+# the bundle identifier, Android package and display name for the staff app.
 if [ "$VARIANT" = "staff" ]; then
   APP_JSON="$PROJECT_ROOT/app.json"
   echo "[pre-install] Rewriting app.json for staff variant..."
