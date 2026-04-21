@@ -4083,7 +4083,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Customer: order history ───────────────────────────────────────────────────
-  app.get("/api/customers/orders", customerAuth, async (req, res) => {
+  // Two paths point at the same handler: `/api/customers/orders` is the
+  // legacy path the account screen has always used; `/api/orders/mine` is
+  // the canonical name used by newer surfaces ("My orders").
+  const customerOrdersHandler: import("express").RequestHandler = async (req, res) => {
     try {
       const email = (req as any).customerEmail as string | undefined;
       if (!email) return res.status(400).json({ message: "No customer email" });
@@ -4093,7 +4096,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("[ORDERS] Customer orders failed:", err.message);
       res.status(500).json({ message: err.message });
     }
-  });
+  };
+  app.get("/api/customers/orders", customerAuth, customerOrdersHandler);
+  app.get("/api/orders/mine", customerAuth, customerOrdersHandler);
 
   app.get("/api/events", async (req, res) => {
     try {

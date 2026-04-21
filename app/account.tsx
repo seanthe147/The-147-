@@ -74,6 +74,7 @@ interface AppOrderItem {
   name: string;
   quantity: number;
   price: number;
+  modifiers?: string[];
   variationName?: string;
 }
 
@@ -85,6 +86,7 @@ interface AppOrder {
   status: string;
   createdAt: string;
   discountLabel?: string | null;
+  confirmationToken?: string | null;
 }
 
 export default function AccountScreen() {
@@ -491,10 +493,10 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
   });
 
   const ordersQuery = useQuery<AppOrder[]>({
-    queryKey: ["/api/customers/orders"],
+    queryKey: ["/api/orders/mine"],
     queryFn: async () => {
       const baseUrl = getApiUrl();
-      const url = new URL("/api/customers/orders", baseUrl);
+      const url = new URL("/api/orders/mine", baseUrl);
       const token = await getCustomerToken();
       const res = await fetch(url.toString(), {
         headers: { Authorization: `Bearer ${token}` },
@@ -730,7 +732,10 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
       {(() => {
         const allOrders = ordersQuery.data ?? [];
         const activeOrders = allOrders.filter((o) => o.status === "pending");
-        const pastOrders = allOrders.filter((o) => o.status !== "pending");
+        const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        const recentOrders = allOrders
+          .filter((o) => o.status !== "pending" && o.status !== "expired")
+          .filter((o) => new Date(o.createdAt).getTime() >= thirtyDaysAgo);
         return (
           <>
             {activeOrders.length > 0 && (
@@ -739,25 +744,28 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
                 {activeOrders.map((order) => <OrderCard key={order.id} order={order} active />)}
               </>
             )}
-            <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Order History</Text>
+            <Text style={[styles.sectionTitle, { marginTop: 24 }]}>My Orders</Text>
+            <Text style={[styles.emptyText, { fontSize: 12, textAlign: "left", marginTop: -4, marginBottom: 8, color: "#6B7280" }]}>
+              Tap an order to view its receipt. Showing the last 30 days.
+            </Text>
             {ordersQuery.isLoading ? (
               <ActivityIndicator color={Colors.brand.blue} style={{ marginTop: 20 }} />
             ) : ordersQuery.error ? (
               <View style={styles.emptyState}>
                 <Text style={styles.emptyText}>Could not load orders</Text>
               </View>
-            ) : pastOrders.length === 0 && activeOrders.length === 0 ? (
+            ) : recentOrders.length === 0 && activeOrders.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="bag-outline" size={40} color="#9CA3AF" />
                 <Text style={styles.emptyText}>No orders yet</Text>
                 <Text style={[styles.emptyText, { fontSize: 13, marginTop: 4 }]}>Orders placed from the app appear here</Text>
               </View>
-            ) : pastOrders.length === 0 ? (
+            ) : recentOrders.length === 0 ? (
               <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>No past orders</Text>
+                <Text style={styles.emptyText}>No orders in the last 30 days</Text>
               </View>
             ) : (
-              pastOrders.map((order) => <OrderCard key={order.id} order={order} />)
+              recentOrders.map((order) => <OrderCard key={order.id} order={order} />)
             )}
           </>
         );
@@ -882,13 +890,43 @@ function OrderCard({ order, active }: { order: AppOrder; active?: boolean }) {
   const statusConfig: Record<string, { label: string; bg: string; text: string }> = {
     pending:   { label: "Awaiting Payment", bg: "#FEF3C7", text: "#92400E" },
     paid:      { label: "Paid",             bg: "#D1FAE5", text: "#065F46" },
+    preparing: { label: "Preparing",        bg: "#FEF3C7", text: "#B45309" },
+    ready:     { label: "Ready",            bg: "#D1FAE5", text: "#065F46" },
+    delivered: { label: "Delivered",        bg: "#D1FAE5", text: "#065F46" },
+    collected: { label: "Collected",        bg: "#D1FAE5", text: "#065F46" },
     cancelled: { label: "Cancelled",        bg: "#FEE2E2", text: "#991B1B" },
     refunded:  { label: "Refunded",         bg: "#FEF3C7", text: "#92400E" },
   };
   const sc = statusConfig[order.status] ?? statusConfig.pending;
 
-  return (
-    <View style={[styles.bookingCard, active && styles.activeOrderCard]}>
+  const canOpenReceipt = !active && order.status !== "expired";
+  const openReceipt = () => {
+    if (!canOpenReceipt) return;
+    const receiptItems = items.map((it) => {
+      const modifiers = it.modifiers && it.modifiers.length > 0
+        ? it.modifiers
+        : it.variationName
+          ? [it.variationName]
+          : [];
+      return {
+        name: it.name,
+        quantity: it.quantity,
+        price: it.price,
+        modifiers,
+      };
+    });
+    const params: Record<string, string> = {
+      appOrderId: String(order.id),
+      tableNote: order.tableNote ?? "",
+      totalPence: String(order.totalPence),
+      items: JSON.stringify(receiptItems),
+    };
+    if (order.confirmationToken) params.token = order.confirmationToken;
+    router.push({ pathname: "/order-confirmation", params });
+  };
+
+  const cardBody = (
+    <>
       {active && (
         <View style={styles.activeOrderBanner}>
           <Ionicons name="time-outline" size={13} color="#92400E" style={{ marginRight: 5 }} />
@@ -923,6 +961,36 @@ function OrderCard({ order, active }: { order: AppOrder; active?: boolean }) {
           <Text style={styles.orderDiscountText}>{order.discountLabel}</Text>
         </View>
       )}
+      {canOpenReceipt && (
+        <View style={styles.viewReceiptRow}>
+          <Text style={styles.viewReceiptText}>View receipt</Text>
+          <Ionicons name="chevron-forward" size={14} color={Colors.brand.blue} />
+        </View>
+      )}
+    </>
+  );
+
+  if (canOpenReceipt) {
+    return (
+      <Pressable
+        onPress={openReceipt}
+        accessibilityRole="button"
+        accessibilityLabel={`View receipt for order on ${dateStr}, total ${total}`}
+        testID={`order-card-${order.id}`}
+        style={({ pressed }) => [
+          styles.bookingCard,
+          active && styles.activeOrderCard,
+          pressed && { opacity: 0.7 },
+        ]}
+      >
+        {cardBody}
+      </Pressable>
+    );
+  }
+
+  return (
+    <View style={[styles.bookingCard, active && styles.activeOrderCard]}>
+      {cardBody}
     </View>
   );
 }
@@ -1592,6 +1660,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: "Montserrat_600SemiBold",
     color: "#065F46",
+  },
+  viewReceiptRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+    gap: 4,
+  },
+  viewReceiptText: {
+    fontSize: 12,
+    fontFamily: "Montserrat_600SemiBold",
+    color: Colors.brand.blue,
   },
   consentRow: {
     flexDirection: "row",
