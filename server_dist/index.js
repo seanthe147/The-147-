@@ -8434,6 +8434,33 @@ Phone: ${phone}` : ""}`,
     res.set("Cache-Control", "no-store");
     res.json(plans);
   });
+  app2.post("/api/membership/check-email", async (req, res) => {
+    const ip = getClientIp(req);
+    const limit = checkRateLimit(`member-check:${ip}`, 20, 60 * 1e3);
+    if (!limit.allowed) {
+      res.setHeader("Retry-After", String(limit.retryAfter));
+      return res.status(429).json({ isMember: false });
+    }
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    if (!email || email.length < 5 || email.length > 254 || !email.includes("@") || !email.includes(".")) {
+      return res.json({ isMember: false });
+    }
+    res.set("Cache-Control", "no-store");
+    try {
+      const cust = await storage.getCustomerByEmail(email);
+      if (!cust) return res.json({ isMember: false });
+      const sub = await storage.getMembershipSubscriptionByCustomer(cust.id);
+      const isActive = sub?.status === "active";
+      const notCancelled = !sub?.cancelledAt;
+      const periodValid = !sub?.currentPeriodEnd || new Date(sub.currentPeriodEnd) >= /* @__PURE__ */ new Date();
+      const hasDiscount = (sub?.plan?.foodDrinkDiscount ?? 0) > 0;
+      const isMember = !!(sub && isActive && notCancelled && periodValid && hasDiscount);
+      return res.json({ isMember });
+    } catch (err) {
+      console.warn("[MEMBERSHIP] check-email failed:", err.message);
+      return res.json({ isMember: false });
+    }
+  });
   app2.get("/api/membership/my-subscription", customerAuth, async (req, res) => {
     const customerId = req.customerId;
     const sub = await storage.getMembershipSubscriptionByCustomer(customerId);
