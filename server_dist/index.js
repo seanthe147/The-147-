@@ -10071,7 +10071,7 @@ function configureExpoAndLanding(app2) {
       if (req.path.startsWith("/api")) return next();
       const platform = req.header("expo-platform");
       if (platform === "ios" || platform === "android") return next();
-      if (req.path === "/verify-email") return next();
+      if (req.path === "/verify-email" || req.path === "/reset-password") return next();
       const proxyReq = http.request(
         {
           hostname: "localhost",
@@ -10105,7 +10105,8 @@ function configureExpoAndLanding(app2) {
         "/terms",
         "/staff-privacy-notice",
         "/booking-widget",
-        "/verify-email"
+        "/verify-email",
+        "/reset-password"
       ]);
       if (serverPages.has(req.path)) return next();
       if (fs2.existsSync(indexPath)) {
