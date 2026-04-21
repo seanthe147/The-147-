@@ -24,6 +24,7 @@ import type { SelectedModifier } from "@/types/menu";
 import Colors from "@/constants/colors";
 import { TABLE_TYPES } from "@/lib/data";
 import { fetch } from "expo/fetch";
+import { hasPromptedForBiometric, markBiometricPrompted } from "@/lib/biometric";
 
 const BOOKING_HOURS = [
   "10:00", "10:30", "11:00", "11:30", "12:00", "12:30",
@@ -157,6 +158,14 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
   prefillEmail?: string;
   initialMode?: AuthMode;
 }) {
+  const {
+    biometricSupported,
+    biometricEnabled,
+    biometricKind,
+    biometricLabelText,
+    enableBiometric,
+    signInWithBiometric,
+  } = useCustomerAuth();
   const [mode, setMode] = useState<AuthMode>(initialMode ?? "login");
   const [showForgot, setShowForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
@@ -295,6 +304,28 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
     );
   }
 
+  const maybePromptBiometric = async (creds: { email: string; password: string }) => {
+    if (!biometricSupported || biometricEnabled) return;
+    if (await hasPromptedForBiometric()) return;
+    await markBiometricPrompted();
+    Alert.alert(
+      `Use ${biometricLabelText}?`,
+      `Sign in faster next time with ${biometricLabelText}. Your password stays securely on this device — we don't see it.`,
+      [
+        { text: "Not now", style: "cancel" },
+        {
+          text: "Enable",
+          onPress: async () => {
+            const ok = await enableBiometric(creds);
+            if (!ok) {
+              Alert.alert("Couldn't enable", `We couldn't set up ${biometricLabelText} right now. You can try again from your account settings.`);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleLogin = async () => {
     if (!email.trim() || !password) {
       setError("Please enter your email and password");
@@ -302,11 +333,15 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
     }
     setLoading(true);
     setError("");
-    const result = await login(email.trim(), password);
+    const trimmedEmail = email.trim();
+    const enteredPassword = password;
+    const result = await login(trimmedEmail, enteredPassword);
     setLoading(false);
     if (!result.success) {
       setError(result.error || "Login failed");
+      return;
     }
+    await maybePromptBiometric({ email: trimmedEmail, password: enteredPassword });
   };
 
   const handleRegister = async () => {
@@ -324,10 +359,22 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
     }
     setLoading(true);
     setError("");
-    const result = await register(name.trim(), email.trim(), phone.trim(), password);
+    const trimmedEmail = email.trim();
+    const enteredPassword = password;
+    const result = await register(name.trim(), trimmedEmail, phone.trim(), enteredPassword);
     setLoading(false);
     if (!result.success) {
       setError(result.error || "Registration failed");
+      return;
+    }
+    await maybePromptBiometric({ email: trimmedEmail, password: enteredPassword });
+  };
+
+  const handleBiometricSignIn = async () => {
+    setError("");
+    const result = await signInWithBiometric();
+    if (!result.success && result.error && result.error !== "Authentication cancelled") {
+      setError(result.error);
     }
   };
 
@@ -350,6 +397,28 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
           <Ionicons name="alert-circle" size={18} color="#DC2626" />
           <Text style={styles.errorText}>{error}</Text>
         </View>
+      ) : null}
+
+      {mode === "login" && biometricSupported && biometricEnabled ? (
+        <>
+          <Pressable
+            onPress={handleBiometricSignIn}
+            style={({ pressed }) => [styles.biometricButton, { opacity: pressed ? 0.85 : 1 }]}
+            testID="biometric-signin"
+          >
+            <Ionicons
+              name={biometricKind === "face" ? "scan-outline" : "finger-print"}
+              size={22}
+              color={Colors.brand.blue}
+            />
+            <Text style={styles.biometricButtonText}>Sign in with {biometricLabelText}</Text>
+          </Pressable>
+          <View style={styles.biometricDivider}>
+            <View style={styles.biometricDividerLine} />
+            <Text style={styles.biometricDividerText}>or use password</Text>
+            <View style={styles.biometricDividerLine} />
+          </View>
+        </>
       ) : null}
 
       {mode === "register" && (
@@ -483,6 +552,40 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
   deleteAccount: () => Promise<{ success: boolean; error?: string }>;
   resendVerificationEmail: () => Promise<{ success: boolean; error?: string }>;
 }) {
+  const {
+    biometricSupported,
+    biometricEnabled,
+    biometricLabelText,
+    biometricKind,
+    enableBiometric,
+    disableBiometric,
+    lastLoginCredentials,
+  } = useCustomerAuth();
+  const [biometricBusy, setBiometricBusy] = useState(false);
+
+  const handleToggleBiometric = async () => {
+    if (biometricBusy) return;
+    setBiometricBusy(true);
+    try {
+      if (biometricEnabled) {
+        await disableBiometric();
+      } else {
+        if (!lastLoginCredentials) {
+          Alert.alert(
+            `Enable ${biometricLabelText}`,
+            `For security, please sign out and sign back in once with your password to set up ${biometricLabelText}.`
+          );
+          return;
+        }
+        const ok = await enableBiometric();
+        if (!ok) {
+          Alert.alert("Couldn't enable", `We couldn't set up ${biometricLabelText} right now.`);
+        }
+      }
+    } finally {
+      setBiometricBusy(false);
+    }
+  };
   const [resendState, setResendState] = useState<"idle" | "sending" | "sent">("idle");
   const [resendMessage, setResendMessage] = useState<string | null>(null);
   const handleResend = async () => {
@@ -731,6 +834,32 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
           <Text style={[styles.actionButtonText, { color: Colors.brand.red }]}>Sign Out</Text>
         </Pressable>
       </View>
+
+      {biometricSupported ? (
+        <Pressable
+          onPress={handleToggleBiometric}
+          disabled={biometricBusy}
+          style={({ pressed }) => [styles.biometricSettingRow, { opacity: pressed || biometricBusy ? 0.7 : 1 }]}
+          testID="biometric-toggle"
+        >
+          <Ionicons
+            name={biometricKind === "face" ? "scan-outline" : "finger-print"}
+            size={22}
+            color={Colors.brand.blue}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.biometricSettingTitle}>Sign in with {biometricLabelText}</Text>
+            <Text style={styles.biometricSettingSub}>
+              {biometricEnabled
+                ? `On — you'll be asked for ${biometricLabelText} next time you sign in.`
+                : `Off — turn on to skip typing your password next time.`}
+            </Text>
+          </View>
+          <View style={[styles.biometricSwitch, biometricEnabled && styles.biometricSwitchOn]}>
+            <View style={[styles.biometricSwitchThumb, biometricEnabled && styles.biometricSwitchThumbOn]} />
+          </View>
+        </Pressable>
+      ) : null}
 
       <Text style={styles.sectionTitle}>Upcoming Bookings</Text>
       {bookingsQuery.isLoading ? (
@@ -1900,5 +2029,82 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.light.textSecondary,
     lineHeight: 16,
+  },
+  biometricButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: "#EEF4FF",
+    borderWidth: 1,
+    borderColor: Colors.brand.blue,
+    marginBottom: 14,
+  },
+  biometricButtonText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 15,
+    color: Colors.brand.blue,
+  },
+  biometricDivider: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 16,
+  },
+  biometricDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#E5E7EB",
+  },
+  biometricDividerText: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+  },
+  biometricSettingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    marginBottom: 16,
+  },
+  biometricSettingTitle: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: Colors.light.text,
+  },
+  biometricSettingSub: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginTop: 2,
+  },
+  biometricSwitch: {
+    width: 44,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "#D1D5DB",
+    padding: 2,
+    justifyContent: "center",
+  },
+  biometricSwitchOn: {
+    backgroundColor: Colors.brand.blue,
+  },
+  biometricSwitchThumb: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#FFFFFF",
+  },
+  biometricSwitchThumbOn: {
+    alignSelf: "flex-end",
   },
 });

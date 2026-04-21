@@ -2,6 +2,16 @@ import React, { createContext, useContext, useState, useEffect, useMemo, useCall
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getApiUrl } from "@/lib/query-client";
 import { fetch } from "expo/fetch";
+import {
+  authenticateAndGetCredentials,
+  clearBiometricCredentials,
+  isBiometricEnabled as readBiometricEnabled,
+  isBiometricSupported,
+  saveBiometricCredentials,
+  getBiometricKind,
+  biometricLabel,
+  type BiometricKind,
+} from "@/lib/biometric";
 
 const TOKEN_KEY = "customer_session_token";
 
@@ -27,6 +37,14 @@ interface CustomerAuthContextValue {
   requestPasswordReset: (email: string) => Promise<{ success: boolean; error?: string; needsVerification?: boolean }>;
   resendVerificationEmailFor: (email: string) => Promise<{ success: boolean; error?: string }>;
   getCustomerToken: () => string | null;
+  biometricSupported: boolean;
+  biometricEnabled: boolean;
+  biometricKind: BiometricKind;
+  biometricLabelText: string;
+  lastLoginCredentials: { email: string; password: string } | null;
+  enableBiometric: (creds?: { email: string; password: string }) => Promise<boolean>;
+  disableBiometric: () => Promise<void>;
+  signInWithBiometric: () => Promise<{ success: boolean; error?: string }>;
 }
 
 const CustomerAuthContext = createContext<CustomerAuthContextValue | null>(null);
@@ -35,6 +53,21 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [customer, setCustomer] = useState<CustomerProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [biometricSupported, setBiometricSupported] = useState(false);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [biometricKind, setBiometricKind] = useState<BiometricKind>("generic");
+  const [lastLoginCredentials, setLastLoginCredentials] = useState<{ email: string; password: string } | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const supported = await isBiometricSupported();
+      setBiometricSupported(supported);
+      if (supported) {
+        setBiometricKind(await getBiometricKind());
+        setBiometricEnabled(await readBiometricEnabled());
+      }
+    })();
+  }, []);
 
   const fetchProfile = useCallback(async (sessionToken: string): Promise<CustomerProfile | null> => {
     try {
@@ -91,6 +124,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       await AsyncStorage.setItem(TOKEN_KEY, data.token);
       setToken(data.token);
       setCustomer(data.customer);
+      setLastLoginCredentials({ email, password });
       return { success: true };
     } catch {
       return { success: false, error: "Connection error" };
@@ -116,6 +150,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       await AsyncStorage.setItem(TOKEN_KEY, data.token);
       setToken(data.token);
       setCustomer(data.customer);
+      setLastLoginCredentials({ email, password });
       return { success: true };
     } catch {
       return { success: false, error: "Connection error" };
@@ -135,6 +170,9 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       }
     }
     await AsyncStorage.removeItem(TOKEN_KEY);
+    await clearBiometricCredentials();
+    setBiometricEnabled(false);
+    setLastLoginCredentials(null);
     setToken(null);
     setCustomer(null);
   }, [token]);
@@ -178,6 +216,9 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: resp.message || "Deletion failed" };
       }
       await AsyncStorage.removeItem(TOKEN_KEY);
+      await clearBiometricCredentials();
+      setBiometricEnabled(false);
+      setLastLoginCredentials(null);
       setToken(null);
       setCustomer(null);
       return { success: true };
@@ -254,6 +295,31 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
 
   const getCustomerToken = useCallback(() => token, [token]);
 
+  const enableBiometric = useCallback(async (creds?: { email: string; password: string }): Promise<boolean> => {
+    const supported = await isBiometricSupported();
+    if (!supported) return false;
+    const toSave = creds ?? lastLoginCredentials;
+    if (!toSave) return false;
+    const ok = await saveBiometricCredentials(toSave);
+    if (ok) setBiometricEnabled(true);
+    return ok;
+  }, [lastLoginCredentials]);
+
+  const disableBiometric = useCallback(async () => {
+    await clearBiometricCredentials();
+    setBiometricEnabled(false);
+  }, []);
+
+  const signInWithBiometric = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
+    const kind = await getBiometricKind();
+    const promptMessage = `Sign in with ${biometricLabel(kind)}`;
+    const creds = await authenticateAndGetCredentials(promptMessage);
+    if (!creds) return { success: false, error: "Authentication cancelled" };
+    return await login(creds.email, creds.password);
+  }, [login]);
+
+  const biometricLabelText = useMemo(() => biometricLabel(biometricKind), [biometricKind]);
+
   const value = useMemo(
     () => ({
       isAuthenticated: !!token,
@@ -269,8 +335,16 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       requestPasswordReset,
       resendVerificationEmailFor,
       getCustomerToken,
+      biometricSupported,
+      biometricEnabled,
+      biometricKind,
+      biometricLabelText,
+      lastLoginCredentials,
+      enableBiometric,
+      disableBiometric,
+      signInWithBiometric,
     }),
-    [token, isLoading, customer, login, register, logout, updateProfile, deleteAccount, refreshProfile, resendVerificationEmail, requestPasswordReset, resendVerificationEmailFor, getCustomerToken]
+    [token, isLoading, customer, login, register, logout, updateProfile, deleteAccount, refreshProfile, resendVerificationEmail, requestPasswordReset, resendVerificationEmailFor, getCustomerToken, biometricSupported, biometricEnabled, biometricKind, biometricLabelText, lastLoginCredentials, enableBiometric, disableBiometric, signInWithBiometric]
   );
 
   return (
