@@ -6028,19 +6028,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       let checkoutUrl: string | null = null;
+      // We must NEVER silently fall back from a recurring subscription
+      // checkout to a one-time payment link for a membership signup. If we
+      // can't produce a real subscription checkout we stop and return an
+      // error so the customer doesn't end up paying once and never being
+      // billed again. These two flags carry the reason out of the Square
+      // try/catch below.
+      let checkoutFailureMessage: string | null = null;
+      let checkoutFailureCode: string | null = null;
 
       // Wire up Square: create/find customer, manage groups, generate checkout link
       if (square.isConfigured()) {
         try {
           const customer = await storage.getCustomerById(customerId);
-          if (customer) {
+          if (!customer) {
+            checkoutFailureMessage = "Customer record not found.";
+            checkoutFailureCode = "CUSTOMER_NOT_FOUND";
+          } else {
             // Create or find Square customer
             let sqCustomer = await square.findSquareCustomerByEmail(customer.email).catch(() => null);
             if (!sqCustomer) {
               sqCustomer = await square.createSquareCustomer(customer.name, customer.email, customer.phone || undefined).catch(() => null);
             }
 
-            if (sqCustomer) {
+            if (!sqCustomer) {
+              checkoutFailureMessage = "Could not set up your payment customer profile. Please try again.";
+              checkoutFailureCode = "SQUARE_CUSTOMER_FAILED";
+            } else {
               await storage.updateMembershipSubscription(sub.id, { squareCustomerId: sqCustomer.id });
 
               // ── Manage customer groups ──────────────────────────────────────
@@ -6065,22 +6079,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 await square.addCustomerToGroup(sqCustomer.id, newGroupId).catch(() => {});
               }
 
-              // ── Generate checkout payment link ──────────────────────────────
+              // ── Generate RECURRING subscription checkout payment link ───────
               const redirectUrl = `https://the147bradford.replit.app/api/membership/${sub.id}/payment-return`;
 
-              // Pick variation ID and price based on billing frequency
+              // Pick variation ID based on billing frequency. A variation ID
+              // is REQUIRED — without it Square won't produce a recurring
+              // checkout, and we refuse to send the customer to a one-time
+              // payment page for a membership.
               const variationId = isAnnual
                 ? ((plan as any).squarePlanVariationIdAlt || plan.squarePlanVariationId)
                 : plan.squarePlanVariationId;
-              const chargeAmount = isAnnual
-                ? ((plan as any).priceAnnual || plan.priceMonthly * 12)
-                : plan.priceMonthly;
 
-              let checkout: { url: string; paymentLinkId: string } | null = null;
-              let checkoutKind: "subscription" | "one-time" = variationId ? "subscription" : "one-time";
-
-              if (variationId) {
-                checkout = await square.createSubscriptionCheckoutLink({
+              if (!variationId) {
+                checkoutFailureMessage = `This membership plan isn't set up for ${isAnnual ? "annual" : "monthly"} recurring billing yet. Please contact the club to finish signing up.`;
+                checkoutFailureCode = "PLAN_NOT_BILLABLE";
+                console.error(`[membership/join] sub #${sub.id} aborted: plan ${plan.id} has no Square ${isAnnual ? "annual" : "monthly"} variation ID — recurring checkout cannot be created.`);
+              } else {
+                const checkout = await square.createSubscriptionCheckoutLink({
                   planVariationId: variationId,
                   subscriptionId: sub.id,
                   buyerEmail: customer?.email,
@@ -6089,37 +6104,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   console.error("[membership/join] subscription checkout error:", err?.message ?? err);
                   return null;
                 });
+
                 if (!checkout) {
-                  console.warn(`[membership/join] Subscription checkout failed for sub #${sub.id}, falling back to one-time payment link`);
-                  checkoutKind = "one-time";
+                  checkoutFailureMessage = "We couldn't start your recurring membership payment with Square. Please try again or contact the club.";
+                  checkoutFailureCode = "SUBSCRIPTION_CHECKOUT_FAILED";
+                  console.error(`[membership/join] sub #${sub.id} aborted: subscription checkout link could not be created — refusing to fall back to a one-time payment link.`);
+                } else {
+                  checkoutUrl = checkout.url;
+                  console.log(`[membership/join] subscription ${isAnnual ? "annual" : "monthly"} checkout created for sub #${sub.id}`);
                 }
-              }
-
-              if (!checkout) {
-                checkout = await square.createMembershipCheckoutLink({
-                  planName: `${plan.name}${isAnnual ? " (Annual)" : ""}`,
-                  amountPence: chargeAmount,
-                  subscriptionId: sub.id,
-                  redirectUrl,
-                }).catch((err) => {
-                  console.error("[membership/join] one-time checkout error:", err?.message ?? err);
-                  return null;
-                });
-              }
-
-              if (checkout) {
-                checkoutUrl = checkout.url;
-                console.log(`[membership/join] ${checkoutKind} ${isAnnual ? "annual" : "monthly"} checkout created for sub #${sub.id}`);
               }
             }
           }
-        } catch (sqErr) {
-          console.error("[membership/join] Square error (non-fatal):", sqErr);
+        } catch (sqErr: any) {
+          console.error("[membership/join] Square error:", sqErr);
+          checkoutFailureMessage = "Payment system error. Please try again shortly.";
+          checkoutFailureCode = "SQUARE_ERROR";
         }
       }
 
+      // If Square is configured but no recurring checkout URL was produced,
+      // we must NOT silently keep a half-created subscription around or fall
+      // back to a one-time payment link. Roll the local sub back so the
+      // customer isn't stuck in a half-created state, and return an error so
+      // the app keeps them in the in-app sheet.
+      if (square.isConfigured() && !checkoutUrl) {
+        await storage.updateMembershipSubscription(sub.id, {
+          status: "cancelled",
+          cancelledAt: new Date(),
+          staffNotes: `[Auto-cancelled at signup: ${checkoutFailureCode || "RECURRING_CHECKOUT_UNAVAILABLE"}]`,
+        }).catch(() => {});
+        return res.status(503).json({
+          message: checkoutFailureMessage || "Could not start your membership signup. Please try again.",
+          code: checkoutFailureCode || "RECURRING_CHECKOUT_UNAVAILABLE",
+        });
+      }
+
       // Only auto-activate if Square is not configured at all (free/staff-managed plans)
-      // If Square IS configured but checkout link failed, keep as "pending" so staff can resolve
       if (!checkoutUrl && !square.isConfigured()) {
         await storage.updateMembershipSubscription(sub.id, { status: "active" });
       }
@@ -6322,11 +6343,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const plan = sub.plan ?? await storage.getMembershipPlan(sub.planId);
       if (!plan) return res.status(404).json({ message: "Plan not found" });
 
+      // Memberships must always be billed via a RECURRING subscription
+      // checkout. We deliberately do NOT fall back to a one-time payment
+      // link here, otherwise the customer would be charged once and never
+      // billed again — they'd think they were a member but their card would
+      // never be re-charged.
+      const variationId = plan.squarePlanVariationId;
+      if (!variationId) {
+        return res.status(503).json({
+          message: "This membership plan isn't set up for recurring billing yet. Please contact the club.",
+          code: "PLAN_NOT_BILLABLE",
+        });
+      }
+      const customer = await storage.getCustomerById(customerId).catch(() => null);
       const redirectUrl = `https://the147bradford.replit.app/api/membership/${sub.id}/payment-return`;
-      const checkout = await square.createMembershipCheckoutLink({
-        planName: plan.name,
-        amountPence: plan.priceMonthly,
+      const checkout = await square.createSubscriptionCheckoutLink({
+        planVariationId: variationId,
         subscriptionId: sub.id,
+        buyerEmail: customer?.email,
         redirectUrl,
       });
 
@@ -6808,11 +6842,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         storage.getMembershipSubscription(parseInt(subscriptionId)),
       ]);
       if (!plan) return res.status(404).json({ message: "Plan not found" });
+      // Memberships must use a RECURRING subscription checkout. Never send
+      // a customer a one-time payment link for a membership signup —
+      // otherwise their card is charged once and never billed again.
+      const variationId = plan.squarePlanVariationId;
+      if (!variationId) {
+        return res.status(503).json({
+          message: "This plan isn't set up for online recurring billing yet — set the Square plan variation first.",
+          code: "PLAN_NOT_BILLABLE",
+        });
+      }
+      const customer = sub ? await storage.getCustomerById(sub.customerId).catch(() => null) : null;
       const redirectUrl = `${process.env.REPLIT_INTERNAL_APP_DOMAIN ? `https://${process.env.REPLIT_INTERNAL_APP_DOMAIN}` : "https://the147bradford.replit.app"}/staff`;
-      const link = await square.createMembershipCheckoutLink({
-        planName: plan.name,
-        amountPence: plan.priceMonthly,
+      const link = await square.createSubscriptionCheckoutLink({
+        planVariationId: variationId,
         subscriptionId: parseInt(subscriptionId),
+        buyerEmail: customer?.email,
         redirectUrl,
       });
 

@@ -165,16 +165,48 @@ export default function MembershipScreen() {
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/membership/my-subscription"] });
       setJoining(false);
-      setSelectedPlanId(null);
-      setTermsAccepted(false);
+      setPaymentSheetBusy(false);
+      // The server only ever returns a checkoutUrl for a real RECURRING
+      // subscription checkout — it refuses to silently downgrade to a
+      // one-time payment link for a membership signup. So if we have a
+      // checkoutUrl here, it's safe to open in the browser.
       if (data?.checkoutUrl) {
-        Linking.openURL(data.checkoutUrl).catch(() => {
-          Alert.alert("Payment", "Please complete your payment to activate your membership.", [{ text: "OK" }]);
-        });
+        setPaymentSheetVisible(false);
+        setSelectedPlanId(null);
+        setTermsAccepted(false);
+        Alert.alert(
+          "Open secure payment page",
+          "We'll open Square in your browser to set up your recurring membership payment.",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Continue",
+              onPress: () => {
+                Linking.openURL(data.checkoutUrl).catch(() => {
+                  Alert.alert("Payment", "Could not open the payment page. Please try again.");
+                });
+              },
+            },
+          ],
+        );
+      } else {
+        // Free / staff-managed activation — no checkout needed.
+        setPaymentSheetVisible(false);
+        setSelectedPlanId(null);
+        setTermsAccepted(false);
       }
     },
     onError: (err: Error) => {
-      Alert.alert("Error", err.message);
+      setPaymentSheetBusy(false);
+      // If the in-app sheet is currently visible (i.e. we're in the
+      // "sheet unavailable, try hosted recurring checkout" fallback),
+      // surface the error inside the sheet so the customer can retry or
+      // close — never auto-launch any browser URL on failure.
+      if (paymentSheetVisible) {
+        setPaymentSheetError(err.message);
+      } else {
+        Alert.alert("Error", err.message);
+      }
     },
   });
 
@@ -553,26 +585,27 @@ export default function MembershipScreen() {
             joinNativeMutation.mutate({ sourceId, verificationToken });
           }}
           onUnavailable={(reason) => {
-            setPaymentSheetVisible(false);
-            Alert.alert(
-              "In-app payment unavailable",
-              `${reason}\n\nWe'll open the secure payment page in your browser instead.`,
-              [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Continue",
-                  onPress: () => {
-                    if (!selectedPlanId) return;
-                    joinMutation.mutate({
-                      planId: selectedPlanId,
-                      frequency: billingFrequency,
-                      chosenStartDate: isStaffLoggedIn ? startDate : undefined,
-                      accepted: termsAccepted,
-                    });
-                  },
-                },
-              ],
-            );
+            // The in-app sheet failed to initialise. We must NOT auto-launch
+            // any browser URL here — for a membership signup we only ever
+            // want to open a real RECURRING subscription checkout, never a
+            // one-time payment link. Ask the server for a recurring checkout
+            // URL first; only prompt to open the browser if we get one back.
+            // If the server can't produce a recurring checkout, the error is
+            // surfaced inside the sheet (see joinMutation.onError) so the
+            // customer can retry or close — they're never silently sent to
+            // a one-time payment page.
+            if (!selectedPlanId) {
+              setPaymentSheetVisible(false);
+              return;
+            }
+            setPaymentSheetError(reason);
+            setPaymentSheetBusy(true);
+            joinMutation.mutate({
+              planId: selectedPlanId,
+              frequency: billingFrequency,
+              chosenStartDate: isStaffLoggedIn ? startDate : undefined,
+              accepted: termsAccepted,
+            });
           }}
           applicationId={squareConfig?.applicationId ?? null}
           locationId={squareConfig?.locationId ?? null}
