@@ -436,6 +436,16 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
             javaScriptEnabled
             domStorageEnabled
             startInLoadingState
+            // iOS WKWebView disables Apple Pay JS APIs (window.ApplePaySession)
+            // by default. Without this prop, Square's payments.applePay()
+            // promise rejects silently with "unsupported on this device" and
+            // the button never appears, even when Square's domain registration
+            // is fully verified.
+            applePayEnabled
+            // Allow the wallet sheets to appear over the WebView without being
+            // clipped by inline media playback constraints.
+            allowsInlineMediaPlayback
+            mediaPlaybackRequiresUserAction={false}
             renderLoading={() => (
               <View style={styles.loadingOverlay}>
                 <ActivityIndicator color={Colors.brand.blue} />
