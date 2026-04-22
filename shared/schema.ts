@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, timestamp, boolean, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, timestamp, boolean, integer, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -400,7 +400,10 @@ export const passwordResetAuditLog = pgTable("password_reset_audit_log", {
   customerName: text("customer_name"),
   outcome: text("outcome").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  createdAtIdx: index("password_reset_audit_log_created_at_idx").on(table.createdAt),
+  staffUsernameIdx: index("password_reset_audit_log_staff_username_idx").on(table.staffUsername),
+}));
 
 export type PasswordResetAuditEntry = typeof passwordResetAuditLog.$inferSelect;
 
