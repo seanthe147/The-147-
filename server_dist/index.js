@@ -29,8 +29,11 @@ var init_schema = __esm({
     staffUsers = pgTable("staff_users", {
       id: serial("id").primaryKey(),
       username: text("username").notNull().unique(),
-      pinHash: text("pin_hash").notNull(),
-      pinSalt: text("pin_salt").notNull(),
+      pinHash: text("pin_hash"),
+      pinSalt: text("pin_salt"),
+      passwordHash: text("password_hash"),
+      passwordSalt: text("password_salt"),
+      mustChangePassword: boolean("must_change_password").notNull().default(true),
       displayName: text("display_name"),
       role: text("role").notNull().default("staff"),
       createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -601,6 +604,12 @@ function verifyPin(pin, storedHash, salt) {
   }
   return diff === 0;
 }
+function hashPassword(password, salt) {
+  return hashPin(password, salt);
+}
+function verifyPassword(password, storedHash, salt) {
+  return verifyPin(password, storedHash, salt);
+}
 var ALGORITHM, IV_LENGTH, AUTH_TAG_LENGTH, SALT_LENGTH;
 var init_encryption = __esm({
   "server/encryption.ts"() {
@@ -760,6 +769,17 @@ async function runStartupMigrations() {
     await client.query(`
       ALTER TABLE app_orders
         ADD COLUMN IF NOT EXISTS push_token TEXT;
+    `);
+    await client.query(`
+      ALTER TABLE staff_users
+        ADD COLUMN IF NOT EXISTS password_hash TEXT,
+        ADD COLUMN IF NOT EXISTS password_salt TEXT,
+        ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT TRUE;
+    `);
+    await client.query(`
+      ALTER TABLE staff_users
+        ALTER COLUMN pin_hash DROP NOT NULL,
+        ALTER COLUMN pin_salt DROP NOT NULL;
     `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS password_reset_audit_log (
@@ -1025,6 +1045,40 @@ var init_storage = __esm({
         const byPlain = await db.delete(bookings).where(sql2`lower(${bookings.customerEmail}) = lower(${email})`).returning();
         return byPlain.length;
       }
+      async deletePushTokensByEmail(email) {
+        const hash = hashEmail(email);
+        const byHash = await db.delete(pushTokens).where(eq(pushTokens.customerEmailHash, hash)).returning();
+        if (byHash.length > 0) return byHash.length;
+        const byPlain = await db.delete(pushTokens).where(sql2`lower(${pushTokens.customerEmail}) = lower(${email})`).returning();
+        return byPlain.length;
+      }
+      async deleteOrdersByEmail(email) {
+        const hash = hashEmail(email);
+        const byHash = await db.delete(appOrders).where(eq(appOrders.customerEmailHash, hash)).returning();
+        if (byHash.length > 0) return byHash.length;
+        const byPlain = await db.delete(appOrders).where(sql2`lower(${appOrders.customerEmail}) = lower(${email})`).returning();
+        return byPlain.length;
+      }
+      async deleteContactMessagesByEmail(email) {
+        const allMessages = await db.select().from(contactMessages).orderBy(contactMessages.createdAt);
+        const normalised = email.trim().toLowerCase();
+        const toDelete = [];
+        for (const msg of allMessages) {
+          try {
+            const decryptedEmail = decrypt(msg.email);
+            if (decryptedEmail.toLowerCase() === normalised) {
+              toDelete.push(msg.id);
+            }
+          } catch {
+            if (msg.email.toLowerCase() === normalised) {
+              toDelete.push(msg.id);
+            }
+          }
+        }
+        if (toDelete.length === 0) return 0;
+        await db.delete(contactMessages).where(inArray(contactMessages.id, toDelete));
+        return toDelete.length;
+      }
       async anonymizeOldBookings(retentionDays) {
         const cutoffDate = /* @__PURE__ */ new Date();
         cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
@@ -1106,14 +1160,18 @@ var init_storage = __esm({
         }
         return count;
       }
-      async createStaffUser(username, pinHash, pinSalt, displayName, role, approvalStatus) {
+      async createStaffUser(opts) {
+        const role = opts.role === "owner" ? "owner" : opts.role === "manager" ? "manager" : "staff";
         const [user] = await db.insert(staffUsers).values({
-          username: username.toLowerCase().trim(),
-          pinHash,
-          pinSalt,
-          displayName: displayName || null,
-          role: role === "owner" ? "owner" : role === "manager" ? "manager" : "staff",
-          approvalStatus: approvalStatus || "approved"
+          username: opts.username.toLowerCase().trim(),
+          pinHash: opts.pinHash ?? null,
+          pinSalt: opts.pinSalt ?? null,
+          passwordHash: opts.passwordHash ?? null,
+          passwordSalt: opts.passwordSalt ?? null,
+          mustChangePassword: opts.mustChangePassword ?? false,
+          displayName: opts.displayName || null,
+          role,
+          approvalStatus: opts.approvalStatus || "approved"
         }).returning();
         return user;
       }
@@ -1148,6 +1206,21 @@ var init_storage = __esm({
       }
       async updateStaffPin(username, pinHash, pinSalt) {
         const [updated] = await db.update(staffUsers).set({ pinHash, pinSalt }).where(eq(staffUsers.username, username.toLowerCase().trim())).returning();
+        return updated;
+      }
+      async updateStaffPassword(username, passwordHash, passwordSalt, mustChangePassword = false) {
+        const [updated] = await db.update(staffUsers).set({
+          passwordHash,
+          passwordSalt,
+          mustChangePassword,
+          // Wipe legacy PIN once a password is in place
+          pinHash: null,
+          pinSalt: null
+        }).where(eq(staffUsers.username, username.toLowerCase().trim())).returning();
+        return updated;
+      }
+      async setMustChangePassword(username, mustChange) {
+        const [updated] = await db.update(staffUsers).set({ mustChangePassword: mustChange }).where(eq(staffUsers.username, username.toLowerCase().trim())).returning();
         return updated;
       }
       async migrateEncryptExistingBookings() {
@@ -4024,6 +4097,10 @@ var LOCKOUT_DURATION = 15 * 60 * 1e3;
 var ATTEMPT_WINDOW = 10 * 60 * 1e3;
 var sensitiveEndpointAttempts = /* @__PURE__ */ new Map();
 var SENSITIVE_RATE_LIMIT = 10;
+var pendingDeletionTokens = /* @__PURE__ */ new Map();
+var deletionRequestAttempts = /* @__PURE__ */ new Map();
+var DELETION_REQUEST_LIMIT = 3;
+var DELETION_REQUEST_WINDOW = 60 * 60 * 1e3;
 var SENSITIVE_RATE_WINDOW = 15 * 60 * 1e3;
 function checkSensitiveRateLimit(ip) {
   const now = Date.now();
@@ -4868,6 +4945,24 @@ async function resolveMemberDiscountImpl(req, formCustomer, syncSquareMembership
   }
   return result;
 }
+function validatePasswordStrength(password) {
+  if (typeof password !== "string") return "Password is required";
+  if (password.length < 10) return "Password must be at least 10 characters";
+  if (password.length > 200) return "Password is too long";
+  if (!/[a-zA-Z]/.test(password)) return "Password must include a letter";
+  if (!/\d/.test(password)) return "Password must include a number";
+  return null;
+}
+function verifyStaffCredential(credential, user) {
+  if (!credential) return false;
+  if (user.passwordHash && user.passwordSalt) {
+    if (verifyPassword(credential, user.passwordHash, user.passwordSalt)) return true;
+  }
+  if (user.pinHash && user.pinSalt && /^\d{4,8}$/.test(credential)) {
+    if (verifyPin(credential, user.pinHash, user.pinSalt)) return true;
+  }
+  return false;
+}
 async function registerRoutes(app2) {
   app2.post("/api/staff/register", async (req, res) => {
     const clientIp = getClientIp(req);
@@ -4878,9 +4973,9 @@ async function registerRoutes(app2) {
         message: `Too many attempts. Please try again later.`
       });
     }
-    const { masterPin, username, pin, displayName, role } = req.body;
-    if (!masterPin || !username || !pin) {
-      return res.status(400).json({ message: "Master PIN, username, and PIN are required" });
+    const { masterPin, username, password, pin, displayName, role } = req.body;
+    if (!masterPin || !username || !password && !pin) {
+      return res.status(400).json({ message: "Master PIN, username, and password are required" });
     }
     const staffPin = process.env.STAFF_PIN;
     if (!staffPin) {
@@ -4896,8 +4991,25 @@ async function registerRoutes(app2) {
     if (!/^[a-zA-Z0-9_.-]+$/.test(username.trim())) {
       return res.status(400).json({ message: "Username can only contain letters, numbers, dots, hyphens, and underscores" });
     }
-    if (typeof pin !== "string" || pin.length < 4 || pin.length > 8 || !/^\d+$/.test(pin)) {
-      return res.status(400).json({ message: "PIN must be 4-8 digits" });
+    let pwHash = null;
+    let pwSalt = null;
+    let pinHash = null;
+    let pinSalt = null;
+    if (typeof password === "string" && password.length > 0) {
+      const passwordError = validatePasswordStrength(password);
+      if (passwordError) {
+        return res.status(400).json({ message: passwordError });
+      }
+      const hashed = hashPassword(password);
+      pwHash = hashed.hash;
+      pwSalt = hashed.salt;
+    } else {
+      if (typeof pin !== "string" || pin.length < 4 || pin.length > 8 || !/^\d+$/.test(pin)) {
+        return res.status(400).json({ message: "Password is required (min 10 characters, must include a letter and a number)" });
+      }
+      const hashed = hashPin(pin);
+      pinHash = hashed.hash;
+      pinSalt = hashed.salt;
     }
     const existing = await storage.getStaffUserByUsername(username.trim());
     if (existing) {
@@ -4906,17 +5018,20 @@ async function registerRoutes(app2) {
     if (role && !["staff", "manager", "owner"].includes(role)) {
       return res.status(400).json({ message: "Role must be 'staff', 'manager', or 'owner'" });
     }
-    const { hash, salt } = hashPin(pin);
     const assignedRole = role || "staff";
     const needsApproval = assignedRole === "manager" || assignedRole === "owner";
-    const staffUser = await storage.createStaffUser(
-      username.trim(),
-      hash,
-      salt,
-      displayName?.trim() || void 0,
-      assignedRole,
-      needsApproval ? "pending" : "approved"
-    );
+    const staffUser = await storage.createStaffUser({
+      username: username.trim(),
+      passwordHash: pwHash,
+      passwordSalt: pwSalt,
+      pinHash,
+      pinSalt,
+      // Force password setup at first login if they registered with the legacy PIN field.
+      mustChangePassword: !pwHash,
+      displayName: displayName?.trim() || void 0,
+      role: assignedRole,
+      approvalStatus: needsApproval ? "pending" : "approved"
+    });
     clearFailedLogins(clientIp);
     res.status(201).json({
       message: needsApproval ? "Account created and awaiting manager approval before you can sign in." : "Staff account created",
@@ -4935,13 +5050,10 @@ async function registerRoutes(app2) {
         message: `Too many login attempts. Please try again in ${Math.ceil((rateCheck.retryAfter || 900) / 60)} minutes.`
       });
     }
-    const { username, pin } = req.body;
-    if (!pin || typeof pin !== "string") {
-      return res.status(400).json({ message: "PIN is required" });
-    }
-    if (pin.length < 4 || pin.length > 8 || !/^\d+$/.test(pin)) {
-      recordFailedLogin(clientIp);
-      return res.status(401).json({ message: "Invalid credentials" });
+    const { username, pin, password } = req.body;
+    const credential = typeof password === "string" && password.length > 0 ? password : typeof pin === "string" ? pin : void 0;
+    if (!credential) {
+      return res.status(400).json({ message: "Password is required" });
     }
     if (username && typeof username === "string" && username.trim().length > 0) {
       const staffUser = await storage.getStaffUserByUsername(username.trim());
@@ -4955,7 +5067,23 @@ async function registerRoutes(app2) {
       if (staffUser.approvalStatus === "rejected") {
         return res.status(403).json({ message: "Your account request was not approved. Please contact your manager." });
       }
-      if (!verifyPin(pin, staffUser.pinHash, staffUser.pinSalt)) {
+      const isProtectedLegacy = staffUser.username.toLowerCase() === "the147" || (staffUser.displayName || "").toUpperCase().trim() === "THE 147";
+      let mustChangePassword = !isProtectedLegacy && staffUser.mustChangePassword === true;
+      let authed = false;
+      if (staffUser.passwordHash && staffUser.passwordSalt) {
+        if (verifyPassword(credential, staffUser.passwordHash, staffUser.passwordSalt)) {
+          authed = true;
+        }
+      } else if (staffUser.pinHash && staffUser.pinSalt) {
+        if (/^\d{4,8}$/.test(credential) && verifyPin(credential, staffUser.pinHash, staffUser.pinSalt)) {
+          authed = true;
+          mustChangePassword = true;
+          if (!staffUser.mustChangePassword) {
+            await storage.setMustChangePassword(staffUser.username, true);
+          }
+        }
+      }
+      if (!authed) {
         recordFailedLogin(clientIp);
         return res.status(401).json({ message: "Invalid credentials" });
       }
@@ -4968,14 +5096,20 @@ async function registerRoutes(app2) {
         expiresAt: session2.expiresAt,
         username: staffUser.username,
         displayName: staffUser.displayName,
-        role: staffUser.role
+        role: staffUser.role,
+        mustChangePassword
       });
     }
+    if (credential.length < 4 || credential.length > 8 || !/^\d+$/.test(credential)) {
+      recordFailedLogin(clientIp);
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+    const pinForMaster = credential;
     const staffPin = process.env.STAFF_PIN;
     if (!staffPin) {
       return res.status(503).json({ message: "Staff access not configured" });
     }
-    if (!timingSafeCompare(pin, staffPin)) {
+    if (!timingSafeCompare(pinForMaster, staffPin)) {
       recordFailedLogin(clientIp);
       return res.status(401).json({ message: "Invalid credentials" });
     }
@@ -4983,7 +5117,7 @@ async function registerRoutes(app2) {
     const token = randomBytes3(32).toString("hex");
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1e3);
     const session = await storage.createStaffSession(token, expiresAt);
-    res.json({ token: session.token, expiresAt: session.expiresAt, role: "manager" });
+    res.json({ token: session.token, expiresAt: session.expiresAt, role: "manager", mustChangePassword: false });
   });
   app2.post("/api/staff/logout", async (req, res) => {
     const authHeader = req.headers.authorization;
@@ -5034,12 +5168,73 @@ async function registerRoutes(app2) {
     if (displayNameUpper === "THE 147" || username.toLowerCase() === "the147") {
       return res.status(403).json({ message: "PIN changes are not allowed for this account" });
     }
+    if (!staffUser.pinHash || !staffUser.pinSalt) {
+      return res.status(400).json({ message: "This account uses a password \u2014 please use Change Password instead." });
+    }
     if (!verifyPin(currentPin, staffUser.pinHash, staffUser.pinSalt)) {
       return res.status(401).json({ message: "Current PIN is incorrect" });
     }
     const { hash, salt } = hashPin(newPin);
     await storage.updateStaffPin(username, hash, salt);
     res.json({ message: "PIN changed successfully" });
+  });
+  app2.post("/api/staff/set-password", staffAuth, async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    const username = req.staffUsername;
+    if (!username) {
+      return res.status(400).json({ message: "Password change is only available for named accounts" });
+    }
+    const passwordError = validatePasswordStrength(newPassword);
+    if (passwordError) {
+      return res.status(400).json({ message: passwordError });
+    }
+    const staffUser = await storage.getStaffUserByUsername(username);
+    if (!staffUser) {
+      return res.status(404).json({ message: "Account not found" });
+    }
+    const displayNameUpper = (staffUser.displayName || "").toUpperCase().trim();
+    if (displayNameUpper === "THE 147" || username.toLowerCase() === "the147") {
+      return res.status(403).json({ message: "Password changes are not allowed for this account" });
+    }
+    const hasPassword = !!(staffUser.passwordHash && staffUser.passwordSalt);
+    const isForcedChange = staffUser.mustChangePassword === true;
+    if (!isForcedChange) {
+      if (!currentPassword || typeof currentPassword !== "string") {
+        return res.status(400).json({ message: "Current password is required" });
+      }
+      if (hasPassword) {
+        if (!verifyPassword(currentPassword, staffUser.passwordHash, staffUser.passwordSalt)) {
+          return res.status(401).json({ message: "Current password is incorrect" });
+        }
+      } else if (staffUser.pinHash && staffUser.pinSalt) {
+        if (!verifyPin(currentPassword, staffUser.pinHash, staffUser.pinSalt)) {
+          return res.status(401).json({ message: "Current credential is incorrect" });
+        }
+      }
+    }
+    if (hasPassword && verifyPassword(newPassword, staffUser.passwordHash, staffUser.passwordSalt)) {
+      return res.status(400).json({ message: "New password must be different from current password" });
+    }
+    const { hash, salt } = hashPassword(newPassword);
+    await storage.updateStaffPassword(username, hash, salt, false);
+    res.json({ message: "Password updated successfully" });
+  });
+  app2.post("/api/staff/reset-password", staffAuth, managerAuth, async (req, res) => {
+    const { username, tempPassword } = req.body;
+    if (!username || typeof username !== "string" || username.trim().length < 3) {
+      return res.status(400).json({ message: "Username is required" });
+    }
+    const passwordError = validatePasswordStrength(tempPassword);
+    if (passwordError) {
+      return res.status(400).json({ message: passwordError });
+    }
+    const staffUser = await storage.getStaffUserByUsername(username.trim());
+    if (!staffUser) {
+      return res.status(404).json({ message: "Staff user not found" });
+    }
+    const { hash, salt } = hashPassword(tempPassword);
+    await storage.updateStaffPassword(staffUser.username, hash, salt, true);
+    res.json({ message: "Password reset successfully for " + staffUser.username });
   });
   app2.post("/api/staff/reset-pin", staffAuth, managerAuth, async (req, res) => {
     const { username, newPin } = req.body;
@@ -6735,12 +6930,17 @@ async function registerRoutes(app2) {
     if (!emailRegex.test(email)) {
       return res.status(400).json({ message: "Invalid email format" });
     }
-    const deletedCount = await storage.deleteBookingsByEmail(email);
+    const [bookingsDeleted, pushTokensDeleted, ordersDeleted, messagesDeleted] = await Promise.all([
+      storage.deleteBookingsByEmail(email),
+      storage.deletePushTokensByEmail(email),
+      storage.deleteOrdersByEmail(email),
+      storage.deleteContactMessagesByEmail(email)
+    ]);
     const customer = await storage.getCustomerByEmail(email);
     if (customer) await storage.deleteCustomer(customer.id);
     res.json({
       message: `Erasure complete under UK GDPR Article 17`,
-      recordsDeleted: deletedCount,
+      recordsDeleted: bookingsDeleted + pushTokensDeleted + ordersDeleted + messagesDeleted,
       customerAccountDeleted: !!customer,
       erasureDate: (/* @__PURE__ */ new Date()).toISOString()
     });
@@ -7533,10 +7733,10 @@ async function registerRoutes(app2) {
     const { pin, reason } = req.body;
     const staffUsername = req.staffUsername;
     if (staffUsername) {
-      if (!pin) return res.status(400).json({ message: "PIN required to authorise this action" });
+      if (!pin) return res.status(400).json({ message: "Password required to authorise this action" });
       const staffUser = await storage.getStaffUserByUsername(staffUsername);
-      if (!staffUser || !verifyPin(String(pin), staffUser.pinHash, staffUser.pinSalt)) {
-        return res.status(401).json({ message: "Incorrect PIN" });
+      if (!staffUser || !verifyStaffCredential(String(pin), staffUser)) {
+        return res.status(401).json({ message: "Incorrect password" });
       }
     }
     try {
@@ -7683,10 +7883,10 @@ async function registerRoutes(app2) {
     const { pin, reason } = req.body;
     const staffUsername = req.staffUsername;
     if (staffUsername) {
-      if (!pin) return res.status(400).json({ message: "PIN required to authorise this action" });
+      if (!pin) return res.status(400).json({ message: "Password required to authorise this action" });
       const staffUser = await storage.getStaffUserByUsername(staffUsername);
-      if (!staffUser || !verifyPin(String(pin), staffUser.pinHash, staffUser.pinSalt)) {
-        return res.status(401).json({ message: "Incorrect PIN" });
+      if (!staffUser || !verifyStaffCredential(String(pin), staffUser)) {
+        return res.status(401).json({ message: "Incorrect password" });
       }
     }
     try {
@@ -8686,7 +8886,12 @@ async function registerRoutes(app2) {
   app2.delete("/api/customers/me", customerAuth, async (req, res) => {
     const customerId = req.customerId;
     const email = req.customerEmail;
-    const bookingsDeleted = await storage.deleteBookingsByEmail(email);
+    const [bookingsDeleted, pushTokensDeleted, ordersDeleted, messagesDeleted] = await Promise.all([
+      storage.deleteBookingsByEmail(email),
+      storage.deletePushTokensByEmail(email),
+      storage.deleteOrdersByEmail(email),
+      storage.deleteContactMessagesByEmail(email)
+    ]);
     const deleted = await storage.deleteCustomer(customerId);
     if (!deleted) {
       return res.status(404).json({ message: "Account not found" });
@@ -8694,7 +8899,10 @@ async function registerRoutes(app2) {
     res.json({
       success: true,
       message: "Account and all associated data permanently deleted under UK GDPR Article 17",
-      bookingsDeleted
+      bookingsDeleted,
+      pushTokensDeleted,
+      ordersDeleted,
+      messagesDeleted
     });
   });
   app2.get("/api/customers/bookings", customerAuth, async (req, res) => {
@@ -9766,15 +9974,121 @@ Phone: ${phone}` : ""}`,
     res.json(report);
   });
   app2.post("/api/request-deletion", async (req, res) => {
+    const clientIp = getClientIp(req);
+    const now = Date.now();
+    const attempt = deletionRequestAttempts.get(clientIp) ?? { count: 0, resetAt: now + DELETION_REQUEST_WINDOW };
+    if (now > attempt.resetAt) {
+      attempt.count = 0;
+      attempt.resetAt = now + DELETION_REQUEST_WINDOW;
+    }
+    attempt.count += 1;
+    deletionRequestAttempts.set(clientIp, attempt);
+    if (attempt.count > DELETION_REQUEST_LIMIT) {
+      return res.status(429).json({ message: "Too many deletion requests. Please try again later." });
+    }
     const { email } = req.body ?? {};
     if (!email || typeof email !== "string" || !email.includes("@")) {
       return res.status(400).json({ message: "A valid email address is required." });
     }
     const normalised = email.trim().toLowerCase();
-    await storage.deleteBookingsByEmail(normalised);
     const customer = await storage.getCustomerByEmail(normalised);
+    if (customer) {
+      const tokenRaw = randomBytes3(32).toString("hex");
+      for (const [t, v] of pendingDeletionTokens) {
+        if (v.email === normalised) pendingDeletionTokens.delete(t);
+      }
+      pendingDeletionTokens.set(tokenRaw, { email: normalised, expiresAt: now + 60 * 60 * 1e3 });
+      const confirmUrl = `${getPublicAppOrigin()}/api/confirm-deletion?token=${tokenRaw}`;
+      const html = `
+        <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;">
+          <h2 style="color:#0b1120;">Confirm Account Deletion \u2014 The 147</h2>
+          <p style="color:#444;line-height:1.6;">We received a request to permanently delete all data associated with <strong>${normalised}</strong>.</p>
+          <p style="color:#444;line-height:1.6;">To confirm and complete the deletion, click the button below. This link expires in <strong>1 hour</strong> and can only be used once.</p>
+          <a href="${confirmUrl}" style="display:inline-block;margin:24px 0;padding:14px 28px;background:#8B0000;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;">Confirm Deletion</a>
+          <p style="color:#888;font-size:13px;">If you did not request this, you can safely ignore this email \u2014 no data will be deleted.</p>
+          <hr style="border:none;border-top:1px solid #eee;margin:28px 0;" />
+          <p style="color:#bbb;font-size:12px;">The 147 Snooker Club, Bradford</p>
+        </div>`;
+      await sendEmailViaSMTP(normalised, "Confirm your data deletion request \u2014 The 147", html);
+    }
+    res.json({ success: true, message: "If an account exists for that email address, a confirmation link has been sent. Please check your inbox." });
+  });
+  app2.get("/api/confirm-deletion", (req, res) => {
+    const tokenRaw = String(req.query.token ?? "");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    const renderError = (message) => `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Link Invalid \u2014 The 147</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#f5f5f7;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.card{background:#fff;border-radius:16px;padding:40px 36px;max-width:480px;width:100%;margin:24px;box-shadow:0 2px 20px rgba(0,0,0,.07);text-align:center}
+.icon{font-size:3rem;margin-bottom:16px}.h{font-size:1.25rem;font-weight:700;color:#8B0000;margin-bottom:12px}
+p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:none}</style></head>
+<body><div class="card"><div class="icon">\u274C</div><div class="h">Link Invalid or Expired</div>
+<p>${message}</p><p style="margin-top:16px"><a href="/delete-account">Request a new deletion link</a></p>
+</div></body></html>`;
+    if (!tokenRaw) {
+      return res.status(400).send(renderError("No token provided. Please use the link from your confirmation email."));
+    }
+    const entry = pendingDeletionTokens.get(tokenRaw);
+    if (!entry || Date.now() > entry.expiresAt) {
+      return res.status(400).send(renderError("This link has already been used or has expired. Please submit a new deletion request."));
+    }
+    const safeToken = tokenRaw.replace(/[^a-f0-9]/gi, "");
+    res.send(`<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Confirm Data Deletion \u2014 The 147</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#f5f5f7;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.card{background:#fff;border-radius:16px;padding:40px 36px;max-width:480px;width:100%;margin:24px;box-shadow:0 2px 20px rgba(0,0,0,.07);text-align:center}
+.icon{font-size:3rem;margin-bottom:16px}.h{font-size:1.25rem;font-weight:700;color:#0b1120;margin-bottom:12px}
+p{color:#555;font-size:.95rem;line-height:1.6;margin-bottom:20px}
+.warn{background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px 14px;font-size:.875rem;color:#7a5c00;margin-bottom:24px}
+button{width:100%;padding:14px;background:#8B0000;color:#fff;border:none;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer}
+button:hover{opacity:.85}button:disabled{opacity:.5;cursor:not-allowed}a{color:#8B0000;text-decoration:none}</style></head>
+<body><div class="card"><div class="icon">\u26A0\uFE0F</div><div class="h">Confirm Data Deletion</div>
+<p>You are about to permanently delete all personal data associated with your account. This cannot be undone.</p>
+<div class="warn">This will delete your account, booking history, order history, push notification preferences, and contact messages.</div>
+<form method="POST" action="/api/confirm-deletion">
+  <input type="hidden" name="token" value="${safeToken}" />
+  <button type="submit" id="btn">Permanently Delete My Data</button>
+</form>
+<p style="margin-top:16px;font-size:.85rem;color:#888"><a href="/delete-account">Cancel \u2014 go back</a></p>
+</div></body></html>`);
+  });
+  app2.post("/api/confirm-deletion", async (req, res) => {
+    const tokenRaw = String(req.body?.token ?? "");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    const renderResult = (ok, message) => `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>${ok ? "Data Deleted" : "Link Invalid"} \u2014 The 147</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#f5f5f7;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.card{background:#fff;border-radius:16px;padding:40px 36px;max-width:480px;width:100%;margin:24px;box-shadow:0 2px 20px rgba(0,0,0,.07);text-align:center}
+.icon{font-size:3rem;margin-bottom:16px}.h{font-size:1.25rem;font-weight:700;color:${ok ? "#1a7c3e" : "#8B0000"};margin-bottom:12px}
+p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:none}</style></head>
+<body><div class="card"><div class="icon">${ok ? "\u2705" : "\u274C"}</div>
+<div class="h">${ok ? "Data Deleted" : "Link Invalid or Expired"}</div>
+<p>${message}</p>${ok ? '<p style="margin-top:12px;font-size:.85rem;color:#888;">This complies with your rights under the UK GDPR (Article 17).</p>' : '<p style="margin-top:16px"><a href="/delete-account">Request a new deletion link</a></p>'}
+</div></body></html>`;
+    if (!tokenRaw) {
+      return res.status(400).send(renderResult(false, "No token provided."));
+    }
+    const entry = pendingDeletionTokens.get(tokenRaw);
+    if (!entry || Date.now() > entry.expiresAt) {
+      pendingDeletionTokens.delete(tokenRaw);
+      return res.status(400).send(renderResult(false, "This link has already been used or has expired. Please submit a new deletion request."));
+    }
+    pendingDeletionTokens.delete(tokenRaw);
+    const { email } = entry;
+    await Promise.all([
+      storage.deleteBookingsByEmail(email),
+      storage.deletePushTokensByEmail(email),
+      storage.deleteOrdersByEmail(email),
+      storage.deleteContactMessagesByEmail(email)
+    ]);
+    const customer = await storage.getCustomerByEmail(email);
     if (customer) await storage.deleteCustomer(customer.id);
-    res.json({ success: true, message: "If an account existed for that email, all data has been permanently deleted." });
+    res.send(renderResult(true, `All personal data associated with <strong>${email}</strong> has been permanently deleted from our systems.`));
   });
   app2.get("/api/hr/geofence", staffAuth, async (_req, res) => {
     const lat = await storage.getSetting("geofence_lat");

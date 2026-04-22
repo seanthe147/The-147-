@@ -142,6 +142,16 @@
     .data-list p { margin-bottom: 4px; font-size: 0.875rem; color: #333; }
     .data-list p:last-child { margin-bottom: 0; }
 
+    .info-box {
+      background: #e8f4fd;
+      border: 1px solid #b3d4f5;
+      border-radius: 10px;
+      padding: 14px 16px;
+      font-size: 0.875rem;
+      color: #1a4a7a;
+      margin-bottom: 24px;
+    }
+
     footer {
       text-align: center;
       padding: 24px;
@@ -161,18 +171,23 @@
     <div class="card">
       <div id="form-state">
         <h2>Delete My Account &amp; Data</h2>
-        <p>Enter the email address associated with your account. All of your personal data will be permanently deleted immediately.</p>
+        <p>Enter the email address associated with your account. We will send you a confirmation link — you must click it to complete the deletion.</p>
 
         <div class="data-list">
           <p><strong>What will be deleted:</strong></p>
           <p>• Your account &amp; profile information</p>
           <p>• All booking history</p>
-          <p>• Any loyalty points or rewards linked to this account</p>
+          <p>• Order history</p>
           <p>• Push notification preferences</p>
+          <p>• Contact messages sent to us</p>
+        </div>
+
+        <div class="info-box">
+          📧 A confirmation email will be sent to the address you enter. You must click the link in that email to complete the deletion. The link expires after 1 hour.
         </div>
 
         <div class="warning-box">
-          ⚠️ This action is permanent and cannot be undone. You will not be able to recover your account or booking history.
+          ⚠️ Once confirmed, this action is permanent and cannot be undone. You will not be able to recover your account or booking history.
         </div>
 
         <div class="error-msg" id="error-msg"></div>
@@ -183,18 +198,19 @@
 
           <div class="checkbox-row">
             <input type="checkbox" id="confirm-check" required />
-            <span>I understand this will permanently delete my account and all associated data. This cannot be undone.</span>
+            <span>I understand that clicking the confirmation link in my email will permanently delete my account and all associated data. This cannot be undone.</span>
           </div>
 
-          <button type="submit" id="submit-btn">Delete My Account &amp; Data</button>
+          <button type="submit" id="submit-btn">Send Deletion Confirmation Email</button>
         </form>
       </div>
 
       <div class="success-state" id="success-state">
-        <div class="success-icon">✅</div>
-        <h2>Data Deleted</h2>
-        <p>If an account existed for that email address, all associated data has been permanently deleted from our systems.</p>
-        <p style="margin-top:12px; font-size:0.85rem; color:#888;">This complies with your rights under the UK GDPR (Article 17).</p>
+        <div class="success-icon">📧</div>
+        <h2>Check Your Email</h2>
+        <p>If an account exists for that email address, we have sent a confirmation link. Please check your inbox and click the link to complete the deletion.</p>
+        <p style="margin-top:12px; font-size:0.85rem; color:#888;">The link expires after 1 hour. If you did not receive an email, the address may not be registered with us.</p>
+        <p style="margin-top:12px; font-size:0.85rem; color:#888;">This process complies with your rights under the UK GDPR (Article 17).</p>
       </div>
     </div>
   </main>
@@ -214,7 +230,7 @@
       e.preventDefault();
       errorMsg.style.display = 'none';
       submitBtn.disabled = true;
-      submitBtn.textContent = 'Deleting…';
+      submitBtn.textContent = 'Sending…';
 
       const email = document.getElementById('email').value.trim();
 
@@ -225,21 +241,26 @@
           body: JSON.stringify({ email })
         });
 
-        if (res.ok || res.status === 404) {
+        if (res.ok) {
           formState.style.display = 'none';
           successState.style.display = 'block';
+        } else if (res.status === 429) {
+          errorMsg.textContent = 'Too many requests. Please try again later.';
+          errorMsg.style.display = 'block';
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Send Deletion Confirmation Email';
         } else {
           const data = await res.json().catch(() => ({}));
           errorMsg.textContent = data.message || 'Something went wrong. Please try again.';
           errorMsg.style.display = 'block';
           submitBtn.disabled = false;
-          submitBtn.textContent = 'Delete My Account & Data';
+          submitBtn.textContent = 'Send Deletion Confirmation Email';
         }
       } catch (err) {
         errorMsg.textContent = 'Network error. Please check your connection and try again.';
         errorMsg.style.display = 'block';
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Delete My Account & Data';
+        submitBtn.textContent = 'Send Deletion Confirmation Email';
       }
     });
   </script>

@@ -114,6 +114,14 @@ const ATTEMPT_WINDOW = 10 * 60 * 1000;
 // Rate limiter for sensitive/GDPR endpoints — 10 requests per 15 minutes per IP
 const sensitiveEndpointAttempts = new Map<string, { count: number; resetAt: number }>();
 const SENSITIVE_RATE_LIMIT = 10;
+
+// In-memory store for pending deletion confirmation tokens (email-ownership verification)
+// token → { email, expiresAt }  — tokens expire after 1 hour
+const pendingDeletionTokens = new Map<string, { email: string; expiresAt: number }>();
+// Rate-limit for the public deletion request endpoint — max 3 requests per hour per IP
+const deletionRequestAttempts = new Map<string, { count: number; resetAt: number }>();
+const DELETION_REQUEST_LIMIT = 3;
+const DELETION_REQUEST_WINDOW = 60 * 60 * 1000;
 const SENSITIVE_RATE_WINDOW = 15 * 60 * 1000;
 function checkSensitiveRateLimit(ip: string): boolean {
   const now = Date.now();
@@ -3390,13 +3398,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!emailRegex.test(email)) {
       return res.status(400).json({ message: "Invalid email format" });
     }
-    const deletedCount = await storage.deleteBookingsByEmail(email);
-    // Also delete the customer account if one exists with this email
+    const [bookingsDeleted, pushTokensDeleted, ordersDeleted, messagesDeleted] = await Promise.all([
+      storage.deleteBookingsByEmail(email),
+      storage.deletePushTokensByEmail(email),
+      storage.deleteOrdersByEmail(email),
+      storage.deleteContactMessagesByEmail(email),
+    ]);
     const customer = await storage.getCustomerByEmail(email);
     if (customer) await storage.deleteCustomer(customer.id);
     res.json({
       message: `Erasure complete under UK GDPR Article 17`,
-      recordsDeleted: deletedCount,
+      recordsDeleted: bookingsDeleted + pushTokensDeleted + ordersDeleted + messagesDeleted,
       customerAccountDeleted: !!customer,
       erasureDate: new Date().toISOString(),
     });
@@ -5630,7 +5642,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/customers/me", customerAuth, async (req, res) => {
     const customerId = (req as any).customerId;
     const email = (req as any).customerEmail;
-    const bookingsDeleted = await storage.deleteBookingsByEmail(email);
+    const [bookingsDeleted, pushTokensDeleted, ordersDeleted, messagesDeleted] = await Promise.all([
+      storage.deleteBookingsByEmail(email),
+      storage.deletePushTokensByEmail(email),
+      storage.deleteOrdersByEmail(email),
+      storage.deleteContactMessagesByEmail(email),
+    ]);
     const deleted = await storage.deleteCustomer(customerId);
     if (!deleted) {
       return res.status(404).json({ message: "Account not found" });
@@ -5639,6 +5656,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       success: true,
       message: "Account and all associated data permanently deleted under UK GDPR Article 17",
       bookingsDeleted,
+      pushTokensDeleted,
+      ordersDeleted,
+      messagesDeleted,
     });
   });
 
@@ -6886,19 +6906,157 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(report);
   });
 
-  // Public API endpoint — deletes all data for a given email address
+  // Step 1: Public deletion request — sends a confirmation email with a signed token.
+  // Does NOT delete any data immediately; the caller must click the link in the email.
   app.post("/api/request-deletion", async (req, res) => {
+    const clientIp = getClientIp(req);
+
+    // Enforce per-IP rate limit to prevent abuse
+    const now = Date.now();
+    const attempt = deletionRequestAttempts.get(clientIp) ?? { count: 0, resetAt: now + DELETION_REQUEST_WINDOW };
+    if (now > attempt.resetAt) {
+      attempt.count = 0;
+      attempt.resetAt = now + DELETION_REQUEST_WINDOW;
+    }
+    attempt.count += 1;
+    deletionRequestAttempts.set(clientIp, attempt);
+    if (attempt.count > DELETION_REQUEST_LIMIT) {
+      return res.status(429).json({ message: "Too many deletion requests. Please try again later." });
+    }
+
     const { email } = req.body ?? {};
     if (!email || typeof email !== "string" || !email.includes("@")) {
       return res.status(400).json({ message: "A valid email address is required." });
     }
     const normalised = email.trim().toLowerCase();
-    // Delete bookings first, then customer account
-    await storage.deleteBookingsByEmail(normalised);
+
+    // Only proceed if an account actually exists for this email — prevents harvesting confirmation
+    // of whether arbitrary emails are registered. We still send a generic response either way.
     const customer = await storage.getCustomerByEmail(normalised);
+    if (customer) {
+      // Generate a cryptographically random one-time token valid for 1 hour
+      const tokenRaw = randomBytes(32).toString("hex");
+
+      // Expire any previous pending token for this email first
+      for (const [t, v] of pendingDeletionTokens) {
+        if (v.email === normalised) pendingDeletionTokens.delete(t);
+      }
+      pendingDeletionTokens.set(tokenRaw, { email: normalised, expiresAt: now + 60 * 60 * 1000 });
+
+      // Build the confirmation URL from the configured canonical origin — never from request headers
+      const confirmUrl = `${getPublicAppOrigin()}/api/confirm-deletion?token=${tokenRaw}`;
+
+      const html = `
+        <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;">
+          <h2 style="color:#0b1120;">Confirm Account Deletion — The 147</h2>
+          <p style="color:#444;line-height:1.6;">We received a request to permanently delete all data associated with <strong>${normalised}</strong>.</p>
+          <p style="color:#444;line-height:1.6;">To confirm and complete the deletion, click the button below. This link expires in <strong>1 hour</strong> and can only be used once.</p>
+          <a href="${confirmUrl}" style="display:inline-block;margin:24px 0;padding:14px 28px;background:#8B0000;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;">Confirm Deletion</a>
+          <p style="color:#888;font-size:13px;">If you did not request this, you can safely ignore this email — no data will be deleted.</p>
+          <hr style="border:none;border-top:1px solid #eee;margin:28px 0;" />
+          <p style="color:#bbb;font-size:12px;">The 147 Snooker Club, Bradford</p>
+        </div>`;
+
+      await sendEmailViaSMTP(normalised, "Confirm your data deletion request — The 147", html);
+    }
+
+    // Always return the same response to avoid leaking whether an account exists
+    res.json({ success: true, message: "If an account exists for that email address, a confirmation link has been sent. Please check your inbox." });
+  });
+
+  // Step 2a: GET — show a confirmation page so mailbox link-scanners cannot accidentally trigger deletion.
+  // The user must click the "Confirm" button which sends a POST to actually perform the erasure.
+  app.get("/api/confirm-deletion", (req, res) => {
+    const tokenRaw = String(req.query.token ?? "");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+
+    const renderError = (message: string) => `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Link Invalid — The 147</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#f5f5f7;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.card{background:#fff;border-radius:16px;padding:40px 36px;max-width:480px;width:100%;margin:24px;box-shadow:0 2px 20px rgba(0,0,0,.07);text-align:center}
+.icon{font-size:3rem;margin-bottom:16px}.h{font-size:1.25rem;font-weight:700;color:#8B0000;margin-bottom:12px}
+p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:none}</style></head>
+<body><div class="card"><div class="icon">❌</div><div class="h">Link Invalid or Expired</div>
+<p>${message}</p><p style="margin-top:16px"><a href="/delete-account">Request a new deletion link</a></p>
+</div></body></html>`;
+
+    if (!tokenRaw) {
+      return res.status(400).send(renderError("No token provided. Please use the link from your confirmation email."));
+    }
+
+    const entry = pendingDeletionTokens.get(tokenRaw);
+    if (!entry || Date.now() > entry.expiresAt) {
+      return res.status(400).send(renderError("This link has already been used or has expired. Please submit a new deletion request."));
+    }
+
+    // Token is valid — show a confirmation page. Deletion only happens on POST.
+    const safeToken = tokenRaw.replace(/[^a-f0-9]/gi, "");
+    res.send(`<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Confirm Data Deletion — The 147</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#f5f5f7;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.card{background:#fff;border-radius:16px;padding:40px 36px;max-width:480px;width:100%;margin:24px;box-shadow:0 2px 20px rgba(0,0,0,.07);text-align:center}
+.icon{font-size:3rem;margin-bottom:16px}.h{font-size:1.25rem;font-weight:700;color:#0b1120;margin-bottom:12px}
+p{color:#555;font-size:.95rem;line-height:1.6;margin-bottom:20px}
+.warn{background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px 14px;font-size:.875rem;color:#7a5c00;margin-bottom:24px}
+button{width:100%;padding:14px;background:#8B0000;color:#fff;border:none;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer}
+button:hover{opacity:.85}button:disabled{opacity:.5;cursor:not-allowed}a{color:#8B0000;text-decoration:none}</style></head>
+<body><div class="card"><div class="icon">⚠️</div><div class="h">Confirm Data Deletion</div>
+<p>You are about to permanently delete all personal data associated with your account. This cannot be undone.</p>
+<div class="warn">This will delete your account, booking history, order history, push notification preferences, and contact messages.</div>
+<form method="POST" action="/api/confirm-deletion">
+  <input type="hidden" name="token" value="${safeToken}" />
+  <button type="submit" id="btn">Permanently Delete My Data</button>
+</form>
+<p style="margin-top:16px;font-size:.85rem;color:#888"><a href="/delete-account">Cancel — go back</a></p>
+</div></body></html>`);
+  });
+
+  // Step 2b: POST — user explicitly confirmed on the page above; now perform the erasure.
+  app.post("/api/confirm-deletion", async (req, res) => {
+    const tokenRaw = String(req.body?.token ?? "");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+
+    const renderResult = (ok: boolean, message: string) => `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>${ok ? "Data Deleted" : "Link Invalid"} — The 147</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#f5f5f7;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.card{background:#fff;border-radius:16px;padding:40px 36px;max-width:480px;width:100%;margin:24px;box-shadow:0 2px 20px rgba(0,0,0,.07);text-align:center}
+.icon{font-size:3rem;margin-bottom:16px}.h{font-size:1.25rem;font-weight:700;color:${ok ? "#1a7c3e" : "#8B0000"};margin-bottom:12px}
+p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:none}</style></head>
+<body><div class="card"><div class="icon">${ok ? "✅" : "❌"}</div>
+<div class="h">${ok ? "Data Deleted" : "Link Invalid or Expired"}</div>
+<p>${message}</p>${ok ? '<p style="margin-top:12px;font-size:.85rem;color:#888;">This complies with your rights under the UK GDPR (Article 17).</p>' : '<p style="margin-top:16px"><a href="/delete-account">Request a new deletion link</a></p>'}
+</div></body></html>`;
+
+    if (!tokenRaw) {
+      return res.status(400).send(renderResult(false, "No token provided."));
+    }
+
+    const entry = pendingDeletionTokens.get(tokenRaw);
+    if (!entry || Date.now() > entry.expiresAt) {
+      pendingDeletionTokens.delete(tokenRaw);
+      return res.status(400).send(renderResult(false, "This link has already been used or has expired. Please submit a new deletion request."));
+    }
+
+    // Consume the token immediately to prevent replay
+    pendingDeletionTokens.delete(tokenRaw);
+    const { email } = entry;
+
+    // Perform full erasure of all personal data categories
+    await Promise.all([
+      storage.deleteBookingsByEmail(email),
+      storage.deletePushTokensByEmail(email),
+      storage.deleteOrdersByEmail(email),
+      storage.deleteContactMessagesByEmail(email),
+    ]);
+    const customer = await storage.getCustomerByEmail(email);
     if (customer) await storage.deleteCustomer(customer.id);
-    // Always return success — don't reveal whether an account existed
-    res.json({ success: true, message: "If an account existed for that email, all data has been permanently deleted." });
+
+    res.send(renderResult(true, `All personal data associated with <strong>${email}</strong> has been permanently deleted from our systems.`));
   });
 
   // ════════════════════════════════════════════════════════════════════════════

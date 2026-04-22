@@ -362,6 +362,9 @@ export interface IStorage {
   invalidateStaffSession(token: string): Promise<boolean>;
   getBookingsByEmail(email: string): Promise<Booking[]>;
   deleteBookingsByEmail(email: string): Promise<number>;
+  deletePushTokensByEmail(email: string): Promise<number>;
+  deleteOrdersByEmail(email: string): Promise<number>;
+  deleteContactMessagesByEmail(email: string): Promise<number>;
   anonymizeOldBookings(retentionDays: number): Promise<number>;
   anonymizeOldHRRecords(): Promise<number>;
   cleanupExpiredSessions(): Promise<number>;
@@ -673,6 +676,43 @@ export class DatabaseStorage implements IStorage {
     if (byHash.length > 0) return byHash.length;
     const byPlain = await db.delete(bookings).where(sql`lower(${bookings.customerEmail}) = lower(${email})`).returning();
     return byPlain.length;
+  }
+
+  async deletePushTokensByEmail(email: string): Promise<number> {
+    const hash = hashEmail(email);
+    const byHash = await db.delete(pushTokens).where(eq(pushTokens.customerEmailHash, hash)).returning();
+    if (byHash.length > 0) return byHash.length;
+    const byPlain = await db.delete(pushTokens).where(sql`lower(${pushTokens.customerEmail}) = lower(${email})`).returning();
+    return byPlain.length;
+  }
+
+  async deleteOrdersByEmail(email: string): Promise<number> {
+    const hash = hashEmail(email);
+    const byHash = await db.delete(appOrders).where(eq(appOrders.customerEmailHash, hash)).returning();
+    if (byHash.length > 0) return byHash.length;
+    const byPlain = await db.delete(appOrders).where(sql`lower(${appOrders.customerEmail}) = lower(${email})`).returning();
+    return byPlain.length;
+  }
+
+  async deleteContactMessagesByEmail(email: string): Promise<number> {
+    const allMessages = await db.select().from(contactMessages).orderBy(contactMessages.createdAt);
+    const normalised = email.trim().toLowerCase();
+    const toDelete: number[] = [];
+    for (const msg of allMessages) {
+      try {
+        const decryptedEmail = decrypt(msg.email);
+        if (decryptedEmail.toLowerCase() === normalised) {
+          toDelete.push(msg.id);
+        }
+      } catch {
+        if (msg.email.toLowerCase() === normalised) {
+          toDelete.push(msg.id);
+        }
+      }
+    }
+    if (toDelete.length === 0) return 0;
+    await db.delete(contactMessages).where(inArray(contactMessages.id, toDelete));
+    return toDelete.length;
   }
 
   async anonymizeOldBookings(retentionDays: number): Promise<number> {
