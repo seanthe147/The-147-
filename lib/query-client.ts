@@ -72,7 +72,7 @@ export async function apiRequest(
 // a retry button instead of a forever-spinner.
 const QUERY_TIMEOUT_MS = 25_000;
 
-async function fetchWithTimeout(input: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+async function fetchWithTimeout(input: string, init: any, timeoutMs: number): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {

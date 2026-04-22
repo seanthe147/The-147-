@@ -234,6 +234,43 @@ function buildPaymentSheetHtml(opts: {
       function setStatus(t) { document.getElementById("status").textContent = t || ""; }
       function hideLoading() { var l = document.getElementById("loading"); if (l) l.style.display = "none"; }
 
+      // Capture any uncaught script error so we can surface it instead of
+      // showing the user a forever-loading spinner.
+      window.addEventListener("error", function (e) {
+        hideLoading();
+        var msg = (e && (e.message || (e.error && e.error.message))) || "Unknown script error";
+        setStatus("Payment library error: " + msg);
+        send({ type: "fatal", message: "window.error: " + msg });
+      });
+      window.addEventListener("unhandledrejection", function (e) {
+        hideLoading();
+        var reason = e && e.reason;
+        var msg = (reason && (reason.message || String(reason))) || "Unknown promise rejection";
+        setStatus("Payment library error: " + msg);
+        send({ type: "fatal", message: "unhandledrejection: " + msg });
+      });
+
+      // Hard upper bound — if the Square SDK never finishes initialising the
+      // card form (silent hang seen on some WKWebView builds) we bail after
+      // 12s so the user sees an actionable error and a way to retry rather
+      // than an endless spinner.
+      var SDK_LOAD_TIMEOUT_MS = 12000;
+      var sdkReady = false;
+      setTimeout(function () {
+        if (sdkReady) return;
+        hideLoading();
+        var diag = "no Square global";
+        try {
+          if (window.Square) {
+            diag = "Square loaded but card form did not initialise within " + (SDK_LOAD_TIMEOUT_MS / 1000) + "s";
+          } else {
+            diag = "Square SDK script (" + ${JSON.stringify(sdkSrc)} + ") never loaded — check internet connection";
+          }
+        } catch (e) {}
+        setStatus(diag + ". Pull down to retry, or order at the bar.");
+        send({ type: "fatal", message: "SDK init timeout: " + diag });
+      }, SDK_LOAD_TIMEOUT_MS);
+
       // Render the recurring-billing notice up front so the customer sees
       // it BEFORE entering any card details. Required for transparency on
       // membership / subscription sign-ups.
@@ -358,6 +395,7 @@ function buildPaymentSheetHtml(opts: {
         card = c;
         return c.attach("#card-container");
       }).then(function () {
+        sdkReady = true;
         var payBtn = document.getElementById("pay-card-btn");
         payBtn.textContent = PAY_LABEL;
         if (IS_SUBSCRIPTION) {
