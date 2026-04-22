@@ -439,6 +439,28 @@
       <button class="btn-login" id="loginBtn" type="button">Sign In</button>
       <a class="toggle-link" id="toggleMode">New staff? Create an account</a>
     </div>
+
+    <!-- Forced password setup (legacy PIN users + manager-reset accounts) -->
+    <div class="login-card hidden-fields" id="setPasswordPanel">
+      <div class="login-logo">
+        <img src="/assets/logo-147.png" alt="The 147" style="width:120px;height:120px;object-fit:contain;border-radius:18px;display:block;margin:0 auto 10px">
+        <div class="login-tagline">Set a new password</div>
+      </div>
+      <div style="font-size:13px;color:var(--text-2);line-height:1.5;margin-bottom:14px;text-align:center">
+        For your security you need to replace your PIN with a password before continuing. Minimum 10 characters, must include a letter and a number.
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="spNew">New password</label>
+        <input class="form-input" type="password" id="spNew" autocomplete="new-password" maxlength="100" placeholder="At least 10 characters">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="spConfirm">Confirm new password</label>
+        <input class="form-input" type="password" id="spConfirm" autocomplete="new-password" maxlength="100" placeholder="Re-enter">
+      </div>
+      <div id="spError" class="login-error"></div>
+      <div id="spSuccess" class="login-success"></div>
+      <button class="btn-login" id="spBtn" type="button">Save Password</button>
+    </div>
   </div>
 </div>
 
@@ -2434,6 +2456,10 @@
   });
 
   el('loginBtn').addEventListener('click',handleAuth);
+  el('spBtn').addEventListener('click',handleSetPassword);
+  ['spNew','spConfirm'].forEach(id=>{
+    const e=el(id);if(e)e.addEventListener('keydown',ev=>{if(ev.key==='Enter')handleSetPassword()});
+  });
   ['lUsername','lPin','lConfirmPin','lMasterPin'].forEach(id=>{
     const e=el(id);if(e)e.addEventListener('keydown',ev=>{if(ev.key==='Enter')handleAuth()});
   });
@@ -2465,7 +2491,10 @@
         el('loginBtn').textContent='Sign In';el('toggleMode').textContent='New staff? Create an account';
         el('lPin').value='';el('lConfirmPin').value='';el('lMasterPin').value='';
       } else {
-        const body=username?{username,pin}:{pin};
+        // Username is mandatory now (the server-side master-PIN-as-manager
+        // shortcut was removed). The credential field is sent as `pin` for
+        // backward compat — the server accepts a PIN or password under that key.
+        const body={username,pin};
         const r=await fetch('/api/staff/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
         const d=await r.json();
         if(!r.ok){el('loginError').textContent=d.message||'Login failed';return}
@@ -2473,10 +2502,42 @@
         state.role=d.role||'staff';
         state.username=d.username||username;
         state.displayName=d.displayName||null;
+        // Legacy PIN users (and anyone whose password was just reset by a
+        // manager) must set a real password before they can use the dashboard.
+        if(d.mustChangePassword){showSetPassword();return}
         bootApp();
       }
     } catch(e){if(e.message!=='Session expired')el('loginError').textContent='Network error. Please try again.'}
     finally{el('loginBtn').disabled=false}
+  }
+
+  function showSetPassword(){
+    // Hide the regular login form and show the forced-change panel.
+    document.querySelector('#loginScreen .login-card:not(#setPasswordPanel)').classList.add('hidden-fields');
+    el('setPasswordPanel').classList.remove('hidden-fields');
+    el('spError').textContent='';el('spSuccess').textContent='';
+    el('spNew').value='';el('spConfirm').value='';
+    setTimeout(()=>el('spNew').focus(),50);
+  }
+
+  async function handleSetPassword(){
+    const newPw=el('spNew').value;
+    const confirmPw=el('spConfirm').value;
+    el('spError').textContent='';el('spSuccess').textContent='';
+    if(!newPw||newPw.length<10){el('spError').textContent='Password must be at least 10 characters';return}
+    if(!/[A-Za-z]/.test(newPw)||!/[0-9]/.test(newPw)){el('spError').textContent='Password must contain a letter and a number';return}
+    if(newPw!==confirmPw){el('spError').textContent='Passwords do not match';return}
+    el('spBtn').disabled=true;
+    try{
+      // The session bearer is already set by setToken() during login. The server
+      // skips currentPassword verification when mustChangePassword=true.
+      const r=await api('/api/staff/set-password',{method:'POST',body:JSON.stringify({newPassword:newPw})});
+      const d=await r.json();
+      if(!r.ok){el('spError').textContent=d.message||'Could not save password';return}
+      el('spSuccess').textContent='Password saved. Loading…';
+      setTimeout(()=>bootApp(),400);
+    }catch(e){if(e.message!=='Session expired')el('spError').textContent='Network error. Please try again.'}
+    finally{el('spBtn').disabled=false}
   }
 
   function showLogin(){
