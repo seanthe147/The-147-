@@ -419,7 +419,15 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
           <WebView
             ref={webRef}
             originWhitelist={["*"]}
-            source={{ html, baseUrl: "https://the147.local/" }}
+            source={{
+              html,
+              // Apple Pay / Google Pay inside the WebView require the document
+              // origin to match a domain that's been registered with Square
+              // for wallet payments. EXPO_PUBLIC_DOMAIN is set per build env
+              // (see eas.json) and points at the production server that
+              // hosts /.well-known/apple-developer-merchantid-domain-association.
+              baseUrl: `https://${process.env.EXPO_PUBLIC_DOMAIN || "the147bradford.replit.app"}/`,
+            }}
             onMessage={(e) => {
               try {
                 handleMessage(JSON.parse(e.nativeEvent.data));

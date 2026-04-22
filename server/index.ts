@@ -361,6 +361,21 @@ function configureExpoAndLanding(app: express.Application) {
 
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
   app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
+  // Serve Apple Pay / Google Pay domain-association files for Square wallet
+  // domain verification. Place files in server/well-known/ — they'll be
+  // reachable at https://<domain>/.well-known/<filename>
+  app.use(
+    "/.well-known",
+    express.static(path.resolve(process.cwd(), "server", "well-known"), {
+      // Apple's verification fetcher refuses anything that isn't served as
+      // plain text with the exact filename it requested.
+      setHeaders: (res) => {
+        res.setHeader("Content-Type", "text/plain; charset=utf-8");
+        res.setHeader("Cache-Control", "public, max-age=300");
+      },
+      dotfiles: "allow",
+    }),
+  );
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 
   // Homepage mockup (preview only) — registered here, before SPA catch-all,
