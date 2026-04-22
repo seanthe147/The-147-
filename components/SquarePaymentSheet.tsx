@@ -271,11 +271,34 @@ function buildPaymentSheetHtml(opts: {
       }
 
       function paymentRequest() {
-        return payments.paymentRequest({
+        var req = {
           countryCode: "GB",
           currencyCode: CURRENCY,
-          total: { amount: AMOUNT, label: "Total" },
-        });
+          total: {
+            amount: AMOUNT,
+            label: IS_SUBSCRIPTION ? "The 147 Membership" : "The 147 Bradford",
+          },
+        };
+        // For recurring billing, attach the Apple Pay JS recurringPaymentRequest
+        // so Apple's own sheet clearly tells the customer "this is a
+        // subscription that will renew automatically until cancelled".
+        // Required by Apple Pay guidelines for subscriptions and prevents
+        // confused-customer chargebacks.
+        if (IS_SUBSCRIPTION) {
+          var isAnnual = /year/i.test(RECURRING_DESC);
+          req.total.amount = AMOUNT; // first/initial billed amount
+          req.recurringPaymentRequest = {
+            paymentDescription: "The 147 Bradford Membership",
+            regularBilling: {
+              amount: AMOUNT,
+              label: isAnnual ? "Annual membership" : "Monthly membership",
+              recurringPaymentIntervalUnit: isAnnual ? "year" : "month",
+              recurringPaymentIntervalCount: 1,
+            },
+            managementURL: "https://the147bradford.replit.app/",
+          };
+        }
+        return payments.paymentRequest(req);
       }
 
       function verifyAndSend(token) {
