@@ -1110,7 +1110,10 @@ function CartSheet({
   return (
     <>
     <Modal
-      visible={visible}
+      // iOS refuses to stack a full-screen modal on top of a pageSheet, so
+      // we hide the cart while the payment sheet is presenting and restore
+      // it again on close. Without this, tapping Place Order does nothing.
+      visible={visible && !paymentSheetVisible}
       animationType="slide"
       presentationStyle="pageSheet"
       onRequestClose={handleClose}
