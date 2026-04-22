@@ -77,31 +77,97 @@ function buildPaymentSheetHtml(opts: {
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>Payment</title>
   <style>
-    * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; background: #ffffff; color: #0A1628; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
-    body { padding: 20px 18px 28px; min-height: 100vh; }
-    .total { font-size: 14px; color: #6B7280; margin-bottom: 4px; }
-    .total b { color: #0A1628; font-size: 22px; font-weight: 700; }
-    .wallets { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; }
-    #apple-pay-button { display: none; height: 48px; border-radius: 10px; }
-    #google-pay-button { display: none; height: 48px; border-radius: 10px; }
-    .or { text-align: center; color: #9CA3AF; font-size: 12px; letter-spacing: 1px; margin: 14px 0 8px; }
-    .label { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 8px; }
-    #card-container { min-height: 90px; }
-    #pay-card-btn {
-      width: 100%; margin-top: 14px; padding: 14px; border: none; border-radius: 12px;
-      background: #0047AB; color: white; font-size: 16px; font-weight: 700; cursor: pointer;
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; padding: 0; background: #F7F8FA; color: #0A1628; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+    body { padding: 18px 16px 28px; min-height: 100vh; }
+
+    .amount-card {
+      background: linear-gradient(135deg, #0A1628 0%, #0047AB 100%);
+      color: #fff;
+      border-radius: 16px;
+      padding: 18px 20px;
+      box-shadow: 0 6px 18px rgba(10, 22, 40, 0.18);
+      margin-bottom: 18px;
     }
-    #pay-card-btn:disabled { opacity: 0.6; cursor: default; }
-    #status { margin-top: 10px; font-size: 13px; color: #DC2626; min-height: 16px; }
-    #loading { display: flex; align-items: center; gap: 8px; color: #6B7280; font-size: 13px; padding: 16px 0; }
-    .spinner { width: 14px; height: 14px; border: 2px solid #E5E7EB; border-top-color: #0047AB; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .amount-card .label { font-size: 12px; opacity: 0.75; text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 4px; font-weight: 600; }
+    .amount-card .value { font-size: 30px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.1; }
+    .amount-card .recurring { font-size: 13px; opacity: 0.85; margin-top: 4px; font-weight: 500; }
+
+    #recurring-notice {
+      display: none;
+      background: #FEF3C7;
+      border: 1px solid #FCD34D;
+      color: #78350F;
+      font-size: 12.5px;
+      line-height: 1.5;
+      border-radius: 10px;
+      padding: 11px 13px;
+      margin-bottom: 16px;
+      font-weight: 500;
+    }
+
+    .section-title { font-size: 11px; font-weight: 700; color: #6B7280; text-transform: uppercase; letter-spacing: 1.3px; margin-bottom: 10px; }
+
+    .wallets { display: flex; flex-direction: column; gap: 10px; margin-bottom: 6px; }
+    #apple-pay-button, #google-pay-button { display: none; height: 50px; border-radius: 12px; overflow: hidden; }
+
+    .or { display: none; text-align: center; color: #9CA3AF; font-size: 11px; letter-spacing: 1.4px; font-weight: 600; margin: 18px 0 14px; position: relative; }
+    .or::before, .or::after { content: ""; position: absolute; top: 50%; width: calc(50% - 60px); height: 1px; background: #E5E7EB; }
+    .or::before { left: 0; }
+    .or::after { right: 0; }
+
+    .card-card {
+      background: #fff;
+      border: 1px solid #E5E7EB;
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 2px 6px rgba(10, 22, 40, 0.04);
+    }
+    .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .card-header .label { font-size: 13px; font-weight: 700; color: #0A1628; }
+    .brands { display: flex; gap: 6px; align-items: center; }
+    .brand-pill { font-size: 9px; font-weight: 800; padding: 3px 7px; border-radius: 4px; color: #fff; letter-spacing: 0.4px; }
+    .b-visa { background: #1A1F71; }
+    .b-mc { background: linear-gradient(90deg, #EB001B 0%, #EB001B 50%, #F79E1B 50%, #F79E1B 100%); }
+    .b-amex { background: #006FCF; }
+
+    #card-container { min-height: 90px; }
+
+    #pay-card-btn {
+      width: 100%; margin-top: 14px; padding: 15px; border: none; border-radius: 12px;
+      background: #0047AB; color: white; font-size: 16px; font-weight: 700; cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0, 71, 171, 0.28);
+      transition: transform 0.1s, box-shadow 0.1s, opacity 0.15s;
+    }
+    #pay-card-btn:active { transform: translateY(1px); box-shadow: 0 2px 6px rgba(0, 71, 171, 0.22); }
+    #pay-card-btn:disabled { opacity: 0.55; cursor: default; box-shadow: none; }
+
+    #recurring-fineprint { display: none; font-size: 11.5px; color: #6B7280; line-height: 1.5; margin-top: 10px; text-align: center; }
+
+    #status { margin-top: 10px; font-size: 13px; color: #DC2626; min-height: 16px; text-align: center; font-weight: 500; }
+
+    #loading { display: flex; align-items: center; justify-content: center; gap: 10px; color: #6B7280; font-size: 13px; padding: 24px 0; }
+    .spinner { width: 16px; height: 16px; border: 2px solid #E5E7EB; border-top-color: #0047AB; border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    .trust-footer {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      margin-top: 18px; padding-top: 16px;
+      border-top: 1px solid #E5E7EB;
+      font-size: 11px; color: #9CA3AF; font-weight: 500;
+    }
+    .trust-footer .lock { display: inline-block; width: 10px; height: 10px; border: 1.5px solid #9CA3AF; border-radius: 2px; position: relative; }
+    .trust-footer .lock::before { content: ""; position: absolute; top: -4px; left: 1.5px; width: 5px; height: 5px; border: 1.5px solid #9CA3AF; border-bottom: none; border-radius: 4px 4px 0 0; }
   </style>
 </head>
 <body>
-  <div class="total" id="total-line">Total <br/><b>£${amountStr}</b></div>
-  <div id="recurring-notice" style="display:none;background:#FEF3C7;border:1px solid #FCD34D;color:#78350F;font-size:12px;line-height:1.5;border-radius:8px;padding:10px 12px;margin:10px 0 4px;font-weight:500"></div>
+  <div class="amount-card">
+    <div class="label" id="amount-label">Total</div>
+    <div class="value">£${amountStr}</div>
+    <div class="recurring" id="amount-recurring" style="display:none"></div>
+  </div>
+
+  <div id="recurring-notice"></div>
 
   <div id="loading"><div class="spinner"></div> Loading payment options…</div>
 
@@ -110,16 +176,30 @@ function buildPaymentSheetHtml(opts: {
     <div id="google-pay-button"></div>
   </div>
 
-  <div class="or" id="or-divider" style="display:none">OR PAY BY CARD</div>
+  <div class="or" id="or-divider">OR PAY BY CARD</div>
 
   <div id="card-section" style="display:none">
-    <div class="label">Card details</div>
-    <div id="card-container"></div>
-    <button id="pay-card-btn" type="button">Pay £${amountStr}</button>
-    <div id="recurring-fineprint" style="display:none;font-size:11px;color:#6B7280;line-height:1.5;margin-top:8px;text-align:center"></div>
+    <div class="card-card">
+      <div class="card-header">
+        <div class="label">Card details</div>
+        <div class="brands">
+          <span class="brand-pill b-visa">VISA</span>
+          <span class="brand-pill b-mc">MC</span>
+          <span class="brand-pill b-amex">AMEX</span>
+        </div>
+      </div>
+      <div id="card-container"></div>
+      <button id="pay-card-btn" type="button">Pay £${amountStr}</button>
+      <div id="recurring-fineprint"></div>
+    </div>
   </div>
 
   <div id="status"></div>
+
+  <div class="trust-footer">
+    <span class="lock"></span>
+    <span>Secured by Square · 256-bit SSL encryption</span>
+  </div>
 
   <script src="${sdkSrc}"></script>
   <script>
@@ -158,11 +238,17 @@ function buildPaymentSheetHtml(opts: {
       // it BEFORE entering any card details. Required for transparency on
       // membership / subscription sign-ups.
       if (IS_SUBSCRIPTION) {
-        var totalEl = document.getElementById("total-line");
-        if (totalEl) totalEl.innerHTML = "Membership <br/><b>£" + AMOUNT + "</b>" + RECURRING_DESC;
+        var labelEl = document.getElementById("amount-label");
+        if (labelEl) labelEl.textContent = "Membership";
+        var recurEl = document.getElementById("amount-recurring");
+        if (recurEl) {
+          recurEl.textContent = RECURRING_DESC;
+          recurEl.style.display = "block";
+        }
         var noticeEl = document.getElementById("recurring-notice");
         if (noticeEl) {
-          noticeEl.textContent = "By continuing, you authorise The 147 to charge this card £" + AMOUNT + " " + RECURRING_DESC.replace(/^\s*\/\s*/, "per ").replace(/—.*$/, "").trim() + ", until you cancel your membership.";
+          var freq = RECURRING_DESC.replace(/^\s*\/\s*/, "per ").replace(/—.*$/, "").trim();
+          noticeEl.textContent = "By continuing, you authorise The 147 to charge this card £" + AMOUNT + " " + freq + ", until you cancel your membership.";
           noticeEl.style.display = "block";
         }
       }
