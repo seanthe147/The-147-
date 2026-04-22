@@ -1029,6 +1029,21 @@ var init_storage = __esm({
         const result = await db.update(staffSessions).set({ active: false }).where(eq(staffSessions.token, token)).returning();
         return result.length > 0;
       }
+      // Mass-revoke every active session belonging to a staff user. Called whenever
+      // an admin action removes that user's access (lock, reject, delete, PIN/password
+      // reset) so the affected person is signed out immediately rather than waiting
+      // up to 24h for their bearer token to expire.
+      async invalidateStaffSessionsByUserId(staffUserId, exceptToken) {
+        const conditions = [eq(staffSessions.staffUserId, staffUserId), eq(staffSessions.active, true)];
+        if (exceptToken) conditions.push(ne(staffSessions.token, exceptToken));
+        const result = await db.update(staffSessions).set({ active: false }).where(and(...conditions)).returning();
+        return result.length;
+      }
+      async invalidateStaffSessionsByUsername(username) {
+        const normalised = username.toLowerCase().trim();
+        const result = await db.update(staffSessions).set({ active: false }).where(and(eq(staffSessions.staffUsername, normalised), eq(staffSessions.active, true))).returning();
+        return result.length;
+      }
       async getBookingsByEmail(email) {
         const hash = hashEmail(email);
         const byHash = await db.select().from(bookings).where(eq(bookings.emailHash, hash)).orderBy(bookings.date);
@@ -1177,6 +1192,9 @@ var init_storage = __esm({
       }
       async updateStaffApproval(id, approvalStatus) {
         const [updated] = await db.update(staffUsers).set({ approvalStatus }).where(eq(staffUsers.id, id)).returning();
+        if (updated && (approvalStatus === "rejected" || approvalStatus === "pending")) {
+          await this.invalidateStaffSessionsByUserId(updated.id).catch(() => void 0);
+        }
         return updated;
       }
       async getStaffUserById(id) {
@@ -1194,9 +1212,13 @@ var init_storage = __esm({
       }
       async setStaffActive(id, active) {
         const [updated] = await db.update(staffUsers).set({ active }).where(eq(staffUsers.id, id)).returning();
+        if (updated && active === false) {
+          await this.invalidateStaffSessionsByUserId(updated.id).catch(() => void 0);
+        }
         return updated;
       }
       async deleteStaffUser(id) {
+        await this.invalidateStaffSessionsByUserId(id).catch(() => void 0);
         const [deleted] = await db.delete(staffUsers).where(eq(staffUsers.id, id)).returning();
         return !!deleted;
       }
@@ -4163,6 +4185,10 @@ var OTP_HTML = (code) => `<div style="font-family: Arial, sans-serif; max-width:
 function escapeHtml3(s) {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
+function isValidCssColor(color) {
+  if (typeof color !== "string") return false;
+  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(color);
+}
 var PAYMENT_RECEIPT_HTML = (p) => {
   const amount = "\xA3" + (p.amountPence / 100).toFixed(2);
   const brandLabel = p.brand.charAt(0).toUpperCase() + p.brand.slice(1);
@@ -4786,13 +4812,25 @@ async function staffAuth(req, res, next) {
   }
   if (session.staffUsername) {
     const user = await storage.getStaffUserByUsername(session.staffUsername);
-    req.staffRole = user?.role || "staff";
+    if (!user) {
+      await storage.invalidateStaffSession(token).catch(() => void 0);
+      return res.status(401).json({ message: "Account no longer exists" });
+    }
+    if (user.active === false) {
+      await storage.invalidateStaffSessionsByUserId(user.id).catch(() => void 0);
+      return res.status(401).json({ message: "Account is locked" });
+    }
+    if (user.approvalStatus === "rejected" || user.approvalStatus === "pending") {
+      await storage.invalidateStaffSessionsByUserId(user.id).catch(() => void 0);
+      return res.status(401).json({ message: "Account is not approved" });
+    }
+    req.staffRole = user.role || "staff";
     req.staffUsername = session.staffUsername;
-    req.staffUser = user || null;
+    req.staffUser = user;
   } else {
-    req.staffRole = "manager";
+    req.staffRole = "staff";
     req.staffUsername = null;
-    req.staffUser = { id: null, role: "manager", username: null, displayName: "System" };
+    req.staffUser = null;
   }
   next();
 }
@@ -5055,7 +5093,11 @@ async function registerRoutes(app2) {
     if (!credential) {
       return res.status(400).json({ message: "Password is required" });
     }
-    if (username && typeof username === "string" && username.trim().length > 0) {
+    if (!username || typeof username !== "string" || username.trim().length === 0) {
+      recordFailedLogin(clientIp);
+      return res.status(400).json({ message: "Username and password are required" });
+    }
+    {
       const staffUser = await storage.getStaffUserByUsername(username.trim());
       if (!staffUser || !staffUser.active) {
         recordFailedLogin(clientIp);
@@ -5088,36 +5130,18 @@ async function registerRoutes(app2) {
         return res.status(401).json({ message: "Invalid credentials" });
       }
       clearFailedLogins(clientIp);
-      const token2 = randomBytes3(32).toString("hex");
-      const expiresAt2 = new Date(Date.now() + 24 * 60 * 60 * 1e3);
-      const session2 = await storage.createStaffSession(token2, expiresAt2, staffUser.id, staffUser.username);
+      const token = randomBytes3(32).toString("hex");
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1e3);
+      const session = await storage.createStaffSession(token, expiresAt, staffUser.id, staffUser.username);
       return res.json({
-        token: session2.token,
-        expiresAt: session2.expiresAt,
+        token: session.token,
+        expiresAt: session.expiresAt,
         username: staffUser.username,
         displayName: staffUser.displayName,
         role: staffUser.role,
         mustChangePassword
       });
     }
-    if (credential.length < 4 || credential.length > 8 || !/^\d+$/.test(credential)) {
-      recordFailedLogin(clientIp);
-      return res.status(401).json({ message: "Invalid credentials" });
-    }
-    const pinForMaster = credential;
-    const staffPin = process.env.STAFF_PIN;
-    if (!staffPin) {
-      return res.status(503).json({ message: "Staff access not configured" });
-    }
-    if (!timingSafeCompare(pinForMaster, staffPin)) {
-      recordFailedLogin(clientIp);
-      return res.status(401).json({ message: "Invalid credentials" });
-    }
-    clearFailedLogins(clientIp);
-    const token = randomBytes3(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1e3);
-    const session = await storage.createStaffSession(token, expiresAt);
-    res.json({ token: session.token, expiresAt: session.expiresAt, role: "manager", mustChangePassword: false });
   });
   app2.post("/api/staff/logout", async (req, res) => {
     const authHeader = req.headers.authorization;
@@ -5176,6 +5200,8 @@ async function registerRoutes(app2) {
     }
     const { hash, salt } = hashPin(newPin);
     await storage.updateStaffPin(username, hash, salt);
+    const currentToken = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : void 0;
+    await storage.invalidateStaffSessionsByUserId(staffUser.id, currentToken).catch(() => void 0);
     res.json({ message: "PIN changed successfully" });
   });
   app2.post("/api/staff/set-password", staffAuth, async (req, res) => {
@@ -5217,6 +5243,8 @@ async function registerRoutes(app2) {
     }
     const { hash, salt } = hashPassword(newPassword);
     await storage.updateStaffPassword(username, hash, salt, false);
+    const currentToken = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : void 0;
+    await storage.invalidateStaffSessionsByUserId(staffUser.id, currentToken).catch(() => void 0);
     res.json({ message: "Password updated successfully" });
   });
   app2.post("/api/staff/reset-password", staffAuth, managerAuth, async (req, res) => {
@@ -5234,6 +5262,7 @@ async function registerRoutes(app2) {
     }
     const { hash, salt } = hashPassword(tempPassword);
     await storage.updateStaffPassword(staffUser.username, hash, salt, true);
+    await storage.invalidateStaffSessionsByUserId(staffUser.id).catch(() => void 0);
     res.json({ message: "Password reset successfully for " + staffUser.username });
   });
   app2.post("/api/staff/reset-pin", staffAuth, managerAuth, async (req, res) => {
@@ -5250,6 +5279,7 @@ async function registerRoutes(app2) {
     }
     const { hash, salt } = hashPin(newPin);
     await storage.updateStaffPin(username.trim(), hash, salt);
+    await storage.invalidateStaffSessionsByUserId(staffUser.id).catch(() => void 0);
     res.json({ message: "PIN reset successfully for " + staffUser.username });
   });
   app2.patch("/api/staff/update-role", staffAuth, ownerAuth, async (req, res) => {
@@ -5865,7 +5895,8 @@ async function registerRoutes(app2) {
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid token data" });
     }
-    const token = await storage.registerPushToken(parsed.data);
+    const { customerEmail: _email, customerEmailHash: _hash, ...tokenData } = parsed.data;
+    const token = await storage.registerPushToken(tokenData);
     res.status(201).json(token);
   });
   app2.delete("/api/push-tokens/:token", staffAuth, managerAuth, async (req, res) => {
@@ -8079,10 +8110,6 @@ async function registerRoutes(app2) {
     if (!parsed.data.gdprConsent) {
       return res.status(400).json({ message: "You must consent to data processing to send a message" });
     }
-    if (incomingPushToken && typeof incomingPushToken === "string") {
-      await storage.registerPushToken({ token: incomingPushToken, customerEmail: parsed.data.email }).catch(() => {
-      });
-    }
     const contact = await storage.createContactMessage({
       ...parsed.data,
       pushToken: incomingPushToken ?? null
@@ -8867,6 +8894,15 @@ async function registerRoutes(app2) {
     }
     res.json({ id: updated.id, name: updated.name, email: updated.email, phone: updated.phone });
   });
+  app2.post("/api/customers/me/push-token", customerAuth, async (req, res) => {
+    const { token } = req.body;
+    if (!token || typeof token !== "string" || token.length < 10 || token.length > 300) {
+      return res.status(400).json({ message: "Invalid token" });
+    }
+    const email = req.customerEmail;
+    await storage.registerPushToken({ token, customerEmail: email });
+    res.status(204).send();
+  });
   app2.delete("/api/customers/me", customerAuth, async (req, res) => {
     const customerId = req.customerId;
     const email = req.customerEmail;
@@ -9558,7 +9594,7 @@ Phone: ${phone}` : ""}`,
       res.status(200).send("ok");
     }
   });
-  app2.get("/api/staff/membership/stats", staffAuth, async (_req, res) => {
+  app2.get("/api/staff/membership/stats", staffAuth, managerAuth, async (_req, res) => {
     const stats = await storage.getMembershipStats();
     res.json(stats);
   });
@@ -9598,7 +9634,7 @@ Phone: ${phone}` : ""}`,
         excludeWithDeals: !!excludeWithDeals,
         active: active !== false,
         sortOrder: Number(sortOrder) || 0,
-        color: color || "#0047AB",
+        color: isValidCssColor(color) ? color : "#0047AB",
         description: description?.trim() || null
       });
       res.json(plan);
@@ -9610,7 +9646,11 @@ Phone: ${phone}` : ""}`,
   app2.put("/api/staff/membership/plans/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id);
     const oldPlan = await storage.getMembershipPlan(id);
-    let plan = await storage.updateMembershipPlan(id, req.body);
+    const updateBody = { ...req.body };
+    if ("color" in updateBody) {
+      updateBody.color = isValidCssColor(updateBody.color) ? updateBody.color : "#0047AB";
+    }
+    let plan = await storage.updateMembershipPlan(id, updateBody);
     if (!plan) return res.status(404).json({ message: "Plan not found" });
     let squareSynced = false;
     let squareSyncError = null;
@@ -9678,11 +9718,11 @@ Phone: ${phone}` : ""}`,
       res.status(500).json({ message: err?.message || "Setup failed" });
     }
   });
-  app2.get("/api/staff/membership/subscriptions", staffAuth, async (_req, res) => {
+  app2.get("/api/staff/membership/subscriptions", staffAuth, managerAuth, async (_req, res) => {
     const subs = await storage.getMembershipSubscriptions();
     res.json(subs);
   });
-  app2.post("/api/staff/membership/square-sync", staffAuth, async (req, res) => {
+  app2.post("/api/staff/membership/square-sync", staffAuth, managerAuth, async (req, res) => {
     const { email } = req.body ?? {};
     if (!email) return res.status(400).json({ message: "Email is required" });
     try {
@@ -9775,7 +9815,7 @@ Phone: ${phone}` : ""}`,
       res.status(500).json({ message: "Bulk sync failed: " + err.message });
     }
   });
-  app2.post("/api/staff/membership/subscriptions", staffAuth, async (req, res) => {
+  app2.post("/api/staff/membership/subscriptions", staffAuth, managerAuth, async (req, res) => {
     const { customerId, planId, status = "active", staffNotes, source = "staff", startDate } = req.body ?? {};
     if (!customerId || !planId) return res.status(400).json({ message: "customerId and planId are required" });
     const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
@@ -9820,7 +9860,7 @@ Phone: ${phone}` : ""}`,
     }
     res.status(201).json(sub);
   });
-  app2.post("/api/staff/membership/payment-link", staffAuth, async (req, res) => {
+  app2.post("/api/staff/membership/payment-link", staffAuth, managerAuth, async (req, res) => {
     const { subscriptionId, planId } = req.body ?? {};
     if (!subscriptionId || !planId) return res.status(400).json({ message: "subscriptionId and planId required" });
     if (!isConfigured()) return res.status(503).json({ message: "Square is not configured" });
@@ -9856,7 +9896,7 @@ Phone: ${phone}` : ""}`,
       res.status(500).json({ message: err?.message || "Failed to create payment link" });
     }
   });
-  app2.patch("/api/staff/membership/subscriptions/:id", staffAuth, async (req, res) => {
+  app2.patch("/api/staff/membership/subscriptions/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id);
     const sub = await storage.getMembershipSubscription(id);
     if (!sub) return res.status(404).json({ message: "Subscription not found" });
