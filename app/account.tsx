@@ -24,7 +24,7 @@ import type { SelectedModifier } from "@/types/menu";
 import Colors from "@/constants/colors";
 import { TABLE_TYPES } from "@/lib/data";
 import { fetch } from "expo/fetch";
-import { hasPromptedForBiometric, markBiometricPrompted, isPaymentBiometricEnabled, setPaymentBiometricEnabled } from "@/lib/biometric";
+import { hasPromptedForBiometric, markBiometricPrompted } from "@/lib/biometric";
 
 const BOOKING_HOURS = [
   "10:00", "10:30", "11:00", "11:30", "12:00", "12:30",
@@ -562,31 +562,6 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
     lastLoginCredentials,
   } = useCustomerAuth();
   const [biometricBusy, setBiometricBusy] = useState(false);
-  const [payBioEnabled, setPayBioEnabled] = useState(true);
-  const [payBioBusy, setPayBioBusy] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const v = await isPaymentBiometricEnabled();
-      if (!cancelled) setPayBioEnabled(v);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const handleTogglePaymentBiometric = async () => {
-    if (payBioBusy) return;
-    setPayBioBusy(true);
-    try {
-      const next = !payBioEnabled;
-      await setPaymentBiometricEnabled(next);
-      setPayBioEnabled(next);
-    } finally {
-      setPayBioBusy(false);
-    }
-  };
 
   const handleToggleBiometric = async () => {
     if (biometricBusy) return;
@@ -882,32 +857,6 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
           </View>
           <View style={[styles.biometricSwitch, biometricEnabled && styles.biometricSwitchOn]}>
             <View style={[styles.biometricSwitchThumb, biometricEnabled && styles.biometricSwitchThumbOn]} />
-          </View>
-        </Pressable>
-      ) : null}
-
-      {biometricSupported ? (
-        <Pressable
-          onPress={handleTogglePaymentBiometric}
-          disabled={payBioBusy}
-          style={({ pressed }) => [styles.biometricSettingRow, { opacity: pressed || payBioBusy ? 0.7 : 1 }]}
-          testID="payment-biometric-toggle"
-        >
-          <Ionicons
-            name="lock-closed-outline"
-            size={22}
-            color={Colors.brand.blue}
-          />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.biometricSettingTitle}>Confirm payments with {biometricLabelText}</Text>
-            <Text style={styles.biometricSettingSub}>
-              {payBioEnabled
-                ? `On — you'll be asked for ${biometricLabelText} before each card payment.`
-                : `Off — card payments will go through without an extra check.`}
-            </Text>
-          </View>
-          <View style={[styles.biometricSwitch, payBioEnabled && styles.biometricSwitchOn]}>
-            <View style={[styles.biometricSwitchThumb, payBioEnabled && styles.biometricSwitchThumbOn]} />
           </View>
         </Pressable>
       ) : null}
