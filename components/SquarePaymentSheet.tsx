@@ -68,6 +68,10 @@ function buildPaymentSheetHtml(opts: {
       ? "https://web.squarecdn.com/v1/square.js"
       : "https://sandbox.web.squarecdn.com/v1/square.js";
   const amountStr = (opts.amountPence / 100).toFixed(2);
+  // Per-phase timeout. Kept aggressive (8s) so customers stuck on a flaky
+  // network or behind a CDN block are told quickly and can fall back to the
+  // hosted checkout instead of staring at a spinner.
+  const PHASE_TIMEOUT_MS = 8000;
   // Bridge: postMessage works for both react-native-webview (window.ReactNativeWebView)
   // and the web fallback (parent window via window.parent.postMessage).
   return `<!DOCTYPE html>
@@ -201,8 +205,16 @@ function buildPaymentSheetHtml(opts: {
     <span>Secured by Square · 256-bit SSL encryption</span>
   </div>
 
-  <script src="${sdkSrc}"></script>
   <script>
+    // NOTE: this inline <script> deliberately runs BEFORE the Square SDK is
+    // loaded. The SDK is injected programmatically further down so that:
+    //   1. Our error/timeout handlers are registered before any network
+    //      request begins (a blocking <script src="..."> tag would have
+    //      stalled parsing of this entire block on a slow/blocked CDN, the
+    //      exact failure mode that produced the "spinner forever" bug).
+    //   2. Script-load failures surface via <script>.onerror, not via the
+    //      window 'error' event (which does NOT bubble for resource loads
+    //      unless useCapture is true — and even then is unreliable).
     (function () {
       var APPLICATION_ID = ${JSON.stringify(opts.applicationId)};
       var LOCATION_ID = ${JSON.stringify(opts.locationId)};
@@ -211,11 +223,14 @@ function buildPaymentSheetHtml(opts: {
       var INTENT = ${JSON.stringify(opts.intent || "CHARGE")};
       var BUYER_EMAIL = ${JSON.stringify(opts.buyerEmail || "")};
       var RECURRING_DESC = ${JSON.stringify(opts.recurringDescription || "")};
+      var SDK_SRC = ${JSON.stringify(sdkSrc)};
+      var PHASE_TIMEOUT_MS = ${PHASE_TIMEOUT_MS};
       var IS_SUBSCRIPTION = INTENT === "STORE" && RECURRING_DESC.length > 0;
       var PAY_LABEL = IS_SUBSCRIPTION
         ? "Start Membership · £" + AMOUNT
         : "Pay £" + AMOUNT;
 
+      var fatalSent = false;
       function send(msg) {
         try {
           var s = JSON.stringify(msg);
@@ -230,46 +245,34 @@ function buildPaymentSheetHtml(opts: {
           }
         } catch (e) {}
       }
+      function fatal(message) {
+        if (fatalSent) return;
+        fatalSent = true;
+        hideLoading();
+        setStatus(message);
+        send({ type: "fatal", message: message });
+      }
 
-      function setStatus(t) { document.getElementById("status").textContent = t || ""; }
-      function hideLoading() { var l = document.getElementById("loading"); if (l) l.style.display = "none"; }
+      function setStatus(t) {
+        var el = document.getElementById("status");
+        if (el) el.textContent = t || "";
+      }
+      function hideLoading() {
+        var l = document.getElementById("loading");
+        if (l) l.style.display = "none";
+      }
 
       // Capture any uncaught script error so we can surface it instead of
       // showing the user a forever-loading spinner.
       window.addEventListener("error", function (e) {
-        hideLoading();
         var msg = (e && (e.message || (e.error && e.error.message))) || "Unknown script error";
-        setStatus("Payment library error: " + msg);
-        send({ type: "fatal", message: "window.error: " + msg });
+        fatal("Payment library error: " + msg);
       });
       window.addEventListener("unhandledrejection", function (e) {
-        hideLoading();
         var reason = e && e.reason;
         var msg = (reason && (reason.message || String(reason))) || "Unknown promise rejection";
-        setStatus("Payment library error: " + msg);
-        send({ type: "fatal", message: "unhandledrejection: " + msg });
+        fatal("Payment library error: " + msg);
       });
-
-      // Hard upper bound — if the Square SDK never finishes initialising the
-      // card form (silent hang seen on some WKWebView builds) we bail after
-      // 12s so the user sees an actionable error and a way to retry rather
-      // than an endless spinner.
-      var SDK_LOAD_TIMEOUT_MS = 12000;
-      var sdkReady = false;
-      setTimeout(function () {
-        if (sdkReady) return;
-        hideLoading();
-        var diag = "no Square global";
-        try {
-          if (window.Square) {
-            diag = "Square loaded but card form did not initialise within " + (SDK_LOAD_TIMEOUT_MS / 1000) + "s";
-          } else {
-            diag = "Square SDK script (" + ${JSON.stringify(sdkSrc)} + ") never loaded — check internet connection";
-          }
-        } catch (e) {}
-        setStatus(diag + ". Pull down to retry, or order at the bar.");
-        send({ type: "fatal", message: "SDK init timeout: " + diag });
-      }, SDK_LOAD_TIMEOUT_MS);
 
       // Render the recurring-billing notice up front so the customer sees
       // it BEFORE entering any card details. Required for transparency on
@@ -284,16 +287,43 @@ function buildPaymentSheetHtml(opts: {
         }
         var noticeEl = document.getElementById("recurring-notice");
         if (noticeEl) {
-          var freq = RECURRING_DESC.replace(/^\s*\/\s*/, "per ").replace(/—.*$/, "").trim();
+          // NOTE: every backslash here MUST be doubled. This whole script lives
+          // inside a JS template literal in the parent .tsx, where \s would
+          // collapse to a plain "s" and corrupt the regex (this was the root
+          // cause of the "spinner forever" bug — the inline script silently
+          // SyntaxError'd at parse time and no timeout ever fired).
+          var freq = RECURRING_DESC.replace(/^\\s*\\/\\s*/, "per ").replace(/—.*$/, "").trim();
           noticeEl.textContent = "By continuing, you authorise The 147 to charge this card £" + AMOUNT + " " + freq + ", until you cancel your membership.";
           noticeEl.style.display = "block";
         }
       }
 
+      // ── Phase 1: load the Square SDK from CDN ────────────────────────────
+      // We never use a blocking <script src> tag for the SDK because that
+      // makes a slow/blocked CDN hang the whole document parser silently.
+      var sdkLoaded = false;
+      var sdkLoadTimer = setTimeout(function () {
+        if (sdkLoaded) return;
+        fatal("Could not reach the payment service (timed out loading the secure payment library). Close this and try again, or use browser checkout.");
+      }, PHASE_TIMEOUT_MS);
+
+      var s = document.createElement("script");
+      s.src = SDK_SRC;
+      s.async = true;
+      s.onload = function () {
+        sdkLoaded = true;
+        clearTimeout(sdkLoadTimer);
+        bootSquare();
+      };
+      s.onerror = function () {
+        clearTimeout(sdkLoadTimer);
+        fatal("Could not load the secure payment library (network error or blocked CDN). Close this and try again, or use browser checkout.");
+      };
+      document.head.appendChild(s);
+
+      function bootSquare() {
       if (!window.Square) {
-        hideLoading();
-        setStatus("Could not load the payment library. Please try again.");
-        send({ type: "fatal", message: "Square SDK failed to load" });
+        fatal("Could not load the payment library. Please try again.");
         return;
       }
 
@@ -301,9 +331,7 @@ function buildPaymentSheetHtml(opts: {
       try {
         payments = window.Square.payments(APPLICATION_ID, LOCATION_ID);
       } catch (e) {
-        hideLoading();
-        setStatus("Payments are not configured: " + (e && e.message ? e.message : ""));
-        send({ type: "fatal", message: "Square.payments init failed: " + (e && e.message) });
+        fatal("Payments are not configured: " + (e && e.message ? e.message : "unknown error"));
         return;
       }
 
@@ -361,7 +389,7 @@ function buildPaymentSheetHtml(opts: {
             // case. Forward the token without a verificationToken so the
             // server can still try to save the card.
             var msg = (err && err.message) || "";
-            if (/not\s+required|no\s+challenge|UNSUPPORTED/i.test(msg)) {
+            if (/not\\s+required|no\\s+challenge|UNSUPPORTED/i.test(msg)) {
               send({ type: "token", token: token, verificationToken: null });
             } else {
               setStatus(msg || "Card verification failed");
@@ -389,13 +417,26 @@ function buildPaymentSheetHtml(opts: {
         });
       }
 
-      // Card form
+      // ── Phase 2: initialise the card form ────────────────────────────────
+      // Independent timeout so that a hung payments.card() / .attach() (the
+      // other documented cause of the spinner-forever bug, seen on some
+      // WKWebView builds) can't strand the user. Wallet init is fired in
+      // parallel and is fully isolated — it can NEVER block the card form
+      // from appearing.
+      var cardReady = false;
+      var cardAttachTimer = setTimeout(function () {
+        if (cardReady) return;
+        fatal("The card form did not load in time. Close this and try again, or use browser checkout.");
+      }, PHASE_TIMEOUT_MS);
+
       var card;
       payments.card().then(function (c) {
         card = c;
         return c.attach("#card-container");
       }).then(function () {
-        sdkReady = true;
+        cardReady = true;
+        clearTimeout(cardAttachTimer);
+        if (fatalSent) return; // already gave up
         var payBtn = document.getElementById("pay-card-btn");
         payBtn.textContent = PAY_LABEL;
         if (IS_SUBSCRIPTION) {
@@ -416,44 +457,53 @@ function buildPaymentSheetHtml(opts: {
           });
         });
       }).catch(function (err) {
-        hideLoading();
-        setStatus("Could not load card form: " + (err && err.message ? err.message : ""));
-        send({ type: "fatal", message: "Card init failed: " + (err && err.message) });
+        clearTimeout(cardAttachTimer);
+        fatal("Could not load card form: " + (err && err.message ? err.message : "unknown error"));
       });
 
-      // Apple Pay (iOS Safari/WebKit only, requires verified domain)
+      // Apple Pay (iOS Safari/WebKit only, requires verified domain).
+      // Fully isolated — any failure here MUST NOT affect the card form.
       try {
         var pr = paymentRequest();
         payments.applePay(pr).then(function (ap) {
-          var el = document.getElementById("apple-pay-button");
-          el.style.display = "block";
-          el.style.background = "#000";
-          el.style.color = "#fff";
-          el.style.textAlign = "center";
-          el.style.lineHeight = "48px";
-          el.style.fontWeight = "600";
-          el.textContent = " Apple Pay";
-          document.getElementById("or-divider").style.display = "block";
-          el.addEventListener("click", function () {
-            tokenizeAndSend(ap);
-          });
+          try {
+            var el = document.getElementById("apple-pay-button");
+            if (!el) return;
+            el.style.display = "block";
+            el.style.background = "#000";
+            el.style.color = "#fff";
+            el.style.textAlign = "center";
+            el.style.lineHeight = "48px";
+            el.style.fontWeight = "600";
+            el.textContent = " Apple Pay";
+            var divider = document.getElementById("or-divider");
+            if (divider) divider.style.display = "block";
+            el.addEventListener("click", function () {
+              tokenizeAndSend(ap);
+            });
+          } catch (e) { /* swallow — card form must still work */ }
         }).catch(function () { /* unsupported on this device */ });
-      } catch (e) {}
+      } catch (e) { /* swallow — card form must still work */ }
 
-      // Google Pay
+      // Google Pay — same isolation rule as Apple Pay above.
       try {
         var pr2 = paymentRequest();
         payments.googlePay(pr2).then(function (gp) {
           return gp.attach("#google-pay-button", { buttonColor: "black", buttonType: "long" }).then(function () {
-            var el = document.getElementById("google-pay-button");
-            el.style.display = "block";
-            document.getElementById("or-divider").style.display = "block";
-            el.addEventListener("click", function () {
-              tokenizeAndSend(gp);
-            });
+            try {
+              var el = document.getElementById("google-pay-button");
+              if (!el) return;
+              el.style.display = "block";
+              var divider = document.getElementById("or-divider");
+              if (divider) divider.style.display = "block";
+              el.addEventListener("click", function () {
+                tokenizeAndSend(gp);
+              });
+            } catch (e) { /* swallow */ }
           });
         }).catch(function () { /* unsupported */ });
-      } catch (e) {}
+      } catch (e) { /* swallow */ }
+      } // end bootSquare
     })();
   </script>
 </body>
