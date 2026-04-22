@@ -582,6 +582,7 @@ export default function MembershipScreen() {
           inProgress={paymentSheetBusy}
           errorMessage={paymentSheetError}
           intent="STORE"
+          recurringDescription={billingFrequency === "annual" ? "/year — renews automatically" : "/month — renews automatically"}
         />
       )}
     </View>

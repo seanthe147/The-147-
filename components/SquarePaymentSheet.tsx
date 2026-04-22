@@ -33,6 +33,15 @@ export interface SquarePaymentSheetProps {
    * SCA/3DS is performed up front and the verification token is forwarded.
    */
   intent?: "CHARGE" | "STORE";
+  /**
+   * Optional recurring billing description shown to the user when this card
+   * will be saved for a subscription (e.g. memberships). Pass something like
+   * "/month — renews automatically until you cancel" so the customer
+   * understands they are authorising a recurring charge, not a one-off
+   * payment. Also changes the pay-button text from "Pay £X" to "Start
+   * Membership" so it's clear what they're agreeing to.
+   */
+  recurringDescription?: string | null;
 }
 
 type BridgeMessage =
@@ -52,6 +61,7 @@ function buildPaymentSheetHtml(opts: {
   currency: string;
   intent?: "CHARGE" | "STORE";
   buyerEmail?: string | null;
+  recurringDescription?: string | null;
 }): string {
   const sdkSrc =
     opts.environment === "production"
@@ -90,7 +100,8 @@ function buildPaymentSheetHtml(opts: {
   </style>
 </head>
 <body>
-  <div class="total">Total <br/><b>£${amountStr}</b></div>
+  <div class="total" id="total-line">Total <br/><b>£${amountStr}</b></div>
+  <div id="recurring-notice" style="display:none;background:#FEF3C7;border:1px solid #FCD34D;color:#78350F;font-size:12px;line-height:1.5;border-radius:8px;padding:10px 12px;margin:10px 0 4px;font-weight:500"></div>
 
   <div id="loading"><div class="spinner"></div> Loading payment options…</div>
 
@@ -105,6 +116,7 @@ function buildPaymentSheetHtml(opts: {
     <div class="label">Card details</div>
     <div id="card-container"></div>
     <button id="pay-card-btn" type="button">Pay £${amountStr}</button>
+    <div id="recurring-fineprint" style="display:none;font-size:11px;color:#6B7280;line-height:1.5;margin-top:8px;text-align:center"></div>
   </div>
 
   <div id="status"></div>
@@ -118,6 +130,11 @@ function buildPaymentSheetHtml(opts: {
       var CURRENCY = ${JSON.stringify(opts.currency)};
       var INTENT = ${JSON.stringify(opts.intent || "CHARGE")};
       var BUYER_EMAIL = ${JSON.stringify(opts.buyerEmail || "")};
+      var RECURRING_DESC = ${JSON.stringify(opts.recurringDescription || "")};
+      var IS_SUBSCRIPTION = INTENT === "STORE" && RECURRING_DESC.length > 0;
+      var PAY_LABEL = IS_SUBSCRIPTION
+        ? "Start Membership · £" + AMOUNT
+        : "Pay £" + AMOUNT;
 
       function send(msg) {
         try {
@@ -136,6 +153,19 @@ function buildPaymentSheetHtml(opts: {
 
       function setStatus(t) { document.getElementById("status").textContent = t || ""; }
       function hideLoading() { var l = document.getElementById("loading"); if (l) l.style.display = "none"; }
+
+      // Render the recurring-billing notice up front so the customer sees
+      // it BEFORE entering any card details. Required for transparency on
+      // membership / subscription sign-ups.
+      if (IS_SUBSCRIPTION) {
+        var totalEl = document.getElementById("total-line");
+        if (totalEl) totalEl.innerHTML = "Membership <br/><b>£" + AMOUNT + "</b>" + RECURRING_DESC;
+        var noticeEl = document.getElementById("recurring-notice");
+        if (noticeEl) {
+          noticeEl.textContent = "By continuing, you authorise The 147 to charge this card £" + AMOUNT + " " + RECURRING_DESC.replace(/^\s*\/\s*/, "per ").replace(/—.*$/, "").trim() + ", until you cancel your membership.";
+          noticeEl.style.display = "block";
+        }
+      }
 
       if (!window.Square) {
         hideLoading();
@@ -220,15 +250,23 @@ function buildPaymentSheetHtml(opts: {
         return c.attach("#card-container");
       }).then(function () {
         document.getElementById("card-section").style.display = "block";
+        var payBtn = document.getElementById("pay-card-btn");
+        payBtn.textContent = PAY_LABEL;
+        if (IS_SUBSCRIPTION) {
+          var fp = document.getElementById("recurring-fineprint");
+          if (fp) {
+            fp.textContent = "You can cancel anytime from your account.";
+            fp.style.display = "block";
+          }
+        }
         hideLoading();
-        document.getElementById("pay-card-btn").addEventListener("click", function () {
+        payBtn.addEventListener("click", function () {
           setStatus("");
-          var btn = document.getElementById("pay-card-btn");
-          btn.disabled = true;
-          btn.textContent = "Processing…";
+          payBtn.disabled = true;
+          payBtn.textContent = "Processing…";
           tokenizeAndSend(card).finally(function () {
-            btn.disabled = false;
-            btn.textContent = "Pay £" + AMOUNT;
+            payBtn.disabled = false;
+            payBtn.textContent = PAY_LABEL;
           });
         });
       }).catch(function (err) {
@@ -292,8 +330,9 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
       currency: props.currency || "GBP",
       intent: props.intent || "CHARGE",
       buyerEmail: props.buyerEmail || null,
+      recurringDescription: props.recurringDescription || null,
     });
-  }, [props.applicationId, props.locationId, props.environment, props.amountPence, props.currency, props.intent, props.buyerEmail]);
+  }, [props.applicationId, props.locationId, props.environment, props.amountPence, props.currency, props.intent, props.buyerEmail, props.recurringDescription]);
 
   // Reset error when the sheet is reopened
   useEffect(() => {
