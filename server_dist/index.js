@@ -10,7 +10,7 @@ var __export = (target, all) => {
 
 // shared/schema.ts
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, timestamp, boolean, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, timestamp, boolean, integer, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, passwordResetAuditLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffDocuments, insertStaffDocumentSchema, staffOnboarding, insertStaffOnboardingSchema, staffPushTokens, paymentLog, insertPaymentLogSchema;
@@ -323,7 +323,10 @@ var init_schema = __esm({
       customerName: text("customer_name"),
       outcome: text("outcome").notNull(),
       createdAt: timestamp("created_at").defaultNow().notNull()
-    });
+    }, (table) => ({
+      createdAtIdx: index("password_reset_audit_log_created_at_idx").on(table.createdAt),
+      staffUsernameIdx: index("password_reset_audit_log_staff_username_idx").on(table.staffUsername)
+    }));
     menuCategoryVisibility = pgTable("menu_category_visibility", {
       categoryId: text("category_id").primaryKey(),
       hidden: boolean("hidden").notNull().default(false),
@@ -2178,8 +2181,8 @@ function getHeaders() {
     "Square-Version": "2024-01-18"
   };
 }
-async function squareRequest(method, path3, body) {
-  const url = `${SQUARE_BASE_URL}${path3}`;
+async function squareRequest(method, path4, body) {
+  const url = `${SQUARE_BASE_URL}${path4}`;
   const options = { method, headers: getHeaders() };
   if (body) options.body = JSON.stringify(body);
   const response = await fetch(url, options);
@@ -5761,8 +5764,8 @@ async function registerRoutes(app2) {
         return;
       }
       if (responseData.data) {
-        responseData.data.forEach((result, index) => {
-          const token = batch[index]?.to;
+        responseData.data.forEach((result, index2) => {
+          const token = batch[index2]?.to;
           if (result.status === "ok") {
             successCount++;
           } else {
@@ -10367,10 +10370,258 @@ Phone: ${phone}` : ""}`,
 
 // server/index.ts
 init_storage();
-import * as fs2 from "fs";
-import * as path2 from "path";
+import * as fs3 from "fs";
+import * as path3 from "path";
 import nodemailer2 from "nodemailer";
 import * as http from "http";
+
+// server/build-info.ts
+import * as fs2 from "fs";
+import * as path2 from "path";
+import * as crypto from "crypto";
+var STATIC_DIR = path2.resolve(process.cwd(), "static-build");
+var INDEX_HTML = path2.join(STATIC_DIR, "index.html");
+var BUILD_INFO_FILE = path2.join(STATIC_DIR, "build-info.json");
+var SERVER_DIST_INDEX = path2.resolve(process.cwd(), "server_dist", "index.js");
+var FRESHNESS_TOLERANCE_MS = 5 * 60 * 1e3;
+var cached = null;
+var freshnessFailureMsg = null;
+var META_TAG_RE = /\s*<meta\s+name=["']build-id["'][^>]*\/?>\s*/i;
+function canonicalize(html) {
+  return html.replace(META_TAG_RE, "");
+}
+function fingerprintCanonical(html) {
+  const canonical = canonicalize(html);
+  const indexHash = crypto.createHash("sha256").update(canonical).digest("hex").slice(0, 16);
+  const entryMatch = canonical.match(/\/_expo\/static\/js\/web\/entry-[a-f0-9]+\.js/);
+  return { indexHash, entryScript: entryMatch ? entryMatch[0] : null };
+}
+function safeMtimeMs(p) {
+  try {
+    return fs2.statSync(p).mtimeMs;
+  } catch {
+    return null;
+  }
+}
+function checkFreshness() {
+  const exportedAt = safeMtimeMs(INDEX_HTML);
+  const serverBuiltAt = safeMtimeMs(SERVER_DIST_INDEX);
+  if (exportedAt == null || serverBuiltAt == null) {
+    return { state: "unknown", exportedAt, serverBuiltAt, message: null };
+  }
+  const ageDelta = serverBuiltAt - exportedAt;
+  if (ageDelta > FRESHNESS_TOLERANCE_MS) {
+    const minutes = Math.round(ageDelta / 6e4);
+    return {
+      state: "stale",
+      exportedAt,
+      serverBuiltAt,
+      message: `static-build/index.html is ${minutes}m older than server_dist/index.js \u2014 the deploy built the server but did not refresh the web export. static-build/* is stale from a previous deploy.`
+    };
+  }
+  return { state: "fresh", exportedAt, serverBuiltAt, message: null };
+}
+function ensureBuildInfo() {
+  freshnessFailureMsg = null;
+  if (!fs2.existsSync(INDEX_HTML)) {
+    freshnessFailureMsg = `static-build/index.html is missing \u2014 the web export did not produce any output for this deploy. The site cannot serve the freshly-built bundle.`;
+    cached = null;
+    return null;
+  }
+  const html = fs2.readFileSync(INDEX_HTML, "utf-8");
+  const { indexHash, entryScript } = fingerprintCanonical(html);
+  if (!entryScript) {
+    freshnessFailureMsg = `static-build/index.html does not contain an Expo entry script \u2014 the web export looks broken or incomplete.`;
+    cached = null;
+    return null;
+  }
+  const freshness = checkFreshness();
+  if (freshness.state === "stale" && freshness.message) {
+    freshnessFailureMsg = freshness.message;
+  }
+  const exportedAtIso = freshness.exportedAt != null ? new Date(freshness.exportedAt).toISOString() : "unknown";
+  const serverBuiltAtIso = freshness.serverBuiltAt != null ? new Date(freshness.serverBuiltAt).toISOString() : null;
+  const idSource = `${entryScript}|${indexHash}|${exportedAtIso}`;
+  const buildId = crypto.createHash("sha256").update(idSource).digest("hex").slice(0, 16);
+  const buildInfo = {
+    buildId,
+    builtAt: exportedAtIso,
+    indexHash,
+    entryScript,
+    exportedAt: exportedAtIso,
+    serverBuiltAt: serverBuiltAtIso,
+    gitSha: process.env.REPL_COMMIT_SHA || process.env.GIT_COMMIT || null,
+    freshness: freshness.state
+  };
+  let needsWrite = true;
+  if (fs2.existsSync(BUILD_INFO_FILE)) {
+    try {
+      const existing = JSON.parse(fs2.readFileSync(BUILD_INFO_FILE, "utf-8"));
+      if (existing.buildId === buildInfo.buildId && existing.freshness === buildInfo.freshness) {
+        needsWrite = false;
+      }
+    } catch {
+    }
+  }
+  if (needsWrite) {
+    fs2.writeFileSync(BUILD_INFO_FILE, JSON.stringify(buildInfo, null, 2) + "\n");
+  }
+  const metaTag = `<meta name="build-id" content="${buildInfo.buildId}" data-built-at="${buildInfo.builtAt}" />`;
+  const stripped = html.replace(META_TAG_RE, "");
+  const nextHtml = stripped.replace(/<head>/i, `<head>
+    ${metaTag}`);
+  if (nextHtml !== html) {
+    try {
+      const origMtime = freshness.exportedAt != null ? new Date(freshness.exportedAt) : null;
+      fs2.writeFileSync(INDEX_HTML, nextHtml);
+      if (origMtime) {
+        try {
+          fs2.utimesSync(INDEX_HTML, origMtime, origMtime);
+        } catch {
+        }
+      }
+    } catch (err) {
+      console.error(
+        `[deploy-verify] WARNING: could not write meta tag into index.html (${err.message}). /api/build-info will still work; only the SPA-HTML cross-check will be skipped.`
+      );
+    }
+  }
+  cached = buildInfo;
+  console.log(
+    `[deploy-verify] Build fingerprint: id=${buildInfo.buildId} entry=${buildInfo.entryScript} exportedAt=${buildInfo.builtAt} freshness=${buildInfo.freshness}`
+  );
+  return buildInfo;
+}
+function getBuildInfo() {
+  return cached;
+}
+async function fetchText(url) {
+  const res = await fetch(url, {
+    headers: { "cache-control": "no-cache" },
+    signal: AbortSignal.timeout(15e3)
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.text();
+}
+function loudBanner(title, lines) {
+  const banner = "=".repeat(64);
+  console.error(`
+${banner}`);
+  console.error(`[deploy-verify] \u2717 ${title}`);
+  for (const l of lines) console.error(`[deploy-verify]   - ${l}`);
+  console.error(
+    `[deploy-verify] The live site may be serving an outdated website. Re-run the deploy or investigate the build pipeline before customers notice.`
+  );
+  console.error(`${banner}
+`);
+}
+async function runDeployVerification(opts) {
+  const info = cached;
+  if (freshnessFailureMsg) {
+    loudBanner("DEPLOY DID NOT SHIP A FRESH WEBSITE", [freshnessFailureMsg]);
+    return false;
+  }
+  if (!info) {
+    console.log(`[deploy-verify] Skipped \u2014 no build fingerprint available.`);
+    return true;
+  }
+  const targets = [
+    { label: "local", url: opts.localBaseUrl }
+  ];
+  if (opts.publicBaseUrl && opts.publicBaseUrl !== opts.localBaseUrl) {
+    targets.push({ label: "public", url: opts.publicBaseUrl });
+  }
+  let allOk = true;
+  const failures = [];
+  const recordFail = (msg) => {
+    allOk = false;
+    failures.push(msg);
+  };
+  for (const target of targets) {
+    const maxAttempts = target.label === "public" ? 4 : 1;
+    const attemptDelayMs = 5e3;
+    const targetFailures = await runChecksForTarget(target, info, maxAttempts, attemptDelayMs);
+    for (const f of targetFailures) recordFail(f);
+  }
+  if (allOk) {
+    console.log(
+      `[deploy-verify] \u2713 Live site is serving build ${info.buildId} (verified via ${targets.map((t) => t.label).join(" + ")}).`
+    );
+    return true;
+  }
+  loudBanner(`DEPLOY VERIFICATION FAILED (expected buildId=${info.buildId})`, failures);
+  return false;
+}
+async function runChecksForTarget(target, info, maxAttempts, attemptDelayMs) {
+  let attempt = 0;
+  let lastFailures = [];
+  while (attempt < maxAttempts) {
+    attempt++;
+    lastFailures = [];
+    await runOneCheckPass(target, info, lastFailures);
+    if (lastFailures.length === 0) return [];
+    if (attempt < maxAttempts) {
+      console.warn(
+        `[deploy-verify] [${target.label}] check attempt ${attempt}/${maxAttempts} had ${lastFailures.length} failure(s); retrying in ${attemptDelayMs}ms\u2026`
+      );
+      await new Promise((r) => setTimeout(r, attemptDelayMs));
+    }
+  }
+  return lastFailures;
+}
+async function runOneCheckPass(target, info, failures) {
+  const recordFail = (msg) => failures.push(msg);
+  try {
+    const apiText = await fetchText(`${target.url}/api/build-info`);
+    const remote = JSON.parse(apiText);
+    if (remote.buildId !== info.buildId) {
+      recordFail(
+        `[${target.label}] /api/build-info served buildId=${remote.buildId}, expected ${info.buildId}`
+      );
+    }
+  } catch (err) {
+    recordFail(`[${target.label}] /api/build-info fetch failed: ${err.message}`);
+  }
+  try {
+    const html = await fetchText(`${target.url}/__deploy_verify__`);
+    const meta = html.match(/<meta\s+name=["']build-id["']\s+content=["']([^"']+)["']/i);
+    if (!meta) {
+      recordFail(
+        `[${target.label}] SPA fallback HTML has no <meta name="build-id"> tag \u2014 the static handler is probably serving a stale index.html (or the wrong file).`
+      );
+    } else if (meta[1] !== info.buildId) {
+      recordFail(
+        `[${target.label}] SPA fallback meta build-id=${meta[1]}, expected ${info.buildId} \u2014 stale bundle being served.`
+      );
+    }
+  } catch (err) {
+    recordFail(`[${target.label}] SPA fallback fetch failed: ${err.message}`);
+  }
+  try {
+    const res = await fetch(`${target.url}${info.entryScript}`, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(15e3)
+    });
+    if (!res.ok) {
+      recordFail(
+        `[${target.label}] entry bundle ${info.entryScript} returned HTTP ${res.status} \u2014 the freshly-built JS bundle is not being served.`
+      );
+    }
+  } catch (err) {
+    recordFail(`[${target.label}] entry bundle fetch failed: ${err.message}`);
+  }
+}
+function detectPublicBaseUrl() {
+  const candidates = [
+    process.env.REPLIT_DEPLOYMENT_DOMAIN,
+    process.env.REPLIT_DOMAINS && process.env.REPLIT_DOMAINS.split(",")[0].trim()
+  ].filter(Boolean);
+  if (!candidates.length) return null;
+  const host = candidates[0].replace(/^https?:\/\//, "").replace(/\/$/, "");
+  return `https://${host}`;
+}
+
+// server/index.ts
 var app = express();
 var log = console.log;
 function setupCors(app2) {
@@ -10492,7 +10743,7 @@ function setupBodyParsing(app2) {
 function setupRequestLogging(app2) {
   app2.use((req, res, next) => {
     const start = Date.now();
-    const path3 = req.path;
+    const path4 = req.path;
     let capturedJsonResponse = void 0;
     const originalResJson = res.json;
     res.json = function(bodyJson, ...args) {
@@ -10500,9 +10751,9 @@ function setupRequestLogging(app2) {
       return originalResJson.apply(res, [bodyJson, ...args]);
     };
     res.on("finish", () => {
-      if (!path3.startsWith("/api")) return;
+      if (!path4.startsWith("/api")) return;
       const duration = Date.now() - start;
-      let logLine = `${req.method} ${path3} ${res.statusCode} in ${duration}ms`;
+      let logLine = `${req.method} ${path4} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse && res.statusCode >= 400) {
         const safe = redactSensitive(capturedJsonResponse);
         const snippet = JSON.stringify(safe);
@@ -10515,8 +10766,8 @@ function setupRequestLogging(app2) {
 }
 function getAppName() {
   try {
-    const appJsonPath = path2.resolve(process.cwd(), "app.json");
-    const appJsonContent = fs2.readFileSync(appJsonPath, "utf-8");
+    const appJsonPath = path3.resolve(process.cwd(), "app.json");
+    const appJsonContent = fs3.readFileSync(appJsonPath, "utf-8");
     const appJson = JSON.parse(appJsonContent);
     return appJson.expo?.name || "App Landing Page";
   } catch {
@@ -10524,16 +10775,16 @@ function getAppName() {
   }
 }
 function serveExpoManifest(platform, res, req) {
-  const manifestPath = path2.resolve(
+  const manifestPath = path3.resolve(
     process.cwd(),
     "static-build",
     platform,
     "manifest.json"
   );
-  if (!fs2.existsSync(manifestPath)) {
+  if (!fs3.existsSync(manifestPath)) {
     return res.status(404).json({ error: `Manifest not found for platform: ${platform}` });
   }
-  let manifestStr = fs2.readFileSync(manifestPath, "utf-8");
+  let manifestStr = fs3.readFileSync(manifestPath, "utf-8");
   try {
     const manifest = JSON.parse(manifestStr);
     const builtUrl = manifest?.launchAsset?.url;
@@ -10574,13 +10825,13 @@ function serveLandingPage({
   res.status(200).send(html);
 }
 function configureExpoAndLanding(app2) {
-  const templatePath = path2.resolve(
+  const templatePath = path3.resolve(
     process.cwd(),
     "server",
     "templates",
     "landing-page.html"
   );
-  const landingPageTemplate = fs2.readFileSync(templatePath, "utf-8");
+  const landingPageTemplate = fs3.readFileSync(templatePath, "utf-8");
   const appName = getAppName();
   log("Serving static Expo files with dynamic manifest routing");
   app2.use((req, res, next) => {
@@ -10648,14 +10899,14 @@ function configureExpoAndLanding(app2) {
       req.pipe(proxyReq, { end: true });
     });
   }
-  app2.use("/assets", express.static(path2.resolve(process.cwd(), "assets")));
-  app2.use("/uploads", express.static(path2.resolve(process.cwd(), "uploads")));
-  app2.use(express.static(path2.resolve(process.cwd(), "static-build")));
+  app2.use("/assets", express.static(path3.resolve(process.cwd(), "assets")));
+  app2.use("/uploads", express.static(path3.resolve(process.cwd(), "uploads")));
+  app2.use(express.static(path3.resolve(process.cwd(), "static-build")));
   app2.get("/preview-home", (_req, res) => {
     try {
-      const p = path2.resolve(process.cwd(), "server", "templates", "home-mockup.html");
+      const p = path3.resolve(process.cwd(), "server", "templates", "home-mockup.html");
       res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.send(fs2.readFileSync(p, "utf-8"));
+      res.send(fs3.readFileSync(p, "utf-8"));
     } catch {
       res.status(500).send("Mockup unavailable");
     }
@@ -10678,20 +10929,20 @@ function configureExpoAndLanding(app2) {
   };
   app2.get("/test-site/styles.css", (_req, res) => {
     try {
-      const p = path2.resolve(process.cwd(), "server", "templates", "test-site", "styles.css");
+      const p = path3.resolve(process.cwd(), "server", "templates", "test-site", "styles.css");
       res.setHeader("Content-Type", "text/css; charset=utf-8");
       res.setHeader("Cache-Control", "public, max-age=300");
-      res.send(fs2.readFileSync(p, "utf-8"));
+      res.send(fs3.readFileSync(p, "utf-8"));
     } catch {
       res.status(404).end();
     }
   });
   app2.get("/test-site/embed.js", (_req, res) => {
     try {
-      const p = path2.resolve(process.cwd(), "server", "templates", "test-site", "embed.js");
+      const p = path3.resolve(process.cwd(), "server", "templates", "test-site", "embed.js");
       res.setHeader("Content-Type", "application/javascript; charset=utf-8");
       res.setHeader("Cache-Control", "public, max-age=300");
-      res.send(fs2.readFileSync(p, "utf-8"));
+      res.send(fs3.readFileSync(p, "utf-8"));
     } catch {
       res.status(404).end();
     }
@@ -10702,8 +10953,8 @@ function configureExpoAndLanding(app2) {
     if (!file) return res.status(404).send("Page not found");
     try {
       const { applyWebContentOverrides: applyWebContentOverrides2 } = await Promise.resolve().then(() => (init_web_content(), web_content_exports));
-      const p = path2.resolve(process.cwd(), "server", "templates", "test-site", file);
-      const raw = fs2.readFileSync(p, "utf-8");
+      const p = path3.resolve(process.cwd(), "server", "templates", "test-site", file);
+      const raw = fs3.readFileSync(p, "utf-8");
       const overrideSlug = slug || "home";
       const finalHtml = await applyWebContentOverrides2(overrideSlug, raw);
       res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -10758,7 +11009,7 @@ function configureExpoAndLanding(app2) {
       req.pipe(proxyReq, { end: true });
     });
   } else {
-    const indexPath = path2.resolve(process.cwd(), "static-build", "index.html");
+    const indexPath = path3.resolve(process.cwd(), "static-build", "index.html");
     app2.use((req, res, next) => {
       if (res.headersSent) return next();
       if (req.path.startsWith("/api")) return next();
@@ -10776,7 +11027,7 @@ function configureExpoAndLanding(app2) {
         "/reset-password"
       ]);
       if (serverPages.has(req.path)) return next();
-      if (fs2.existsSync(indexPath)) {
+      if (fs3.existsSync(indexPath)) {
         res.sendFile(indexPath);
       } else {
         next();
@@ -11084,8 +11335,8 @@ function scheduleRetentionCleanup() {
       const base64 = ascKeyContent.replace(/-----BEGIN PRIVATE KEY-----/g, "").replace(/-----END PRIVATE KEY-----/g, "").replace(/\s+/g, "");
       const lines = base64.match(/.{1,64}/g) || [];
       const pem = "-----BEGIN PRIVATE KEY-----\n" + lines.join("\n") + "\n-----END PRIVATE KEY-----\n";
-      fs2.mkdirSync(path2.dirname(keyPath), { recursive: true });
-      fs2.writeFileSync(keyPath, pem, { mode: 384 });
+      fs3.mkdirSync(path3.dirname(keyPath), { recursive: true });
+      fs3.writeFileSync(keyPath, pem, { mode: 384 });
       log(`\u2713 ASC .p8 key written to ${keyPath}`);
     } catch (e) {
       console.warn("\u26A0 Could not write ASC .p8 key:", e);
@@ -11095,43 +11346,62 @@ function scheduleRetentionCleanup() {
   setupSecurityHeaders(app);
   setupBodyParsing(app);
   setupRequestLogging(app);
-  const widgetHtmlPath = path2.resolve(process.cwd(), "server", "templates", "booking-widget.html");
+  const widgetHtmlPath = path3.resolve(process.cwd(), "server", "templates", "booking-widget.html");
   app.get("/widget/booking", (_req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("X-Frame-Options", "ALLOWALL");
     res.setHeader("Content-Security-Policy", "frame-ancestors *");
     res.setHeader("Cache-Control", "no-store");
-    const html = fs2.readFileSync(widgetHtmlPath, "utf-8");
+    const html = fs3.readFileSync(widgetHtmlPath, "utf-8");
     res.status(200).send(html);
   });
-  const privacyPolicyHtmlPath = path2.resolve(process.cwd(), "server", "templates", "privacy-policy.html");
-  const privacyPolicyHtml = fs2.readFileSync(privacyPolicyHtmlPath, "utf-8");
+  const privacyPolicyHtmlPath = path3.resolve(process.cwd(), "server", "templates", "privacy-policy.html");
+  const privacyPolicyHtml = fs3.readFileSync(privacyPolicyHtmlPath, "utf-8");
   app.get("/privacy-policy", (_req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.status(200).send(privacyPolicyHtml);
   });
-  const termsHtmlPath = path2.resolve(process.cwd(), "server", "templates", "terms-of-service.html");
-  const termsHtml = fs2.readFileSync(termsHtmlPath, "utf-8");
+  const termsHtmlPath = path3.resolve(process.cwd(), "server", "templates", "terms-of-service.html");
+  const termsHtml = fs3.readFileSync(termsHtmlPath, "utf-8");
   app.get("/terms", (_req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.status(200).send(termsHtml);
   });
-  const staffPrivacyHtmlPath = path2.resolve(process.cwd(), "server", "templates", "staff-privacy-notice.html");
-  const staffPrivacyHtml = fs2.readFileSync(staffPrivacyHtmlPath, "utf-8");
+  const staffPrivacyHtmlPath = path3.resolve(process.cwd(), "server", "templates", "staff-privacy-notice.html");
+  const staffPrivacyHtml = fs3.readFileSync(staffPrivacyHtmlPath, "utf-8");
   app.get("/staff-privacy-notice", (_req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.status(200).send(staffPrivacyHtml);
+  });
+  ensureBuildInfo();
+  app.get("/api/build-info", (_req, res) => {
+    const info = getBuildInfo();
+    if (!info) {
+      return res.status(404).json({ error: "no build info available (dev mode or missing static-build)" });
+    }
+    res.setHeader("Cache-Control", "no-store");
+    res.json(info);
   });
   configureExpoAndLanding(app);
   const server = await registerRoutes(app);
   setupErrorHandler(app);
   const port = parseInt(process.env.PORT || "5000", 10);
-  await new Promise((resolve3) => {
+  await new Promise((resolve4) => {
     server.listen(port, "0.0.0.0", () => {
       log(`express server serving on port ${port}`);
-      resolve3();
+      resolve4();
     });
   });
+  if (process.env.NODE_ENV === "production") {
+    setTimeout(() => {
+      runDeployVerification({
+        localBaseUrl: `http://127.0.0.1:${port}`,
+        publicBaseUrl: detectPublicBaseUrl()
+      }).catch((err) => {
+        console.error(`[deploy-verify] verification threw: ${err?.message ?? err}`);
+      });
+    }, 2e3);
+  }
   if (process.env.NODE_ENV !== "production" && port !== 8082) {
     const previewServer = http.createServer(app);
     previewServer.listen(8082, "0.0.0.0", () => {

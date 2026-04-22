@@ -6,6 +6,8 @@ import * as fs from "fs";
 import * as path from "path";
 import nodemailer from "nodemailer";
 import * as http from "http";
+import { ensureBuildInfo, getBuildInfo, runDeployVerification, detectPublicBaseUrl } from "./build-info";
+// getBuildInfo is used by the /api/build-info route below.
 
 const app = express();
 const log = console.log;
@@ -903,6 +905,23 @@ function scheduleRetentionCleanup() {
     res.status(200).send(staffPrivacyHtml);
   });
 
+  // Fingerprint the freshly-exported web bundle so we can verify after
+  // startup that the live site is actually serving THIS build (and not a
+  // stale one). In dev there's no static-build to fingerprint — this is a
+  // no-op then.
+  ensureBuildInfo();
+
+  // Tiny endpoint exposing the on-disk build fingerprint. Used by the
+  // post-startup self-check and by scripts/verify-deploy.js.
+  app.get("/api/build-info", (_req, res) => {
+    const info = getBuildInfo();
+    if (!info) {
+      return res.status(404).json({ error: "no build info available (dev mode or missing static-build)" });
+    }
+    res.setHeader("Cache-Control", "no-store");
+    res.json(info);
+  });
+
   configureExpoAndLanding(app);
 
   const server = await registerRoutes(app);
@@ -918,6 +937,24 @@ function scheduleRetentionCleanup() {
       resolve();
     });
   });
+
+  // After the listener is up, verify the live site is serving the freshly-built
+  // web bundle. Runs in production only (in dev, Metro serves the bundle and
+  // there's nothing static to verify). Fires-and-forgets so it never blocks
+  // startup — failures show up as a loud banner in the logs. We always run
+  // the verification (even when build info is missing) — a missing/invalid
+  // build fingerprint is itself a deploy verification failure that the
+  // verifier will report.
+  if (process.env.NODE_ENV === "production") {
+    setTimeout(() => {
+      runDeployVerification({
+        localBaseUrl: `http://127.0.0.1:${port}`,
+        publicBaseUrl: detectPublicBaseUrl(),
+      }).catch((err) => {
+        console.error(`[deploy-verify] verification threw: ${err?.message ?? err}`);
+      });
+    }, 2000);
+  }
 
   // In development, also bind port 8082 (the Replit preview port configured in .replit)
   // so the Replit browser preview and test agent can reach the Express server.
