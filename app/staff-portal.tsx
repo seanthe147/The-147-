@@ -18,6 +18,61 @@ import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import Colors from "@/constants/colors";
 import type { StaffNotice } from "@shared/schema";
 
+interface BuildInfoResponse {
+  buildId: string;
+  builtAt: string;
+  exportedAt?: string;
+  freshness?: "fresh" | "stale" | "unknown";
+  gitSha?: string | null;
+}
+
+function BuildInfoFooter() {
+  const { data, isError } = useQuery<BuildInfoResponse>({
+    queryKey: ["/api/build-info"],
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+
+  if (isError || !data) return null;
+
+  const builtAt = data.builtAt || data.exportedAt;
+  let builtLabel = "";
+  if (builtAt) {
+    const d = new Date(builtAt);
+    if (!isNaN(d.getTime())) {
+      builtLabel = d.toLocaleString("en-GB", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+  }
+
+  const shortId = data.buildId ? data.buildId.slice(0, 12) : "";
+  const isStale = data.freshness === "stale";
+
+  return (
+    <View style={styles.buildInfoChip} testID="staff-portal-build-info">
+      <Ionicons
+        name={isStale ? "warning-outline" : "git-commit-outline"}
+        size={12}
+        color={isStale ? Colors.brand.red : Colors.light.textSecondary}
+      />
+      <Text
+        style={[styles.buildInfoText, isStale && { color: Colors.brand.red }]}
+        numberOfLines={1}
+      >
+        Build {shortId}
+        {builtLabel ? ` · deployed ${builtLabel}` : ""}
+        {isStale ? " · stale" : ""}
+      </Text>
+    </View>
+  );
+}
+
 function LoginScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -595,6 +650,8 @@ function DashboardScreen() {
           <Ionicons name="log-out-outline" size={20} color={Colors.brand.red} />
           <Text style={styles.logoutText}>Sign Out</Text>
         </Pressable>
+
+        <BuildInfoFooter />
       </ScrollView>
     </View>
   );
@@ -949,6 +1006,21 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 15,
     color: Colors.brand.red,
+  },
+  buildInfoChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    alignSelf: "center",
+  },
+  buildInfoText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 11,
+    color: Colors.light.textSecondary,
   },
   managerBadge: {
     backgroundColor: "#7C3AED" + "12",
