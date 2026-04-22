@@ -30,7 +30,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import Colors from "@/constants/colors";
@@ -938,7 +938,13 @@ function CartSheet({
         body: JSON.stringify(buildOrderPayload()),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Could not start checkout");
+      if (!res.ok) {
+        // Ordering was just turned off — refresh status so the closed banner appears immediately.
+        if (res.status === 503) {
+          void queryClient.invalidateQueries({ queryKey: ["/api/ordering-status"] });
+        }
+        throw new Error(data.message || "Could not start checkout");
+      }
       // Snapshot for confirmation screen
       snapshottedItemsRef.current = items.map((i) => ({
         name: i.name,
@@ -1449,10 +1455,13 @@ export default function OrderScreen() {
     staleTime: 10 * 60 * 1000,
   });
 
+  const queryClient = useQueryClient();
   const { data: orderingStatus } = useQuery<{ enabled: boolean; reason?: string; nextOpen?: string; closesAt?: string }>({
     queryKey: ["/api/ordering-status"],
-    staleTime: 30 * 1000,
-    refetchInterval: 60 * 1000,
+    staleTime: 5 * 1000,
+    refetchInterval: 15 * 1000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
   });
 
   const orderingEnabled = orderingStatus?.enabled !== false;

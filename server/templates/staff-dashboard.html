@@ -538,9 +538,10 @@
         </div>
         <div class="topbar-actions" id="topbarActions"></div>
         <div id="orderingToggleWrap" style="margin-left:auto;display:flex;align-items:center;gap:10px">
-          <div style="display:flex;flex-direction:column;align-items:flex-end;line-height:1.2">
+          <div style="display:flex;flex-direction:column;align-items:flex-end;line-height:1.2;max-width:240px">
             <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-2)">Online Ordering</span>
             <span id="orderingStatusLabel" style="font-size:11px;font-weight:600;color:var(--text-2)">Loading…</span>
+            <span id="orderingStatusReason" style="font-size:10px;font-weight:500;color:var(--text-2);text-align:right;display:none;margin-top:2px"></span>
           </div>
           <button id="orderingToggleBtn" onclick="toggleOrdering()" style="display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;border:none;font-size:13px;font-weight:700;cursor:pointer;transition:background .2s,color .2s">
             <svg id="orderingToggleIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"></svg>
@@ -4843,13 +4844,17 @@
 
   /* ── Online Ordering Toggle ── */
   let orderingEnabled=true;
+  let orderingManualOff=false;
 
-  function renderOrderingToggle(enabled){
+  function renderOrderingToggle(status){
+    const enabled = !!status.enabled;
     orderingEnabled=enabled;
+    orderingManualOff = status.manualOverride === true;
     const btn=el('orderingToggleBtn');
     const label=el('orderingToggleLabel');
     const icon=el('orderingToggleIcon');
     const statusLabel=el('orderingStatusLabel');
+    const reasonEl=el('orderingStatusReason');
     if(enabled){
       btn.style.background='#ef4444';btn.style.color='#fff';
       label.textContent='Turn Off';
@@ -4857,9 +4862,13 @@
       icon.innerHTML='<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>';
     }else{
       btn.style.background='#22c55e';btn.style.color='#fff';
-      label.textContent='Turn On';
+      label.textContent= orderingManualOff ? 'Turn On' : 'Force Open';
       statusLabel.textContent='Closed';statusLabel.style.color='var(--red)';
       icon.innerHTML='<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>';
+    }
+    if(reasonEl){
+      reasonEl.textContent = status.reason || '';
+      reasonEl.style.display = status.reason ? 'block' : 'none';
     }
   }
 
@@ -4867,18 +4876,27 @@
     try{
       const r=await fetch('/api/ordering-status');
       const data=await r.json();
-      renderOrderingToggle(data.enabled);
-    }catch(e){renderOrderingToggle(true);}
+      renderOrderingToggle(data);
+    }catch(e){renderOrderingToggle({enabled:true});}
   }
 
   async function toggleOrdering(){
+    // If currently closed by schedule (not manual), staff click means "force open today"
+    // — but our endpoint only sets manual override; schedule still wins.
     const next=!orderingEnabled;
-    const action=next?'enable':'disable';
-    if(!confirm((next?'Enable':'Disable')+' online ordering? Customers will '+(next?'be able to place orders from the app.':'no longer be able to place orders from the app until it is turned back on.')))return;
+    const willOverrideSchedule = !orderingEnabled && !orderingManualOff;
+    const msg = willOverrideSchedule
+      ? 'Ordering is currently closed by your schedule. Turning it on will only re-enable manual override; customers will still see closed until the schedule allows. Continue?'
+      : ((next?'Enable':'Disable')+' online ordering? Customers will '+(next?'be able to place orders from the app.':'no longer be able to place orders from the app until it is turned back on.'));
+    if(!confirm(msg))return;
     try{
       const r=await api('/api/staff/ordering-status',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:next})});
       if(!r.ok)throw new Error();
-      renderOrderingToggle(next);
+      const data=await r.json();
+      renderOrderingToggle(data);
+      if(next && !data.enabled){
+        alert('Manual override set to ON, but ordering is still closed: '+(data.reason||'check schedule.'));
+      }
     }catch(e){
       alert('Failed to update ordering status. Please try again.');
     }
