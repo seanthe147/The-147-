@@ -395,10 +395,21 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
       transparent={false}
     >
       <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Secure Payment</Text>
-          <Pressable onPress={props.onClose} hitSlop={12} disabled={props.inProgress} style={({ pressed }) => ({ opacity: pressed || props.inProgress ? 0.5 : 1 })}>
-            <Ionicons name="close" size={24} color={Colors.light.text} />
+        <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+          <View style={styles.headerLeft}>
+            <Ionicons name="lock-closed" size={16} color={Colors.brand.blue} />
+            <Text style={styles.title}>Secure Payment</Text>
+          </View>
+          <Pressable
+            onPress={props.onClose}
+            hitSlop={12}
+            disabled={props.inProgress}
+            style={({ pressed }) => [
+              styles.closeBtn,
+              { opacity: pressed || props.inProgress ? 0.5 : 1 },
+            ]}
+          >
+            <Ionicons name="close" size={22} color={Colors.light.text} />
           </Pressable>
         </View>
 
@@ -482,11 +493,21 @@ const styles = StyleSheet.create({
     alignItems: "center" as const,
     justifyContent: "space-between" as const,
     paddingHorizontal: 18,
-    paddingVertical: 14,
+    paddingBottom: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#E5E7EB",
+    backgroundColor: "#fff",
   },
+  headerLeft: { flexDirection: "row" as const, alignItems: "center" as const, gap: 8 },
   title: { fontSize: 17, fontWeight: "700" as const, color: Colors.light.text },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+  },
   errorBox: { padding: 24, alignItems: "center" as const, gap: 10 },
   errorTitle: { fontSize: 16, fontWeight: "700" as const, color: "#0A1628" },
   errorBody: { fontSize: 14, color: "#6B7280", textAlign: "center" as const, lineHeight: 20 },
