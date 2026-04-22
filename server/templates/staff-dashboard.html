@@ -425,12 +425,13 @@
         <input class="form-input" type="text" id="lUsername" placeholder="Enter username" autocomplete="username" autocapitalize="off" maxlength="30">
       </div>
       <div class="form-group">
-        <label class="form-label" for="lPin">PIN</label>
-        <input class="form-input pin-input" type="password" id="lPin" inputmode="numeric" maxlength="8" placeholder="• • • •" autocomplete="current-password">
+        <label class="form-label" for="lPin"><span id="lPinLabel">Password</span></label>
+        <input class="form-input" type="password" id="lPin" maxlength="100" placeholder="Enter your password" autocomplete="current-password">
+        <div id="lPinHint" style="font-size:11px;color:var(--text-2);margin-top:6px;line-height:1.4">Legacy PIN users: enter your 4–8 digit PIN — you'll be asked to set a password next.</div>
       </div>
       <div id="confirmPinGroup" class="form-group hidden-fields">
-        <label class="form-label" for="lConfirmPin">Confirm PIN</label>
-        <input class="form-input pin-input" type="password" id="lConfirmPin" inputmode="numeric" maxlength="8" placeholder="• • • •" autocomplete="off">
+        <label class="form-label" for="lConfirmPin">Confirm password</label>
+        <input class="form-input" type="password" id="lConfirmPin" maxlength="100" placeholder="Re-enter password" autocomplete="new-password">
       </div>
 
       <div id="loginError" class="login-error"></div>
@@ -2448,6 +2449,18 @@
     ['registerFields','confirmPinGroup'].forEach(id=>el(id).classList.toggle('hidden-fields',!isRegister));
     el('loginBtn').textContent=isRegister?'Create Account':'Sign In';
     el('toggleMode').textContent=isRegister?'Already have an account? Sign in':'New staff? Create an account';
+    // Swap the credential field between PIN (register) and Password (login).
+    const pinEl=el('lPin');const labelEl=el('lPinLabel');const hintEl=el('lPinHint');
+    if(isRegister){
+      if(labelEl)labelEl.textContent='PIN';
+      if(pinEl){pinEl.placeholder='• • • •';pinEl.setAttribute('inputmode','numeric');pinEl.maxLength=8;pinEl.autocomplete='off';}
+      if(hintEl)hintEl.style.display='none';
+    } else {
+      if(labelEl)labelEl.textContent='Password';
+      if(pinEl){pinEl.placeholder='Enter your password';pinEl.removeAttribute('inputmode');pinEl.maxLength=100;pinEl.autocomplete='current-password';}
+      if(hintEl)hintEl.style.display='block';
+    }
+    if(pinEl)pinEl.value='';
     el('loginError').textContent='';el('loginSuccess').textContent='';
   });
 
@@ -2472,7 +2485,7 @@
     // "leave username blank to use the master PIN as a manager" shortcut was a
     // privilege-escalation path and has been removed on the server.
     if(!username){el('loginError').textContent='Username is required';return}
-    if(!pin){el('loginError').textContent='PIN is required';return}
+    if(!pin){el('loginError').textContent=isRegister?'PIN is required':'Password is required';return}
     el('loginBtn').disabled=true;
     try{
       if(isRegister){
