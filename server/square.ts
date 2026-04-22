@@ -227,6 +227,32 @@ export async function findSquareCustomerByEmail(email: string) {
   return data.customers?.[0] || null;
 }
 
+/**
+ * Save a tokenised card on file against a Square customer so it can be re-used
+ * for recurring billing (memberships). `sourceId` comes from the Web Payments
+ * SDK `tokenize()` call. `verificationToken` is the optional 3DS/SCA token from
+ * `payments.verifyBuyer({ intent: 'STORE' })` — required for European cards
+ * subject to PSD2.
+ */
+export async function saveCardOnFile(opts: {
+  customerId: string;
+  sourceId: string;
+  verificationToken?: string | null;
+  cardholderName?: string | null;
+}) {
+  const body: Record<string, unknown> = {
+    idempotency_key: `card-${opts.customerId}-${Date.now()}`,
+    source_id: opts.sourceId,
+    card: {
+      customer_id: opts.customerId,
+      ...(opts.cardholderName ? { cardholder_name: opts.cardholderName.slice(0, 96) } : {}),
+    },
+  };
+  if (opts.verificationToken) body.verification_token = opts.verificationToken;
+  const data = await squareRequest("POST", "/v2/cards", body);
+  return data.card;
+}
+
 export async function createSquareSubscription(
   squareCustomerId: string,
   planVariationId: string,

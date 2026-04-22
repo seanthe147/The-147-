@@ -5907,6 +5907,169 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Native in-app membership join (Square Web Payments SDK) ────────────────
+  // Customer tokenises a card in-app via SquarePaymentSheet, then POSTs the
+  // resulting source_id (and optional 3DS verification_token) here. We save the
+  // card on file against the Square customer and create a Square subscription
+  // so future charges happen automatically without bouncing to a browser.
+  app.post("/api/membership/join-native", customerAuth, async (req, res) => {
+    try {
+      const customerId = (req as any).customerId as number;
+      const { planId, billingFrequency = "monthly", startDate, termsAccepted, sourceId, verificationToken } = req.body ?? {};
+      if (!planId) return res.status(400).json({ message: "planId is required" });
+      if (!sourceId) return res.status(400).json({ message: "Payment token missing" });
+      if (termsAccepted !== true) return res.status(400).json({ message: "You must accept the Terms & Conditions to join" });
+      if (!square.isConfigured()) return res.status(503).json({ message: "Payment system not configured" });
+
+      const isAnnual = billingFrequency === "annual";
+
+      const existing = await storage.getMembershipSubscriptionByCustomer(customerId);
+      if (existing && existing.planId === parseInt(planId) && existing.status === "active") {
+        return res.status(409).json({ message: "You already have an active membership on this plan" });
+      }
+
+      const plan = await storage.getMembershipPlan(parseInt(planId));
+      if (!plan || !plan.active) return res.status(404).json({ message: "Plan not found" });
+
+      const customer = await storage.getCustomerById(customerId);
+      if (!customer) return res.status(404).json({ message: "Customer not found" });
+
+      const today = new Date().toISOString().slice(0, 10);
+      const periodStart = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) && startDate > today ? startDate : today;
+      const periodEndDate = new Date(periodStart + "T12:00:00Z");
+      if (isAnnual) periodEndDate.setFullYear(periodEndDate.getFullYear() + 1);
+      else periodEndDate.setMonth(periodEndDate.getMonth() + 1);
+      const periodEnd = periodEndDate.toISOString().slice(0, 10);
+
+      // NOTE: We deliberately do NOT cancel the existing subscription here.
+      // We only do that AFTER the new card + Square subscription are
+      // successfully created, so a failure mid-flow does not leave the
+      // customer without active access.
+
+      // 1) Find or create the Square customer record
+      let sqCustomer = await square.findSquareCustomerByEmail(customer.email).catch(() => null);
+      if (!sqCustomer) {
+        sqCustomer = await square.createSquareCustomer(customer.name, customer.email, customer.phone || undefined).catch(() => null);
+      }
+      if (!sqCustomer) return res.status(502).json({ message: "Could not create payment customer profile" });
+
+      // 2) Save the tokenised card on file (carries verification_token if SCA was performed)
+      let savedCard: any;
+      try {
+        savedCard = await square.saveCardOnFile({
+          customerId: sqCustomer.id,
+          sourceId,
+          verificationToken,
+          cardholderName: customer.name,
+        });
+      } catch (cardErr: any) {
+        const msg = cardErr?.message || "Card could not be saved";
+        console.error("[membership/join-native] saveCardOnFile failed:", msg);
+        return res.status(402).json({ message: msg, code: "CARD_SAVE_FAILED" });
+      }
+      if (!savedCard?.id) {
+        return res.status(402).json({ message: "Card could not be saved", code: "CARD_SAVE_FAILED" });
+      }
+
+      // 3) Pick variation ID for billing frequency
+      const variationId = isAnnual
+        ? ((plan as any).squarePlanVariationIdAlt || plan.squarePlanVariationId)
+        : plan.squarePlanVariationId;
+      if (!variationId) {
+        return res.status(503).json({ message: "Membership plan is not configured for in-app billing yet" });
+      }
+
+      // 4) Create the local subscription record (pending until Square confirms)
+      const initialStatus = periodStart > today ? "pending_start" : "pending";
+      const sub = await storage.createMembershipSubscription({
+        customerId,
+        planId: plan.id,
+        status: initialStatus,
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
+        hoursUsedThisPeriod: 0,
+        guestPassesUsed: 0,
+        staffNotes: periodStart > today ? `[Deferred start: ${periodStart}]` : null,
+        source: isAnnual ? "app_annual_native" : "app_native",
+        termsAcceptedAt: new Date(),
+        squareCustomerId: sqCustomer.id,
+      });
+
+      // 5) Create the Square subscription against the saved card
+      const locationId = square.getPublicLocationId();
+      if (!locationId) {
+        return res.status(503).json({ message: "Payment system location not configured" });
+      }
+      let squareSub: any = null;
+      try {
+        squareSub = await square.createSquareSubscription(
+          sqCustomer.id,
+          variationId,
+          locationId,
+          savedCard.id,
+          periodStart,
+        );
+      } catch (subErr: any) {
+        console.error("[membership/join-native] createSquareSubscription failed:", subErr?.message ?? subErr);
+        await storage.updateMembershipSubscription(sub.id, {
+          status: "pending",
+          staffNotes: `[Native sign-up: card saved (${savedCard.id}) but subscription create failed: ${subErr?.message || "unknown"}]`,
+        }).catch(() => {});
+        return res.status(502).json({
+          message: "Card was saved but the subscription could not be created. Please contact us.",
+          code: "SUBSCRIPTION_CREATE_FAILED",
+        });
+      }
+
+      // 6) Manage customer groups (mirror /join behaviour)
+      try {
+        const allPlans = await storage.getMembershipPlans();
+        const allGroupNames = allPlans.map((p) => square.membershipGroupName(p.name));
+        const currentGroupIds = await square.getCustomerGroupIds(sqCustomer.id).catch(() => [] as string[]);
+        const allGroups = await square.listCustomerGroups().catch(() => [] as { id: string; name: string }[]);
+        for (const group of allGroups) {
+          if (allGroupNames.includes(group.name) && currentGroupIds.includes(group.id)) {
+            await square.removeCustomerFromGroup(sqCustomer.id, group.id).catch(() => {});
+          }
+        }
+        const newGroupId = await square.getOrCreateCustomerGroup(square.membershipGroupName(plan.name)).catch(() => null);
+        if (newGroupId) {
+          await square.addCustomerToGroup(sqCustomer.id, newGroupId).catch(() => {});
+        }
+      } catch (grpErr) {
+        console.warn("[membership/join-native] group management non-fatal error:", grpErr);
+      }
+
+      // 7) Activate locally if start date is today (Square will charge today via subscription billing).
+      // Deferred starts stay as pending_start until that date is reached.
+      const finalStatus = periodStart > today ? "pending_start" : "active";
+      await storage.updateMembershipSubscription(sub.id, {
+        status: finalStatus,
+        squareSubscriptionId: squareSub?.id ?? null,
+      } as any);
+
+      // 8) NOW it's safe to retire the previous subscription (plan switch).
+      if (existing && existing.id) {
+        if ((existing as any).squareSubscriptionId) {
+          await square.cancelSquareSubscription((existing as any).squareSubscriptionId).catch((e) => {
+            console.warn(`[membership/join-native] failed to cancel old Square sub ${(existing as any).squareSubscriptionId}:`, e?.message ?? e);
+          });
+        }
+        await storage.updateMembershipSubscription(existing.id, {
+          status: "cancelled",
+          cancelledAt: new Date(),
+        }).catch(() => {});
+      }
+
+      const updated = await storage.getMembershipSubscriptionByCustomer(customerId);
+      console.log(`[membership/join-native] sub #${sub.id} created (square sub ${squareSub?.id}) for customer ${customerId}`);
+      res.status(201).json({ ...(updated ?? sub), squareSubscriptionId: squareSub?.id ?? null });
+    } catch (err: any) {
+      console.error("[membership/join-native]", err);
+      res.status(500).json({ message: err?.message || "Failed to create membership" });
+    }
+  });
+
   // Membership payment return — Square redirects here after checkout
   app.get("/api/membership/:id/payment-return", async (req, res) => {
     const subId = parseInt(req.params.id);

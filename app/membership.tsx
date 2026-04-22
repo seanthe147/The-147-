@@ -20,6 +20,7 @@ import Colors from "@/constants/colors";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import { getApiUrl } from "@/lib/query-client";
+import { SquarePaymentSheet } from "@/components/SquarePaymentSheet";
 
 const TOKEN_KEY = "customer_session_token";
 
@@ -105,7 +106,24 @@ export default function MembershipScreen() {
   const [billingFrequency, setBillingFrequency] = useState<BillingFrequency>("monthly");
   const [startDate, setStartDate] = useState<string>(todayString());
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [paymentSheetVisible, setPaymentSheetVisible] = useState(false);
+  const [paymentSheetAmount, setPaymentSheetAmount] = useState(0);
+  const [paymentSheetError, setPaymentSheetError] = useState<string | null>(null);
+  const [paymentSheetBusy, setPaymentSheetBusy] = useState(false);
   const queryClient = useQueryClient();
+
+  const { data: squareConfig } = useQuery<{
+    applicationId: string | null;
+    locationId: string | null;
+    environment: "production" | "sandbox";
+    configured: boolean;
+  } | null>({
+    queryKey: ["/api/public/square-config"],
+    staleTime: 60 * 60 * 1000,
+  });
+
+  const useNativeSheet =
+    Platform.OS !== "web" && !!squareConfig?.configured && !!squareConfig?.applicationId && !!squareConfig?.locationId;
 
   const { data: plans = [], isLoading: plansLoading } = useQuery<MembershipPlan[]>({
     queryKey: ["/api/membership/plans"],
@@ -125,6 +143,7 @@ export default function MembershipScreen() {
     },
   });
 
+  // Hosted-checkout fallback (web, or native when in-app sheet is unavailable)
   const joinMutation = useMutation({
     mutationFn: async ({ planId, frequency, chosenStartDate, accepted }: { planId: number; frequency: BillingFrequency; chosenStartDate?: string; accepted: boolean }) => {
       const token = await getToken();
@@ -156,6 +175,47 @@ export default function MembershipScreen() {
     },
     onError: (err: Error) => {
       Alert.alert("Error", err.message);
+    },
+  });
+
+  // Native in-app card sheet flow
+  const joinNativeMutation = useMutation({
+    mutationFn: async ({ sourceId, verificationToken }: { sourceId: string; verificationToken?: string | null }) => {
+      if (!selectedPlanId) throw new Error("No plan selected");
+      const token = await getToken();
+      const url = new URL("/api/membership/join-native", getApiUrl());
+      const body: Record<string, unknown> = {
+        planId: selectedPlanId,
+        billingFrequency,
+        termsAccepted,
+        sourceId,
+        verificationToken: verificationToken ?? null,
+      };
+      if (isStaffLoggedIn && startDate !== todayString()) body.startDate = startDate;
+      const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to create membership");
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/membership/my-subscription"] });
+      setPaymentSheetVisible(false);
+      setPaymentSheetBusy(false);
+      setPaymentSheetError(null);
+      setSelectedPlanId(null);
+      setTermsAccepted(false);
+      Alert.alert("Welcome to The 147", "Your membership is active. Enjoy!", [{ text: "OK" }]);
+    },
+    onError: (err: Error) => {
+      setPaymentSheetBusy(false);
+      setPaymentSheetError(err.message);
     },
   });
 
@@ -197,14 +257,26 @@ export default function MembershipScreen() {
     const startNote = isFuture
       ? `\n\nMembership starts ${new Date(startDate + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}. First payment on that date.`
       : "";
+    const continueCopy = useNativeSheet
+      ? "Enter your card details to complete sign-up — your card will be charged automatically each billing period."
+      : "You'll be taken to a secure payment page to complete your sign-up.";
     Alert.alert(
       "Confirm Membership",
-      `Join the ${selectedPlan.name} plan for £${(price / 100).toFixed(2)} ${periodLabel}?${savingNote}${startNote}\n\nYou'll be taken to a secure payment page to complete your sign-up.`,
+      `Join the ${selectedPlan.name} plan for £${(price / 100).toFixed(2)} ${periodLabel}?${savingNote}${startNote}\n\n${continueCopy}`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Continue to Payment",
-          onPress: () => joinMutation.mutate({ planId: selectedPlanId, frequency: billingFrequency, chosenStartDate: isStaffLoggedIn ? startDate : undefined, accepted: termsAccepted }),
+          onPress: () => {
+            if (useNativeSheet) {
+              setPaymentSheetAmount(price);
+              setPaymentSheetError(null);
+              setPaymentSheetBusy(false);
+              setPaymentSheetVisible(true);
+            } else {
+              joinMutation.mutate({ planId: selectedPlanId, frequency: billingFrequency, chosenStartDate: isStaffLoggedIn ? startDate : undefined, accepted: termsAccepted });
+            }
+          },
         },
       ]
     );
@@ -467,6 +539,50 @@ export default function MembershipScreen() {
             </View>
           )}
         </ScrollView>
+      )}
+
+      {useNativeSheet && (
+        <SquarePaymentSheet
+          visible={paymentSheetVisible}
+          onClose={() => {
+            if (!paymentSheetBusy) setPaymentSheetVisible(false);
+          }}
+          onTokenized={({ sourceId, verificationToken }) => {
+            setPaymentSheetBusy(true);
+            setPaymentSheetError(null);
+            joinNativeMutation.mutate({ sourceId, verificationToken });
+          }}
+          onUnavailable={(reason) => {
+            setPaymentSheetVisible(false);
+            Alert.alert(
+              "In-app payment unavailable",
+              `${reason}\n\nWe'll open the secure payment page in your browser instead.`,
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Continue",
+                  onPress: () => {
+                    if (!selectedPlanId) return;
+                    joinMutation.mutate({
+                      planId: selectedPlanId,
+                      frequency: billingFrequency,
+                      chosenStartDate: isStaffLoggedIn ? startDate : undefined,
+                      accepted: termsAccepted,
+                    });
+                  },
+                },
+              ],
+            );
+          }}
+          applicationId={squareConfig?.applicationId ?? null}
+          locationId={squareConfig?.locationId ?? null}
+          environment={squareConfig?.environment ?? "sandbox"}
+          amountPence={paymentSheetAmount}
+          buyerEmail={customer?.email ?? null}
+          inProgress={paymentSheetBusy}
+          errorMessage={paymentSheetError}
+          intent="STORE"
+        />
       )}
     </View>
   );

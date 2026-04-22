@@ -27,6 +27,12 @@ export interface SquarePaymentSheetProps {
   buyerEmail?: string | null;
   inProgress?: boolean; // parent is charging the token
   errorMessage?: string | null;
+  /**
+   * Square verifyBuyer intent. Defaults to "CHARGE" for one-off payments. Use
+   * "STORE" when saving a card on file for recurring billing (memberships) so
+   * SCA/3DS is performed up front and the verification token is forwarded.
+   */
+  intent?: "CHARGE" | "STORE";
 }
 
 type BridgeMessage =
@@ -44,6 +50,8 @@ function buildPaymentSheetHtml(opts: {
   environment: "production" | "sandbox";
   amountPence: number;
   currency: string;
+  intent?: "CHARGE" | "STORE";
+  buyerEmail?: string | null;
 }): string {
   const sdkSrc =
     opts.environment === "production"
@@ -108,6 +116,8 @@ function buildPaymentSheetHtml(opts: {
       var LOCATION_ID = ${JSON.stringify(opts.locationId)};
       var AMOUNT = ${JSON.stringify(amountStr)};
       var CURRENCY = ${JSON.stringify(opts.currency)};
+      var INTENT = ${JSON.stringify(opts.intent || "CHARGE")};
+      var BUYER_EMAIL = ${JSON.stringify(opts.buyerEmail || "")};
 
       function send(msg) {
         try {
@@ -152,10 +162,45 @@ function buildPaymentSheetHtml(opts: {
         });
       }
 
+      function verifyAndSend(token) {
+        // For STORE intent (saving a card on file for recurring billing) we
+        // run verifyBuyer up front so SCA/3DS challenges happen here. For
+        // CHARGE intent we currently skip verifyBuyer and let the server
+        // attempt the payment without 3DS — preserving existing behaviour.
+        if (INTENT !== "STORE") {
+          send({ type: "token", token: token });
+          return;
+        }
+        try {
+          var verifyDetails = {
+            intent: "STORE",
+            customerInitiated: true,
+            sellerKeyedIn: false,
+            billingContact: BUYER_EMAIL ? { email: BUYER_EMAIL } : {},
+          };
+          payments.verifyBuyer(token, verifyDetails).then(function (vr) {
+            send({ type: "token", token: token, verificationToken: vr && vr.token ? vr.token : null });
+          }).catch(function (err) {
+            // Some cards do not require SCA — Square returns an error in that
+            // case. Forward the token without a verificationToken so the
+            // server can still try to save the card.
+            var msg = (err && err.message) || "";
+            if (/not\s+required|no\s+challenge|UNSUPPORTED/i.test(msg)) {
+              send({ type: "token", token: token, verificationToken: null });
+            } else {
+              setStatus(msg || "Card verification failed");
+              send({ type: "error", message: msg || "Card verification failed" });
+            }
+          });
+        } catch (e) {
+          send({ type: "token", token: token, verificationToken: null });
+        }
+      }
+
       function tokenizeAndSend(paymentMethod) {
         return paymentMethod.tokenize().then(function (result) {
           if (result.status === "OK") {
-            send({ type: "token", token: result.token });
+            verifyAndSend(result.token);
           } else {
             var msg = (result.errors && result.errors[0] && result.errors[0].message) || "Payment failed";
             setStatus(msg);
@@ -245,8 +290,10 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
       environment: props.environment,
       amountPence: props.amountPence,
       currency: props.currency || "GBP",
+      intent: props.intent || "CHARGE",
+      buyerEmail: props.buyerEmail || null,
     });
-  }, [props.applicationId, props.locationId, props.environment, props.amountPence, props.currency]);
+  }, [props.applicationId, props.locationId, props.environment, props.amountPence, props.currency, props.intent, props.buyerEmail]);
 
   // Reset error when the sheet is reopened
   useEffect(() => {
