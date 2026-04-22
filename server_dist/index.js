@@ -6713,24 +6713,8 @@ async function registerRoutes(app2) {
   app2.get("/api/bookings/:id/deposit-return", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).send("Invalid booking ID");
-    const booking = await storage.getBooking(id);
-    if (!booking) return res.status(404).send("Booking not found");
-    if (booking.depositRequired && !booking.depositPaid) {
-      await storage.updateBooking(id, { depositPaid: true, status: "confirmed" });
-      sendBookingConfirmationEmail({
-        customerName: booking.customerName,
-        customerEmail: booking.customerEmail,
-        tableType: booking.tableType,
-        tableNumber: booking.tableNumber,
-        date: booking.date,
-        startTime: booking.startTime,
-        duration: booking.duration,
-        id: booking.id
-      }).catch(() => {
-      });
-    }
     const bookingRef = `147-${id.toString().padStart(5, "0")}`;
-    res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Deposit Paid</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f9fafb}div{text-align:center;padding:32px}</style></head><body><div><div style="font-size:48px">&#10003;</div><h2 style="color:#16A34A">Deposit Paid</h2><p>Your booking <strong>${bookingRef}</strong> is confirmed.</p><p style="color:#6b7280;font-size:14px">You can close this window and return to The 147 app.</p></div></body></html>`);
+    res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Payment Received</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f9fafb}div{text-align:center;padding:32px}</style></head><body><div><div style="font-size:48px">&#10003;</div><h2 style="color:#16A34A">Payment Received</h2><p>Your deposit for booking <strong>${bookingRef}</strong> has been submitted.</p><p style="color:#6b7280;font-size:14px">Your booking will be confirmed shortly. You can close this window and return to The 147 app.</p></div></body></html>`);
   });
   app2.patch("/api/bookings/:id/complete", staffAuth, async (req, res) => {
     const id = parseInt(req.params.id);
@@ -9407,15 +9391,6 @@ Phone: ${phone}` : ""}`,
     }
   });
   app2.get("/api/membership/:id/payment-return", async (req, res) => {
-    const subId = parseInt(req.params.id);
-    if (!isNaN(subId)) {
-      const sub = await storage.getMembershipSubscription(subId).catch(() => null);
-      if (sub && sub.status === "pending") {
-        await storage.updateMembershipSubscription(subId, { status: "active" }).catch(() => {
-        });
-        console.log(`[MEMBERSHIP] Subscription #${subId} activated via payment return redirect`);
-      }
-    }
     res.redirect("https://the147bradford.replit.app/membership?payment=complete");
   });
   app2.post("/api/membership/retry-payment", customerAuth, async (req, res) => {
