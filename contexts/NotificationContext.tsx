@@ -117,6 +117,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       console.error("[Push] Token registration error:", err);
     }
 
+    // Persist token so the auth context can bind it to a customer after login.
+    try { await AsyncStorage.setItem("expo_push_token", token); } catch {}
+
     return token;
   }, []);
 

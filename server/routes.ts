@@ -194,6 +194,11 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
 
+function isValidCssColor(color: unknown): color is string {
+  if (typeof color !== "string") return false;
+  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(color);
+}
+
 const PAYMENT_RECEIPT_HTML = (p: {
   amountPence: number;
   description: string;
@@ -2244,7 +2249,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid token data" });
     }
-    const token = await storage.registerPushToken(parsed.data);
+    // Strip customerEmail — email binding requires an authenticated session.
+    // Unauthenticated callers must not be able to tie a token to an arbitrary email.
+    const { customerEmail: _email, customerEmailHash: _hash, ...tokenData } = parsed.data;
+    const token = await storage.registerPushToken(tokenData);
     res.status(201).json(token);
   });
 
@@ -4798,10 +4806,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ message: "You must consent to data processing to send a message" });
     }
 
-    // Link push token to the customer's email for future targeted notifications
-    if (incomingPushToken && typeof incomingPushToken === "string") {
-      await storage.registerPushToken({ token: incomingPushToken, customerEmail: parsed.data.email }).catch(() => {});
-    }
+    // Push token is stored directly on the contact message for the reply notification.
+    // We intentionally do NOT bind the token to the email here: the contact form is
+    // unauthenticated, so accepting an arbitrary (email, pushToken) pairing from the
+    // request body would let an attacker redirect notifications for any email address.
 
     const contact = await storage.createContactMessage({
       ...parsed.data,
@@ -5648,6 +5656,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(404).json({ message: "Account not found" });
     }
     res.json({ id: updated.id, name: updated.name, email: updated.email, phone: updated.phone });
+  });
+
+  // Bind a push token to the authenticated customer's email.
+  // Only the session owner's email (from the DB) is used — caller cannot choose.
+  app.post("/api/customers/me/push-token", customerAuth, async (req, res) => {
+    const { token } = req.body;
+    if (!token || typeof token !== "string" || token.length < 10 || token.length > 300) {
+      return res.status(400).json({ message: "Invalid token" });
+    }
+    const email = (req as any).customerEmail as string;
+    await storage.registerPushToken({ token, customerEmail: email });
+    res.status(204).send();
   });
 
   app.delete("/api/customers/me", customerAuth, async (req, res) => {
@@ -6527,7 +6547,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         excludeWithDeals: !!excludeWithDeals,
         active: active !== false,
         sortOrder: Number(sortOrder) || 0,
-        color: color || "#0047AB",
+        color: isValidCssColor(color) ? color : "#0047AB",
         description: description?.trim() || null,
       } as any);
       res.json(plan);
@@ -6543,7 +6563,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Capture old values before updating so we can detect changes
     const oldPlan = await storage.getMembershipPlan(id);
 
-    let plan = await storage.updateMembershipPlan(id, req.body);
+    const updateBody = { ...req.body };
+    if ("color" in updateBody) {
+      updateBody.color = isValidCssColor(updateBody.color) ? updateBody.color : "#0047AB";
+    }
+    let plan = await storage.updateMembershipPlan(id, updateBody);
     if (!plan) return res.status(404).json({ message: "Plan not found" });
 
     // Sync price or name changes to Square Catalog automatically

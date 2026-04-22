@@ -515,6 +515,11 @@
     return feats;
   }
 
+  /* ── only allow safe hex CSS colours ── */
+  function safeColor(c){
+    return (typeof c==='string'&&/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(c))?c:'#0047AB';
+  }
+
   /* ── plan icons by tier name (graceful fallback) ── */
   function tierIcon(tier,color){
     const icons={
@@ -526,7 +531,7 @@
   }
 
   function renderPlan(p, isPopular){
-    const color = p.color||'#0047AB';
+    const color = safeColor(p.color)||'#0047AB';
     const bg    = hexAlpha(color,.1);
     const icon  = tierIcon(p.tier||'rack',color);
     const feats = buildFeatures(p);

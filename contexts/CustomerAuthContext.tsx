@@ -105,6 +105,23 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     })();
   }, [fetchProfile]);
 
+  // After a successful login/register, bind any stored device push token to the
+  // customer's account using the authenticated endpoint so that only the verified
+  // session owner's email is used — never an attacker-supplied value.
+  const bindPushToken = useCallback(async (customerToken: string) => {
+    try {
+      const pushToken = await AsyncStorage.getItem("expo_push_token");
+      if (!pushToken) return;
+      const baseUrl = getApiUrl();
+      const url = new URL("/api/customers/me/push-token", baseUrl);
+      await fetch(url.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${customerToken}` },
+        body: JSON.stringify({ token: pushToken }),
+      });
+    } catch {}
+  }, []);
+
   const login = useCallback(async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
       const baseUrl = getApiUrl();
@@ -125,11 +142,12 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       setToken(data.token);
       setCustomer(data.customer);
       setLastLoginCredentials({ email, password });
+      bindPushToken(data.token).catch(() => {});
       return { success: true };
     } catch {
       return { success: false, error: "Connection error" };
     }
-  }, []);
+  }, [bindPushToken]);
 
   const register = useCallback(async (name: string, email: string, phone: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
@@ -151,11 +169,12 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       setToken(data.token);
       setCustomer(data.customer);
       setLastLoginCredentials({ email, password });
+      bindPushToken(data.token).catch(() => {});
       return { success: true };
     } catch {
       return { success: false, error: "Connection error" };
     }
-  }, []);
+  }, [bindPushToken]);
 
   const logout = useCallback(async () => {
     if (token) {
