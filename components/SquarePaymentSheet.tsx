@@ -346,7 +346,12 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
     <Modal
       visible={props.visible}
       animationType="slide"
-      presentationStyle="pageSheet"
+      // IMPORTANT: must NOT be "pageSheet". The order screen is itself a
+      // pageSheet modal, and iOS silently refuses to present a second
+      // pageSheet on top of an existing one — the result is that the user
+      // taps Place Order, the order gets created on the server, but no
+      // payment UI ever appears. fullScreen stacks correctly.
+      presentationStyle="fullScreen"
       onRequestClose={props.onClose}
       transparent={false}
     >
