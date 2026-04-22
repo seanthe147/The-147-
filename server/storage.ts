@@ -252,6 +252,20 @@ export async function runStartupMigrations() {
         ADD COLUMN IF NOT EXISTS push_token TEXT;
     `);
 
+    // Staff password migration: add password columns, relax pin NOT NULL,
+    // and force every existing PIN-only user to set a password on next login.
+    await client.query(`
+      ALTER TABLE staff_users
+        ADD COLUMN IF NOT EXISTS password_hash TEXT,
+        ADD COLUMN IF NOT EXISTS password_salt TEXT,
+        ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT TRUE;
+    `);
+    await client.query(`
+      ALTER TABLE staff_users
+        ALTER COLUMN pin_hash DROP NOT NULL,
+        ALTER COLUMN pin_salt DROP NOT NULL;
+    `);
+
     // Audit trail of staff-initiated password resets (Task #27)
     await client.query(`
       CREATE TABLE IF NOT EXISTS password_reset_audit_log (
@@ -351,12 +365,24 @@ export interface IStorage {
   anonymizeOldBookings(retentionDays: number): Promise<number>;
   anonymizeOldHRRecords(): Promise<number>;
   cleanupExpiredSessions(): Promise<number>;
-  createStaffUser(username: string, pinHash: string, pinSalt: string, displayName?: string, role?: string, approvalStatus?: string): Promise<StaffUser>;
+  createStaffUser(opts: {
+    username: string;
+    pinHash?: string | null;
+    pinSalt?: string | null;
+    passwordHash?: string | null;
+    passwordSalt?: string | null;
+    mustChangePassword?: boolean;
+    displayName?: string;
+    role?: string;
+    approvalStatus?: string;
+  }): Promise<StaffUser>;
   updateStaffApproval(id: number, approvalStatus: string): Promise<StaffUser | undefined>;
   getStaffUserById(id: number): Promise<StaffUser | undefined>;
   getStaffUserByUsername(username: string): Promise<StaffUser | undefined>;
   getAllStaffUsers(): Promise<StaffUser[]>;
   updateStaffPin(username: string, pinHash: string, pinSalt: string): Promise<StaffUser | undefined>;
+  updateStaffPassword(username: string, passwordHash: string, passwordSalt: string, mustChangePassword?: boolean): Promise<StaffUser | undefined>;
+  setMustChangePassword(username: string, mustChange: boolean): Promise<StaffUser | undefined>;
   migrateEncryptExistingBookings(): Promise<number>;
   migrateEncryptExistingPII(): Promise<void>;
   searchCustomers(query: string, limit?: number): Promise<Array<{ id?: number; name: string; phone: string; email: string }>>;
@@ -766,14 +792,28 @@ export class DatabaseStorage implements IStorage {
     return count;
   }
 
-  async createStaffUser(username: string, pinHash: string, pinSalt: string, displayName?: string, role?: string, approvalStatus?: string): Promise<StaffUser> {
+  async createStaffUser(opts: {
+    username: string;
+    pinHash?: string | null;
+    pinSalt?: string | null;
+    passwordHash?: string | null;
+    passwordSalt?: string | null;
+    mustChangePassword?: boolean;
+    displayName?: string;
+    role?: string;
+    approvalStatus?: string;
+  }): Promise<StaffUser> {
+    const role = opts.role === "owner" ? "owner" : opts.role === "manager" ? "manager" : "staff";
     const [user] = await db.insert(staffUsers).values({
-      username: username.toLowerCase().trim(),
-      pinHash,
-      pinSalt,
-      displayName: displayName || null,
-      role: role === "owner" ? "owner" : role === "manager" ? "manager" : "staff",
-      approvalStatus: approvalStatus || "approved",
+      username: opts.username.toLowerCase().trim(),
+      pinHash: opts.pinHash ?? null,
+      pinSalt: opts.pinSalt ?? null,
+      passwordHash: opts.passwordHash ?? null,
+      passwordSalt: opts.passwordSalt ?? null,
+      mustChangePassword: opts.mustChangePassword ?? false,
+      displayName: opts.displayName || null,
+      role,
+      approvalStatus: opts.approvalStatus || "approved",
     }).returning();
     return user;
   }
@@ -826,6 +866,29 @@ export class DatabaseStorage implements IStorage {
   async updateStaffPin(username: string, pinHash: string, pinSalt: string): Promise<StaffUser | undefined> {
     const [updated] = await db.update(staffUsers)
       .set({ pinHash, pinSalt })
+      .where(eq(staffUsers.username, username.toLowerCase().trim()))
+      .returning();
+    return updated;
+  }
+
+  async updateStaffPassword(username: string, passwordHash: string, passwordSalt: string, mustChangePassword: boolean = false): Promise<StaffUser | undefined> {
+    const [updated] = await db.update(staffUsers)
+      .set({
+        passwordHash,
+        passwordSalt,
+        mustChangePassword,
+        // Wipe legacy PIN once a password is in place
+        pinHash: null,
+        pinSalt: null,
+      })
+      .where(eq(staffUsers.username, username.toLowerCase().trim()))
+      .returning();
+    return updated;
+  }
+
+  async setMustChangePassword(username: string, mustChange: boolean): Promise<StaffUser | undefined> {
+    const [updated] = await db.update(staffUsers)
+      .set({ mustChangePassword: mustChange })
       .where(eq(staffUsers.username, username.toLowerCase().trim()))
       .returning();
     return updated;

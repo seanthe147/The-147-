@@ -65,3 +65,13 @@ export function verifyPin(pin: string, storedHash: string, salt: string): boolea
   }
   return diff === 0;
 }
+
+// Passwords use the same scrypt+salt scheme as PINs.
+// Aliased separately so it's clear at the call site.
+export function hashPassword(password: string, salt?: string): { hash: string; salt: string } {
+  return hashPin(password, salt);
+}
+
+export function verifyPassword(password: string, storedHash: string, salt: string): boolean {
+  return verifyPin(password, storedHash, salt);
+}

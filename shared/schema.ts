@@ -22,8 +22,11 @@ export type User = typeof users.$inferSelect;
 export const staffUsers = pgTable("staff_users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
-  pinHash: text("pin_hash").notNull(),
-  pinSalt: text("pin_salt").notNull(),
+  pinHash: text("pin_hash"),
+  pinSalt: text("pin_salt"),
+  passwordHash: text("password_hash"),
+  passwordSalt: text("password_salt"),
+  mustChangePassword: boolean("must_change_password").notNull().default(true),
   displayName: text("display_name"),
   role: text("role").notNull().default("staff"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

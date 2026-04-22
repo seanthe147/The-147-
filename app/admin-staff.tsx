@@ -46,6 +46,7 @@ export default function AdminStaffScreen() {
   const [confirmPin, setConfirmPin] = useState("");
   const [pinError, setPinError] = useState("");
   const [pinSaving, setPinSaving] = useState(false);
+  const [showNewPin, setShowNewPin] = useState(false);
 
   const { data: staffUsers, isLoading } = useQuery<StaffUser[]>({
     queryKey: ["/api/staff/users"],
@@ -188,29 +189,39 @@ export default function AdminStaffScreen() {
     setNewPin("");
     setConfirmPin("");
     setPinError("");
+    setShowNewPin(false);
   };
 
   const handleResetPin = async () => {
-    if (!newPin || newPin.length < 4 || newPin.length > 8 || !/^\d+$/.test(newPin)) {
-      setPinError("PIN must be 4–8 digits");
+    if (!newPin || newPin.length < 10) {
+      setPinError("Password must be at least 10 characters");
+      return;
+    }
+    if (!/[a-zA-Z]/.test(newPin)) {
+      setPinError("Password must include a letter");
+      return;
+    }
+    if (!/\d/.test(newPin)) {
+      setPinError("Password must include a number");
       return;
     }
     if (newPin !== confirmPin) {
-      setPinError("PINs do not match");
+      setPinError("Passwords do not match");
       return;
     }
     setPinSaving(true);
     setPinError("");
     try {
-      await apiRequest("POST", "/api/staff/reset-pin", {
+      await apiRequest("POST", "/api/staff/reset-password", {
         username: resetPinUser?.username,
-        newPin,
+        tempPassword: newPin,
       });
       setResetPinUserId(null);
-      const msg = `PIN updated for ${resetPinUser?.displayName || resetPinUser?.username}`;
+      const name = resetPinUser?.displayName || resetPinUser?.username;
+      const msg = `Temporary password set for ${name}. They will be asked to choose a new one at next sign-in.`;
       Platform.OS === "web" ? window.alert(msg) : Alert.alert("Done", msg);
     } catch (e: any) {
-      setPinError(e?.message || "Failed to reset PIN");
+      setPinError(e?.message || "Failed to reset password");
     } finally {
       setPinSaving(false);
     }
@@ -409,7 +420,7 @@ export default function AdminStaffScreen() {
                             style={({ pressed }) => [styles.actionBtn, styles.actionBtnPrimary, { opacity: pressed ? 0.7 : 1 }]}
                           >
                             <Ionicons name="key-outline" size={15} color={Colors.brand.blue} />
-                            <Text style={[styles.actionBtnText, { color: Colors.brand.blue }]}>Reset PIN</Text>
+                            <Text style={[styles.actionBtnText, { color: Colors.brand.blue }]}>Reset Password</Text>
                           </Pressable>
 
                           {isOwner && (
@@ -470,37 +481,52 @@ export default function AdminStaffScreen() {
           <Pressable style={styles.modalCard} onPress={() => {}}>
             <View style={styles.modalHeader}>
               <Ionicons name="key" size={22} color={Colors.brand.blue} />
-              <Text style={styles.modalTitle}>Reset PIN</Text>
+              <Text style={styles.modalTitle}>Reset Password</Text>
               <Pressable onPress={() => setResetPinUserId(null)} hitSlop={12}>
                 <Ionicons name="close" size={22} color={Colors.light.textSecondary} />
               </Pressable>
             </View>
 
             <Text style={styles.modalSubtitle}>
-              Set a new PIN for <Text style={styles.modalUsername}>{resetPinUser?.displayName || resetPinUser?.username}</Text>
+              Set a temporary password for <Text style={styles.modalUsername}>{resetPinUser?.displayName || resetPinUser?.username}</Text>. They will be asked to choose a new one at next sign-in.
             </Text>
 
-            <Text style={styles.inputLabel}>NEW PIN</Text>
-            <TextInput
-              style={styles.pinInput}
-              value={newPin}
-              onChangeText={(t) => { setNewPin(t); setPinError(""); }}
-              placeholder="4–8 digits"
-              placeholderTextColor={Colors.light.textSecondary}
-              keyboardType="number-pad"
-              secureTextEntry
-              maxLength={8}
-            />
-            <Text style={styles.inputLabel}>CONFIRM PIN</Text>
+            <Text style={styles.inputLabel}>NEW PASSWORD</Text>
+            <View style={{ position: "relative" }}>
+              <TextInput
+                style={[styles.pinInput, { paddingRight: 44 }]}
+                value={newPin}
+                onChangeText={(t) => { setNewPin(t); setPinError(""); }}
+                placeholder="At least 10 characters"
+                placeholderTextColor={Colors.light.textSecondary}
+                secureTextEntry={!showNewPin}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="new-password"
+                textContentType="newPassword"
+                maxLength={200}
+              />
+              <Pressable
+                onPress={() => setShowNewPin(v => !v)}
+                hitSlop={8}
+                style={{ position: "absolute", right: 8, top: 0, bottom: 0, justifyContent: "center", paddingHorizontal: 6 }}
+              >
+                <Ionicons name={showNewPin ? "eye-off" : "eye"} size={18} color={Colors.light.textSecondary} />
+              </Pressable>
+            </View>
+            <Text style={[styles.inputLabel, { marginTop: 4 }]}>CONFIRM PASSWORD</Text>
             <TextInput
               style={[styles.pinInput, { marginTop: 8 }]}
               value={confirmPin}
               onChangeText={(t) => { setConfirmPin(t); setPinError(""); }}
-              placeholder="Re-enter PIN"
+              placeholder="Re-enter password"
               placeholderTextColor={Colors.light.textSecondary}
-              keyboardType="number-pad"
-              secureTextEntry
-              maxLength={8}
+              secureTextEntry={!showNewPin}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="new-password"
+              textContentType="newPassword"
+              maxLength={200}
             />
             {pinError ? (
               <View style={styles.pinErrorRow}>

@@ -8,7 +8,7 @@ import sharp from "sharp";
 import nodemailer from "nodemailer";
 import { storage } from "./storage";
 import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema } from "@shared/schema";
-import { hashPin, verifyPin } from "./encryption";
+import { hashPin, verifyPin, hashPassword, verifyPassword } from "./encryption";
 import * as square from "./square";
 import { buildReorderPayload, type ReorderMenuItem, type ReorderRawItem } from "./reorder-matching";
 import { fetchTicketSourceEvents, type AppEvent } from "./ticketsource";
@@ -1108,6 +1108,34 @@ async function resolveMemberDiscountImpl(
   return result;
 }
 
+// Password strength rules: min 10 chars, must contain a letter and a number.
+// Returns an error message if invalid, or null if OK.
+function validatePasswordStrength(password: string): string | null {
+  if (typeof password !== "string") return "Password is required";
+  if (password.length < 10) return "Password must be at least 10 characters";
+  if (password.length > 200) return "Password is too long";
+  if (!/[a-zA-Z]/.test(password)) return "Password must include a letter";
+  if (!/\d/.test(password)) return "Password must include a number";
+  return null;
+}
+
+// Verify a staff credential against either their password (preferred) or their
+// legacy numeric PIN (fallback). Used by sensitive in-app actions like refunds
+// where staff confirm their identity.
+function verifyStaffCredential(
+  credential: string,
+  user: { passwordHash: string | null; passwordSalt: string | null; pinHash: string | null; pinSalt: string | null }
+): boolean {
+  if (!credential) return false;
+  if (user.passwordHash && user.passwordSalt) {
+    if (verifyPassword(credential, user.passwordHash, user.passwordSalt)) return true;
+  }
+  if (user.pinHash && user.pinSalt && /^\d{4,8}$/.test(credential)) {
+    if (verifyPin(credential, user.pinHash, user.pinSalt)) return true;
+  }
+  return false;
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/staff/register", async (req, res) => {
     const clientIp = getClientIp(req);
@@ -1119,10 +1147,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
 
-    const { masterPin, username, pin, displayName, role } = req.body;
+    const { masterPin, username, password, pin, displayName, role } = req.body;
 
-    if (!masterPin || !username || !pin) {
-      return res.status(400).json({ message: "Master PIN, username, and PIN are required" });
+    if (!masterPin || !username || (!password && !pin)) {
+      return res.status(400).json({ message: "Master PIN, username, and password are required" });
     }
 
     const staffPin = process.env.STAFF_PIN;
@@ -1143,8 +1171,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ message: "Username can only contain letters, numbers, dots, hyphens, and underscores" });
     }
 
-    if (typeof pin !== "string" || pin.length < 4 || pin.length > 8 || !/^\d+$/.test(pin)) {
-      return res.status(400).json({ message: "PIN must be 4-8 digits" });
+    // Prefer password; fall back to legacy PIN if password not supplied (HTML dashboard).
+    let pwHash: string | null = null;
+    let pwSalt: string | null = null;
+    let pinHash: string | null = null;
+    let pinSalt: string | null = null;
+
+    if (typeof password === "string" && password.length > 0) {
+      const passwordError = validatePasswordStrength(password);
+      if (passwordError) {
+        return res.status(400).json({ message: passwordError });
+      }
+      const hashed = hashPassword(password);
+      pwHash = hashed.hash;
+      pwSalt = hashed.salt;
+    } else {
+      if (typeof pin !== "string" || pin.length < 4 || pin.length > 8 || !/^\d+$/.test(pin)) {
+        return res.status(400).json({ message: "Password is required (min 10 characters, must include a letter and a number)" });
+      }
+      const hashed = hashPin(pin);
+      pinHash = hashed.hash;
+      pinSalt = hashed.salt;
     }
 
     const existing = await storage.getStaffUserByUsername(username.trim());
@@ -1156,17 +1203,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ message: "Role must be 'staff', 'manager', or 'owner'" });
     }
 
-    const { hash, salt } = hashPin(pin);
     const assignedRole = role || "staff";
     const needsApproval = assignedRole === "manager" || assignedRole === "owner";
-    const staffUser = await storage.createStaffUser(
-      username.trim(),
-      hash,
-      salt,
-      displayName?.trim() || undefined,
-      assignedRole,
-      needsApproval ? "pending" : "approved"
-    );
+    const staffUser = await storage.createStaffUser({
+      username: username.trim(),
+      passwordHash: pwHash,
+      passwordSalt: pwSalt,
+      pinHash,
+      pinSalt,
+      // Force password setup at first login if they registered with the legacy PIN field.
+      mustChangePassword: !pwHash,
+      displayName: displayName?.trim() || undefined,
+      role: assignedRole,
+      approvalStatus: needsApproval ? "pending" : "approved",
+    });
 
     clearFailedLogins(clientIp);
     res.status(201).json({
@@ -1190,14 +1240,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
 
-    const { username, pin } = req.body;
-    if (!pin || typeof pin !== "string") {
-      return res.status(400).json({ message: "PIN is required" });
-    }
+    const { username, pin, password } = req.body;
+    // Accept either `password` (new) or `pin` (legacy / generic master login).
+    const credential: string | undefined =
+      typeof password === "string" && password.length > 0
+        ? password
+        : (typeof pin === "string" ? pin : undefined);
 
-    if (pin.length < 4 || pin.length > 8 || !/^\d+$/.test(pin)) {
-      recordFailedLogin(clientIp);
-      return res.status(401).json({ message: "Invalid credentials" });
+    if (!credential) {
+      return res.status(400).json({ message: "Password is required" });
     }
 
     if (username && typeof username === "string" && username.trim().length > 0) {
@@ -1215,7 +1266,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Your account request was not approved. Please contact your manager." });
       }
 
-      if (!verifyPin(pin, staffUser.pinHash, staffUser.pinSalt)) {
+      // The147 master/owner account is protected — it keeps its legacy PIN and
+      // is never forced into the password flow (set-password is blocked for it).
+      const isProtectedLegacy =
+        staffUser.username.toLowerCase() === "the147" ||
+        (staffUser.displayName || "").toUpperCase().trim() === "THE 147";
+
+      // Try password first if user has one set; fall back to legacy PIN otherwise.
+      let mustChangePassword = !isProtectedLegacy && staffUser.mustChangePassword === true;
+      let authed = false;
+
+      if (staffUser.passwordHash && staffUser.passwordSalt) {
+        if (verifyPassword(credential, staffUser.passwordHash, staffUser.passwordSalt)) {
+          authed = true;
+        }
+      } else if (staffUser.pinHash && staffUser.pinSalt) {
+        // Legacy account — only the numeric PIN format is accepted here.
+        if (/^\d{4,8}$/.test(credential) && verifyPin(credential, staffUser.pinHash, staffUser.pinSalt)) {
+          authed = true;
+          // Force password setup on next step.
+          mustChangePassword = true;
+          if (!staffUser.mustChangePassword) {
+            await storage.setMustChangePassword(staffUser.username, true);
+          }
+        }
+      }
+
+      if (!authed) {
         recordFailedLogin(clientIp);
         return res.status(401).json({ message: "Invalid credentials" });
       }
@@ -1230,15 +1307,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         username: staffUser.username,
         displayName: staffUser.displayName,
         role: staffUser.role,
+        mustChangePassword,
       });
     }
 
+    // Generic "manager" login uses the venue master PIN — kept as a numeric PIN.
+    if (credential.length < 4 || credential.length > 8 || !/^\d+$/.test(credential)) {
+      recordFailedLogin(clientIp);
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+    const pinForMaster = credential;
     const staffPin = process.env.STAFF_PIN;
     if (!staffPin) {
       return res.status(503).json({ message: "Staff access not configured" });
     }
 
-    if (!timingSafeCompare(pin, staffPin)) {
+    if (!timingSafeCompare(pinForMaster, staffPin)) {
       recordFailedLogin(clientIp);
       return res.status(401).json({ message: "Invalid credentials" });
     }
@@ -1248,7 +1332,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const session = await storage.createStaffSession(token, expiresAt);
 
-    res.json({ token: session.token, expiresAt: session.expiresAt, role: "manager" });
+    res.json({ token: session.token, expiresAt: session.expiresAt, role: "manager", mustChangePassword: false });
   });
 
   app.post("/api/staff/logout", async (req, res) => {
@@ -1310,6 +1394,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(403).json({ message: "PIN changes are not allowed for this account" });
     }
 
+    if (!staffUser.pinHash || !staffUser.pinSalt) {
+      return res.status(400).json({ message: "This account uses a password — please use Change Password instead." });
+    }
+
     if (!verifyPin(currentPin, staffUser.pinHash, staffUser.pinSalt)) {
       return res.status(401).json({ message: "Current PIN is incorrect" });
     }
@@ -1317,6 +1405,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const { hash, salt } = hashPin(newPin);
     await storage.updateStaffPin(username, hash, salt);
     res.json({ message: "PIN changed successfully" });
+  });
+
+  // New: staff sets/changes their own password.
+  // Used both for the initial PIN→password migration (no current password yet)
+  // and for normal password changes by the user.
+  app.post("/api/staff/set-password", staffAuth, async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    const username = (req as any).staffUsername;
+
+    if (!username) {
+      return res.status(400).json({ message: "Password change is only available for named accounts" });
+    }
+
+    const passwordError = validatePasswordStrength(newPassword);
+    if (passwordError) {
+      return res.status(400).json({ message: passwordError });
+    }
+
+    const staffUser = await storage.getStaffUserByUsername(username);
+    if (!staffUser) {
+      return res.status(404).json({ message: "Account not found" });
+    }
+
+    const displayNameUpper = (staffUser.displayName || "").toUpperCase().trim();
+    if (displayNameUpper === "THE 147" || username.toLowerCase() === "the147") {
+      return res.status(403).json({ message: "Password changes are not allowed for this account" });
+    }
+
+    // When the staff user is being forced to change their credential
+    // (mustChangePassword=true) — whether because they're a legacy PIN user
+    // logging in for the first time, or because a manager just reset their
+    // password to a temp value — they don't need to re-enter the current
+    // credential. They've already proved possession of it during login.
+    // Otherwise (normal change-password), require the current password.
+    const hasPassword = !!(staffUser.passwordHash && staffUser.passwordSalt);
+    const isForcedChange = staffUser.mustChangePassword === true;
+    if (!isForcedChange) {
+      if (!currentPassword || typeof currentPassword !== "string") {
+        return res.status(400).json({ message: "Current password is required" });
+      }
+      if (hasPassword) {
+        if (!verifyPassword(currentPassword, staffUser.passwordHash!, staffUser.passwordSalt!)) {
+          return res.status(401).json({ message: "Current password is incorrect" });
+        }
+      } else if (staffUser.pinHash && staffUser.pinSalt) {
+        // No password yet but also not flagged forced — accept old PIN.
+        if (!verifyPin(currentPassword, staffUser.pinHash, staffUser.pinSalt)) {
+          return res.status(401).json({ message: "Current credential is incorrect" });
+        }
+      }
+    }
+
+    if (hasPassword && verifyPassword(newPassword, staffUser.passwordHash!, staffUser.passwordSalt!)) {
+      return res.status(400).json({ message: "New password must be different from current password" });
+    }
+
+    const { hash, salt } = hashPassword(newPassword);
+    await storage.updateStaffPassword(username, hash, salt, false);
+    res.json({ message: "Password updated successfully" });
+  });
+
+  // New: manager resets another staff user's password to a temporary value
+  // and forces them to change it on next login.
+  app.post("/api/staff/reset-password", staffAuth, managerAuth, async (req, res) => {
+    const { username, tempPassword } = req.body;
+
+    if (!username || typeof username !== "string" || username.trim().length < 3) {
+      return res.status(400).json({ message: "Username is required" });
+    }
+
+    const passwordError = validatePasswordStrength(tempPassword);
+    if (passwordError) {
+      return res.status(400).json({ message: passwordError });
+    }
+
+    const staffUser = await storage.getStaffUserByUsername(username.trim());
+    if (!staffUser) {
+      return res.status(404).json({ message: "Staff user not found" });
+    }
+
+    const { hash, salt } = hashPassword(tempPassword);
+    // mustChangePassword=true so the user is forced to pick a new one immediately.
+    await storage.updateStaffPassword(staffUser.username, hash, salt, true);
+    res.json({ message: "Password reset successfully for " + staffUser.username });
   });
 
   app.post("/api/staff/reset-pin", staffAuth, managerAuth, async (req, res) => {
@@ -4148,12 +4320,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (isNaN(id)) return res.status(400).json({ message: "Invalid order ID" });
     const { pin, reason } = req.body;
     const staffUsername = (req as any).staffUsername as string | null;
-    // Verify PIN for named staff accounts; master-PIN sessions are pre-authenticated
+    // Verify staff credential for named staff accounts; master-PIN sessions are pre-authenticated.
+    // Accepts either the user's password or, for legacy accounts that still have one, their PIN.
     if (staffUsername) {
-      if (!pin) return res.status(400).json({ message: "PIN required to authorise this action" });
+      if (!pin) return res.status(400).json({ message: "Password required to authorise this action" });
       const staffUser = await storage.getStaffUserByUsername(staffUsername);
-      if (!staffUser || !verifyPin(String(pin), staffUser.pinHash, staffUser.pinSalt)) {
-        return res.status(401).json({ message: "Incorrect PIN" });
+      if (!staffUser || !verifyStaffCredential(String(pin), staffUser)) {
+        return res.status(401).json({ message: "Incorrect password" });
       }
     }
     try {
@@ -4349,12 +4522,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (isNaN(id)) return res.status(400).json({ message: "Invalid order ID" });
     const { pin, reason } = req.body;
     const staffUsername = (req as any).staffUsername as string | null;
-    // Verify PIN for named staff accounts
+    // Verify staff credential for named staff accounts.
+    // Accepts either the user's password or, for legacy accounts that still have one, their PIN.
     if (staffUsername) {
-      if (!pin) return res.status(400).json({ message: "PIN required to authorise this action" });
+      if (!pin) return res.status(400).json({ message: "Password required to authorise this action" });
       const staffUser = await storage.getStaffUserByUsername(staffUsername);
-      if (!staffUser || !verifyPin(String(pin), staffUser.pinHash, staffUser.pinSalt)) {
-        return res.status(401).json({ message: "Incorrect PIN" });
+      if (!staffUser || !verifyStaffCredential(String(pin), staffUser)) {
+        return res.status(401).json({ message: "Incorrect password" });
       }
     }
     try {

@@ -73,6 +73,13 @@ function BuildInfoFooter() {
   );
 }
 
+function validatePasswordClient(pw: string): string | null {
+  if (!pw || pw.length < 10) return "Password must be at least 10 characters";
+  if (!/[a-zA-Z]/.test(pw)) return "Password must include a letter";
+  if (!/\d/.test(pw)) return "Password must include a number";
+  return null;
+}
+
 function LoginScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -84,6 +91,8 @@ function LoginScreen() {
   const [displayName, setDisplayName] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [selectedRole, setSelectedRole] = useState<"staff" | "manager">("staff");
+  const [showPin, setShowPin] = useState(false);
+  const [showConfirmPin, setShowConfirmPin] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
@@ -105,15 +114,15 @@ function LoginScreen() {
       triggerShake();
       return;
     }
-    if (!pin.trim()) {
-      setError("Please enter your PIN");
+    if (!pin) {
+      setError("Please enter your password");
       triggerShake();
       return;
     }
 
     setLoading(true);
     setError("");
-    const result = await login(username.trim(), pin.trim());
+    const result = await login(username.trim(), pin);
     setLoading(false);
 
     if (!result.success) {
@@ -139,25 +148,21 @@ function LoginScreen() {
       triggerShake();
       return;
     }
-    if (!pin.trim() || pin.length < 4) {
-      setError("PIN must be at least 4 digits");
-      triggerShake();
-      return;
-    }
-    if (!/^\d+$/.test(pin)) {
-      setError("PIN must contain only numbers");
+    const pwError = validatePasswordClient(pin);
+    if (pwError) {
+      setError(pwError);
       triggerShake();
       return;
     }
     if (pin !== confirmPin) {
-      setError("PINs do not match");
+      setError("Passwords do not match");
       triggerShake();
       return;
     }
 
     setLoading(true);
     setError("");
-    const result = await register(masterPin.trim(), username.trim(), pin.trim(), displayName.trim() || undefined, selectedRole);
+    const result = await register(masterPin.trim(), username.trim(), pin, displayName.trim() || undefined, selectedRole);
     setLoading(false);
 
     if (!result.success) {
@@ -192,7 +197,7 @@ function LoginScreen() {
         <Text style={styles.loginTitle}>{mode === "login" ? "Staff Sign In" : "Create Account"}</Text>
         <Text style={styles.loginSubtitle}>
           {mode === "login"
-            ? "Enter your username and PIN"
+            ? "Enter your username and password"
             : "Set up your staff account"}
         </Text>
 
@@ -274,35 +279,63 @@ function LoginScreen() {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>PIN</Text>
-            <TextInput
-              style={[styles.textInput, error && !pin ? styles.inputError : null]}
-              value={pin}
-              onChangeText={(text) => { setPin(text); setError(""); setSuccess(""); }}
-              placeholder="Enter PIN"
-              placeholderTextColor={Colors.light.textSecondary}
-              secureTextEntry
-              keyboardType="number-pad"
-              maxLength={8}
-              onSubmitEditing={mode === "login" ? handleLogin : undefined}
-              testID="staff-pin-input"
-            />
+            <Text style={styles.inputLabel}>PASSWORD</Text>
+            <View style={styles.passwordRow}>
+              <TextInput
+                style={[styles.textInput, styles.passwordInput, error && !pin ? styles.inputError : null]}
+                value={pin}
+                onChangeText={(text) => { setPin(text); setError(""); setSuccess(""); }}
+                placeholder={mode === "register" ? "At least 10 characters" : "Enter password"}
+                placeholderTextColor={Colors.light.textSecondary}
+                secureTextEntry={!showPin}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+                textContentType={mode === "login" ? "password" : "newPassword"}
+                maxLength={200}
+                onSubmitEditing={mode === "login" ? handleLogin : undefined}
+                testID="staff-pin-input"
+              />
+              <Pressable
+                onPress={() => setShowPin((v) => !v)}
+                style={styles.passwordToggle}
+                hitSlop={8}
+                testID="toggle-password-visibility"
+              >
+                <Ionicons name={showPin ? "eye-off" : "eye"} size={20} color={Colors.light.textSecondary} />
+              </Pressable>
+            </View>
+            {mode === "register" && (
+              <Text style={styles.inputHelp}>Min 10 characters, must include a letter and a number.</Text>
+            )}
           </View>
 
           {mode === "register" && (
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>CONFIRM PIN</Text>
-              <TextInput
-                style={[styles.textInput, error && pin !== confirmPin ? styles.inputError : null]}
-                value={confirmPin}
-                onChangeText={(text) => { setConfirmPin(text); setError(""); }}
-                placeholder="Re-enter PIN"
-                placeholderTextColor={Colors.light.textSecondary}
-                secureTextEntry
-                keyboardType="number-pad"
-                maxLength={8}
-                testID="register-confirm-pin"
-              />
+              <Text style={styles.inputLabel}>CONFIRM PASSWORD</Text>
+              <View style={styles.passwordRow}>
+                <TextInput
+                  style={[styles.textInput, styles.passwordInput, error && pin !== confirmPin ? styles.inputError : null]}
+                  value={confirmPin}
+                  onChangeText={(text) => { setConfirmPin(text); setError(""); }}
+                  placeholder="Re-enter password"
+                  placeholderTextColor={Colors.light.textSecondary}
+                  secureTextEntry={!showConfirmPin}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="new-password"
+                  textContentType="newPassword"
+                  maxLength={200}
+                  testID="register-confirm-pin"
+                />
+                <Pressable
+                  onPress={() => setShowConfirmPin((v) => !v)}
+                  style={styles.passwordToggle}
+                  hitSlop={8}
+                >
+                  <Ionicons name={showConfirmPin ? "eye-off" : "eye"} size={20} color={Colors.light.textSecondary} />
+                </Pressable>
+              </View>
             </View>
           )}
         </Animated.View>
@@ -657,8 +690,149 @@ function DashboardScreen() {
   );
 }
 
+function SetPasswordScreen() {
+  const insets = useSafeAreaInsets();
+  const webTopInset = Platform.OS === "web" ? 67 : 0;
+  const { setPassword, logout, username, displayName } = useStaffAuth();
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const shakeAnim = useRef(new Animated.Value(0)).current;
+
+  const triggerShake = () => {
+    Animated.sequence([
+      Animated.timing(shakeAnim, { toValue: 10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 0, duration: 50, useNativeDriver: true }),
+    ]).start();
+  };
+
+  const handleSubmit = async () => {
+    const pwError = validatePasswordClient(newPassword);
+    if (pwError) {
+      setError(pwError);
+      triggerShake();
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("Passwords do not match");
+      triggerShake();
+      return;
+    }
+    setLoading(true);
+    setError("");
+    const result = await setPassword(newPassword);
+    setLoading(false);
+    if (!result.success) {
+      setError(result.error || "Failed to update password");
+      triggerShake();
+    }
+  };
+
+  return (
+    <View style={[styles.loginContainer, { paddingTop: insets.top + webTopInset }]}>
+      <View style={styles.loginHeader}>
+        <Pressable onPress={logout} hitSlop={12} testID="set-password-cancel">
+          <Ionicons name="log-out-outline" size={24} color={Colors.brand.red} />
+        </Pressable>
+        <Text style={styles.loginHeaderTitle}>Set New Password</Text>
+        <View style={{ width: 28 }} />
+      </View>
+
+      <ScrollView contentContainerStyle={styles.loginScrollContent} keyboardShouldPersistTaps="handled">
+        <View style={styles.lockIconWrap}>
+          <Ionicons name="key" size={40} color={Colors.brand.blue} />
+        </View>
+
+        <Text style={styles.loginTitle}>Choose a Password</Text>
+        <Text style={styles.loginSubtitle}>
+          {displayName || username
+            ? `Hi ${displayName || username} — set a password to replace your PIN.`
+            : "Set a password to replace your PIN."}
+        </Text>
+
+        <Animated.View style={[styles.formSection, { transform: [{ translateX: shakeAnim }] }]}>
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>NEW PASSWORD</Text>
+            <View style={styles.passwordRow}>
+              <TextInput
+                style={[styles.textInput, styles.passwordInput, error && !newPassword ? styles.inputError : null]}
+                value={newPassword}
+                onChangeText={(t) => { setNewPassword(t); setError(""); }}
+                placeholder="At least 10 characters"
+                placeholderTextColor={Colors.light.textSecondary}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="new-password"
+                textContentType="newPassword"
+                maxLength={200}
+                testID="set-password-new"
+              />
+              <Pressable onPress={() => setShowPassword(v => !v)} style={styles.passwordToggle} hitSlop={8}>
+                <Ionicons name={showPassword ? "eye-off" : "eye"} size={20} color={Colors.light.textSecondary} />
+              </Pressable>
+            </View>
+            <Text style={styles.inputHelp}>Min 10 characters, must include a letter and a number.</Text>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>CONFIRM PASSWORD</Text>
+            <TextInput
+              style={[styles.textInput, error && newPassword !== confirmPassword ? styles.inputError : null]}
+              value={confirmPassword}
+              onChangeText={(t) => { setConfirmPassword(t); setError(""); }}
+              placeholder="Re-enter password"
+              placeholderTextColor={Colors.light.textSecondary}
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="new-password"
+              textContentType="newPassword"
+              maxLength={200}
+              onSubmitEditing={handleSubmit}
+              testID="set-password-confirm"
+            />
+          </View>
+        </Animated.View>
+
+        {error ? (
+          <View style={styles.errorRow}>
+            <Ionicons name="alert-circle" size={16} color={Colors.brand.red} />
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
+
+        <Pressable
+          onPress={handleSubmit}
+          disabled={loading}
+          style={({ pressed }) => [
+            styles.loginButton,
+            loading && styles.loginButtonDisabled,
+            { opacity: pressed ? 0.8 : 1 },
+          ]}
+          testID="set-password-submit"
+        >
+          {loading ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <>
+              <Ionicons name="checkmark" size={20} color="#FFFFFF" />
+              <Text style={styles.loginButtonText}>Save Password</Text>
+            </>
+          )}
+        </Pressable>
+      </ScrollView>
+    </View>
+  );
+}
+
 export default function StaffPortalScreen() {
-  const { isAuthenticated, isLoading } = useStaffAuth();
+  const { isAuthenticated, isLoading, mustChangePassword } = useStaffAuth();
 
   if (isLoading) {
     return (
@@ -670,6 +844,10 @@ export default function StaffPortalScreen() {
 
   if (!isAuthenticated) {
     return <LoginScreen />;
+  }
+
+  if (mustChangePassword) {
+    return <SetPasswordScreen />;
   }
 
   return <DashboardScreen />;
@@ -756,6 +934,27 @@ const styles = StyleSheet.create({
   },
   inputError: {
     borderColor: Colors.brand.red,
+  },
+  passwordRow: {
+    position: "relative",
+  },
+  passwordInput: {
+    paddingRight: 48,
+  },
+  passwordToggle: {
+    position: "absolute",
+    right: 12,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
+    width: 32,
+  },
+  inputHelp: {
+    marginTop: 6,
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 11,
+    color: Colors.light.textSecondary,
   },
   errorRow: {
     flexDirection: "row",
