@@ -2117,6 +2117,1029 @@ var init_storage = __esm({
   }
 });
 
+// server/square.ts
+var square_exports = {};
+__export(square_exports, {
+  SquareError: () => SquareError,
+  accumulateLoyaltyPoints: () => accumulateLoyaltyPoints,
+  addCustomerToGroup: () => addCustomerToGroup,
+  adjustLoyaltyPoints: () => adjustLoyaltyPoints,
+  cancelSquareSubscription: () => cancelSquareSubscription,
+  createCardPayment: () => createCardPayment,
+  createCatalogSubscriptionPlan: () => createCatalogSubscriptionPlan,
+  createDepositPaymentLink: () => createDepositPaymentLink,
+  createLoyaltyAccount: () => createLoyaltyAccount,
+  createMembershipCheckoutLink: () => createMembershipCheckoutLink,
+  createOrderCheckoutLink: () => createOrderCheckoutLink,
+  createRefund: () => createRefund,
+  createSquareCustomer: () => createSquareCustomer,
+  createSquareOrderForCheckout: () => createSquareOrderForCheckout,
+  createSquareSubscription: () => createSquareSubscription,
+  createSubscriptionCheckoutLink: () => createSubscriptionCheckoutLink,
+  deleteLoyaltyReward: () => deleteLoyaltyReward,
+  findSquareCustomerByEmail: () => findSquareCustomerByEmail,
+  getApplicationId: () => getApplicationId,
+  getCustomerGroupIds: () => getCustomerGroupIds,
+  getEnvironment: () => getEnvironment,
+  getLoyaltyAccount: () => getLoyaltyAccount,
+  getLoyaltyProgram: () => getLoyaltyProgram,
+  getMenuFromSquare: () => getMenuFromSquare,
+  getOrCreateCustomerGroup: () => getOrCreateCustomerGroup,
+  getPublicLocationId: () => getPublicLocationId,
+  getSquareDeals: () => getSquareDeals,
+  getSquareSubscription: () => getSquareSubscription,
+  invalidateMenuCache: () => invalidateMenuCache,
+  isConfigured: () => isConfigured,
+  isWebPaymentsConfigured: () => isWebPaymentsConfigured,
+  listCustomerGroups: () => listCustomerGroups,
+  listSquareSubscriptionsForCustomer: () => listSquareSubscriptionsForCustomer,
+  membershipGroupName: () => membershipGroupName,
+  pauseSquareSubscription: () => pauseSquareSubscription,
+  redeemLoyaltyReward: () => redeemLoyaltyReward,
+  removeCustomerFromGroup: () => removeCustomerFromGroup,
+  resumeSquareSubscription: () => resumeSquareSubscription,
+  searchIssuedRewards: () => searchIssuedRewards,
+  searchLoyaltyAccount: () => searchLoyaltyAccount,
+  searchLoyaltyEvents: () => searchLoyaltyEvents,
+  syncPlanToSquareCatalog: () => syncPlanToSquareCatalog
+});
+function getLocationId() {
+  const loc = process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID;
+  if (!loc) throw new Error("SQUARE_LOCATION_ID not configured");
+  return loc;
+}
+function getHeaders() {
+  const token = process.env.SQUARE_ACCESS_TOKEN;
+  if (!token) throw new Error("SQUARE_ACCESS_TOKEN not configured");
+  return {
+    "Authorization": `Bearer ${token}`,
+    "Content-Type": "application/json",
+    "Square-Version": "2024-01-18"
+  };
+}
+async function squareRequest(method, path3, body) {
+  const url = `${SQUARE_BASE_URL}${path3}`;
+  const options = { method, headers: getHeaders() };
+  if (body) options.body = JSON.stringify(body);
+  const response = await fetch(url, options);
+  const data = await response.json();
+  if (!response.ok) {
+    const errorDetail = data.errors?.[0]?.detail || "Square API error";
+    const errorCode = data.errors?.[0]?.code || "UNKNOWN";
+    throw new SquareError(errorDetail, errorCode, response.status);
+  }
+  return data;
+}
+function toE164(phone) {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("44")) return `+${digits}`;
+  if (digits.startsWith("0")) return `+44${digits.slice(1)}`;
+  if (digits.length === 10 || digits.length === 11) return `+44${digits}`;
+  return `+${digits}`;
+}
+async function getLoyaltyProgram() {
+  const data = await squareRequest("GET", "/v2/loyalty/programs");
+  const program = data.programs?.[0] || data.program;
+  if (!program) return null;
+  return program;
+}
+async function searchLoyaltyAccount(phone) {
+  const e164Phone = toE164(phone);
+  const data = await squareRequest("POST", "/v2/loyalty/accounts/search", {
+    query: {
+      mappings: [{ phone_number: e164Phone }]
+    }
+  });
+  return data.loyalty_accounts?.[0] || null;
+}
+async function createLoyaltyAccount(phone, programId) {
+  const e164Phone = toE164(phone);
+  const data = await squareRequest("POST", "/v2/loyalty/accounts", {
+    loyalty_account: {
+      program_id: programId,
+      mapping: { phone_number: e164Phone }
+    },
+    idempotency_key: `create-${e164Phone}-${Date.now()}`
+  });
+  return data.loyalty_account;
+}
+async function getLoyaltyAccount(accountId) {
+  const data = await squareRequest("GET", `/v2/loyalty/accounts/${accountId}`);
+  return data.loyalty_account;
+}
+async function accumulateLoyaltyPoints(accountId, points, idempotencyKey) {
+  const locationId = getLocationId();
+  const data = await squareRequest("POST", `/v2/loyalty/accounts/${accountId}/accumulate`, {
+    accumulate_points: { points },
+    location_id: locationId,
+    idempotency_key: idempotencyKey
+  });
+  return data.event;
+}
+async function adjustLoyaltyPoints(accountId, points, reason, idempotencyKey) {
+  const data = await squareRequest("POST", `/v2/loyalty/accounts/${accountId}/adjust`, {
+    adjust_points: { points, reason },
+    idempotency_key: idempotencyKey
+  });
+  return data.event;
+}
+async function redeemLoyaltyReward(accountId, rewardTierId, idempotencyKey) {
+  const locationId = getLocationId();
+  const data = await squareRequest("POST", "/v2/loyalty/rewards", {
+    reward: {
+      loyalty_account_id: accountId,
+      reward_tier_id: rewardTierId
+    },
+    idempotency_key: idempotencyKey
+  });
+  return data.reward;
+}
+async function deleteLoyaltyReward(rewardId) {
+  await squareRequest("DELETE", `/v2/loyalty/rewards/${rewardId}`);
+}
+async function searchLoyaltyEvents(accountId, limit = 10) {
+  try {
+    const data = await squareRequest("POST", "/v2/loyalty/events/search", {
+      query: {
+        filter: {
+          loyalty_account_filter: { loyalty_account_id: accountId }
+        }
+      },
+      limit
+    });
+    return data.events || [];
+  } catch {
+    return [];
+  }
+}
+async function searchIssuedRewards(accountId) {
+  try {
+    const data = await squareRequest("POST", "/v2/loyalty/rewards/search", {
+      query: {
+        loyalty_account_id: accountId,
+        status: "ISSUED"
+      }
+    });
+    return data.rewards || [];
+  } catch {
+    return [];
+  }
+}
+function isConfigured() {
+  return !!(process.env.SQUARE_ACCESS_TOKEN && (process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID));
+}
+function getApplicationId() {
+  return process.env.SQUARE_APPLICATION_ID || null;
+}
+function getEnvironment() {
+  return process.env.SQUARE_ENVIRONMENT === "production" ? "production" : "sandbox";
+}
+function getPublicLocationId() {
+  return process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID || null;
+}
+function isWebPaymentsConfigured() {
+  return !!(getApplicationId() && getPublicLocationId() && process.env.SQUARE_ACCESS_TOKEN);
+}
+async function createCardPayment(opts) {
+  const body = {
+    idempotency_key: opts.idempotencyKey,
+    source_id: opts.sourceId,
+    amount_money: { amount: opts.amountPence, currency: "GBP" },
+    location_id: getLocationId(),
+    autocomplete: true
+  };
+  if (opts.note) body.note = opts.note.slice(0, 500);
+  if (opts.referenceId) body.reference_id = opts.referenceId.slice(0, 40);
+  if (opts.buyerEmail) body.buyer_email_address = opts.buyerEmail;
+  if (opts.verificationToken) body.verification_token = opts.verificationToken;
+  if (opts.orderId) body.order_id = opts.orderId;
+  const data = await squareRequest("POST", "/v2/payments", body);
+  return data.payment;
+}
+async function createSquareCustomer(name, email, phone) {
+  const data = await squareRequest("POST", "/v2/customers", {
+    given_name: name.split(" ")[0],
+    family_name: name.split(" ").slice(1).join(" ") || "",
+    email_address: email,
+    phone_number: phone ? toE164(phone) : void 0,
+    idempotency_key: `cust-${email}-${Date.now()}`
+  });
+  return data.customer;
+}
+async function findSquareCustomerByEmail(email) {
+  const data = await squareRequest("POST", "/v2/customers/search", {
+    query: { filter: { email_address: { fuzzy: email } } },
+    limit: 1
+  });
+  return data.customers?.[0] || null;
+}
+async function createSquareSubscription(squareCustomerId, planVariationId, locationId, cardId, startDate) {
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const body = {
+    idempotency_key: `sub-${squareCustomerId}-${Date.now()}`,
+    location_id: locationId,
+    plan_variation_id: planVariationId,
+    customer_id: squareCustomerId,
+    start_date: startDate || today
+  };
+  if (cardId) body.card_id = cardId;
+  const data = await squareRequest("POST", "/v2/subscriptions", body);
+  return data.subscription;
+}
+async function cancelSquareSubscription(subscriptionId) {
+  const data = await squareRequest("POST", `/v2/subscriptions/${subscriptionId}/cancel`, {});
+  return data.subscription;
+}
+async function pauseSquareSubscription(subscriptionId) {
+  const data = await squareRequest("POST", `/v2/subscriptions/${subscriptionId}/pause`, {
+    pause_subscription_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10)
+  });
+  return data.subscription;
+}
+async function resumeSquareSubscription(subscriptionId) {
+  const data = await squareRequest("POST", `/v2/subscriptions/${subscriptionId}/resume`, {
+    resume_change_timing: "IMMEDIATE"
+  });
+  return data.subscription;
+}
+async function getSquareSubscription(subscriptionId) {
+  const data = await squareRequest("GET", `/v2/subscriptions/${subscriptionId}`);
+  return data.subscription;
+}
+async function listSquareSubscriptionsForCustomer(squareCustomerId) {
+  const data = await squareRequest("POST", "/v2/subscriptions/search", {
+    query: { filter: { customer_ids: [squareCustomerId] } }
+  });
+  return data.subscriptions || [];
+}
+async function createDepositPaymentLink(opts) {
+  const locationId = getLocationId();
+  const data = await squareRequest("POST", "/v2/online-checkout/payment-links", {
+    idempotency_key: `deposit-${opts.referenceId}-${Date.now()}`,
+    quick_pay: {
+      name: opts.description,
+      price_money: {
+        amount: opts.amountPence,
+        currency: "GBP"
+      },
+      location_id: locationId
+    },
+    checkout_options: {
+      redirect_url: opts.redirectUrl
+    },
+    payment_note: opts.referenceId
+  });
+  const link = data.payment_link;
+  return {
+    url: link.url,
+    paymentLinkId: link.id
+  };
+}
+async function listCustomerGroups() {
+  const data = await squareRequest("GET", "/v2/customers/groups");
+  return data.groups || [];
+}
+async function getOrCreateCustomerGroup(name) {
+  const groups = await listCustomerGroups();
+  const existing = groups.find((g) => g.name === name);
+  if (existing) return existing.id;
+  const data = await squareRequest("POST", "/v2/customers/groups", {
+    idempotency_key: `group-${name.replace(/\s+/g, "-").toLowerCase()}-${Date.now()}`,
+    group: { name }
+  });
+  return data.group.id;
+}
+async function addCustomerToGroup(customerId, groupId) {
+  await squareRequest("PUT", `/v2/customers/${customerId}/groups/${groupId}`);
+}
+async function removeCustomerFromGroup(customerId, groupId) {
+  await squareRequest("DELETE", `/v2/customers/${customerId}/groups/${groupId}`);
+}
+async function getCustomerGroupIds(customerId) {
+  const data = await squareRequest("GET", `/v2/customers/${customerId}`);
+  return data.customer?.group_ids || [];
+}
+async function createMembershipCheckoutLink(opts) {
+  const locationId = getLocationId();
+  const data = await squareRequest("POST", "/v2/online-checkout/payment-links", {
+    idempotency_key: `membership-${opts.subscriptionId}-${Date.now()}`,
+    quick_pay: {
+      name: `${opts.planName} Membership`,
+      price_money: {
+        amount: opts.amountPence,
+        currency: "GBP"
+      },
+      location_id: locationId
+    },
+    payment_note: `MEMBERSHIP:${opts.subscriptionId}`,
+    checkout_options: {
+      redirect_url: opts.redirectUrl
+    }
+  });
+  const link = data.payment_link;
+  return { url: link.url, paymentLinkId: link.id };
+}
+async function createSubscriptionCheckoutLink(opts) {
+  const locationId = getLocationId();
+  const body = {
+    idempotency_key: `sub-checkout-${opts.subscriptionId}-${Date.now()}`,
+    order: {
+      location_id: locationId,
+      line_items: [
+        {
+          quantity: "1",
+          catalog_object_id: opts.planVariationId
+        }
+      ]
+    },
+    checkout_options: {
+      redirect_url: opts.redirectUrl,
+      subscription_plan_id: opts.planVariationId
+    }
+  };
+  if (opts.buyerEmail) {
+    body.pre_populated_data = { buyer_email: opts.buyerEmail };
+  }
+  const data = await squareRequest("POST", "/v2/online-checkout/payment-links", body);
+  const link = data.payment_link;
+  return { url: link.url, paymentLinkId: link.id };
+}
+async function createCatalogSubscriptionPlan(opts) {
+  const tempPlanId = `#plan-${opts.localPlanId}`;
+  const tempVarId = `#var-${opts.localPlanId}`;
+  const data = await squareRequest("POST", "/v2/catalog/batch-upsert", {
+    idempotency_key: `147-membership-plan-${opts.localPlanId}-${Date.now()}`,
+    batches: [
+      {
+        objects: [
+          {
+            type: "SUBSCRIPTION_PLAN",
+            id: tempPlanId,
+            subscription_plan_data: {
+              name: `The 147 Bradford \u2014 ${opts.name} Membership`,
+              subscription_plan_variations: [
+                {
+                  type: "SUBSCRIPTION_PLAN_VARIATION",
+                  id: tempVarId,
+                  subscription_plan_variation_data: {
+                    name: "Monthly",
+                    phases: [
+                      {
+                        cadence: "MONTHLY",
+                        pricing: {
+                          type: "STATIC",
+                          price_money: {
+                            amount: opts.amountPence,
+                            currency: "GBP"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  });
+  const idMapping = data.id_mappings?.reduce(
+    (acc, m) => {
+      acc[m.client_object_id] = m.object_id;
+      return acc;
+    },
+    {}
+  ) ?? {};
+  const squarePlanId = idMapping[tempPlanId] ?? "";
+  const squarePlanVariationId = idMapping[tempVarId] ?? "";
+  if (!squarePlanVariationId) {
+    throw new Error(`Square did not return a variation ID for plan ${opts.name}`);
+  }
+  return { planId: opts.localPlanId, squarePlanId, squarePlanVariationId };
+}
+async function syncPlanToSquareCatalog(opts) {
+  let newVariationId = null;
+  if (opts.priceChanged) {
+    const result = await createCatalogSubscriptionPlan({
+      localPlanId: opts.localPlanId,
+      name: opts.planName,
+      amountPence: opts.newAmountPence
+    });
+    newVariationId = result.squarePlanVariationId;
+    return { newVariationId };
+  }
+  if (opts.nameChanged) {
+    const current = await squareRequest(
+      "GET",
+      `/v2/catalog/object/${opts.planVariationId}?include_related_objects=true`
+    ).catch(() => null);
+    const parentPlanId = current?.object?.subscription_plan_variation_data?.subscription_plan_id;
+    if (parentPlanId) {
+      const parentData = await squareRequest("GET", `/v2/catalog/object/${parentPlanId}`).catch(() => null);
+      if (parentData?.object) {
+        await squareRequest("POST", "/v2/catalog/object", {
+          idempotency_key: `update-plan-name-${parentPlanId}-${Date.now()}`,
+          object: {
+            type: "SUBSCRIPTION_PLAN",
+            id: parentPlanId,
+            version: parentData.object.version,
+            subscription_plan_data: {
+              name: `The 147 Bradford \u2014 ${opts.planName} Membership`
+            }
+          }
+        }).catch(() => {
+        });
+      }
+    }
+  }
+  return { newVariationId };
+}
+function membershipGroupName(planName) {
+  return `147 Bradford \u2014 ${planName} Members`;
+}
+async function getSquareDeals() {
+  if (dealsCache && Date.now() < dealsCache.expiry) return dealsCache.data;
+  try {
+    const [discountData, ruleData, productSetData] = await Promise.all([
+      squareRequest("POST", "/v2/catalog/search", {
+        object_types: ["DISCOUNT"],
+        include_deleted_objects: false
+      }),
+      squareRequest("POST", "/v2/catalog/search", {
+        object_types: ["PRICING_RULE"],
+        include_deleted_objects: false
+      }),
+      squareRequest("POST", "/v2/catalog/search", {
+        object_types: ["PRODUCT_SET"],
+        include_deleted_objects: false
+      })
+    ]);
+    const productSetMap = /* @__PURE__ */ new Map();
+    for (const o of productSetData.objects || []) {
+      if (o.type !== "PRODUCT_SET" || o.is_deleted) continue;
+      const ids = o.product_set_data?.product_ids_any || [];
+      if (ids.length > 0) productSetMap.set(o.id, ids);
+    }
+    const allProductIds = [...new Set([...productSetMap.values()].flat())];
+    const variationParentItemId = /* @__PURE__ */ new Map();
+    if (allProductIds.length > 0) {
+      try {
+        const batchData = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
+          object_ids: allProductIds,
+          include_related_objects: false
+        });
+        for (const o of batchData.objects || []) {
+          if (o.type === "ITEM_VARIATION" && o.item_variation_data?.item_id) {
+            variationParentItemId.set(o.id, o.item_variation_data.item_id);
+          }
+        }
+      } catch {
+      }
+    }
+    const expiryByDiscountId = /* @__PURE__ */ new Map();
+    const variationsByDiscountId = /* @__PURE__ */ new Map();
+    for (const o of ruleData.objects || []) {
+      if (o.type !== "PRICING_RULE" || o.is_deleted) continue;
+      const pd = o.pricing_rule_data || {};
+      if (!pd.discount_id) continue;
+      if (pd.valid_until_date) {
+        const existing = expiryByDiscountId.get(pd.discount_id);
+        if (!existing || pd.valid_until_date < existing) {
+          expiryByDiscountId.set(pd.discount_id, pd.valid_until_date);
+        }
+      }
+      if (pd.match_products_id) {
+        const ids = productSetMap.get(pd.match_products_id) || [];
+        if (ids.length > 0) {
+          const expanded = new Set(ids);
+          for (const id of ids) {
+            const parentItemId = variationParentItemId.get(id);
+            if (parentItemId) expanded.add(parentItemId);
+          }
+          const existing = variationsByDiscountId.get(pd.discount_id) || [];
+          variationsByDiscountId.set(pd.discount_id, [.../* @__PURE__ */ new Set([...existing, ...expanded])]);
+        }
+      }
+    }
+    const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    const seen = /* @__PURE__ */ new Set();
+    const deals = [];
+    for (const o of discountData.objects || []) {
+      if (o.type !== "DISCOUNT" || o.is_deleted) continue;
+      const dd = o.discount_data || {};
+      const name = (dd.name || "").trim();
+      if (!name) continue;
+      if (DEAL_EXCLUDE_PATTERNS.some((p) => p.test(name))) continue;
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const expiresOn = expiryByDiscountId.get(o.id);
+      if (expiresOn && expiresOn < today) continue;
+      const applicableVariationIds = variationsByDiscountId.get(o.id);
+      deals.push({
+        id: o.id,
+        name,
+        discountType: dd.discount_type === "FIXED_AMOUNT" ? "FIXED_AMOUNT" : "FIXED_PERCENTAGE",
+        percentage: dd.percentage,
+        amountPence: dd.amount_money?.amount,
+        ...expiresOn ? { expiresOn } : {},
+        ...applicableVariationIds ? { applicableVariationIds } : {}
+      });
+    }
+    dealsCache = { data: deals, expiry: Date.now() + 5 * 60 * 1e3 };
+    return deals;
+  } catch {
+    return dealsCache?.data ?? [];
+  }
+}
+async function getMenuFromSquare() {
+  if (menuCache && Date.now() < menuCache.expiry) return menuCache.data;
+  let allItems = [];
+  let cursor = null;
+  do {
+    const url = `/v2/catalog/list?types=ITEM${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+    const data = await squareRequest("GET", url);
+    allItems = allItems.concat(data.objects || []);
+    cursor = data.cursor || null;
+  } while (cursor);
+  const items = allItems.filter(
+    (o) => o.type === "ITEM" && !SKIP_ITEMS.has(o.item_data?.name)
+  );
+  const subcatIds = /* @__PURE__ */ new Set();
+  const modifierListIds = /* @__PURE__ */ new Set();
+  items.forEach((item) => {
+    (item.item_data?.categories || []).forEach((c) => {
+      if (!PARENT_CATEGORY_IDS.has(c.id)) subcatIds.add(c.id);
+    });
+    (item.item_data?.modifier_list_info || []).forEach((m) => {
+      if (m.enabled !== false) modifierListIds.add(m.modifier_list_id);
+    });
+  });
+  const catNames = {};
+  const catImageIds = {};
+  if (subcatIds.size > 0) {
+    const catData = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
+      object_ids: Array.from(subcatIds)
+    });
+    (catData.objects || []).forEach((o) => {
+      catNames[o.id] = o.category_data?.name || "Other";
+      if (o.category_data?.image_ids?.[0]) {
+        catImageIds[o.id] = o.category_data.image_ids[0];
+      }
+    });
+  }
+  const modifierListMap = {};
+  if (modifierListIds.size > 0) {
+    const modIds = Array.from(modifierListIds);
+    for (let i = 0; i < modIds.length; i += 100) {
+      try {
+        const chunk = modIds.slice(i, i + 100);
+        const modData = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
+          object_ids: chunk
+        });
+        (modData.objects || []).forEach((o) => {
+          if (o.type !== "MODIFIER_LIST") return;
+          const mld = o.modifier_list_data || {};
+          modifierListMap[o.id] = {
+            id: o.id,
+            name: mld.name || "",
+            selectionType: mld.selection_type === "MULTIPLE" ? "MULTIPLE" : "SINGLE",
+            minSelections: mld.min_selected_modifiers ?? (mld.selection_type === "SINGLE" ? 1 : 0),
+            maxSelections: mld.max_selected_modifiers ?? (mld.selection_type === "SINGLE" ? 1 : 999),
+            options: (mld.modifiers || []).map((m) => ({
+              id: m.id,
+              name: m.modifier_data?.name || "",
+              price: m.modifier_data?.price_money?.amount || 0
+            }))
+          };
+        });
+      } catch {
+      }
+    }
+  }
+  const itemImageIds = {};
+  items.forEach((item) => {
+    if (item.item_data?.image_ids?.[0]) {
+      itemImageIds[item.id] = item.item_data.image_ids[0];
+    }
+  });
+  const allImageObjectIds = [
+    .../* @__PURE__ */ new Set([...Object.values(itemImageIds), ...Object.values(catImageIds)])
+  ];
+  const imageUrlMap = {};
+  if (allImageObjectIds.length > 0) {
+    for (let i = 0; i < allImageObjectIds.length; i += 100) {
+      try {
+        const chunk = allImageObjectIds.slice(i, i + 100);
+        const imgData = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
+          object_ids: chunk
+        });
+        (imgData.objects || []).forEach((o) => {
+          if (o.image_data?.url) imageUrlMap[o.id] = o.image_data.url;
+        });
+      } catch {
+      }
+    }
+  }
+  const categoryMap = {};
+  items.forEach((item) => {
+    const subcatId = (item.item_data?.categories || []).find(
+      (c) => !PARENT_CATEGORY_IDS.has(c.id)
+    )?.id;
+    if (!subcatId) return;
+    const variations = item.item_data?.variations || [];
+    if (!variations.length) return;
+    if (!categoryMap[subcatId]) {
+      const catImgId = catImageIds[subcatId];
+      categoryMap[subcatId] = {
+        name: catNames[subcatId] || "Other",
+        imageUrl: catImgId ? imageUrlMap[catImgId] : void 0,
+        items: []
+      };
+    }
+    const itemImgId = itemImageIds[item.id];
+    const itemImageUrl = itemImgId ? imageUrlMap[itemImgId] : void 0;
+    const hasMultiple = variations.length > 1;
+    const isGenericName = (n) => ["regular", "standard", ""].includes(n.toLowerCase());
+    const hasMeaningfulVariations = hasMultiple && variations.some((v) => !isGenericName(v.item_variation_data?.name || ""));
+    const variationsToShow = hasMeaningfulVariations ? variations : [variations[0]];
+    const itemModifiers = (item.item_data?.modifier_list_info || []).filter((m) => m.enabled !== false && modifierListMap[m.modifier_list_id]).map((m) => modifierListMap[m.modifier_list_id]);
+    variationsToShow.forEach((variation) => {
+      const rawVarName = variation.item_variation_data?.name || "";
+      const variationName = hasMeaningfulVariations && !isGenericName(rawVarName) ? rawVarName : void 0;
+      categoryMap[subcatId].items.push({
+        id: item.id,
+        variationId: variation.id,
+        name: item.item_data.name,
+        variationName,
+        description: item.item_data.description || "",
+        price: variation.item_variation_data?.price_money?.amount || 0,
+        imageUrl: itemImageUrl,
+        ...itemModifiers.length > 0 ? { modifiers: itemModifiers } : {}
+      });
+    });
+  });
+  const result = Object.entries(categoryMap).map(([id, { name, imageUrl, items: its }]) => ({
+    id,
+    name,
+    imageUrl,
+    items: its.sort((a, b) => a.name.localeCompare(b.name))
+  })).sort((a, b) => {
+    const oa = CATEGORY_ORDER[a.name] ?? 99;
+    const ob = CATEGORY_ORDER[b.name] ?? 99;
+    return oa !== ob ? oa - ob : a.name.localeCompare(b.name);
+  });
+  menuCache = { data: result, expiry: Date.now() + 5 * 60 * 1e3 };
+  return result;
+}
+function invalidateMenuCache() {
+  menuCache = null;
+}
+function normalizeUkPhone(phone) {
+  const digits = phone.replace(/[\s\-\(\)]/g, "");
+  if (digits.startsWith("+44")) return digits;
+  if (digits.startsWith("44") && digits.length >= 12) return "+" + digits;
+  if (digits.startsWith("07") && digits.length === 11) return "+44" + digits.slice(1);
+  if (digits.startsWith("7") && digits.length === 10) return "+44" + digits;
+  return void 0;
+}
+async function buildSquareOrderBody(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote) {
+  const locationId = getLocationId();
+  let prePopulated;
+  if (customer?.email || customer?.name || customer?.phone) {
+    prePopulated = {};
+    if (customer.email) prePopulated.buyer_email = customer.email;
+    if (customer.phone) {
+      const e164 = normalizeUkPhone(customer.phone);
+      if (e164) prePopulated.buyer_phone_number = e164;
+    }
+    if (customer.name) {
+      const parts = customer.name.trim().split(/\s+/);
+      const lastName = parts.length > 1 ? parts.slice(1).join(" ") : "";
+      prePopulated.buyer_address = {
+        first_name: parts[0],
+        ...lastName ? { last_name: lastName } : {}
+      };
+    }
+  }
+  const ticketName = tableNote || (customer?.name ? customer.name.split(" ")[0] : "Guest");
+  const memberDiscountUid = "MEMBER-DISCOUNT";
+  const catalogIds = /* @__PURE__ */ new Set();
+  for (const item of items) {
+    if (!item.variationId) {
+      throw new SquareError("Order contained an item with no variation id", "INVALID_CATALOG_ID", 400);
+    }
+    catalogIds.add(item.variationId);
+    for (const m of item.modifiers ?? []) {
+      if (!m.catalogObjectId) {
+        throw new SquareError("Order contained a modifier with no catalog id", "INVALID_CATALOG_ID", 400);
+      }
+      catalogIds.add(m.catalogObjectId);
+    }
+  }
+  const catalogPriceById = /* @__PURE__ */ new Map();
+  const catalogTypeById = /* @__PURE__ */ new Map();
+  const idsToFetch = Array.from(catalogIds);
+  for (let i = 0; i < idsToFetch.length; i += 100) {
+    const chunk = idsToFetch.slice(i, i + 100);
+    const data = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
+      object_ids: chunk
+    });
+    for (const o of data.objects || []) {
+      if (o.is_deleted) continue;
+      if (o.type === "ITEM_VARIATION") {
+        catalogPriceById.set(o.id, o.item_variation_data?.price_money?.amount ?? 0);
+        catalogTypeById.set(o.id, "ITEM_VARIATION");
+      } else if (o.type === "MODIFIER") {
+        catalogPriceById.set(o.id, o.modifier_data?.price_money?.amount ?? 0);
+        catalogTypeById.set(o.id, "MODIFIER");
+      }
+    }
+  }
+  for (const item of items) {
+    if (catalogTypeById.get(item.variationId) !== "ITEM_VARIATION") {
+      throw new SquareError(
+        `Unknown or unavailable menu item (id ${item.variationId})`,
+        "INVALID_CATALOG_ID",
+        400
+      );
+    }
+    for (const m of item.modifiers ?? []) {
+      if (catalogTypeById.get(m.catalogObjectId) !== "MODIFIER") {
+        throw new SquareError(
+          `Unknown or unavailable modifier (id ${m.catalogObjectId})`,
+          "INVALID_CATALOG_ID",
+          400
+        );
+      }
+    }
+  }
+  const activeDeals = await getSquareDeals().catch(() => []);
+  const dealByVariationId = /* @__PURE__ */ new Map();
+  for (const deal of activeDeals) {
+    if (!deal.applicableVariationIds) continue;
+    for (const vid of deal.applicableVariationIds) {
+      if (!dealByVariationId.has(vid)) dealByVariationId.set(vid, deal);
+    }
+  }
+  const matchedDeals = items.filter((i) => dealByVariationId.has(i.variationId) || i.itemId && dealByVariationId.has(i.itemId)).map((i) => (dealByVariationId.get(i.variationId) ?? dealByVariationId.get(i.itemId)).name);
+  const hasMemberDiscount = typeof discountPercent === "number" && discountPercent > 0;
+  const dealsInCart = matchedDeals.length > 0;
+  const itemLevelMemberDiscount = hasMemberDiscount && excludeWithDeals && dealsInCart;
+  const orderLevelMemberDiscount = hasMemberDiscount && !itemLevelMemberDiscount;
+  const orderDiscounts = orderLevelMemberDiscount ? [{
+    uid: memberDiscountUid,
+    name: discountLabel ?? "Member Discount",
+    type: "FIXED_PERCENTAGE",
+    percentage: String(discountPercent),
+    scope: "ORDER"
+  }] : itemLevelMemberDiscount ? [{
+    uid: memberDiscountUid,
+    name: discountLabel ?? "Member Discount",
+    type: "FIXED_PERCENTAGE",
+    percentage: String(discountPercent),
+    scope: "LINE_ITEM"
+  }] : [];
+  const lineItems = items.map((item, idx) => {
+    const lineUid = `li-${idx}`;
+    const deal = dealByVariationId.get(item.variationId) ?? (item.itemId ? dealByVariationId.get(item.itemId) : void 0);
+    const appliedDiscounts = [];
+    if (deal) {
+      const discountUid = `deal-${idx}`;
+      if (deal.discountType === "FIXED_AMOUNT" && deal.amountPence != null) {
+        orderDiscounts.push({
+          uid: discountUid,
+          name: deal.name,
+          type: "FIXED_AMOUNT",
+          amount_money: { amount: deal.amountPence * item.quantity, currency: "GBP" },
+          scope: "LINE_ITEM"
+        });
+      } else if (deal.discountType === "FIXED_PERCENTAGE" && deal.percentage) {
+        orderDiscounts.push({
+          uid: discountUid,
+          name: deal.name,
+          type: "FIXED_PERCENTAGE",
+          percentage: deal.percentage,
+          scope: "LINE_ITEM"
+        });
+      }
+      if (orderDiscounts.find((d) => d.uid === discountUid)) {
+        appliedDiscounts.push({ discount_uid: discountUid });
+      }
+    } else if (itemLevelMemberDiscount) {
+      appliedDiscounts.push({ discount_uid: memberDiscountUid });
+    }
+    const catalogItemPrice = catalogPriceById.get(item.variationId) ?? 0;
+    return {
+      uid: lineUid,
+      catalog_object_id: item.variationId,
+      quantity: String(item.quantity),
+      base_price_money: { amount: catalogItemPrice, currency: "GBP" },
+      ...item.modifiers?.length ? {
+        modifiers: item.modifiers.map((m) => ({
+          catalog_object_id: m.catalogObjectId,
+          base_price_money: {
+            amount: catalogPriceById.get(m.catalogObjectId) ?? 0,
+            currency: "GBP"
+          }
+        }))
+      } : {},
+      ...appliedDiscounts.length ? { applied_discounts: appliedDiscounts } : {}
+    };
+  });
+  const noteParts = [tableNote, orderNote].filter(Boolean);
+  const combinedNote = noteParts.join(" | ");
+  const order = {
+    location_id: locationId,
+    line_items: lineItems,
+    ...orderDiscounts.length ? { discounts: orderDiscounts } : {},
+    fulfillments: [
+      {
+        type: "PICKUP",
+        state: "PROPOSED",
+        pickup_details: {
+          recipient: { display_name: ticketName.slice(0, 60) },
+          schedule_type: "ASAP",
+          is_curbside_pickup: false,
+          note: combinedNote || void 0
+        }
+      }
+    ],
+    ...combinedNote ? {
+      note: combinedNote.slice(0, 500),
+      reference_id: (tableNote || "ORDER").replace(/\s+/g, "-").toUpperCase().slice(0, 40)
+    } : {}
+  };
+  const pricedItems = items.map((item) => {
+    const itemPrice = catalogPriceById.get(item.variationId) ?? 0;
+    const mods = (item.modifiers ?? []).map((m) => ({
+      name: m.name ?? "",
+      pricePence: catalogPriceById.get(m.catalogObjectId) ?? 0,
+      catalogObjectId: m.catalogObjectId
+    }));
+    return {
+      name: item.name ?? "Item",
+      quantity: item.quantity,
+      pricePence: itemPrice,
+      variationId: item.variationId,
+      ...item.itemId ? { itemId: item.itemId } : {},
+      modifiers: mods
+    };
+  });
+  const rawTotalPence = pricedItems.reduce((sum, p) => {
+    const modSum = p.modifiers.reduce((s, m) => s + m.pricePence, 0);
+    return sum + (p.pricePence + modSum) * p.quantity;
+  }, 0);
+  return { order, prePopulated, pricedItems, rawTotalPence };
+}
+async function createSquareOrderForCheckout(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote) {
+  const idempotencyKey = `order-create-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const { order, pricedItems } = await buildSquareOrderBody(
+    items,
+    tableNote,
+    customer,
+    discountPercent,
+    discountLabel,
+    excludeWithDeals,
+    orderNote
+  );
+  const data = await squareRequest("POST", "/v2/orders", {
+    idempotency_key: idempotencyKey,
+    order
+  });
+  if (!data.order?.id) throw new Error("No order returned from Square");
+  const totalPence = Number(data.order.total_money?.amount ?? data.order.net_amounts?.total_money?.amount ?? 0);
+  return { orderId: data.order.id, totalPence, pricedItems };
+}
+async function createOrderCheckoutLink(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote) {
+  const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const { order, prePopulated, pricedItems, rawTotalPence } = await buildSquareOrderBody(
+    items,
+    tableNote,
+    customer,
+    discountPercent,
+    discountLabel,
+    excludeWithDeals,
+    orderNote
+  );
+  const body = {
+    idempotency_key: idempotencyKey,
+    order,
+    checkout_options: {
+      allow_tipping: false,
+      ...prePopulated ? { pre_populated_data: prePopulated } : {}
+    }
+  };
+  const data = await squareRequest("POST", "/v2/online-checkout/payment-links", body);
+  if (!data.payment_link?.url) throw new Error("No checkout URL returned from Square");
+  return {
+    url: data.payment_link.url,
+    linkId: data.payment_link.id ?? "",
+    squareOrderId: data.payment_link.order_id ?? "",
+    pricedItems,
+    rawTotalPence
+  };
+}
+async function createRefund(opts) {
+  const data = await squareRequest("POST", "/v2/refunds", {
+    idempotency_key: opts.idempotencyKey,
+    payment_id: opts.paymentId,
+    amount_money: {
+      amount: opts.amountPence,
+      currency: "GBP"
+    },
+    reason: opts.reason
+  });
+  return data.refund;
+}
+var SQUARE_BASE_URL, SquareError, PARENT_CATEGORY_IDS, SKIP_ITEMS, CATEGORY_ORDER, DEAL_EXCLUDE_PATTERNS, dealsCache, menuCache;
+var init_square = __esm({
+  "server/square.ts"() {
+    "use strict";
+    SQUARE_BASE_URL = process.env.SQUARE_ENVIRONMENT === "production" ? "https://connect.squareup.com" : "https://connect.squareupsandbox.com";
+    SquareError = class extends Error {
+      code;
+      statusCode;
+      constructor(message, code, statusCode) {
+        super(message);
+        this.code = code;
+        this.statusCode = statusCode;
+      }
+    };
+    PARENT_CATEGORY_IDS = /* @__PURE__ */ new Set([
+      "U4FPHVKPDJ3APM2V4NCNDRTK",
+      "EZKBBONU2F3MW2D2YIAKCUFQ",
+      "OJC6HWZ2YC274FOIWONUY2FI",
+      "C7GP3UY7G5KANXQH6TSG4QN3"
+    ]);
+    SKIP_ITEMS = /* @__PURE__ */ new Set([
+      "Platinum Membership",
+      "Click and collect (example service)"
+    ]);
+    CATEGORY_ORDER = {
+      "Starters": 1,
+      "Sharers": 2,
+      "Light Bites": 3,
+      "Pub Classic Mains": 4,
+      "Burgers": 5,
+      "Turkish Mains": 6,
+      "Loaded Fries Menu": 7,
+      "Pastas": 8,
+      "Panini": 9,
+      "Toasties": 10,
+      "Build Your Own Pizza": 11,
+      "Breakfast & Baps": 12,
+      "Sides": 13,
+      "Extras": 14,
+      "Snack's": 15,
+      "Snacks": 16,
+      "Kids Mains": 17,
+      "Kids": 18,
+      "Kids Puddings": 19,
+      "Puddings": 20,
+      "Golden Years - Starters": 21,
+      "Golden Years - Mains": 22,
+      "Golden Years - Puddings": 23,
+      "Draught": 24,
+      "Drinks - Draught": 24,
+      "Beer": 25,
+      "Bitters & Stouts": 26,
+      "Cider": 27,
+      "Bottles": 28,
+      "Bottles - Beers": 29,
+      "Bottles - Cider": 30,
+      "Soft Drinks": 31,
+      "Soft drinks": 31,
+      "Bottled Soft Drinks": 32,
+      "Low & No alcohol": 33,
+      "Spirits": 34,
+      "Spirits - Shots & Bombs": 35,
+      "Wine": 36,
+      "Drinks - Wines - Wine Promo": 37,
+      "Hot Drinks": 38,
+      "Offers & Promotions": 39,
+      "Snooker, Darts": 40,
+      "Darts": 41
+    };
+    DEAL_EXCLUDE_PATTERNS = [
+      /next.?time/i,
+      /next.?visit/i,
+      /next.?purchase/i,
+      /\bstaff\b/i,
+      /\bmember\b/i,
+      /\bplatinum\b/i,
+      /\bgold\b/i,
+      /\bvip\b/i,
+      /blue.?light/i,
+      /\bbulls?\b/i,
+      /loyalty/i
+    ];
+    dealsCache = null;
+    menuCache = null;
+  }
+});
+
 // server/wix-migration.ts
 var wix_migration_exports = {};
 __export(wix_migration_exports, {
@@ -2547,6 +3570,7 @@ import express from "express";
 init_storage();
 init_schema();
 init_encryption();
+init_square();
 import { createServer } from "node:http";
 import { randomBytes as randomBytes3, timingSafeEqual, createHash as createHash2 } from "node:crypto";
 import * as fs from "node:fs";
@@ -2554,962 +3578,6 @@ import * as path from "node:path";
 import multer from "multer";
 import sharp from "sharp";
 import nodemailer from "nodemailer";
-
-// server/square.ts
-var SQUARE_BASE_URL = process.env.SQUARE_ENVIRONMENT === "production" ? "https://connect.squareup.com" : "https://connect.squareupsandbox.com";
-function getLocationId() {
-  const loc = process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID;
-  if (!loc) throw new Error("SQUARE_LOCATION_ID not configured");
-  return loc;
-}
-function getHeaders() {
-  const token = process.env.SQUARE_ACCESS_TOKEN;
-  if (!token) throw new Error("SQUARE_ACCESS_TOKEN not configured");
-  return {
-    "Authorization": `Bearer ${token}`,
-    "Content-Type": "application/json",
-    "Square-Version": "2024-01-18"
-  };
-}
-async function squareRequest(method, path3, body) {
-  const url = `${SQUARE_BASE_URL}${path3}`;
-  const options = { method, headers: getHeaders() };
-  if (body) options.body = JSON.stringify(body);
-  const response = await fetch(url, options);
-  const data = await response.json();
-  if (!response.ok) {
-    const errorDetail = data.errors?.[0]?.detail || "Square API error";
-    const errorCode = data.errors?.[0]?.code || "UNKNOWN";
-    throw new SquareError(errorDetail, errorCode, response.status);
-  }
-  return data;
-}
-var SquareError = class extends Error {
-  code;
-  statusCode;
-  constructor(message, code, statusCode) {
-    super(message);
-    this.code = code;
-    this.statusCode = statusCode;
-  }
-};
-function toE164(phone) {
-  const digits = phone.replace(/\D/g, "");
-  if (digits.startsWith("44")) return `+${digits}`;
-  if (digits.startsWith("0")) return `+44${digits.slice(1)}`;
-  if (digits.length === 10 || digits.length === 11) return `+44${digits}`;
-  return `+${digits}`;
-}
-async function getLoyaltyProgram() {
-  const data = await squareRequest("GET", "/v2/loyalty/programs");
-  const program = data.programs?.[0] || data.program;
-  if (!program) return null;
-  return program;
-}
-async function searchLoyaltyAccount(phone) {
-  const e164Phone = toE164(phone);
-  const data = await squareRequest("POST", "/v2/loyalty/accounts/search", {
-    query: {
-      mappings: [{ phone_number: e164Phone }]
-    }
-  });
-  return data.loyalty_accounts?.[0] || null;
-}
-async function createLoyaltyAccount(phone, programId) {
-  const e164Phone = toE164(phone);
-  const data = await squareRequest("POST", "/v2/loyalty/accounts", {
-    loyalty_account: {
-      program_id: programId,
-      mapping: { phone_number: e164Phone }
-    },
-    idempotency_key: `create-${e164Phone}-${Date.now()}`
-  });
-  return data.loyalty_account;
-}
-async function getLoyaltyAccount(accountId) {
-  const data = await squareRequest("GET", `/v2/loyalty/accounts/${accountId}`);
-  return data.loyalty_account;
-}
-async function accumulateLoyaltyPoints(accountId, points, idempotencyKey) {
-  const locationId = getLocationId();
-  const data = await squareRequest("POST", `/v2/loyalty/accounts/${accountId}/accumulate`, {
-    accumulate_points: { points },
-    location_id: locationId,
-    idempotency_key: idempotencyKey
-  });
-  return data.event;
-}
-async function adjustLoyaltyPoints(accountId, points, reason, idempotencyKey) {
-  const data = await squareRequest("POST", `/v2/loyalty/accounts/${accountId}/adjust`, {
-    adjust_points: { points, reason },
-    idempotency_key: idempotencyKey
-  });
-  return data.event;
-}
-async function redeemLoyaltyReward(accountId, rewardTierId, idempotencyKey) {
-  const locationId = getLocationId();
-  const data = await squareRequest("POST", "/v2/loyalty/rewards", {
-    reward: {
-      loyalty_account_id: accountId,
-      reward_tier_id: rewardTierId
-    },
-    idempotency_key: idempotencyKey
-  });
-  return data.reward;
-}
-async function searchLoyaltyEvents(accountId, limit = 10) {
-  try {
-    const data = await squareRequest("POST", "/v2/loyalty/events/search", {
-      query: {
-        filter: {
-          loyalty_account_filter: { loyalty_account_id: accountId }
-        }
-      },
-      limit
-    });
-    return data.events || [];
-  } catch {
-    return [];
-  }
-}
-async function searchIssuedRewards(accountId) {
-  try {
-    const data = await squareRequest("POST", "/v2/loyalty/rewards/search", {
-      query: {
-        loyalty_account_id: accountId,
-        status: "ISSUED"
-      }
-    });
-    return data.rewards || [];
-  } catch {
-    return [];
-  }
-}
-function isConfigured() {
-  return !!(process.env.SQUARE_ACCESS_TOKEN && (process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID));
-}
-function getApplicationId() {
-  return process.env.SQUARE_APPLICATION_ID || null;
-}
-function getEnvironment() {
-  return process.env.SQUARE_ENVIRONMENT === "production" ? "production" : "sandbox";
-}
-function getPublicLocationId() {
-  return process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID || null;
-}
-function isWebPaymentsConfigured() {
-  return !!(getApplicationId() && getPublicLocationId() && process.env.SQUARE_ACCESS_TOKEN);
-}
-async function createCardPayment(opts) {
-  const body = {
-    idempotency_key: opts.idempotencyKey,
-    source_id: opts.sourceId,
-    amount_money: { amount: opts.amountPence, currency: "GBP" },
-    location_id: getLocationId(),
-    autocomplete: true
-  };
-  if (opts.note) body.note = opts.note.slice(0, 500);
-  if (opts.referenceId) body.reference_id = opts.referenceId.slice(0, 40);
-  if (opts.buyerEmail) body.buyer_email_address = opts.buyerEmail;
-  if (opts.verificationToken) body.verification_token = opts.verificationToken;
-  if (opts.orderId) body.order_id = opts.orderId;
-  const data = await squareRequest("POST", "/v2/payments", body);
-  return data.payment;
-}
-async function createSquareCustomer(name, email, phone) {
-  const data = await squareRequest("POST", "/v2/customers", {
-    given_name: name.split(" ")[0],
-    family_name: name.split(" ").slice(1).join(" ") || "",
-    email_address: email,
-    phone_number: phone ? toE164(phone) : void 0,
-    idempotency_key: `cust-${email}-${Date.now()}`
-  });
-  return data.customer;
-}
-async function findSquareCustomerByEmail(email) {
-  const data = await squareRequest("POST", "/v2/customers/search", {
-    query: { filter: { email_address: { fuzzy: email } } },
-    limit: 1
-  });
-  return data.customers?.[0] || null;
-}
-async function createSquareSubscription(squareCustomerId, planVariationId, locationId, cardId, startDate) {
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const body = {
-    idempotency_key: `sub-${squareCustomerId}-${Date.now()}`,
-    location_id: locationId,
-    plan_variation_id: planVariationId,
-    customer_id: squareCustomerId,
-    start_date: startDate || today
-  };
-  if (cardId) body.card_id = cardId;
-  const data = await squareRequest("POST", "/v2/subscriptions", body);
-  return data.subscription;
-}
-async function cancelSquareSubscription(subscriptionId) {
-  const data = await squareRequest("POST", `/v2/subscriptions/${subscriptionId}/cancel`, {});
-  return data.subscription;
-}
-async function pauseSquareSubscription(subscriptionId) {
-  const data = await squareRequest("POST", `/v2/subscriptions/${subscriptionId}/pause`, {
-    pause_subscription_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10)
-  });
-  return data.subscription;
-}
-async function resumeSquareSubscription(subscriptionId) {
-  const data = await squareRequest("POST", `/v2/subscriptions/${subscriptionId}/resume`, {
-    resume_change_timing: "IMMEDIATE"
-  });
-  return data.subscription;
-}
-async function listSquareSubscriptionsForCustomer(squareCustomerId) {
-  const data = await squareRequest("POST", "/v2/subscriptions/search", {
-    query: { filter: { customer_ids: [squareCustomerId] } }
-  });
-  return data.subscriptions || [];
-}
-async function createDepositPaymentLink(opts) {
-  const locationId = getLocationId();
-  const data = await squareRequest("POST", "/v2/online-checkout/payment-links", {
-    idempotency_key: `deposit-${opts.referenceId}-${Date.now()}`,
-    quick_pay: {
-      name: opts.description,
-      price_money: {
-        amount: opts.amountPence,
-        currency: "GBP"
-      },
-      location_id: locationId
-    },
-    checkout_options: {
-      redirect_url: opts.redirectUrl
-    },
-    payment_note: opts.referenceId
-  });
-  const link = data.payment_link;
-  return {
-    url: link.url,
-    paymentLinkId: link.id
-  };
-}
-async function listCustomerGroups() {
-  const data = await squareRequest("GET", "/v2/customers/groups");
-  return data.groups || [];
-}
-async function getOrCreateCustomerGroup(name) {
-  const groups = await listCustomerGroups();
-  const existing = groups.find((g) => g.name === name);
-  if (existing) return existing.id;
-  const data = await squareRequest("POST", "/v2/customers/groups", {
-    idempotency_key: `group-${name.replace(/\s+/g, "-").toLowerCase()}-${Date.now()}`,
-    group: { name }
-  });
-  return data.group.id;
-}
-async function addCustomerToGroup(customerId, groupId) {
-  await squareRequest("PUT", `/v2/customers/${customerId}/groups/${groupId}`);
-}
-async function removeCustomerFromGroup(customerId, groupId) {
-  await squareRequest("DELETE", `/v2/customers/${customerId}/groups/${groupId}`);
-}
-async function getCustomerGroupIds(customerId) {
-  const data = await squareRequest("GET", `/v2/customers/${customerId}`);
-  return data.customer?.group_ids || [];
-}
-async function createMembershipCheckoutLink(opts) {
-  const locationId = getLocationId();
-  const data = await squareRequest("POST", "/v2/online-checkout/payment-links", {
-    idempotency_key: `membership-${opts.subscriptionId}-${Date.now()}`,
-    quick_pay: {
-      name: `${opts.planName} Membership`,
-      price_money: {
-        amount: opts.amountPence,
-        currency: "GBP"
-      },
-      location_id: locationId
-    },
-    payment_note: `MEMBERSHIP:${opts.subscriptionId}`,
-    checkout_options: {
-      redirect_url: opts.redirectUrl
-    }
-  });
-  const link = data.payment_link;
-  return { url: link.url, paymentLinkId: link.id };
-}
-async function createSubscriptionCheckoutLink(opts) {
-  const body = {
-    idempotency_key: `sub-checkout-${opts.subscriptionId}-${Date.now()}`,
-    subscription_plan_variation_id: opts.planVariationId,
-    checkout_options: {
-      redirect_url: opts.redirectUrl,
-      subscription_cancel_url: "https://the147bradford.replit.app/membership"
-    }
-  };
-  if (opts.buyerEmail) {
-    body.pre_populated_data = { buyer_email: opts.buyerEmail };
-  }
-  const data = await squareRequest("POST", "/v2/online-checkout/payment-links", body);
-  const link = data.payment_link;
-  return { url: link.url, paymentLinkId: link.id };
-}
-async function createCatalogSubscriptionPlan(opts) {
-  const tempPlanId = `#plan-${opts.localPlanId}`;
-  const tempVarId = `#var-${opts.localPlanId}`;
-  const data = await squareRequest("POST", "/v2/catalog/batch-upsert", {
-    idempotency_key: `147-membership-plan-${opts.localPlanId}-${Date.now()}`,
-    batches: [
-      {
-        objects: [
-          {
-            type: "SUBSCRIPTION_PLAN",
-            id: tempPlanId,
-            subscription_plan_data: {
-              name: `The 147 Bradford \u2014 ${opts.name} Membership`,
-              subscription_plan_variations: [
-                {
-                  type: "SUBSCRIPTION_PLAN_VARIATION",
-                  id: tempVarId,
-                  subscription_plan_variation_data: {
-                    name: "Monthly",
-                    phases: [
-                      {
-                        cadence: "MONTHLY",
-                        pricing: {
-                          type: "STATIC",
-                          price_money: {
-                            amount: opts.amountPence,
-                            currency: "GBP"
-                          }
-                        }
-                      }
-                    ]
-                  }
-                }
-              ]
-            }
-          }
-        ]
-      }
-    ]
-  });
-  const idMapping = data.id_mappings?.reduce(
-    (acc, m) => {
-      acc[m.client_object_id] = m.object_id;
-      return acc;
-    },
-    {}
-  ) ?? {};
-  const squarePlanId = idMapping[tempPlanId] ?? "";
-  const squarePlanVariationId = idMapping[tempVarId] ?? "";
-  if (!squarePlanVariationId) {
-    throw new Error(`Square did not return a variation ID for plan ${opts.name}`);
-  }
-  return { planId: opts.localPlanId, squarePlanId, squarePlanVariationId };
-}
-async function syncPlanToSquareCatalog(opts) {
-  let newVariationId = null;
-  if (opts.priceChanged) {
-    const result = await createCatalogSubscriptionPlan({
-      localPlanId: opts.localPlanId,
-      name: opts.planName,
-      amountPence: opts.newAmountPence
-    });
-    newVariationId = result.squarePlanVariationId;
-    return { newVariationId };
-  }
-  if (opts.nameChanged) {
-    const current = await squareRequest(
-      "GET",
-      `/v2/catalog/object/${opts.planVariationId}?include_related_objects=true`
-    ).catch(() => null);
-    const parentPlanId = current?.object?.subscription_plan_variation_data?.subscription_plan_id;
-    if (parentPlanId) {
-      const parentData = await squareRequest("GET", `/v2/catalog/object/${parentPlanId}`).catch(() => null);
-      if (parentData?.object) {
-        await squareRequest("POST", "/v2/catalog/object", {
-          idempotency_key: `update-plan-name-${parentPlanId}-${Date.now()}`,
-          object: {
-            type: "SUBSCRIPTION_PLAN",
-            id: parentPlanId,
-            version: parentData.object.version,
-            subscription_plan_data: {
-              name: `The 147 Bradford \u2014 ${opts.planName} Membership`
-            }
-          }
-        }).catch(() => {
-        });
-      }
-    }
-  }
-  return { newVariationId };
-}
-function membershipGroupName(planName) {
-  return `147 Bradford \u2014 ${planName} Members`;
-}
-var PARENT_CATEGORY_IDS = /* @__PURE__ */ new Set([
-  "U4FPHVKPDJ3APM2V4NCNDRTK",
-  "EZKBBONU2F3MW2D2YIAKCUFQ",
-  "OJC6HWZ2YC274FOIWONUY2FI",
-  "C7GP3UY7G5KANXQH6TSG4QN3"
-]);
-var SKIP_ITEMS = /* @__PURE__ */ new Set([
-  "Platinum Membership",
-  "Click and collect (example service)"
-]);
-var CATEGORY_ORDER = {
-  "Starters": 1,
-  "Sharers": 2,
-  "Light Bites": 3,
-  "Pub Classic Mains": 4,
-  "Burgers": 5,
-  "Turkish Mains": 6,
-  "Loaded Fries Menu": 7,
-  "Pastas": 8,
-  "Panini": 9,
-  "Toasties": 10,
-  "Build Your Own Pizza": 11,
-  "Breakfast & Baps": 12,
-  "Sides": 13,
-  "Extras": 14,
-  "Snack's": 15,
-  "Snacks": 16,
-  "Kids Mains": 17,
-  "Kids": 18,
-  "Kids Puddings": 19,
-  "Puddings": 20,
-  "Golden Years - Starters": 21,
-  "Golden Years - Mains": 22,
-  "Golden Years - Puddings": 23,
-  "Draught": 24,
-  "Drinks - Draught": 24,
-  "Beer": 25,
-  "Bitters & Stouts": 26,
-  "Cider": 27,
-  "Bottles": 28,
-  "Bottles - Beers": 29,
-  "Bottles - Cider": 30,
-  "Soft Drinks": 31,
-  "Soft drinks": 31,
-  "Bottled Soft Drinks": 32,
-  "Low & No alcohol": 33,
-  "Spirits": 34,
-  "Spirits - Shots & Bombs": 35,
-  "Wine": 36,
-  "Drinks - Wines - Wine Promo": 37,
-  "Hot Drinks": 38,
-  "Offers & Promotions": 39,
-  "Snooker, Darts": 40,
-  "Darts": 41
-};
-var DEAL_EXCLUDE_PATTERNS = [
-  /next.?time/i,
-  /next.?visit/i,
-  /next.?purchase/i,
-  /\bstaff\b/i,
-  /\bmember\b/i,
-  /\bplatinum\b/i,
-  /\bgold\b/i,
-  /\bvip\b/i,
-  /blue.?light/i,
-  /\bbulls?\b/i,
-  /loyalty/i
-];
-var dealsCache = null;
-async function getSquareDeals() {
-  if (dealsCache && Date.now() < dealsCache.expiry) return dealsCache.data;
-  try {
-    const [discountData, ruleData, productSetData] = await Promise.all([
-      squareRequest("POST", "/v2/catalog/search", {
-        object_types: ["DISCOUNT"],
-        include_deleted_objects: false
-      }),
-      squareRequest("POST", "/v2/catalog/search", {
-        object_types: ["PRICING_RULE"],
-        include_deleted_objects: false
-      }),
-      squareRequest("POST", "/v2/catalog/search", {
-        object_types: ["PRODUCT_SET"],
-        include_deleted_objects: false
-      })
-    ]);
-    const productSetMap = /* @__PURE__ */ new Map();
-    for (const o of productSetData.objects || []) {
-      if (o.type !== "PRODUCT_SET" || o.is_deleted) continue;
-      const ids = o.product_set_data?.product_ids_any || [];
-      if (ids.length > 0) productSetMap.set(o.id, ids);
-    }
-    const allProductIds = [...new Set([...productSetMap.values()].flat())];
-    const variationParentItemId = /* @__PURE__ */ new Map();
-    if (allProductIds.length > 0) {
-      try {
-        const batchData = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
-          object_ids: allProductIds,
-          include_related_objects: false
-        });
-        for (const o of batchData.objects || []) {
-          if (o.type === "ITEM_VARIATION" && o.item_variation_data?.item_id) {
-            variationParentItemId.set(o.id, o.item_variation_data.item_id);
-          }
-        }
-      } catch {
-      }
-    }
-    const expiryByDiscountId = /* @__PURE__ */ new Map();
-    const variationsByDiscountId = /* @__PURE__ */ new Map();
-    for (const o of ruleData.objects || []) {
-      if (o.type !== "PRICING_RULE" || o.is_deleted) continue;
-      const pd = o.pricing_rule_data || {};
-      if (!pd.discount_id) continue;
-      if (pd.valid_until_date) {
-        const existing = expiryByDiscountId.get(pd.discount_id);
-        if (!existing || pd.valid_until_date < existing) {
-          expiryByDiscountId.set(pd.discount_id, pd.valid_until_date);
-        }
-      }
-      if (pd.match_products_id) {
-        const ids = productSetMap.get(pd.match_products_id) || [];
-        if (ids.length > 0) {
-          const expanded = new Set(ids);
-          for (const id of ids) {
-            const parentItemId = variationParentItemId.get(id);
-            if (parentItemId) expanded.add(parentItemId);
-          }
-          const existing = variationsByDiscountId.get(pd.discount_id) || [];
-          variationsByDiscountId.set(pd.discount_id, [.../* @__PURE__ */ new Set([...existing, ...expanded])]);
-        }
-      }
-    }
-    const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-    const seen = /* @__PURE__ */ new Set();
-    const deals = [];
-    for (const o of discountData.objects || []) {
-      if (o.type !== "DISCOUNT" || o.is_deleted) continue;
-      const dd = o.discount_data || {};
-      const name = (dd.name || "").trim();
-      if (!name) continue;
-      if (DEAL_EXCLUDE_PATTERNS.some((p) => p.test(name))) continue;
-      const key = name.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const expiresOn = expiryByDiscountId.get(o.id);
-      if (expiresOn && expiresOn < today) continue;
-      const applicableVariationIds = variationsByDiscountId.get(o.id);
-      deals.push({
-        id: o.id,
-        name,
-        discountType: dd.discount_type === "FIXED_AMOUNT" ? "FIXED_AMOUNT" : "FIXED_PERCENTAGE",
-        percentage: dd.percentage,
-        amountPence: dd.amount_money?.amount,
-        ...expiresOn ? { expiresOn } : {},
-        ...applicableVariationIds ? { applicableVariationIds } : {}
-      });
-    }
-    dealsCache = { data: deals, expiry: Date.now() + 5 * 60 * 1e3 };
-    return deals;
-  } catch {
-    return dealsCache?.data ?? [];
-  }
-}
-var menuCache = null;
-async function getMenuFromSquare() {
-  if (menuCache && Date.now() < menuCache.expiry) return menuCache.data;
-  let allItems = [];
-  let cursor = null;
-  do {
-    const url = `/v2/catalog/list?types=ITEM${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
-    const data = await squareRequest("GET", url);
-    allItems = allItems.concat(data.objects || []);
-    cursor = data.cursor || null;
-  } while (cursor);
-  const items = allItems.filter(
-    (o) => o.type === "ITEM" && !SKIP_ITEMS.has(o.item_data?.name)
-  );
-  const subcatIds = /* @__PURE__ */ new Set();
-  const modifierListIds = /* @__PURE__ */ new Set();
-  items.forEach((item) => {
-    (item.item_data?.categories || []).forEach((c) => {
-      if (!PARENT_CATEGORY_IDS.has(c.id)) subcatIds.add(c.id);
-    });
-    (item.item_data?.modifier_list_info || []).forEach((m) => {
-      if (m.enabled !== false) modifierListIds.add(m.modifier_list_id);
-    });
-  });
-  const catNames = {};
-  const catImageIds = {};
-  if (subcatIds.size > 0) {
-    const catData = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
-      object_ids: Array.from(subcatIds)
-    });
-    (catData.objects || []).forEach((o) => {
-      catNames[o.id] = o.category_data?.name || "Other";
-      if (o.category_data?.image_ids?.[0]) {
-        catImageIds[o.id] = o.category_data.image_ids[0];
-      }
-    });
-  }
-  const modifierListMap = {};
-  if (modifierListIds.size > 0) {
-    const modIds = Array.from(modifierListIds);
-    for (let i = 0; i < modIds.length; i += 100) {
-      try {
-        const chunk = modIds.slice(i, i + 100);
-        const modData = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
-          object_ids: chunk
-        });
-        (modData.objects || []).forEach((o) => {
-          if (o.type !== "MODIFIER_LIST") return;
-          const mld = o.modifier_list_data || {};
-          modifierListMap[o.id] = {
-            id: o.id,
-            name: mld.name || "",
-            selectionType: mld.selection_type === "MULTIPLE" ? "MULTIPLE" : "SINGLE",
-            minSelections: mld.min_selected_modifiers ?? (mld.selection_type === "SINGLE" ? 1 : 0),
-            maxSelections: mld.max_selected_modifiers ?? (mld.selection_type === "SINGLE" ? 1 : 999),
-            options: (mld.modifiers || []).map((m) => ({
-              id: m.id,
-              name: m.modifier_data?.name || "",
-              price: m.modifier_data?.price_money?.amount || 0
-            }))
-          };
-        });
-      } catch {
-      }
-    }
-  }
-  const itemImageIds = {};
-  items.forEach((item) => {
-    if (item.item_data?.image_ids?.[0]) {
-      itemImageIds[item.id] = item.item_data.image_ids[0];
-    }
-  });
-  const allImageObjectIds = [
-    .../* @__PURE__ */ new Set([...Object.values(itemImageIds), ...Object.values(catImageIds)])
-  ];
-  const imageUrlMap = {};
-  if (allImageObjectIds.length > 0) {
-    for (let i = 0; i < allImageObjectIds.length; i += 100) {
-      try {
-        const chunk = allImageObjectIds.slice(i, i + 100);
-        const imgData = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
-          object_ids: chunk
-        });
-        (imgData.objects || []).forEach((o) => {
-          if (o.image_data?.url) imageUrlMap[o.id] = o.image_data.url;
-        });
-      } catch {
-      }
-    }
-  }
-  const categoryMap = {};
-  items.forEach((item) => {
-    const subcatId = (item.item_data?.categories || []).find(
-      (c) => !PARENT_CATEGORY_IDS.has(c.id)
-    )?.id;
-    if (!subcatId) return;
-    const variations = item.item_data?.variations || [];
-    if (!variations.length) return;
-    if (!categoryMap[subcatId]) {
-      const catImgId = catImageIds[subcatId];
-      categoryMap[subcatId] = {
-        name: catNames[subcatId] || "Other",
-        imageUrl: catImgId ? imageUrlMap[catImgId] : void 0,
-        items: []
-      };
-    }
-    const itemImgId = itemImageIds[item.id];
-    const itemImageUrl = itemImgId ? imageUrlMap[itemImgId] : void 0;
-    const hasMultiple = variations.length > 1;
-    const isGenericName = (n) => ["regular", "standard", ""].includes(n.toLowerCase());
-    const hasMeaningfulVariations = hasMultiple && variations.some((v) => !isGenericName(v.item_variation_data?.name || ""));
-    const variationsToShow = hasMeaningfulVariations ? variations : [variations[0]];
-    const itemModifiers = (item.item_data?.modifier_list_info || []).filter((m) => m.enabled !== false && modifierListMap[m.modifier_list_id]).map((m) => modifierListMap[m.modifier_list_id]);
-    variationsToShow.forEach((variation) => {
-      const rawVarName = variation.item_variation_data?.name || "";
-      const variationName = hasMeaningfulVariations && !isGenericName(rawVarName) ? rawVarName : void 0;
-      categoryMap[subcatId].items.push({
-        id: item.id,
-        variationId: variation.id,
-        name: item.item_data.name,
-        variationName,
-        description: item.item_data.description || "",
-        price: variation.item_variation_data?.price_money?.amount || 0,
-        imageUrl: itemImageUrl,
-        ...itemModifiers.length > 0 ? { modifiers: itemModifiers } : {}
-      });
-    });
-  });
-  const result = Object.entries(categoryMap).map(([id, { name, imageUrl, items: its }]) => ({
-    id,
-    name,
-    imageUrl,
-    items: its.sort((a, b) => a.name.localeCompare(b.name))
-  })).sort((a, b) => {
-    const oa = CATEGORY_ORDER[a.name] ?? 99;
-    const ob = CATEGORY_ORDER[b.name] ?? 99;
-    return oa !== ob ? oa - ob : a.name.localeCompare(b.name);
-  });
-  menuCache = { data: result, expiry: Date.now() + 5 * 60 * 1e3 };
-  return result;
-}
-function invalidateMenuCache() {
-  menuCache = null;
-}
-function normalizeUkPhone(phone) {
-  const digits = phone.replace(/[\s\-\(\)]/g, "");
-  if (digits.startsWith("+44")) return digits;
-  if (digits.startsWith("44") && digits.length >= 12) return "+" + digits;
-  if (digits.startsWith("07") && digits.length === 11) return "+44" + digits.slice(1);
-  if (digits.startsWith("7") && digits.length === 10) return "+44" + digits;
-  return void 0;
-}
-async function buildSquareOrderBody(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote) {
-  const locationId = getLocationId();
-  let prePopulated;
-  if (customer?.email || customer?.name || customer?.phone) {
-    prePopulated = {};
-    if (customer.email) prePopulated.buyer_email = customer.email;
-    if (customer.phone) {
-      const e164 = normalizeUkPhone(customer.phone);
-      if (e164) prePopulated.buyer_phone_number = e164;
-    }
-    if (customer.name) {
-      const parts = customer.name.trim().split(/\s+/);
-      const lastName = parts.length > 1 ? parts.slice(1).join(" ") : "";
-      prePopulated.buyer_address = {
-        first_name: parts[0],
-        ...lastName ? { last_name: lastName } : {}
-      };
-    }
-  }
-  const ticketName = tableNote || (customer?.name ? customer.name.split(" ")[0] : "Guest");
-  const memberDiscountUid = "MEMBER-DISCOUNT";
-  const catalogIds = /* @__PURE__ */ new Set();
-  for (const item of items) {
-    if (!item.variationId) {
-      throw new SquareError("Order contained an item with no variation id", "INVALID_CATALOG_ID", 400);
-    }
-    catalogIds.add(item.variationId);
-    for (const m of item.modifiers ?? []) {
-      if (!m.catalogObjectId) {
-        throw new SquareError("Order contained a modifier with no catalog id", "INVALID_CATALOG_ID", 400);
-      }
-      catalogIds.add(m.catalogObjectId);
-    }
-  }
-  const catalogPriceById = /* @__PURE__ */ new Map();
-  const catalogTypeById = /* @__PURE__ */ new Map();
-  const idsToFetch = Array.from(catalogIds);
-  for (let i = 0; i < idsToFetch.length; i += 100) {
-    const chunk = idsToFetch.slice(i, i + 100);
-    const data = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
-      object_ids: chunk
-    });
-    for (const o of data.objects || []) {
-      if (o.is_deleted) continue;
-      if (o.type === "ITEM_VARIATION") {
-        catalogPriceById.set(o.id, o.item_variation_data?.price_money?.amount ?? 0);
-        catalogTypeById.set(o.id, "ITEM_VARIATION");
-      } else if (o.type === "MODIFIER") {
-        catalogPriceById.set(o.id, o.modifier_data?.price_money?.amount ?? 0);
-        catalogTypeById.set(o.id, "MODIFIER");
-      }
-    }
-  }
-  for (const item of items) {
-    if (catalogTypeById.get(item.variationId) !== "ITEM_VARIATION") {
-      throw new SquareError(
-        `Unknown or unavailable menu item (id ${item.variationId})`,
-        "INVALID_CATALOG_ID",
-        400
-      );
-    }
-    for (const m of item.modifiers ?? []) {
-      if (catalogTypeById.get(m.catalogObjectId) !== "MODIFIER") {
-        throw new SquareError(
-          `Unknown or unavailable modifier (id ${m.catalogObjectId})`,
-          "INVALID_CATALOG_ID",
-          400
-        );
-      }
-    }
-  }
-  const activeDeals = await getSquareDeals().catch(() => []);
-  const dealByVariationId = /* @__PURE__ */ new Map();
-  for (const deal of activeDeals) {
-    if (!deal.applicableVariationIds) continue;
-    for (const vid of deal.applicableVariationIds) {
-      if (!dealByVariationId.has(vid)) dealByVariationId.set(vid, deal);
-    }
-  }
-  const matchedDeals = items.filter((i) => dealByVariationId.has(i.variationId) || i.itemId && dealByVariationId.has(i.itemId)).map((i) => (dealByVariationId.get(i.variationId) ?? dealByVariationId.get(i.itemId)).name);
-  const hasMemberDiscount = typeof discountPercent === "number" && discountPercent > 0;
-  const dealsInCart = matchedDeals.length > 0;
-  const itemLevelMemberDiscount = hasMemberDiscount && excludeWithDeals && dealsInCart;
-  const orderLevelMemberDiscount = hasMemberDiscount && !itemLevelMemberDiscount;
-  const orderDiscounts = orderLevelMemberDiscount ? [{
-    uid: memberDiscountUid,
-    name: discountLabel ?? "Member Discount",
-    type: "FIXED_PERCENTAGE",
-    percentage: String(discountPercent),
-    scope: "ORDER"
-  }] : itemLevelMemberDiscount ? [{
-    uid: memberDiscountUid,
-    name: discountLabel ?? "Member Discount",
-    type: "FIXED_PERCENTAGE",
-    percentage: String(discountPercent),
-    scope: "LINE_ITEM"
-  }] : [];
-  const lineItems = items.map((item, idx) => {
-    const lineUid = `li-${idx}`;
-    const deal = dealByVariationId.get(item.variationId) ?? (item.itemId ? dealByVariationId.get(item.itemId) : void 0);
-    const appliedDiscounts = [];
-    if (deal) {
-      const discountUid = `deal-${idx}`;
-      if (deal.discountType === "FIXED_AMOUNT" && deal.amountPence != null) {
-        orderDiscounts.push({
-          uid: discountUid,
-          name: deal.name,
-          type: "FIXED_AMOUNT",
-          amount_money: { amount: deal.amountPence * item.quantity, currency: "GBP" },
-          scope: "LINE_ITEM"
-        });
-      } else if (deal.discountType === "FIXED_PERCENTAGE" && deal.percentage) {
-        orderDiscounts.push({
-          uid: discountUid,
-          name: deal.name,
-          type: "FIXED_PERCENTAGE",
-          percentage: deal.percentage,
-          scope: "LINE_ITEM"
-        });
-      }
-      if (orderDiscounts.find((d) => d.uid === discountUid)) {
-        appliedDiscounts.push({ discount_uid: discountUid });
-      }
-    } else if (itemLevelMemberDiscount) {
-      appliedDiscounts.push({ discount_uid: memberDiscountUid });
-    }
-    const catalogItemPrice = catalogPriceById.get(item.variationId) ?? 0;
-    return {
-      uid: lineUid,
-      catalog_object_id: item.variationId,
-      quantity: String(item.quantity),
-      base_price_money: { amount: catalogItemPrice, currency: "GBP" },
-      ...item.modifiers?.length ? {
-        modifiers: item.modifiers.map((m) => ({
-          catalog_object_id: m.catalogObjectId,
-          base_price_money: {
-            amount: catalogPriceById.get(m.catalogObjectId) ?? 0,
-            currency: "GBP"
-          }
-        }))
-      } : {},
-      ...appliedDiscounts.length ? { applied_discounts: appliedDiscounts } : {}
-    };
-  });
-  const noteParts = [tableNote, orderNote].filter(Boolean);
-  const combinedNote = noteParts.join(" | ");
-  const order = {
-    location_id: locationId,
-    line_items: lineItems,
-    ...orderDiscounts.length ? { discounts: orderDiscounts } : {},
-    fulfillments: [
-      {
-        type: "PICKUP",
-        state: "PROPOSED",
-        pickup_details: {
-          recipient: { display_name: ticketName.slice(0, 60) },
-          schedule_type: "ASAP",
-          is_curbside_pickup: false,
-          note: combinedNote || void 0
-        }
-      }
-    ],
-    ...combinedNote ? {
-      note: combinedNote.slice(0, 500),
-      reference_id: (tableNote || "ORDER").replace(/\s+/g, "-").toUpperCase().slice(0, 40)
-    } : {}
-  };
-  const pricedItems = items.map((item) => {
-    const itemPrice = catalogPriceById.get(item.variationId) ?? 0;
-    const mods = (item.modifiers ?? []).map((m) => ({
-      name: m.name ?? "",
-      pricePence: catalogPriceById.get(m.catalogObjectId) ?? 0,
-      catalogObjectId: m.catalogObjectId
-    }));
-    return {
-      name: item.name ?? "Item",
-      quantity: item.quantity,
-      pricePence: itemPrice,
-      variationId: item.variationId,
-      ...item.itemId ? { itemId: item.itemId } : {},
-      modifiers: mods
-    };
-  });
-  const rawTotalPence = pricedItems.reduce((sum, p) => {
-    const modSum = p.modifiers.reduce((s, m) => s + m.pricePence, 0);
-    return sum + (p.pricePence + modSum) * p.quantity;
-  }, 0);
-  return { order, prePopulated, pricedItems, rawTotalPence };
-}
-async function createSquareOrderForCheckout(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote) {
-  const idempotencyKey = `order-create-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  const { order, pricedItems } = await buildSquareOrderBody(
-    items,
-    tableNote,
-    customer,
-    discountPercent,
-    discountLabel,
-    excludeWithDeals,
-    orderNote
-  );
-  const data = await squareRequest("POST", "/v2/orders", {
-    idempotency_key: idempotencyKey,
-    order
-  });
-  if (!data.order?.id) throw new Error("No order returned from Square");
-  const totalPence = Number(data.order.total_money?.amount ?? data.order.net_amounts?.total_money?.amount ?? 0);
-  return { orderId: data.order.id, totalPence, pricedItems };
-}
-async function createOrderCheckoutLink(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote) {
-  const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  const { order, prePopulated, pricedItems, rawTotalPence } = await buildSquareOrderBody(
-    items,
-    tableNote,
-    customer,
-    discountPercent,
-    discountLabel,
-    excludeWithDeals,
-    orderNote
-  );
-  const body = {
-    idempotency_key: idempotencyKey,
-    order,
-    checkout_options: {
-      allow_tipping: false,
-      ...prePopulated ? { pre_populated_data: prePopulated } : {}
-    }
-  };
-  const data = await squareRequest("POST", "/v2/online-checkout/payment-links", body);
-  if (!data.payment_link?.url) throw new Error("No checkout URL returned from Square");
-  return {
-    url: data.payment_link.url,
-    linkId: data.payment_link.id ?? "",
-    squareOrderId: data.payment_link.order_id ?? "",
-    pricedItems,
-    rawTotalPence
-  };
-}
-async function createRefund(opts) {
-  const data = await squareRequest("POST", "/v2/refunds", {
-    idempotency_key: opts.idempotencyKey,
-    payment_id: opts.paymentId,
-    amount_money: {
-      amount: opts.amountPence,
-      currency: "GBP"
-    },
-    reason: opts.reason
-  });
-  return data.refund;
-}
 
 // server/reorder-matching.ts
 var norm = (s) => (s ?? "").trim().toLowerCase();
@@ -8934,26 +9002,37 @@ Phone: ${phone}` : ""}`,
               const redirectUrl = `https://the147bradford.replit.app/api/membership/${sub.id}/payment-return`;
               const variationId = isAnnual ? plan.squarePlanVariationIdAlt || plan.squarePlanVariationId : plan.squarePlanVariationId;
               const chargeAmount = isAnnual ? plan.priceAnnual || plan.priceMonthly * 12 : plan.priceMonthly;
-              const checkout = variationId ? await createSubscriptionCheckoutLink({
-                planVariationId: variationId,
-                subscriptionId: sub.id,
-                buyerEmail: customer?.email,
-                redirectUrl
-              }).catch((err) => {
-                console.error("[membership/join] subscription checkout error:", err?.message ?? err);
-                return null;
-              }) : await createMembershipCheckoutLink({
-                planName: `${plan.name}${isAnnual ? " (Annual)" : ""}`,
-                amountPence: chargeAmount,
-                subscriptionId: sub.id,
-                redirectUrl
-              }).catch((err) => {
-                console.error("[membership/join] one-time checkout error:", err?.message ?? err);
-                return null;
-              });
+              let checkout = null;
+              let checkoutKind = variationId ? "subscription" : "one-time";
+              if (variationId) {
+                checkout = await createSubscriptionCheckoutLink({
+                  planVariationId: variationId,
+                  subscriptionId: sub.id,
+                  buyerEmail: customer?.email,
+                  redirectUrl
+                }).catch((err) => {
+                  console.error("[membership/join] subscription checkout error:", err?.message ?? err);
+                  return null;
+                });
+                if (!checkout) {
+                  console.warn(`[membership/join] Subscription checkout failed for sub #${sub.id}, falling back to one-time payment link`);
+                  checkoutKind = "one-time";
+                }
+              }
+              if (!checkout) {
+                checkout = await createMembershipCheckoutLink({
+                  planName: `${plan.name}${isAnnual ? " (Annual)" : ""}`,
+                  amountPence: chargeAmount,
+                  subscriptionId: sub.id,
+                  redirectUrl
+                }).catch((err) => {
+                  console.error("[membership/join] one-time checkout error:", err?.message ?? err);
+                  return null;
+                });
+              }
               if (checkout) {
                 checkoutUrl = checkout.url;
-                console.log(`[membership/join] ${variationId ? "Subscription" : "One-time"} ${isAnnual ? "annual" : "monthly"} checkout created for sub #${sub.id}`);
+                console.log(`[membership/join] ${checkoutKind} ${isAnnual ? "annual" : "monthly"} checkout created for sub #${sub.id}`);
               }
             }
           }
@@ -10209,10 +10288,10 @@ function setupSecurityHeaders(app2) {
       );
     } else if (!req.path.startsWith("/api")) {
       res.setHeader("X-Frame-Options", "SAMEORIGIN");
-      const genericConnectSrc = devConnectSrc ?? "'self' https://*.squareup.com https://*.resend.com https://api.stripe.com https://m.stripe.com https://m.stripe.network";
+      const genericConnectSrc = devConnectSrc ?? "'self' https://*.squareup.com https://*.squarecdn.com https://*.resend.com https://api.stripe.com https://m.stripe.com https://m.stripe.network";
       res.setHeader(
         "Content-Security-Policy",
-        `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://js.stripe.com https://m.stripe.network; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src ${genericConnectSrc}; img-src 'self' data: https:; frame-src 'self' https://www.the147order.co.uk https://the147order.co.uk https://js.stripe.com https://hooks.stripe.com https://web.squarecdn.com https://sandbox.web.squarecdn.com`
+        `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://js.stripe.com https://m.stripe.network https://web.squarecdn.com https://sandbox.web.squarecdn.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://web.squarecdn.com https://sandbox.web.squarecdn.com; font-src 'self' data: https://fonts.gstatic.com https://square-fonts-production-f.squarecdn.com https://d1g145x70srn7h.cloudfront.net; connect-src ${genericConnectSrc}; img-src 'self' data: https:; frame-src 'self' https://www.the147order.co.uk https://the147order.co.uk https://js.stripe.com https://hooks.stripe.com https://web.squarecdn.com https://sandbox.web.squarecdn.com`
       );
     } else {
       res.setHeader("X-Frame-Options", "DENY");
@@ -10915,6 +10994,30 @@ function scheduleRetentionCleanup() {
     });
   }
   await runStartupMigrations();
+  try {
+    const square = await Promise.resolve().then(() => (init_square(), square_exports));
+    const { storage: storeForPlans } = await Promise.resolve().then(() => (init_storage(), storage_exports));
+    if (square.isConfigured()) {
+      const plans = await storeForPlans.getMembershipPlans();
+      for (const plan of plans) {
+        if (plan.squarePlanVariationId) continue;
+        if (!plan.priceMonthly || plan.priceMonthly <= 0) continue;
+        try {
+          const result = await square.createCatalogSubscriptionPlan({
+            localPlanId: plan.id,
+            name: plan.name,
+            amountPence: plan.priceMonthly
+          });
+          await storeForPlans.updateMembershipPlan(plan.id, { squarePlanVariationId: result.squarePlanVariationId });
+          log(`[SQUARE BOOT SYNC] Created plan variation for ${plan.name}: ${result.squarePlanVariationId}`);
+        } catch (err) {
+          console.error(`[SQUARE BOOT SYNC] Failed to create plan for ${plan.name}:`, err?.message ?? err);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[SQUARE BOOT SYNC] Skipped due to error:", err?.message ?? err);
+  }
   const { storage: storeForMigration } = await Promise.resolve().then(() => (init_storage(), storage_exports));
   await storeForMigration.migrateEncryptExistingPII();
   await bootstrapOwner();
