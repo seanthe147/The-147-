@@ -378,12 +378,21 @@ export async function createSubscriptionCheckoutLink(opts: {
   buyerEmail?: string;
   redirectUrl: string;
 }): Promise<{ url: string; paymentLinkId: string }> {
+  const locationId = getLocationId();
   const body: Record<string, unknown> = {
     idempotency_key: `sub-checkout-${opts.subscriptionId}-${Date.now()}`,
-    subscription_plan_variation_id: opts.planVariationId,
+    order: {
+      location_id: locationId,
+      line_items: [
+        {
+          quantity: "1",
+          catalog_object_id: opts.planVariationId,
+        },
+      ],
+    },
     checkout_options: {
       redirect_url: opts.redirectUrl,
-      subscription_cancel_url: "https://the147bradford.replit.app/membership",
+      subscription_plan_id: opts.planVariationId,
     },
   };
   if (opts.buyerEmail) {
