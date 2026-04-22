@@ -170,8 +170,6 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       }
     }
     await AsyncStorage.removeItem(TOKEN_KEY);
-    await clearBiometricCredentials();
-    setBiometricEnabled(false);
     setLastLoginCredentials(null);
     setToken(null);
     setCustomer(null);

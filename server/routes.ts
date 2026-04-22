@@ -5851,31 +5851,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 ? ((plan as any).priceAnnual || plan.priceMonthly * 12)
                 : plan.priceMonthly;
 
-              const checkout = variationId
-                // Recurring subscription checkout
-                ? await square.createSubscriptionCheckoutLink({
-                    planVariationId: variationId,
-                    subscriptionId: sub.id,
-                    buyerEmail: customer?.email,
-                    redirectUrl,
-                  }).catch((err) => {
-                    console.error("[membership/join] subscription checkout error:", err?.message ?? err);
-                    return null;
-                  })
-                // Fallback: one-time payment link (Square plan not set up yet)
-                : await square.createMembershipCheckoutLink({
-                    planName: `${plan.name}${isAnnual ? " (Annual)" : ""}`,
-                    amountPence: chargeAmount,
-                    subscriptionId: sub.id,
-                    redirectUrl,
-                  }).catch((err) => {
-                    console.error("[membership/join] one-time checkout error:", err?.message ?? err);
-                    return null;
-                  });
+              let checkout: { url: string; paymentLinkId: string } | null = null;
+              let checkoutKind: "subscription" | "one-time" = variationId ? "subscription" : "one-time";
+
+              if (variationId) {
+                checkout = await square.createSubscriptionCheckoutLink({
+                  planVariationId: variationId,
+                  subscriptionId: sub.id,
+                  buyerEmail: customer?.email,
+                  redirectUrl,
+                }).catch((err) => {
+                  console.error("[membership/join] subscription checkout error:", err?.message ?? err);
+                  return null;
+                });
+                if (!checkout) {
+                  console.warn(`[membership/join] Subscription checkout failed for sub #${sub.id}, falling back to one-time payment link`);
+                  checkoutKind = "one-time";
+                }
+              }
+
+              if (!checkout) {
+                checkout = await square.createMembershipCheckoutLink({
+                  planName: `${plan.name}${isAnnual ? " (Annual)" : ""}`,
+                  amountPence: chargeAmount,
+                  subscriptionId: sub.id,
+                  redirectUrl,
+                }).catch((err) => {
+                  console.error("[membership/join] one-time checkout error:", err?.message ?? err);
+                  return null;
+                });
+              }
 
               if (checkout) {
                 checkoutUrl = checkout.url;
-                console.log(`[membership/join] ${variationId ? "Subscription" : "One-time"} ${isAnnual ? "annual" : "monthly"} checkout created for sub #${sub.id}`);
+                console.log(`[membership/join] ${checkoutKind} ${isAnnual ? "annual" : "monthly"} checkout created for sub #${sub.id}`);
               }
             }
           }
