@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./*"],
+      "@shared/*": ["./shared/*"],
+      "react-native": ["./tests/biometric-stubs/react-native.mjs"],
+      "expo-secure-store": ["./tests/biometric-stubs/expo-secure-store.mjs"],
+      "expo-local-authentication": ["./tests/biometric-stubs/expo-local-authentication.mjs"]
+    }
+  }
+}

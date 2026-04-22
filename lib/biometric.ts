@@ -116,6 +116,22 @@ export async function setPaymentBiometricEnabled(enabled: boolean): Promise<void
   } catch {}
 }
 
+// Single source of truth for "should we show the Face ID / Touch ID
+// prompt before charging the customer?". Returns true only when the
+// device actually supports biometrics AND the customer has not turned
+// the payment-biometric preference off in the account screen.
+//
+// This is exported (and used by order.tsx's handleTokenized) so the
+// gate can be exercised by tests without spinning up the full RN tree.
+export async function shouldPromptForPaymentBiometric(): Promise<boolean> {
+  if (Platform.OS === "web") return false;
+  const [supported, prefEnabled] = await Promise.all([
+    isBiometricSupported(),
+    isPaymentBiometricEnabled(),
+  ]);
+  return supported && prefEnabled;
+}
+
 export async function authenticateAndGetCredentials(
   promptMessage: string
 ): Promise<StoredCredentials | null> {

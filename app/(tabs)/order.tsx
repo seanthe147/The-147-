@@ -39,6 +39,8 @@ import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { getApiUrl } from "@/lib/query-client";
 import { SquarePaymentSheet } from "@/components/SquarePaymentSheet";
+import * as LocalAuthentication from "expo-local-authentication";
+import { getBiometricKind, biometricLabel, shouldPromptForPaymentBiometric } from "@/lib/biometric";
 import {
   setPendingConfirmation,
   getPendingConfirmation,
@@ -971,9 +973,31 @@ function CartSheet({
 
   const handleTokenized = async (payload: { sourceId: string; verificationToken?: string | null }) => {
     if (!pendingOrder) return;
-    // Face ID / Touch ID / Fingerprint is intentionally NOT used for order
-    // confirmation — it is reserved for sign-in only. Square's own card /
-    // wallet flow already authenticates the payment.
+    // Biometric (Face ID / Touch ID / Fingerprint) confirmation step. We
+    // only prompt on devices that have it enrolled — if the device doesn't
+    // support biometrics or the user hasn't set them up, we proceed straight
+    // to the charge so the flow falls back gracefully. On web there is no
+    // local biometric API, so this is a no-op there too.
+    if (Platform.OS !== "web") {
+      try {
+        if (await shouldPromptForPaymentBiometric()) {
+          const kind = await getBiometricKind();
+          const result = await LocalAuthentication.authenticateAsync({
+            promptMessage: `Confirm payment of ${formatPrice(pendingOrder.amountPence)} with ${biometricLabel(kind)}`,
+            fallbackLabel: "Use passcode",
+            cancelLabel: "Cancel",
+            disableDeviceFallback: false,
+          });
+          if (!result.success) {
+            setPayError("Payment cancelled. Tap Pay to try again.");
+            return;
+          }
+        }
+      } catch {
+        // If the biometric layer itself errors, don't block the payment —
+        // Square's own card / wallet flow has already authenticated the user.
+      }
+    }
     setPaying(true);
     setPayError(null);
     try {

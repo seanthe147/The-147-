@@ -2158,6 +2158,7 @@ __export(square_exports, {
   redeemLoyaltyReward: () => redeemLoyaltyReward,
   removeCustomerFromGroup: () => removeCustomerFromGroup,
   resumeSquareSubscription: () => resumeSquareSubscription,
+  saveCardOnFile: () => saveCardOnFile,
   searchIssuedRewards: () => searchIssuedRewards,
   searchLoyaltyAccount: () => searchLoyaltyAccount,
   searchLoyaltyEvents: () => searchLoyaltyEvents,
@@ -2332,6 +2333,19 @@ async function findSquareCustomerByEmail(email) {
     limit: 1
   });
   return data.customers?.[0] || null;
+}
+async function saveCardOnFile(opts) {
+  const body = {
+    idempotency_key: `card-${opts.customerId}-${Date.now()}`,
+    source_id: opts.sourceId,
+    card: {
+      customer_id: opts.customerId,
+      ...opts.cardholderName ? { cardholder_name: opts.cardholderName.slice(0, 96) } : {}
+    }
+  };
+  if (opts.verificationToken) body.verification_token = opts.verificationToken;
+  const data = await squareRequest("POST", "/v2/cards", body);
+  return data.card;
 }
 async function createSquareSubscription(squareCustomerId, planVariationId, locationId, cardId, startDate) {
   const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
@@ -9048,6 +9062,137 @@ Phone: ${phone}` : ""}`,
     } catch (err) {
       console.error("[membership/join]", err);
       res.status(500).json({ message: "Failed to create membership" });
+    }
+  });
+  app2.post("/api/membership/join-native", customerAuth, async (req, res) => {
+    try {
+      const customerId = req.customerId;
+      const { planId, billingFrequency = "monthly", startDate, termsAccepted, sourceId, verificationToken } = req.body ?? {};
+      if (!planId) return res.status(400).json({ message: "planId is required" });
+      if (!sourceId) return res.status(400).json({ message: "Payment token missing" });
+      if (termsAccepted !== true) return res.status(400).json({ message: "You must accept the Terms & Conditions to join" });
+      if (!isConfigured()) return res.status(503).json({ message: "Payment system not configured" });
+      const isAnnual = billingFrequency === "annual";
+      const existing = await storage.getMembershipSubscriptionByCustomer(customerId);
+      if (existing && existing.planId === parseInt(planId) && existing.status === "active") {
+        return res.status(409).json({ message: "You already have an active membership on this plan" });
+      }
+      const plan = await storage.getMembershipPlan(parseInt(planId));
+      if (!plan || !plan.active) return res.status(404).json({ message: "Plan not found" });
+      const customer = await storage.getCustomerById(customerId);
+      if (!customer) return res.status(404).json({ message: "Customer not found" });
+      const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+      const periodStart = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) && startDate > today ? startDate : today;
+      const periodEndDate = /* @__PURE__ */ new Date(periodStart + "T12:00:00Z");
+      if (isAnnual) periodEndDate.setFullYear(periodEndDate.getFullYear() + 1);
+      else periodEndDate.setMonth(periodEndDate.getMonth() + 1);
+      const periodEnd = periodEndDate.toISOString().slice(0, 10);
+      let sqCustomer = await findSquareCustomerByEmail(customer.email).catch(() => null);
+      if (!sqCustomer) {
+        sqCustomer = await createSquareCustomer(customer.name, customer.email, customer.phone || void 0).catch(() => null);
+      }
+      if (!sqCustomer) return res.status(502).json({ message: "Could not create payment customer profile" });
+      let savedCard;
+      try {
+        savedCard = await saveCardOnFile({
+          customerId: sqCustomer.id,
+          sourceId,
+          verificationToken,
+          cardholderName: customer.name
+        });
+      } catch (cardErr) {
+        const msg = cardErr?.message || "Card could not be saved";
+        console.error("[membership/join-native] saveCardOnFile failed:", msg);
+        return res.status(402).json({ message: msg, code: "CARD_SAVE_FAILED" });
+      }
+      if (!savedCard?.id) {
+        return res.status(402).json({ message: "Card could not be saved", code: "CARD_SAVE_FAILED" });
+      }
+      const variationId = isAnnual ? plan.squarePlanVariationIdAlt || plan.squarePlanVariationId : plan.squarePlanVariationId;
+      if (!variationId) {
+        return res.status(503).json({ message: "Membership plan is not configured for in-app billing yet" });
+      }
+      const initialStatus = periodStart > today ? "pending_start" : "pending";
+      const sub = await storage.createMembershipSubscription({
+        customerId,
+        planId: plan.id,
+        status: initialStatus,
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
+        hoursUsedThisPeriod: 0,
+        guestPassesUsed: 0,
+        staffNotes: periodStart > today ? `[Deferred start: ${periodStart}]` : null,
+        source: isAnnual ? "app_annual_native" : "app_native",
+        termsAcceptedAt: /* @__PURE__ */ new Date(),
+        squareCustomerId: sqCustomer.id
+      });
+      const locationId = getPublicLocationId();
+      if (!locationId) {
+        return res.status(503).json({ message: "Payment system location not configured" });
+      }
+      let squareSub = null;
+      try {
+        squareSub = await createSquareSubscription(
+          sqCustomer.id,
+          variationId,
+          locationId,
+          savedCard.id,
+          periodStart
+        );
+      } catch (subErr) {
+        console.error("[membership/join-native] createSquareSubscription failed:", subErr?.message ?? subErr);
+        await storage.updateMembershipSubscription(sub.id, {
+          status: "pending",
+          staffNotes: `[Native sign-up: card saved (${savedCard.id}) but subscription create failed: ${subErr?.message || "unknown"}]`
+        }).catch(() => {
+        });
+        return res.status(502).json({
+          message: "Card was saved but the subscription could not be created. Please contact us.",
+          code: "SUBSCRIPTION_CREATE_FAILED"
+        });
+      }
+      try {
+        const allPlans = await storage.getMembershipPlans();
+        const allGroupNames = allPlans.map((p) => membershipGroupName(p.name));
+        const currentGroupIds = await getCustomerGroupIds(sqCustomer.id).catch(() => []);
+        const allGroups = await listCustomerGroups().catch(() => []);
+        for (const group of allGroups) {
+          if (allGroupNames.includes(group.name) && currentGroupIds.includes(group.id)) {
+            await removeCustomerFromGroup(sqCustomer.id, group.id).catch(() => {
+            });
+          }
+        }
+        const newGroupId = await getOrCreateCustomerGroup(membershipGroupName(plan.name)).catch(() => null);
+        if (newGroupId) {
+          await addCustomerToGroup(sqCustomer.id, newGroupId).catch(() => {
+          });
+        }
+      } catch (grpErr) {
+        console.warn("[membership/join-native] group management non-fatal error:", grpErr);
+      }
+      const finalStatus = periodStart > today ? "pending_start" : "active";
+      await storage.updateMembershipSubscription(sub.id, {
+        status: finalStatus,
+        squareSubscriptionId: squareSub?.id ?? null
+      });
+      if (existing && existing.id) {
+        if (existing.squareSubscriptionId) {
+          await cancelSquareSubscription(existing.squareSubscriptionId).catch((e) => {
+            console.warn(`[membership/join-native] failed to cancel old Square sub ${existing.squareSubscriptionId}:`, e?.message ?? e);
+          });
+        }
+        await storage.updateMembershipSubscription(existing.id, {
+          status: "cancelled",
+          cancelledAt: /* @__PURE__ */ new Date()
+        }).catch(() => {
+        });
+      }
+      const updated = await storage.getMembershipSubscriptionByCustomer(customerId);
+      console.log(`[membership/join-native] sub #${sub.id} created (square sub ${squareSub?.id}) for customer ${customerId}`);
+      res.status(201).json({ ...updated ?? sub, squareSubscriptionId: squareSub?.id ?? null });
+    } catch (err) {
+      console.error("[membership/join-native]", err);
+      res.status(500).json({ message: err?.message || "Failed to create membership" });
     }
   });
   app2.get("/api/membership/:id/payment-return", async (req, res) => {
