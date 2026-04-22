@@ -930,6 +930,32 @@ function scheduleRetentionCleanup() {
 
   // Apply safe, idempotent schema migrations (adds new columns, seeds required plans)
   await runStartupMigrations();
+  // Auto-create Square subscription plans for any paid membership plan missing one.
+  // This makes membership purchases bill recurringly instead of as one-off payments.
+  try {
+    const square = await import("./square");
+    const { storage: storeForPlans } = await import("./storage");
+    if (square.isConfigured()) {
+      const plans = await storeForPlans.getMembershipPlans();
+      for (const plan of plans) {
+        if (plan.squarePlanVariationId) continue;
+        if (!plan.priceMonthly || plan.priceMonthly <= 0) continue;
+        try {
+          const result = await square.createCatalogSubscriptionPlan({
+            localPlanId: plan.id,
+            name: plan.name,
+            amountPence: plan.priceMonthly,
+          });
+          await storeForPlans.updateMembershipPlan(plan.id, { squarePlanVariationId: result.squarePlanVariationId });
+          log(`[SQUARE BOOT SYNC] Created plan variation for ${plan.name}: ${result.squarePlanVariationId}`);
+        } catch (err: any) {
+          console.error(`[SQUARE BOOT SYNC] Failed to create plan for ${plan.name}:`, err?.message ?? err);
+        }
+      }
+    }
+  } catch (err: any) {
+    console.error("[SQUARE BOOT SYNC] Skipped due to error:", err?.message ?? err);
+  }
   // Encrypt any existing plaintext PII in customers, contact messages, push tokens, and orders
   const { storage: storeForMigration } = await import("./storage");
   await storeForMigration.migrateEncryptExistingPII();
