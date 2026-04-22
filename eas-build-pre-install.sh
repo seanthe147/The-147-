@@ -1,102 +1,141 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "[pre-install] Setting up Android signing credentials..."
+echo "[pre-install] Setting up signing credentials from environment variables..."
 
 # Absolute path to the project root (same directory as this script)
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 echo "[pre-install] Project root: $PROJECT_ROOT"
 
-mkdir -p "$PROJECT_ROOT/credentials/android"
+# EAS_BUILD_PLATFORM is set by the EAS build environment to "android" or "ios".
+# Fall back to "all" when running locally so all credential blocks execute.
+PLATFORM="${EAS_BUILD_PLATFORM:-all}"
+echo "[pre-install] Build platform: $PLATFORM"
 
-KEYSTORE_PATH="$PROJECT_ROOT/credentials/android/keystore.jks"
+# ---------------------------------------------------------------------------
+# Android signing credentials
+# Required env vars (Android and all-platform builds):
+#   ANDROID_KEYSTORE_BASE64    - Base64-encoded production keystore.jks
+#   ANDROID_KEYSTORE_PASSWORD  - Password for the keystore
+#   ANDROID_KEY_ALIAS          - Key alias within the keystore
+#   ANDROID_KEY_PASSWORD       - Password for the key
+# ---------------------------------------------------------------------------
+if [ "$PLATFORM" = "android" ] || [ "$PLATFORM" = "all" ]; then
+  for var in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+    if [ -z "${!var:-}" ]; then
+      echo "[pre-install] ERROR: $var is not set (required for Android builds)." >&2
+      exit 1
+    fi
+  done
 
-# Decode embedded keystore to absolute path
-base64 -d > "$KEYSTORE_PATH" << 'KEYSTORE_EOF'
-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
-3xKuFODcyAhqyTO4810dSFkGiiC8kdI=
-KEYSTORE_EOF
+  mkdir -p "$PROJECT_ROOT/credentials/android"
+  KEYSTORE_PATH="$PROJECT_ROOT/credentials/android/keystore.jks"
+  echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_PATH"
+  echo "[pre-install] Keystore written: $(wc -c < "$KEYSTORE_PATH") bytes at $KEYSTORE_PATH"
+fi
 
-echo "[pre-install] Keystore written: $(wc -c < "$KEYSTORE_PATH") bytes at $KEYSTORE_PATH"
+# ---------------------------------------------------------------------------
+# iOS credentials
+# Required env vars (iOS and all-platform builds):
+#   IOS_DIST_P12_BASE64        - Base64-encoded dist.p12 distribution certificate
+#   IOS_DIST_P12_PASSWORD      - Password for the dist.p12 file
+#   IOS_DIST_PROVISION_BASE64  - Base64-encoded dist.mobileprovision (customer app)
+#   IOS_STAFF_PROVISION_BASE64 - Base64-encoded staff.mobileprovision (staff app)
+#   ASC_KEY_P8_BASE64          - Base64-encoded App Store Connect API key (.p8)
+#   ASC_KEY_ID                 - Key ID matching the .p8 file (e.g. URDY56X3U2)
+# ---------------------------------------------------------------------------
+if [ "$PLATFORM" = "ios" ] || [ "$PLATFORM" = "all" ]; then
+  for var in IOS_DIST_P12_BASE64 IOS_DIST_P12_PASSWORD IOS_DIST_PROVISION_BASE64 IOS_STAFF_PROVISION_BASE64 ASC_KEY_P8_BASE64 ASC_KEY_ID; do
+    if [ -z "${!var:-}" ]; then
+      echo "[pre-install] ERROR: $var is not set (required for iOS builds)." >&2
+      exit 1
+    fi
+  done
 
-# --- Variant detection (customer vs staff) -------------------------------
-# When EXPO_PUBLIC_APP_VARIANT=staff, we ship the staff App Store listing
-# (bundle id com.the147bradford.staff). Both variants share the same iOS
-# distribution certificate (.p12) — only the provisioning profile differs.
+  mkdir -p "$PROJECT_ROOT/ios-creds"
+  echo "$IOS_DIST_P12_BASE64" | base64 -d > "$PROJECT_ROOT/ios-creds/dist.p12"
+  echo "$IOS_DIST_PROVISION_BASE64" | base64 -d > "$PROJECT_ROOT/ios-creds/dist.mobileprovision"
+  echo "$IOS_STAFF_PROVISION_BASE64" | base64 -d > "$PROJECT_ROOT/ios-creds/staff.mobileprovision"
+  echo "[pre-install] iOS credentials written to ios-creds/"
+
+  ASC_KEY_PATH="$PROJECT_ROOT/ios-creds/AuthKey_${ASC_KEY_ID}.p8"
+  echo "$ASC_KEY_P8_BASE64" | base64 -d > "$ASC_KEY_PATH"
+  echo "[pre-install] ASC key written: $ASC_KEY_PATH"
+fi
+
+# ---------------------------------------------------------------------------
+# Variant detection (customer vs staff)
+# ---------------------------------------------------------------------------
 VARIANT="${EXPO_PUBLIC_APP_VARIANT:-customer}"
 echo "[pre-install] App variant: $VARIANT"
 
 if [ "$VARIANT" = "staff" ]; then
-  IOS_PROFILE_PATH="$PROJECT_ROOT/ios-creds/staff.mobileprovision"
+  IOS_PROFILE_PATH="${PROJECT_ROOT}/ios-creds/staff.mobileprovision"
 else
-  IOS_PROFILE_PATH="$PROJECT_ROOT/ios-creds/dist.mobileprovision"
+  IOS_PROFILE_PATH="${PROJECT_ROOT}/ios-creds/dist.mobileprovision"
 fi
 echo "[pre-install] iOS provisioning profile: $IOS_PROFILE_PATH"
 
-# Write credentials.json to absolute path, with absolute keystorePath inside
-cat > "$PROJECT_ROOT/credentials.json" << CREDS_EOF
+# ---------------------------------------------------------------------------
+# Write credentials.json using values from environment variables only.
+# Include only the blocks relevant to the current platform.
+# ---------------------------------------------------------------------------
+KEYSTORE_PATH="${KEYSTORE_PATH:-$PROJECT_ROOT/credentials/android/keystore.jks}"
+
+if [ "$PLATFORM" = "android" ]; then
+  cat > "$PROJECT_ROOT/credentials.json" << CREDS_EOF
 {
   "android": {
     "keystore": {
       "keystorePath": "$KEYSTORE_PATH",
-      "keystorePassword": "9021d3e50104805696704789b37a3284",
-      "keyAlias": "36b5163761ec2dcc8cff05b94a82462f",
-      "keyPassword": "b2af160569b7bdaff4e070f0fa3bf603"
+      "keystorePassword": "$ANDROID_KEYSTORE_PASSWORD",
+      "keyAlias": "$ANDROID_KEY_ALIAS",
+      "keyPassword": "$ANDROID_KEY_PASSWORD"
+    }
+  }
+}
+CREDS_EOF
+
+elif [ "$PLATFORM" = "ios" ]; then
+  cat > "$PROJECT_ROOT/credentials.json" << CREDS_EOF
+{
+  "ios": {
+    "provisioningProfilePath": "$IOS_PROFILE_PATH",
+    "distributionCertificate": {
+      "path": "$PROJECT_ROOT/ios-creds/dist.p12",
+      "password": "$IOS_DIST_P12_PASSWORD"
+    }
+  }
+}
+CREDS_EOF
+
+else
+  cat > "$PROJECT_ROOT/credentials.json" << CREDS_EOF
+{
+  "android": {
+    "keystore": {
+      "keystorePath": "$KEYSTORE_PATH",
+      "keystorePassword": "$ANDROID_KEYSTORE_PASSWORD",
+      "keyAlias": "$ANDROID_KEY_ALIAS",
+      "keyPassword": "$ANDROID_KEY_PASSWORD"
     }
   },
   "ios": {
     "provisioningProfilePath": "$IOS_PROFILE_PATH",
     "distributionCertificate": {
       "path": "$PROJECT_ROOT/ios-creds/dist.p12",
-      "password": "ownCGrlMq1XbAIPZ1mj0hg=="
+      "password": "$IOS_DIST_P12_PASSWORD"
     }
   }
 }
 CREDS_EOF
+fi
 
-echo "[pre-install] credentials.json written to $PROJECT_ROOT/credentials.json"
-echo "[pre-install] Keystore path in credentials.json: $KEYSTORE_PATH"
+echo "[pre-install] credentials.json written (values sourced from environment)"
 
-# --- app.json rewrite for staff variant ----------------------------------
-# Static app.json is required for Expo Launch; rewrite at build time to swap
-# the bundle identifier, Android package and display name for the staff app.
+# ---------------------------------------------------------------------------
+# app.json rewrite for staff variant
+# ---------------------------------------------------------------------------
 if [ "$VARIANT" = "staff" ]; then
   APP_JSON="$PROJECT_ROOT/app.json"
   echo "[pre-install] Rewriting app.json for staff variant..."

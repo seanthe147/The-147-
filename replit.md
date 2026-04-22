@@ -27,6 +27,27 @@ The application employs a mobile-first approach with a React Native frontend bui
 - **Image Uploads:** Supports `multipart/form-data` uploads with validation for banner images.
 - **App Variants:** The codebase supports building two distinct app variants (customer and staff) from a single source, gated by an `EXPO_PUBLIC_APP_VARIANT` environment flag for separate App Store listings, while maintaining a single backend and database.
 
+## Mobile Signing Credentials (EAS Builds)
+
+Production Android and iOS signing credentials are **never committed to the repository**. They are injected at build time via EAS secrets / CI environment variables and assembled by `eas-build-pre-install.sh`.
+
+**Required environment variables for production builds:**
+
+| Variable | Description |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | Base64-encoded production `keystore.jks` |
+| `ANDROID_KEYSTORE_PASSWORD` | Password for the keystore |
+| `ANDROID_KEY_ALIAS` | Key alias within the keystore |
+| `ANDROID_KEY_PASSWORD` | Password for the key |
+| `IOS_DIST_P12_BASE64` | Base64-encoded `dist.p12` distribution certificate |
+| `IOS_DIST_P12_PASSWORD` | Password for `dist.p12` |
+| `IOS_DIST_PROVISION_BASE64` | Base64-encoded customer `dist.mobileprovision` |
+| `IOS_STAFF_PROVISION_BASE64` | Base64-encoded staff `staff.mobileprovision` |
+| `ASC_KEY_P8_BASE64` | Base64-encoded App Store Connect API key (`.p8`) |
+| `ASC_KEY_ID` | Key ID matching the `.p8` file (e.g. `URDY56X3U2`) |
+
+The pre-install script decodes these variables, writes the files to disk inside the build VM, and generates `credentials.json` at build time. No credential files, passwords, or key material should ever be added to version control. See `credentials.json.example` for the expected shape.
+
 ## External Dependencies
 - **PostgreSQL:** Main database for all application data.
 - **TicketSource:** External service for event listings.
