@@ -178,7 +178,7 @@ function buildPaymentSheetHtml(opts: {
 
   <div class="or" id="or-divider">OR PAY BY CARD</div>
 
-  <div id="card-section" style="display:none">
+  <div id="card-section" style="visibility:hidden">
     <div class="card-card">
       <div class="card-header">
         <div class="label">Card details</div>
@@ -358,7 +358,7 @@ function buildPaymentSheetHtml(opts: {
         card = c;
         return c.attach("#card-container");
       }).then(function () {
-        document.getElementById("card-section").style.display = "block";
+        document.getElementById("card-section").style.visibility = "visible";
         var payBtn = document.getElementById("pay-card-btn");
         payBtn.textContent = PAY_LABEL;
         if (IS_SUBSCRIPTION) {
