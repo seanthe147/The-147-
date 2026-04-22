@@ -21,8 +21,10 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 
-# credentials files - contain passwords/paths; generated at build time from env vars
-credentials.json
+# credentials files - real secrets injected at build time from env vars by
+# eas-build-pre-install.sh. credentials.json is committed with PLACEHOLDER
+# values only (required to satisfy eas-cli's local pre-upload check); it is
+# overwritten on the build server before signing happens.
 credentials/
 ios-creds/
 
