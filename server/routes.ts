@@ -3162,26 +3162,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/bookings/:id/deposit-return", async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).send("Invalid booking ID");
-    const booking = await storage.getBooking(id);
-    if (!booking) return res.status(404).send("Booking not found");
 
-    if (booking.depositRequired && !booking.depositPaid) {
-      await storage.updateBooking(id, { depositPaid: true, status: "confirmed" });
-      sendBookingConfirmationEmail({
-        customerName: booking.customerName,
-        customerEmail: booking.customerEmail,
-        tableType: booking.tableType,
-        tableNumber: booking.tableNumber,
-        date: booking.date,
-        startTime: booking.startTime,
-        duration: booking.duration,
-        id: booking.id,
-      }).catch(() => {});
-    }
+    // Do NOT mutate booking state here. Payment confirmation is handled exclusively
+    // by the Square webhook (POST /api/square/webhook), which verifies the payment
+    // was actually completed before marking depositPaid and status as confirmed.
+    // Trusting this browser redirect alone would allow anyone with a booking ID to
+    // bypass the deposit requirement without sending money.
 
-    // Redirect to a simple success page (or deep-link back to app)
     const bookingRef = `147-${id.toString().padStart(5, "0")}`;
-    res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Deposit Paid</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f9fafb}div{text-align:center;padding:32px}</style></head><body><div><div style="font-size:48px">&#10003;</div><h2 style="color:#16A34A">Deposit Paid</h2><p>Your booking <strong>${bookingRef}</strong> is confirmed.</p><p style="color:#6b7280;font-size:14px">You can close this window and return to The 147 app.</p></div></body></html>`);
+    res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Payment Received</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f9fafb}div{text-align:center;padding:32px}</style></head><body><div><div style="font-size:48px">&#10003;</div><h2 style="color:#16A34A">Payment Received</h2><p>Your deposit for booking <strong>${bookingRef}</strong> has been submitted.</p><p style="color:#6b7280;font-size:14px">Your booking will be confirmed shortly. You can close this window and return to The 147 app.</p></div></body></html>`);
   });
 
   // Staff: mark a booking as completed and auto-refund any paid deposit
@@ -6266,14 +6255,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Membership payment return — Square redirects here after checkout
   app.get("/api/membership/:id/payment-return", async (req, res) => {
-    const subId = parseInt(req.params.id);
-    if (!isNaN(subId)) {
-      const sub = await storage.getMembershipSubscription(subId).catch(() => null);
-      if (sub && sub.status === "pending") {
-        await storage.updateMembershipSubscription(subId, { status: "active" }).catch(() => {});
-        console.log(`[MEMBERSHIP] Subscription #${subId} activated via payment return redirect`);
-      }
-    }
+    // Do NOT mutate subscription state here. Membership activation is handled
+    // exclusively by the Square webhook (POST /api/membership/webhook or the shared
+    // payment.updated handler), which verifies the payment was actually completed
+    // before setting status to "active". Trusting this browser redirect alone would
+    // allow anyone with a subscription ID (predictable numeric IDs returned from
+    // the join API) to activate a membership without making a payment.
     res.redirect("https://the147bradford.replit.app/membership?payment=complete");
   });
 
