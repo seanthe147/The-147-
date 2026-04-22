@@ -915,14 +915,32 @@ async function staffAuth(req: Request, res: Response, next: NextFunction) {
   }
   if (session.staffUsername) {
     const user = await storage.getStaffUserByUsername(session.staffUsername);
-    (req as any).staffRole = user?.role || "staff";
+    // Re-check the underlying account every request so locked/rejected/deleted
+    // staff are kicked out immediately rather than waiting for token expiry.
+    if (!user) {
+      await storage.invalidateStaffSession(token).catch(() => undefined);
+      return res.status(401).json({ message: "Account no longer exists" });
+    }
+    if (user.active === false) {
+      await storage.invalidateStaffSessionsByUserId(user.id).catch(() => undefined);
+      return res.status(401).json({ message: "Account is locked" });
+    }
+    if (user.approvalStatus === "rejected" || user.approvalStatus === "pending") {
+      await storage.invalidateStaffSessionsByUserId(user.id).catch(() => undefined);
+      return res.status(401).json({ message: "Account is not approved" });
+    }
+    (req as any).staffRole = user.role || "staff";
     (req as any).staffUsername = session.staffUsername;
-    (req as any).staffUser = user || null;
+    (req as any).staffUser = user;
   } else {
-    // Master PIN session — synthetic user with manager-level access but no real ID
-    (req as any).staffRole = "manager";
+    // Legacy: a small number of pre-existing sessions may still have no
+    // staffUsername (created via the old master-PIN-as-manager fallback,
+    // which has now been removed). Treat them as the lowest privilege
+    // ("staff") so they cannot reach managerAuth/ownerAuth routes; they
+    // will fully drop off as the 24h expiry passes.
+    (req as any).staffRole = "staff";
     (req as any).staffUsername = null;
-    (req as any).staffUser = { id: null, role: "manager", username: null, displayName: "System" };
+    (req as any).staffUser = null;
   }
   next();
 }
@@ -1249,7 +1267,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     const { username, pin, password } = req.body;
-    // Accept either `password` (new) or `pin` (legacy / generic master login).
+    // Accept either `password` (new) or `pin` (legacy named-account login).
     const credential: string | undefined =
       typeof password === "string" && password.length > 0
         ? password
@@ -1259,7 +1277,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ message: "Password is required" });
     }
 
-    if (username && typeof username === "string" && username.trim().length > 0) {
+    // Username is now mandatory. The previous "no-username + master PIN ⇒
+    // synthetic manager session" fallback was a privilege-escalation path:
+    // anyone who knew the venue's onboarding STAFF_PIN could obtain a
+    // manager bearer token. Manager access is now only granted to real
+    // approved manager/owner accounts that authenticate by username.
+    if (!username || typeof username !== "string" || username.trim().length === 0) {
+      recordFailedLogin(clientIp);
+      return res.status(400).json({ message: "Username and password are required" });
+    }
+
+    {
       const staffUser = await storage.getStaffUserByUsername(username.trim());
       if (!staffUser || !staffUser.active) {
         recordFailedLogin(clientIp);
@@ -1318,29 +1346,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         mustChangePassword,
       });
     }
-
-    // Generic "manager" login uses the venue master PIN — kept as a numeric PIN.
-    if (credential.length < 4 || credential.length > 8 || !/^\d+$/.test(credential)) {
-      recordFailedLogin(clientIp);
-      return res.status(401).json({ message: "Invalid credentials" });
-    }
-    const pinForMaster = credential;
-    const staffPin = process.env.STAFF_PIN;
-    if (!staffPin) {
-      return res.status(503).json({ message: "Staff access not configured" });
-    }
-
-    if (!timingSafeCompare(pinForMaster, staffPin)) {
-      recordFailedLogin(clientIp);
-      return res.status(401).json({ message: "Invalid credentials" });
-    }
-
-    clearFailedLogins(clientIp);
-    const token = randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    const session = await storage.createStaffSession(token, expiresAt);
-
-    res.json({ token: session.token, expiresAt: session.expiresAt, role: "manager", mustChangePassword: false });
   });
 
   app.post("/api/staff/logout", async (req, res) => {
@@ -1412,6 +1417,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const { hash, salt } = hashPin(newPin);
     await storage.updateStaffPin(username, hash, salt);
+    // Self-initiated rotation: revoke every OTHER session for this user so a
+    // forgotten device or stolen token cannot survive the change. The token
+    // making this request stays valid — the user remains signed in.
+    const currentToken = req.headers.authorization?.startsWith("Bearer ")
+      ? req.headers.authorization.slice(7) : undefined;
+    await storage.invalidateStaffSessionsByUserId(staffUser.id, currentToken).catch(() => undefined);
     res.json({ message: "PIN changed successfully" });
   });
 
@@ -1471,6 +1482,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const { hash, salt } = hashPassword(newPassword);
     await storage.updateStaffPassword(username, hash, salt, false);
+    // Self-initiated rotation: revoke every OTHER session for this user. The
+    // bearer token making this request is preserved so the user stays signed
+    // in after the change.
+    const currentToken = req.headers.authorization?.startsWith("Bearer ")
+      ? req.headers.authorization.slice(7) : undefined;
+    await storage.invalidateStaffSessionsByUserId(staffUser.id, currentToken).catch(() => undefined);
     res.json({ message: "Password updated successfully" });
   });
 
@@ -1496,6 +1513,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const { hash, salt } = hashPassword(tempPassword);
     // mustChangePassword=true so the user is forced to pick a new one immediately.
     await storage.updateStaffPassword(staffUser.username, hash, salt, true);
+    // Manager-initiated rotation: kill every session this user currently holds
+    // so a stale or stolen token cannot survive the credential change.
+    await storage.invalidateStaffSessionsByUserId(staffUser.id).catch(() => undefined);
     res.json({ message: "Password reset successfully for " + staffUser.username });
   });
 
@@ -1517,6 +1537,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const { hash, salt } = hashPin(newPin);
     await storage.updateStaffPin(username.trim(), hash, salt);
+    // Manager-initiated rotation: revoke existing sessions for this user.
+    await storage.invalidateStaffSessionsByUserId(staffUser.id).catch(() => undefined);
     res.json({ message: "PIN reset successfully for " + staffUser.username });
   });
 
@@ -6461,7 +6483,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Membership — staff management ───────────────────────────────────────
-  app.get("/api/staff/membership/stats", staffAuth, async (_req, res) => {
+  app.get("/api/staff/membership/stats", staffAuth, managerAuth, async (_req, res) => {
     const stats = await storage.getMembershipStats();
     res.json(stats);
   });
@@ -6600,13 +6622,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/staff/membership/subscriptions", staffAuth, async (_req, res) => {
+  app.get("/api/staff/membership/subscriptions", staffAuth, managerAuth, async (_req, res) => {
     const subs = await storage.getMembershipSubscriptions();
     res.json(subs);
   });
 
-  // Manual Square membership sync — staff can trigger this for any registered customer
-  app.post("/api/staff/membership/square-sync", staffAuth, async (req, res) => {
+  // Manual Square membership sync — manager-only because it exposes / mutates
+  // membership records across the entire customer base.
+  app.post("/api/staff/membership/square-sync", staffAuth, managerAuth, async (req, res) => {
     const { email } = req.body ?? {};
     if (!email) return res.status(400).json({ message: "Email is required" });
     try {
@@ -6703,7 +6726,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/staff/membership/subscriptions", staffAuth, async (req, res) => {
+  app.post("/api/staff/membership/subscriptions", staffAuth, managerAuth, async (req, res) => {
     const { customerId, planId, status = "active", staffNotes, source = "staff", startDate } = req.body ?? {};
     if (!customerId || !planId) return res.status(400).json({ message: "customerId and planId are required" });
     const today = new Date().toISOString().slice(0, 10);
@@ -6751,7 +6774,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(201).json(sub);
   });
 
-  app.post("/api/staff/membership/payment-link", staffAuth, async (req, res) => {
+  app.post("/api/staff/membership/payment-link", staffAuth, managerAuth, async (req, res) => {
     const { subscriptionId, planId } = req.body ?? {};
     if (!subscriptionId || !planId) return res.status(400).json({ message: "subscriptionId and planId required" });
     if (!square.isConfigured()) return res.status(503).json({ message: "Square is not configured" });
@@ -6791,7 +6814,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/staff/membership/subscriptions/:id", staffAuth, async (req, res) => {
+  app.patch("/api/staff/membership/subscriptions/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     const sub = await storage.getMembershipSubscription(id);
     if (!sub) return res.status(404).json({ message: "Subscription not found" });

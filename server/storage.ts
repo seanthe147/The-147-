@@ -660,6 +660,31 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
+  // Mass-revoke every active session belonging to a staff user. Called whenever
+  // an admin action removes that user's access (lock, reject, delete, PIN/password
+  // reset) so the affected person is signed out immediately rather than waiting
+  // up to 24h for their bearer token to expire.
+  async invalidateStaffSessionsByUserId(staffUserId: number, exceptToken?: string): Promise<number> {
+    const conditions = [eq(staffSessions.staffUserId, staffUserId), eq(staffSessions.active, true)];
+    if (exceptToken) conditions.push(ne(staffSessions.token, exceptToken));
+    const result = await db
+      .update(staffSessions)
+      .set({ active: false })
+      .where(and(...conditions))
+      .returning();
+    return result.length;
+  }
+
+  async invalidateStaffSessionsByUsername(username: string): Promise<number> {
+    const normalised = username.toLowerCase().trim();
+    const result = await db
+      .update(staffSessions)
+      .set({ active: false })
+      .where(and(eq(staffSessions.staffUsername, normalised), eq(staffSessions.active, true)))
+      .returning();
+    return result.length;
+  }
+
   async getBookingsByEmail(email: string): Promise<Booking[]> {
     const hash = hashEmail(email);
     const byHash = await db.select().from(bookings).where(eq(bookings.emailHash, hash)).orderBy(bookings.date);
@@ -863,6 +888,12 @@ export class DatabaseStorage implements IStorage {
       .set({ approvalStatus })
       .where(eq(staffUsers.id, id))
       .returning();
+    // If a manager just rejected the user (or moved them back to pending),
+    // revoke any sessions they currently hold so they cannot keep using the
+    // portal.
+    if (updated && (approvalStatus === "rejected" || approvalStatus === "pending")) {
+      await this.invalidateStaffSessionsByUserId(updated.id).catch(() => undefined);
+    }
     return updated;
   }
 
@@ -887,10 +918,17 @@ export class DatabaseStorage implements IStorage {
       .set({ active })
       .where(eq(staffUsers.id, id))
       .returning();
+    // Locking the account must immediately end any in-flight sessions —
+    // otherwise the offboarded user keeps full portal access until token expiry.
+    if (updated && active === false) {
+      await this.invalidateStaffSessionsByUserId(updated.id).catch(() => undefined);
+    }
     return updated;
   }
 
   async deleteStaffUser(id: number): Promise<boolean> {
+    // Revoke sessions BEFORE deleting the user row so we still have the id.
+    await this.invalidateStaffSessionsByUserId(id).catch(() => undefined);
     const [deleted] = await db.delete(staffUsers).where(eq(staffUsers.id, id)).returning();
     return !!deleted;
   }

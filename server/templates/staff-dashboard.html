@@ -2442,7 +2442,10 @@
     const username=el('lUsername').value.trim();
     const pin=el('lPin').value.trim();
     el('loginError').textContent='';el('loginSuccess').textContent='';
-    if(isRegister&&!username){el('loginError').textContent='Username is required';return}
+    // Username is now required for both register and sign-in. The previous
+    // "leave username blank to use the master PIN as a manager" shortcut was a
+    // privilege-escalation path and has been removed on the server.
+    if(!username){el('loginError').textContent='Username is required';return}
     if(!pin){el('loginError').textContent='PIN is required';return}
     el('loginBtn').disabled=true;
     try{
@@ -2511,7 +2514,10 @@
     el('navMessages').classList.remove('hidden');
     el('navComms').classList.toggle('hidden',!isManager);
     el('navStaff').classList.toggle('hidden',!isOwner);
-    el('navMemberships').classList.remove('hidden');
+    // Memberships endpoints (stats, list, signup) are now manager-only on the
+    // server. Hide the nav entry for ordinary staff so they do not get a
+    // confusing 403 when they click it.
+    el('navMemberships').classList.toggle('hidden',!isManager);
     el('navMenu').classList.toggle('hidden',!isManager);
     el('navWebsite').classList.toggle('hidden',!isOwner);
     el('navBanners').classList.toggle('hidden',!isManager);
