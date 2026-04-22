@@ -11230,6 +11230,18 @@ function configureExpoAndLanding(app2) {
   }
   app2.use("/assets", express.static(path3.resolve(process.cwd(), "assets")));
   app2.use("/uploads", express.static(path3.resolve(process.cwd(), "uploads")));
+  app2.use(
+    "/.well-known",
+    express.static(path3.resolve(process.cwd(), "server", "well-known"), {
+      // Apple's verification fetcher refuses anything that isn't served as
+      // plain text with the exact filename it requested.
+      setHeaders: (res) => {
+        res.setHeader("Content-Type", "text/plain; charset=utf-8");
+        res.setHeader("Cache-Control", "public, max-age=300");
+      },
+      dotfiles: "allow"
+    })
+  );
   app2.use(express.static(path3.resolve(process.cwd(), "static-build")));
   app2.get("/preview-home", (_req, res) => {
     try {
