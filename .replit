@@ -7,7 +7,7 @@ packages = ["zip"]
 
 [deployment]
 deploymentTarget = "vm"
-build = ["npm", "run", "server:build"]
+build = ["bash", "-c", "npx expo export -p web --output-dir static-build && npm run server:build"]
 run = ["npm", "run", "server:prod"]
 
 [env]

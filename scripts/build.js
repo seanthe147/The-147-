@@ -61,8 +61,29 @@ function getDeploymentDomain() {
 function prepareDirectories(timestamp) {
   console.log("Preparing build directories...");
 
+  // Selectively clean only the iOS/Android outputs this script owns. The web
+  // bundle (produced separately by `npx expo export -p web --output-dir
+  // static-build`) lives alongside these and must NOT be wiped, otherwise the
+  // deployed website would lose its freshly-exported assets.
   if (fs.existsSync("static-build")) {
-    fs.rmSync("static-build", { recursive: true });
+    const ownedTopLevel = ["ios", "android"];
+    for (const name of ownedTopLevel) {
+      const full = path.join("static-build", name);
+      if (fs.existsSync(full)) {
+        fs.rmSync(full, { recursive: true, force: true });
+      }
+    }
+
+    // Old timestamped bundle dirs from previous runs (format: "<ms>-<pid>").
+    const timestampDirPattern = /^\d+-\d+$/;
+    for (const entry of fs.readdirSync("static-build")) {
+      if (timestampDirPattern.test(entry)) {
+        fs.rmSync(path.join("static-build", entry), {
+          recursive: true,
+          force: true,
+        });
+      }
+    }
   }
 
   const dirs = [
