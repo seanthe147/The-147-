@@ -65,6 +65,28 @@ export async function apiRequest(
   return res;
 }
 
+// Hard upper bound on every query — without this, expo/fetch on iOS can sit
+// on a stalled connection indefinitely (e.g. captive portals, broken Wi-Fi,
+// proxies that accept the connection but never deliver bytes). After 25s
+// we bail so React Query goes to the error state and the screen can show
+// a retry button instead of a forever-spinner.
+const QUERY_TIMEOUT_MS = 25_000;
+
+async function fetchWithTimeout(input: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (err: any) {
+    if (err && (err.name === "AbortError" || /aborted/i.test(err.message || ""))) {
+      throw new Error("Request timed out. Please check your connection.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 type UnauthorizedBehavior = "returnNull" | "throw";
 export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;
@@ -79,10 +101,10 @@ export const getQueryFn: <T>(options: {
       headers["Authorization"] = `Bearer ${_staffToken}`;
     }
 
-    const res = await fetch(url.toString(), {
+    const res = await fetchWithTimeout(url.toString(), {
       credentials: "include",
       headers,
-    });
+    }, QUERY_TIMEOUT_MS);
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
       return null;
