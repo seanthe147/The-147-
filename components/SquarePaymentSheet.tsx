@@ -42,6 +42,10 @@ export interface SquarePaymentSheetProps {
    * Membership" so it's clear what they're agreeing to.
    */
   recurringDescription?: string | null;
+  /** Optional plan / order name shown in the summary card at the top. */
+  itemName?: string | null;
+  /** Optional sub-line under the item name (e.g. "Billed monthly"). */
+  itemSubtitle?: string | null;
 }
 
 type BridgeMessage =
@@ -62,6 +66,8 @@ function buildPaymentSheetHtml(opts: {
   intent?: "CHARGE" | "STORE";
   buyerEmail?: string | null;
   recurringDescription?: string | null;
+  itemName?: string | null;
+  itemSubtitle?: string | null;
 }): string {
   const sdkSrc =
     opts.environment === "production"
@@ -78,48 +84,182 @@ function buildPaymentSheetHtml(opts: {
   <title>Payment</title>
   <style>
     * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; background: #ffffff; color: #0A1628; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
-    body { padding: 20px 18px 28px; min-height: 100vh; }
-    .total { font-size: 14px; color: #6B7280; margin-bottom: 4px; }
-    .total b { color: #0A1628; font-size: 22px; font-weight: 700; }
-    .wallets { display: flex; flex-direction: column; gap: 10px; margin: 14px 0; }
-    #apple-pay-button { display: none; height: 48px; border-radius: 10px; }
-    #google-pay-button { display: none; height: 48px; border-radius: 10px; }
-    .or { text-align: center; color: #9CA3AF; font-size: 12px; letter-spacing: 1px; margin: 14px 0 8px; }
-    .label { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 8px; }
-    #card-container { min-height: 90px; }
-    #pay-card-btn {
-      width: 100%; margin-top: 14px; padding: 14px; border: none; border-radius: 12px;
-      background: #0047AB; color: white; font-size: 16px; font-weight: 700; cursor: pointer;
+    html, body {
+      margin: 0; padding: 0;
+      background: #F7F8FA; color: #0A1628;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
     }
-    #pay-card-btn:disabled { opacity: 0.6; cursor: default; }
-    #status { margin-top: 10px; font-size: 13px; color: #DC2626; min-height: 16px; }
-    #loading { display: flex; align-items: center; gap: 8px; color: #6B7280; font-size: 13px; padding: 16px 0; }
-    .spinner { width: 14px; height: 14px; border: 2px solid #E5E7EB; border-top-color: #0047AB; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    body { padding: 18px 16px 32px; min-height: 100vh; }
+
+    /* Plan / order summary card */
+    .summary {
+      background: linear-gradient(135deg, #0A1628 0%, #16243E 100%);
+      color: #fff;
+      border-radius: 16px;
+      padding: 18px 18px 16px;
+      margin-bottom: 18px;
+      box-shadow: 0 4px 14px rgba(10,22,40,0.12);
+    }
+    .summary-label {
+      font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase;
+      color: rgba(255,255,255,0.6); font-weight: 600; margin-bottom: 6px;
+    }
+    .summary-name { font-size: 18px; font-weight: 700; line-height: 1.25; margin-bottom: 2px; }
+    .summary-sub { font-size: 13px; color: rgba(255,255,255,0.7); margin-bottom: 14px; }
+    .summary-divider { height: 1px; background: rgba(255,255,255,0.12); margin: 12px 0; }
+    .summary-row { display: flex; justify-content: space-between; align-items: baseline; }
+    .summary-total-label { font-size: 13px; color: rgba(255,255,255,0.7); font-weight: 500; }
+    .summary-total { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; }
+    .summary-period { font-size: 13px; color: rgba(255,255,255,0.6); margin-left: 4px; font-weight: 500; }
+
+    /* Recurring disclosure banner */
+    .recurring-notice {
+      display: none;
+      background: #FFFBEB;
+      border: 1px solid #FDE68A;
+      color: #78350F;
+      font-size: 12.5px; line-height: 1.55;
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 16px;
+      font-weight: 500;
+    }
+    .recurring-notice strong { color: #92400E; font-weight: 700; }
+
+    /* Loading */
+    #loading {
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px; color: #6B7280; font-size: 13px;
+      padding: 24px 0; background: #fff; border-radius: 12px;
+      border: 1px solid #E5E7EB;
+    }
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid #E5E7EB; border-top-color: #0047AB;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Wallets */
+    .wallets { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+    #apple-pay-button, #google-pay-button {
+      display: none; height: 50px; border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    /* Divider */
+    .or {
+      display: none;
+      text-align: center; color: #9CA3AF; font-size: 11px;
+      letter-spacing: 1.4px; font-weight: 600;
+      margin: 4px 0 14px; position: relative;
+    }
+    .or::before, .or::after {
+      content: ""; position: absolute; top: 50%; width: calc(50% - 60px);
+      height: 1px; background: #E5E7EB;
+    }
+    .or::before { left: 0; }
+    .or::after { right: 0; }
+
+    /* Card section */
+    #card-section {
+      display: none;
+      background: #fff;
+      border: 1px solid #E5E7EB;
+      border-radius: 14px;
+      padding: 16px 14px 14px;
+    }
+    .label {
+      font-size: 12px; font-weight: 700; color: #374151;
+      text-transform: uppercase; letter-spacing: 0.8px;
+      margin-bottom: 10px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .label svg { flex-shrink: 0; }
+    #card-container { min-height: 90px; }
+
+    /* Pay button */
+    #pay-card-btn {
+      width: 100%; margin-top: 14px; padding: 16px;
+      border: none; border-radius: 12px;
+      background: #0047AB; color: white;
+      font-size: 16px; font-weight: 700;
+      letter-spacing: 0.2px;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,71,171,0.25);
+      transition: transform 0.05s ease, box-shadow 0.15s ease;
+    }
+    #pay-card-btn:active:not(:disabled) { transform: scale(0.99); }
+    #pay-card-btn:disabled { opacity: 0.55; cursor: default; box-shadow: none; }
+    #recurring-fineprint {
+      display: none;
+      font-size: 11.5px; color: #6B7280; line-height: 1.5;
+      margin-top: 10px; text-align: center;
+    }
+
+    /* Trust line */
+    .trust {
+      display: flex; align-items: center; justify-content: center;
+      gap: 6px; margin-top: 14px;
+      font-size: 11px; color: #9CA3AF; font-weight: 500;
+    }
+    .trust svg { opacity: 0.7; }
+
+    /* Status / error */
+    #status {
+      margin-top: 12px; font-size: 13px; color: #DC2626;
+      min-height: 16px; text-align: center; font-weight: 500;
+    }
+    #status:not(:empty) {
+      background: #FEF2F2; border: 1px solid #FECACA;
+      padding: 10px 12px; border-radius: 10px;
+    }
   </style>
 </head>
 <body>
-  <div class="total" id="total-line">Total <br/><b>£${amountStr}</b></div>
-  <div id="recurring-notice" style="display:none;background:#FEF3C7;border:1px solid #FCD34D;color:#78350F;font-size:12px;line-height:1.5;border-radius:8px;padding:10px 12px;margin:10px 0 4px;font-weight:500"></div>
+  <!-- Plan summary card -->
+  <div class="summary" id="summary-card">
+    <div class="summary-label" id="summary-label">Order total</div>
+    <div class="summary-name" id="summary-name" style="display:none"></div>
+    <div class="summary-sub" id="summary-sub" style="display:none"></div>
+    <div class="summary-divider" id="summary-divider" style="display:none"></div>
+    <div class="summary-row">
+      <span class="summary-total-label" id="summary-total-label">Total due now</span>
+      <span>
+        <span class="summary-total">£${amountStr}</span><span class="summary-period" id="summary-period" style="display:none"></span>
+      </span>
+    </div>
+  </div>
 
-  <div id="loading"><div class="spinner"></div> Loading payment options…</div>
+  <!-- Recurring disclosure (shown for STORE intent + recurring description) -->
+  <div class="recurring-notice" id="recurring-notice"></div>
+
+  <div id="loading"><div class="spinner"></div> Loading secure payment…</div>
 
   <div class="wallets">
     <div id="apple-pay-button"></div>
     <div id="google-pay-button"></div>
   </div>
 
-  <div class="or" id="or-divider" style="display:none">OR PAY BY CARD</div>
+  <div class="or" id="or-divider">OR PAY BY CARD</div>
 
-  <div id="card-section" style="display:none">
-    <div class="label">Card details</div>
+  <div id="card-section">
+    <div class="label">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+      Card details
+    </div>
     <div id="card-container"></div>
     <button id="pay-card-btn" type="button">Pay £${amountStr}</button>
-    <div id="recurring-fineprint" style="display:none;font-size:11px;color:#6B7280;line-height:1.5;margin-top:8px;text-align:center"></div>
+    <div id="recurring-fineprint"></div>
   </div>
 
   <div id="status"></div>
+
+  <div class="trust">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    Secured by Square · PCI-DSS encrypted
+  </div>
 
   <script src="${sdkSrc}"></script>
   <script>
@@ -131,10 +271,19 @@ function buildPaymentSheetHtml(opts: {
       var INTENT = ${JSON.stringify(opts.intent || "CHARGE")};
       var BUYER_EMAIL = ${JSON.stringify(opts.buyerEmail || "")};
       var RECURRING_DESC = ${JSON.stringify(opts.recurringDescription || "")};
+      var ITEM_NAME = ${JSON.stringify(opts.itemName || "")};
+      var ITEM_SUBTITLE = ${JSON.stringify(opts.itemSubtitle || "")};
       var IS_SUBSCRIPTION = INTENT === "STORE" && RECURRING_DESC.length > 0;
       var PAY_LABEL = IS_SUBSCRIPTION
         ? "Start Membership · £" + AMOUNT
         : "Pay £" + AMOUNT;
+
+      // Derive a short period word ("month" / "year") from the recurring desc
+      // so we can render natural copy in the disclosure ("£12.00 every month").
+      var PERIOD_WORD = "billing period";
+      if (/year|annual/i.test(RECURRING_DESC)) PERIOD_WORD = "year";
+      else if (/month/i.test(RECURRING_DESC)) PERIOD_WORD = "month";
+      else if (/week/i.test(RECURRING_DESC)) PERIOD_WORD = "week";
 
       function send(msg) {
         try {
@@ -154,15 +303,42 @@ function buildPaymentSheetHtml(opts: {
       function setStatus(t) { document.getElementById("status").textContent = t || ""; }
       function hideLoading() { var l = document.getElementById("loading"); if (l) l.style.display = "none"; }
 
+      // Populate the plan summary card. Item name + subtitle render at the
+      // top of the dark gradient header; subscriptions also get a "/month"
+      // badge next to the price.
+      (function populateSummary() {
+        if (ITEM_NAME) {
+          var nameEl = document.getElementById("summary-name");
+          var divEl = document.getElementById("summary-divider");
+          var labelEl = document.getElementById("summary-label");
+          if (nameEl) { nameEl.textContent = ITEM_NAME; nameEl.style.display = "block"; }
+          if (divEl) divEl.style.display = "block";
+          if (labelEl) labelEl.textContent = IS_SUBSCRIPTION ? "Membership" : "Order summary";
+        }
+        if (ITEM_SUBTITLE) {
+          var subEl = document.getElementById("summary-sub");
+          if (subEl) { subEl.textContent = ITEM_SUBTITLE; subEl.style.display = "block"; }
+        }
+        if (IS_SUBSCRIPTION) {
+          var periodEl = document.getElementById("summary-period");
+          if (periodEl) {
+            periodEl.textContent = "/" + PERIOD_WORD;
+            periodEl.style.display = "inline";
+          }
+          var totalLabelEl = document.getElementById("summary-total-label");
+          if (totalLabelEl) totalLabelEl.textContent = "First payment today";
+        }
+      })();
+
       // Render the recurring-billing notice up front so the customer sees
       // it BEFORE entering any card details. Required for transparency on
       // membership / subscription sign-ups.
       if (IS_SUBSCRIPTION) {
-        var totalEl = document.getElementById("total-line");
-        if (totalEl) totalEl.innerHTML = "Membership <br/><b>£" + AMOUNT + "</b>" + RECURRING_DESC;
         var noticeEl = document.getElementById("recurring-notice");
         if (noticeEl) {
-          noticeEl.textContent = "By continuing, you authorise The 147 to charge this card £" + AMOUNT + " " + RECURRING_DESC.replace(/^\s*\/\s*/, "per ").replace(/—.*$/, "").trim() + ", until you cancel your membership.";
+          noticeEl.innerHTML =
+            "<strong>Recurring payment.</strong> By continuing, you authorise The 147 to charge this card " +
+            "<strong>£" + AMOUNT + " every " + PERIOD_WORD + "</strong>, until you cancel from your account.";
           noticeEl.style.display = "block";
         }
       }
@@ -245,7 +421,17 @@ function buildPaymentSheetHtml(opts: {
 
       // Card form
       var card;
-      payments.card().then(function (c) {
+      payments.card({
+        style: {
+          input: { fontSize: "16px", color: "#0A1628", fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif" },
+          ".input-container": { borderColor: "#D1D5DB", borderRadius: "10px" },
+          ".input-container.is-focus": { borderColor: "#0047AB" },
+          ".input-container.is-error": { borderColor: "#DC2626" },
+          ".message-text": { color: "#6B7280" },
+          ".message-text.is-error": { color: "#DC2626" },
+          "input::placeholder": { color: "#9CA3AF" }
+        }
+      }).then(function (c) {
         card = c;
         return c.attach("#card-container");
       }).then(function () {
@@ -255,7 +441,7 @@ function buildPaymentSheetHtml(opts: {
         if (IS_SUBSCRIPTION) {
           var fp = document.getElementById("recurring-fineprint");
           if (fp) {
-            fp.textContent = "You can cancel anytime from your account.";
+            fp.textContent = "You can cancel anytime from Account → Membership.";
             fp.style.display = "block";
           }
         }
