@@ -5,6 +5,7 @@ import * as SecureStore from "expo-secure-store";
 const CRED_KEY = "customer_biometric_credentials";
 const ENABLED_KEY = "customer_biometric_enabled";
 const PROMPTED_KEY = "customer_biometric_prompted";
+const PAYMENT_PREF_KEY = "customer_payment_biometric_enabled";
 
 export interface StoredCredentials {
   email: string;
@@ -95,6 +96,23 @@ export async function clearBiometricCredentials(): Promise<void> {
   try {
     await SecureStore.deleteItemAsync(CRED_KEY);
     await SecureStore.deleteItemAsync(ENABLED_KEY);
+  } catch {}
+}
+
+export async function isPaymentBiometricEnabled(): Promise<boolean> {
+  if (Platform.OS === "web") return false;
+  try {
+    const v = await SecureStore.getItemAsync(PAYMENT_PREF_KEY);
+    return v !== "0";
+  } catch {
+    return true;
+  }
+}
+
+export async function setPaymentBiometricEnabled(enabled: boolean): Promise<void> {
+  if (Platform.OS === "web") return;
+  try {
+    await SecureStore.setItemAsync(PAYMENT_PREF_KEY, enabled ? "1" : "0");
   } catch {}
 }
 
