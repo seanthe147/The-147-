@@ -14,16 +14,17 @@ expo-env.d.ts
 /android/
 *.orig.*
 
-# Signing files - ignored globally but un-ignored for specific committed credential files
+# Signing files - never commit these to the repository
 *.jks
-!credentials/android/keystore.jks
 *.p8
-!ios-creds/*.p8
 *.p12
-!ios-creds/*.p12
 *.key
 *.mobileprovision
-!ios-creds/*.mobileprovision
+
+# credentials files - contain passwords/paths; generated at build time from env vars
+credentials.json
+credentials/
+ios-creds/
 
 # Metro
 .metro-health-check*
