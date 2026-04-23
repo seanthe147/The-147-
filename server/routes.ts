@@ -7251,6 +7251,123 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Weekly leftover one-time membership audit ─────────────────────────────
+  // Runs the same sweep as the staff dashboard endpoint on a schedule. If the
+  // sweep finds any rows, emails the configured manager address with a digest
+  // and a link to the Memberships tab. Stays SILENT on a clean week — we
+  // explicitly DO NOT send a "no leftover charges" email to avoid noise.
+  function getLeftoverAuditRecipient(): string | null {
+    const candidate =
+      process.env.MEMBERSHIP_AUDIT_EMAIL ||
+      process.env.MANAGER_EMAIL ||
+      process.env.STAFF_NOTIFICATION_EMAIL ||
+      "";
+    const trimmed = candidate.trim();
+    if (!trimmed) return null;
+    // Very light sanity check — we don't want to call SMTP with garbage.
+    if (!/^\S+@\S+\.\S+$/.test(trimmed)) return null;
+    return trimmed;
+  }
+
+  function getDashboardBaseUrl(): string {
+    // Prefer an explicit override, then the Replit-injected production
+    // domain, then the dev domain, then a final hardcoded fallback so the
+    // email still works in environments without any of those set.
+    const explicit = process.env.PUBLIC_BASE_URL?.trim();
+    if (explicit) return explicit.replace(/\/$/, "");
+    const prodDomains = process.env.REPLIT_DOMAINS?.split(",").map(d => d.trim()).filter(Boolean);
+    if (prodDomains && prodDomains.length) return `https://${prodDomains[0]}`;
+    if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+    return "https://the147bradford.replit.app";
+  }
+
+  function buildLeftoverAuditEmail(items: Awaited<ReturnType<typeof sweepLeftoverOneTimeMemberships>>) {
+    const dashboardUrl = `${getDashboardBaseUrl()}/staff#memberships`;
+    const total = items.reduce((sum, it) => sum + (it.oneTimePaymentAmountPence || 0), 0);
+    const totalGbp = `£${(total / 100).toFixed(2)}`;
+    const subject = `[The 147] ${items.length} leftover one-time membership charge${items.length === 1 ? "" : "s"} need review`;
+    const rows = items.map((it) => {
+      const name = escHtml(it.customerName ?? "Unknown");
+      const email = it.customerEmail ? escHtml(maskEmail(it.customerEmail)) : "—";
+      const plan = escHtml(it.planName ?? "—");
+      const amt = `£${(it.oneTimePaymentAmountPence / 100).toFixed(2)}`;
+      const created = new Date(it.createdAt).toISOString().slice(0, 10);
+      return `<tr>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb">#${it.subscriptionId}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb">${name}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb">${email}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb">${plan}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb">${amt}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb">${created}</td>
+      </tr>`;
+    }).join("");
+    const html = `<div style="font-family:Arial,sans-serif;max-width:720px;margin:0 auto;padding:24px;color:#111827">
+      <h2 style="margin:0 0 8px;color:#0A1628">Leftover one-time membership audit</h2>
+      <p style="margin:0 0 16px;color:#374151">The weekly audit found <strong>${items.length}</strong> member${items.length === 1 ? "" : "s"} who paid the old one-off membership fallback (totalling <strong>${totalGbp}</strong>) but were never moved onto a recurring Square subscription. Please review and either refund &amp; cancel them or send a recurring payment link.</p>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin:0 0 16px">
+        <thead>
+          <tr style="background:#f3f4f6;text-align:left">
+            <th style="padding:8px;border-bottom:1px solid #e5e7eb">Sub</th>
+            <th style="padding:8px;border-bottom:1px solid #e5e7eb">Member</th>
+            <th style="padding:8px;border-bottom:1px solid #e5e7eb">Email</th>
+            <th style="padding:8px;border-bottom:1px solid #e5e7eb">Plan</th>
+            <th style="padding:8px;border-bottom:1px solid #e5e7eb">Charge</th>
+            <th style="padding:8px;border-bottom:1px solid #e5e7eb">Signed up</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p style="margin:0 0 16px"><a href="${dashboardUrl}" style="display:inline-block;background:#0047AB;color:#fff;padding:12px 22px;border-radius:8px;font-weight:700;text-decoration:none">Open the Memberships tab</a></p>
+      <p style="margin:24px 0 0;color:#6b7280;font-size:12px">This is an automated weekly digest from The 147 staff system. You'll only receive it on weeks where the audit finds something — clean weeks are silent.</p>
+    </div>`;
+    return { subject, html };
+  }
+
+  async function runWeeklyLeftoverAudit() {
+    if (!square.isConfigured()) {
+      // Skip silently — Square not configured in this environment.
+      return;
+    }
+    let items: Awaited<ReturnType<typeof sweepLeftoverOneTimeMemberships>> = [];
+    try {
+      items = await sweepLeftoverOneTimeMemberships();
+    } catch (err: any) {
+      console.error("[MEMBERSHIP] Weekly leftover audit sweep failed:", err?.message ?? err);
+      return;
+    }
+    if (!items.length) {
+      console.log("[MEMBERSHIP] Weekly leftover audit: no leftover one-time charges (silent — no digest sent)");
+      return;
+    }
+    const recipient = getLeftoverAuditRecipient();
+    if (!recipient) {
+      console.warn(`[MEMBERSHIP] Weekly leftover audit found ${items.length} item(s) but no manager email is configured (set MEMBERSHIP_AUDIT_EMAIL or MANAGER_EMAIL). Skipping email.`);
+      return;
+    }
+    const { subject, html } = buildLeftoverAuditEmail(items);
+    const sent = await sendEmailViaSMTP(recipient, subject, html).catch(() => false);
+    if (sent) {
+      console.log(`[MEMBERSHIP] Weekly leftover audit digest sent to ${maskEmail(recipient)} (${items.length} item(s))`);
+    } else {
+      console.warn(`[MEMBERSHIP] Weekly leftover audit digest FAILED to send to ${maskEmail(recipient)} (${items.length} item(s))`);
+    }
+  }
+
+  function scheduleWeeklyLeftoverAudit() {
+    if (process.env.NODE_ENV === "test") return;
+    const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+    // Delay first run by 10 minutes after boot so we don't hammer Square the
+    // moment the server starts (and so multiple quick restarts don't re-run).
+    const FIRST_RUN_DELAY_MS = 10 * 60 * 1000;
+    setTimeout(() => {
+      runWeeklyLeftoverAudit();
+      setInterval(runWeeklyLeftoverAudit, ONE_WEEK_MS);
+    }, FIRST_RUN_DELAY_MS);
+    console.log("[MEMBERSHIP] Weekly leftover one-time membership audit scheduled (first run in 10 min, then every 7 days)");
+  }
+
+  scheduleWeeklyLeftoverAudit();
+
   app.post("/api/staff/membership/subscriptions", staffAuth, managerAuth, async (req, res) => {
     const { customerId, planId, status = "active", staffNotes, source = "staff", startDate } = req.body ?? {};
     if (!customerId || !planId) return res.status(400).json({ message: "customerId and planId are required" });

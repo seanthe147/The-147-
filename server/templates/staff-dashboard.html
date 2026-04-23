@@ -2572,7 +2572,21 @@
     }catch(e){}
     setupUI();
     const isManagerUser=state.role==='manager'||state.role==='owner';
-    navigateTo('bookings');
+    // Honour an optional URL hash (e.g. #memberships) so external deep-links
+    // — like the weekly leftover-membership audit email — can open straight
+    // onto the right tab. Falls back to bookings for any unknown/missing tab
+    // or for tabs the current role isn't allowed to see.
+    const tabNavIds={bookings:'navBookings',messages:'navMessages',comms:'navComms',staff:'navStaff',memberships:'navMemberships',menu:'navMenu',website:'navWebsite',banners:'navBanners',offers:'navOffers',payments:'navPayments',hr:'navHR',gdpr:'navGDPR',settings:'navSettings'};
+    let initialPage='bookings';
+    try{
+      const hash=(window.location.hash||'').replace(/^#/,'').toLowerCase();
+      const navId=tabNavIds[hash];
+      if(navId){
+        const navEl=document.getElementById(navId);
+        if(navEl && !navEl.classList.contains('hidden')) initialPage=hash;
+      }
+    }catch(e){}
+    navigateTo(initialPage);
     loadMessages();
     // Show any active login pop-ups after a short delay
     setTimeout(checkLoginPopups, 600);
