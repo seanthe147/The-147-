@@ -7355,8 +7355,30 @@ async function registerRoutes(app2) {
       res.status(500).json({ message: "Failed to delete rule" });
     }
   });
+  const VENUE_TZ = "Europe/London";
+  const LONDON_DOW = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  function getLondonNow() {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: VENUE_TZ,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      weekday: "short",
+      hour12: false
+    }).formatToParts(/* @__PURE__ */ new Date());
+    const get = (t) => parts.find((p) => p.type === t)?.value ?? "";
+    let hh = get("hour");
+    if (hh === "24") hh = "00";
+    return {
+      dateStr: `${get("year")}-${get("month")}-${get("day")}`,
+      hhmm: `${hh}:${get("minute")}`,
+      dow: LONDON_DOW[get("weekday")] ?? (/* @__PURE__ */ new Date()).getUTCDay()
+    };
+  }
   function getTodayStr() {
-    return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    return getLondonNow().dateStr;
   }
   const DEFAULT_SCHEDULE = { days: [4, 5, 6, 0], startTime: "12:00", endTime: "20:00" };
   const DAY_NAMES_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -7388,10 +7410,10 @@ async function registerRoutes(app2) {
     return `${dayNames.join(", ")} ${fmt(schedule.startTime)}\u2013${fmt(schedule.endTime)}`;
   }
   async function getOrderingStatus() {
-    const today = getTodayStr();
-    const now = /* @__PURE__ */ new Date();
-    const hhmm = now.toTimeString().slice(0, 5);
-    const dow = now.getDay();
+    const london = getLondonNow();
+    const today = london.dateStr;
+    const hhmm = london.hhmm;
+    const dow = london.dow;
     const manualEnabled = await storage.getSetting("ordering_enabled");
     if (manualEnabled === "false") {
       const disabledDate = await storage.getSetting("ordering_disabled_date");
@@ -10216,6 +10238,101 @@ ${auditNote}` : auditNote;
       res.status(500).json({ message: err?.message || "Action failed" });
     }
   });
+  function getLeftoverAuditRecipient() {
+    const candidate = process.env.MEMBERSHIP_AUDIT_EMAIL || process.env.MANAGER_EMAIL || process.env.STAFF_NOTIFICATION_EMAIL || "";
+    const trimmed = candidate.trim();
+    if (!trimmed) return null;
+    if (!/^\S+@\S+\.\S+$/.test(trimmed)) return null;
+    return trimmed;
+  }
+  function getDashboardBaseUrl() {
+    const explicit = process.env.PUBLIC_BASE_URL?.trim();
+    if (explicit) return explicit.replace(/\/$/, "");
+    const prodDomains = process.env.REPLIT_DOMAINS?.split(",").map((d) => d.trim()).filter(Boolean);
+    if (prodDomains && prodDomains.length) return `https://${prodDomains[0]}`;
+    if (process.env.REPLIT_DEV_DOMAIN) return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+    return "https://the147bradford.replit.app";
+  }
+  function buildLeftoverAuditEmail(items) {
+    const dashboardUrl = `${getDashboardBaseUrl()}/staff#memberships`;
+    const total = items.reduce((sum, it) => sum + (it.oneTimePaymentAmountPence || 0), 0);
+    const totalGbp = `\xA3${(total / 100).toFixed(2)}`;
+    const subject = `[The 147] ${items.length} leftover one-time membership charge${items.length === 1 ? "" : "s"} need review`;
+    const rows = items.map((it) => {
+      const name = escHtml(it.customerName ?? "Unknown");
+      const email = it.customerEmail ? escHtml(maskEmail(it.customerEmail)) : "\u2014";
+      const plan = escHtml(it.planName ?? "\u2014");
+      const amt = `\xA3${(it.oneTimePaymentAmountPence / 100).toFixed(2)}`;
+      const created = new Date(it.createdAt).toISOString().slice(0, 10);
+      return `<tr>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb">#${it.subscriptionId}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb">${name}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb">${email}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb">${plan}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb">${amt}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb">${created}</td>
+      </tr>`;
+    }).join("");
+    const html = `<div style="font-family:Arial,sans-serif;max-width:720px;margin:0 auto;padding:24px;color:#111827">
+      <h2 style="margin:0 0 8px;color:#0A1628">Leftover one-time membership audit</h2>
+      <p style="margin:0 0 16px;color:#374151">The weekly audit found <strong>${items.length}</strong> member${items.length === 1 ? "" : "s"} who paid the old one-off membership fallback (totalling <strong>${totalGbp}</strong>) but were never moved onto a recurring Square subscription. Please review and either refund &amp; cancel them or send a recurring payment link.</p>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin:0 0 16px">
+        <thead>
+          <tr style="background:#f3f4f6;text-align:left">
+            <th style="padding:8px;border-bottom:1px solid #e5e7eb">Sub</th>
+            <th style="padding:8px;border-bottom:1px solid #e5e7eb">Member</th>
+            <th style="padding:8px;border-bottom:1px solid #e5e7eb">Email</th>
+            <th style="padding:8px;border-bottom:1px solid #e5e7eb">Plan</th>
+            <th style="padding:8px;border-bottom:1px solid #e5e7eb">Charge</th>
+            <th style="padding:8px;border-bottom:1px solid #e5e7eb">Signed up</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p style="margin:0 0 16px"><a href="${dashboardUrl}" style="display:inline-block;background:#0047AB;color:#fff;padding:12px 22px;border-radius:8px;font-weight:700;text-decoration:none">Open the Memberships tab</a></p>
+      <p style="margin:24px 0 0;color:#6b7280;font-size:12px">This is an automated weekly digest from The 147 staff system. You'll only receive it on weeks where the audit finds something \u2014 clean weeks are silent.</p>
+    </div>`;
+    return { subject, html };
+  }
+  async function runWeeklyLeftoverAudit() {
+    if (!isConfigured()) {
+      return;
+    }
+    let items = [];
+    try {
+      items = await sweepLeftoverOneTimeMemberships();
+    } catch (err) {
+      console.error("[MEMBERSHIP] Weekly leftover audit sweep failed:", err?.message ?? err);
+      return;
+    }
+    if (!items.length) {
+      console.log("[MEMBERSHIP] Weekly leftover audit: no leftover one-time charges (silent \u2014 no digest sent)");
+      return;
+    }
+    const recipient = getLeftoverAuditRecipient();
+    if (!recipient) {
+      console.warn(`[MEMBERSHIP] Weekly leftover audit found ${items.length} item(s) but no manager email is configured (set MEMBERSHIP_AUDIT_EMAIL or MANAGER_EMAIL). Skipping email.`);
+      return;
+    }
+    const { subject, html } = buildLeftoverAuditEmail(items);
+    const sent = await sendEmailViaSMTP(recipient, subject, html).catch(() => false);
+    if (sent) {
+      console.log(`[MEMBERSHIP] Weekly leftover audit digest sent to ${maskEmail(recipient)} (${items.length} item(s))`);
+    } else {
+      console.warn(`[MEMBERSHIP] Weekly leftover audit digest FAILED to send to ${maskEmail(recipient)} (${items.length} item(s))`);
+    }
+  }
+  function scheduleWeeklyLeftoverAudit() {
+    if (process.env.NODE_ENV === "test") return;
+    const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1e3;
+    const FIRST_RUN_DELAY_MS = 10 * 60 * 1e3;
+    setTimeout(() => {
+      runWeeklyLeftoverAudit();
+      setInterval(runWeeklyLeftoverAudit, ONE_WEEK_MS);
+    }, FIRST_RUN_DELAY_MS);
+    console.log("[MEMBERSHIP] Weekly leftover one-time membership audit scheduled (first run in 10 min, then every 7 days)");
+  }
+  scheduleWeeklyLeftoverAudit();
   app2.post("/api/staff/membership/subscriptions", staffAuth, managerAuth, async (req, res) => {
     const { customerId, planId, status = "active", staffNotes, source = "staff", startDate } = req.body ?? {};
     if (!customerId || !planId) return res.status(400).json({ message: "customerId and planId are required" });
