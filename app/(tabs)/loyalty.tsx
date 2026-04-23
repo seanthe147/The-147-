@@ -536,7 +536,7 @@ export default function LoyaltyScreen() {
           style={styles.headerGradient}
         >
           <Ionicons name="diamond" size={28} color={Colors.brand.gold} />
-          <Text style={styles.headerTitle}>Loyalty Rewards</Text>
+          <Text style={styles.headerTitle}>Membership</Text>
           <Text style={styles.headerSubtitle}>
             Earn points every time you visit The 147
           </Text>

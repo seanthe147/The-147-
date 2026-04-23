@@ -76,7 +76,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="loyalty"
         options={{
-          title: "Loyalty",
+          title: "Membership",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="diamond" size={size} color={color} />
           ),

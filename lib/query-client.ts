@@ -132,9 +132,17 @@ export const queryClient = new QueryClient({
 });
 
 export function prefetchAppData() {
+  // Fire-and-forget background prefetch so by the time the customer taps
+  // Order, Membership, or Events the data is already cached. We deliberately
+  // include the menu (heaviest payload) and ordering-status (cheap, but the
+  // Order tab can't render without it) here — without these, the Order tab
+  // showed a spinner for 1–3s on first open even on fast networks.
   queryClient.prefetchQuery({ queryKey: ["/api/settings"] });
   queryClient.prefetchQuery({ queryKey: ["/api/banner-images"] });
   queryClient.prefetchQuery({ queryKey: ["/api/events?type=event"] });
   queryClient.prefetchQuery({ queryKey: ["/api/events?type=weekly"] });
   queryClient.prefetchQuery({ queryKey: ["/api/membership/plans"] });
+  queryClient.prefetchQuery({ queryKey: ["/api/menu"] });
+  queryClient.prefetchQuery({ queryKey: ["/api/ordering-status"] });
+  queryClient.prefetchQuery({ queryKey: ["/api/public/square-config"] });
 }
