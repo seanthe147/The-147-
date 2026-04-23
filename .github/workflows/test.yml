@@ -1,0 +1,114 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  unit-tests:
+    name: Unit tests (no server required)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Payment-sheet inline-script syntax check
+        run: npx tsx tests/payment-sheet-html.test.ts
+
+      - name: Payment biometric toggle test
+        env:
+          TSX_TSCONFIG_PATH: tsconfig.test.json
+        run: npx tsx tests/payment-biometric.test.ts
+
+      - name: Reorder matching test
+        run: npx tsx tests/reorder-matching.test.ts
+
+  integration-tests:
+    name: Integration tests (server + Postgres)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/app_test
+      DATABASE_SSL_NO_VERIFY: 'true'
+      NODE_ENV: development
+      PORT: '5000'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Push database schema
+        run: npm run db:push
+
+      - name: Start backend server
+        run: |
+          npm run server:dev > /tmp/server.log 2>&1 &
+          echo $! > /tmp/server.pid
+          # Wait for the server to accept connections on port 5000
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:5000/api/events >/dev/null 2>&1; then
+              echo "Server is up after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Server failed to start within 60s. Logs:"
+          cat /tmp/server.log
+          exit 1
+
+      - name: Password reset test
+        run: npx tsx tests/password-reset.test.ts
+
+      - name: End-to-end QA test
+        run: npx tsx tests/e2e-qa.test.ts
+
+      - name: Stop backend server
+        if: always()
+        run: |
+          if [ -f /tmp/server.pid ]; then
+            kill "$(cat /tmp/server.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload server log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-log
+          path: /tmp/server.log
+          if-no-files-found: ignore
