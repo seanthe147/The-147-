@@ -357,19 +357,28 @@ export function buildPaymentSheetHtml(opts: {
         }
       }
 
-      function tokenizeAndSend(paymentMethod) {
+      function tokenizeAndSend(paymentMethod, methodLabel) {
+        var label = methodLabel || "Card";
         return paymentMethod.tokenize().then(function (result) {
           if (result.status === "OK") {
             verifyAndSend(result.token);
           } else {
-            var msg = (result.errors && result.errors[0] && result.errors[0].message) || "Payment failed";
+            // Build a diagnostic message that includes Square's error code +
+            // category so the user / staff can pinpoint why Apple Pay tokens
+            // are being rejected (e.g. INVALID_CARD_DATA from a domain that
+            // isn't verified for Apple Pay processing on this Square account).
+            var first = (result.errors && result.errors[0]) || {};
+            var code = first.code || "UNKNOWN";
+            var category = first.category || "";
+            var detail = first.detail || first.message || "Payment failed";
+            var msg = label + ": " + detail + " [" + code + (category ? " · " + category : "") + "]";
             setStatus(msg);
-            send({ type: "error", message: msg });
+            send({ type: "error", message: msg, code: code, category: category, method: label });
           }
         }).catch(function (err) {
-          var msg = (err && err.message) || "Tokenization failed";
+          var msg = label + ": " + ((err && err.message) || "Tokenization failed");
           setStatus(msg);
-          send({ type: "error", message: msg });
+          send({ type: "error", message: msg, method: label });
         });
       }
 
@@ -407,7 +416,7 @@ export function buildPaymentSheetHtml(opts: {
           setStatus("");
           payBtn.disabled = true;
           payBtn.textContent = "Processing…";
-          tokenizeAndSend(card).finally(function () {
+          tokenizeAndSend(card, "Card").finally(function () {
             payBtn.disabled = false;
             payBtn.textContent = PAY_LABEL;
           });
@@ -435,7 +444,7 @@ export function buildPaymentSheetHtml(opts: {
             var divider = document.getElementById("or-divider");
             if (divider) divider.style.display = "block";
             el.addEventListener("click", function () {
-              tokenizeAndSend(ap);
+              tokenizeAndSend(ap, "Apple Pay");
             });
           } catch (e) { /* swallow — card form must still work */ }
         }).catch(function () { /* unsupported on this device */ });
@@ -453,7 +462,7 @@ export function buildPaymentSheetHtml(opts: {
               var divider = document.getElementById("or-divider");
               if (divider) divider.style.display = "block";
               el.addEventListener("click", function () {
-                tokenizeAndSend(gp);
+                tokenizeAndSend(gp, "Google Pay");
               });
             } catch (e) { /* swallow */ }
           });

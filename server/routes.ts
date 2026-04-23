@@ -6699,67 +6699,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!square.isConfigured()) return res.status(503).json({ message: "Square is not configured" });
       const customer = await storage.getCustomerByEmail(email.trim().toLowerCase());
       if (!customer) return res.status(404).json({ message: "No app account found with that email. The customer needs to register in the app first." });
-      const existing = await storage.getMembershipSubscriptionByCustomer(customer.id);
-      if (existing) return res.json({ status: "already_linked", message: `${customer.name} already has a membership linked (${existing.status}).` });
-      const sqCustomer = await square.findSquareCustomerByEmail(email.trim()).catch(() => null);
-      if (!sqCustomer) return res.json({ status: "no_square_customer", message: `No Square customer found for ${email}. They may need to be added to Square first.` });
 
-      const allPlans = await storage.getMembershipPlans();
-      const today = new Date().toISOString().slice(0, 10);
-
-      // ── 1. Check subscriptions ──────────────────────────────────────────────
-      const sqSubs: any[] = await square.listSquareSubscriptionsForCustomer(sqCustomer.id).catch(() => []);
-      const subPlans = allPlans.filter(p => p.active && (p.squarePlanVariationId || (p as any).squarePlanVariationIdAlt));
-      const planMatchesVar = (p: any, vid: string) =>
-        p.squarePlanVariationId === vid || p.squarePlanVariationIdAlt === vid;
-      const match = sqSubs.find((s: any) =>
-        (s.status === "ACTIVE" || s.status === "PENDING") &&
-        subPlans.some(p => planMatchesVar(p, s.plan_variation_id))
-      );
-      if (match) {
-        const plan = subPlans.find(p => planMatchesVar(p, match.plan_variation_id))!;
-        const periodEnd = match.charged_through_date ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-        await storage.createMembershipSubscription({
-          customerId: customer.id, planId: plan.id, status: "active",
-          currentPeriodStart: match.start_date ?? today, currentPeriodEnd: periodEnd,
-          hoursUsedThisPeriod: 0, guestPassesUsed: 0,
-          squareSubscriptionId: match.id, squareCustomerId: sqCustomer.id,
-          source: "square_sync", staffNotes: "Manually synced from Square via staff portal",
+      // If they already have a non-group subscription (paid / manual), don't
+      // touch it — surface that fact so staff know to manage it elsewhere.
+      const before = await storage.getMembershipSubscriptionByCustomer(customer.id);
+      if (before && (before as any).source !== "square_group_sync") {
+        return res.json({
+          status: "already_linked",
+          message: `${customer.name} already has a membership linked (${before.status} on ${(before as any).plan?.name ?? "plan #" + before.planId}). Use the Subscriptions tab to manage it.`,
         });
-        console.log(`[MEMBERSHIP] Manual Square sync: ${match.id} → customer #${customer.id} (${email}) on plan "${plan.name}"`);
-        return res.json({ status: "linked", message: `✓ ${customer.name} linked to ${plan.name} plan (Square sub: ${match.id})` });
       }
 
-      // ── 2. Check Square customer groups ──────────────────────────────────────
-      const groupPlans = allPlans.filter(p => p.active && (p as any).squareCustomerGroupId);
-      if (groupPlans.length) {
-        const customerGroupIds = await square.getCustomerGroupIds(sqCustomer.id).catch(() => [] as string[]);
-        const groupMatch = groupPlans.find(p => customerGroupIds.includes((p as any).squareCustomerGroupId));
-        if (groupMatch) {
-          const periodEnd = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-          await storage.createMembershipSubscription({
-            customerId: customer.id, planId: groupMatch.id, status: "active",
-            currentPeriodStart: today, currentPeriodEnd: periodEnd,
-            hoursUsedThisPeriod: 0, guestPassesUsed: 0,
-            squareCustomerId: sqCustomer.id,
-            source: "square_group_sync", staffNotes: `Manually synced from Square customer group "${groupMatch.name}" via staff portal`,
-          });
-          console.log(`[MEMBERSHIP] Manual group sync: group "${groupMatch.name}" → customer #${customer.id} (${email})`);
-          return res.json({ status: "linked", message: `✓ ${customer.name} linked to ${groupMatch.name} plan via Square customer group` });
+      // Delegate to the same helper used on customer sign-in and bulk sync.
+      // It handles re-checking group-synced subs (cancelling on removal,
+      // refreshing period end, switching plan if the customer moved groups)
+      // without creating duplicates.
+      await syncSquareMembershipForCustomer(customer.id, email.trim().toLowerCase());
+
+      const after = await storage.getMembershipSubscriptionByCustomer(customer.id);
+
+      // No active sub after sync — explain why.
+      if (!after) {
+        const sqCustomer = await square.findSquareCustomerByEmail(email.trim()).catch(() => null);
+        if (!sqCustomer) {
+          return res.json({ status: "no_square_customer", message: `No Square customer found for ${email}. They may need to be added to Square first, or the email on their Square profile must match exactly.` });
         }
-        // Customer found in Square but not in any mapped group
+        const allPlans = await storage.getMembershipPlans();
+        const groupPlans = allPlans.filter(p => p.active && (p as any).squareCustomerGroupId);
+        const customerGroupIds = await square.getCustomerGroupIds(sqCustomer.id).catch(() => [] as string[]);
+        const sqSubs: any[] = await square.listSquareSubscriptionsForCustomer(sqCustomer.id).catch(() => []);
         const groupInfo = customerGroupIds.length
           ? `Their Square groups: ${customerGroupIds.join(", ")}`
           : "They are not in any Square customer groups.";
-        return res.json({ status: "no_matching_plan", message: `${customer.name} found in Square but has no matching subscription or customer group. ${sqSubs.length ? `Subscriptions: ${sqSubs.map((s: any) => `${s.status} (plan: ${s.plan_variation_id || "unknown"})`).join(", ")}. ` : "No subscriptions found. "}${groupInfo}` });
+        const subInfo = sqSubs.length
+          ? `Subscriptions: ${sqSubs.map((s: any) => `${s.status} (plan: ${s.plan_variation_id || "unknown"})`).join(", ")}.`
+          : "No subscriptions found.";
+        if (before && !after) {
+          return res.json({ status: "unlinked", message: `${customer.name} was removed from their Square group — local membership has been cancelled. ${groupInfo}` });
+        }
+        if (!groupPlans.length && !sqSubs.length) {
+          return res.json({ status: "no_subscriptions", message: `${customer.name} found in Square but has no subscriptions and no customer groups are mapped to plans.` });
+        }
+        return res.json({ status: "no_matching_plan", message: `${customer.name} found in Square but has no matching subscription or customer group. ${subInfo} ${groupInfo}` });
       }
 
-      // No subscriptions and no group plans configured
-      if (!sqSubs.length) {
-        return res.json({ status: "no_subscriptions", message: `${customer.name} found in Square but has no subscriptions and no customer groups are mapped to plans.` });
+      // Active sub now exists. Distinguish "newly linked" vs "still linked" vs "switched plan".
+      const planName = (after as any).plan?.name ?? `plan #${after.planId}`;
+      const source = (after as any).source ?? "manual";
+      const via = source === "square_group_sync" ? "Square customer group" : source === "square_sync" ? "Square subscription" : "manual link";
+      if (!before) {
+        console.log(`[MEMBERSHIP] Manual sync: customer #${customer.id} (${email}) → ${planName} via ${via}`);
+        return res.json({ status: "linked", message: `✓ ${customer.name} linked to ${planName} via ${via}` });
       }
-      const subStatuses = sqSubs.map((s: any) => `${s.status} (plan: ${s.plan_variation_id || "unknown"})`).join(", ");
-      return res.json({ status: "no_matching_plan", message: `${customer.name} has Square subscriptions but none match an active local plan. Square subs: ${subStatuses}` });
+      if (before.planId !== after.planId) {
+        return res.json({ status: "switched", message: `✓ ${customer.name} switched from ${(before as any).plan?.name ?? `plan #${before.planId}`} to ${planName} (${via})` });
+      }
+      return res.json({ status: "already_linked", message: `${customer.name} is still linked to ${planName} via ${via} — refreshed.` });
     } catch (err: any) {
       console.error("[MEMBERSHIP] Manual Square sync error:", err.message);
       return res.status(500).json({ message: "Sync failed: " + err.message });
