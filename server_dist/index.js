@@ -3710,6 +3710,52 @@ var init_web_content = __esm({
   }
 });
 
+// shared/membership-benefits.ts
+var membership_benefits_exports = {};
+__export(membership_benefits_exports, {
+  getPlanBenefitTexts: () => getPlanBenefitTexts,
+  getPlanBenefits: () => getPlanBenefits
+});
+function plural(count, singular, plural2) {
+  return count === 1 ? singular : plural2;
+}
+function getPlanBenefits(plan) {
+  const benefits = [];
+  if (plan.hoursIncluded && plan.hoursIncluded > 0) {
+    const unit = plan.hoursUnit === "year" ? "per year" : "per month";
+    const hourWord = plural(plan.hoursIncluded, "hour", "hours");
+    benefits.push({ key: "hours", text: `${plan.hoursIncluded} ${hourWord} snooker ${unit}` });
+  } else {
+    benefits.push({ key: "hours", text: "Unlimited snooker access" });
+  }
+  if (plan.foodDrinkDiscount && plan.foodDrinkDiscount > 0) {
+    benefits.push({ key: "discount", text: `${plan.foodDrinkDiscount}% food & drink discount` });
+  }
+  if (plan.priorityBooking) {
+    benefits.push({ key: "priority", text: "Priority table booking" });
+  }
+  if (plan.guestPassesMonthly && plan.guestPassesMonthly > 0) {
+    const passWord = plural(plan.guestPassesMonthly, "guest pass", "guest passes");
+    benefits.push({ key: "guests", text: `${plan.guestPassesMonthly} ${passWord} per month` });
+  }
+  if (plan.loyaltyMultiplier && plan.loyaltyMultiplier > 1) {
+    benefits.push({
+      key: "loyalty",
+      text: `${plan.loyaltyMultiplier}\xD7 loyalty points on every visit`
+    });
+  }
+  benefits.push({ key: "app", text: "Manage everything in The 147 app" });
+  return benefits;
+}
+function getPlanBenefitTexts(plan) {
+  return getPlanBenefits(plan).map((b) => b.text);
+}
+var init_membership_benefits = __esm({
+  "shared/membership-benefits.ts"() {
+    "use strict";
+  }
+});
+
 // server/index.ts
 import express from "express";
 
@@ -7525,6 +7571,42 @@ async function registerRoutes(app2) {
       configured: isWebPaymentsConfigured()
     });
   });
+  app2.post("/api/public/payment-sheet-diagnostics", (req, res) => {
+    const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+    const limit = checkRateLimit(`pmt-diag:${ip}`, 60, 6e4);
+    if (!limit.allowed) {
+      res.set("Retry-After", String(limit.retryAfter));
+      return res.status(429).json({ ok: false });
+    }
+    const body = req.body ?? {};
+    function s(v, max = 200) {
+      if (v == null) return "";
+      const str = typeof v === "string" ? v : JSON.stringify(v);
+      return str.length > max ? str.slice(0, max) + "\u2026" : str;
+    }
+    const event = {
+      phase: s(body.phase, 40) || "unknown",
+      reason: s(body.reason, 240),
+      sessionId: s(body.sessionId, 40),
+      platform: s(body.platform, 16),
+      environment: s(body.environment, 16),
+      userAgent: s(body.userAgent, 240),
+      online: body.online === true || body.online === false ? body.online : null,
+      sdkSrc: s(body.sdkSrc, 120),
+      baseUrl: s(body.baseUrl, 120),
+      elapsedMs: typeof body.elapsedMs === "number" && Number.isFinite(body.elapsedMs) ? Math.max(0, Math.round(body.elapsedMs)) : null,
+      retryCount: typeof body.retryCount === "number" && Number.isFinite(body.retryCount) ? Math.max(0, Math.round(body.retryCount)) : null,
+      ip
+    };
+    const severity = event.phase === "fatal" || event.phase.startsWith("fatal_") ? "error" : "log";
+    const tag = `[payment-sheet-diag] ${event.phase}`;
+    if (severity === "error") {
+      console.error(tag, event);
+    } else {
+      console.log(tag, event);
+    }
+    res.json({ ok: true });
+  });
   app2.post("/api/orders/create", async (req, res) => {
     const { items, tableNote, orderNote, customer, pushToken } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
@@ -9176,10 +9258,16 @@ Phone: ${phone}` : ""}`,
     res.status(204).send();
   });
   app2.get("/api/membership/plans", async (_req, res) => {
+    const { getPlanBenefits: getPlanBenefits2, getPlanBenefitTexts: getPlanBenefitTexts2 } = await Promise.resolve().then(() => (init_membership_benefits(), membership_benefits_exports));
     const plans = await storage.getMembershipPlans(true);
     const visible = plans.filter((p) => !p.hideFromSignup);
+    const enriched = visible.map((p) => ({
+      ...p,
+      benefits: getPlanBenefitTexts2(p),
+      benefitsDetailed: getPlanBenefits2(p)
+    }));
     res.set("Cache-Control", "no-store");
-    res.json(visible);
+    res.json(enriched);
   });
   app2.post("/api/membership/check-email", async (req, res) => {
     const ip = getClientIp(req);
@@ -9655,8 +9743,10 @@ Phone: ${phone}` : ""}`,
     res.json(stats);
   });
   app2.get("/api/staff/membership/plans", staffAuth, async (_req, res) => {
+    const { getPlanBenefitTexts: getPlanBenefitTexts2 } = await Promise.resolve().then(() => (init_membership_benefits(), membership_benefits_exports));
     const plans = await storage.getMembershipPlans();
-    res.json(plans);
+    const enriched = plans.map((p) => ({ ...p, benefits: getPlanBenefitTexts2(p) }));
+    res.json(enriched);
   });
   app2.get("/api/staff/square/customer-groups", staffAuth, async (_req, res) => {
     try {
@@ -9786,66 +9876,45 @@ Phone: ${phone}` : ""}`,
       if (!isConfigured()) return res.status(503).json({ message: "Square is not configured" });
       const customer = await storage.getCustomerByEmail(email.trim().toLowerCase());
       if (!customer) return res.status(404).json({ message: "No app account found with that email. The customer needs to register in the app first." });
-      const existing = await storage.getMembershipSubscriptionByCustomer(customer.id);
-      if (existing) return res.json({ status: "already_linked", message: `${customer.name} already has a membership linked (${existing.status}).` });
-      const sqCustomer = await findSquareCustomerByEmail(email.trim()).catch(() => null);
-      if (!sqCustomer) return res.json({ status: "no_square_customer", message: `No Square customer found for ${email}. They may need to be added to Square first.` });
-      const allPlans = await storage.getMembershipPlans();
-      const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-      const sqSubs = await listSquareSubscriptionsForCustomer(sqCustomer.id).catch(() => []);
-      const subPlans = allPlans.filter((p) => p.active && (p.squarePlanVariationId || p.squarePlanVariationIdAlt));
-      const planMatchesVar = (p, vid) => p.squarePlanVariationId === vid || p.squarePlanVariationIdAlt === vid;
-      const match = sqSubs.find(
-        (s) => (s.status === "ACTIVE" || s.status === "PENDING") && subPlans.some((p) => planMatchesVar(p, s.plan_variation_id))
-      );
-      if (match) {
-        const plan = subPlans.find((p) => planMatchesVar(p, match.plan_variation_id));
-        const periodEnd = match.charged_through_date ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
-        await storage.createMembershipSubscription({
-          customerId: customer.id,
-          planId: plan.id,
-          status: "active",
-          currentPeriodStart: match.start_date ?? today,
-          currentPeriodEnd: periodEnd,
-          hoursUsedThisPeriod: 0,
-          guestPassesUsed: 0,
-          squareSubscriptionId: match.id,
-          squareCustomerId: sqCustomer.id,
-          source: "square_sync",
-          staffNotes: "Manually synced from Square via staff portal"
+      const before = await storage.getMembershipSubscriptionByCustomer(customer.id);
+      if (before && before.source !== "square_group_sync") {
+        return res.json({
+          status: "already_linked",
+          message: `${customer.name} already has a membership linked (${before.status} on ${before.plan?.name ?? "plan #" + before.planId}). Use the Subscriptions tab to manage it.`
         });
-        console.log(`[MEMBERSHIP] Manual Square sync: ${match.id} \u2192 customer #${customer.id} (${email}) on plan "${plan.name}"`);
-        return res.json({ status: "linked", message: `\u2713 ${customer.name} linked to ${plan.name} plan (Square sub: ${match.id})` });
       }
-      const groupPlans = allPlans.filter((p) => p.active && p.squareCustomerGroupId);
-      if (groupPlans.length) {
-        const customerGroupIds = await getCustomerGroupIds(sqCustomer.id).catch(() => []);
-        const groupMatch = groupPlans.find((p) => customerGroupIds.includes(p.squareCustomerGroupId));
-        if (groupMatch) {
-          const periodEnd = new Date(Date.now() + 365 * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
-          await storage.createMembershipSubscription({
-            customerId: customer.id,
-            planId: groupMatch.id,
-            status: "active",
-            currentPeriodStart: today,
-            currentPeriodEnd: periodEnd,
-            hoursUsedThisPeriod: 0,
-            guestPassesUsed: 0,
-            squareCustomerId: sqCustomer.id,
-            source: "square_group_sync",
-            staffNotes: `Manually synced from Square customer group "${groupMatch.name}" via staff portal`
-          });
-          console.log(`[MEMBERSHIP] Manual group sync: group "${groupMatch.name}" \u2192 customer #${customer.id} (${email})`);
-          return res.json({ status: "linked", message: `\u2713 ${customer.name} linked to ${groupMatch.name} plan via Square customer group` });
+      await syncSquareMembershipForCustomer(customer.id, email.trim().toLowerCase());
+      const after = await storage.getMembershipSubscriptionByCustomer(customer.id);
+      if (!after) {
+        const sqCustomer = await findSquareCustomerByEmail(email.trim()).catch(() => null);
+        if (!sqCustomer) {
+          return res.json({ status: "no_square_customer", message: `No Square customer found for ${email}. They may need to be added to Square first, or the email on their Square profile must match exactly.` });
         }
+        const allPlans = await storage.getMembershipPlans();
+        const groupPlans = allPlans.filter((p) => p.active && p.squareCustomerGroupId);
+        const customerGroupIds = await getCustomerGroupIds(sqCustomer.id).catch(() => []);
+        const sqSubs = await listSquareSubscriptionsForCustomer(sqCustomer.id).catch(() => []);
         const groupInfo = customerGroupIds.length ? `Their Square groups: ${customerGroupIds.join(", ")}` : "They are not in any Square customer groups.";
-        return res.json({ status: "no_matching_plan", message: `${customer.name} found in Square but has no matching subscription or customer group. ${sqSubs.length ? `Subscriptions: ${sqSubs.map((s) => `${s.status} (plan: ${s.plan_variation_id || "unknown"})`).join(", ")}. ` : "No subscriptions found. "}${groupInfo}` });
+        const subInfo = sqSubs.length ? `Subscriptions: ${sqSubs.map((s) => `${s.status} (plan: ${s.plan_variation_id || "unknown"})`).join(", ")}.` : "No subscriptions found.";
+        if (before && !after) {
+          return res.json({ status: "unlinked", message: `${customer.name} was removed from their Square group \u2014 local membership has been cancelled. ${groupInfo}` });
+        }
+        if (!groupPlans.length && !sqSubs.length) {
+          return res.json({ status: "no_subscriptions", message: `${customer.name} found in Square but has no subscriptions and no customer groups are mapped to plans.` });
+        }
+        return res.json({ status: "no_matching_plan", message: `${customer.name} found in Square but has no matching subscription or customer group. ${subInfo} ${groupInfo}` });
       }
-      if (!sqSubs.length) {
-        return res.json({ status: "no_subscriptions", message: `${customer.name} found in Square but has no subscriptions and no customer groups are mapped to plans.` });
+      const planName = after.plan?.name ?? `plan #${after.planId}`;
+      const source = after.source ?? "manual";
+      const via = source === "square_group_sync" ? "Square customer group" : source === "square_sync" ? "Square subscription" : "manual link";
+      if (!before) {
+        console.log(`[MEMBERSHIP] Manual sync: customer #${customer.id} (${email}) \u2192 ${planName} via ${via}`);
+        return res.json({ status: "linked", message: `\u2713 ${customer.name} linked to ${planName} via ${via}` });
       }
-      const subStatuses = sqSubs.map((s) => `${s.status} (plan: ${s.plan_variation_id || "unknown"})`).join(", ");
-      return res.json({ status: "no_matching_plan", message: `${customer.name} has Square subscriptions but none match an active local plan. Square subs: ${subStatuses}` });
+      if (before.planId !== after.planId) {
+        return res.json({ status: "switched", message: `\u2713 ${customer.name} switched from ${before.plan?.name ?? `plan #${before.planId}`} to ${planName} (${via})` });
+      }
+      return res.json({ status: "already_linked", message: `${customer.name} is still linked to ${planName} via ${via} \u2014 refreshed.` });
     } catch (err) {
       console.error("[MEMBERSHIP] Manual Square sync error:", err.message);
       return res.status(500).json({ message: "Sync failed: " + err.message });
