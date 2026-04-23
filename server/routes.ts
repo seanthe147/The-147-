@@ -5926,8 +5926,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ── Membership — public plan listing ────────────────────────────────────────
   app.get("/api/membership/plans", async (_req, res) => {
     const plans = await storage.getMembershipPlans(true);
+    // Internal-only plans (Staff, VIP, comped tiers) stay active so the
+    // discount logic still recognises them, but must not appear on the
+    // customer-facing signup screen.
+    const visible = plans.filter((p: any) => !p.hideFromSignup);
     res.set("Cache-Control", "no-store");
-    res.json(plans);
+    res.json(visible);
   });
 
   // ── Membership — check whether an email is registered to an active member ───
@@ -6558,7 +6562,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/staff/membership/plans", staffAuth, managerAuth, async (req, res) => {
-    const { name, tier, priceMonthly, priceAnnual, hoursIncluded, hoursUnit, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, squarePlanVariationIdAlt, squareCustomerGroupId, excludeWithDeals, active, sortOrder, color, description } = req.body ?? {};
+    const { name, tier, priceMonthly, priceAnnual, hoursIncluded, hoursUnit, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, squarePlanVariationIdAlt, squareCustomerGroupId, excludeWithDeals, active, hideFromSignup, sortOrder, color, description } = req.body ?? {};
     if (!name?.trim()) return res.status(400).json({ message: "Plan name is required" });
     if (priceMonthly == null || isNaN(Number(priceMonthly))) return res.status(400).json({ message: "Monthly price is required" });
     // Auto-generate a tier slug from the name if not provided
@@ -6580,6 +6584,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         squareCustomerGroupId: squareCustomerGroupId?.trim() || null,
         excludeWithDeals: !!excludeWithDeals,
         active: active !== false,
+        hideFromSignup: !!hideFromSignup,
         sortOrder: Number(sortOrder) || 0,
         color: isValidCssColor(color) ? color : "#0047AB",
         description: description?.trim() || null,

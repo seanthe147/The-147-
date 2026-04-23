@@ -302,6 +302,11 @@ export const membershipPlans = pgTable("membership_plans", {
   squareCustomerGroupId: text("square_customer_group_id"),
   excludeWithDeals: boolean("exclude_with_deals").notNull().default(false),
   active: boolean("active").notNull().default(true),
+  // Hide from the customer-facing Membership signup screen while keeping the
+  // plan active for discount lookup. Used for internal-only tiers (Staff,
+  // VIP, comped accounts) that are assigned via Square Customer Groups
+  // rather than purchased through the app.
+  hideFromSignup: boolean("hide_from_signup").notNull().default(false),
   sortOrder: integer("sort_order").notNull().default(0),
   color: text("color").notNull().default("#0047AB"),
   description: text("description"),
