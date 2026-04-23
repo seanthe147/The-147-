@@ -1,7 +1,13 @@
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, serial, timestamp, boolean, integer, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod";
+// drizzle-zod >=0.8 emits Zod v4 schemas, so any `z.xxx()` we splice into
+// those schemas via `.extend(...)` MUST also come from `zod/v4`. Importing the
+// classic `zod` (v3) entrypoint here causes drizzle-zod's parser to throw
+// `Invalid element at key "<field>": expected a Zod schema` at request time,
+// which surfaces to customers as the generic "Booking Error / unexpected
+// error" alert. Keep this import on `zod/v4`.
+import { z } from "zod/v4";
 
 export const users = pgTable("users", {
   id: varchar("id")
