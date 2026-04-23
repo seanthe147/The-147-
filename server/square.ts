@@ -304,6 +304,42 @@ export async function listSquareSubscriptionsForCustomer(squareCustomerId: strin
   return data.subscriptions || [];
 }
 
+// List Square payments for a given Square customer (most recent first).
+// Used by the leftover-one-time-membership audit to detect customers who
+// paid via the now-removed one-time browser fallback.
+export async function listSquarePaymentsForCustomer(
+  squareCustomerId: string,
+  opts: { maxPages?: number; pageSize?: number } = {},
+): Promise<any[]> {
+  const pageSize = Math.max(1, Math.min(opts.pageSize ?? 100, 100));
+  const maxPages = Math.max(1, opts.maxPages ?? 5); // up to 500 most recent payments
+  const out: any[] = [];
+  let cursor: string | undefined;
+  for (let i = 0; i < maxPages; i += 1) {
+    const params = new URLSearchParams({
+      customer_id: squareCustomerId,
+      sort_order: "DESC",
+      limit: String(pageSize),
+    });
+    if (cursor) params.set("cursor", cursor);
+    const data = await squareRequest("GET", `/v2/payments?${params.toString()}`);
+    const page = (data.payments as any[]) || [];
+    out.push(...page);
+    cursor = data.cursor as string | undefined;
+    if (!cursor || page.length === 0) break;
+  }
+  return out;
+}
+
+export async function getSquareOrder(orderId: string): Promise<any | null> {
+  try {
+    const data = await squareRequest("GET", `/v2/orders/${orderId}`);
+    return data.order ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function createDepositPaymentLink(opts: {
   amountPence: number;
   description: string;

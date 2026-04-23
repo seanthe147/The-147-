@@ -6784,6 +6784,377 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Leftover one-time membership charges audit ─────────────────────────────
+  // Until the recurring-only fix (task #66), the membership browser fallback
+  // could quietly send a customer to a one-time Square payment link instead
+  // of a recurring subscription. Some customers may have paid once and now
+  // sit in our DB as "pending" or "active" with no `squareSubscriptionId` —
+  // they think they're members but their card will never be re-charged.
+  //
+  // This sweep scans those rows, queries Square to confirm there is a
+  // completed one-time payment AND no active/pending recurring subscription,
+  // and flags them for the staff to either refund-and-cancel (default) or
+  // re-issue a fresh recurring payment link.
+  // Window around the local subscription's createdAt where we'll accept a
+  // Square payment as the "membership signup payment". Generous on the
+  // forward edge because some customers paid days after signing up via the
+  // emailed link, but tight on the back edge to avoid grabbing an unrelated
+  // earlier order.
+  const LEFTOVER_PAYMENT_WINDOW_BEFORE_MS = 24 * 60 * 60 * 1000; // 1 day before
+  const LEFTOVER_PAYMENT_WINDOW_AFTER_MS = 30 * 24 * 60 * 60 * 1000; // 30 days after
+
+  // Returns the expected one-off charge (in pence) the old fallback would
+  // have collected for a given local sub, or null if we cannot determine it
+  // (in which case we refuse to auto-match a payment).
+  function expectedFallbackAmountPence(
+    sub: { source: string },
+    plan: { priceMonthly: number; priceAnnual: number | null } | null,
+  ): number | null {
+    if (!plan) return null;
+    if (sub.source === "app_annual") {
+      return plan.priceAnnual ?? null;
+    }
+    if (sub.source === "app") {
+      return plan.priceMonthly ?? null;
+    }
+    return null;
+  }
+
+  // Decide whether a Square payment plausibly is the one-off membership
+  // fallback charge for this local sub: COMPLETED, exactly the expected
+  // plan amount, and created within a tight window around sub.createdAt.
+  function paymentMatchesFallback(
+    payment: any,
+    sub: { createdAt: Date },
+    expectedAmountPence: number,
+  ): boolean {
+    if (!payment || payment.status !== "COMPLETED") return false;
+    const amt = payment.amount_money?.amount;
+    if (typeof amt !== "number" || amt !== expectedAmountPence) return false;
+    const createdAtMs = payment.created_at ? new Date(payment.created_at).getTime() : NaN;
+    if (!Number.isFinite(createdAtMs)) return false;
+    const subMs = new Date(sub.createdAt).getTime();
+    if (createdAtMs < subMs - LEFTOVER_PAYMENT_WINDOW_BEFORE_MS) return false;
+    if (createdAtMs > subMs + LEFTOVER_PAYMENT_WINDOW_AFTER_MS) return false;
+    return true;
+  }
+
+  async function sweepLeftoverOneTimeMemberships() {
+    const all = await storage.getMembershipSubscriptions();
+    const SUSPECT_STATUSES = new Set(["pending", "active", "pending_payment", "past_due"]);
+    const SUSPECT_SOURCES = new Set(["app", "app_annual"]);
+    const candidates = all.filter((s) =>
+      !s.squareSubscriptionId &&
+      SUSPECT_STATUSES.has(s.status) &&
+      SUSPECT_SOURCES.has(s.source) &&
+      !!s.squareCustomerId,
+    );
+
+    const out: Array<{
+      subscriptionId: number;
+      customerId: number;
+      customerName: string | null;
+      customerEmail: string | null;
+      planId: number;
+      planName: string | null;
+      status: string;
+      source: string;
+      createdAt: Date;
+      staffNotes: string | null;
+      squareCustomerId: string;
+      expectedAmountPence: number;
+      oneTimePaymentId: string;
+      oneTimePaymentAmountPence: number;
+      oneTimePaymentCreatedAt: string;
+      hasRecurringSubscription: boolean;
+    }> = [];
+
+    for (const sub of candidates) {
+      const sqCustomerId = sub.squareCustomerId as string;
+      const expectedAmount = expectedFallbackAmountPence(sub, sub.plan);
+      // Without a known expected amount we refuse to match anything — staff
+      // would have to investigate manually rather than risk a wrong refund.
+      if (expectedAmount == null) continue;
+
+      const [payments, subscriptions] = await Promise.all([
+        square.listSquarePaymentsForCustomer(sqCustomerId).catch(() => []),
+        square.listSquareSubscriptionsForCustomer(sqCustomerId).catch(() => []),
+      ]);
+
+      const hasRecurringSubscription = subscriptions.some((s: any) =>
+        s && (s.status === "ACTIVE" || s.status === "PENDING")
+      );
+      if (hasRecurringSubscription) continue;
+
+      // Filter strictly: COMPLETED + exact expected amount + within window.
+      const matches = payments.filter((p) => paymentMatchesFallback(p, sub, expectedAmount));
+      // Skip if no plausible match OR if multiple plausible matches (we
+      // don't know which is the membership one — flag for manual review by
+      // logging, and skip rather than risk picking the wrong one).
+      if (matches.length !== 1) {
+        if (matches.length > 1) {
+          console.warn(`[MEMBERSHIP] Leftover audit: sub #${sub.id} has ${matches.length} candidate Square payments matching the membership amount/window — skipping, needs manual review.`);
+        }
+        continue;
+      }
+      const target = matches[0];
+
+      out.push({
+        subscriptionId: sub.id,
+        customerId: sub.customerId,
+        customerName: sub.customer?.name ?? null,
+        customerEmail: sub.customer?.email ?? null,
+        planId: sub.planId,
+        planName: sub.plan?.name ?? null,
+        status: sub.status,
+        source: sub.source,
+        createdAt: sub.createdAt,
+        staffNotes: sub.staffNotes,
+        squareCustomerId: sqCustomerId,
+        expectedAmountPence: expectedAmount,
+        oneTimePaymentId: target.id,
+        oneTimePaymentAmountPence: target.amount_money.amount,
+        oneTimePaymentCreatedAt: target.created_at,
+        hasRecurringSubscription,
+      });
+    }
+
+    return out;
+  }
+
+  async function sendMembershipFallbackResolvedEmail(opts: {
+    customerName: string;
+    customerEmail: string;
+    planName: string;
+    refundedAmountPence: number;
+  }): Promise<boolean> {
+    const amt = `£${(opts.refundedAmountPence / 100).toFixed(2)}`;
+    const subject = `Your ${opts.planName} Membership — refunded and cancelled`;
+    const html = `<div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px; background: #ffffff;">
+      <div style="text-align: center; margin-bottom: 24px;">
+        <h1 style="color: #0A1628; font-size: 24px; margin: 0;">The 147</h1>
+        <p style="color: #6b7280; font-size: 13px; margin: 4px 0 0;">Snooker, Bar &amp; Restaurant</p>
+      </div>
+      <p style="color: #374151; font-size: 15px;">Hi ${escHtml(opts.customerName)},</p>
+      <p style="color: #374151; font-size: 15px;">We're writing to let you know about an issue we found with your recent <strong>${escHtml(opts.planName)} Membership</strong> sign-up.</p>
+      <p style="color: #374151; font-size: 15px;">The payment page you used charged you <strong>${amt}</strong> as a one-off, but it never set up the monthly recurring billing. That means your card would not have been charged again and your membership was never properly active.</p>
+      <p style="color: #374151; font-size: 15px;">To put this right we have:</p>
+      <ul style="color: #374151; font-size: 15px; line-height: 1.7;">
+        <li>Refunded the <strong>${amt}</strong> back to the card you used (please allow 5–10 working days).</li>
+        <li>Cancelled the affected membership record on our side, so you are not left in limbo.</li>
+      </ul>
+      <p style="color: #374151; font-size: 15px;">If you would still like to join, please open the latest version of The 147 app and sign up again — the new in-app payment flow sets up proper monthly billing in one go. We're really sorry for the inconvenience.</p>
+      <p style="color: #374151; font-size: 15px;">If you have any questions please reply to this email and we'll get back to you.</p>
+      <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+      <p style="color: #9ca3af; font-size: 12px; text-align: center;">The 147 &mdash; Snooker, Bar &amp; Restaurant<br/>www.the147.co.uk</p>
+    </div>`;
+
+    const smtpSent = await sendEmailViaSMTP(opts.customerEmail, subject, html);
+    if (smtpSent) {
+      console.log(`[MEMBERSHIP] Fallback resolution email sent via SMTP to ${maskEmail(opts.customerEmail)}`);
+      return true;
+    }
+    const resendKey = process.env.RESEND_API_KEY;
+    if (resendKey) {
+      const fromEmail = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+      const fromName = process.env.RESEND_FROM_NAME || "The 147";
+      try {
+        const response = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+          body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: opts.customerEmail, subject, html }),
+        });
+        if (response.ok) {
+          console.log(`[MEMBERSHIP] Fallback resolution email sent via Resend to ${maskEmail(opts.customerEmail)}`);
+          return true;
+        }
+      } catch (_) {}
+    }
+    console.warn(`[MEMBERSHIP] Fallback resolution email failed for ${maskEmail(opts.customerEmail)}`);
+    return false;
+  }
+
+  // GET — manager-only audit report of leftover one-time membership charges
+  app.get("/api/staff/membership/leftover-onetime", staffAuth, managerAuth, async (_req, res) => {
+    if (!square.isConfigured()) {
+      return res.status(503).json({ message: "Square is not configured" });
+    }
+    try {
+      const items = await sweepLeftoverOneTimeMemberships();
+      res.json({ count: items.length, items });
+    } catch (err: any) {
+      console.error("[MEMBERSHIP] Leftover audit failed:", err?.message ?? err);
+      res.status(500).json({ message: err?.message || "Audit failed" });
+    }
+  });
+
+  // POST — refund the one-time payment + cancel the local sub + email customer.
+  // Requires the exact `paymentId` shown by the audit so we can never pick a
+  // different completed Square payment for the same customer.
+  app.post("/api/staff/membership/leftover-onetime/:id/refund-cancel", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id as string);
+    if (!id) return res.status(400).json({ message: "Invalid subscription id" });
+    const paymentId = (req.body?.paymentId ?? "").toString().trim();
+    if (!paymentId) {
+      return res.status(400).json({ message: "paymentId from the audit is required to refund." });
+    }
+    if (!square.isConfigured()) {
+      return res.status(503).json({ message: "Square is not configured" });
+    }
+    try {
+      const sub = await storage.getMembershipSubscription(id);
+      if (!sub) return res.status(404).json({ message: "Subscription not found" });
+      if (sub.squareSubscriptionId) {
+        return res.status(400).json({ message: "This subscription is already linked to a recurring Square subscription — nothing to refund." });
+      }
+      if (!sub.squareCustomerId) {
+        return res.status(400).json({ message: "This subscription has no Square customer link — cannot locate one-time payment." });
+      }
+
+      const plan = await storage.getMembershipPlan(sub.planId);
+      const expectedAmount = expectedFallbackAmountPence(sub, plan ?? null);
+      if (expectedAmount == null) {
+        return res.status(400).json({
+          message: "Cannot determine the expected membership charge amount for this plan — refusing to refund automatically.",
+        });
+      }
+
+      // Re-verify with Square at action time so we don't refund the wrong payment.
+      const [payments, sqSubs] = await Promise.all([
+        square.listSquarePaymentsForCustomer(sub.squareCustomerId).catch(() => []),
+        square.listSquareSubscriptionsForCustomer(sub.squareCustomerId).catch(() => []),
+      ]);
+      const hasRecurring = sqSubs.some((s: any) => s && (s.status === "ACTIVE" || s.status === "PENDING"));
+      if (hasRecurring) {
+        return res.status(400).json({
+          message: "Square shows an active/pending recurring subscription for this customer. Refusing to refund — re-run the audit.",
+        });
+      }
+      // The exact payment must (a) belong to this customer's recent payments,
+      // (b) match the membership amount, and (c) sit in our acceptance window.
+      const target = payments.find((p: any) => p && p.id === paymentId);
+      if (!target) {
+        return res.status(404).json({ message: "That payment was not found on this Square customer's recent payments. Re-run the audit." });
+      }
+      if (!paymentMatchesFallback(target, sub, expectedAmount)) {
+        return res.status(400).json({
+          message: "That payment no longer matches the membership signup amount/window. Re-run the audit before refunding.",
+        });
+      }
+
+      const staffUser = (req as any).staffUser?.username || "staff";
+      const amountPence = target.amount_money.amount as number;
+
+      let refundId: string | null = null;
+      try {
+        const refund = await square.createRefund({
+          paymentId: target.id,
+          amountPence,
+          reason: `Leftover one-time membership charge from old browser fallback (sub #${sub.id})`,
+          idempotencyKey: `leftover-onetime-${sub.id}-${target.id}`,
+        });
+        refundId = refund?.id ?? null;
+      } catch (refErr: any) {
+        const msg = refErr?.message || "Refund failed";
+        console.error(`[MEMBERSHIP] Refund failed for sub #${sub.id} payment ${target.id}:`, msg);
+        return res.status(502).json({ message: `Refund failed: ${msg}`, code: "REFUND_FAILED" });
+      }
+
+      const auditNote = `[Leftover one-time fallback resolved by ${staffUser} on ${new Date().toISOString().slice(0, 10)}: refunded £${(amountPence / 100).toFixed(2)} (payment ${target.id}, refund ${refundId ?? "?"}) and cancelled.]`;
+      const combinedNotes = sub.staffNotes ? `${sub.staffNotes}\n${auditNote}` : auditNote;
+      await storage.updateMembershipSubscription(sub.id, {
+        status: "cancelled",
+        cancelledAt: new Date(),
+        staffNotes: combinedNotes,
+      });
+
+      const customer = await storage.getCustomerById(sub.customerId).catch(() => null);
+      let emailSent = false;
+      if (customer?.email) {
+        emailSent = await sendMembershipFallbackResolvedEmail({
+          customerName: customer.name,
+          customerEmail: customer.email,
+          planName: plan?.name ?? "membership",
+          refundedAmountPence: amountPence,
+        });
+      }
+
+      console.log(`[MEMBERSHIP] Leftover one-time refunded+cancelled for sub #${sub.id} (refund ${refundId})`);
+      res.json({
+        success: true,
+        subscriptionId: sub.id,
+        refundId,
+        refundedAmountPence: amountPence,
+        emailSent,
+      });
+    } catch (err: any) {
+      console.error("[MEMBERSHIP] Leftover refund-cancel failed:", err?.message ?? err);
+      res.status(500).json({ message: err?.message || "Action failed" });
+    }
+  });
+
+  // POST — instead of refunding, generate a fresh recurring subscription
+  // payment link and email it to the customer so they can convert their
+  // one-time payment into a real recurring membership.
+  app.post("/api/staff/membership/leftover-onetime/:id/send-recurring-link", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id as string);
+    if (!id) return res.status(400).json({ message: "Invalid subscription id" });
+    if (!square.isConfigured()) {
+      return res.status(503).json({ message: "Square is not configured" });
+    }
+    try {
+      const sub = await storage.getMembershipSubscription(id);
+      if (!sub) return res.status(404).json({ message: "Subscription not found" });
+      const plan = await storage.getMembershipPlan(sub.planId);
+      if (!plan) return res.status(404).json({ message: "Plan not found" });
+      const customer = await storage.getCustomerById(sub.customerId);
+      if (!customer?.email) return res.status(400).json({ message: "Customer has no email on file" });
+
+      if (sub.squareCustomerId) {
+        const existingSubs = await square
+          .listSquareSubscriptionsForCustomer(sub.squareCustomerId)
+          .catch(() => [] as any[]);
+        const liveStatuses = new Set(["ACTIVE", "PENDING", "PAUSED"]);
+        const alreadyRecurring = existingSubs.find((s: any) => liveStatuses.has(String(s?.status || "").toUpperCase()));
+        if (alreadyRecurring) {
+          return res.status(409).json({
+            message: `Customer already has a ${alreadyRecurring.status} recurring subscription in Square (${alreadyRecurring.id}). Re-run the audit before sending another link.`,
+            code: "RECURRING_ALREADY_EXISTS",
+          });
+        }
+      }
+
+      const variationId = plan.squarePlanVariationId;
+      if (!variationId) {
+        return res.status(503).json({ message: "Plan is not set up for recurring billing — set the Square variation first.", code: "PLAN_NOT_BILLABLE" });
+      }
+      const redirectUrl = `https://the147bradford.replit.app/api/membership/${sub.id}/payment-return`;
+      const link = await square.createSubscriptionCheckoutLink({
+        planVariationId: variationId,
+        subscriptionId: sub.id,
+        buyerEmail: customer.email,
+        redirectUrl,
+      });
+      const emailSent = await sendMembershipPaymentLinkEmail({
+        customerName: customer.name,
+        customerEmail: customer.email,
+        planName: plan.name,
+        priceMonthly: plan.priceMonthly,
+        paymentUrl: link.url,
+      });
+
+      const staffUser = (req as any).staffUser?.username || "staff";
+      const auditNote = `[Leftover one-time fallback: ${staffUser} sent a fresh recurring subscription payment link on ${new Date().toISOString().slice(0, 10)}]`;
+      const combinedNotes = sub.staffNotes ? `${sub.staffNotes}\n${auditNote}` : auditNote;
+      await storage.updateMembershipSubscription(sub.id, { staffNotes: combinedNotes });
+
+      res.json({ success: true, url: link.url, emailSent });
+    } catch (err: any) {
+      console.error("[MEMBERSHIP] Leftover send-recurring-link failed:", err?.message ?? err);
+      res.status(500).json({ message: err?.message || "Action failed" });
+    }
+  });
+
   app.post("/api/staff/membership/subscriptions", staffAuth, managerAuth, async (req, res) => {
     const { customerId, planId, status = "active", staffNotes, source = "staff", startDate } = req.body ?? {};
     if (!customerId || !planId) return res.status(400).json({ message: "customerId and planId are required" });

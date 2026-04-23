@@ -5884,6 +5884,7 @@
       membershipsData={plans,subs};
       renderMemberships(stats,plans,subs);
       if(state.role==='owner')loadWixMigration();
+      if(state.role==='manager'||state.role==='owner')loadLeftoverOneTime();
     }catch(e){
       if(e.message!=='Session expired')el('membershipsContent').innerHTML='<div class="empty-state"><div class="empty-title">Failed to load memberships</div></div>';
     }
@@ -6020,6 +6021,9 @@
     if(isOwnerRole){
       html+=`<div id="wixMigrationPanel" style="margin-bottom:24px"></div>`;
     }
+
+    // Leftover one-time fallback audit panel (manager-only).
+    html+=`<div id="leftoverOneTimePanel" style="margin-bottom:24px"></div>`;
 
     if(isManager){
       const allHaveSquareIds=plans.length>0&&plans.every(p=>p.squarePlanVariationId);
@@ -6952,6 +6956,88 @@
     }catch(e){wrap.innerHTML='<div style="color:var(--red);font-size:13px;padding:24px;text-align:center">Failed to load payments</div>';}
   }
   window.loadPaymentLog=loadPaymentLog;
+
+  /* ── Leftover one-time membership fallback audit (manager+) ── */
+  let leftoverOneTimeCache=[];
+  async function loadLeftoverOneTime(){
+    const panel=el('leftoverOneTimePanel');if(!panel)return;
+    panel.innerHTML='<div style="font-size:12px;color:var(--text-2);padding:8px 0">Checking for leftover one-time membership charges…</div>';
+    try{
+      const r=await api('/api/staff/membership/leftover-onetime');
+      const {count,items}=await r.json();
+      leftoverOneTimeCache=items||[];
+      renderLeftoverOneTime(count,leftoverOneTimeCache);
+    }catch(e){
+      panel.innerHTML='<div style="font-size:12px;color:var(--text-2);padding:8px 0">Could not run leftover one-time audit ('+esc(e.message||'error')+').</div>';
+    }
+  }
+  function renderLeftoverOneTime(count,items){
+    const panel=el('leftoverOneTimePanel');if(!panel)return;
+    if(!count){
+      panel.innerHTML='<div class="settings-section" style="margin:0;border-left:4px solid #10B981;padding:12px 16px;display:flex;align-items:center;gap:10px">'+
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>'+
+        '<div><div style="font-weight:700;color:var(--text);font-size:13px">No leftover one-time membership charges</div>'+
+        '<div style="font-size:11px;color:var(--text-2);margin-top:2px">All paid memberships are linked to a recurring Square subscription.</div></div>'+
+        '<button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="window.refreshLeftoverOneTime()">Re-run audit</button></div>';
+      return;
+    }
+    const headerColor='#DC2626';
+    let html='<div class="settings-section" style="margin:0;border-left:4px solid '+headerColor+'">'+
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">'+
+        '<div>'+
+          '<div class="settings-title" style="margin-bottom:2px;display:flex;align-items:center;gap:8px">'+
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="'+headerColor+'" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'+
+            'Leftover one-time membership charges ('+count+')'+
+          '</div>'+
+          '<div class="settings-desc" style="margin:0;max-width:560px">These members paid via the old browser fallback that took a one-off payment instead of setting up recurring billing. Refund &amp; cancel will refund their card and email them, or send them a fresh recurring payment link to convert.</div>'+
+        '</div>'+
+        '<button class="btn btn-secondary btn-sm" onclick="window.refreshLeftoverOneTime()">Re-run audit</button>'+
+      '</div>';
+    html+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
+      '<thead><tr style="text-align:left;border-bottom:1px solid var(--border);color:var(--text-2);font-size:11px;text-transform:uppercase;letter-spacing:.5px">'+
+        '<th style="padding:8px 6px">Member</th><th style="padding:8px 6px">Plan</th><th style="padding:8px 6px">One-time charge</th><th style="padding:8px 6px">Created</th><th style="padding:8px 6px;text-align:right">Action</th>'+
+      '</tr></thead><tbody>';
+    items.forEach(it=>{
+      const amt=it.oneTimePaymentAmountPence!=null?'£'+(it.oneTimePaymentAmountPence/100).toFixed(2):'—';
+      const when=it.oneTimePaymentCreatedAt?new Date(it.oneTimePaymentCreatedAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'—';
+      html+='<tr style="border-bottom:1px solid var(--border)">'+
+        '<td style="padding:10px 6px"><div style="font-weight:700;color:var(--text)">'+esc(it.customerName||'Unknown')+'</div><div style="font-size:11px;color:var(--text-2)">'+esc(it.customerEmail||'')+'</div></td>'+
+        '<td style="padding:10px 6px">'+esc(it.planName||'—')+' <span class="pill pill-amber" style="margin-left:4px">'+esc(it.status)+'</span></td>'+
+        '<td style="padding:10px 6px">'+amt+'<div style="font-size:10px;color:var(--text-3,#9CA3AF)">'+esc(it.oneTimePaymentId||'')+'</div></td>'+
+        '<td style="padding:10px 6px;font-size:12px;color:var(--text-2)">'+when+'</td>'+
+        '<td style="padding:10px 6px;text-align:right;white-space:nowrap">'+
+          '<button class="btn btn-secondary btn-sm" style="margin-right:6px;border-color:#0047AB;color:#0047AB" onclick="window.leftoverSendRecurringLink('+it.subscriptionId+')">Send recurring link</button>'+
+          '<button class="btn btn-danger btn-sm" onclick="window.leftoverRefundCancel('+it.subscriptionId+')">Refund &amp; cancel</button>'+
+        '</td>'+
+      '</tr>';
+    });
+    html+='</tbody></table></div></div>';
+    panel.innerHTML=html;
+  }
+  window.refreshLeftoverOneTime=loadLeftoverOneTime;
+  window.leftoverRefundCancel=async function(id){
+    const it=leftoverOneTimeCache.find(x=>x.subscriptionId===id);
+    if(!it||!it.oneTimePaymentId){toast('Re-run the audit first.','error');return;}
+    const amt='£'+(it.oneTimePaymentAmountPence/100).toFixed(2);
+    if(!confirm('Refund '+amt+' (Square payment '+it.oneTimePaymentId+') to the customer\'s card and cancel this membership?\n\nA confirmation email will be sent to them. This cannot be undone.'))return;
+    try{
+      const r=await api('/api/staff/membership/leftover-onetime/'+id+'/refund-cancel',{
+        method:'POST',
+        body:JSON.stringify({paymentId:it.oneTimePaymentId}),
+      });
+      const data=await r.json();
+      toast('Refunded '+(data.refundedAmountPence!=null?'£'+(data.refundedAmountPence/100).toFixed(2):'')+(data.emailSent?' · email sent':' · email failed'),'success');
+      loadLeftoverOneTime();loadMemberships();
+    }catch(e){toast(e.message||'Refund failed','error');}
+  };
+  window.leftoverSendRecurringLink=async function(id){
+    if(!confirm('Email the customer a fresh recurring subscription payment link?\n\nThis does NOT refund their previous one-off payment.'))return;
+    try{
+      const r=await api('/api/staff/membership/leftover-onetime/'+id+'/send-recurring-link',{method:'POST'});
+      const data=await r.json();
+      toast('Recurring link '+(data.emailSent?'emailed to customer':'created (email failed)'),'success');
+    }catch(e){toast(e.message||'Failed to send link','error');}
+  };
 
   /* ── Wix → Square Migration (owner only) ── */
   async function loadWixMigration(){
