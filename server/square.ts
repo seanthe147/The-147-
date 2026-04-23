@@ -1092,7 +1092,9 @@ async function buildSquareOrderBody(
   if (firstName && tableNote) ticketName = `${firstName} · ${tableNote}`;
   else if (firstName) ticketName = firstName;
   else if (tableNote) ticketName = tableNote;
-  else if (orderNumber) ticketName = `Collection #${orderNumber}`;
+  // Pad to 5 digits to match the receipt the customer sees on the
+  // confirmation screen (e.g. app shows "#00123", so KDS shows the same).
+  else if (orderNumber) ticketName = `Collection #${String(orderNumber).padStart(5, "0")}`;
   else ticketName = "Guest";
   const memberDiscountUid = "MEMBER-DISCOUNT";
 
