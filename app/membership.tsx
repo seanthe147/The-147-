@@ -42,6 +42,10 @@ interface MembershipPlan {
   guestPassesMonthly: number | null;
   sortOrder: number | null;
   active: boolean;
+  // Server-computed benefit lines. The API renders these so any future
+  // wording change is server-side only — no app submission required.
+  benefits?: string[] | null;
+  benefitsDetailed?: { key: BenefitKey; text: string }[] | null;
 }
 
 type BillingFrequency = "monthly" | "annual";
@@ -77,7 +81,14 @@ const BENEFIT_ICONS: Record<BenefitKey, keyof typeof Ionicons.glyphMap> = {
 };
 
 function getPlanFeatures(plan: MembershipPlan): { icon: keyof typeof Ionicons.glyphMap; text: string }[] {
-  return getPlanBenefits(plan).map((b) => ({
+  // Prefer the server-rendered list so wording stays in lockstep with the
+  // staff dashboard / web without needing an app rebuild. Falls back to
+  // the local computation if an older server build hasn't shipped the
+  // field yet.
+  const detailed = Array.isArray(plan.benefitsDetailed) && plan.benefitsDetailed.length > 0
+    ? plan.benefitsDetailed
+    : getPlanBenefits(plan);
+  return detailed.map((b) => ({
     icon: b.key === "hours" && plan.snookerUnlimited ? "infinite-outline" : BENEFIT_ICONS[b.key],
     text: b.text,
   }));
