@@ -42,6 +42,18 @@ export function buildPaymentSheetHtml(opts: {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>Payment</title>
+  <!--
+    Apple's official Apple Pay button web component. Required by App Store
+    Guideline 4.9 — using only the  Pay wordmark on a custom black button
+    is grounds for rejection. This script defines the <apple-pay-button>
+    custom element that we render below. Loads silently on non-Apple
+    devices and does nothing harmful there (Square's applePay() init will
+    no-op on unsupported platforms).
+  -->
+  <script
+    crossorigin="anonymous"
+    src="https://applepay.cdn-apple.com/jsapi/v1.1.0/apple-pay-sdk.js"
+  ></script>
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body { margin: 0; padding: 0; background: #F7F8FA; color: #0A1628; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
@@ -531,6 +543,14 @@ export function buildPaymentSheetHtml(opts: {
 
       // Apple Pay (iOS Safari/WebKit only, requires verified domain).
       // Fully isolated — any failure here MUST NOT affect the card form.
+      //
+      // IMPORTANT (App Store Guideline 4.9): we MUST render the official
+      // Apple-approved Pay button, NOT a custom black button containing the
+      //  Pay wordmark. We render the button via Apple Pay JS's
+      // ApplePayButton custom element (apple-pay-button-with-text). Square's
+      // Web Payments SDK does not provide an attach() helper for Apple Pay
+      // (unlike googlePay.attach), so we inject Apple's official element and
+      // wire its click to Square's tokenize flow.
       try {
         var pr = paymentRequest();
         payments.applePay(pr).then(function (ap) {
@@ -538,16 +558,29 @@ export function buildPaymentSheetHtml(opts: {
           try {
             var el = document.getElementById("apple-pay-button");
             if (!el) return;
+            // Reset any previously-applied custom styling and inject the
+            // official Apple element. The script that defines the custom
+            // element is loaded from Apple's CDN (added in <head>).
+            el.innerHTML = "";
+            el.removeAttribute("style");
             el.style.display = "block";
-            el.style.background = "#000";
-            el.style.color = "#fff";
-            el.style.textAlign = "center";
-            el.style.lineHeight = "48px";
-            el.style.fontWeight = "600";
-            el.textContent = " Apple Pay";
+            el.style.height = "50px";
+            el.style.borderRadius = "12px";
+            el.style.overflow = "hidden";
+            var btn = document.createElement("apple-pay-button");
+            btn.setAttribute("buttonstyle", "black");
+            btn.setAttribute("type", "buy");
+            btn.setAttribute("locale", "en-GB");
+            btn.style.setProperty("--apple-pay-button-width", "100%");
+            btn.style.setProperty("--apple-pay-button-height", "50px");
+            btn.style.setProperty("--apple-pay-button-border-radius", "12px");
+            btn.style.display = "block";
+            btn.style.width = "100%";
+            btn.style.height = "50px";
+            el.appendChild(btn);
             var divider = document.getElementById("or-divider");
             if (divider) divider.style.display = "block";
-            el.addEventListener("click", function () {
+            btn.addEventListener("click", function () {
               tokenizeAndSend(ap, "Apple Pay");
             });
           } catch (e) { /* swallow — card form must still work */ }
