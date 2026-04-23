@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCart } from "@/contexts/CartContext";
@@ -127,6 +127,10 @@ export default function AccountScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Defensive: also disable the header at the screen level so the
+          custom navy "My Account" header is the only one shown, regardless
+          of how this route was pushed onto the stack. */}
+      <Stack.Screen options={{ headerShown: false }} />
       <View style={[styles.header, { paddingTop: insets.top + webTopInset }]}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="close" size={24} color="#FFFFFF" />
