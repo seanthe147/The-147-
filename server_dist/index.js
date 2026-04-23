@@ -250,6 +250,11 @@ var init_schema = __esm({
       squareCustomerGroupId: text("square_customer_group_id"),
       excludeWithDeals: boolean("exclude_with_deals").notNull().default(false),
       active: boolean("active").notNull().default(true),
+      // Hide from the customer-facing Membership signup screen while keeping the
+      // plan active for discount lookup. Used for internal-only tiers (Staff,
+      // VIP, comped accounts) that are assigned via Square Customer Groups
+      // rather than purchased through the app.
+      hideFromSignup: boolean("hide_from_signup").notNull().default(false),
       sortOrder: integer("sort_order").notNull().default(0),
       color: text("color").notNull().default("#0047AB"),
       description: text("description")
@@ -9172,8 +9177,9 @@ Phone: ${phone}` : ""}`,
   });
   app2.get("/api/membership/plans", async (_req, res) => {
     const plans = await storage.getMembershipPlans(true);
+    const visible = plans.filter((p) => !p.hideFromSignup);
     res.set("Cache-Control", "no-store");
-    res.json(plans);
+    res.json(visible);
   });
   app2.post("/api/membership/check-email", async (req, res) => {
     const ip = getClientIp(req);
@@ -9662,7 +9668,7 @@ Phone: ${phone}` : ""}`,
     }
   });
   app2.post("/api/staff/membership/plans", staffAuth, managerAuth, async (req, res) => {
-    const { name, tier, priceMonthly, priceAnnual, hoursIncluded, hoursUnit, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, squarePlanVariationIdAlt, squareCustomerGroupId, excludeWithDeals, active, sortOrder, color, description } = req.body ?? {};
+    const { name, tier, priceMonthly, priceAnnual, hoursIncluded, hoursUnit, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, squarePlanVariationIdAlt, squareCustomerGroupId, excludeWithDeals, active, hideFromSignup, sortOrder, color, description } = req.body ?? {};
     if (!name?.trim()) return res.status(400).json({ message: "Plan name is required" });
     if (priceMonthly == null || isNaN(Number(priceMonthly))) return res.status(400).json({ message: "Monthly price is required" });
     const resolvedTier = (tier?.trim() || name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")) + "_" + Date.now();
@@ -9683,6 +9689,7 @@ Phone: ${phone}` : ""}`,
         squareCustomerGroupId: squareCustomerGroupId?.trim() || null,
         excludeWithDeals: !!excludeWithDeals,
         active: active !== false,
+        hideFromSignup: !!hideFromSignup,
         sortOrder: Number(sortOrder) || 0,
         color: isValidCssColor(color) ? color : "#0047AB",
         description: description?.trim() || null
