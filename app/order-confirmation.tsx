@@ -215,8 +215,19 @@ export default function OrderConfirmationScreen() {
         </View>
         <Text style={styles.title}>Order placed!</Text>
         <Text style={styles.subtitle}>
-          {tableNote ? `We'll bring your order to ${tableNote}.` : "Pick it up at the bar when it's ready."}
+          {tableNote
+            ? `We'll bring your order to ${tableNote}.`
+            : appOrderId
+            ? `Collect from the bar when it's ready — quote collection number ${orderRef}.`
+            : "Pick it up at the bar when it's ready."}
         </Text>
+        {!tableNote && appOrderId ? (
+          <View style={styles.collectionBadge}>
+            <Ionicons name="bag-handle-outline" size={16} color={Colors.brand.blue} />
+            <Text style={styles.collectionBadgeLabel}>Collection</Text>
+            <Text style={styles.collectionBadgeNumber}>{orderRef}</Text>
+          </View>
+        ) : null}
 
         <View style={[styles.statusCard, { backgroundColor: tone.bg }]}>
           <View style={styles.statusRow}>
@@ -234,7 +245,7 @@ export default function OrderConfirmationScreen() {
 
         <View style={styles.refCard}>
           <View style={styles.refRow}>
-            <Text style={styles.refLabel}>Order</Text>
+            <Text style={styles.refLabel}>{tableNote ? "Order" : "Collection number"}</Text>
             <Text style={styles.refValue}>{orderRef}</Text>
           </View>
           {tableNote ? (
@@ -305,6 +316,19 @@ const styles = StyleSheet.create({
   iconRing: { width: 88, height: 88, borderRadius: 44, backgroundColor: "#DCFCE7", alignItems: "center" as const, justifyContent: "center" as const, marginBottom: 16 },
   title: { fontSize: 26, fontWeight: "800" as const, color: "#0A1628", marginBottom: 8 },
   subtitle: { fontSize: 15, color: "#6B7280", textAlign: "center" as const, lineHeight: 22, marginBottom: 18, paddingHorizontal: 8 },
+  collectionBadge: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    gap: 8,
+    backgroundColor: "#EEF4FF",
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    marginBottom: 18,
+    marginTop: -6,
+  },
+  collectionBadgeLabel: { color: Colors.brand.blue, fontSize: 13, fontWeight: "600" as const },
+  collectionBadgeNumber: { color: Colors.brand.blue, fontSize: 15, fontWeight: "800" as const, letterSpacing: 0.5 },
   statusCard: { width: "100%", borderRadius: 16, padding: 14, marginBottom: 14 },
   statusRow: { flexDirection: "row" as const, alignItems: "center" as const, gap: 8 },
   statusLabel: { fontSize: 15, fontWeight: "700" as const, flexShrink: 1 },
