@@ -7163,6 +7163,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         cancelledAt: new Date(),
         staffNotes: combinedNotes,
       });
+      await storage.logMembershipAction({
+        subscriptionId: sub.id,
+        customerId: sub.customerId,
+        action: "refund_cancel",
+        staffUsername: staffUser,
+        amountPence,
+        refundId,
+        note: `Refunded leftover one-time membership charge (payment ${target.id}) and cancelled subscription.`,
+      }).catch((e) => console.warn("[MEMBERSHIP] audit log write failed:", e?.message ?? e));
 
       const customer = await storage.getCustomerById(sub.customerId).catch(() => null);
       let emailSent = false;
@@ -7243,6 +7252,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const auditNote = `[Leftover one-time fallback: ${staffUser} sent a fresh recurring subscription payment link on ${new Date().toISOString().slice(0, 10)}]`;
       const combinedNotes = sub.staffNotes ? `${sub.staffNotes}\n${auditNote}` : auditNote;
       await storage.updateMembershipSubscription(sub.id, { staffNotes: combinedNotes });
+      await storage.logMembershipAction({
+        subscriptionId: sub.id,
+        customerId: sub.customerId,
+        action: "payment_link_sent",
+        staffUsername: staffUser,
+        note: `Sent recurring subscription payment link to customer (leftover one-time fallback resolution).`,
+      }).catch((e) => console.warn("[MEMBERSHIP] audit log write failed:", e?.message ?? e));
 
       res.json({ success: true, url: link.url, emailSent });
     } catch (err: any) {
@@ -7413,6 +7429,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       } catch { /* Square not set up yet — subscription saved locally */ }
     }
+    const staffUser = (req as any).staffUser?.username || "staff";
+    await storage.logMembershipAction({
+      subscriptionId: sub.id,
+      customerId: sub.customerId,
+      action: "created",
+      staffUsername: staffUser,
+      note: `Created via staff dashboard (plan #${sub.planId}, source ${source}, status ${effectiveStatus}).`,
+    }).catch((e) => console.warn("[MEMBERSHIP] audit log write failed:", e?.message ?? e));
     res.status(201).json(sub);
   });
 
@@ -7460,10 +7484,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      const staffUser = (req as any).staffUser?.username || "staff";
+      await storage.logMembershipAction({
+        subscriptionId: sub?.id ?? null,
+        customerId: sub?.customerId ?? null,
+        action: "payment_link_sent",
+        staffUsername: staffUser,
+        note: `Generated Square recurring payment link for plan "${plan.name}"${customer?.email ? " (emailed to customer)" : ""}.`,
+      }).catch((e) => console.warn("[MEMBERSHIP] audit log write failed:", e?.message ?? e));
+
       res.json({ url: link.url, paymentLinkId: link.paymentLinkId, emailSent });
     } catch (err: any) {
       console.error("[PAYMENT LINK]", err?.message);
       res.status(500).json({ message: err?.message || "Failed to create payment link" });
+    }
+  });
+
+  // Per-subscription audit log feed for the staff dashboard history drawer.
+  app.get("/api/staff/membership/subscriptions/:id/audit-log", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id as string);
+    if (!id) return res.status(400).json({ message: "Invalid subscription id" });
+    try {
+      const entries = await storage.listMembershipAuditLogForSubscription(id, 100);
+      res.json(entries);
+    } catch (err: any) {
+      console.error("[MEMBERSHIP] audit log fetch failed:", err?.message ?? err);
+      res.status(500).json({ message: "Could not load membership history" });
     }
   });
 
@@ -7492,6 +7538,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
     const updated = await storage.updateMembershipSubscription(id, updates as any);
+
+    // Audit log: record the meaningful changes in a single combined entry so
+    // the per-member history drawer reads like a human-friendly diary.
+    const staffUser = (req as any).staffUser?.username || "staff";
+    const changes: string[] = [];
+    let action: string | null = null;
+    if (status !== undefined && status !== sub.status) {
+      changes.push(`status ${sub.status} → ${status}`);
+      if (status === "cancelled") action = "cancelled";
+      else if (status === "paused") action = "paused";
+      else if (status === "active" && sub.status === "paused") action = "resumed";
+      else action = "status_changed";
+    }
+    if (planId !== undefined && parseInt(planId) !== sub.planId) {
+      changes.push(`plan ${sub.planId} → ${parseInt(planId)}`);
+      if (!action) action = "plan_changed";
+    }
+    if (currentPeriodEnd !== undefined && (currentPeriodEnd || null) !== (sub.currentPeriodEnd || null)) {
+      changes.push(`expiry ${sub.currentPeriodEnd ?? "—"} → ${currentPeriodEnd || "—"}`);
+      if (!action) action = "expiry_changed";
+    }
+    if (changes.length) {
+      await storage.logMembershipAction({
+        subscriptionId: id,
+        customerId: sub.customerId,
+        action: action ?? "updated",
+        staffUsername: staffUser,
+        note: changes.join("; "),
+      }).catch((e) => console.warn("[MEMBERSHIP] audit log write failed:", e?.message ?? e));
+    }
+
     res.json(updated);
   });
 

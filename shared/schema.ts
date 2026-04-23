@@ -415,6 +415,31 @@ export const passwordResetAuditLog = pgTable("password_reset_audit_log", {
 
 export type PasswordResetAuditEntry = typeof passwordResetAuditLog.$inferSelect;
 
+// ── Membership audit log ─────────────────────────────────────────────────────
+// Single queryable trail of every staff-initiated membership action: refunds,
+// cancellations, plan changes, payment-link sends, pauses/resumes, etc.
+// Mirrors the shape of `passwordResetAuditLog` but keyed by subscription so
+// the per-member history drawer can list the actions for one membership.
+// Free-text `note` is intentionally plaintext (it's an internal staff log,
+// like staffNotes); customer PII is referenced by id only, not duplicated.
+export const membershipAuditLog = pgTable("membership_audit_log", {
+  id: serial("id").primaryKey(),
+  subscriptionId: integer("subscription_id"),
+  customerId: integer("customer_id"),
+  action: text("action").notNull(),
+  staffUsername: text("staff_username").notNull(),
+  amountPence: integer("amount_pence"),
+  refundId: text("refund_id"),
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  createdAtIdx: index("membership_audit_log_created_at_idx").on(table.createdAt),
+  subscriptionIdx: index("membership_audit_log_subscription_id_idx").on(table.subscriptionId),
+  customerIdx: index("membership_audit_log_customer_id_idx").on(table.customerId),
+}));
+
+export type MembershipAuditEntry = typeof membershipAuditLog.$inferSelect;
+
 // ── Menu visibility overrides ─────────────────────────────────────────────────
 
 export const menuCategoryVisibility = pgTable("menu_category_visibility", {

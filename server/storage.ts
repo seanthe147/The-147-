@@ -61,6 +61,8 @@ import {
   type OrderAuditEntry,
   passwordResetAuditLog,
   type PasswordResetAuditEntry,
+  membershipAuditLog,
+  type MembershipAuditEntry,
   staffTimeEntries,
   type StaffTimeEntry,
   staffLeaveRequests,
@@ -285,6 +287,34 @@ export async function runStartupMigrations() {
     await client.query(`
       CREATE INDEX IF NOT EXISTS password_reset_audit_log_staff_username_idx
         ON password_reset_audit_log (staff_username);
+    `);
+
+    // Audit trail of staff-initiated membership actions (Task #74)
+    // — refunds, cancellations, plan changes, payment-link sends, pauses/resumes.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS membership_audit_log (
+        id SERIAL PRIMARY KEY,
+        subscription_id INTEGER,
+        customer_id INTEGER,
+        action TEXT NOT NULL,
+        staff_username TEXT NOT NULL,
+        amount_pence INTEGER,
+        refund_id TEXT,
+        note TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS membership_audit_log_created_at_idx
+        ON membership_audit_log (created_at DESC);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS membership_audit_log_subscription_id_idx
+        ON membership_audit_log (subscription_id);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS membership_audit_log_customer_id_idx
+        ON membership_audit_log (customer_id);
     `);
 
     // Ensure VIP plan exists (10% food & drink, group-based, excludes stacking with deals)
@@ -1788,6 +1818,34 @@ export class DatabaseStorage implements IStorage {
       customerEmail: r.customerEmail ? decrypt(r.customerEmail) : null,
       customerName: r.customerName ? decrypt(r.customerName) : null,
     }));
+  }
+
+  // ── Membership audit log ──────────────────────────────────────────────────
+  async logMembershipAction(data: {
+    subscriptionId?: number | null;
+    customerId?: number | null;
+    action: string;
+    staffUsername: string;
+    amountPence?: number | null;
+    refundId?: string | null;
+    note?: string | null;
+  }): Promise<void> {
+    await db.insert(membershipAuditLog).values({
+      subscriptionId: data.subscriptionId ?? null,
+      customerId: data.customerId ?? null,
+      action: data.action,
+      staffUsername: data.staffUsername,
+      amountPence: data.amountPence ?? null,
+      refundId: data.refundId ?? null,
+      note: data.note ?? null,
+    });
+  }
+
+  async listMembershipAuditLogForSubscription(subscriptionId: number, limit = 100): Promise<MembershipAuditEntry[]> {
+    return db.select().from(membershipAuditLog)
+      .where(eq(membershipAuditLog.subscriptionId, subscriptionId))
+      .orderBy(desc(membershipAuditLog.createdAt))
+      .limit(limit);
   }
 
   // ══════════════════════════════════════════════════════════════════

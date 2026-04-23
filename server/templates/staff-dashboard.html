@@ -1961,6 +1961,17 @@
         <div style="margin-top:4px;color:#3B82F6">Status changes are mirrored to Square automatically.</div>
       </div>
 
+      <!-- History drawer: queryable audit log of every staff action on this membership -->
+      <div style="border:1px solid var(--border);border-radius:10px;margin-bottom:14px;overflow:hidden">
+        <button type="button" id="msHistoryToggle" onclick="window.toggleMembershipHistory()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--surface-2,#F8F9FB);border:none;cursor:pointer;font-size:12px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.5px">
+          <span>History (refunds, cancellations, plan changes)</span>
+          <span id="msHistoryCaret" style="font-size:14px">▾</span>
+        </button>
+        <div id="msHistoryBody" style="display:none;padding:10px 16px;max-height:240px;overflow:auto;font-size:12px;line-height:1.5;background:var(--surface,#FFF)">
+          <div id="msHistoryContent" style="color:var(--text-2)">Loading…</div>
+        </div>
+      </div>
+
       <!-- Danger zone -->
       <div style="border:1px solid var(--red-light,#FEE2E2);border-radius:10px;padding:12px 16px">
         <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Danger Zone</div>
@@ -6447,8 +6458,51 @@
 
     // Store current sub id
     el('manageSubModal').dataset.subId=id;
+    el('manageSubModal').dataset.historyLoaded='';
     el('msErr').classList.remove('show');
+    el('msHistoryBody').style.display='none';
+    el('msHistoryCaret').textContent='▾';
+    el('msHistoryContent').innerHTML='Loading…';
     openOverlay('manageSubModal');
+  };
+
+  window.toggleMembershipHistory=async function(){
+    const body=el('msHistoryBody');
+    const caret=el('msHistoryCaret');
+    const content=el('msHistoryContent');
+    const modal=el('manageSubModal');
+    const subId=parseInt(modal.dataset.subId);
+    const isOpen=body.style.display!=='none';
+    if(isOpen){body.style.display='none';caret.textContent='▾';return;}
+    body.style.display='';caret.textContent='▴';
+    if(modal.dataset.historyLoaded==='1')return;
+    try{
+      const r=await api('/api/staff/membership/subscriptions/'+subId+'/audit-log');
+      if(!r.ok){content.textContent='Could not load history.';return;}
+      const rows=await r.json();
+      if(!Array.isArray(rows)||rows.length===0){
+        content.innerHTML='<div style="color:var(--text-3,#9CA3AF);font-style:italic">No staff actions recorded for this membership yet.</div>';
+        modal.dataset.historyLoaded='1';return;
+      }
+      const labels={refund_cancel:'Refund & cancel',payment_link_sent:'Payment link sent',cancelled:'Cancelled',paused:'Paused',resumed:'Resumed',plan_changed:'Plan changed',expiry_changed:'Expiry changed',status_changed:'Status changed',created:'Created',updated:'Updated'};
+      const html=rows.map(r=>{
+        const when=new Date(r.createdAt).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'});
+        const label=labels[r.action]||r.action;
+        const amt=r.amountPence?` · £${(r.amountPence/100).toFixed(2)}`:'';
+        const refund=r.refundId?` · refund <span style="font-family:monospace">${esc(r.refundId)}</span>`:'';
+        const note=r.note?`<div style="color:var(--text-2);margin-top:2px">${esc(r.note)}</div>`:'';
+        return `<div style="padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">
+            <strong style="color:var(--text)">${esc(label)}</strong>
+            <span style="color:var(--text-3,#9CA3AF);font-size:11px;white-space:nowrap">${when}</span>
+          </div>
+          <div style="color:var(--text-2);font-size:11px">by ${esc(r.staffUsername||'staff')}${amt}${refund}</div>
+          ${note}
+        </div>`;
+      }).join('');
+      content.innerHTML=html;
+      modal.dataset.historyLoaded='1';
+    }catch(e){if(e.message!=='Session expired'){content.textContent='Network error loading history.';}}
   };
 
   window.msResetHours=function(){ el('msHoursUsed').value=0; };
