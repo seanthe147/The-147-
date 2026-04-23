@@ -1828,8 +1828,18 @@ var init_storage = __esm({
         const result = await db.delete(availabilityRules).where(eq(availabilityRules.id, id)).returning();
         return result.length > 0;
       }
+      // Pre-allocate the next app_orders.id WITHOUT inserting a row, so we can
+      // pass it to Square as the KDS ticket name (e.g. "Collection #1234") before
+      // the order is actually created. The reserved id is then used in the
+      // subsequent createAppOrder() call so the row matches what the kitchen sees.
+      async reserveAppOrderId() {
+        const rows = await db.execute(sql2`SELECT nextval('app_orders_id_seq') AS id`);
+        const raw = rows.rows?.[0]?.id ?? rows[0]?.id;
+        return Number(raw);
+      }
       async createAppOrder(data) {
         const rows = await db.insert(appOrders).values({
+          ...data.id !== void 0 ? { id: data.id } : {},
           squareLinkId: data.squareLinkId ?? null,
           squareOrderId: data.squareOrderId ?? null,
           squarePaymentId: null,
@@ -3006,7 +3016,7 @@ function normalizeUkPhone(phone) {
   if (digits.startsWith("7") && digits.length === 10) return "+44" + digits;
   return void 0;
 }
-async function buildSquareOrderBody(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote) {
+async function buildSquareOrderBody(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, orderNumber) {
   const locationId = getLocationId();
   let prePopulated;
   if (customer?.email || customer?.name || customer?.phone) {
@@ -3025,7 +3035,13 @@ async function buildSquareOrderBody(items, tableNote, customer, discountPercent,
       };
     }
   }
-  const ticketName = tableNote || (customer?.name ? customer.name.split(" ")[0] : "Guest");
+  const firstName = customer?.name ? customer.name.trim().split(/\s+/)[0] : "";
+  let ticketName;
+  if (firstName && tableNote) ticketName = `${firstName} \xB7 ${tableNote}`;
+  else if (firstName) ticketName = firstName;
+  else if (tableNote) ticketName = tableNote;
+  else if (orderNumber) ticketName = `Collection #${String(orderNumber).padStart(5, "0")}`;
+  else ticketName = "Guest";
   const memberDiscountUid = "MEMBER-DISCOUNT";
   const catalogIds = /* @__PURE__ */ new Set();
   for (const item of items) {
@@ -3195,7 +3211,7 @@ async function buildSquareOrderBody(items, tableNote, customer, discountPercent,
   }, 0);
   return { order, prePopulated, pricedItems, rawTotalPence };
 }
-async function createSquareOrderForCheckout(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote) {
+async function createSquareOrderForCheckout(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, orderNumber) {
   const idempotencyKey = `order-create-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   const { order, pricedItems } = await buildSquareOrderBody(
     items,
@@ -3204,7 +3220,8 @@ async function createSquareOrderForCheckout(items, tableNote, customer, discount
     discountPercent,
     discountLabel,
     excludeWithDeals,
-    orderNote
+    orderNote,
+    orderNumber
   );
   const data = await squareRequest("POST", "/v2/orders", {
     idempotency_key: idempotencyKey,
@@ -3214,7 +3231,7 @@ async function createSquareOrderForCheckout(items, tableNote, customer, discount
   const totalPence = Number(data.order.total_money?.amount ?? data.order.net_amounts?.total_money?.amount ?? 0);
   return { orderId: data.order.id, totalPence, pricedItems };
 }
-async function createOrderCheckoutLink(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote) {
+async function createOrderCheckoutLink(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, orderNumber) {
   const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   const { order, prePopulated, pricedItems, rawTotalPence } = await buildSquareOrderBody(
     items,
@@ -3223,7 +3240,8 @@ async function createOrderCheckoutLink(items, tableNote, customer, discountPerce
     discountPercent,
     discountLabel,
     excludeWithDeals,
-    orderNote
+    orderNote,
+    orderNumber
   );
   const body = {
     idempotency_key: idempotencyKey,
@@ -5672,7 +5690,7 @@ async function registerRoutes(app2) {
   });
   app2.post("/api/staff/wix-migration/send-email/:id", staffAuth, ownerAuth, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(String(req.params.id));
       if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
       const ok = await sendMigrationEmail(id, req);
       if (!ok.success) return res.status(400).json({ message: ok.message });
@@ -7596,6 +7614,7 @@ async function registerRoutes(app2) {
         return res.status(503).json({ message: "Online ordering is currently unavailable. Please order at the bar." });
       }
       const { discountPercent, discountLabel, excludeWithDeals } = await resolveMemberDiscountImpl(req, customer, syncSquareMembershipForCustomer);
+      const reservedOrderId = await storage.reserveAppOrderId();
       const { url, linkId, squareOrderId, pricedItems, rawTotalPence } = await createOrderCheckoutLink(
         items,
         tableNote,
@@ -7603,10 +7622,12 @@ async function registerRoutes(app2) {
         discountPercent,
         discountLabel,
         excludeWithDeals,
-        orderNote
+        orderNote,
+        reservedOrderId
       );
       const discountedTotal = discountPercent ? Math.round(rawTotalPence * (1 - discountPercent / 100)) : rawTotalPence;
       storage.createAppOrder({
+        id: reservedOrderId,
         squareLinkId: linkId || void 0,
         squareOrderId: squareOrderId || void 0,
         tableNote: tableNote || void 0,
@@ -7698,6 +7719,7 @@ async function registerRoutes(app2) {
         return res.status(503).json({ message: "Online ordering is currently unavailable. Please order at the bar." });
       }
       const { discountPercent, discountLabel, excludeWithDeals } = await resolveMemberDiscountImpl(req, customer, syncSquareMembershipForCustomer);
+      const reservedOrderId = await storage.reserveAppOrderId();
       const { orderId, totalPence, pricedItems } = await createSquareOrderForCheckout(
         items,
         tableNote,
@@ -7705,10 +7727,12 @@ async function registerRoutes(app2) {
         discountPercent,
         discountLabel,
         excludeWithDeals,
-        orderNote
+        orderNote,
+        reservedOrderId
       );
       const confirmationToken = randomBytes3(24).toString("hex");
       const appOrder = await storage.createAppOrder({
+        id: reservedOrderId,
         squareOrderId: orderId,
         tableNote: tableNote || void 0,
         customerName: customer?.name || void 0,
@@ -8185,7 +8209,7 @@ async function registerRoutes(app2) {
   app2.post("/api/events", staffAuth, managerAuth, async (req, res) => {
     const parsed = insertEventSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid event data", details: parsed.error.errors });
+      return res.status(400).json({ error: "Invalid event data", details: parsed.error.issues });
     }
     const event = await storage.createEvent(parsed.data);
     res.status(201).json(event);
@@ -11940,7 +11964,7 @@ function configureExpoAndLanding(app2) {
     }
   });
   app2.get(["/test-site", "/test-site/:page"], async (req, res) => {
-    const slug = (req.params.page ?? "").toLowerCase();
+    const slug = String(req.params.page ?? "").toLowerCase();
     const file = TEST_SITE_PAGES[slug];
     if (!file) return res.status(404).send("Page not found");
     try {
@@ -11970,7 +11994,7 @@ function configureExpoAndLanding(app2) {
         plan: sub.plan,
         sub,
         alreadyDone: !!sub.migrationCompletedAt,
-        token: req.params.token
+        token: String(req.params.token)
       }));
     } catch {
       res.status(500).send("Page unavailable");
