@@ -175,7 +175,8 @@ var init_schema = __esm({
       emailVerifyLastSentAt: timestamp("email_verify_last_sent_at"),
       passwordResetTokenHash: text("password_reset_token_hash"),
       passwordResetTokenExpiresAt: timestamp("password_reset_token_expires_at"),
-      passwordResetLastSentAt: timestamp("password_reset_last_sent_at")
+      passwordResetLastSentAt: timestamp("password_reset_last_sent_at"),
+      expiresAt: timestamp("expires_at")
     });
     insertCustomerSchema = createInsertSchema(customers).omit({ id: true, createdAt: true });
     customerSessions = pgTable("customer_sessions", {
@@ -240,6 +241,16 @@ var init_schema = __esm({
       priceMonthly: integer("price_monthly").notNull(),
       hoursIncluded: integer("hours_included"),
       hoursUnit: text("hours_unit").notNull().default("month"),
+      // Explicit "this plan grants unlimited snooker" flag. When true, the
+      // benefits list shows "Unlimited snooker access" regardless of
+      // hoursIncluded. When false, hoursIncluded controls the wording:
+      //   > 0  → "X hours per month"
+      //   0    → no snooker line at all
+      //   null → no snooker line at all
+      // Previously, a null/blank hoursIncluded was implicitly treated as
+      // "unlimited", which surprised staff who left it blank to mean
+      // "not configured yet".
+      snookerUnlimited: boolean("snooker_unlimited").notNull().default(false),
       foodDrinkDiscount: integer("food_drink_discount").notNull().default(0),
       priorityBooking: boolean("priority_booking").notNull().default(false),
       loyaltyMultiplier: integer("loyalty_multiplier").notNull().default(1),
@@ -1638,6 +1649,7 @@ var init_storage = __esm({
             priceMonthly: data.priceMonthly,
             hoursIncluded: data.hoursIncluded ?? null,
             hoursUnit: data.hoursUnit ?? "month",
+            snookerUnlimited: data.snookerUnlimited ?? false,
             foodDrinkDiscount: data.foodDrinkDiscount ?? 0,
             priorityBooking: data.priorityBooking ?? false,
             loyaltyMultiplier: data.loyaltyMultiplier ?? 1,
@@ -3794,12 +3806,12 @@ function plural(count, singular, plural2) {
 }
 function getPlanBenefits(plan) {
   const benefits = [];
-  if (plan.hoursIncluded && plan.hoursIncluded > 0) {
+  if (plan.snookerUnlimited) {
+    benefits.push({ key: "hours", text: "Unlimited snooker access" });
+  } else if (plan.hoursIncluded && plan.hoursIncluded > 0) {
     const unit = plan.hoursUnit === "year" ? "per year" : "per month";
     const hourWord = plural(plan.hoursIncluded, "hour", "hours");
     benefits.push({ key: "hours", text: `${plan.hoursIncluded} ${hourWord} snooker ${unit}` });
-  } else {
-    benefits.push({ key: "hours", text: "Unlimited snooker access" });
   }
   if (plan.foodDrinkDiscount && plan.foodDrinkDiscount > 0) {
     benefits.push({ key: "discount", text: `${plan.foodDrinkDiscount}% food & drink discount` });
@@ -5039,6 +5051,10 @@ async function customerAuth(req, res, next) {
   const customer = await storage.getCustomerById(session.customerId);
   if (!customer) {
     return res.status(401).json({ message: "Account not found" });
+  }
+  if (customer.expiresAt && customer.expiresAt.getTime() < Date.now()) {
+    await storage.invalidateCustomerSession(token);
+    return res.status(401).json({ message: "This account has expired." });
   }
   req.customerId = customer.id;
   req.customerEmail = customer.email;
@@ -8900,6 +8916,9 @@ async function registerRoutes(app2) {
         recordCustomerLoginFailure(clientIp);
         return res.status(401).json({ message: "Invalid email or password" });
       }
+      if (customer.expiresAt && customer.expiresAt.getTime() < Date.now()) {
+        return res.status(401).json({ message: "This account has expired." });
+      }
       const token = randomBytes3(48).toString("hex");
       const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3);
       await storage.createCustomerSession(token, customer.id, expiresAt);
@@ -9859,7 +9878,7 @@ Phone: ${phone}` : ""}`,
     }
   });
   app2.post("/api/staff/membership/plans", staffAuth, managerAuth, async (req, res) => {
-    const { name, tier, priceMonthly, priceAnnual, hoursIncluded, hoursUnit, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, squarePlanVariationIdAlt, squareCustomerGroupId, excludeWithDeals, active, hideFromSignup, sortOrder, color, description } = req.body ?? {};
+    const { name, tier, priceMonthly, priceAnnual, hoursIncluded, hoursUnit, snookerUnlimited, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, squarePlanVariationIdAlt, squareCustomerGroupId, excludeWithDeals, active, hideFromSignup, sortOrder, color, description } = req.body ?? {};
     if (!name?.trim()) return res.status(400).json({ message: "Plan name is required" });
     if (priceMonthly == null || isNaN(Number(priceMonthly))) return res.status(400).json({ message: "Monthly price is required" });
     const resolvedTier = (tier?.trim() || name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")) + "_" + Date.now();
@@ -9870,6 +9889,7 @@ Phone: ${phone}` : ""}`,
         priceMonthly: Number(priceMonthly),
         hoursIncluded: hoursIncluded != null && hoursIncluded !== "" ? Number(hoursIncluded) : null,
         hoursUnit: hoursUnit || "month",
+        snookerUnlimited: !!snookerUnlimited,
         foodDrinkDiscount: Number(foodDrinkDiscount) || 0,
         priorityBooking: !!priorityBooking,
         loyaltyMultiplier: Number(loyaltyMultiplier) || 1,
