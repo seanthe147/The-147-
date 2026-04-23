@@ -414,12 +414,20 @@ export function buildPaymentSheetHtml(opts: {
         // Apple Pay's PassKit can reject tokenize with INVALID_CARD_DATA when
         // the total label contains non-ASCII characters (e.g. middle dot ·)
         // or runs over ~32 chars. Keep the label short, ASCII-only.
+        //
+        // App Store Guideline 4.9 (Apple Pay) requires the MERCHANT NAME to
+        // appear on the payment sheet. The total.label is what Apple Pay
+        // shows next to the amount, so it must lead with our merchant name
+        // "The 147 Bradford" — both for one-off purchases and subscriptions.
+        // Previously the subscription branch said "The 147 Membership
+        // (monthly)" with no merchant identifier, which was the basis for
+        // App Store rejection of v2.6.5.
         var totalLabel;
         if (IS_SUBSCRIPTION) {
           var isAnnual = /year/i.test(RECURRING_DESC);
           totalLabel = isAnnual
-            ? "The 147 Membership (yearly)"
-            : "The 147 Membership (monthly)";
+            ? "The 147 Bradford (yearly)"
+            : "The 147 Bradford (monthly)";
         } else {
           totalLabel = "The 147 Bradford";
         }
