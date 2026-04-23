@@ -35,6 +35,9 @@ jobs:
       - name: Reorder matching test
         run: npx tsx tests/reorder-matching.test.ts
 
+      - name: Membership recurring-only check
+        run: npx tsx tests/membership-recurring-only.test.ts
+
   integration-tests:
     name: Integration tests (server + Postgres)
     runs-on: ubuntu-latest
