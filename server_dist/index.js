@@ -13,7 +13,7 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, serial, timestamp, boolean, integer, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, passwordResetAuditLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffDocuments, insertStaffDocumentSchema, staffOnboarding, insertStaffOnboardingSchema, staffPushTokens, paymentLog, insertPaymentLogSchema;
+var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, passwordResetAuditLog, membershipAuditLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffDocuments, insertStaffDocumentSchema, staffOnboarding, insertStaffOnboardingSchema, staffPushTokens, paymentLog, insertPaymentLogSchema;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
@@ -334,6 +334,21 @@ var init_schema = __esm({
     }, (table) => ({
       createdAtIdx: index("password_reset_audit_log_created_at_idx").on(table.createdAt),
       staffUsernameIdx: index("password_reset_audit_log_staff_username_idx").on(table.staffUsername)
+    }));
+    membershipAuditLog = pgTable("membership_audit_log", {
+      id: serial("id").primaryKey(),
+      subscriptionId: integer("subscription_id"),
+      customerId: integer("customer_id"),
+      action: text("action").notNull(),
+      staffUsername: text("staff_username").notNull(),
+      amountPence: integer("amount_pence"),
+      refundId: text("refund_id"),
+      note: text("note"),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    }, (table) => ({
+      createdAtIdx: index("membership_audit_log_created_at_idx").on(table.createdAt),
+      subscriptionIdx: index("membership_audit_log_subscription_id_idx").on(table.subscriptionId),
+      customerIdx: index("membership_audit_log_customer_id_idx").on(table.customerId)
     }));
     menuCategoryVisibility = pgTable("menu_category_visibility", {
       categoryId: text("category_id").primaryKey(),
@@ -804,6 +819,31 @@ async function runStartupMigrations() {
     await client.query(`
       CREATE INDEX IF NOT EXISTS password_reset_audit_log_staff_username_idx
         ON password_reset_audit_log (staff_username);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS membership_audit_log (
+        id SERIAL PRIMARY KEY,
+        subscription_id INTEGER,
+        customer_id INTEGER,
+        action TEXT NOT NULL,
+        staff_username TEXT NOT NULL,
+        amount_pence INTEGER,
+        refund_id TEXT,
+        note TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS membership_audit_log_created_at_idx
+        ON membership_audit_log (created_at DESC);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS membership_audit_log_subscription_id_idx
+        ON membership_audit_log (subscription_id);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS membership_audit_log_customer_id_idx
+        ON membership_audit_log (customer_id);
     `);
     await client.query(`
       INSERT INTO membership_plans
@@ -1878,6 +1918,21 @@ var init_storage = __esm({
           customerEmail: r.customerEmail ? decrypt(r.customerEmail) : null,
           customerName: r.customerName ? decrypt(r.customerName) : null
         }));
+      }
+      // ── Membership audit log ──────────────────────────────────────────────────
+      async logMembershipAction(data) {
+        await db.insert(membershipAuditLog).values({
+          subscriptionId: data.subscriptionId ?? null,
+          customerId: data.customerId ?? null,
+          action: data.action,
+          staffUsername: data.staffUsername,
+          amountPence: data.amountPence ?? null,
+          refundId: data.refundId ?? null,
+          note: data.note ?? null
+        });
+      }
+      async listMembershipAuditLogForSubscription(subscriptionId, limit = 100) {
+        return db.select().from(membershipAuditLog).where(eq(membershipAuditLog.subscriptionId, subscriptionId)).orderBy(desc(membershipAuditLog.createdAt)).limit(limit);
       }
       // ══════════════════════════════════════════════════════════════════
       // STAFF HR — TIME ENTRIES
@@ -10162,6 +10217,15 @@ ${auditNote}` : auditNote;
         cancelledAt: /* @__PURE__ */ new Date(),
         staffNotes: combinedNotes
       });
+      await storage.logMembershipAction({
+        subscriptionId: sub.id,
+        customerId: sub.customerId,
+        action: "refund_cancel",
+        staffUsername: staffUser,
+        amountPence,
+        refundId,
+        note: `Refunded leftover one-time membership charge (payment ${target.id}) and cancelled subscription.`
+      }).catch((e) => console.warn("[MEMBERSHIP] audit log write failed:", e?.message ?? e));
       const customer = await storage.getCustomerById(sub.customerId).catch(() => null);
       let emailSent = false;
       if (customer?.email) {
@@ -10232,6 +10296,13 @@ ${auditNote}` : auditNote;
       const combinedNotes = sub.staffNotes ? `${sub.staffNotes}
 ${auditNote}` : auditNote;
       await storage.updateMembershipSubscription(sub.id, { staffNotes: combinedNotes });
+      await storage.logMembershipAction({
+        subscriptionId: sub.id,
+        customerId: sub.customerId,
+        action: "payment_link_sent",
+        staffUsername: staffUser,
+        note: `Sent recurring subscription payment link to customer (leftover one-time fallback resolution).`
+      }).catch((e) => console.warn("[MEMBERSHIP] audit log write failed:", e?.message ?? e));
       res.json({ success: true, url: link.url, emailSent });
     } catch (err) {
       console.error("[MEMBERSHIP] Leftover send-recurring-link failed:", err?.message ?? err);
@@ -10376,6 +10447,14 @@ ${auditNote}` : auditNote;
       } catch {
       }
     }
+    const staffUser = req.staffUser?.username || "staff";
+    await storage.logMembershipAction({
+      subscriptionId: sub.id,
+      customerId: sub.customerId,
+      action: "created",
+      staffUsername: staffUser,
+      note: `Created via staff dashboard (plan #${sub.planId}, source ${source}, status ${effectiveStatus}).`
+    }).catch((e) => console.warn("[MEMBERSHIP] audit log write failed:", e?.message ?? e));
     res.status(201).json(sub);
   });
   app2.post("/api/staff/membership/payment-link", staffAuth, managerAuth, async (req, res) => {
@@ -10416,10 +10495,29 @@ ${auditNote}` : auditNote;
           });
         }
       }
+      const staffUser = req.staffUser?.username || "staff";
+      await storage.logMembershipAction({
+        subscriptionId: sub?.id ?? null,
+        customerId: sub?.customerId ?? null,
+        action: "payment_link_sent",
+        staffUsername: staffUser,
+        note: `Generated Square recurring payment link for plan "${plan.name}"${customer?.email ? " (emailed to customer)" : ""}.`
+      }).catch((e) => console.warn("[MEMBERSHIP] audit log write failed:", e?.message ?? e));
       res.json({ url: link.url, paymentLinkId: link.paymentLinkId, emailSent });
     } catch (err) {
       console.error("[PAYMENT LINK]", err?.message);
       res.status(500).json({ message: err?.message || "Failed to create payment link" });
+    }
+  });
+  app2.get("/api/staff/membership/subscriptions/:id/audit-log", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (!id) return res.status(400).json({ message: "Invalid subscription id" });
+    try {
+      const entries = await storage.listMembershipAuditLogForSubscription(id, 100);
+      res.json(entries);
+    } catch (err) {
+      console.error("[MEMBERSHIP] audit log fetch failed:", err?.message ?? err);
+      res.status(500).json({ message: "Could not load membership history" });
     }
   });
   app2.patch("/api/staff/membership/subscriptions/:id", staffAuth, managerAuth, async (req, res) => {
@@ -10447,6 +10545,33 @@ ${auditNote}` : auditNote;
       }
     }
     const updated = await storage.updateMembershipSubscription(id, updates);
+    const staffUser = req.staffUser?.username || "staff";
+    const changes = [];
+    let action = null;
+    if (status !== void 0 && status !== sub.status) {
+      changes.push(`status ${sub.status} \u2192 ${status}`);
+      if (status === "cancelled") action = "cancelled";
+      else if (status === "paused") action = "paused";
+      else if (status === "active" && sub.status === "paused") action = "resumed";
+      else action = "status_changed";
+    }
+    if (planId !== void 0 && parseInt(planId) !== sub.planId) {
+      changes.push(`plan ${sub.planId} \u2192 ${parseInt(planId)}`);
+      if (!action) action = "plan_changed";
+    }
+    if (currentPeriodEnd !== void 0 && (currentPeriodEnd || null) !== (sub.currentPeriodEnd || null)) {
+      changes.push(`expiry ${sub.currentPeriodEnd ?? "\u2014"} \u2192 ${currentPeriodEnd || "\u2014"}`);
+      if (!action) action = "expiry_changed";
+    }
+    if (changes.length) {
+      await storage.logMembershipAction({
+        subscriptionId: id,
+        customerId: sub.customerId,
+        action: action ?? "updated",
+        staffUsername: staffUser,
+        note: changes.join("; ")
+      }).catch((e) => console.warn("[MEMBERSHIP] audit log write failed:", e?.message ?? e));
+    }
     res.json(updated);
   });
   app2.get("/delete-account", (_req, res) => {
