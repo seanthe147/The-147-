@@ -1079,7 +1079,14 @@ async function buildSquareOrderBody(
     }
   }
 
-  const ticketName = tableNote || (customer?.name ? customer.name.split(" ")[0] : "Guest");
+  // KDS ticket name: show BOTH the customer's first name and the table when
+  // available (e.g. "Sam · Table 5"). Previously this preferred tableNote
+  // alone, which silently hid the customer name from the kitchen as soon as
+  // table selection became common in the Order tab.
+  const firstName = customer?.name ? customer.name.trim().split(/\s+/)[0] : "";
+  const ticketName = firstName && tableNote
+    ? `${firstName} · ${tableNote}`
+    : (firstName || tableNote || "Guest");
   const memberDiscountUid = "MEMBER-DISCOUNT";
 
   // ── Server-side price validation ────────────────────────────────────────────
