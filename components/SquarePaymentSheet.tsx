@@ -235,8 +235,9 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
             // by default. Without this prop, Square's payments.applePay()
             // promise rejects silently with "unsupported on this device" and
             // the button never appears, even when Square's domain registration
-            // is fully verified.
-            applePayEnabled
+            // is fully verified. The prop isn't in react-native-webview's
+            // public TS types but is accepted by the iOS native module.
+            {...({ applePayEnabled: true } as any)}
             // Allow the wallet sheets to appear over the WebView without being
             // clipped by inline media playback constraints.
             allowsInlineMediaPlayback

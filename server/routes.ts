@@ -1831,7 +1831,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/staff/wix-migration/send-email/:id", staffAuth, ownerAuth, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(String(req.params.id));
       if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
       const ok = await sendMigrationEmail(id, req);
       if (!ok.success) return res.status(400).json({ message: ok.message });
@@ -4756,7 +4756,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/events", staffAuth, managerAuth, async (req, res) => {
     const parsed = insertEventSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid event data", details: parsed.error.errors });
+      return res.status(400).json({ error: "Invalid event data", details: parsed.error.issues });
     }
     const event = await storage.createEvent(parsed.data);
     res.status(201).json(event);

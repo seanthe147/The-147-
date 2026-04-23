@@ -435,7 +435,7 @@ function configureExpoAndLanding(app: express.Application) {
   });
   // Page handler — `/test-site` and `/test-site/<page>`
   app.get(["/test-site", "/test-site/:page"], async (req: Request, res: Response) => {
-    const slug = (req.params.page ?? "").toLowerCase();
+    const slug = String(req.params.page ?? "").toLowerCase();
     const file = TEST_SITE_PAGES[slug];
     if (!file) return res.status(404).send("Page not found");
     try {
@@ -468,7 +468,7 @@ function configureExpoAndLanding(app: express.Application) {
         plan: sub.plan,
         sub,
         alreadyDone: !!sub.migrationCompletedAt,
-        token: req.params.token,
+        token: String(req.params.token),
       }));
     } catch {
       res.status(500).send("Page unavailable");
