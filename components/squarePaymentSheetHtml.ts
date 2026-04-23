@@ -294,33 +294,31 @@ export function buildPaymentSheetHtml(opts: {
       }
 
       function paymentRequest() {
+        // Square's Web Payments SDK only forwards a small subset of fields to
+        // Apple Pay (countryCode, currencyCode, total{amount,label}). The
+        // Apple Pay JS recurringPaymentRequest object is silently dropped, so
+        // we cannot rely on iOS's native "Subscription" badge. Instead make
+        // the recurring nature obvious in the total label (which IS shown in
+        // the Apple Pay sheet) so customers see e.g.
+        //   "Pay The 147 Membership · £3.99/month"
+        // before they double-click to confirm.
+        var totalLabel;
+        if (IS_SUBSCRIPTION) {
+          var isAnnual = /year/i.test(RECURRING_DESC);
+          totalLabel = isAnnual
+            ? "The 147 Membership · auto-renews yearly"
+            : "The 147 Membership · auto-renews monthly";
+        } else {
+          totalLabel = "The 147 Bradford";
+        }
         var req = {
           countryCode: "GB",
           currencyCode: CURRENCY,
           total: {
             amount: AMOUNT,
-            label: IS_SUBSCRIPTION ? "The 147 Membership" : "The 147 Bradford",
+            label: totalLabel,
           },
         };
-        // For recurring billing, attach the Apple Pay JS recurringPaymentRequest
-        // so Apple's own sheet clearly tells the customer "this is a
-        // subscription that will renew automatically until cancelled".
-        // Required by Apple Pay guidelines for subscriptions and prevents
-        // confused-customer chargebacks.
-        if (IS_SUBSCRIPTION) {
-          var isAnnual = /year/i.test(RECURRING_DESC);
-          req.total.amount = AMOUNT; // first/initial billed amount
-          req.recurringPaymentRequest = {
-            paymentDescription: "The 147 Bradford Membership",
-            regularBilling: {
-              amount: AMOUNT,
-              label: isAnnual ? "Annual membership" : "Monthly membership",
-              recurringPaymentIntervalUnit: isAnnual ? "year" : "month",
-              recurringPaymentIntervalCount: 1,
-            },
-            managementURL: "https://the147bradford.replit.app/",
-          };
-        }
         return payments.paymentRequest(req);
       }
 
