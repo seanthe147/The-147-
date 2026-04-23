@@ -1007,6 +1007,10 @@ async function customerAuth(req: Request, res: Response, next: NextFunction) {
   if (!customer) {
     return res.status(401).json({ message: "Account not found" });
   }
+  if (customer.expiresAt && customer.expiresAt.getTime() < Date.now()) {
+    await storage.invalidateCustomerSession(token);
+    return res.status(401).json({ message: "This account has expired." });
+  }
   (req as any).customerId = customer.id;
   (req as any).customerEmail = customer.email;
   next();
@@ -5510,6 +5514,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!salt || !storedHash || !verifyPin(password, storedHash, salt)) {
         recordCustomerLoginFailure(clientIp);
         return res.status(401).json({ message: "Invalid email or password" });
+      }
+      if (customer.expiresAt && customer.expiresAt.getTime() < Date.now()) {
+        return res.status(401).json({ message: "This account has expired." });
       }
       const token = randomBytes(48).toString("hex");
       const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);

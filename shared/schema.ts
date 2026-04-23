@@ -206,6 +206,7 @@ export const customers = pgTable("customers", {
   passwordResetTokenHash: text("password_reset_token_hash"),
   passwordResetTokenExpiresAt: timestamp("password_reset_token_expires_at"),
   passwordResetLastSentAt: timestamp("password_reset_last_sent_at"),
+  expiresAt: timestamp("expires_at"),
 });
 
 export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true, createdAt: true });
