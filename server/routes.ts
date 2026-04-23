@@ -5925,7 +5925,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Membership — public plan listing ────────────────────────────────────────
   app.get("/api/membership/plans", async (_req, res) => {
-    const { getPlanBenefitTexts } = await import("@shared/membership-benefits");
+    const { getPlanBenefits, getPlanBenefitTexts } = await import("@shared/membership-benefits");
     const plans = await storage.getMembershipPlans(true);
     // Internal-only plans (Staff, VIP, comped tiers) stay active so the
     // discount logic still recognises them, but must not appear on the
@@ -5933,8 +5933,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const visible = plans.filter((p: any) => !p.hideFromSignup);
     // Attach the canonical benefits list so HTML templates (marketing page,
     // staff dashboard) render the same wording as the customer app without
-    // each duplicating the formatting rules.
-    const enriched = visible.map((p: any) => ({ ...p, benefits: getPlanBenefitTexts(p) }));
+    // each duplicating the formatting rules. `benefits` is the simple text
+    // list used by the staff dashboard chips; `benefitsDetailed` carries
+    // both key+text so the marketing page can map icons by stable key
+    // instead of brittle text matching.
+    const enriched = visible.map((p: any) => ({
+      ...p,
+      benefits: getPlanBenefitTexts(p),
+      benefitsDetailed: getPlanBenefits(p),
+    }));
     res.set("Cache-Control", "no-store");
     res.json(enriched);
   });

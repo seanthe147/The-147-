@@ -498,23 +498,19 @@
     return `rgba(${r},${g},${b},${a})`;
   }
 
-  /* ── feature builder — uses canonical `benefits` array from /api/membership/plans
-       (built by shared/membership-benefits.ts) so wording stays in sync with
-       the customer app and staff dashboard. Icons are picked here per text. ── */
-  function iconFor(text){
-    const t=String(text||'').toLowerCase();
-    if(t.includes('unlimited'))             return '♾️';
-    if(t.includes('hour'))                  return '🕐';
-    if(t.includes('food'))                  return '🍽️';
-    if(t.includes('priority'))              return '⚡';
-    if(t.includes('guest pass'))            return '👥';
-    if(t.includes('loyalty'))               return '⭐';
-    if(t.includes('app'))                   return '📱';
-    return '✓';
-  }
+  /* ── feature builder — uses canonical `benefitsDetailed` array from
+       /api/membership/plans (built by shared/membership-benefits.ts) so
+       wording stays in sync with the customer app and staff dashboard.
+       Icons are mapped from the stable `key` (not text matching). ── */
+  const BENEFIT_ICONS={hours:'🕐',discount:'🍽️',priority:'⚡',guests:'👥',loyalty:'⭐',app:'📱'};
   function buildFeatures(p){
-    const list=Array.isArray(p.benefits)?p.benefits:[];
-    return list.map(text=>({icon:iconFor(text),text}));
+    const list=Array.isArray(p.benefitsDetailed)?p.benefitsDetailed:[];
+    return list.map(b=>{
+      let icon=BENEFIT_ICONS[b.key]||'✓';
+      // Single special case: unlimited (no hours) gets the infinity glyph
+      if(b.key==='hours'&&!p.hoursIncluded)icon='♾️';
+      return {icon,text:b.text};
+    });
   }
 
   /* ── only allow safe hex CSS colours ── */
