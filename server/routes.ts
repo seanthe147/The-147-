@@ -6675,7 +6675,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/staff/membership/plans", staffAuth, managerAuth, async (req, res) => {
-    const { name, tier, priceMonthly, priceAnnual, hoursIncluded, hoursUnit, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, squarePlanVariationIdAlt, squareCustomerGroupId, excludeWithDeals, active, hideFromSignup, sortOrder, color, description } = req.body ?? {};
+    const { name, tier, priceMonthly, priceAnnual, hoursIncluded, hoursUnit, snookerUnlimited, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, squarePlanVariationIdAlt, squareCustomerGroupId, excludeWithDeals, active, hideFromSignup, sortOrder, color, description } = req.body ?? {};
     if (!name?.trim()) return res.status(400).json({ message: "Plan name is required" });
     if (priceMonthly == null || isNaN(Number(priceMonthly))) return res.status(400).json({ message: "Monthly price is required" });
     // Auto-generate a tier slug from the name if not provided
@@ -6687,6 +6687,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         priceMonthly: Number(priceMonthly),
         hoursIncluded: hoursIncluded != null && hoursIncluded !== "" ? Number(hoursIncluded) : null,
         hoursUnit: hoursUnit || "month",
+        snookerUnlimited: !!snookerUnlimited,
         foodDrinkDiscount: Number(foodDrinkDiscount) || 0,
         priorityBooking: !!priorityBooking,
         loyaltyMultiplier: Number(loyaltyMultiplier) || 1,

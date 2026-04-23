@@ -1809,12 +1809,16 @@
           <div class="form-group" style="margin:0">
             <label class="form-label">Hours Included</label>
             <div style="display:flex;gap:6px">
-              <input class="form-input" type="number" id="epHours" min="0" step="1" placeholder="Leave blank for unlimited" style="flex:1">
+              <input class="form-input" type="number" id="epHours" min="0" step="1" placeholder="0" style="flex:1">
               <select class="form-input" id="epHoursUnit" style="width:100px;flex-shrink:0">
                 <option value="month">/ Month</option>
                 <option value="year">/ Year</option>
               </select>
             </div>
+            <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px;cursor:pointer;user-select:none">
+              <input type="checkbox" id="epSnookerUnlimited" style="margin:0">
+              <span>Unlimited snooker (overrides Hours Included)</span>
+            </label>
           </div>
           <div class="form-group" style="margin:0">
             <label class="form-label">Food &amp; Drink Discount (%)</label>
@@ -6230,6 +6234,7 @@
     el('epPriceAnnual').value='';
     el('epHours').value='';
     el('epHoursUnit').value='month';
+    el('epSnookerUnlimited').checked=false;
     el('epDiscount').value='0';
     el('epGuestPasses').value='0';
     el('epLoyaltyMult').value='1';
@@ -6275,6 +6280,7 @@
     el('epPriceAnnual').value=plan.priceAnnual?(plan.priceAnnual/100).toFixed(2):'';
     el('epHours').value=plan.hoursIncluded!=null?plan.hoursIncluded:'';
     el('epHoursUnit').value=plan.hoursUnit||'month';
+    el('epSnookerUnlimited').checked=!!plan.snookerUnlimited;
     el('epDiscount').value=plan.foodDrinkDiscount||0;
     el('epGuestPasses').value=plan.guestPassesMonthly||0;
     el('epLoyaltyMult').value=plan.loyaltyMultiplier||1;
@@ -6321,6 +6327,7 @@
       priceAnnual:annualVal!=null&&!isNaN(annualVal)?Math.round(annualVal*100):null,
       hoursIncluded:hoursRaw!==''?parseInt(hoursRaw):null,
       hoursUnit:el('epHoursUnit').value||'month',
+      snookerUnlimited:el('epSnookerUnlimited').checked,
       foodDrinkDiscount:parseInt(el('epDiscount').value)||0,
       guestPassesMonthly:parseInt(el('epGuestPasses').value)||0,
       loyaltyMultiplier:parseInt(el('epLoyaltyMult').value)||1,

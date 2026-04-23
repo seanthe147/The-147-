@@ -10,6 +10,7 @@ export interface MembershipBenefit {
 interface BenefitInput {
   hoursIncluded?: number | null;
   hoursUnit?: string | null;
+  snookerUnlimited?: boolean | null;
   foodDrinkDiscount?: number | null;
   priorityBooking?: boolean | null;
   guestPassesMonthly?: number | null;
@@ -35,16 +36,15 @@ function plural(count: number, singular: string, plural: string): string {
 export function getPlanBenefits(plan: BenefitInput): MembershipBenefit[] {
   const benefits: MembershipBenefit[] = [];
 
-  if (plan.hoursIncluded === 0) {
-    // Explicit zero — admin has said this plan does not include any snooker
-    // hours. Omit the snooker line entirely rather than misrepresenting it
-    // as "unlimited" (which is what an unset/null value means).
+  // Snooker line: explicit "Unlimited" flag takes precedence. If the flag
+  // is off, hoursIncluded controls the wording — 0/null/blank means no
+  // snooker line at all (no longer implicitly "unlimited").
+  if (plan.snookerUnlimited) {
+    benefits.push({ key: "hours", text: "Unlimited snooker access" });
   } else if (plan.hoursIncluded && plan.hoursIncluded > 0) {
     const unit = plan.hoursUnit === "year" ? "per year" : "per month";
     const hourWord = plural(plan.hoursIncluded, "hour", "hours");
     benefits.push({ key: "hours", text: `${plan.hoursIncluded} ${hourWord} snooker ${unit}` });
-  } else {
-    benefits.push({ key: "hours", text: "Unlimited snooker access" });
   }
 
   if (plan.foodDrinkDiscount && plan.foodDrinkDiscount > 0) {

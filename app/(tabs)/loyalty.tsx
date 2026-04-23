@@ -78,6 +78,7 @@ interface MembershipPlan {
   priceAnnual?: number | null;
   color: string | null;
   hoursIncluded: number | null;
+  snookerUnlimited: boolean | null;
   foodDrinkDiscount: number | null;
   priorityBooking: boolean | null;
   loyaltyMultiplier: number | null;
@@ -93,13 +94,9 @@ const PLAN_TIER_META: Record<string, { icon: string; tagline: string }> = {
 
 function getPlanDisplayFeatures(plan: MembershipPlan): string[] {
   const f: string[] = [];
-  if (plan.hoursIncluded === 0) {
-    // Explicit zero — no snooker hours included; omit the line.
-  } else if (plan.hoursIncluded) {
-    f.push(`${plan.hoursIncluded} hrs snooker/month`);
-  } else {
-    f.push("Unlimited snooker");
-  }
+  if (plan.snookerUnlimited) f.push("Unlimited snooker");
+  else if (plan.hoursIncluded) f.push(`${plan.hoursIncluded} hrs snooker/month`);
+  // else (0 or blank) — no snooker line
   if (plan.foodDrinkDiscount) f.push(`${plan.foodDrinkDiscount}% food & drink discount`);
   if (plan.priorityBooking) f.push("Priority booking");
   if (plan.guestPassesMonthly && plan.guestPassesMonthly > 0) f.push(`${plan.guestPassesMonthly} guest pass/month`);

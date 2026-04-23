@@ -147,9 +147,9 @@
     var saving = p.priceMonthly && p.priceAnnual ? Math.round(100 - ((p.priceAnnual / 12) / p.priceMonthly * 100)) : 0;
     var isFeatured = p.tier === 'century' || (plans.length >= 2 && idx === 1);
     var perksHtml = '<ul class="perks">';
-    if (p.hoursIncluded === 0) { /* explicit 0 — no snooker hours included; omit line */ }
+    if (p.snookerUnlimited) perksHtml += perk('Unlimited table access');
     else if (p.hoursIncluded) perksHtml += perk(p.hoursIncluded + ' free snooker hours/month');
-    else perksHtml += perk('Unlimited table access');
+    /* otherwise (0 or blank) — no snooker line */
     perksHtml += perk(p.foodDrinkDiscount + '% off all food &amp; drinks');
     perksHtml += p.guestPassesMonthly > 0 ? perk(p.guestPassesMonthly + ' guest pass'+(p.guestPassesMonthly>1?'es':'')+'/month') : perk('Guest passes', true);
     perksHtml += p.priorityBooking ? perk('Priority table booking') : perk('Priority booking', true);

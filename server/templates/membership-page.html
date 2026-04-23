@@ -508,7 +508,7 @@
     return list.map(b=>{
       let icon=BENEFIT_ICONS[b.key]||'✓';
       // Single special case: unlimited (no hours) gets the infinity glyph
-      if(b.key==='hours'&&!p.hoursIncluded)icon='♾️';
+      if(b.key==='hours'&&p.snookerUnlimited)icon='♾️';
       return {icon,text:b.text};
     });
   }

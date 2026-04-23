@@ -35,6 +35,7 @@ interface MembershipPlan {
   color: string | null;
   hoursIncluded: number | null;
   hoursUnit: string | null;
+  snookerUnlimited: boolean | null;
   foodDrinkDiscount: number | null;
   priorityBooking: boolean | null;
   loyaltyMultiplier: number | null;
@@ -77,7 +78,7 @@ const BENEFIT_ICONS: Record<BenefitKey, keyof typeof Ionicons.glyphMap> = {
 
 function getPlanFeatures(plan: MembershipPlan): { icon: keyof typeof Ionicons.glyphMap; text: string }[] {
   return getPlanBenefits(plan).map((b) => ({
-    icon: b.key === "hours" && !plan.hoursIncluded ? "infinite-outline" : BENEFIT_ICONS[b.key],
+    icon: b.key === "hours" && plan.snookerUnlimited ? "infinite-outline" : BENEFIT_ICONS[b.key],
     text: b.text,
   }));
 }

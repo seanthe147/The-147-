@@ -299,6 +299,16 @@ export const membershipPlans = pgTable("membership_plans", {
   priceMonthly: integer("price_monthly").notNull(),
   hoursIncluded: integer("hours_included"),
   hoursUnit: text("hours_unit").notNull().default("month"),
+  // Explicit "this plan grants unlimited snooker" flag. When true, the
+  // benefits list shows "Unlimited snooker access" regardless of
+  // hoursIncluded. When false, hoursIncluded controls the wording:
+  //   > 0  → "X hours per month"
+  //   0    → no snooker line at all
+  //   null → no snooker line at all
+  // Previously, a null/blank hoursIncluded was implicitly treated as
+  // "unlimited", which surprised staff who left it blank to mean
+  // "not configured yet".
+  snookerUnlimited: boolean("snooker_unlimited").notNull().default(false),
   foodDrinkDiscount: integer("food_drink_discount").notNull().default(0),
   priorityBooking: boolean("priority_booking").notNull().default(false),
   loyaltyMultiplier: integer("loyalty_multiplier").notNull().default(1),

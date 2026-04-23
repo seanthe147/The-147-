@@ -1435,6 +1435,7 @@ export class DatabaseStorage implements IStorage {
           priceMonthly: data.priceMonthly,
           hoursIncluded: data.hoursIncluded ?? null,
           hoursUnit: data.hoursUnit ?? "month",
+          snookerUnlimited: data.snookerUnlimited ?? false,
           foodDrinkDiscount: data.foodDrinkDiscount ?? 0,
           priorityBooking: data.priorityBooking ?? false,
           loyaltyMultiplier: data.loyaltyMultiplier ?? 1,
