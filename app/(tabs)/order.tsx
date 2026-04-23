@@ -18,7 +18,6 @@ import {
   Modal,
   Linking,
   Alert,
-  Image,
   Dimensions,
   NativeSyntheticEvent,
   NativeScrollEvent,
@@ -27,6 +26,10 @@ import {
   AppState,
   type AppStateStatus,
 } from "react-native";
+// expo-image gives us on-disk caching, off-thread decoding and a smooth
+// fade-in transition. The menu is image-heavy and was the slowest part of
+// the Order tab to render on cold start with React Native's built-in Image.
+import { Image as ExpoImage } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
@@ -159,10 +162,12 @@ function BannerCarousel({ banners }: { banners: BannerImage[] }) {
       >
         {banners.map((banner) => (
           <View key={banner.id} style={bannerStyles.slide}>
-            <Image
+            <ExpoImage
               source={{ uri: banner.imageUrl }}
               style={bannerStyles.image}
-              resizeMode="cover"
+              contentFit="cover"
+              transition={150}
+              cachePolicy="memory-disk"
             />
             {!!banner.title && (
               <View style={bannerStyles.titleOverlay}>
@@ -252,10 +257,12 @@ function CategoryGrid({
               const countLabel = subCount > 0 ? `${subCount} group${subCount !== 1 ? "s" : ""} · ${itemCount} items` : `${itemCount} items`;
               return hasImage ? (
                 <>
-                  <Image
+                  <ExpoImage
                     source={{ uri: cat.imageUrl }}
                     style={gridStyles.cardBgImage}
-                    resizeMode="cover"
+                    contentFit="cover"
+                    transition={150}
+                    cachePolicy="memory-disk"
                   />
                   <View style={gridStyles.cardImageOverlay} />
                   <View style={gridStyles.cardImageContent}>
@@ -646,10 +653,12 @@ function ItemCard({
         </View>
       )}
       {hasImage && (
-        <Image
+        <ExpoImage
           source={{ uri: item.imageUrl }}
           style={styles.itemImage}
-          resizeMode="cover"
+          contentFit="cover"
+          transition={150}
+          cachePolicy="memory-disk"
         />
       )}
       <View style={[styles.itemInfo, hasImage && styles.itemInfoWithImage]}>
