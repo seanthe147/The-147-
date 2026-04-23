@@ -1199,7 +1199,7 @@ function CartSheet({
                 <View style={styles.tablePickerHeader}>
                   <Ionicons name="grid-outline" size={15} color={Colors.light.textSecondary} />
                   <Text style={styles.tablePickerLabel}>
-                    {tableNote ? `${tableNote} selected` : "Select your table (optional)"}
+                    {tableNote ? `${tableNote} selected` : "Collecting from the bar"}
                   </Text>
                   {!!tableNote && (
                     <Pressable onPress={() => setTableNote("")} hitSlop={8}>
@@ -1207,6 +1207,36 @@ function CartSheet({
                     </Pressable>
                   )}
                 </View>
+                {/* Explicit "Collect from bar" pill so customers always have
+                    a clear alternative to picking a table. Selecting it just
+                    clears tableNote — the server already treats no-table as
+                    a collection order and assigns a Collection #N. */}
+                <Pressable
+                  onPress={() => setTableNote("")}
+                  style={[
+                    styles.collectOption,
+                    !tableNote && styles.collectOptionSelected,
+                  ]}
+                  testID="collect-from-bar-btn"
+                >
+                  <Ionicons
+                    name="bag-handle-outline"
+                    size={18}
+                    color={!tableNote ? "#fff" : Colors.brand.blue}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.collectOptionTitle, !tableNote && styles.collectOptionTitleSelected]}>
+                      Collect from the bar
+                    </Text>
+                    <Text style={[styles.collectOptionSubtitle, !tableNote && styles.collectOptionSubtitleSelected]}>
+                      We'll give you a collection number
+                    </Text>
+                  </View>
+                  {!tableNote && (
+                    <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                  )}
+                </Pressable>
+                <Text style={styles.tableOrLabel}>or pick your table</Text>
                 {TABLE_SECTIONS.map((section) => (
                   <View key={section.label} style={styles.tableSectionRow}>
                     <View style={[styles.tableSectionLabelWrap, { borderLeftColor: section.color }]}>
@@ -2590,6 +2620,45 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.light.textSecondary,
     flex: 1,
+  },
+  collectOption: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginHorizontal: 10,
+    marginTop: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.brand.blue,
+    backgroundColor: Colors.light.background,
+  },
+  collectOptionSelected: {
+    backgroundColor: Colors.brand.blue,
+    borderColor: Colors.brand.blue,
+  },
+  collectOptionTitle: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 14,
+    color: Colors.brand.blue,
+  },
+  collectOptionTitleSelected: { color: "#fff" },
+  collectOptionSubtitle: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 11,
+    color: Colors.light.textSecondary,
+    marginTop: 2,
+  },
+  collectOptionSubtitleSelected: { color: "rgba(255,255,255,0.85)" },
+  tableOrLabel: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 11,
+    color: Colors.light.textSecondary,
+    textAlign: "center" as const,
+    textTransform: "uppercase" as const,
+    letterSpacing: 0.5,
+    marginVertical: 10,
   },
   tableSectionRow: {
     flexDirection: "row",
