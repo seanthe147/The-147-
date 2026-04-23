@@ -327,7 +327,7 @@
     <div class="perk-cell">
       <span class="perk-emoji">🍽️</span>
       <div class="perk-title">Food &amp; Drink Savings</div>
-      <div class="perk-text">Up to 15% off every order, every visit</div>
+      <div class="perk-text" id="perkDiscountText">Save on every food &amp; drink order, every visit</div>
     </div>
     <div class="perk-cell">
       <span class="perk-emoji">⭐</span>
@@ -498,21 +498,23 @@
     return `rgba(${r},${g},${b},${a})`;
   }
 
-  /* ── feature builder — driven entirely by API fields ── */
+  /* ── feature builder — uses canonical `benefits` array from /api/membership/plans
+       (built by shared/membership-benefits.ts) so wording stays in sync with
+       the customer app and staff dashboard. Icons are picked here per text. ── */
+  function iconFor(text){
+    const t=String(text||'').toLowerCase();
+    if(t.includes('unlimited'))             return '♾️';
+    if(t.includes('hour'))                  return '🕐';
+    if(t.includes('food'))                  return '🍽️';
+    if(t.includes('priority'))              return '⚡';
+    if(t.includes('guest pass'))            return '👥';
+    if(t.includes('loyalty'))               return '⭐';
+    if(t.includes('app'))                   return '📱';
+    return '✓';
+  }
   function buildFeatures(p){
-    const feats=[];
-    if(p.hoursIncluded){
-      const unit=p.hoursUnit==='year'?'per year':'per month';
-      feats.push({icon:'🕐',text:`${p.hoursIncluded} hours snooker ${unit}`});
-    } else {
-      feats.push({icon:'♾️',text:'Unlimited snooker access'});
-    }
-    if(p.foodDrinkDiscount) feats.push({icon:'🍽️',text:`${p.foodDrinkDiscount}% food & drink discount`});
-    if(p.priorityBooking)   feats.push({icon:'⚡',text:'Priority table booking'});
-    if(p.guestPassesMonthly>0) feats.push({icon:'👥',text:`${p.guestPassesMonthly} guest pass per month`});
-    if(p.loyaltyMultiplier>1)  feats.push({icon:'⭐',text:`${p.loyaltyMultiplier}× loyalty points on every visit`});
-    feats.push({icon:'📱',text:'Manage everything in The 147 app'});
-    return feats;
+    const list=Array.isArray(p.benefits)?p.benefits:[];
+    return list.map(text=>({icon:iconFor(text),text}));
   }
 
   /* ── only allow safe hex CSS colours ── */
@@ -582,6 +584,11 @@
       allPlans=sorted;
       const popIdx=sorted.length===3?1:0;
       document.getElementById('plansGrid').innerHTML=sorted.map((p,i)=>renderPlan(p,i===popIdx)).join('');
+      // Drive the perks-strip's discount line from the actual plans so the
+      // marketing copy never drifts from what plans really offer.
+      const maxDisc=sorted.reduce((m,p)=>Math.max(m,p.foodDrinkDiscount||0),0);
+      const dEl=document.getElementById('perkDiscountText');
+      if(dEl&&maxDisc>0)dEl.textContent='Up to '+maxDisc+'% off every food & drink order';
       // Trigger fade-in
       document.getElementById('plansSection').classList.add('visible');
     }catch{

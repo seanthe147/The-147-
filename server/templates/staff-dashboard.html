@@ -5908,13 +5908,9 @@
     if(activePlans.length>0){
       html+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:24px">`;
       activePlans.forEach(p=>{
-        const perks=[];
-        if(p.hoursIncluded)perks.push(p.hoursIncluded+' hrs/'+(p.hoursUnit==='year'?'yr':'mo'));
-        else perks.push('Unlimited');
-        if(p.foodDrinkDiscount)perks.push(p.foodDrinkDiscount+'% F&D discount');
-        if(p.priorityBooking)perks.push('Priority booking');
-        if(p.guestPassesMonthly)perks.push(p.guestPassesMonthly+' guest pass'+(p.guestPassesMonthly>1?'es':''));
-        if(p.loyaltyMultiplier>1)perks.push(p.loyaltyMultiplier+'× loyalty pts');
+        // Canonical benefits list comes from the API (shared/membership-benefits.ts)
+        // so wording matches the customer app and marketing page exactly.
+        const perks=Array.isArray(p.benefits)?p.benefits:[];
         html+=`<div class="settings-section" style="margin:0;padding:0;border-top:4px solid ${esc(p.color)};overflow:hidden">
           <div style="padding:14px 16px">
             <div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:4px">${esc(p.name)}</div>
@@ -6051,13 +6047,8 @@
       plans.forEach(p=>{
         const activeCnt=subs.filter(s=>s.planId===p.id&&s.status==='active').length;
         const pausedCnt=subs.filter(s=>s.planId===p.id&&s.status==='paused').length;
-        const perks=[];
-        if(p.hoursIncluded)perks.push(p.hoursIncluded+' hrs/'+(p.hoursUnit==='year'?'yr':'mo'));
-        else perks.push('Unlimited');
-        if(p.foodDrinkDiscount)perks.push(p.foodDrinkDiscount+'% F&D discount');
-        if(p.priorityBooking)perks.push('Priority booking');
-        if(p.guestPassesMonthly)perks.push(p.guestPassesMonthly+' guest pass'+(p.guestPassesMonthly>1?'es':''));
-        if(p.loyaltyMultiplier>1)perks.push(p.loyaltyMultiplier+'× loyalty pts');
+        // Canonical benefits list from /api/membership/plans (shared/membership-benefits.ts)
+        const perks=Array.isArray(p.benefits)?p.benefits:[];
         html+=`<div class="settings-section" style="margin:0;padding:0;border-top:4px solid ${esc(p.color)};overflow:hidden">
           <div style="padding:16px 18px 14px">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px">

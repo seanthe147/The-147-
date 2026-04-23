@@ -21,6 +21,7 @@ import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import { getApiUrl } from "@/lib/query-client";
 import { SquarePaymentSheet } from "@/components/SquarePaymentSheet";
+import { getPlanBenefits, type BenefitKey } from "@shared/membership-benefits";
 
 const TOKEN_KEY = "customer_session_token";
 
@@ -65,28 +66,20 @@ function getPlanMeta(tier: string) {
   return PLAN_ICONS[tier] ?? { name: "card" as const, tagline: "" };
 }
 
+const BENEFIT_ICONS: Record<BenefitKey, keyof typeof Ionicons.glyphMap> = {
+  hours: "time-outline",
+  discount: "restaurant-outline",
+  priority: "flash-outline",
+  guests: "people-outline",
+  loyalty: "star-outline",
+  app: "phone-portrait-outline",
+};
+
 function getPlanFeatures(plan: MembershipPlan): { icon: keyof typeof Ionicons.glyphMap; text: string }[] {
-  const features: { icon: keyof typeof Ionicons.glyphMap; text: string }[] = [];
-  if (plan.hoursIncluded) {
-    features.push({ icon: "time-outline", text: `${plan.hoursIncluded} hours snooker per month` });
-  } else {
-    features.push({ icon: "infinite-outline", text: "Unlimited snooker" });
-  }
-  if (plan.foodDrinkDiscount) {
-    features.push({ icon: "restaurant-outline", text: `${plan.foodDrinkDiscount}% food & drink discount` });
-  }
-  if (plan.priorityBooking) {
-    features.push({ icon: "flash-outline", text: "Priority booking access" });
-  }
-  if (plan.guestPassesMonthly && plan.guestPassesMonthly > 0) {
-    features.push({ icon: "people-outline", text: `${plan.guestPassesMonthly} guest pass per month` });
-  }
-  if (plan.loyaltyMultiplier && plan.loyaltyMultiplier > 1) {
-    features.push({ icon: "star-outline", text: `${plan.loyaltyMultiplier}× loyalty points on every visit` });
-  } else {
-    features.push({ icon: "star-outline", text: "Member loyalty points" });
-  }
-  return features;
+  return getPlanBenefits(plan).map((b) => ({
+    icon: b.key === "hours" && !plan.hoursIncluded ? "infinite-outline" : BENEFIT_ICONS[b.key],
+    text: b.text,
+  }));
 }
 
 async function getToken(): Promise<string> {
