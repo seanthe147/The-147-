@@ -4025,8 +4025,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { discountPercent, discountLabel, excludeWithDeals } =
         await resolveMemberDiscountImpl(req, customer, syncSquareMembershipForCustomer);
+      // Reserve the next app_orders id BEFORE talking to Square so the KDS
+      // ticket can show "Collection #N" when there's no customer name and no
+      // table — kitchen still has something to call out.
+      const reservedOrderId = await storage.reserveAppOrderId();
       const { url, linkId, squareOrderId, pricedItems, rawTotalPence } = await square.createOrderCheckoutLink(
-        items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote
+        items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, reservedOrderId,
       );
       const discountedTotal = discountPercent
         ? Math.round(rawTotalPence * (1 - discountPercent / 100))
@@ -4034,6 +4038,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Store order record (non-blocking — don't fail checkout if DB write fails)
       storage.createAppOrder({
+        id: reservedOrderId,
         squareLinkId: linkId || undefined,
         squareOrderId: squareOrderId || undefined,
         tableNote: tableNote || undefined,
@@ -4157,8 +4162,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { discountPercent, discountLabel, excludeWithDeals } =
         await resolveMemberDiscountImpl(req, customer, syncSquareMembershipForCustomer);
 
+      // Reserve the app order id up-front so we can include "Collection #N"
+      // on the Square KDS ticket when the customer hasn't given a name or
+      // table. Same id is then used for the app_orders row below.
+      const reservedOrderId = await storage.reserveAppOrderId();
       const { orderId, totalPence, pricedItems } = await square.createSquareOrderForCheckout(
-        items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote,
+        items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, reservedOrderId,
       );
 
       // Generate a per-order confirmation token. The client stores this
@@ -4168,6 +4177,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Save app_orders row (pending) so the webhook + staff dashboard see it
       const appOrder = await storage.createAppOrder({
+        id: reservedOrderId,
         squareOrderId: orderId,
         tableNote: tableNote || undefined,
         customerName: customer?.name || undefined,

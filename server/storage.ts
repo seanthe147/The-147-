@@ -1675,7 +1675,18 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
+  // Pre-allocate the next app_orders.id WITHOUT inserting a row, so we can
+  // pass it to Square as the KDS ticket name (e.g. "Collection #1234") before
+  // the order is actually created. The reserved id is then used in the
+  // subsequent createAppOrder() call so the row matches what the kitchen sees.
+  async reserveAppOrderId(): Promise<number> {
+    const rows: any = await db.execute(sql`SELECT nextval('app_orders_id_seq') AS id`);
+    const raw = rows.rows?.[0]?.id ?? rows[0]?.id;
+    return Number(raw);
+  }
+
   async createAppOrder(data: {
+    id?: number;
     squareLinkId?: string;
     squareOrderId?: string;
     tableNote?: string;
@@ -1689,6 +1700,7 @@ export class DatabaseStorage implements IStorage {
     pushToken?: string;
   }): Promise<{ id: number }> {
     const rows = await db.insert(appOrders).values({
+      ...(data.id !== undefined ? { id: data.id } : {}),
       squareLinkId: data.squareLinkId ?? null,
       squareOrderId: data.squareOrderId ?? null,
       squarePaymentId: null,

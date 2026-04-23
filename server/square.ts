@@ -1052,6 +1052,7 @@ async function buildSquareOrderBody(
   discountLabel: string | undefined,
   excludeWithDeals: boolean | undefined,
   orderNote: string | undefined,
+  orderNumber: number | undefined,
 ): Promise<{
   order: any;
   prePopulated: Record<string, any> | undefined;
@@ -1079,14 +1080,20 @@ async function buildSquareOrderBody(
     }
   }
 
-  // KDS ticket name: show BOTH the customer's first name and the table when
-  // available (e.g. "Sam · Table 5"). Previously this preferred tableNote
-  // alone, which silently hid the customer name from the kitchen as soon as
-  // table selection became common in the Order tab.
+  // KDS ticket name precedence:
+  //   1. name + table  → "Sam · Table 5"
+  //   2. name only     → "Sam"
+  //   3. table only    → "Table 5"
+  //   4. neither       → "Collection #1234" (uses pre-reserved app order id
+  //                      so kitchen has something to call out at the bar)
+  //   5. truly nothing → "Guest"
   const firstName = customer?.name ? customer.name.trim().split(/\s+/)[0] : "";
-  const ticketName = firstName && tableNote
-    ? `${firstName} · ${tableNote}`
-    : (firstName || tableNote || "Guest");
+  let ticketName: string;
+  if (firstName && tableNote) ticketName = `${firstName} · ${tableNote}`;
+  else if (firstName) ticketName = firstName;
+  else if (tableNote) ticketName = tableNote;
+  else if (orderNumber) ticketName = `Collection #${orderNumber}`;
+  else ticketName = "Guest";
   const memberDiscountUid = "MEMBER-DISCOUNT";
 
   // ── Server-side price validation ────────────────────────────────────────────
@@ -1286,10 +1293,11 @@ export async function createSquareOrderForCheckout(
   discountLabel?: string,
   excludeWithDeals?: boolean,
   orderNote?: string,
+  orderNumber?: number,
 ): Promise<{ orderId: string; totalPence: number; pricedItems: PricedLineItem[] }> {
   const idempotencyKey = `order-create-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   const { order, pricedItems } = await buildSquareOrderBody(
-    items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote,
+    items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, orderNumber,
   );
   const data = await squareRequest("POST", "/v2/orders", {
     idempotency_key: idempotencyKey,
@@ -1307,11 +1315,12 @@ export async function createOrderCheckoutLink(
   discountPercent?: number,
   discountLabel?: string,
   excludeWithDeals?: boolean,
-  orderNote?: string
+  orderNote?: string,
+  orderNumber?: number,
 ): Promise<{ url: string; linkId: string; squareOrderId: string; pricedItems: PricedLineItem[]; rawTotalPence: number }> {
   const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   const { order, prePopulated, pricedItems, rawTotalPence } = await buildSquareOrderBody(
-    items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote,
+    items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, orderNumber,
   );
   const body: any = {
     idempotency_key: idempotencyKey,
