@@ -294,20 +294,15 @@ export function buildPaymentSheetHtml(opts: {
       }
 
       function paymentRequest() {
-        // Square's Web Payments SDK only forwards a small subset of fields to
-        // Apple Pay (countryCode, currencyCode, total{amount,label}). The
-        // Apple Pay JS recurringPaymentRequest object is silently dropped, so
-        // we cannot rely on iOS's native "Subscription" badge. Instead make
-        // the recurring nature obvious in the total label (which IS shown in
-        // the Apple Pay sheet) so customers see e.g.
-        //   "Pay The 147 Membership · £3.99/month"
-        // before they double-click to confirm.
+        // Apple Pay's PassKit can reject tokenize with INVALID_CARD_DATA when
+        // the total label contains non-ASCII characters (e.g. middle dot ·)
+        // or runs over ~32 chars. Keep the label short, ASCII-only.
         var totalLabel;
         if (IS_SUBSCRIPTION) {
           var isAnnual = /year/i.test(RECURRING_DESC);
           totalLabel = isAnnual
-            ? "The 147 Membership · auto-renews yearly"
-            : "The 147 Membership · auto-renews monthly";
+            ? "The 147 Membership (yearly)"
+            : "The 147 Membership (monthly)";
         } else {
           totalLabel = "The 147 Bradford";
         }
