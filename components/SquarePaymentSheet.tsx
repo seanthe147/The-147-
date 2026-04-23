@@ -48,7 +48,30 @@ export interface SquarePaymentSheetProps {
 type BridgeMessage =
   | { type: "token"; token: string; verificationToken?: string | null }
   | { type: "error"; message: string }
-  | { type: "fatal"; message: string };
+  | { type: "fatal"; message: string }
+  | ({ type: "diag"; phase: string } & Record<string, unknown>);
+
+// Fire-and-forget POST of a WebView diagnostic event to the server. Never
+// throws and never blocks the sheet — the sheet must continue to work even
+// if the diagnostics endpoint is offline. Centralised here (rather than in
+// the WebView's own JS) because the WebView's srcDoc origin is "null" and
+// CORS / wallet-domain rules make in-WebView fetches fragile, whereas the
+// React Native runtime has clean network access.
+function postDiagnostic(payload: Record<string, unknown>) {
+  try {
+    const base = (process.env.EXPO_PUBLIC_API_URL as string | undefined)
+      || (process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : "");
+    if (!base) return;
+    const url = `${base.replace(/\/$/, "")}/api/public/payment-sheet-diagnostics`;
+    void fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      // Best-effort — never make the user wait on this.
+      keepalive: true,
+    }).catch(() => {});
+  } catch {}
+}
 
 
 export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
@@ -105,8 +128,32 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
       setInternalError((msg as Extract<BridgeMessage, { type: "error" }>).message);
     } else if (msg.type === "fatal" && typeof (msg as { message?: unknown }).message === "string") {
       const m = msg as Extract<BridgeMessage, { type: "fatal" }>;
+      // Forward as a fatal-phase diagnostic too. The WebView itself also
+      // emits an explicit diag("fatal", …) right before the fatal, but
+      // this belt-and-braces ensures we still capture the failure at the
+      // server even if the inline diag emit is lost (e.g. the WebView is
+      // torn down between the two postMessage calls).
+      postDiagnostic({
+        phase: "fatal",
+        reason: m.message,
+        platform: Platform.OS,
+        environment: props.environment,
+        baseUrl: typeof process !== "undefined" ? (process.env.EXPO_PUBLIC_DOMAIN || null) : null,
+      });
       setInternalError(m.message);
       props.onUnavailable?.(m.message);
+    } else if (msg.type === "diag" && typeof (msg as { phase?: unknown }).phase === "string") {
+      // Plain diagnostic phase marker — forward to the server's diagnostics
+      // endpoint and otherwise ignore. Augment with platform + environment
+      // (only known here in the React Native layer, not in the WebView JS).
+      const m = msg as Extract<BridgeMessage, { type: "diag" }>;
+      const { type: _type, ...rest } = m;
+      postDiagnostic({
+        ...rest,
+        platform: Platform.OS,
+        environment: props.environment,
+        baseUrl: typeof process !== "undefined" ? (process.env.EXPO_PUBLIC_DOMAIN || null) : null,
+      });
     }
   }
 

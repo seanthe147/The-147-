@@ -26,10 +26,14 @@ export function buildPaymentSheetHtml(opts: {
       ? "https://web.squarecdn.com/v1/square.js"
       : "https://sandbox.web.squarecdn.com/v1/square.js";
   const amountStr = (opts.amountPence / 100).toFixed(2);
-  // Per-phase timeout. Kept aggressive (8s) so customers stuck on a flaky
-  // network or behind a CDN block are told quickly and can fall back to the
-  // hosted checkout instead of staring at a spinner.
-  const PHASE_TIMEOUT_MS = 8000;
+  // Per-phase timeout. Production logs from the diagnostic endpoint showed a
+  // long tail of customers on slow mobile signal (3G / poor Wi-Fi at the
+  // venue) where the original 8s budget tripped before the SDK had finished
+  // downloading — pushing them onto the browser-fallback unnecessarily. We
+  // still want a hard ceiling so a truly hung WebView doesn't strand the
+  // user, but 12s is a much better fit for real-world mobile latencies and
+  // the SDK load is now retried once before this timeout actually fatals.
+  const PHASE_TIMEOUT_MS = 12000;
   // Bridge: postMessage works for both react-native-webview (window.ReactNativeWebView)
   // and the web fallback (parent window via window.parent.postMessage).
   return `<!DOCTYPE html>
@@ -183,6 +187,11 @@ export function buildPaymentSheetHtml(opts: {
       var RECURRING_DESC = ${JSON.stringify(opts.recurringDescription || "")};
       var SDK_SRC = ${JSON.stringify(sdkSrc)};
       var PHASE_TIMEOUT_MS = ${PHASE_TIMEOUT_MS};
+      var ENVIRONMENT = ${JSON.stringify(opts.environment)};
+      var SHEET_OPENED_AT = Date.now();
+      // Per-open session id so the server can group all diagnostic events
+      // from one customer's attempt at the sheet (load → fail → retry).
+      var SESSION_ID = (Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
       var IS_SUBSCRIPTION = INTENT === "STORE" && RECURRING_DESC.length > 0;
       var PAY_LABEL = IS_SUBSCRIPTION
         ? "Start Membership · £" + AMOUNT
@@ -208,7 +217,41 @@ export function buildPaymentSheetHtml(opts: {
         fatalSent = true;
         hideLoading();
         setStatus(message);
+        // Always send a structured diag for fatals too — the parent native
+        // bridge forwards both "diag" and "fatal" to the server endpoint, but
+        // sending an explicit diag here means the phase ("fatal") is uniform
+        // with all the other phase markers below in the production logs.
+        diag("fatal", { reason: message });
         send({ type: "fatal", message: message });
+      }
+
+      // Emit a structured diagnostic event. The native bridge in
+      // SquarePaymentSheet.tsx forwards these to the server endpoint
+      // /api/public/payment-sheet-diagnostics so we can see in production
+      // logs exactly which phase real customers are getting stuck on (SDK
+      // load, card-form attach, wallet init) instead of only seeing that
+      // they ended up on the browser fallback.
+      function diag(phase, extra) {
+        try {
+          var payload = {
+            type: "diag",
+            phase: phase,
+            sessionId: SESSION_ID,
+            environment: ENVIRONMENT,
+            sdkSrc: SDK_SRC,
+            elapsedMs: Date.now() - SHEET_OPENED_AT,
+            online: (typeof navigator !== "undefined" && typeof navigator.onLine === "boolean") ? navigator.onLine : null,
+            userAgent: (typeof navigator !== "undefined" && navigator.userAgent) ? String(navigator.userAgent).slice(0, 240) : "",
+          };
+          if (extra && typeof extra === "object") {
+            for (var k in extra) {
+              if (Object.prototype.hasOwnProperty.call(extra, k)) {
+                payload[k] = extra[k];
+              }
+            }
+          }
+          send(payload);
+        } catch (e) { /* never let diagnostics break the sheet */ }
       }
 
       function setStatus(t) {
@@ -259,25 +302,87 @@ export function buildPaymentSheetHtml(opts: {
       // ── Phase 1: load the Square SDK from CDN ────────────────────────────
       // We never use a blocking <script src> tag for the SDK because that
       // makes a slow/blocked CDN hang the whole document parser silently.
+      //
+      // Production diagnostics (see /api/public/payment-sheet-diagnostics in
+      // server/routes.ts) showed two recurring failure modes here:
+      //   1. The first script request stalled or 0-byte'd from a stale
+      //      CDN/edge cache, never firing onload OR onerror until the phase
+      //      timeout tripped. Retrying the load with a cache-busting query
+      //      string forces a fresh edge fetch and recovers the customer
+      //      without bouncing them to the browser fallback.
+      //   2. Customers on poor mobile signal genuinely needed more than 8s
+      //      to download the SDK at all — addressed by raising
+      //      PHASE_TIMEOUT_MS above. The retry is independent of (and
+      //      compounding with) that change.
+      diag("sdk_load_start");
       var sdkLoaded = false;
-      var sdkLoadTimer = setTimeout(function () {
-        if (sdkLoaded) return;
-        fatal("Could not reach the payment service (timed out loading the secure payment library). Close this and try again, or use browser checkout.");
-      }, PHASE_TIMEOUT_MS);
+      var sdkRetryCount = 0;
+      // Identity of the in-flight SDK load attempt. Each call to
+      // loadSdkOnce bumps this and the callbacks for that attempt close
+      // over the value at creation time. A stale callback (e.g. attempt
+      // #1's onerror firing AFTER attempt #2 has been started or has
+      // already succeeded) compares its captured attempt id against this
+      // counter and bails out — without this guard a late onerror from
+      // the first script tag could call fatal() and kill a sheet that's
+      // already working from the retry. (Found in code review of #70.)
+      var currentAttemptId = 0;
+      var sdkLoadTimer = null;
 
-      var s = document.createElement("script");
-      s.src = SDK_SRC;
-      s.async = true;
-      s.onload = function () {
-        sdkLoaded = true;
-        clearTimeout(sdkLoadTimer);
-        bootSquare();
-      };
-      s.onerror = function () {
-        clearTimeout(sdkLoadTimer);
-        fatal("Could not load the secure payment library (network error or blocked CDN). Close this and try again, or use browser checkout.");
-      };
-      document.head.appendChild(s);
+      function loadSdkOnce(srcUrl) {
+        currentAttemptId += 1;
+        var myAttemptId = currentAttemptId;
+        if (sdkLoadTimer) {
+          clearTimeout(sdkLoadTimer);
+          sdkLoadTimer = null;
+        }
+        sdkLoadTimer = setTimeout(function () {
+          // Ignore the timer if this attempt has been superseded, the SDK
+          // has already loaded, or we've already fataled.
+          if (myAttemptId !== currentAttemptId || sdkLoaded || fatalSent) return;
+          if (sdkRetryCount === 0) {
+            // First-attempt timeout: try once more before fataling.
+            diag("sdk_load_timeout_retry", { retryCount: sdkRetryCount, attemptId: myAttemptId });
+            sdkRetryCount = 1;
+            loadSdkOnce(SDK_SRC + "?retry=" + Date.now());
+          } else {
+            fatal("Could not reach the payment service (timed out loading the secure payment library). Close this and try again, or use browser checkout.");
+          }
+        }, PHASE_TIMEOUT_MS);
+
+        var s = document.createElement("script");
+        s.src = srcUrl;
+        s.async = true;
+        s.onload = function () {
+          // Drop late onload from a superseded attempt or after we've
+          // already booted/fataled.
+          if (myAttemptId !== currentAttemptId || sdkLoaded || fatalSent) return;
+          sdkLoaded = true;
+          clearTimeout(sdkLoadTimer);
+          sdkLoadTimer = null;
+          diag("sdk_loaded", { retryCount: sdkRetryCount, attemptId: myAttemptId });
+          bootSquare();
+        };
+        s.onerror = function () {
+          // Drop late onerror from a superseded attempt — without this,
+          // a delayed failure from attempt #1 could call fatal() AFTER
+          // attempt #2 (the retry) has already succeeded, killing a
+          // working sheet. Also skip if we've already loaded or fataled.
+          if (myAttemptId !== currentAttemptId || sdkLoaded || fatalSent) return;
+          clearTimeout(sdkLoadTimer);
+          sdkLoadTimer = null;
+          if (sdkRetryCount === 0) {
+            // First-attempt error: retry once with a cache-buster.
+            diag("sdk_load_error_retry", { retryCount: sdkRetryCount, attemptId: myAttemptId });
+            sdkRetryCount = 1;
+            loadSdkOnce(SDK_SRC + "?retry=" + Date.now());
+          } else {
+            fatal("Could not load the secure payment library (network error or blocked CDN). Close this and try again, or use browser checkout.");
+          }
+        };
+        document.head.appendChild(s);
+      }
+
+      loadSdkOnce(SDK_SRC);
 
       function bootSquare() {
       if (!window.Square) {
@@ -389,6 +494,7 @@ export function buildPaymentSheetHtml(opts: {
         fatal("The card form did not load in time. Close this and try again, or use browser checkout.");
       }, PHASE_TIMEOUT_MS);
 
+      diag("card_attach_start");
       var card;
       payments.card().then(function (c) {
         card = c;
@@ -396,6 +502,7 @@ export function buildPaymentSheetHtml(opts: {
       }).then(function () {
         cardReady = true;
         clearTimeout(cardAttachTimer);
+        diag("card_attached");
         if (fatalSent) return; // already gave up
         var payBtn = document.getElementById("pay-card-btn");
         payBtn.textContent = PAY_LABEL;
@@ -418,6 +525,7 @@ export function buildPaymentSheetHtml(opts: {
         });
       }).catch(function (err) {
         clearTimeout(cardAttachTimer);
+        diag("card_attach_error", { reason: (err && err.message) ? String(err.message).slice(0, 200) : "unknown" });
         fatal("Could not load card form: " + (err && err.message ? err.message : "unknown error"));
       });
 
@@ -426,6 +534,7 @@ export function buildPaymentSheetHtml(opts: {
       try {
         var pr = paymentRequest();
         payments.applePay(pr).then(function (ap) {
+          diag("apple_pay_ready");
           try {
             var el = document.getElementById("apple-pay-button");
             if (!el) return;
@@ -442,14 +551,23 @@ export function buildPaymentSheetHtml(opts: {
               tokenizeAndSend(ap, "Apple Pay");
             });
           } catch (e) { /* swallow — card form must still work */ }
-        }).catch(function () { /* unsupported on this device */ });
-      } catch (e) { /* swallow — card form must still work */ }
+        }).catch(function (err) {
+          // Most often "unsupported on this device" (Android, web non-Safari,
+          // or domain not registered). Captured for diagnostics so we can
+          // tell the difference between "no Apple Pay because Android" and
+          // "Apple Pay broken on iOS because domain mismatch".
+          diag("apple_pay_unavailable", { reason: (err && err.message) ? String(err.message).slice(0, 200) : "unknown" });
+        });
+      } catch (e) {
+        diag("apple_pay_throw", { reason: (e && e.message) ? String(e.message).slice(0, 200) : "unknown" });
+      }
 
       // Google Pay — same isolation rule as Apple Pay above.
       try {
         var pr2 = paymentRequest();
         payments.googlePay(pr2).then(function (gp) {
           return gp.attach("#google-pay-button", { buttonColor: "black", buttonType: "long" }).then(function () {
+            diag("google_pay_ready");
             try {
               var el = document.getElementById("google-pay-button");
               if (!el) return;
@@ -461,8 +579,12 @@ export function buildPaymentSheetHtml(opts: {
               });
             } catch (e) { /* swallow */ }
           });
-        }).catch(function () { /* unsupported */ });
-      } catch (e) { /* swallow */ }
+        }).catch(function (err) {
+          diag("google_pay_unavailable", { reason: (err && err.message) ? String(err.message).slice(0, 200) : "unknown" });
+        });
+      } catch (e) {
+        diag("google_pay_throw", { reason: (e && e.message) ? String(e.message).slice(0, 200) : "unknown" });
+      }
       } // end bootSquare
     })();
   </script>

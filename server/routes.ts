@@ -4057,6 +4057,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // ── In-app payment sheet diagnostics ───────────────────────────────────────
+  // Lightweight, fire-and-forget reporting endpoint the in-app SquarePaymentSheet
+  // POSTs to from React Native whenever its WebView emits a phase marker or a
+  // fatal error. No auth (the WebView is unauthenticated), no DB writes — we
+  // only console.log so the events show up in production logs and can be
+  // diff'd to find the dominant root cause of the "sheet hangs" reports.
+  //
+  // Rate-limited per IP to stop a misbehaving client from spamming us. We
+  // never trust the body — every field is treated as untrusted user input.
+  app.post("/api/public/payment-sheet-diagnostics", (req, res) => {
+    const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+      || req.socket.remoteAddress
+      || "unknown";
+    const limit = checkRateLimit(`pmt-diag:${ip}`, 60, 60_000);
+    if (!limit.allowed) {
+      res.set("Retry-After", String(limit.retryAfter));
+      return res.status(429).json({ ok: false });
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    function s(v: unknown, max = 200): string {
+      if (v == null) return "";
+      const str = typeof v === "string" ? v : JSON.stringify(v);
+      return str.length > max ? str.slice(0, max) + "…" : str;
+    }
+    const event = {
+      phase: s(body.phase, 40) || "unknown",
+      reason: s(body.reason, 240),
+      sessionId: s(body.sessionId, 40),
+      platform: s(body.platform, 16),
+      environment: s(body.environment, 16),
+      userAgent: s(body.userAgent, 240),
+      online: body.online === true || body.online === false ? body.online : null,
+      sdkSrc: s(body.sdkSrc, 120),
+      baseUrl: s(body.baseUrl, 120),
+      elapsedMs: typeof body.elapsedMs === "number" && Number.isFinite(body.elapsedMs)
+        ? Math.max(0, Math.round(body.elapsedMs))
+        : null,
+      retryCount: typeof body.retryCount === "number" && Number.isFinite(body.retryCount)
+        ? Math.max(0, Math.round(body.retryCount))
+        : null,
+      ip,
+    };
+    // Single-line, grep-friendly. Severity: fatal = full error, anything else = info.
+    const severity = event.phase === "fatal" || event.phase.startsWith("fatal_") ? "error" : "log";
+    const tag = `[payment-sheet-diag] ${event.phase}`;
+    if (severity === "error") {
+      console.error(tag, event);
+    } else {
+      console.log(tag, event);
+    }
+    res.json({ ok: true });
+  });
+
   // ── In-app order: create the Square Order (no hosted checkout) ─────────────
   // Returns the orderId + computed total so the client can charge it via the
   // Web Payments SDK and POST the resulting card token to /api/orders/:id/pay.
