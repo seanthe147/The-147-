@@ -27,6 +27,9 @@ jobs:
       - name: Payment-sheet inline-script syntax check
         run: npx tsx tests/payment-sheet-html.test.ts
 
+      - name: Payment-sheet SDK retry/timeout behaviour
+        run: npx tsx tests/payment-sheet-network.test.ts
+
       - name: Payment biometric toggle test
         env:
           TSX_TSCONFIG_PATH: tsconfig.test.json
