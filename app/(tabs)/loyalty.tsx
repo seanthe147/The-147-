@@ -93,8 +93,13 @@ const PLAN_TIER_META: Record<string, { icon: string; tagline: string }> = {
 
 function getPlanDisplayFeatures(plan: MembershipPlan): string[] {
   const f: string[] = [];
-  if (plan.hoursIncluded) f.push(`${plan.hoursIncluded} hrs snooker/month`);
-  else f.push("Unlimited snooker");
+  if (plan.hoursIncluded === 0) {
+    // Explicit zero — no snooker hours included; omit the line.
+  } else if (plan.hoursIncluded) {
+    f.push(`${plan.hoursIncluded} hrs snooker/month`);
+  } else {
+    f.push("Unlimited snooker");
+  }
   if (plan.foodDrinkDiscount) f.push(`${plan.foodDrinkDiscount}% food & drink discount`);
   if (plan.priorityBooking) f.push("Priority booking");
   if (plan.guestPassesMonthly && plan.guestPassesMonthly > 0) f.push(`${plan.guestPassesMonthly} guest pass/month`);

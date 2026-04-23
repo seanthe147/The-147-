@@ -35,7 +35,11 @@ function plural(count: number, singular: string, plural: string): string {
 export function getPlanBenefits(plan: BenefitInput): MembershipBenefit[] {
   const benefits: MembershipBenefit[] = [];
 
-  if (plan.hoursIncluded && plan.hoursIncluded > 0) {
+  if (plan.hoursIncluded === 0) {
+    // Explicit zero — admin has said this plan does not include any snooker
+    // hours. Omit the snooker line entirely rather than misrepresenting it
+    // as "unlimited" (which is what an unset/null value means).
+  } else if (plan.hoursIncluded && plan.hoursIncluded > 0) {
     const unit = plan.hoursUnit === "year" ? "per year" : "per month";
     const hourWord = plural(plan.hoursIncluded, "hour", "hours");
     benefits.push({ key: "hours", text: `${plan.hoursIncluded} ${hourWord} snooker ${unit}` });

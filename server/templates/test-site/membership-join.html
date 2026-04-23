@@ -125,7 +125,9 @@ a{text-decoration:none;color:inherit}
       : '<div class="plan-annual-equiv">&nbsp;</div>';
 
     var perksHtml = '<ul class="perks">';
-    perksHtml += perk('check', (p.hoursIncluded ? p.hoursIncluded + ' free snooker hours/month' : 'Unlimited table access'));
+    if (p.hoursIncluded === 0) { /* explicit 0 — no snooker hours included; omit line */ }
+    else if (p.hoursIncluded) perksHtml += perk('check', p.hoursIncluded + ' free snooker hours/month');
+    else perksHtml += perk('check', 'Unlimited table access');
     perksHtml += perk('check', p.foodDrinkDiscount + '% off all food &amp; drinks');
     if(p.guestPassesMonthly > 0)
       perksHtml += perk('check', p.guestPassesMonthly + ' guest pass'+(p.guestPassesMonthly>1?'es':'')+'/month');
