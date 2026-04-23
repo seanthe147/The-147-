@@ -756,6 +756,7 @@ function CartSheet({
   const [pendingOrder, setPendingOrder] = useState<{ appOrderId: number; amountPence: number; confirmationToken?: string } | null>(null);
   const [cancelledNotice, setCancelledNotice] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
 
   // Square Web Payments SDK config (cached for the session)
   const { data: squareConfig } = useQuery<{
