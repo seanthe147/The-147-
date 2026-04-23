@@ -3804,8 +3804,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Online Ordering Toggle ──────────────────────────────────────────────────
+  // The venue is in Bradford (Europe/London). Schedules and overrides are
+  // configured by staff in UK local time. The Replit container, however, runs
+  // in UTC, so any use of `new Date().getDay()` or `toTimeString()` would be
+  // off by one hour during BST and could even shift the day-of-week around
+  // midnight. All ordering time/date checks must therefore go through
+  // `getLondonNow()` so the comparison happens in venue-local time.
+  const VENUE_TZ = "Europe/London";
+  const LONDON_DOW: Record<string, number> = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
+  function getLondonNow(): { dateStr: string; hhmm: string; dow: number } {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: VENUE_TZ,
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", weekday: "short",
+      hour12: false,
+    }).formatToParts(new Date());
+    const get = (t: string) => parts.find(p => p.type === t)?.value ?? "";
+    let hh = get("hour");
+    // Intl with hour12:false can emit "24" at midnight on some runtimes — normalise.
+    if (hh === "24") hh = "00";
+    return {
+      dateStr: `${get("year")}-${get("month")}-${get("day")}`,
+      hhmm: `${hh}:${get("minute")}`,
+      dow: LONDON_DOW[get("weekday")] ?? new Date().getUTCDay(),
+    };
+  }
   function getTodayStr() {
-    return new Date().toISOString().slice(0, 10);
+    return getLondonNow().dateStr;
   }
 
   interface OrderingSchedule { days: number[]; startTime: string; endTime: string; }
@@ -3844,10 +3869,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 
   async function getOrderingStatus(): Promise<OrderingStatusResult> {
-    const today = getTodayStr();
-    const now = new Date();
-    const hhmm = now.toTimeString().slice(0, 5);
-    const dow = now.getDay();
+    // All schedule/override comparisons run in Europe/London so a UTC server
+    // doesn't bounce customers an hour either side of opening time.
+    const london = getLondonNow();
+    const today = london.dateStr;
+    const hhmm = london.hhmm;
+    const dow = london.dow;
 
     // 1. Check manual disable override (auto-resets next day)
     const manualEnabled = await storage.getSetting("ordering_enabled");
