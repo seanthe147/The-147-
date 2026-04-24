@@ -7302,26 +7302,48 @@
     if(!page){body.innerHTML='';return;}
     let html='<div style="display:grid;gap:18px;max-width:720px">';
     if(page.slug==='site'){
-      html+='<div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:10px;padding:11px 14px;font-size:12.5px;color:var(--text-1);line-height:1.5"><strong>Site-wide settings</strong> — these values appear on every page (header info-bar, footer, contact page). Change them once here and they update everywhere.</div>';
+      html+='<div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:10px;padding:11px 14px;font-size:12.5px;color:var(--text-1);line-height:1.5"><strong>Site-wide settings</strong> — these values appear on every page (logo, theme colours, navigation menu, announcement banner, contact details). Change them once here and they update everywhere.</div>';
     }
     page.blocks.forEach(b=>{
       const fid='wf-'+page.slug+'-'+b.key;
       const sid='ws-'+page.slug+'-'+b.key;
       let fieldHtml='';
+      const isImage=(b.type==='image'||b.type==='image_html'||b.type==='image_url');
       if(b.type==='textarea'){
         fieldHtml='<textarea id="'+fid+'" rows="3" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg-1);color:var(--text-1);font-family:inherit;font-size:14px;line-height:1.5;resize:vertical" placeholder="Default text in HTML">'+escapeAttr(b.value||'')+'</textarea>';
-      }else if(b.type==='image'){
-        const previewStyle='width:100%;height:160px;border-radius:10px;border:1.5px dashed var(--border);background:var(--bg-1);display:flex;align-items:center;justify-content:center;color:var(--text-2);font-size:12px;background-size:cover;background-position:center;overflow:hidden';
+      }else if(isImage){
+        const sizeMode=b.type==='image'?'cover':'contain';
+        const previewBg=b.type==='image_html'?'#0d0d0d':'var(--bg-1)';
+        const placeholder=b.type==='image_html'?'No logo set — using the default 147 wordmark':b.type==='image_url'?'No image set':'No image set — using the default page background';
+        const previewStyle='width:100%;height:160px;border-radius:10px;border:1.5px dashed var(--border);background-color:'+previewBg+';display:flex;align-items:center;justify-content:center;color:var(--text-2);font-size:12px;background-size:'+sizeMode+';background-repeat:no-repeat;background-position:center;overflow:hidden';
         fieldHtml=
-          '<div id="wfimg-'+page.slug+'-'+b.key+'" style="'+previewStyle+'"></div>'+
+          '<div id="wfimg-'+page.slug+'-'+b.key+'" data-placeholder="'+escapeAttr(placeholder)+'" style="'+previewStyle+'"></div>'+
           '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">'+
             '<button type="button" onclick="document.getElementById(\'wfile-'+page.slug+'-'+b.key+'\').click()" class="btn btn-secondary btn-sm" style="font-size:12px">📤 Upload Image</button>'+
             '<button type="button" onclick="clearWebImage(\''+page.slug+'\',\''+b.key+'\')" class="btn btn-sm" style="font-size:12px;background:transparent;border:1.5px solid var(--border);color:var(--text-1)">Clear</button>'+
             '<input type="file" id="wfile-'+page.slug+'-'+b.key+'" accept="image/*" style="display:none" onchange="uploadWebImage(this,\''+page.slug+'\',\''+b.key+'\')" />'+
           '</div>'+
           '<input type="text" id="'+fid+'" value="'+escapeAttr(b.value||'')+'" style="width:100%;padding:9px 11px;margin-top:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-1);color:var(--text-2);font-family:monospace;font-size:11px" placeholder="Or paste an image URL (https://…)" />';
+      }else if(b.type==='color'){
+        const colorVal=(b.value||'').trim();
+        const swatch=/^#[0-9a-fA-F]{3,6}$/.test(colorVal)?colorVal:'#1E5BC6';
+        fieldHtml=
+          '<div style="display:flex;gap:10px;align-items:center">'+
+            '<input type="color" id="wcolor-'+page.slug+'-'+b.key+'" value="'+escapeAttr(swatch)+'" style="width:64px;height:42px;border:1.5px solid var(--border);border-radius:8px;background:var(--bg-1);cursor:pointer;padding:2px" oninput="syncWebColor(\''+page.slug+'\',\''+b.key+'\')" />'+
+            '<input type="text" id="'+fid+'" value="'+escapeAttr(colorVal)+'" style="flex:1;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg-1);color:var(--text-1);font-family:monospace;font-size:14px" placeholder="Leave blank for default" oninput="syncWebColorFromText(\''+page.slug+'\',\''+b.key+'\')" />'+
+          '</div>';
+      }else if(b.type==='nav'){
+        let links=[];
+        try{links=JSON.parse(b.value||'[]');if(!Array.isArray(links))links=[];}catch(_){links=[];}
+        fieldHtml=
+          '<div id="wnav-'+page.slug+'-'+b.key+'" style="display:flex;flex-direction:column;gap:6px">'+
+            links.map(function(l,i){return navRowHtml(page.slug,b.key,l,i,links.length);}).join('')+
+          '</div>'+
+          '<input type="hidden" id="'+fid+'" value="'+escapeAttr(b.value||'[]')+'" />';
       }else{
-        fieldHtml='<input type="text" id="'+fid+'" value="'+escapeAttr(b.value||'')+'" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg-1);color:var(--text-1);font-family:inherit;font-size:14px" placeholder="Default text in HTML" />';
+        // text, attr_text, bar all use a plain single-line input.
+        const placeholder=b.type==='bar'?'Leave blank to hide the announcement banner':'Default text in HTML';
+        fieldHtml='<input type="text" id="'+fid+'" value="'+escapeAttr(b.value||'')+'" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg-1);color:var(--text-1);font-family:inherit;font-size:14px" placeholder="'+escapeAttr(placeholder)+'" />';
       }
       html+='<div style="background:var(--bg-2);border:1px solid var(--border);border-radius:12px;padding:16px 18px">'+
         '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;gap:12px">'+
@@ -7337,8 +7359,10 @@
     page.blocks.forEach(b=>{
       const fid='wf-'+page.slug+'-'+b.key;
       const node=el(fid);
-      if(node)node.addEventListener('input',()=>queueWebsiteSave(page.slug,b.key,fid));
-      if(b.type==='image')refreshWebImagePreview(page.slug,b.key,b.value||'');
+      // Nav uses syncNavJson() called from row inputs; color uses sync helpers.
+      // Everything else queues a save on every input event.
+      if(node && b.type!=='nav' && b.type!=='color')node.addEventListener('input',()=>queueWebsiteSave(page.slug,b.key,fid));
+      if(b.type==='image'||b.type==='image_html'||b.type==='image_url')refreshWebImagePreview(page.slug,b.key,b.value||'');
     });
   }
   function refreshWebImagePreview(slug,key,value){
@@ -7350,9 +7374,83 @@
       previewEl.textContent='';
     }else{
       previewEl.style.backgroundImage='';
-      previewEl.textContent='No image set — using the default page background';
+      previewEl.textContent=previewEl.getAttribute('data-placeholder')||'No image set';
     }
   }
+  function navRowHtml(slug,key,link,idx,total){
+    const safeLabel=escapeAttr(link.label||'');
+    const safeHref=escapeAttr(link.href||'');
+    const styleBadge=link.style==='cta'
+      ?'<span style="background:var(--accent);color:#000;font-size:9.5px;font-weight:800;padding:2px 6px;border-radius:5px;letter-spacing:.5px;margin-left:6px">CTA</span>'
+      :link.style==='order'
+        ?'<span style="background:#3ec46d;color:#000;font-size:9.5px;font-weight:800;padding:2px 6px;border-radius:5px;letter-spacing:.5px;margin-left:6px">ORDER</span>'
+        :'';
+    const upDisabled=idx===0;
+    const downDisabled=idx===total-1;
+    return '<div data-navrow="'+idx+'" style="display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-1)">'+
+      '<div style="display:flex;flex-direction:column;gap:2px">'+
+        '<button type="button" onclick="moveNavRow(\''+slug+'\',\''+key+'\','+idx+',-1)" '+(upDisabled?'disabled':'')+' style="background:none;border:0;color:var(--text-2);cursor:'+(upDisabled?'default':'pointer')+';font-size:11px;line-height:1;padding:1px 4px;opacity:'+(upDisabled?'.3':'1')+'" title="Move up">▲</button>'+
+        '<button type="button" onclick="moveNavRow(\''+slug+'\',\''+key+'\','+idx+',1)" '+(downDisabled?'disabled':'')+' style="background:none;border:0;color:var(--text-2);cursor:'+(downDisabled?'default':'pointer')+';font-size:11px;line-height:1;padding:1px 4px;opacity:'+(downDisabled?'.3':'1')+'" title="Move down">▼</button>'+
+      '</div>'+
+      '<div>'+
+        '<input type="text" data-navlabel="'+idx+'" value="'+safeLabel+'" oninput="syncNavJson(\''+slug+'\',\''+key+'\')" style="width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;background:var(--bg-2);color:var(--text-1);font-size:13px" />'+
+        '<div style="font-size:10.5px;color:var(--text-2);margin-top:3px;font-family:monospace">→ '+safeHref+styleBadge+'</div>'+
+      '</div>'+
+      '<label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-2);cursor:pointer;white-space:nowrap" title="Hide this link from the menu">'+
+        '<input type="checkbox" data-navhidden="'+idx+'" '+(link.hidden?'checked':'')+' onchange="syncNavJson(\''+slug+'\',\''+key+'\')" /> Hide'+
+      '</label>'+
+    '</div>';
+  }
+  function collectNavRows(slug,key,links){
+    const wrap=document.getElementById('wnav-'+slug+'-'+key);
+    if(!wrap)return;
+    wrap.querySelectorAll('[data-navrow]').forEach(function(row){
+      const i=parseInt(row.getAttribute('data-navrow'),10);
+      if(!links[i])return;
+      const labelEl=row.querySelector('[data-navlabel]');
+      const hiddenEl=row.querySelector('[data-navhidden]');
+      if(labelEl)links[i].label=labelEl.value;
+      if(hiddenEl)links[i].hidden=hiddenEl.checked;
+    });
+  }
+  window.syncNavJson=function(slug,key){
+    const fid='wf-'+slug+'-'+key;
+    const hidden=el(fid);
+    if(!hidden)return;
+    let links=[];try{links=JSON.parse(hidden.value||'[]');if(!Array.isArray(links))links=[];}catch(_){return;}
+    collectNavRows(slug,key,links);
+    hidden.value=JSON.stringify(links);
+    queueWebsiteSave(slug,key,fid);
+  };
+  window.moveNavRow=function(slug,key,idx,dir){
+    const fid='wf-'+slug+'-'+key;
+    const hidden=el(fid);
+    if(!hidden)return;
+    let links=[];try{links=JSON.parse(hidden.value||'[]');if(!Array.isArray(links))links=[];}catch(_){return;}
+    collectNavRows(slug,key,links);
+    const target=idx+dir;
+    if(target<0||target>=links.length)return;
+    const tmp=links[idx];links[idx]=links[target];links[target]=tmp;
+    hidden.value=JSON.stringify(links);
+    const wrap=document.getElementById('wnav-'+slug+'-'+key);
+    if(wrap)wrap.innerHTML=links.map(function(l,i){return navRowHtml(slug,key,l,i,links.length);}).join('');
+    queueWebsiteSave(slug,key,fid);
+  };
+  window.syncWebColor=function(slug,key){
+    const c=el('wcolor-'+slug+'-'+key);
+    const t=el('wf-'+slug+'-'+key);
+    if(!c||!t)return;
+    t.value=c.value;
+    queueWebsiteSave(slug,key,'wf-'+slug+'-'+key);
+  };
+  window.syncWebColorFromText=function(slug,key){
+    const c=el('wcolor-'+slug+'-'+key);
+    const t=el('wf-'+slug+'-'+key);
+    if(!c||!t)return;
+    const v=t.value.trim();
+    if(/^#[0-9a-fA-F]{3}$/.test(v)||/^#[0-9a-fA-F]{6}$/.test(v))c.value=v;
+    queueWebsiteSave(slug,key,'wf-'+slug+'-'+key);
+  };
   window.uploadWebImage=async function(fileInput,slug,key){
     const file=fileInput.files&&fileInput.files[0];
     fileInput.value='';
@@ -7384,15 +7482,32 @@
     const cacheKey=slug+':'+key;
     clearTimeout(websiteState.dirty[cacheKey]);
     websiteState.dirty[cacheKey]=setTimeout(async()=>{
-      const value=el(fid).value;
+      // Capture the field value at the moment the debounce fires. If the user
+      // navigated to a different page before then, the input may have been
+      // re-rendered — fall back to the cached page state so we never throw.
+      const node=el(fid);
+      let value='';
+      if(node){value=node.value;}
+      else{
+        const cachedPage=websiteState.pages.find(p=>p.slug===slug);
+        const cachedBlk=cachedPage?cachedPage.blocks.find(b=>b.key===key):null;
+        if(!cachedBlk)return; // unknown block — silently drop
+        value=cachedBlk.value||'';
+      }
       try{
         const r=await fetch('/api/staff/web-content',{method:'PUT',headers:{'Content-Type':'application/json',Authorization:'Bearer '+getToken()},body:JSON.stringify({page:slug,block:key,value:value})});
-        if(!r.ok)throw new Error();
+        if(!r.ok){
+          // Surface the server-side rejection (e.g. unsafe URL, bad nav JSON)
+          // so the owner sees why a save failed instead of a silent toast.
+          let msg='Failed';
+          try{const j=await r.json();if(j&&j.message)msg=j.message;}catch(_){/* ignore */}
+          throw new Error(msg);
+        }
         if(status){status.textContent='Saved ✓';status.style.color='var(--green,#3ec46d)';setTimeout(()=>{status.textContent='';status.style.color='';},2000);}
         const page=websiteState.pages.find(p=>p.slug===slug);
-        if(page){const blk=page.blocks.find(b=>b.key===key);if(blk){blk.value=value;if(blk.type==='image')refreshWebImagePreview(slug,key,value);}}
+        if(page){const blk=page.blocks.find(b=>b.key===key);if(blk){blk.value=value;if(blk.type==='image'||blk.type==='image_html'||blk.type==='image_url')refreshWebImagePreview(slug,key,value);}}
       }catch(e){
-        if(status){status.textContent='Failed';status.style.color='#e05252';}
+        if(status){status.textContent=(e&&e.message)?e.message:'Failed';status.style.color='#e05252';}
       }
     },550);
   }
