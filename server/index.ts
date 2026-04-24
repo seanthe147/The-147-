@@ -10,6 +10,7 @@ import { ensureBuildInfo, getBuildInfo, runDeployVerification, detectPublicBaseU
 // getBuildInfo is used by the /api/build-info route below.
 
 const app = express();
+app.set("trust proxy", 1);
 const log = console.log;
 
 declare module "http" {

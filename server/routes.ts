@@ -862,7 +862,7 @@ async function sendBookingRescheduleEmail(booking: {
 }
 
 function getClientIp(req: Request): string {
-  return (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown";
+  return req.ip || "unknown";
 }
 
 function checkLoginRateLimit(ip: string): { allowed: boolean; retryAfter?: number } {
@@ -973,7 +973,7 @@ function checkCustomerRateLimit(ip: string): { allowed: boolean; retryAfter?: nu
   if (record && record.blockedUntil > now) {
     return { allowed: false, retryAfter: Math.ceil((record.blockedUntil - now) / 1000) };
   }
-  if (record && now - record.blockedUntil > ATTEMPT_WINDOW) {
+  if (record && record.blockedUntil > 0 && record.blockedUntil <= now) {
     customerLoginAttempts.delete(ip);
   }
   return { allowed: true };
@@ -988,6 +988,12 @@ function recordCustomerLoginFailure(ip: string) {
     record.count = 0;
   }
   customerLoginAttempts.set(ip, record);
+  setTimeout(() => {
+    const current = customerLoginAttempts.get(ip);
+    if (current && current.blockedUntil === 0) {
+      customerLoginAttempts.delete(ip);
+    }
+  }, ATTEMPT_WINDOW);
 }
 
 async function customerAuth(req: Request, res: Response, next: NextFunction) {
