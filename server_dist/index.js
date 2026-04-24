@@ -4950,7 +4950,7 @@ async function sendBookingRescheduleEmail(booking) {
   return false;
 }
 function getClientIp(req) {
-  return req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+  return req.ip || "unknown";
 }
 function checkLoginRateLimit(ip) {
   const entry = loginAttempts.get(ip);
@@ -5045,7 +5045,7 @@ function checkCustomerRateLimit(ip) {
   if (record && record.blockedUntil > now) {
     return { allowed: false, retryAfter: Math.ceil((record.blockedUntil - now) / 1e3) };
   }
-  if (record && now - record.blockedUntil > ATTEMPT_WINDOW) {
+  if (record && record.blockedUntil > 0 && record.blockedUntil <= now) {
     customerLoginAttempts.delete(ip);
   }
   return { allowed: true };
@@ -5059,6 +5059,12 @@ function recordCustomerLoginFailure(ip) {
     record.count = 0;
   }
   customerLoginAttempts.set(ip, record);
+  setTimeout(() => {
+    const current = customerLoginAttempts.get(ip);
+    if (current && current.blockedUntil === 0) {
+      customerLoginAttempts.delete(ip);
+    }
+  }, ATTEMPT_WINDOW);
 }
 async function customerAuth(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -5795,17 +5801,6 @@ async function registerRoutes(app2) {
     }
   });
   app2.get("/migrate/:token/done", async (req, res) => {
-    try {
-      const subs = await storage.getMembershipSubscriptions();
-      const sub = subs.find((s) => s.migrationToken === req.params.token);
-      if (sub && !sub.migrationCompletedAt) {
-        await storage.updateMembershipSubscription(sub.id, {
-          migrationCompletedAt: /* @__PURE__ */ new Date(),
-          source: "wix_migrated"
-        });
-      }
-    } catch (err) {
-    }
     res.redirect(`/migrate/${req.params.token}`);
   });
   app2.post("/api/staff/migrate-encryption", staffAuth, managerAuth, async (_req, res) => {
@@ -5843,7 +5838,7 @@ async function registerRoutes(app2) {
       }
     });
   });
-  app2.post("/api/staff/payments/square/charge", staffAuth, async (req, res) => {
+  app2.post("/api/staff/payments/square/charge", staffAuth, managerAuth, async (req, res) => {
     if (!isWebPaymentsConfigured()) {
       return res.status(503).json({ message: "Square Web Payments is not configured. Add SQUARE_APPLICATION_ID, SQUARE_ACCESS_TOKEN, and SQUARE_LOC_ID." });
     }
@@ -5931,7 +5926,7 @@ async function registerRoutes(app2) {
       });
     }
   });
-  app2.post("/api/staff/payments/create-intent", staffAuth, async (req, res) => {
+  app2.post("/api/staff/payments/create-intent", staffAuth, managerAuth, async (req, res) => {
     if (!isStripeConfigured()) {
       return res.status(503).json({ message: "Stripe is not configured. Please add STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY." });
     }
@@ -5995,7 +5990,7 @@ async function registerRoutes(app2) {
       res.status(500).json({ message: err?.message || "Failed to create payment intent" });
     }
   });
-  app2.post("/api/staff/payments/finalize", staffAuth, async (req, res) => {
+  app2.post("/api/staff/payments/finalize", staffAuth, managerAuth, async (req, res) => {
     if (!isStripeConfigured()) return res.status(503).json({ message: "Stripe not configured" });
     const piId = trim(req.body?.paymentIntentId, 120);
     if (!piId || !/^pi_[A-Za-z0-9_]+$/.test(piId)) return res.status(400).json({ message: "Invalid paymentIntentId" });
@@ -6644,27 +6639,31 @@ async function registerRoutes(app2) {
   });
   app2.post("/api/webhooks/square", async (req, res) => {
     const sigKey = process.env.SQUARE_WEBHOOK_SIGNATURE_KEY;
-    if (sigKey) {
-      const signature = req.headers["x-square-hmacsha256-signature"];
-      if (!signature) {
-        console.warn("[WEBHOOK] Missing Square signature header");
-        return res.status(401).json({ message: "Missing signature" });
+    if (!sigKey) {
+      console.error("[WEBHOOK] SQUARE_WEBHOOK_SIGNATURE_KEY is not set \u2014 rejecting webhook");
+      return res.status(503).json({ message: "Webhook verification not configured" });
+    }
+    const signature = req.headers["x-square-hmacsha256-signature"];
+    if (!signature) {
+      console.warn("[WEBHOOK] Missing Square signature header");
+      return res.status(401).json({ message: "Missing signature" });
+    }
+    try {
+      const { createHmac, timingSafeEqual: timingSafeEqual2 } = await import("node:crypto");
+      const notificationUrl = process.env.SQUARE_WEBHOOK_URL || `https://${process.env.EXPO_PUBLIC_DOMAIN || req.get("host")}/api/webhooks/square`;
+      const rawBody = req.rawBody?.toString("utf8") ?? JSON.stringify(req.body);
+      const hmac = createHmac("sha256", sigKey);
+      hmac.update(notificationUrl + rawBody);
+      const expected = hmac.digest("base64");
+      const sigBuf = Buffer.from(signature, "base64");
+      const expBuf = Buffer.from(expected, "base64");
+      if (sigBuf.length !== expBuf.length || !timingSafeEqual2(sigBuf, expBuf)) {
+        console.warn("[WEBHOOK] Square signature mismatch");
+        return res.status(403).json({ message: "Invalid signature" });
       }
-      try {
-        const { createHmac } = await import("node:crypto");
-        const notificationUrl = process.env.SQUARE_WEBHOOK_URL || `https://${process.env.EXPO_PUBLIC_DOMAIN || req.get("host")}/api/webhooks/square`;
-        const rawBody = req.rawBody?.toString("utf8") ?? JSON.stringify(req.body);
-        const hmac = createHmac("sha256", sigKey);
-        hmac.update(notificationUrl + rawBody);
-        const expected = hmac.digest("base64");
-        if (signature !== expected) {
-          console.warn("[WEBHOOK] Square signature mismatch");
-          return res.status(403).json({ message: "Invalid signature" });
-        }
-      } catch (sigErr) {
-        console.error("[WEBHOOK] Signature check error:", sigErr);
-        return res.status(500).json({ message: "Signature check failed" });
-      }
+    } catch (sigErr) {
+      console.error("[WEBHOOK] Signature check error:", sigErr);
+      return res.status(500).json({ message: "Signature check failed" });
     }
     const event = req.body;
     const eventType = event?.type ?? "";
@@ -9795,33 +9794,29 @@ Phone: ${phone}` : ""}`,
       res.status(500).json({ message: "Failed to generate payment link" });
     }
   });
-  const captureRawBody = (req, res, next) => {
-    let raw = "";
-    req.on("data", (chunk) => {
-      raw += chunk.toString("utf8");
-    });
-    req.on("end", () => {
-      req._rawBody = raw;
-      next();
-    });
-    req.on("error", next);
-  };
-  app2.post("/api/membership/webhook", captureRawBody, async (req, res) => {
+  app2.post("/api/membership/webhook", async (req, res) => {
     try {
-      const bodyStr = req._rawBody || JSON.stringify(req.body);
       const sigKey = process.env.SQUARE_WEBHOOK_SIGNATURE_KEY;
-      if (sigKey) {
-        const sig = req.headers["x-square-hmacsha256-signature"];
-        if (!sig) return res.status(401).send("Missing signature");
-        const notificationUrl = `https://${req.headers.host}${req.originalUrl}`;
-        const { createHmac, timingSafeEqual: timingSafeEqual2 } = await import("node:crypto");
-        const expected = createHmac("sha256", sigKey).update(notificationUrl + bodyStr).digest("base64");
-        const sigBuf = Buffer.from(sig, "base64");
-        const expBuf = Buffer.from(expected, "base64");
-        if (sigBuf.length !== expBuf.length || !timingSafeEqual2(sigBuf, expBuf)) {
-          console.warn("[Square webhook] Invalid signature \u2014 rejected");
-          return res.status(401).send("Invalid signature");
-        }
+      if (!sigKey) {
+        console.error("[Square webhook] SQUARE_WEBHOOK_SIGNATURE_KEY is not set \u2014 rejecting webhook");
+        return res.status(503).send("Webhook verification not configured");
+      }
+      const rawBuf = req.rawBody;
+      if (!rawBuf || rawBuf.length === 0) {
+        console.warn("[Square webhook] Missing raw body buffer \u2014 cannot verify signature");
+        return res.status(400).send("Missing request body");
+      }
+      const bodyStr = rawBuf.toString("utf8");
+      const sig = req.headers["x-square-hmacsha256-signature"];
+      if (!sig) return res.status(401).send("Missing signature");
+      const notificationUrl = `https://${req.headers.host}${req.originalUrl}`;
+      const { createHmac, timingSafeEqual: timingSafeEqual2 } = await import("node:crypto");
+      const expected = createHmac("sha256", sigKey).update(notificationUrl + bodyStr).digest("base64");
+      const sigBuf = Buffer.from(sig, "base64");
+      const expBuf = Buffer.from(expected, "base64");
+      if (sigBuf.length !== expBuf.length || !timingSafeEqual2(sigBuf, expBuf)) {
+        console.warn("[Square webhook] Invalid signature \u2014 rejected");
+        return res.status(401).send("Invalid signature");
       }
       const event = JSON.parse(bodyStr);
       const type = event?.type ?? "";
@@ -11723,6 +11718,7 @@ function detectPublicBaseUrl() {
 
 // server/index.ts
 var app = express();
+app.set("trust proxy", 1);
 var log = console.log;
 function setupCors(app2) {
   app2.use((req, res, next) => {
