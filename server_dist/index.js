@@ -870,6 +870,13 @@ async function runStartupMigrations() {
          '10% off food & drink (excluding snooker bookings and active offers)')
       ON CONFLICT (tier) DO NOTHING;
     `);
+    await client.query(`
+      UPDATE membership_plans
+         SET square_customer_group_id = '575ce1a2-a598-4f09-82ba-90a7b88e9da1',
+             active = TRUE
+       WHERE tier = 'vip'
+         AND (square_customer_group_id IS NULL OR square_customer_group_id = '');
+    `);
     console.log("[DB] Startup migrations applied");
   } catch (err) {
     console.error("[DB] Startup migration failed (non-fatal):", err.message);
@@ -2333,6 +2340,7 @@ __export(square_exports, {
   isConfigured: () => isConfigured,
   isWebPaymentsConfigured: () => isWebPaymentsConfigured,
   listCustomerGroups: () => listCustomerGroups,
+  listCustomersInGroup: () => listCustomersInGroup,
   listSquarePaymentsForCustomer: () => listSquarePaymentsForCustomer,
   listSquareSubscriptionsForCustomer: () => listSquareSubscriptionsForCustomer,
   membershipGroupName: () => membershipGroupName,
@@ -2642,6 +2650,23 @@ async function removeCustomerFromGroup(customerId, groupId) {
 async function getCustomerGroupIds(customerId) {
   const data = await squareRequest("GET", `/v2/customers/${customerId}`);
   return data.customer?.group_ids || [];
+}
+async function listCustomersInGroup(groupId) {
+  const out = [];
+  let cursor;
+  for (let page = 0; page < 10; page++) {
+    const body = {
+      query: { filter: { group_ids: { all: [groupId] } } },
+      limit: 100
+    };
+    if (cursor) body.cursor = cursor;
+    const data = await squareRequest("POST", "/v2/customers/search", body);
+    const batch = data.customers || [];
+    out.push(...batch);
+    cursor = data.cursor;
+    if (!cursor) break;
+  }
+  return out;
 }
 async function createMembershipCheckoutLink(opts) {
   const locationId = getLocationId();
@@ -8845,6 +8870,57 @@ async function registerRoutes(app2) {
       console.warn("[MEMBERSHIP] Square sync failed (non-fatal):", err.message);
     }
   }
+  const VIP_GROUP_ID = "575ce1a2-a598-4f09-82ba-90a7b88e9da1";
+  const VIP_BACKFILL_FLAG = "vip_group_backfill_v1_done";
+  setTimeout(() => {
+    (async () => {
+      try {
+        if (await storage.getSetting(VIP_BACKFILL_FLAG) === "yes") return;
+        if (!isConfigured()) return;
+        const vipPlan = (await storage.getMembershipPlans()).find((p) => p.tier === "vip" && p.active && p.squareCustomerGroupId === VIP_GROUP_ID);
+        if (!vipPlan) {
+          console.warn("[VIP BACKFILL] VIP plan not active or not mapped to expected group \u2014 skipping");
+          return;
+        }
+        const sqMembers = await listCustomersInGroup(VIP_GROUP_ID);
+        if (!sqMembers.length) {
+          console.log("[VIP BACKFILL] Square reports no members in the VIP group \u2014 nothing to sync");
+          await storage.setSetting(VIP_BACKFILL_FLAG, "yes");
+          return;
+        }
+        let linked = 0, skipped = 0, failed = 0;
+        for (const sqCust of sqMembers) {
+          const email = sqCust.email_address?.trim().toLowerCase();
+          if (!email) {
+            skipped++;
+            continue;
+          }
+          try {
+            const appCustomer = await storage.getCustomerByEmail(email);
+            if (!appCustomer) {
+              skipped++;
+              continue;
+            }
+            const before = await storage.getMembershipSubscriptionByCustomer(appCustomer.id);
+            await syncSquareMembershipForCustomer(appCustomer.id, email);
+            const after = await storage.getMembershipSubscriptionByCustomer(appCustomer.id);
+            if (!before && after) linked++;
+          } catch (innerErr) {
+            failed++;
+            console.warn(`[VIP BACKFILL] sync failed for ${email}:`, innerErr?.message);
+          }
+        }
+        if (failed === 0) {
+          await storage.setSetting(VIP_BACKFILL_FLAG, "yes");
+          console.log(`[VIP BACKFILL] Complete \u2014 linked ${linked}, skipped ${skipped} (no app account / no email) of ${sqMembers.length} VIP group members`);
+        } else {
+          console.warn(`[VIP BACKFILL] Partial \u2014 linked ${linked}, failed ${failed} of ${sqMembers.length}; flag NOT set, will retry next boot`);
+        }
+      } catch (err) {
+        console.warn("[VIP BACKFILL] Skipped (non-fatal):", err?.message);
+      }
+    })();
+  }, 5e3);
   app2.post("/api/customers/register", async (req, res) => {
     const clientIp = getClientIp(req);
     const rateCheck = checkCustomerRateLimit(clientIp);
