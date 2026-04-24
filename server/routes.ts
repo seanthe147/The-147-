@@ -1525,6 +1525,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(404).json({ message: "Staff user not found" });
     }
 
+    const requestingUser = (req as any).staffUser;
+    if (staffUser.role === "owner" && requestingUser?.role !== "owner") {
+      return res.status(403).json({ message: "Managers cannot reset credentials for owner accounts" });
+    }
+
     const { hash, salt } = hashPassword(tempPassword);
     // mustChangePassword=true so the user is forced to pick a new one immediately.
     await storage.updateStaffPassword(staffUser.username, hash, salt, true);
@@ -1548,6 +1553,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const staffUser = await storage.getStaffUserByUsername(username.trim());
     if (!staffUser) {
       return res.status(404).json({ message: "Staff user not found" });
+    }
+
+    const requestingUser = (req as any).staffUser;
+    if (staffUser.role === "owner" && requestingUser?.role !== "owner") {
+      return res.status(403).json({ message: "Managers cannot reset credentials for owner accounts" });
     }
 
     const { hash, salt } = hashPin(newPin);

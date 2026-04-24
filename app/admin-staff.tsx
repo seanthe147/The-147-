@@ -414,14 +414,16 @@ export default function AdminStaffScreen() {
                             <Ionicons name="cash-outline" size={15} color="#065F46" />
                             <Text style={[styles.actionBtnText, { color: "#065F46" }]}>Pay & SSP</Text>
                           </Pressable>
-                          <Pressable
-                            onPress={() => openResetPin(user)}
-                            disabled={isBusy}
-                            style={({ pressed }) => [styles.actionBtn, styles.actionBtnPrimary, { opacity: pressed ? 0.7 : 1 }]}
-                          >
-                            <Ionicons name="key-outline" size={15} color={Colors.brand.blue} />
-                            <Text style={[styles.actionBtnText, { color: Colors.brand.blue }]}>Reset Password</Text>
-                          </Pressable>
+                          {(isOwner || user.role !== "owner") && (
+                            <Pressable
+                              onPress={() => openResetPin(user)}
+                              disabled={isBusy}
+                              style={({ pressed }) => [styles.actionBtn, styles.actionBtnPrimary, { opacity: pressed ? 0.7 : 1 }]}
+                            >
+                              <Ionicons name="key-outline" size={15} color={Colors.brand.blue} />
+                              <Text style={[styles.actionBtnText, { color: Colors.brand.blue }]}>Reset Password</Text>
+                            </Pressable>
+                          )}
 
                           {isOwner && (
                             <Pressable
