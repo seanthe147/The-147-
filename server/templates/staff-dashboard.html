@@ -960,8 +960,9 @@
         <div class="page-body">
           <div class="menu-refresh-bar" style="align-items:flex-start">
             <div style="flex:1">
-              <p style="font-size:13px;color:var(--text-2);margin:0 0 4px"><strong>Website Editor</strong> — change the headlines and intro text on the public website at <a href="/test-site" target="_blank" style="color:var(--accent);font-weight:700">the147.co.uk</a> without touching code.</p>
-              <p style="font-size:12px;color:var(--text-2);margin:0;opacity:.8">Wrap a word in <code style="background:var(--bg-2);padding:2px 5px;border-radius:4px;font-size:11px">*asterisks*</code> to highlight it in gold italic. Leave a field blank to use the default text.</p>
+              <p style="font-size:13px;color:var(--text-2);margin:0 0 4px"><strong>Website Editor</strong> — edit text, swap images and update contact info across the public website at <a href="/test-site" target="_blank" style="color:var(--accent);font-weight:700">the147.co.uk</a> without touching code.</p>
+              <p style="font-size:12px;color:var(--text-2);margin:0 0 4px;opacity:.85">Use the <strong>Site-wide</strong> tab for things that appear on every page — phone, email, address, opening hours, footer text. Use the per-page tabs for hero text and the hero background image on each page.</p>
+              <p style="font-size:12px;color:var(--text-2);margin:0;opacity:.7">Tip: wrap a word in <code style="background:var(--bg-2);padding:2px 5px;border-radius:4px;font-size:11px">*asterisks*</code> to highlight it in gold italic. Leave a field blank to use the default.</p>
             </div>
             <a id="websitePreviewBtn" class="btn btn-secondary btn-sm" target="_blank" style="text-decoration:none">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
@@ -7284,10 +7285,11 @@
     const wrap=el('websiteTabs');
     wrap.innerHTML=websiteState.pages.map(p=>{
       const active=p.slug===websiteState.activeSlug;
-      return '<button onclick="setWebsiteActive(\''+p.slug+'\')" class="btn btn-sm" style="border:1.5px solid '+(active?'var(--accent)':'var(--border)')+';background:'+(active?'var(--accent)':'transparent')+';color:'+(active?'#000':'var(--text-1)')+';font-weight:700;padding:7px 14px;font-size:12.5px;border-radius:8px">'+p.label+'</button>';
+      const prefix=p.slug==='site'?'🌐 ':'';
+      return '<button onclick="setWebsiteActive(\''+p.slug+'\')" class="btn btn-sm" style="border:1.5px solid '+(active?'var(--accent)':'var(--border)')+';background:'+(active?'var(--accent)':'transparent')+';color:'+(active?'#000':'var(--text-1)')+';font-weight:700;padding:7px 14px;font-size:12.5px;border-radius:8px">'+prefix+p.label+'</button>';
     }).join('');
     const slug=websiteState.activeSlug||'home';
-    const previewPath=slug==='home'?'/test-site':'/test-site/'+slug;
+    const previewPath=(slug==='home'||slug==='site')?'/test-site':'/test-site/'+slug;
     el('websitePreviewBtn').setAttribute('href',previewPath);
   }
   window.setWebsiteActive=function(slug){
@@ -7299,12 +7301,28 @@
     const body=el('websiteEditorBody');
     if(!page){body.innerHTML='';return;}
     let html='<div style="display:grid;gap:18px;max-width:720px">';
+    if(page.slug==='site'){
+      html+='<div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:10px;padding:11px 14px;font-size:12.5px;color:var(--text-1);line-height:1.5"><strong>Site-wide settings</strong> — these values appear on every page (header info-bar, footer, contact page). Change them once here and they update everywhere.</div>';
+    }
     page.blocks.forEach(b=>{
       const fid='wf-'+page.slug+'-'+b.key;
       const sid='ws-'+page.slug+'-'+b.key;
-      const fieldHtml=b.type==='textarea'
-        ? '<textarea id="'+fid+'" rows="3" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg-1);color:var(--text-1);font-family:inherit;font-size:14px;line-height:1.5;resize:vertical" placeholder="Default text in HTML">'+escapeAttr(b.value||'')+'</textarea>'
-        : '<input type="text" id="'+fid+'" value="'+escapeAttr(b.value||'')+'" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg-1);color:var(--text-1);font-family:inherit;font-size:14px" placeholder="Default text in HTML" />';
+      let fieldHtml='';
+      if(b.type==='textarea'){
+        fieldHtml='<textarea id="'+fid+'" rows="3" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg-1);color:var(--text-1);font-family:inherit;font-size:14px;line-height:1.5;resize:vertical" placeholder="Default text in HTML">'+escapeAttr(b.value||'')+'</textarea>';
+      }else if(b.type==='image'){
+        const previewStyle='width:100%;height:160px;border-radius:10px;border:1.5px dashed var(--border);background:var(--bg-1);display:flex;align-items:center;justify-content:center;color:var(--text-2);font-size:12px;background-size:cover;background-position:center;overflow:hidden';
+        fieldHtml=
+          '<div id="wfimg-'+page.slug+'-'+b.key+'" style="'+previewStyle+'"></div>'+
+          '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">'+
+            '<button type="button" onclick="document.getElementById(\'wfile-'+page.slug+'-'+b.key+'\').click()" class="btn btn-secondary btn-sm" style="font-size:12px">📤 Upload Image</button>'+
+            '<button type="button" onclick="clearWebImage(\''+page.slug+'\',\''+b.key+'\')" class="btn btn-sm" style="font-size:12px;background:transparent;border:1.5px solid var(--border);color:var(--text-1)">Clear</button>'+
+            '<input type="file" id="wfile-'+page.slug+'-'+b.key+'" accept="image/*" style="display:none" onchange="uploadWebImage(this,\''+page.slug+'\',\''+b.key+'\')" />'+
+          '</div>'+
+          '<input type="text" id="'+fid+'" value="'+escapeAttr(b.value||'')+'" style="width:100%;padding:9px 11px;margin-top:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-1);color:var(--text-2);font-family:monospace;font-size:11px" placeholder="Or paste an image URL (https://…)" />';
+      }else{
+        fieldHtml='<input type="text" id="'+fid+'" value="'+escapeAttr(b.value||'')+'" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg-1);color:var(--text-1);font-family:inherit;font-size:14px" placeholder="Default text in HTML" />';
+      }
       html+='<div style="background:var(--bg-2);border:1px solid var(--border);border-radius:12px;padding:16px 18px">'+
         '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;gap:12px">'+
           '<label for="'+fid+'" style="font-size:12px;font-weight:700;color:var(--text-1);text-transform:uppercase;letter-spacing:.6px">'+b.label+'</label>'+
@@ -7320,11 +7338,49 @@
       const fid='wf-'+page.slug+'-'+b.key;
       const node=el(fid);
       if(node)node.addEventListener('input',()=>queueWebsiteSave(page.slug,b.key,fid));
+      if(b.type==='image')refreshWebImagePreview(page.slug,b.key,b.value||'');
     });
   }
+  function refreshWebImagePreview(slug,key,value){
+    const previewEl=el('wfimg-'+slug+'-'+key);
+    if(!previewEl)return;
+    if(value){
+      const safe=String(value).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      previewEl.style.backgroundImage="url('"+safe+"')";
+      previewEl.textContent='';
+    }else{
+      previewEl.style.backgroundImage='';
+      previewEl.textContent='No image set — using the default page background';
+    }
+  }
+  window.uploadWebImage=async function(fileInput,slug,key){
+    const file=fileInput.files&&fileInput.files[0];
+    fileInput.value='';
+    if(!file)return;
+    const sid='ws-'+slug+'-'+key;
+    const status=el(sid);if(status){status.textContent='Uploading…';status.style.color='';}
+    try{
+      const fd=new FormData();fd.append('image',file);
+      const r=await fetch('/api/staff/web-content/image',{method:'POST',headers:{Authorization:'Bearer '+getToken()},body:fd});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok||!d.url)throw new Error(d.message||'Upload failed');
+      const fid='wf-'+slug+'-'+key;
+      const node=el(fid);if(node)node.value=d.url;
+      refreshWebImagePreview(slug,key,d.url);
+      queueWebsiteSave(slug,key,fid);
+    }catch(e){
+      if(status){status.textContent=(e&&e.message)||'Upload failed';status.style.color='#e05252';}
+    }
+  };
+  window.clearWebImage=function(slug,key){
+    const fid='wf-'+slug+'-'+key;
+    const node=el(fid);if(node)node.value='';
+    refreshWebImagePreview(slug,key,'');
+    queueWebsiteSave(slug,key,fid);
+  };
   function queueWebsiteSave(slug,key,fid){
     const sid='ws-'+slug+'-'+key;
-    const status=el(sid);if(status)status.textContent='Saving…';
+    const status=el(sid);if(status){status.textContent='Saving…';status.style.color='';}
     const cacheKey=slug+':'+key;
     clearTimeout(websiteState.dirty[cacheKey]);
     websiteState.dirty[cacheKey]=setTimeout(async()=>{
@@ -7334,7 +7390,7 @@
         if(!r.ok)throw new Error();
         if(status){status.textContent='Saved ✓';status.style.color='var(--green,#3ec46d)';setTimeout(()=>{status.textContent='';status.style.color='';},2000);}
         const page=websiteState.pages.find(p=>p.slug===slug);
-        if(page){const blk=page.blocks.find(b=>b.key===key);if(blk)blk.value=value;}
+        if(page){const blk=page.blocks.find(b=>b.key===key);if(blk){blk.value=value;if(blk.type==='image')refreshWebImagePreview(slug,key,value);}}
       }catch(e){
         if(status){status.textContent='Failed';status.style.color='#e05252';}
       }

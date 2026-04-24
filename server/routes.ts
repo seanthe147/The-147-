@@ -1781,6 +1781,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Owner-only image upload for website editor image blocks. Returns a
+  // base64 data URL that the caller saves into the relevant block via the
+  // PUT /api/staff/web-content endpoint above. Same pattern used elsewhere
+  // for category/banner image uploads — keeps everything in the DB so there
+  // are no filesystem assets to manage in production.
+  app.post(
+    "/api/staff/web-content/image",
+    staffAuth,
+    ownerAuth,
+    upload.single("image"),
+    async (req: any, res) => {
+      try {
+        if (!req.file) return res.status(400).json({ message: "No image file uploaded" });
+        const compressed = await sharp(req.file.buffer)
+          .rotate()
+          .resize({ width: 2000, withoutEnlargement: true })
+          .jpeg({ quality: 78, mozjpeg: true })
+          .toBuffer();
+        const url = `data:image/jpeg;base64,${compressed.toString("base64")}`;
+        return res.json({ url });
+      } catch (err: any) {
+        console.error("Web image upload failed:", err);
+        return res.status(400).json({ message: err?.message || "Image upload failed" });
+      }
+    },
+  );
+
   // ── Owner-only Wix membership migration ───────────────────────────────────
   // Imports paying members from Wix as already-active records, then sends them
   // a one-tap "save your card" link so they can re-enter card details on Square.

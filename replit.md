@@ -24,7 +24,8 @@ The application employs a mobile-first approach with a React Native frontend bui
 - **Database Schema:** Defined using Drizzle ORM.
 - **Push Notifications:** Utilizes Expo's push service for device token registration and admin-controlled notifications.
 - **GDPR:** Comprehensive consent mechanisms, data management APIs, and retention policies.
-- **Image Uploads:** Supports `multipart/form-data` uploads with validation for banner images.
+- **Image Uploads:** Supports `multipart/form-data` uploads with validation for banner images and website hero backgrounds (compressed via `sharp`, stored as `data:` URLs in `site_settings`).
+- **Website Editor (`/test-site`):** Owner-only editor in the staff dashboard lets the venue owner edit the public marketing pages without touching code. HTML files use `<!--WEB:slug:key-->default<!--/WEB-->` markers; `server/web-content.ts` substitutes them at request time from the `site_settings` KV table. Supports text, textarea and image fields. A "site" pseudo-page holds site-wide values (phone, email, address, hours, footer tagline) that apply across every marketing page; per-page tabs cover hero text and the hero background image.
 - **App Variants:** The codebase supports building two distinct app variants (customer and staff) from a single source, gated by an `EXPO_PUBLIC_APP_VARIANT` environment flag for separate App Store listings, while maintaining a single backend and database.
 
 ## Mobile Signing Credentials (EAS Builds)
