@@ -435,18 +435,33 @@ function configureExpoAndLanding(app: express.Application) {
     }
   });
   // Page handler — `/test-site` and `/test-site/<page>`
+  // 1. Try a built-in static HTML file first (the eight original pages).
+  // 2. Otherwise fall through to a DB-backed custom page from the
+  //    `marketing_pages` table (the owner's page-builder).
+  // Site-wide overrides apply to BOTH paths so logo/colours/nav/footer
+  // stay consistent across built-in and custom pages.
   app.get(["/test-site", "/test-site/:page"], async (req: Request, res: Response) => {
     const slug = String(req.params.page ?? "").toLowerCase();
     const file = TEST_SITE_PAGES[slug];
-    if (!file) return res.status(404).send("Page not found");
     try {
-      const { applyWebContentOverrides } = await import("./web-content");
-      const p = path.resolve(process.cwd(), "server", "templates", "test-site", file);
-      const raw = fs.readFileSync(p, "utf-8");
-      const overrideSlug = slug || "home";
-      const finalHtml = await applyWebContentOverrides(overrideSlug, raw);
-      res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.send(finalHtml);
+      const { applyWebContentOverrides, renderCustomPage } = await import("./web-content");
+      if (file) {
+        const p = path.resolve(process.cwd(), "server", "templates", "test-site", file);
+        const raw = fs.readFileSync(p, "utf-8");
+        const overrideSlug = slug || "home";
+        const finalHtml = await applyWebContentOverrides(overrideSlug, raw);
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        return res.send(finalHtml);
+      }
+      const { storage } = await import("./storage");
+      const customPage = await storage.getMarketingPage(slug);
+      if (customPage && !customPage.hidden) {
+        const shell = renderCustomPage(customPage);
+        const finalHtml = await applyWebContentOverrides(slug, shell);
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        return res.send(finalHtml);
+      }
+      return res.status(404).send("Page not found");
     } catch {
       res.status(500).send("Page unavailable");
     }

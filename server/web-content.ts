@@ -47,7 +47,8 @@ export type WebFieldType =
   | "attr_text"
   | "color"
   | "nav"
-  | "bar";
+  | "bar"
+  | "gallery";
 
 export interface WebBlockDef {
   key: string;
@@ -95,6 +96,31 @@ const pageBlocks = (titleHint?: string): WebBlockDef[] => [
   { key: "hero_bg", label: "Hero · background image", type: "image", hint: HERO_BG_HINT },
 ];
 
+// Helper for body sections following the eyebrow / title / lead / image pattern.
+// Used across all 8 marketing pages so the editor groups related fields.
+const sectionBlocks = (
+  prefix: string,
+  sectionLabel: string,
+  opts: { lead?: boolean; image?: boolean } = { lead: true, image: false },
+): WebBlockDef[] => {
+  const out: WebBlockDef[] = [
+    { key: `${prefix}_eyebrow`, label: `${sectionLabel} · small label`, type: "text" },
+    { key: `${prefix}_title`, label: `${sectionLabel} · heading`, type: "text" },
+  ];
+  if (opts.lead !== false) {
+    out.push({ key: `${prefix}_lead`, label: `${sectionLabel} · intro paragraph`, type: "textarea" });
+  }
+  if (opts.image) {
+    out.push({
+      key: `${prefix}_image`,
+      label: `${sectionLabel} · photo`,
+      type: "image_url",
+      hint: "Upload a square or landscape photo to replace the placeholder.",
+    });
+  }
+  return out;
+};
+
 // Default navigation seed — used when no override is saved AND served back to
 // the editor as the starting list of links the owner can rename / hide / reorder.
 export const DEFAULT_NAV: NavLinkDef[] = [
@@ -133,14 +159,105 @@ export const WEB_PAGES: WebPageDef[] = [
       { key: "footer_tagline", label: "Footer tagline", type: "textarea", hint: "Short blurb in the footer under the brand mark." },
     ],
   },
-  { slug: "home", label: "Home", blocks: pageBlocks() },
-  { slug: "snooker", label: "Snooker", blocks: pageBlocks() },
-  { slug: "dining", label: "Dining", blocks: pageBlocks() },
-  { slug: "events", label: "Events", blocks: pageBlocks() },
-  { slug: "function-rooms", label: "Function Rooms", blocks: pageBlocks() },
-  { slug: "gift-cards", label: "Gift Cards", blocks: pageBlocks() },
-  { slug: "contact", label: "Contact", blocks: pageBlocks() },
-  { slug: "membership", label: "Membership", blocks: pageBlocks() },
+  {
+    slug: "home",
+    label: "Home",
+    blocks: [
+      ...pageBlocks(),
+      ...sectionBlocks("s1", "Section 1 — Why The 147"),
+      ...sectionBlocks("s2", "Section 2 — Our Tables"),
+      { key: "s3_lead", label: "Membership teaser · intro paragraph", type: "textarea" },
+      ...sectionBlocks("s4", "Section 4 — What's On"),
+      { key: "gallery_eyebrow", label: "Gallery · small label", type: "text" },
+      { key: "gallery_title", label: "Gallery · heading", type: "text" },
+      {
+        key: "gallery",
+        label: "Gallery · photos",
+        type: "gallery",
+        hint: "Add up to 9 photos of the venue. They'll appear in a responsive 3-column grid (1 column on mobile). Drag to reorder, click × to remove.",
+      },
+    ],
+  },
+  {
+    slug: "snooker",
+    label: "Snooker",
+    blocks: [
+      ...pageBlocks(),
+      { key: "s1_eyebrow", label: "Section 1 — The Tables · small label", type: "text" },
+      { key: "s1_title", label: "Section 1 — The Tables · heading", type: "text" },
+      { key: "s1_body", label: "Section 1 — The Tables · body copy", type: "textarea", hint: "Two-paragraph intro. Use a blank line to break paragraphs." },
+      { key: "s1_image", label: "Section 1 — Tables photo", type: "image_url", hint: "Upload a photo of your tables to replace the placeholder." },
+      ...sectionBlocks("s2", "Section 2 — Pricing"),
+      ...sectionBlocks("s3", "Section 3 — Leagues"),
+    ],
+  },
+  {
+    slug: "dining",
+    label: "Dining",
+    blocks: [
+      ...pageBlocks(),
+      { key: "s1_eyebrow", label: "Section 1 — The Kitchen · small label", type: "text" },
+      { key: "s1_title", label: "Section 1 — The Kitchen · heading", type: "text" },
+      { key: "s1_body", label: "Section 1 — The Kitchen · body copy", type: "textarea" },
+      { key: "s1_image", label: "Section 1 — Food photo", type: "image_url", hint: "Upload a hero food photo to replace the placeholder." },
+      ...sectionBlocks("s2", "Section 2 — Sample Menu"),
+    ],
+  },
+  {
+    slug: "events",
+    label: "Events",
+    blocks: [
+      ...pageBlocks(),
+      ...sectionBlocks("s1", "Section 1 — Coming Up"),
+      ...sectionBlocks("s2", "Section 2 — Every Week"),
+      ...sectionBlocks("s3", "Section 3 — Host Your Event"),
+    ],
+  },
+  {
+    slug: "function-rooms",
+    label: "Function Rooms",
+    blocks: [
+      ...pageBlocks(),
+      { key: "s1_eyebrow", label: "Section 1 — The Space · small label", type: "text" },
+      { key: "s1_title", label: "Section 1 — The Space · heading", type: "text" },
+      { key: "s1_body", label: "Section 1 — The Space · body copy", type: "textarea" },
+      { key: "s1_image", label: "Section 1 — Room photo", type: "image_url" },
+      ...sectionBlocks("s2", "Section 2 — Spaces"),
+      ...sectionBlocks("s3", "Section 3 — Packages"),
+    ],
+  },
+  {
+    slug: "gift-cards",
+    label: "Gift Cards",
+    blocks: [
+      ...pageBlocks(),
+      { key: "s1_eyebrow", label: "Section 1 — How They Work · small label", type: "text" },
+      { key: "s1_title", label: "Section 1 — How They Work · heading", type: "text" },
+      { key: "s1_body", label: "Section 1 — How They Work · body copy", type: "textarea" },
+      { key: "s1_image", label: "Section 1 — Gift card photo", type: "image_url" },
+      ...sectionBlocks("s2", "Section 2 — Choose an Amount"),
+      { key: "s3_eyebrow", label: "Section 3 — Good to Know · small label", type: "text" },
+      { key: "s3_title", label: "Section 3 — Good to Know · heading", type: "text" },
+    ],
+  },
+  {
+    slug: "contact",
+    label: "Contact",
+    blocks: [
+      ...pageBlocks(),
+      { key: "s1_eyebrow", label: "Send a Message · small label", type: "text" },
+      { key: "s1_title", label: "Send a Message · heading", type: "text" },
+      { key: "s1_body", label: "Send a Message · body copy", type: "textarea" },
+    ],
+  },
+  {
+    slug: "membership",
+    label: "Membership",
+    blocks: [
+      ...pageBlocks(),
+      ...sectionBlocks("s1", "Members' Perks"),
+    ],
+  },
 ];
 
 const SITE_SLUG = "site";
@@ -209,6 +326,37 @@ function sanitizeColor(value: string): string {
   if (/^#[0-9a-fA-F]{3}$/.test(trimmed)) return trimmed.toLowerCase();
   if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed.toLowerCase();
   return "";
+}
+
+// Render a multi-image photo gallery from a JSON array of URLs. Empty / invalid
+// payloads fall back to the captured default markup, so removing every photo
+// reveals whatever placeholder the template originally shipped with. Each URL
+// is filtered through isSafeImageUrl as render-time defence-in-depth.
+function renderGallery(value: string, defaultInner: string): string {
+  if (!value) return defaultInner;
+  let urls: string[] = [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return defaultInner;
+    urls = parsed
+      .map((u: any) => (typeof u === "string" ? isSafeImageUrl(u) : ""))
+      .filter((u): u is string => !!u);
+  } catch {
+    return defaultInner;
+  }
+  if (!urls.length) return defaultInner;
+  return (
+    `<div class="gallery-grid">` +
+    urls
+      .map(
+        (u) =>
+          `<div class="gallery-item" style="background-image:url('${escapeImageUrl(
+            u,
+          )}')"></div>`,
+      )
+      .join("") +
+    `</div>`
+  );
 }
 
 // Render the navigation links list. The current page's slug determines which
@@ -300,6 +448,8 @@ function substituteBlock(
     case "bar":
       if (!value) return "";
       return `<div class="announcement-bar">${escapeHtml(value)}</div>`;
+    case "gallery":
+      return renderGallery(value, defaultInner);
     case "text":
     case "textarea":
     default:
@@ -356,6 +506,164 @@ async function loadOverridesForPage(slug: string): Promise<Record<string, string
   return out;
 }
 
+// ── Custom (DB-backed) marketing page renderer ───────────────────────────
+// Owners can create new pages from the staff portal. Each page persists in
+// `marketing_pages` and is rendered with the standard nav / footer / hero
+// shell so it inherits all the site-wide overrides (logo, colours, nav,
+// announcement, footer copy) for free. The body is owner-supplied HTML —
+// we strip <script> / <style> / on*= handlers / javascript: URLs as a
+// hygiene net but otherwise let real markup through (the page-builder is
+// explicitly an owner-trusted surface).
+
+const SCRIPT_TAG_RE = /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi;
+const STYLE_TAG_RE = /<style\b[^>]*>[\s\S]*?<\/style\s*>/gi;
+// Strip whole tags that load executable / cross-origin content. Owners get
+// `<img>`, links and basic markup but not iframes/objects/embeds/SVGs.
+const DANGEROUS_TAG_RE = /<\/?(?:iframe|object|embed|svg|math|link|meta|base|form|input|button|textarea|select|frame|frameset)\b[^>]*>/gi;
+const ON_HANDLER_RE = /\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
+// Match URL-bearing attrs whose value (quoted OR unquoted) starts with an
+// executable scheme. Whitespace and HTML entity encodings (&#x6a; &#106;) for
+// the leading characters are normalised before matching.
+const URL_ATTR_RE = /\b(href|src|srcset|action|formaction|background|poster|xlink:href|data)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi;
+const DANGEROUS_SCHEME_RE = /^(?:javascript|vbscript|livescript|mocha|data\s*:\s*text\/html)\s*:/i;
+
+function decodeAttrEntities(s: string): string {
+  return s.replace(/&#x([0-9a-f]+);?|&#(\d+);?/gi, (_m, hex, dec) => {
+    const code = hex ? parseInt(hex, 16) : parseInt(dec, 10);
+    return Number.isFinite(code) && code > 0 && code < 0x110000
+      ? String.fromCodePoint(code)
+      : "";
+  });
+}
+
+function sanitizeBodyHtml(html: string): string {
+  return String(html || "")
+    .replace(SCRIPT_TAG_RE, "")
+    .replace(STYLE_TAG_RE, "")
+    .replace(DANGEROUS_TAG_RE, "")
+    .replace(ON_HANDLER_RE, "")
+    .replace(URL_ATTR_RE, (full, attr: string, raw: string) => {
+      let value = raw;
+      let quote = "";
+      if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
+        quote = raw[0];
+        value = raw.slice(1, -1);
+      }
+      const normalized = decodeAttrEntities(value).replace(/[\s\u0000-\u001f]/g, "").toLowerCase();
+      if (DANGEROUS_SCHEME_RE.test(normalized)) {
+        return `${attr}=${quote}#${quote}`;
+      }
+      return full;
+    });
+}
+
+export interface CustomPageInput {
+  slug: string;
+  title: string;
+  heroEyebrow?: string | null;
+  heroTitle?: string | null;
+  heroSub?: string | null;
+  heroBg?: string | null;
+  bodyHtml?: string | null;
+  metaTitle?: string | null;
+  metaDescription?: string | null;
+}
+
+export function renderCustomPage(page: CustomPageInput): string {
+  const safeHeroBg = page.heroBg ? isSafeImageUrl(page.heroBg) : "";
+  const heroStyle = safeHeroBg
+    ? `;background-image:linear-gradient(180deg,rgba(13,13,13,.55) 0%,rgba(13,13,13,.85) 100%),url('${escapeImageUrl(safeHeroBg)}');background-size:cover;background-position:center`
+    : "";
+  const metaTitle = escapeHtml(page.metaTitle?.trim() || `${page.title} — The 147 Bradford`);
+  const metaDesc = escapeHtml(page.metaDescription?.trim() || page.title);
+  const eyebrow = page.heroEyebrow?.trim()
+    ? `<span class="hero-eyebrow">${escapeHtml(page.heroEyebrow)}</span>`
+    : "";
+  const title = renderWebText(page.heroTitle?.trim() || page.title);
+  const sub = page.heroSub?.trim()
+    ? `<p class="hero-sub">${escapeHtml(page.heroSub)}</p>`
+    : "";
+  const body = sanitizeBodyHtml(page.bodyHtml || "");
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>${metaTitle}</title>
+<meta name="description" content="${metaDesc}" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/test-site/styles.css">
+<style>:root{--blue:<!--WEB:site:color_blue-->#1E5BC6<!--/WEB-->;--gold:<!--WEB:site:color_gold-->#D9A93C<!--/WEB-->}</style>
+</head>
+<body>
+
+<div class="preview-banner">Test Website — for review only · not yet live</div>
+<!--WEB:site:announcement_text--><!--/WEB-->
+
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/test-site" class="brand">
+      <!--WEB:site:logo--><div class="brand-mark">147</div><div class="brand-text">The 1<span>4</span>7</div><!--/WEB-->
+    </a>
+    <div class="nav-links" id="navLinks">
+      <!--WEB:site:nav_links-->
+        <a href="/test-site">Home</a>
+        <a href="/test-site/snooker">Snooker</a>
+        <a href="/test-site/dining">Dining</a>
+        <a href="/test-site/events">Events</a>
+        <a href="/test-site/function-rooms">Function Rooms</a>
+        <a href="/test-site/gift-cards">Gift Cards</a>
+        <a href="/test-site/contact">Contact</a>
+        <a href="/test-site/order" class="nav-order">Order</a>
+        <a href="/test-site/book" class="nav-cta">Book a Table</a>
+        <!--/WEB-->
+    </div>
+    <button class="menu-toggle" onclick="document.getElementById('navLinks').classList.toggle('open')" aria-label="Menu">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+  </div>
+</nav>
+
+<header class="hero" style="${heroStyle}">
+  <div class="hero-content">
+    ${eyebrow}
+    <h1>${title}</h1>
+    ${sub}
+  </div>
+</header>
+
+<section>
+  <div class="custom-page-body">
+    ${body}
+  </div>
+</section>
+
+<footer>
+  <div class="footer-grid">
+    <div>
+      <div class="footer-brand-wrap"><!--WEB:site:logo--><div class="footer-brand">The 1<span>4</span>7</div><!--/WEB--></div>
+      <p style="font-size:14px;color:#888;max-width:300px"><!--WEB:site:footer_tagline-->Bradford's premier snooker, pool &amp; dining venue. Tournament-grade tables, full bar, kitchen open late.<!--/WEB--></p>
+    </div>
+    <div class="footer-col"><h5>Visit</h5><ul><li><a href="/test-site/snooker">Snooker</a></li><li><a href="/test-site/dining">Dining</a></li><li><a href="/test-site/events">Events</a></li><li><a href="/test-site/function-rooms">Function Rooms</a></li></ul></div>
+    <div class="footer-col"><h5>Members</h5><ul><li><a href="/membership">Plans &amp; Pricing</a></li><li><a href="/">Book a Table</a></li><li><a href="/test-site/gift-cards">Gift Cards</a></li></ul></div>
+    <div class="footer-col"><h5>Contact</h5><ul><li><!--WEB:site:phone-->01274 000 000<!--/WEB--></li><li><!--WEB:site:email-->hello@the147bradford.co.uk<!--/WEB--></li><li><!--WEB:site:address_line1-->147 Example Street<!--/WEB--></li><li><!--WEB:site:address_line2-->Bradford BD1 1AA<!--/WEB--></li></ul></div>
+  </div>
+  <div class="footer-bottom"><div>© The 147 Bradford. All rights reserved.</div><div><a href="/privacy-policy">Privacy</a> · <a href="/terms">Terms</a></div></div>
+</footer>
+<script src="/test-site/embed.js" defer></script>
+<script>document.querySelectorAll('#navLinks a').forEach(a=>a.addEventListener('click',()=>document.getElementById('navLinks').classList.remove('open')));</script>
+</body></html>`;
+}
+
+// Slug used for the renderer's `currentPageSlug` parameter when a custom
+// page is being rendered — owner can wire their nav link's `slug` field
+// to match this prefix to highlight the custom page in nav.
+export const CUSTOM_PAGE_SLUG_PREFIX = "custom:";
+
 // Editor data shape — used by the staff portal API.
 export interface WebBlockEditor extends WebBlockDef {
   value: string; // current saved override (empty string if none)
@@ -403,6 +711,18 @@ export async function saveOverride(slug: string, key: string, value: string): Pr
   if (raw) {
     if (block.type === "image" || block.type === "image_html" || block.type === "image_url") {
       if (!isSafeImageUrl(raw)) throw new Error("Unsafe image URL");
+    } else if (block.type === "gallery") {
+      let parsed: any;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        throw new Error("Invalid gallery JSON");
+      }
+      if (!Array.isArray(parsed)) throw new Error("Gallery must be an array");
+      for (const u of parsed) {
+        if (typeof u !== "string") throw new Error("Gallery entries must be strings");
+        if (u && !isSafeImageUrl(u)) throw new Error("Unsafe gallery image URL");
+      }
     } else if (block.type === "nav") {
       let parsed: any;
       try {

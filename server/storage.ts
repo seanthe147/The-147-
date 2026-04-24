@@ -43,6 +43,9 @@ import {
   contactMessages,
   events,
   siteSettings,
+  marketingPages,
+  type MarketingPage,
+  type InsertMarketingPage,
   bannerImages,
   customers,
   customerSessions,
@@ -1207,6 +1210,41 @@ export class DatabaseStorage implements IStorage {
     const result: Record<string, string> = {};
     for (const row of rows) result[row.key] = row.value;
     return result;
+  }
+
+  // ── Marketing pages (custom DB-backed pages) ─────────────────────────────
+  async listMarketingPages(): Promise<MarketingPage[]> {
+    return db.select().from(marketingPages).orderBy(marketingPages.sortOrder, marketingPages.slug);
+  }
+
+  async getMarketingPage(slug: string): Promise<MarketingPage | null> {
+    const [row] = await db.select().from(marketingPages).where(eq(marketingPages.slug, slug));
+    return row ?? null;
+  }
+
+  async createMarketingPage(data: InsertMarketingPage): Promise<MarketingPage> {
+    const [row] = await db
+      .insert(marketingPages)
+      .values({ ...data, updatedAt: new Date() })
+      .returning();
+    return row;
+  }
+
+  async updateMarketingPage(
+    slug: string,
+    patch: Partial<InsertMarketingPage>,
+  ): Promise<MarketingPage | null> {
+    const [row] = await db
+      .update(marketingPages)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(marketingPages.slug, slug))
+      .returning();
+    return row ?? null;
+  }
+
+  async deleteMarketingPage(slug: string): Promise<boolean> {
+    const result = await db.delete(marketingPages).where(eq(marketingPages.slug, slug)).returning();
+    return result.length > 0;
   }
 
   async getBannerImages(page?: string): Promise<BannerImage[]> {

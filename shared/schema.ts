@@ -187,6 +187,25 @@ export const siteSettings = pgTable("site_settings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const marketingPages = pgTable("marketing_pages", {
+  slug: text("slug").primaryKey(),
+  title: text("title").notNull(),
+  heroEyebrow: text("hero_eyebrow").notNull().default(""),
+  heroTitle: text("hero_title").notNull().default(""),
+  heroSub: text("hero_sub").notNull().default(""),
+  heroBg: text("hero_bg").notNull().default(""),
+  bodyHtml: text("body_html").notNull().default(""),
+  metaTitle: text("meta_title").notNull().default(""),
+  metaDescription: text("meta_description").notNull().default(""),
+  sortOrder: integer("sort_order").notNull().default(0),
+  hidden: boolean("hidden").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type MarketingPage = typeof marketingPages.$inferSelect;
+export type InsertMarketingPage = typeof marketingPages.$inferInsert;
+
 export type InsertContactMessage = z.infer<typeof insertContactMessageSchema>;
 export type ContactMessage = typeof contactMessages.$inferSelect;
 

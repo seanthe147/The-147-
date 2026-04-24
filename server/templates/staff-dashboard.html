@@ -7266,35 +7266,48 @@
   window.loadWixMigration=loadWixMigration;
 
   /* ── Website Editor (owner only) ── */
-  const websiteState={pages:[],activeSlug:null,saveTimer:null,dirty:{}};
+  const PAGES_TAB_SLUG='__pages__';
+  const websiteState={pages:[],customPages:[],activeSlug:null,saveTimer:null,dirty:{},pageDirty:{}};
   async function loadWebsiteEditor(){
     const body=el('websiteEditorBody');
     body.innerHTML='<div style="padding:60px 20px;text-align:center;color:var(--text-2);font-size:13px">Loading…</div>';
     el('websiteTabs').innerHTML='';
     try{
-      const r=await fetch('/api/staff/web-content',{headers:{Authorization:'Bearer '+getToken()}});
-      if(!r.ok)throw new Error('Load failed');
-      websiteState.pages=await r.json();
+      const [r1,r2]=await Promise.all([
+        fetch('/api/staff/web-content',{headers:{Authorization:'Bearer '+getToken()}}),
+        fetch('/api/staff/marketing-pages',{headers:{Authorization:'Bearer '+getToken()}}),
+      ]);
+      if(!r1.ok)throw new Error('Load failed');
+      websiteState.pages=await r1.json();
+      websiteState.customPages=r2.ok?await r2.json():[];
       if(!websiteState.activeSlug && websiteState.pages.length){websiteState.activeSlug=websiteState.pages[0].slug;}
-      renderWebsiteTabs();renderWebsiteForm();
+      renderWebsiteTabs();renderActiveTab();
     }catch(e){
       body.innerHTML='<div style="padding:60px 20px;text-align:center;color:var(--text-2);font-size:13px">Couldn\'t load website content. <a href="#" onclick="loadWebsiteEditor();return false" style="color:var(--accent);font-weight:700">Try again</a>.</div>';
     }
   }
+  function renderActiveTab(){
+    if(websiteState.activeSlug===PAGES_TAB_SLUG)renderPagesTab();
+    else renderWebsiteForm();
+  }
   function renderWebsiteTabs(){
     const wrap=el('websiteTabs');
-    wrap.innerHTML=websiteState.pages.map(p=>{
+    const tabsHtml=websiteState.pages.map(p=>{
       const active=p.slug===websiteState.activeSlug;
       const prefix=p.slug==='site'?'🌐 ':'';
       return '<button onclick="setWebsiteActive(\''+p.slug+'\')" class="btn btn-sm" style="border:1.5px solid '+(active?'var(--accent)':'var(--border)')+';background:'+(active?'var(--accent)':'transparent')+';color:'+(active?'#000':'var(--text-1)')+';font-weight:700;padding:7px 14px;font-size:12.5px;border-radius:8px">'+prefix+p.label+'</button>';
     }).join('');
+    const pagesActive=websiteState.activeSlug===PAGES_TAB_SLUG;
+    const pagesTabHtml='<button onclick="setWebsiteActive(\''+PAGES_TAB_SLUG+'\')" class="btn btn-sm" style="border:1.5px solid '+(pagesActive?'var(--accent)':'var(--border)')+';background:'+(pagesActive?'var(--accent)':'transparent')+';color:'+(pagesActive?'#000':'var(--text-1)')+';font-weight:700;padding:7px 14px;font-size:12.5px;border-radius:8px;margin-left:6px">📄 Pages</button>';
+    wrap.innerHTML=tabsHtml+pagesTabHtml;
     const slug=websiteState.activeSlug||'home';
-    const previewPath=(slug==='home'||slug==='site')?'/test-site':'/test-site/'+slug;
-    el('websitePreviewBtn').setAttribute('href',previewPath);
+    const previewBtn=el('websitePreviewBtn');
+    if(slug===PAGES_TAB_SLUG){previewBtn.style.display='none';}
+    else{previewBtn.style.display='';previewBtn.setAttribute('href',(slug==='home'||slug==='site')?'/test-site':'/test-site/'+slug);}
   }
   window.setWebsiteActive=function(slug){
     websiteState.activeSlug=slug;
-    renderWebsiteTabs();renderWebsiteForm();
+    renderWebsiteTabs();renderActiveTab();
   };
   function renderWebsiteForm(){
     const page=websiteState.pages.find(p=>p.slug===websiteState.activeSlug);
@@ -7332,6 +7345,16 @@
             '<input type="color" id="wcolor-'+page.slug+'-'+b.key+'" value="'+escapeAttr(swatch)+'" style="width:64px;height:42px;border:1.5px solid var(--border);border-radius:8px;background:var(--bg-1);cursor:pointer;padding:2px" oninput="syncWebColor(\''+page.slug+'\',\''+b.key+'\')" />'+
             '<input type="text" id="'+fid+'" value="'+escapeAttr(colorVal)+'" style="flex:1;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg-1);color:var(--text-1);font-family:monospace;font-size:14px" placeholder="Leave blank for default" oninput="syncWebColorFromText(\''+page.slug+'\',\''+b.key+'\')" />'+
           '</div>';
+      }else if(b.type==='gallery'){
+        let imgs=[];
+        try{imgs=JSON.parse(b.value||'[]');if(!Array.isArray(imgs))imgs=[];}catch(_){imgs=[];}
+        fieldHtml=
+          '<div id="wgal-'+page.slug+'-'+b.key+'" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:10px"></div>'+
+          '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+            '<button type="button" onclick="document.getElementById(\'wgalfile-'+page.slug+'-'+b.key+'\').click()" class="btn btn-secondary btn-sm" style="font-size:12px">📤 Add Image</button>'+
+            '<input type="file" id="wgalfile-'+page.slug+'-'+b.key+'" accept="image/*" style="display:none" onchange="uploadGalleryImage(this,\''+page.slug+'\',\''+b.key+'\')" />'+
+          '</div>'+
+          '<input type="hidden" id="'+fid+'" value="'+escapeAttr(b.value||'[]')+'" />';
       }else if(b.type==='nav'){
         let links=[];
         try{links=JSON.parse(b.value||'[]');if(!Array.isArray(links))links=[];}catch(_){links=[];}
@@ -7359,12 +7382,75 @@
     page.blocks.forEach(b=>{
       const fid='wf-'+page.slug+'-'+b.key;
       const node=el(fid);
-      // Nav uses syncNavJson() called from row inputs; color uses sync helpers.
+      // Nav uses syncNavJson() / gallery uses gallery helpers / color uses sync helpers.
       // Everything else queues a save on every input event.
-      if(node && b.type!=='nav' && b.type!=='color')node.addEventListener('input',()=>queueWebsiteSave(page.slug,b.key,fid));
+      if(node && b.type!=='nav' && b.type!=='color' && b.type!=='gallery')node.addEventListener('input',()=>queueWebsiteSave(page.slug,b.key,fid));
       if(b.type==='image'||b.type==='image_html'||b.type==='image_url')refreshWebImagePreview(page.slug,b.key,b.value||'');
+      if(b.type==='gallery')renderGalleryGrid(page.slug,b.key);
     });
   }
+  function readGalleryImages(slug,key){
+    const fid='wf-'+slug+'-'+key;
+    const node=el(fid);if(!node)return [];
+    let arr=[];try{arr=JSON.parse(node.value||'[]');}catch(_){arr=[];}
+    return Array.isArray(arr)?arr.filter(u=>typeof u==='string' && u):[];
+  }
+  function writeGalleryImages(slug,key,arr){
+    const fid='wf-'+slug+'-'+key;
+    const node=el(fid);if(!node)return;
+    node.value=JSON.stringify(arr);
+    const page=websiteState.pages.find(p=>p.slug===slug);
+    if(page){const blk=page.blocks.find(b=>b.key===key);if(blk)blk.value=node.value;}
+    renderGalleryGrid(slug,key);
+    queueWebsiteSave(slug,key,fid);
+  }
+  function renderGalleryGrid(slug,key){
+    const wrap=document.getElementById('wgal-'+slug+'-'+key);
+    if(!wrap)return;
+    const imgs=readGalleryImages(slug,key);
+    if(!imgs.length){wrap.innerHTML='<div style="grid-column:1/-1;padding:24px;border:1.5px dashed var(--border);border-radius:10px;text-align:center;color:var(--text-2);font-size:12.5px">No images yet — click <strong>Add Image</strong> below.</div>';return;}
+    wrap.innerHTML=imgs.map(function(u,i){
+      const safe=escapeAttr(u);
+      const upDis=i===0,dnDis=i===imgs.length-1;
+      return '<div style="position:relative;border-radius:10px;overflow:hidden;border:1.5px solid var(--border);background:#0d0d0d">'+
+        '<div style="width:100%;aspect-ratio:1/1;background-image:url(\''+safe.replace(/'/g,"\\'")+'\');background-size:cover;background-position:center"></div>'+
+        '<div style="position:absolute;top:4px;right:4px;display:flex;gap:3px">'+
+          '<button type="button" onclick="moveGalleryItem(\''+slug+'\',\''+key+'\','+i+',-1)" '+(upDis?'disabled':'')+' style="background:rgba(0,0,0,.7);border:0;color:#fff;cursor:'+(upDis?'default':'pointer')+';font-size:11px;width:22px;height:22px;border-radius:5px;opacity:'+(upDis?'.3':'1')+'" title="Move earlier">◀</button>'+
+          '<button type="button" onclick="moveGalleryItem(\''+slug+'\',\''+key+'\','+i+',1)" '+(dnDis?'disabled':'')+' style="background:rgba(0,0,0,.7);border:0;color:#fff;cursor:'+(dnDis?'default':'pointer')+';font-size:11px;width:22px;height:22px;border-radius:5px;opacity:'+(dnDis?'.3':'1')+'" title="Move later">▶</button>'+
+          '<button type="button" onclick="removeGalleryItem(\''+slug+'\',\''+key+'\','+i+')" style="background:rgba(180,40,40,.85);border:0;color:#fff;cursor:pointer;font-size:11px;width:22px;height:22px;border-radius:5px" title="Remove">✕</button>'+
+        '</div>'+
+      '</div>';
+    }).join('');
+  }
+  window.uploadGalleryImage=async function(fileInput,slug,key){
+    const file=fileInput.files&&fileInput.files[0];
+    fileInput.value='';
+    if(!file)return;
+    const sid='ws-'+slug+'-'+key;
+    const status=el(sid);if(status){status.textContent='Uploading…';status.style.color='';}
+    try{
+      const fd=new FormData();fd.append('image',file);
+      const r=await fetch('/api/staff/web-content/image',{method:'POST',headers:{Authorization:'Bearer '+getToken()},body:fd});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok||!d.url)throw new Error(d.message||'Upload failed');
+      const arr=readGalleryImages(slug,key);arr.push(d.url);
+      writeGalleryImages(slug,key,arr);
+    }catch(e){
+      if(status){status.textContent=(e&&e.message)||'Upload failed';status.style.color='#e05252';}
+    }
+  };
+  window.removeGalleryItem=function(slug,key,idx){
+    const arr=readGalleryImages(slug,key);
+    if(idx<0||idx>=arr.length)return;
+    arr.splice(idx,1);
+    writeGalleryImages(slug,key,arr);
+  };
+  window.moveGalleryItem=function(slug,key,idx,dir){
+    const arr=readGalleryImages(slug,key);
+    const t=idx+dir;if(t<0||t>=arr.length)return;
+    const tmp=arr[idx];arr[idx]=arr[t];arr[t]=tmp;
+    writeGalleryImages(slug,key,arr);
+  };
   function refreshWebImagePreview(slug,key,value){
     const previewEl=el('wfimg-'+slug+'-'+key);
     if(!previewEl)return;
@@ -7512,6 +7598,175 @@
     },550);
   }
   function escapeAttr(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+
+  /* ── Pages tab (custom DB-backed marketing pages) ── */
+  function renderPagesTab(){
+    const body=el('websiteEditorBody');
+    const pages=websiteState.customPages||[];
+    let html='<div style="display:grid;gap:18px;max-width:760px">';
+    html+='<div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:10px;padding:11px 14px;font-size:12.5px;color:var(--text-1);line-height:1.5"><strong>Pages</strong> — add new pages to the public website without code. Each page gets a hero, optional background image and a body editor (HTML allowed). Pages are reachable at <code style="background:var(--bg-2);padding:2px 5px;border-radius:4px;font-size:11px">/test-site/&lt;slug&gt;</code> and share the standard header, nav and footer.</div>';
+
+    // Add new page form
+    html+='<div style="background:var(--bg-2);border:1px solid var(--border);border-radius:12px;padding:16px 18px">'+
+      '<div style="font-size:12px;font-weight:700;color:var(--text-1);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">➕ Add a new page</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">'+
+        '<input id="newPageTitle" type="text" placeholder="Title (e.g. About Us)" style="padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:var(--bg-1);color:var(--text-1);font-size:13.5px" />'+
+        '<input id="newPageSlug" type="text" placeholder="slug (e.g. about-us)" style="padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:var(--bg-1);color:var(--text-1);font-size:13.5px;font-family:monospace" />'+
+      '</div>'+
+      '<button type="button" onclick="createCustomPage()" class="btn btn-secondary btn-sm" style="font-size:12.5px;font-weight:700">Create page</button>'+
+      '<span id="newPageStatus" style="margin-left:10px;font-size:12px;color:var(--text-2)"></span>'+
+    '</div>';
+
+    if(!pages.length){
+      html+='<div style="padding:24px;border:1.5px dashed var(--border);border-radius:10px;text-align:center;color:var(--text-2);font-size:13px">No custom pages yet. Add one above to get started.</div>';
+    }else{
+      pages.forEach(function(p){
+        const sid='ps-'+p.slug;
+        html+='<div style="background:var(--bg-2);border:1px solid var(--border);border-radius:12px;padding:16px 18px;display:grid;gap:12px">'+
+          '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">'+
+            '<div><div style="font-size:13.5px;font-weight:700;color:var(--text-1)">'+escapeAttr(p.title||'(untitled)')+'</div>'+
+            '<div style="font-size:11.5px;color:var(--text-2);font-family:monospace;margin-top:2px">/test-site/'+escapeAttr(p.slug)+'</div></div>'+
+            '<div style="display:flex;gap:8px;align-items:center">'+
+              '<span id="'+sid+'" style="font-size:11px;color:var(--text-2);font-weight:600"></span>'+
+              '<a href="/test-site/'+escapeAttr(p.slug)+'" target="_blank" class="btn btn-sm" style="font-size:11.5px;padding:6px 10px;background:transparent;border:1.5px solid var(--border);color:var(--text-1);text-decoration:none">Preview</a>'+
+              '<button type="button" onclick="deleteCustomPage(\''+p.slug+'\')" class="btn btn-sm" style="font-size:11.5px;padding:6px 10px;background:transparent;border:1.5px solid #b04848;color:#e07070">Delete</button>'+
+            '</div>'+
+          '</div>'+
+          pageFieldRow(p,'title','Title','text')+
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+            pageFieldRow(p,'heroEyebrow','Hero · small label','text')+
+            pageFieldRow(p,'heroTitle','Hero · main title','text')+
+          '</div>'+
+          pageFieldRow(p,'heroSub','Hero · subtitle','text')+
+          pageFieldRow(p,'heroBg','Hero · background image URL','image_url')+
+          pageFieldRow(p,'bodyHtml','Page body (HTML allowed)','textarea')+
+          '<details style="font-size:12px;color:var(--text-2)"><summary style="cursor:pointer;user-select:none">Snippets — copy &amp; paste into the body</summary>'+
+            '<pre style="background:var(--bg-1);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:8px;font-size:11px;overflow:auto;white-space:pre-wrap">'+
+            escapeAttr('<section><div class="container"><span class="eyebrow">Eyebrow</span><h2 class="section-title">Section heading</h2><p class="section-lead">A short lead paragraph.</p></div></section>\n\n<section class="alt"><div class="container"><h2 class="section-title">Alt section</h2><p>Body copy here.</p></div></section>\n\n<a href="/test-site/contact" class="btn btn-blue">Get in touch</a>')+
+            '</pre></details>'+
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+            pageFieldRow(p,'metaTitle','SEO · page title','text')+
+            pageFieldRow(p,'metaDescription','SEO · description','text')+
+          '</div>'+
+          '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-2);cursor:pointer"><input type="checkbox" data-pagefield="'+p.slug+'-hidden" '+(p.hidden?'checked':'')+' onchange="queueCustomPageSave(\''+p.slug+'\')" /> Hide this page from the public website</label>'+
+        '</div>';
+      });
+    }
+    html+='</div>';
+    body.innerHTML=html;
+    // Wire input listeners for autosave
+    pages.forEach(function(p){
+      ['title','heroEyebrow','heroTitle','heroSub','heroBg','bodyHtml','metaTitle','metaDescription'].forEach(function(field){
+        const id='pf-'+p.slug+'-'+field;
+        const node=el(id);
+        if(node)node.addEventListener('input',()=>queueCustomPageSave(p.slug));
+      });
+      // Image preview for heroBg
+      const bg=p.heroBg||'';
+      const previewEl=el('pfimg-'+p.slug+'-heroBg');
+      if(previewEl){
+        if(bg){previewEl.style.backgroundImage="url('"+String(bg).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+"')";previewEl.textContent='';}
+        else{previewEl.textContent='No background image set';}
+      }
+    });
+  }
+  function pageFieldRow(p,field,label,kind){
+    const id='pf-'+p.slug+'-'+field;
+    const val=p[field]==null?'':String(p[field]);
+    let inputHtml='';
+    if(kind==='textarea'){
+      inputHtml='<textarea id="'+id+'" rows="10" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:var(--bg-1);color:var(--text-1);font-family:monospace;font-size:12.5px;line-height:1.5;resize:vertical">'+escapeAttr(val)+'</textarea>';
+    }else if(kind==='image_url'){
+      const previewStyle='width:100%;height:120px;border-radius:8px;border:1.5px dashed var(--border);background-color:var(--bg-1);display:flex;align-items:center;justify-content:center;color:var(--text-2);font-size:12px;background-size:cover;background-repeat:no-repeat;background-position:center;overflow:hidden;margin-bottom:8px';
+      inputHtml=
+        '<div id="pfimg-'+p.slug+'-'+field+'" style="'+previewStyle+'"></div>'+
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">'+
+          '<button type="button" onclick="document.getElementById(\'pffile-'+p.slug+'-'+field+'\').click()" class="btn btn-secondary btn-sm" style="font-size:12px">📤 Upload</button>'+
+          '<button type="button" onclick="clearCustomPageImage(\''+p.slug+'\',\''+field+'\')" class="btn btn-sm" style="font-size:12px;background:transparent;border:1.5px solid var(--border);color:var(--text-1)">Clear</button>'+
+          '<input type="file" id="pffile-'+p.slug+'-'+field+'" accept="image/*" style="display:none" onchange="uploadCustomPageImage(this,\''+p.slug+'\',\''+field+'\')" />'+
+        '</div>'+
+        '<input type="text" id="'+id+'" value="'+escapeAttr(val)+'" placeholder="https://…" style="width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg-1);color:var(--text-2);font-family:monospace;font-size:11px" />';
+    }else{
+      inputHtml='<input id="'+id+'" type="text" value="'+escapeAttr(val)+'" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:var(--bg-1);color:var(--text-1);font-size:13.5px" />';
+    }
+    return '<div><label for="'+id+'" style="font-size:11px;font-weight:700;color:var(--text-1);text-transform:uppercase;letter-spacing:.6px;display:block;margin-bottom:6px">'+label+'</label>'+inputHtml+'</div>';
+  }
+  window.uploadCustomPageImage=async function(fileInput,slug,field){
+    const file=fileInput.files&&fileInput.files[0];
+    fileInput.value='';
+    if(!file)return;
+    const sid='ps-'+slug;
+    const status=el(sid);if(status){status.textContent='Uploading…';status.style.color='';}
+    try{
+      const fd=new FormData();fd.append('image',file);
+      const r=await fetch('/api/staff/web-content/image',{method:'POST',headers:{Authorization:'Bearer '+getToken()},body:fd});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok||!d.url)throw new Error(d.message||'Upload failed');
+      const node=el('pf-'+slug+'-'+field);if(node)node.value=d.url;
+      const previewEl=el('pfimg-'+slug+'-'+field);
+      if(previewEl){previewEl.style.backgroundImage="url('"+d.url.replace(/\\/g,'\\\\').replace(/'/g,"\\'")+"')";previewEl.textContent='';}
+      queueCustomPageSave(slug);
+    }catch(e){
+      if(status){status.textContent=(e&&e.message)||'Upload failed';status.style.color='#e05252';}
+    }
+  };
+  window.clearCustomPageImage=function(slug,field){
+    const node=el('pf-'+slug+'-'+field);if(node)node.value='';
+    const previewEl=el('pfimg-'+slug+'-'+field);
+    if(previewEl){previewEl.style.backgroundImage='';previewEl.textContent='No background image set';}
+    queueCustomPageSave(slug);
+  };
+  window.queueCustomPageSave=function(slug){
+    const sid='ps-'+slug;
+    const status=el(sid);if(status){status.textContent='Saving…';status.style.color='';}
+    clearTimeout(websiteState.pageDirty[slug]);
+    websiteState.pageDirty[slug]=setTimeout(async()=>{
+      try{
+        const get=k=>{const n=el('pf-'+slug+'-'+k);return n?n.value:'';};
+        const hiddenEl=document.querySelector('[data-pagefield="'+slug+'-hidden"]');
+        const payload={
+          title:get('title'),heroEyebrow:get('heroEyebrow'),heroTitle:get('heroTitle'),heroSub:get('heroSub'),
+          heroBg:get('heroBg'),bodyHtml:get('bodyHtml'),metaTitle:get('metaTitle'),metaDescription:get('metaDescription'),
+          hidden:!!(hiddenEl&&hiddenEl.checked),
+        };
+        const r=await fetch('/api/staff/marketing-pages/'+encodeURIComponent(slug),{method:'PUT',headers:{'Content-Type':'application/json',Authorization:'Bearer '+getToken()},body:JSON.stringify(payload)});
+        if(!r.ok){let msg='Failed';try{const j=await r.json();if(j&&j.message)msg=j.message;}catch(_){}throw new Error(msg);}
+        const updated=await r.json();
+        const ix=websiteState.customPages.findIndex(p=>p.slug===slug);
+        if(ix>=0)websiteState.customPages[ix]=updated;
+        if(status){status.textContent='Saved ✓';status.style.color='var(--green,#3ec46d)';setTimeout(()=>{status.textContent='';status.style.color='';},2000);}
+      }catch(e){
+        if(status){status.textContent=(e&&e.message)||'Failed';status.style.color='#e05252';}
+      }
+    },550);
+  };
+  window.createCustomPage=async function(){
+    const titleEl=el('newPageTitle'),slugEl=el('newPageSlug'),status=el('newPageStatus');
+    const title=(titleEl.value||'').trim(),slug=(slugEl.value||'').trim().toLowerCase();
+    if(!title){status.textContent='Title required';status.style.color='#e05252';return;}
+    if(!slug){status.textContent='Slug required';status.style.color='#e05252';return;}
+    status.textContent='Creating…';status.style.color='';
+    try{
+      const r=await fetch('/api/staff/marketing-pages',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+getToken()},body:JSON.stringify({slug:slug,title:title,heroTitle:title})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.message||'Failed');
+      websiteState.customPages.push(d);
+      titleEl.value='';slugEl.value='';
+      renderPagesTab();
+      toast('Page created','success');
+    }catch(e){status.textContent=(e&&e.message)||'Failed';status.style.color='#e05252';}
+  };
+  window.deleteCustomPage=async function(slug){
+    if(!confirm('Delete the page "/'+slug+'"? This cannot be undone.'))return;
+    try{
+      const r=await fetch('/api/staff/marketing-pages/'+encodeURIComponent(slug),{method:'DELETE',headers:{Authorization:'Bearer '+getToken()}});
+      if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.message||'Failed');}
+      websiteState.customPages=websiteState.customPages.filter(p=>p.slug!==slug);
+      renderPagesTab();
+      toast('Page deleted','success');
+    }catch(e){toast(e.message||'Failed','error');}
+  };
+
   window.loadWebsiteEditor=loadWebsiteEditor;
 
   /* ── Init ── */

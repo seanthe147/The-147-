@@ -1808,6 +1808,114 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
+  // ── Owner-only marketing-page builder ─────────────────────────────────────
+  // Owners can add new pages to the public /test-site marketing site without a
+  // developer. Pages persist in `marketing_pages` and render with the standard
+  // shell (logo / nav / footer / colours) so they inherit every site-wide
+  // override automatically. Slugs are validated against built-in pages and
+  // /test-site/* asset routes to avoid collisions.
+  const RESERVED_PAGE_SLUGS = new Set([
+    "", "home", "snooker", "dining", "events", "function-rooms", "gift-cards",
+    "contact", "membership", "order", "book", "join", "menu",
+    "styles.css", "embed.js",
+  ]);
+  const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?$/;
+
+  function validateSlug(slug: string): string {
+    const s = String(slug || "").toLowerCase().trim();
+    if (!SLUG_RE.test(s)) {
+      throw new Error("Slug must be lowercase letters, numbers and hyphens (max 50 chars)");
+    }
+    if (RESERVED_PAGE_SLUGS.has(s)) {
+      throw new Error(`'${s}' is a built-in page — pick a different slug`);
+    }
+    return s;
+  }
+
+  app.get("/api/staff/marketing-pages", staffAuth, ownerAuth, async (_req, res) => {
+    try {
+      const pages = await storage.listMarketingPages();
+      res.json(pages);
+    } catch (err: any) {
+      console.error("[marketing-pages/list]", err);
+      res.status(500).json({ message: "Failed to load pages" });
+    }
+  });
+
+  app.post("/api/staff/marketing-pages", staffAuth, ownerAuth, async (req, res) => {
+    try {
+      const { slug, title, heroEyebrow, heroTitle, heroSub, heroBg, bodyHtml, metaTitle, metaDescription, sortOrder, hidden } = req.body || {};
+      if (typeof title !== "string" || !title.trim()) {
+        return res.status(400).json({ message: "Title is required" });
+      }
+      const safeSlug = validateSlug(slug);
+      const existing = await storage.getMarketingPage(safeSlug);
+      if (existing) return res.status(400).json({ message: "A page with that slug already exists" });
+      const { isSafeImageUrl } = await import("./web-content");
+      if (heroBg && !isSafeImageUrl(heroBg)) {
+        return res.status(400).json({ message: "Unsafe hero background URL" });
+      }
+      const page = await storage.createMarketingPage({
+        slug: safeSlug,
+        title: String(title).trim(),
+        heroEyebrow: typeof heroEyebrow === "string" ? heroEyebrow : "",
+        heroTitle: typeof heroTitle === "string" ? heroTitle : "",
+        heroSub: typeof heroSub === "string" ? heroSub : "",
+        heroBg: typeof heroBg === "string" ? heroBg : "",
+        bodyHtml: typeof bodyHtml === "string" ? bodyHtml : "",
+        metaTitle: typeof metaTitle === "string" ? metaTitle : "",
+        metaDescription: typeof metaDescription === "string" ? metaDescription : "",
+        sortOrder: Number.isFinite(sortOrder) ? Number(sortOrder) : 0,
+        hidden: !!hidden,
+      });
+      res.json(page);
+    } catch (err: any) {
+      console.error("[marketing-pages/create]", err);
+      res.status(400).json({ message: err?.message || "Failed to create page" });
+    }
+  });
+
+  app.put("/api/staff/marketing-pages/:slug", staffAuth, ownerAuth, async (req, res) => {
+    try {
+      const slug = String(req.params.slug || "").toLowerCase();
+      const existing = await storage.getMarketingPage(slug);
+      if (!existing) return res.status(404).json({ message: "Page not found" });
+      const { title, heroEyebrow, heroTitle, heroSub, heroBg, bodyHtml, metaTitle, metaDescription, sortOrder, hidden } = req.body || {};
+      const { isSafeImageUrl } = await import("./web-content");
+      if (typeof heroBg === "string" && heroBg && !isSafeImageUrl(heroBg)) {
+        return res.status(400).json({ message: "Unsafe hero background URL" });
+      }
+      const patch: any = {};
+      if (typeof title === "string" && title.trim()) patch.title = title.trim();
+      if (typeof heroEyebrow === "string") patch.heroEyebrow = heroEyebrow;
+      if (typeof heroTitle === "string") patch.heroTitle = heroTitle;
+      if (typeof heroSub === "string") patch.heroSub = heroSub;
+      if (typeof heroBg === "string") patch.heroBg = heroBg;
+      if (typeof bodyHtml === "string") patch.bodyHtml = bodyHtml;
+      if (typeof metaTitle === "string") patch.metaTitle = metaTitle;
+      if (typeof metaDescription === "string") patch.metaDescription = metaDescription;
+      if (Number.isFinite(sortOrder)) patch.sortOrder = Number(sortOrder);
+      if (typeof hidden === "boolean") patch.hidden = hidden;
+      const updated = await storage.updateMarketingPage(slug, patch);
+      res.json(updated);
+    } catch (err: any) {
+      console.error("[marketing-pages/update]", err);
+      res.status(400).json({ message: err?.message || "Failed to save page" });
+    }
+  });
+
+  app.delete("/api/staff/marketing-pages/:slug", staffAuth, ownerAuth, async (req, res) => {
+    try {
+      const slug = String(req.params.slug || "").toLowerCase();
+      const ok = await storage.deleteMarketingPage(slug);
+      if (!ok) return res.status(404).json({ message: "Page not found" });
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[marketing-pages/delete]", err);
+      res.status(500).json({ message: "Failed to delete page" });
+    }
+  });
+
   // ── Owner-only Wix membership migration ───────────────────────────────────
   // Imports paying members from Wix as already-active records, then sends them
   // a one-tap "save your card" link so they can re-enter card details on Square.
