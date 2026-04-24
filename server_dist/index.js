@@ -5461,6 +5461,10 @@ async function registerRoutes(app2) {
     if (!staffUser) {
       return res.status(404).json({ message: "Staff user not found" });
     }
+    const requestingUser = req.staffUser;
+    if (staffUser.role === "owner" && requestingUser?.role !== "owner") {
+      return res.status(403).json({ message: "Managers cannot reset credentials for owner accounts" });
+    }
     const { hash, salt } = hashPassword(tempPassword);
     await storage.updateStaffPassword(staffUser.username, hash, salt, true);
     await storage.invalidateStaffSessionsByUserId(staffUser.id).catch(() => void 0);
@@ -5477,6 +5481,10 @@ async function registerRoutes(app2) {
     const staffUser = await storage.getStaffUserByUsername(username.trim());
     if (!staffUser) {
       return res.status(404).json({ message: "Staff user not found" });
+    }
+    const requestingUser = req.staffUser;
+    if (staffUser.role === "owner" && requestingUser?.role !== "owner") {
+      return res.status(403).json({ message: "Managers cannot reset credentials for owner accounts" });
     }
     const { hash, salt } = hashPin(newPin);
     await storage.updateStaffPin(username.trim(), hash, salt);
