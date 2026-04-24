@@ -1906,18 +1906,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Public — Square redirect after successful migration checkout
+  // Public — Square redirect after successful migration checkout.
+  //
+  // SECURITY: This URL is just where Square parks the user's browser after
+  // checkout, so we must NOT trust the visit itself as proof of payment.
+  // Anyone holding the migration token (it's emailed to the customer) could
+  // otherwise hit this URL directly and have us mark them as fully migrated
+  // without ever providing a card.
+  //
+  // Migration is only marked complete by the Square webhook handler in
+  // /api/membership/webhook (see ~6605), which fires `subscription.created`
+  // once Square has actually accepted recurring billing. That handler sets
+  // `squareSubscriptionId` AND, when the local row carries a migrationToken,
+  // also sets `migrationCompletedAt` + `source = wix_migrated` itself.
+  //
+  // Here we just redirect back to the landing page. If the webhook has
+  // already fired, the landing page will correctly show "alreadyDone". If
+  // the user happens to be redirected before the webhook arrives, the page
+  // will show in-progress until the next visit / refresh — that's the
+  // correct behaviour.
   app.get("/migrate/:token/done", async (req, res) => {
-    try {
-      const subs = await storage.getMembershipSubscriptions();
-      const sub = subs.find(s => s.migrationToken === req.params.token);
-      if (sub && !sub.migrationCompletedAt) {
-        await storage.updateMembershipSubscription(sub.id, {
-          migrationCompletedAt: new Date(),
-          source: "wix_migrated",
-        } as any);
-      }
-    } catch (err) { /* non-fatal */ }
     res.redirect(`/migrate/${req.params.token}`);
   });
 
@@ -1966,7 +1974,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Square: take a card payment using a tokenised source from the Web Payments SDK
-  app.post("/api/staff/payments/square/charge", staffAuth, async (req, res) => {
+  // Manager-only: ordinary staff must not be able to charge cards (broken access
+  // control if `staffAuth` alone is used — the comment above promises manager-only).
+  app.post("/api/staff/payments/square/charge", staffAuth, managerAuth, async (req, res) => {
     if (!square.isWebPaymentsConfigured()) {
       return res.status(503).json({ message: "Square Web Payments is not configured. Add SQUARE_APPLICATION_ID, SQUARE_ACCESS_TOKEN, and SQUARE_LOC_ID." });
     }
@@ -2068,7 +2078,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/staff/payments/create-intent", staffAuth, async (req, res) => {
+  // Manager-only — see comment above /square/charge.
+  app.post("/api/staff/payments/create-intent", staffAuth, managerAuth, async (req, res) => {
     if (!isStripeConfigured()) {
       return res.status(503).json({ message: "Stripe is not configured. Please add STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY." });
     }
@@ -2144,7 +2155,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Server-verified finalize — fetches the real PaymentIntent from Stripe.
   // Client-supplied status is ignored; truth comes from Stripe.
-  app.post("/api/staff/payments/finalize", staffAuth, async (req, res) => {
+  // Manager-only — see comment above /square/charge.
+  app.post("/api/staff/payments/finalize", staffAuth, managerAuth, async (req, res) => {
     if (!isStripeConfigured()) return res.status(503).json({ message: "Stripe not configured" });
     const piId = trim(req.body?.paymentIntentId, 120);
     if (!piId || !/^pi_[A-Za-z0-9_]+$/.test(piId)) return res.status(400).json({ message: "Invalid paymentIntentId" });
@@ -2860,30 +2872,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Square Webhook — auto-confirm deposit bookings on payment ────────────────
   app.post("/api/webhooks/square", async (req, res) => {
-    // Verify signature if key is configured
+    // Square webhook signature verification is MANDATORY. If the signing key
+    // is not configured we fail closed (503) rather than processing untrusted
+    // events — this endpoint mutates payment-sensitive state (confirms
+    // deposit bookings, activates / freezes memberships) so accepting
+    // unauthenticated POSTs would let anyone forge confirmations.
     const sigKey = process.env.SQUARE_WEBHOOK_SIGNATURE_KEY;
-    if (sigKey) {
-      const signature = req.headers["x-square-hmacsha256-signature"] as string | undefined;
-      if (!signature) {
-        console.warn("[WEBHOOK] Missing Square signature header");
-        return res.status(401).json({ message: "Missing signature" });
+    if (!sigKey) {
+      console.error("[WEBHOOK] SQUARE_WEBHOOK_SIGNATURE_KEY is not set — rejecting webhook");
+      return res.status(503).json({ message: "Webhook verification not configured" });
+    }
+    const signature = req.headers["x-square-hmacsha256-signature"] as string | undefined;
+    if (!signature) {
+      console.warn("[WEBHOOK] Missing Square signature header");
+      return res.status(401).json({ message: "Missing signature" });
+    }
+    try {
+      const { createHmac, timingSafeEqual } = await import("node:crypto");
+      const notificationUrl = process.env.SQUARE_WEBHOOK_URL ||
+        `https://${process.env.EXPO_PUBLIC_DOMAIN || req.get("host")}/api/webhooks/square`;
+      const rawBody = (req as any).rawBody?.toString("utf8") ?? JSON.stringify(req.body);
+      const hmac = createHmac("sha256", sigKey);
+      hmac.update(notificationUrl + rawBody);
+      const expected = hmac.digest("base64");
+      const sigBuf = Buffer.from(signature, "base64");
+      const expBuf = Buffer.from(expected, "base64");
+      if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
+        console.warn("[WEBHOOK] Square signature mismatch");
+        return res.status(403).json({ message: "Invalid signature" });
       }
-      try {
-        const { createHmac } = await import("node:crypto");
-        const notificationUrl = process.env.SQUARE_WEBHOOK_URL ||
-          `https://${process.env.EXPO_PUBLIC_DOMAIN || req.get("host")}/api/webhooks/square`;
-        const rawBody = (req as any).rawBody?.toString("utf8") ?? JSON.stringify(req.body);
-        const hmac = createHmac("sha256", sigKey);
-        hmac.update(notificationUrl + rawBody);
-        const expected = hmac.digest("base64");
-        if (signature !== expected) {
-          console.warn("[WEBHOOK] Square signature mismatch");
-          return res.status(403).json({ message: "Invalid signature" });
-        }
-      } catch (sigErr) {
-        console.error("[WEBHOOK] Signature check error:", sigErr);
-        return res.status(500).json({ message: "Signature check failed" });
-      }
+    } catch (sigErr) {
+      console.error("[WEBHOOK] Signature check error:", sigErr);
+      return res.status(500).json({ message: "Signature check failed" });
     }
 
     const event = req.body;
@@ -6539,33 +6559,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Membership — Square webhook ──────────────────────────────────────────
-  // Middleware to capture raw body for Square webhook signature verification
-  const captureRawBody = (req: Request, res: Response, next: NextFunction) => {
-    let raw = "";
-    req.on("data", (chunk: Buffer | string) => { raw += chunk.toString("utf8"); });
-    req.on("end", () => { (req as any)._rawBody = raw; next(); });
-    req.on("error", next);
-  };
-
-  app.post("/api/membership/webhook", captureRawBody, async (req, res) => {
+  app.post("/api/membership/webhook", async (req, res) => {
     try {
-      // Parse raw body first (needed for both signature check and event handling)
-      const bodyStr: string = (req as any)._rawBody || JSON.stringify(req.body);
-
-      // Verify Square webhook signature when the key is configured
+      // Square webhook signature verification is MANDATORY. If the signing
+      // key isn't set we fail closed — this endpoint links/activates Square
+      // subscriptions, so accepting unauthenticated POSTs would let anyone
+      // forge a paid membership.
       const sigKey = process.env.SQUARE_WEBHOOK_SIGNATURE_KEY;
-      if (sigKey) {
-        const sig = req.headers["x-square-hmacsha256-signature"] as string | undefined;
-        if (!sig) return res.status(401).send("Missing signature");
-        const notificationUrl = `https://${req.headers.host}${req.originalUrl}`;
-        const { createHmac, timingSafeEqual } = await import("node:crypto");
-        const expected = createHmac("sha256", sigKey).update(notificationUrl + bodyStr).digest("base64");
-        const sigBuf = Buffer.from(sig, "base64");
-        const expBuf = Buffer.from(expected, "base64");
-        if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
-          console.warn("[Square webhook] Invalid signature — rejected");
-          return res.status(401).send("Invalid signature");
-        }
+      if (!sigKey) {
+        console.error("[Square webhook] SQUARE_WEBHOOK_SIGNATURE_KEY is not set — rejecting webhook");
+        return res.status(503).send("Webhook verification not configured");
+      }
+      // Use the raw request body buffered by the global express.json `verify`
+      // callback (server/index.ts setupBodyParsing). The body stream has
+      // already been consumed by the JSON parser by the time we get here, so
+      // we MUST use that captured buffer — re-stringifying req.body would
+      // change byte ordering / whitespace and break Square's HMAC.
+      const rawBuf = (req as any).rawBody as Buffer | undefined;
+      if (!rawBuf || rawBuf.length === 0) {
+        console.warn("[Square webhook] Missing raw body buffer — cannot verify signature");
+        return res.status(400).send("Missing request body");
+      }
+      const bodyStr = rawBuf.toString("utf8");
+
+      const sig = req.headers["x-square-hmacsha256-signature"] as string | undefined;
+      if (!sig) return res.status(401).send("Missing signature");
+      const notificationUrl = `https://${req.headers.host}${req.originalUrl}`;
+      const { createHmac, timingSafeEqual } = await import("node:crypto");
+      const expected = createHmac("sha256", sigKey).update(notificationUrl + bodyStr).digest("base64");
+      const sigBuf = Buffer.from(sig, "base64");
+      const expBuf = Buffer.from(expected, "base64");
+      if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
+        console.warn("[Square webhook] Invalid signature — rejected");
+        return res.status(401).send("Invalid signature");
       }
       const event = JSON.parse(bodyStr);
       const type: string = event?.type ?? "";

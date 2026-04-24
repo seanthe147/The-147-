@@ -2625,8 +2625,9 @@
     el('navWebsite').classList.toggle('hidden',!isOwner);
     el('navBanners').classList.toggle('hidden',!isManager);
     el('navOffers').classList.toggle('hidden',!isManager);
-    // Take Payment is available to all staff; reporting is hidden inside the page for non-managers
-    el('navPayments').classList.remove('hidden');
+    // Payment endpoints (Stripe + Square charge/intent/finalize) are manager-only
+    // server-side, so hide the nav entry for non-managers to avoid a confusing 403.
+    el('navPayments').classList.toggle('hidden',!isManager);
     document.body.classList.toggle('role-staff-only',!isManager);
     el('navGDPR').classList.toggle('hidden',!isManager);
     el('navSettings').classList.toggle('hidden',!isManager);
