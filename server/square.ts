@@ -402,6 +402,32 @@ export async function getCustomerGroupIds(customerId: string): Promise<string[]>
   return data.customer?.group_ids || [];
 }
 
+/**
+ * Return every Square customer that is a member of the given customer group.
+ * Used by the one-shot VIP backfill to keep the scan tightly scoped — we
+ * only want to (re-)sync customers actually affected by the new mapping,
+ * not every app account.
+ */
+export async function listCustomersInGroup(groupId: string): Promise<Array<{ id: string; email_address?: string }>> {
+  const out: Array<{ id: string; email_address?: string }> = [];
+  let cursor: string | undefined;
+  // Cap pagination defensively — the VIP group is expected to hold a handful
+  // of people, not thousands.
+  for (let page = 0; page < 10; page++) {
+    const body: Record<string, unknown> = {
+      query: { filter: { group_ids: { all: [groupId] } } },
+      limit: 100,
+    };
+    if (cursor) body.cursor = cursor;
+    const data = await squareRequest("POST", "/v2/customers/search", body);
+    const batch = (data.customers as Array<{ id: string; email_address?: string }>) || [];
+    out.push(...batch);
+    cursor = data.cursor;
+    if (!cursor) break;
+  }
+  return out;
+}
+
 // ── Membership Checkout Link (one-time, used when no plan variation ID set) ───
 
 export async function createMembershipCheckoutLink(opts: {

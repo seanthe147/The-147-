@@ -333,6 +333,21 @@ export async function runStartupMigrations() {
       ON CONFLICT (tier) DO NOTHING;
     `);
 
+    // Map the VIP plan to its Square customer group, and at the same time
+    // force the row active so the auto-sync helper (which filters on
+    // `p.active && squareCustomerGroupId`) picks up VIPs. Both columns are
+    // updated by the SAME guarded UPDATE so this is a one-shot fix:
+    // once the group ID is set, this row never matches the WHERE again,
+    // meaning subsequent boots will not override staff who later disable
+    // the plan or change the group via the Edit Plan UI.
+    await client.query(`
+      UPDATE membership_plans
+         SET square_customer_group_id = '575ce1a2-a598-4f09-82ba-90a7b88e9da1',
+             active = TRUE
+       WHERE tier = 'vip'
+         AND (square_customer_group_id IS NULL OR square_customer_group_id = '');
+    `);
+
     console.log("[DB] Startup migrations applied");
   } catch (err: any) {
     console.error("[DB] Startup migration failed (non-fatal):", err.message);

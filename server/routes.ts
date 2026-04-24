@@ -5440,6 +5440,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
+  // ── One-shot backfill: VIP plan was un-mapped in production until task #92.
+  // Now that the startup migration sets the VIP Square customer-group ID,
+  // walk every app customer once and let the existing helper auto-link any
+  // who are already in the VIP (or other group-mapped) Square groups. This
+  // is gated by a site_settings flag so it only runs on the first boot
+  // after deploy. Runs in the background after server start so it does not
+  // delay readiness.
+  const VIP_GROUP_ID = "575ce1a2-a598-4f09-82ba-90a7b88e9da1";
+  const VIP_BACKFILL_FLAG = "vip_group_backfill_v1_done";
+  setTimeout(() => {
+    (async () => {
+      try {
+        if ((await storage.getSetting(VIP_BACKFILL_FLAG)) === "yes") return;
+        if (!square.isConfigured()) return;
+        const vipPlan = (await storage.getMembershipPlans())
+          .find(p => (p as any).tier === "vip" && p.active && (p as any).squareCustomerGroupId === VIP_GROUP_ID);
+        if (!vipPlan) {
+          console.warn("[VIP BACKFILL] VIP plan not active or not mapped to expected group — skipping");
+          return;
+        }
+        const sqMembers = await square.listCustomersInGroup(VIP_GROUP_ID);
+        if (!sqMembers.length) {
+          console.log("[VIP BACKFILL] Square reports no members in the VIP group — nothing to sync");
+          await storage.setSetting(VIP_BACKFILL_FLAG, "yes");
+          return;
+        }
+        let linked = 0, skipped = 0, failed = 0;
+        for (const sqCust of sqMembers) {
+          const email = sqCust.email_address?.trim().toLowerCase();
+          if (!email) { skipped++; continue; }
+          try {
+            const appCustomer = await storage.getCustomerByEmail(email);
+            if (!appCustomer) { skipped++; continue; }
+            const before = await storage.getMembershipSubscriptionByCustomer(appCustomer.id);
+            await syncSquareMembershipForCustomer(appCustomer.id, email);
+            const after = await storage.getMembershipSubscriptionByCustomer(appCustomer.id);
+            if (!before && after) linked++;
+          } catch (innerErr: any) {
+            failed++;
+            console.warn(`[VIP BACKFILL] sync failed for ${email}:`, innerErr?.message);
+          }
+        }
+        if (failed === 0) {
+          await storage.setSetting(VIP_BACKFILL_FLAG, "yes");
+          console.log(`[VIP BACKFILL] Complete — linked ${linked}, skipped ${skipped} (no app account / no email) of ${sqMembers.length} VIP group members`);
+        } else {
+          console.warn(`[VIP BACKFILL] Partial — linked ${linked}, failed ${failed} of ${sqMembers.length}; flag NOT set, will retry next boot`);
+        }
+      } catch (err: any) {
+        console.warn("[VIP BACKFILL] Skipped (non-fatal):", err?.message);
+      }
+    })();
+  }, 5000);
+
   app.post("/api/customers/register", async (req, res) => {
     const clientIp = getClientIp(req);
     const rateCheck = checkCustomerRateLimit(clientIp);
