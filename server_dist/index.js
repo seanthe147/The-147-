@@ -13,7 +13,7 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, serial, timestamp, boolean, integer, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
-var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, passwordResetAuditLog, membershipAuditLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffDocuments, insertStaffDocumentSchema, staffOnboarding, insertStaffOnboardingSchema, staffPushTokens, paymentLog, insertPaymentLogSchema;
+var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, marketingPages, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, passwordResetAuditLog, membershipAuditLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffDocuments, insertStaffDocumentSchema, staffOnboarding, insertStaffOnboardingSchema, staffPushTokens, paymentLog, insertPaymentLogSchema;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
@@ -158,6 +158,21 @@ var init_schema = __esm({
     siteSettings = pgTable("site_settings", {
       key: text("key").primaryKey(),
       value: text("value").notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    });
+    marketingPages = pgTable("marketing_pages", {
+      slug: text("slug").primaryKey(),
+      title: text("title").notNull(),
+      heroEyebrow: text("hero_eyebrow").notNull().default(""),
+      heroTitle: text("hero_title").notNull().default(""),
+      heroSub: text("hero_sub").notNull().default(""),
+      heroBg: text("hero_bg").notNull().default(""),
+      bodyHtml: text("body_html").notNull().default(""),
+      metaTitle: text("meta_title").notNull().default(""),
+      metaDescription: text("meta_description").notNull().default(""),
+      sortOrder: integer("sort_order").notNull().default(0),
+      hidden: boolean("hidden").notNull().default(false),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
     customers = pgTable("customers", {
@@ -1470,6 +1485,26 @@ var init_storage = __esm({
         const result = {};
         for (const row of rows) result[row.key] = row.value;
         return result;
+      }
+      // ── Marketing pages (custom DB-backed pages) ─────────────────────────────
+      async listMarketingPages() {
+        return db.select().from(marketingPages).orderBy(marketingPages.sortOrder, marketingPages.slug);
+      }
+      async getMarketingPage(slug) {
+        const [row] = await db.select().from(marketingPages).where(eq(marketingPages.slug, slug));
+        return row ?? null;
+      }
+      async createMarketingPage(data) {
+        const [row] = await db.insert(marketingPages).values({ ...data, updatedAt: /* @__PURE__ */ new Date() }).returning();
+        return row;
+      }
+      async updateMarketingPage(slug, patch) {
+        const [row] = await db.update(marketingPages).set({ ...patch, updatedAt: /* @__PURE__ */ new Date() }).where(eq(marketingPages.slug, slug)).returning();
+        return row ?? null;
+      }
+      async deleteMarketingPage(slug) {
+        const result = await db.delete(marketingPages).where(eq(marketingPages.slug, slug)).returning();
+        return result.length > 0;
       }
       async getBannerImages(page) {
         if (page === "home") {
@@ -3684,25 +3719,156 @@ var init_wix_migration = __esm({
 // server/web-content.ts
 var web_content_exports = {};
 __export(web_content_exports, {
+  CUSTOM_PAGE_SLUG_PREFIX: () => CUSTOM_PAGE_SLUG_PREFIX,
+  DEFAULT_NAV: () => DEFAULT_NAV,
   WEB_PAGES: () => WEB_PAGES,
   applyWebContentOverrides: () => applyWebContentOverrides,
   getEditorPayload: () => getEditorPayload,
+  isSafeImageUrl: () => isSafeImageUrl,
+  isSafeLinkUrl: () => isSafeLinkUrl,
+  renderCustomPage: () => renderCustomPage,
   renderWebText: () => renderWebText,
   saveOverride: () => saveOverride
 });
 function renderWebText(value) {
   return escapeHtml2(value).replace(/\*([^*\n]+)\*/g, "<em>$1</em>");
 }
+function escapeImageUrl(url) {
+  return String(url).replace(/[\x00-\x1f\x7f]/g, "").replace(/\\/g, "%5C").replace(/'/g, "%27").replace(/"/g, "%22").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function isSafeLinkUrl(url) {
+  const v = String(url || "").trim().replace(/[\x00-\x1f\x7f]/g, "");
+  if (!v) return "";
+  if (/^(javascript|vbscript|data|file):/i.test(v)) return "";
+  if (/^[\/#?]/.test(v)) return v;
+  if (v.startsWith("//")) return v;
+  if (/^(https?:|mailto:|tel:)/i.test(v)) return v;
+  return "";
+}
+function isSafeImageUrl(url) {
+  const v = String(url || "").trim().replace(/[\x00-\x1f\x7f]/g, "");
+  if (!v) return "";
+  if (/^(javascript|vbscript|file):/i.test(v)) return "";
+  if (/^data:/i.test(v)) return /^data:image\/[a-z0-9+.\-]+[;,]/i.test(v) ? v : "";
+  if (/^[\/#?]/.test(v)) return v;
+  if (v.startsWith("//")) return v;
+  if (/^https?:/i.test(v)) return v;
+  return "";
+}
+function sanitizeColor(value) {
+  const trimmed = String(value || "").trim();
+  if (/^#[0-9a-fA-F]{3}$/.test(trimmed)) return trimmed.toLowerCase();
+  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed.toLowerCase();
+  return "";
+}
+function renderGallery(value, defaultInner) {
+  if (!value) return defaultInner;
+  let urls = [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return defaultInner;
+    urls = parsed.map((u) => typeof u === "string" ? isSafeImageUrl(u) : "").filter((u) => !!u);
+  } catch {
+    return defaultInner;
+  }
+  if (!urls.length) return defaultInner;
+  return `<div class="gallery-grid">` + urls.map(
+    (u) => `<div class="gallery-item" style="background-image:url('${escapeImageUrl(
+      u
+    )}')"></div>`
+  ).join("") + `</div>`;
+}
+function renderNav(value, currentPageSlug) {
+  let links = DEFAULT_NAV;
+  if (value) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        links = parsed.map((l) => {
+          if (!l || typeof l !== "object") return null;
+          if (typeof l.label !== "string" || typeof l.href !== "string") return null;
+          const slug = typeof l.slug === "string" ? l.slug : "";
+          const style = l.style === "cta" || l.style === "order" ? l.style : "default";
+          return { label: l.label, href: l.href, slug, style, hidden: !!l.hidden };
+        }).filter((l) => l !== null);
+        if (!links.length) links = DEFAULT_NAV;
+      }
+    } catch {
+      links = DEFAULT_NAV;
+    }
+  }
+  return links.filter((l) => !l.hidden).map((l) => {
+    const safeHref = isSafeLinkUrl(l.href);
+    if (!safeHref) return "";
+    const classes = [];
+    if (l.style === "cta") classes.push("nav-cta");
+    if (l.style === "order") classes.push("nav-order");
+    if (l.slug && l.slug === currentPageSlug) classes.push("active");
+    const cls = classes.length ? ` class="${classes.join(" ")}"` : "";
+    return `<a href="${escapeHtml2(safeHref)}"${cls}>${escapeHtml2(l.label)}</a>`;
+  }).filter(Boolean).join("\n      ");
+}
+function substituteBlock(value, type, pageSlug, blockKey, defaultInner, full, currentPageSlug) {
+  switch (type) {
+    case "image": {
+      const safe = isSafeImageUrl(value);
+      if (!safe) return "";
+      return `;background-image:linear-gradient(180deg,rgba(13,13,13,.55) 0%,rgba(13,13,13,.85) 100%),url('${escapeImageUrl(safe)}');background-size:cover;background-position:center`;
+    }
+    case "image_html": {
+      const safe = isSafeImageUrl(value);
+      if (!safe) return defaultInner;
+      return `<img src="${escapeImageUrl(safe)}" alt="The 147" class="custom-logo" />`;
+    }
+    case "image_url": {
+      const safe = isSafeImageUrl(value);
+      if (!safe) return defaultInner.trim();
+      return escapeImageUrl(safe);
+    }
+    case "attr_text":
+      if (!value) return defaultInner.trim();
+      return escapeHtml2(value);
+    case "color": {
+      const safe = sanitizeColor(value);
+      return safe || defaultInner.trim();
+    }
+    case "nav":
+      return renderNav(value, currentPageSlug);
+    case "bar":
+      if (!value) return "";
+      return `<div class="announcement-bar">${escapeHtml2(value)}</div>`;
+    case "gallery":
+      return renderGallery(value, defaultInner);
+    case "text":
+    case "textarea":
+    default:
+      if (!value) return full;
+      return `<!--WEB:${pageSlug}:${blockKey}-->${renderWebText(value)}<!--/WEB-->`;
+  }
+}
 async function applyWebContentOverrides(slug, html) {
-  const overrides = await loadOverridesForPage(slug);
-  if (!overrides || Object.keys(overrides).length === 0) return html;
+  const [pageOverrides, siteOverrides] = await Promise.all([
+    loadOverridesForPage(slug),
+    loadOverridesForPage(SITE_SLUG)
+  ]);
+  const pageDef = WEB_PAGES.find((p) => p.slug === slug);
+  const siteDef = WEB_PAGES.find((p) => p.slug === SITE_SLUG);
   return html.replace(
-    /<!--WEB:([a-z0-9_\-]+):([a-z0-9_\-]+)-->[\s\S]*?<!--\/WEB-->/g,
-    (full, pageSlug, blockKey) => {
-      if (pageSlug !== slug) return full;
-      const v = overrides[blockKey];
-      if (v == null || v === "") return full;
-      return `<!--WEB:${pageSlug}:${blockKey}-->${renderWebText(v)}<!--/WEB-->`;
+    /<!--WEB:([a-z0-9_\-]+):([a-z0-9_\-]+)-->([\s\S]*?)<!--\/WEB-->/g,
+    (full, pageSlug, blockKey, defaultInner) => {
+      let value = "";
+      let blockType;
+      if (pageSlug === slug) {
+        value = pageOverrides[blockKey] ?? "";
+        blockType = pageDef?.blocks.find((b) => b.key === blockKey)?.type;
+      } else if (pageSlug === SITE_SLUG) {
+        value = siteOverrides[blockKey] ?? "";
+        blockType = siteDef?.blocks.find((b) => b.key === blockKey)?.type;
+      } else {
+        return full;
+      }
+      if (!blockType) return full;
+      return substituteBlock(value, blockType, pageSlug, blockKey, defaultInner, full, slug);
     }
   );
 }
@@ -3721,6 +3887,109 @@ async function loadOverridesForPage(slug) {
   );
   return out;
 }
+function decodeAttrEntities(s) {
+  return s.replace(/&#x([0-9a-f]+);?|&#(\d+);?/gi, (_m, hex, dec) => {
+    const code = hex ? parseInt(hex, 16) : parseInt(dec, 10);
+    return Number.isFinite(code) && code > 0 && code < 1114112 ? String.fromCodePoint(code) : "";
+  });
+}
+function sanitizeBodyHtml(html) {
+  return String(html || "").replace(SCRIPT_TAG_RE, "").replace(STYLE_TAG_RE, "").replace(DANGEROUS_TAG_RE, "").replace(ON_HANDLER_RE, "").replace(URL_ATTR_RE, (full, attr, raw) => {
+    let value = raw;
+    let quote = "";
+    if (raw.startsWith('"') && raw.endsWith('"') || raw.startsWith("'") && raw.endsWith("'")) {
+      quote = raw[0];
+      value = raw.slice(1, -1);
+    }
+    const normalized = decodeAttrEntities(value).replace(/[\s\u0000-\u001f]/g, "").toLowerCase();
+    if (DANGEROUS_SCHEME_RE.test(normalized)) {
+      return `${attr}=${quote}#${quote}`;
+    }
+    return full;
+  });
+}
+function renderCustomPage(page) {
+  const safeHeroBg = page.heroBg ? isSafeImageUrl(page.heroBg) : "";
+  const heroStyle = safeHeroBg ? `;background-image:linear-gradient(180deg,rgba(13,13,13,.55) 0%,rgba(13,13,13,.85) 100%),url('${escapeImageUrl(safeHeroBg)}');background-size:cover;background-position:center` : "";
+  const metaTitle = escapeHtml2(page.metaTitle?.trim() || `${page.title} \u2014 The 147 Bradford`);
+  const metaDesc = escapeHtml2(page.metaDescription?.trim() || page.title);
+  const eyebrow = page.heroEyebrow?.trim() ? `<span class="hero-eyebrow">${escapeHtml2(page.heroEyebrow)}</span>` : "";
+  const title = renderWebText(page.heroTitle?.trim() || page.title);
+  const sub = page.heroSub?.trim() ? `<p class="hero-sub">${escapeHtml2(page.heroSub)}</p>` : "";
+  const body = sanitizeBodyHtml(page.bodyHtml || "");
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>${metaTitle}</title>
+<meta name="description" content="${metaDesc}" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/test-site/styles.css">
+<style>:root{--blue:<!--WEB:site:color_blue-->#1E5BC6<!--/WEB-->;--gold:<!--WEB:site:color_gold-->#D9A93C<!--/WEB-->}</style>
+</head>
+<body>
+
+<div class="preview-banner">Test Website \u2014 for review only \xB7 not yet live</div>
+<!--WEB:site:announcement_text--><!--/WEB-->
+
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/test-site" class="brand">
+      <!--WEB:site:logo--><div class="brand-mark">147</div><div class="brand-text">The 1<span>4</span>7</div><!--/WEB-->
+    </a>
+    <div class="nav-links" id="navLinks">
+      <!--WEB:site:nav_links-->
+        <a href="/test-site">Home</a>
+        <a href="/test-site/snooker">Snooker</a>
+        <a href="/test-site/dining">Dining</a>
+        <a href="/test-site/events">Events</a>
+        <a href="/test-site/function-rooms">Function Rooms</a>
+        <a href="/test-site/gift-cards">Gift Cards</a>
+        <a href="/test-site/contact">Contact</a>
+        <a href="/test-site/order" class="nav-order">Order</a>
+        <a href="/test-site/book" class="nav-cta">Book a Table</a>
+        <!--/WEB-->
+    </div>
+    <button class="menu-toggle" onclick="document.getElementById('navLinks').classList.toggle('open')" aria-label="Menu">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+  </div>
+</nav>
+
+<header class="hero" style="${heroStyle}">
+  <div class="hero-content">
+    ${eyebrow}
+    <h1>${title}</h1>
+    ${sub}
+  </div>
+</header>
+
+<section>
+  <div class="custom-page-body">
+    ${body}
+  </div>
+</section>
+
+<footer>
+  <div class="footer-grid">
+    <div>
+      <div class="footer-brand-wrap"><!--WEB:site:logo--><div class="footer-brand">The 1<span>4</span>7</div><!--/WEB--></div>
+      <p style="font-size:14px;color:#888;max-width:300px"><!--WEB:site:footer_tagline-->Bradford's premier snooker, pool &amp; dining venue. Tournament-grade tables, full bar, kitchen open late.<!--/WEB--></p>
+    </div>
+    <div class="footer-col"><h5>Visit</h5><ul><li><a href="/test-site/snooker">Snooker</a></li><li><a href="/test-site/dining">Dining</a></li><li><a href="/test-site/events">Events</a></li><li><a href="/test-site/function-rooms">Function Rooms</a></li></ul></div>
+    <div class="footer-col"><h5>Members</h5><ul><li><a href="/membership">Plans &amp; Pricing</a></li><li><a href="/">Book a Table</a></li><li><a href="/test-site/gift-cards">Gift Cards</a></li></ul></div>
+    <div class="footer-col"><h5>Contact</h5><ul><li><!--WEB:site:phone-->01274 000 000<!--/WEB--></li><li><!--WEB:site:email-->hello@the147bradford.co.uk<!--/WEB--></li><li><!--WEB:site:address_line1-->147 Example Street<!--/WEB--></li><li><!--WEB:site:address_line2-->Bradford BD1 1AA<!--/WEB--></li></ul></div>
+  </div>
+  <div class="footer-bottom"><div>\xA9 The 147 Bradford. All rights reserved.</div><div><a href="/privacy-policy">Privacy</a> \xB7 <a href="/terms">Terms</a></div></div>
+</footer>
+<script src="/test-site/embed.js" defer></script>
+<script>document.querySelectorAll('#navLinks a').forEach(a=>a.addEventListener('click',()=>document.getElementById('navLinks').classList.remove('open')));</script>
+</body></html>`;
+}
 async function getEditorPayload() {
   return await Promise.all(
     WEB_PAGES.map(async (page) => {
@@ -3732,6 +4001,9 @@ async function getEditorPayload() {
             if (v != null) value = v;
           } catch {
           }
+          if (!value && b.type === "nav") {
+            value = JSON.stringify(DEFAULT_NAV);
+          }
           return { ...b, value };
         })
       );
@@ -3742,81 +4014,224 @@ async function getEditorPayload() {
 async function saveOverride(slug, key, value) {
   const page = WEB_PAGES.find((p) => p.slug === slug);
   if (!page) throw new Error("Unknown page");
-  if (!page.blocks.find((b) => b.key === key)) throw new Error("Unknown block");
-  await storage.setSetting(settingKey(slug, key), String(value ?? ""));
+  const block = page.blocks.find((b) => b.key === key);
+  if (!block) throw new Error("Unknown block");
+  const raw = String(value ?? "");
+  if (raw) {
+    if (block.type === "image" || block.type === "image_html" || block.type === "image_url") {
+      if (!isSafeImageUrl(raw)) throw new Error("Unsafe image URL");
+    } else if (block.type === "gallery") {
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        throw new Error("Invalid gallery JSON");
+      }
+      if (!Array.isArray(parsed)) throw new Error("Gallery must be an array");
+      for (const u of parsed) {
+        if (typeof u !== "string") throw new Error("Gallery entries must be strings");
+        if (u && !isSafeImageUrl(u)) throw new Error("Unsafe gallery image URL");
+      }
+    } else if (block.type === "nav") {
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        throw new Error("Invalid nav JSON");
+      }
+      if (!Array.isArray(parsed)) throw new Error("Nav must be an array");
+      for (const link of parsed) {
+        if (!link || typeof link !== "object") continue;
+        if (typeof link.href === "string" && link.href && !isSafeLinkUrl(link.href)) {
+          throw new Error("Unsafe nav link URL");
+        }
+      }
+    }
+  }
+  await storage.setSetting(settingKey(slug, key), raw);
 }
-var WEB_PAGES, settingKey, escapeHtml2;
+var HERO_BG_HINT, META_TITLE_HINT, META_DESC_HINT, pageBlocks, sectionBlocks, DEFAULT_NAV, WEB_PAGES, SITE_SLUG, settingKey, escapeHtml2, SCRIPT_TAG_RE, STYLE_TAG_RE, DANGEROUS_TAG_RE, ON_HANDLER_RE, URL_ATTR_RE, DANGEROUS_SCHEME_RE, CUSTOM_PAGE_SLUG_PREFIX;
 var init_web_content = __esm({
   "server/web-content.ts"() {
     "use strict";
     init_storage();
+    HERO_BG_HINT = "Recommended size: 1920\xD71080 landscape. Upload a photo of your venue, or paste an image URL. A dark overlay is added automatically so headline text stays legible.";
+    META_TITLE_HINT = "Shown in the browser tab and on Google search results. Aim for ~60 characters.";
+    META_DESC_HINT = "Used by Google and shown when the page is shared on WhatsApp, Facebook etc. Aim for 140\u2013160 characters.";
+    pageBlocks = (titleHint) => [
+      { key: "meta_title", label: "Browser tab title", type: "attr_text", hint: META_TITLE_HINT },
+      { key: "meta_description", label: "Search / share description", type: "attr_text", hint: META_DESC_HINT },
+      { key: "hero_eyebrow", label: "Hero \xB7 small label", type: "text" },
+      {
+        key: "hero_title",
+        label: "Hero \xB7 headline",
+        type: "text",
+        hint: titleHint ?? "Use *word* to highlight a word in gold italic."
+      },
+      { key: "hero_sub", label: "Hero \xB7 subtitle", type: "textarea" },
+      { key: "hero_bg", label: "Hero \xB7 background image", type: "image", hint: HERO_BG_HINT }
+    ];
+    sectionBlocks = (prefix, sectionLabel, opts = { lead: true, image: false }) => {
+      const out = [
+        { key: `${prefix}_eyebrow`, label: `${sectionLabel} \xB7 small label`, type: "text" },
+        { key: `${prefix}_title`, label: `${sectionLabel} \xB7 heading`, type: "text" }
+      ];
+      if (opts.lead !== false) {
+        out.push({ key: `${prefix}_lead`, label: `${sectionLabel} \xB7 intro paragraph`, type: "textarea" });
+      }
+      if (opts.image) {
+        out.push({
+          key: `${prefix}_image`,
+          label: `${sectionLabel} \xB7 photo`,
+          type: "image_url",
+          hint: "Upload a square or landscape photo to replace the placeholder."
+        });
+      }
+      return out;
+    };
+    DEFAULT_NAV = [
+      { label: "Home", href: "/test-site", slug: "home", style: "default" },
+      { label: "Snooker", href: "/test-site/snooker", slug: "snooker", style: "default" },
+      { label: "Dining", href: "/test-site/dining", slug: "dining", style: "default" },
+      { label: "Events", href: "/test-site/events", slug: "events", style: "default" },
+      { label: "Function Rooms", href: "/test-site/function-rooms", slug: "function-rooms", style: "default" },
+      { label: "Gift Cards", href: "/test-site/gift-cards", slug: "gift-cards", style: "default" },
+      { label: "Contact", href: "/test-site/contact", slug: "contact", style: "default" },
+      { label: "Order", href: "/test-site/order", slug: "order", style: "order" },
+      { label: "Book a Table", href: "/test-site/book", slug: "book", style: "cta" }
+    ];
     WEB_PAGES = [
+      {
+        slug: "site",
+        label: "Site-wide",
+        blocks: [
+          { key: "logo", label: "Logo image", type: "image_html", hint: "Upload your logo (PNG with transparent background works best). Replaces the wordmark in the nav and footer everywhere on the site. Leave blank to keep the default '147' wordmark." },
+          { key: "color_blue", label: "Brand colour \xB7 primary blue", type: "color", hint: "Used for buttons, headings and accents. Default: #1E5BC6" },
+          { key: "color_gold", label: "Brand colour \xB7 accent gold", type: "color", hint: "Used for highlights, the CTA button and hero accents. Default: #D9A93C" },
+          { key: "announcement_text", label: "Announcement banner", type: "bar", hint: "Shows a banner at the top of every page (e.g. 'Closed Christmas Day' or 'New menu launching Friday'). Leave blank to hide the banner." },
+          { key: "nav_links", label: "Navigation menu", type: "nav", hint: "Rename, reorder or hide links in the top navigation. The links themselves stay pointed at the right pages \u2014 you control how they appear." },
+          { key: "phone", label: "Phone number", type: "text", hint: "Shown in the header info-bar (home), in the contact page, and in every page footer." },
+          { key: "email", label: "Email address", type: "text", hint: "Shown on the contact page and in every page footer." },
+          { key: "address_line1", label: "Address \xB7 line 1", type: "text", hint: "e.g. 147 Example Street" },
+          { key: "address_line2", label: "Address \xB7 line 2", type: "text", hint: "e.g. Bradford, BD1 1AA" },
+          { key: "address_region", label: "Address \xB7 region", type: "text", hint: "Shown on the contact page only \u2014 e.g. West Yorkshire" },
+          { key: "hours_today", label: "Today's opening hours (info-bar)", type: "text", hint: "Shown on the home page info-bar \u2014 e.g. 12pm \u2013 12am" },
+          { key: "hours_mon_thu", label: "Hours \xB7 Monday \u2013 Thursday", type: "text" },
+          { key: "hours_fri_sat", label: "Hours \xB7 Friday \u2013 Saturday", type: "text" },
+          { key: "hours_sun", label: "Hours \xB7 Sunday", type: "text" },
+          { key: "footer_tagline", label: "Footer tagline", type: "textarea", hint: "Short blurb in the footer under the brand mark." }
+        ]
+      },
       {
         slug: "home",
         label: "Home",
         blocks: [
-          { key: "hero_eyebrow", label: "Hero \xB7 small label", type: "text" },
-          { key: "hero_title", label: "Hero \xB7 headline", type: "text", hint: "Use *word* to highlight a word in gold italic." },
-          { key: "hero_sub", label: "Hero \xB7 subtitle", type: "textarea" }
+          ...pageBlocks(),
+          ...sectionBlocks("s1", "Section 1 \u2014 Why The 147"),
+          ...sectionBlocks("s2", "Section 2 \u2014 Our Tables"),
+          { key: "s3_lead", label: "Membership teaser \xB7 intro paragraph", type: "textarea" },
+          ...sectionBlocks("s4", "Section 4 \u2014 What's On"),
+          { key: "gallery_eyebrow", label: "Gallery \xB7 small label", type: "text" },
+          { key: "gallery_title", label: "Gallery \xB7 heading", type: "text" },
+          {
+            key: "gallery",
+            label: "Gallery \xB7 photos",
+            type: "gallery",
+            hint: "Add up to 9 photos of the venue. They'll appear in a responsive 3-column grid (1 column on mobile). Drag to reorder, click \xD7 to remove."
+          }
         ]
       },
       {
         slug: "snooker",
         label: "Snooker",
         blocks: [
-          { key: "hero_eyebrow", label: "Hero \xB7 small label", type: "text" },
-          { key: "hero_title", label: "Hero \xB7 headline", type: "text", hint: "Use *word* to highlight a word in gold italic." },
-          { key: "hero_sub", label: "Hero \xB7 subtitle", type: "textarea" }
+          ...pageBlocks(),
+          { key: "s1_eyebrow", label: "Section 1 \u2014 The Tables \xB7 small label", type: "text" },
+          { key: "s1_title", label: "Section 1 \u2014 The Tables \xB7 heading", type: "text" },
+          { key: "s1_body", label: "Section 1 \u2014 The Tables \xB7 body copy", type: "textarea", hint: "Two-paragraph intro. Use a blank line to break paragraphs." },
+          { key: "s1_image", label: "Section 1 \u2014 Tables photo", type: "image_url", hint: "Upload a photo of your tables to replace the placeholder." },
+          ...sectionBlocks("s2", "Section 2 \u2014 Pricing"),
+          ...sectionBlocks("s3", "Section 3 \u2014 Leagues")
         ]
       },
       {
         slug: "dining",
         label: "Dining",
         blocks: [
-          { key: "hero_eyebrow", label: "Hero \xB7 small label", type: "text" },
-          { key: "hero_title", label: "Hero \xB7 headline", type: "text", hint: "Use *word* to highlight a word in gold italic." },
-          { key: "hero_sub", label: "Hero \xB7 subtitle", type: "textarea" }
+          ...pageBlocks(),
+          { key: "s1_eyebrow", label: "Section 1 \u2014 The Kitchen \xB7 small label", type: "text" },
+          { key: "s1_title", label: "Section 1 \u2014 The Kitchen \xB7 heading", type: "text" },
+          { key: "s1_body", label: "Section 1 \u2014 The Kitchen \xB7 body copy", type: "textarea" },
+          { key: "s1_image", label: "Section 1 \u2014 Food photo", type: "image_url", hint: "Upload a hero food photo to replace the placeholder." },
+          ...sectionBlocks("s2", "Section 2 \u2014 Sample Menu")
         ]
       },
       {
         slug: "events",
         label: "Events",
         blocks: [
-          { key: "hero_eyebrow", label: "Hero \xB7 small label", type: "text" },
-          { key: "hero_title", label: "Hero \xB7 headline", type: "text", hint: "Use *word* to highlight a word in gold italic." },
-          { key: "hero_sub", label: "Hero \xB7 subtitle", type: "textarea" }
+          ...pageBlocks(),
+          ...sectionBlocks("s1", "Section 1 \u2014 Coming Up"),
+          ...sectionBlocks("s2", "Section 2 \u2014 Every Week"),
+          ...sectionBlocks("s3", "Section 3 \u2014 Host Your Event")
         ]
       },
       {
         slug: "function-rooms",
         label: "Function Rooms",
         blocks: [
-          { key: "hero_eyebrow", label: "Hero \xB7 small label", type: "text" },
-          { key: "hero_title", label: "Hero \xB7 headline", type: "text", hint: "Use *word* to highlight a word in gold italic." },
-          { key: "hero_sub", label: "Hero \xB7 subtitle", type: "textarea" }
+          ...pageBlocks(),
+          { key: "s1_eyebrow", label: "Section 1 \u2014 The Space \xB7 small label", type: "text" },
+          { key: "s1_title", label: "Section 1 \u2014 The Space \xB7 heading", type: "text" },
+          { key: "s1_body", label: "Section 1 \u2014 The Space \xB7 body copy", type: "textarea" },
+          { key: "s1_image", label: "Section 1 \u2014 Room photo", type: "image_url" },
+          ...sectionBlocks("s2", "Section 2 \u2014 Spaces"),
+          ...sectionBlocks("s3", "Section 3 \u2014 Packages")
         ]
       },
       {
         slug: "gift-cards",
         label: "Gift Cards",
         blocks: [
-          { key: "hero_eyebrow", label: "Hero \xB7 small label", type: "text" },
-          { key: "hero_title", label: "Hero \xB7 headline", type: "text", hint: "Use *word* to highlight a word in gold italic." },
-          { key: "hero_sub", label: "Hero \xB7 subtitle", type: "textarea" }
+          ...pageBlocks(),
+          { key: "s1_eyebrow", label: "Section 1 \u2014 How They Work \xB7 small label", type: "text" },
+          { key: "s1_title", label: "Section 1 \u2014 How They Work \xB7 heading", type: "text" },
+          { key: "s1_body", label: "Section 1 \u2014 How They Work \xB7 body copy", type: "textarea" },
+          { key: "s1_image", label: "Section 1 \u2014 Gift card photo", type: "image_url" },
+          ...sectionBlocks("s2", "Section 2 \u2014 Choose an Amount"),
+          { key: "s3_eyebrow", label: "Section 3 \u2014 Good to Know \xB7 small label", type: "text" },
+          { key: "s3_title", label: "Section 3 \u2014 Good to Know \xB7 heading", type: "text" }
         ]
       },
       {
         slug: "contact",
         label: "Contact",
         blocks: [
-          { key: "hero_eyebrow", label: "Hero \xB7 small label", type: "text" },
-          { key: "hero_title", label: "Hero \xB7 headline", type: "text", hint: "Use *word* to highlight a word in gold italic." },
-          { key: "hero_sub", label: "Hero \xB7 subtitle", type: "textarea" }
+          ...pageBlocks(),
+          { key: "s1_eyebrow", label: "Send a Message \xB7 small label", type: "text" },
+          { key: "s1_title", label: "Send a Message \xB7 heading", type: "text" },
+          { key: "s1_body", label: "Send a Message \xB7 body copy", type: "textarea" }
+        ]
+      },
+      {
+        slug: "membership",
+        label: "Membership",
+        blocks: [
+          ...pageBlocks(),
+          ...sectionBlocks("s1", "Members' Perks")
         ]
       }
     ];
+    SITE_SLUG = "site";
     settingKey = (slug, key) => `web:${slug}:${key}`;
     escapeHtml2 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    SCRIPT_TAG_RE = /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi;
+    STYLE_TAG_RE = /<style\b[^>]*>[\s\S]*?<\/style\s*>/gi;
+    DANGEROUS_TAG_RE = /<\/?(?:iframe|object|embed|svg|math|link|meta|base|form|input|button|textarea|select|frame|frameset)\b[^>]*>/gi;
+    ON_HANDLER_RE = /\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
+    URL_ATTR_RE = /\b(href|src|srcset|action|formaction|background|poster|xlink:href|data)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi;
+    DANGEROUS_SCHEME_RE = /^(?:javascript|vbscript|livescript|mocha|data\s*:\s*text\/html)\s*:/i;
+    CUSTOM_PAGE_SLUG_PREFIX = "custom:";
   }
 });
 
@@ -5680,6 +6095,131 @@ async function registerRoutes(app2) {
     } catch (err) {
       console.error("Failed to save web content:", err);
       res.status(400).json({ message: err?.message || "Failed to save" });
+    }
+  });
+  app2.post(
+    "/api/staff/web-content/image",
+    staffAuth,
+    ownerAuth,
+    upload.single("image"),
+    async (req, res) => {
+      try {
+        if (!req.file) return res.status(400).json({ message: "No image file uploaded" });
+        const compressed = await sharp(req.file.buffer).rotate().resize({ width: 2e3, withoutEnlargement: true }).jpeg({ quality: 78, mozjpeg: true }).toBuffer();
+        const url = `data:image/jpeg;base64,${compressed.toString("base64")}`;
+        return res.json({ url });
+      } catch (err) {
+        console.error("Web image upload failed:", err);
+        return res.status(400).json({ message: err?.message || "Image upload failed" });
+      }
+    }
+  );
+  const RESERVED_PAGE_SLUGS = /* @__PURE__ */ new Set([
+    "",
+    "home",
+    "snooker",
+    "dining",
+    "events",
+    "function-rooms",
+    "gift-cards",
+    "contact",
+    "membership",
+    "order",
+    "book",
+    "join",
+    "menu",
+    "styles.css",
+    "embed.js"
+  ]);
+  const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?$/;
+  function validateSlug(slug) {
+    const s = String(slug || "").toLowerCase().trim();
+    if (!SLUG_RE.test(s)) {
+      throw new Error("Slug must be lowercase letters, numbers and hyphens (max 50 chars)");
+    }
+    if (RESERVED_PAGE_SLUGS.has(s)) {
+      throw new Error(`'${s}' is a built-in page \u2014 pick a different slug`);
+    }
+    return s;
+  }
+  app2.get("/api/staff/marketing-pages", staffAuth, ownerAuth, async (_req, res) => {
+    try {
+      const pages = await storage.listMarketingPages();
+      res.json(pages);
+    } catch (err) {
+      console.error("[marketing-pages/list]", err);
+      res.status(500).json({ message: "Failed to load pages" });
+    }
+  });
+  app2.post("/api/staff/marketing-pages", staffAuth, ownerAuth, async (req, res) => {
+    try {
+      const { slug, title, heroEyebrow, heroTitle, heroSub, heroBg, bodyHtml, metaTitle, metaDescription, sortOrder, hidden } = req.body || {};
+      if (typeof title !== "string" || !title.trim()) {
+        return res.status(400).json({ message: "Title is required" });
+      }
+      const safeSlug = validateSlug(slug);
+      const existing = await storage.getMarketingPage(safeSlug);
+      if (existing) return res.status(400).json({ message: "A page with that slug already exists" });
+      const { isSafeImageUrl: isSafeImageUrl2 } = await Promise.resolve().then(() => (init_web_content(), web_content_exports));
+      if (heroBg && !isSafeImageUrl2(heroBg)) {
+        return res.status(400).json({ message: "Unsafe hero background URL" });
+      }
+      const page = await storage.createMarketingPage({
+        slug: safeSlug,
+        title: String(title).trim(),
+        heroEyebrow: typeof heroEyebrow === "string" ? heroEyebrow : "",
+        heroTitle: typeof heroTitle === "string" ? heroTitle : "",
+        heroSub: typeof heroSub === "string" ? heroSub : "",
+        heroBg: typeof heroBg === "string" ? heroBg : "",
+        bodyHtml: typeof bodyHtml === "string" ? bodyHtml : "",
+        metaTitle: typeof metaTitle === "string" ? metaTitle : "",
+        metaDescription: typeof metaDescription === "string" ? metaDescription : "",
+        sortOrder: Number.isFinite(sortOrder) ? Number(sortOrder) : 0,
+        hidden: !!hidden
+      });
+      res.json(page);
+    } catch (err) {
+      console.error("[marketing-pages/create]", err);
+      res.status(400).json({ message: err?.message || "Failed to create page" });
+    }
+  });
+  app2.put("/api/staff/marketing-pages/:slug", staffAuth, ownerAuth, async (req, res) => {
+    try {
+      const slug = String(req.params.slug || "").toLowerCase();
+      const existing = await storage.getMarketingPage(slug);
+      if (!existing) return res.status(404).json({ message: "Page not found" });
+      const { title, heroEyebrow, heroTitle, heroSub, heroBg, bodyHtml, metaTitle, metaDescription, sortOrder, hidden } = req.body || {};
+      const { isSafeImageUrl: isSafeImageUrl2 } = await Promise.resolve().then(() => (init_web_content(), web_content_exports));
+      if (typeof heroBg === "string" && heroBg && !isSafeImageUrl2(heroBg)) {
+        return res.status(400).json({ message: "Unsafe hero background URL" });
+      }
+      const patch = {};
+      if (typeof title === "string" && title.trim()) patch.title = title.trim();
+      if (typeof heroEyebrow === "string") patch.heroEyebrow = heroEyebrow;
+      if (typeof heroTitle === "string") patch.heroTitle = heroTitle;
+      if (typeof heroSub === "string") patch.heroSub = heroSub;
+      if (typeof heroBg === "string") patch.heroBg = heroBg;
+      if (typeof bodyHtml === "string") patch.bodyHtml = bodyHtml;
+      if (typeof metaTitle === "string") patch.metaTitle = metaTitle;
+      if (typeof metaDescription === "string") patch.metaDescription = metaDescription;
+      if (Number.isFinite(sortOrder)) patch.sortOrder = Number(sortOrder);
+      if (typeof hidden === "boolean") patch.hidden = hidden;
+      const updated = await storage.updateMarketingPage(slug, patch);
+      res.json(updated);
+    } catch (err) {
+      console.error("[marketing-pages/update]", err);
+      res.status(400).json({ message: err?.message || "Failed to save page" });
+    }
+  });
+  app2.delete("/api/staff/marketing-pages/:slug", staffAuth, ownerAuth, async (req, res) => {
+    try {
+      const slug = String(req.params.slug || "").toLowerCase();
+      const ok = await storage.deleteMarketingPage(slug);
+      if (!ok) return res.status(404).json({ message: "Page not found" });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[marketing-pages/delete]", err);
+      res.status(500).json({ message: "Failed to delete page" });
     }
   });
   app2.post("/api/staff/wix-migration/preview", staffAuth, ownerAuth, async (req, res) => {
@@ -12066,15 +12606,25 @@ function configureExpoAndLanding(app2) {
   app2.get(["/test-site", "/test-site/:page"], async (req, res) => {
     const slug = String(req.params.page ?? "").toLowerCase();
     const file = TEST_SITE_PAGES[slug];
-    if (!file) return res.status(404).send("Page not found");
     try {
-      const { applyWebContentOverrides: applyWebContentOverrides2 } = await Promise.resolve().then(() => (init_web_content(), web_content_exports));
-      const p = path3.resolve(process.cwd(), "server", "templates", "test-site", file);
-      const raw = fs3.readFileSync(p, "utf-8");
-      const overrideSlug = slug || "home";
-      const finalHtml = await applyWebContentOverrides2(overrideSlug, raw);
-      res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.send(finalHtml);
+      const { applyWebContentOverrides: applyWebContentOverrides2, renderCustomPage: renderCustomPage2 } = await Promise.resolve().then(() => (init_web_content(), web_content_exports));
+      if (file) {
+        const p = path3.resolve(process.cwd(), "server", "templates", "test-site", file);
+        const raw = fs3.readFileSync(p, "utf-8");
+        const overrideSlug = slug || "home";
+        const finalHtml = await applyWebContentOverrides2(overrideSlug, raw);
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        return res.send(finalHtml);
+      }
+      const { storage: storage2 } = await Promise.resolve().then(() => (init_storage(), storage_exports));
+      const customPage = await storage2.getMarketingPage(slug);
+      if (customPage && !customPage.hidden) {
+        const shell = renderCustomPage2(customPage);
+        const finalHtml = await applyWebContentOverrides2(slug, shell);
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        return res.send(finalHtml);
+      }
+      return res.status(404).send("Page not found");
     } catch {
       res.status(500).send("Page unavailable");
     }
