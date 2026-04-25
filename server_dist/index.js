@@ -438,6 +438,11 @@ var init_schema = __esm({
       amendedBy: integer("amended_by"),
       amendedAt: timestamp("amended_at"),
       amendReason: text("amend_reason"),
+      geofenceEnforced: boolean("geofence_enforced").notNull().default(false),
+      clockInFlags: text("clock_in_flags"),
+      clockOutFlags: text("clock_out_flags"),
+      clientIp: text("client_ip"),
+      userAgent: text("user_agent"),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     insertStaffTimeEntrySchema = createInsertSchema(staffTimeEntries).omit({ id: true, createdAt: true });
@@ -892,6 +897,18 @@ async function runStartupMigrations() {
        WHERE tier = 'vip'
          AND (square_customer_group_id IS NULL OR square_customer_group_id = '');
     `);
+    await client.query(`
+      ALTER TABLE staff_time_entries
+        ADD COLUMN IF NOT EXISTS geofence_enforced BOOLEAN NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS clock_in_flags TEXT,
+        ADD COLUMN IF NOT EXISTS clock_out_flags TEXT,
+        ADD COLUMN IF NOT EXISTS client_ip TEXT,
+        ADD COLUMN IF NOT EXISTS user_agent TEXT;
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS staff_time_entries_active_uniq
+        ON staff_time_entries (staff_id) WHERE status = 'active';
+    `);
     console.log("[DB] Startup migrations applied");
   } catch (err) {
     console.error("[DB] Startup migration failed (non-fatal):", err.message);
@@ -1121,6 +1138,10 @@ var init_storage = __esm({
         const normalised = username.toLowerCase().trim();
         const result = await db.update(staffSessions).set({ active: false }).where(and(eq(staffSessions.staffUsername, normalised), eq(staffSessions.active, true))).returning();
         return result.length;
+      }
+      async getBookingByDepositPaymentId(depositPaymentId) {
+        const [booking] = await db.select().from(bookings).where(eq(bookings.depositPaymentId, depositPaymentId));
+        return booking ? decryptBookingFields(booking) : void 0;
       }
       async getBookingsByEmail(email) {
         const hash = hashEmail(email);
@@ -2005,23 +2026,30 @@ var init_storage = __esm({
         const [entry] = await db.select().from(staffTimeEntries).where(and(eq(staffTimeEntries.staffId, staffId), eq(staffTimeEntries.status, "active"))).orderBy(desc(staffTimeEntries.clockedInAt)).limit(1);
         return entry ?? null;
       }
-      async clockIn(staffId, lat, lng) {
+      async clockIn(staffId, lat, lng, audit) {
         const [entry] = await db.insert(staffTimeEntries).values({
           staffId,
           clockedInAt: /* @__PURE__ */ new Date(),
           status: "active",
           clockInLat: lat ? encrypt(lat) : null,
-          clockInLng: lng ? encrypt(lng) : null
+          clockInLng: lng ? encrypt(lng) : null,
+          geofenceEnforced: audit?.geofenceEnforced ?? false,
+          clockInFlags: audit?.flags && audit.flags.length ? audit.flags.join(",") : null,
+          clientIp: audit?.clientIp ?? null,
+          userAgent: audit?.userAgent ?? null
         }).returning();
         return decryptTimeEntry(entry);
       }
-      async clockOut(entryId, lat, lng) {
+      async clockOut(entryId, lat, lng, audit) {
+        const newEnforced = audit?.geofenceEnforced ?? false;
         const [entry] = await db.update(staffTimeEntries).set({
           clockedOutAt: /* @__PURE__ */ new Date(),
           status: "completed",
           clockOutLat: lat ? encrypt(lat) : null,
-          clockOutLng: lng ? encrypt(lng) : null
-        }).where(eq(staffTimeEntries.id, entryId)).returning();
+          clockOutLng: lng ? encrypt(lng) : null,
+          geofenceEnforced: sql2`${staffTimeEntries.geofenceEnforced} AND ${newEnforced}`,
+          clockOutFlags: audit?.flags && audit.flags.length ? audit.flags.join(",") : null
+        }).where(and(eq(staffTimeEntries.id, entryId), eq(staffTimeEntries.status, "active"))).returning();
         return entry ? decryptTimeEntry(entry) : null;
       }
       async getTimeEntriesForStaff(staffId, limit = 50) {
@@ -2641,7 +2669,7 @@ async function getSquareOrder(orderId) {
 }
 async function createDepositPaymentLink(opts) {
   const locationId = getLocationId();
-  const data = await squareRequest("POST", "/v2/online-checkout/payment-links", {
+  const body = {
     idempotency_key: `deposit-${opts.referenceId}-${Date.now()}`,
     quick_pay: {
       name: opts.description,
@@ -2655,11 +2683,16 @@ async function createDepositPaymentLink(opts) {
       redirect_url: opts.redirectUrl
     },
     payment_note: opts.referenceId
-  });
+  };
+  if (opts.buyerEmail) {
+    body.pre_populated_data = { buyer_email: opts.buyerEmail };
+  }
+  const data = await squareRequest("POST", "/v2/online-checkout/payment-links", body);
   const link = data.payment_link;
   return {
     url: link.url,
-    paymentLinkId: link.id
+    paymentLinkId: link.id,
+    orderId: link.order_id ?? void 0
   };
 }
 async function listCustomerGroups() {
@@ -6975,9 +7008,11 @@ async function registerRoutes(app2) {
           amountPence: DEPOSIT_AMOUNT_PENCE,
           description: `Dining Deposit \u2013 Booking ${bookingRef} (${guestCount} guests)`,
           referenceId: bookingRef,
-          redirectUrl
+          redirectUrl,
+          buyerEmail: parsed.data.customerEmail
         });
-        await storage.updateBooking(booking.id, { depositPaymentId: paymentLink.paymentLinkId });
+        const depositKey = paymentLink.orderId ?? paymentLink.paymentLinkId;
+        await storage.updateBooking(booking.id, { depositPaymentId: depositKey });
         if (depositHandling === "send_link") {
           const emailSent = await sendDepositLinkEmail({
             customerName: parsed.data.customerName,
@@ -7437,27 +7472,17 @@ async function registerRoutes(app2) {
         }
       }
       if (!booking) {
-        const buyerEmail = payment.buyer_email_address;
-        if (buyerEmail) {
-          const byEmail = await storage.getBookingsByEmail(buyerEmail);
-          const pending = byEmail.filter((b) => b.status === "pending_deposit");
-          if (pending.length > 0) {
-            booking = pending.sort((a, b) => b.id - a.id)[0];
-            console.log(`[WEBHOOK] Matched booking #${booking.id} by email: ${maskEmail(buyerEmail)}`);
+        const paymentOrderId = payment.order_id;
+        if (paymentOrderId) {
+          const byOrderId = await storage.getBookingByDepositPaymentId(paymentOrderId).catch(() => void 0);
+          if (byOrderId && byOrderId.status === "pending_deposit") {
+            booking = byOrderId;
+            console.log(`[WEBHOOK] Matched booking #${booking.id} by Square order ID: ${paymentOrderId}`);
           }
         }
       }
       if (!booking) {
-        const all = await storage.getBookings();
-        const cutoff = Date.now() - 4 * 60 * 60 * 1e3;
-        const recent = all.filter((b) => b.status === "pending_deposit" && new Date(b.createdAt ?? 0).getTime() > cutoff).sort((a, b) => b.id - a.id);
-        if (recent.length > 0) {
-          booking = recent[0];
-          console.log(`[WEBHOOK] Matched booking #${booking.id} by time proximity (no email match)`);
-        }
-      }
-      if (!booking) {
-        console.warn("[WEBHOOK] No pending_deposit booking found for this payment");
+        console.warn("[WEBHOOK] No server-bound pending_deposit booking found for this payment \u2014 leaving unconfirmed for manual review");
         return res.sendStatus(200);
       }
       await storage.updateBooking(booking.id, {
@@ -11436,18 +11461,153 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     const active = await storage.getActiveClockEntry(req.staffUser.id);
     res.json({ active: active ?? null });
   });
+  function haversineM(aLat, aLng, bLat, bLng) {
+    const R = 6371e3;
+    const toRad = (d) => d * Math.PI / 180;
+    const dLat = toRad(bLat - aLat);
+    const dLng = toRad(bLng - aLng);
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+  async function enforceGeofenceOrRespond(req, res) {
+    const cfgLat = await storage.getSetting("geofence_lat");
+    const cfgLng = await storage.getSetting("geofence_lng");
+    const cfgRadius = await storage.getSetting("geofence_radius");
+    const flags = [];
+    const ua = String(req.headers?.["user-agent"] ?? "");
+    const looksMobile = /(Expo|okhttp|CFNetwork|iPhone|iPad|Android|Mobile|Darwin)/i.test(ua);
+    if (!looksMobile) flags.push("no_mobile_ua");
+    if (!cfgLat && !cfgLng) {
+      const { lat: lat2, lng: lng2 } = req.body || {};
+      flags.push("no_geofence_configured");
+      return {
+        lat: lat2 ? String(lat2) : "",
+        lng: lng2 ? String(lng2) : "",
+        audit: { geofenceEnforced: false, flags }
+      };
+    }
+    if (!cfgLat || !cfgLng) {
+      res.status(500).json({ message: "Venue geofence is misconfigured (missing latitude or longitude). Please contact a manager." });
+      return null;
+    }
+    const venueLat = parseFloat(cfgLat);
+    const venueLng = parseFloat(cfgLng);
+    const radiusM = cfgRadius ? Number(cfgRadius) : 200;
+    if (!Number.isFinite(venueLat) || !Number.isFinite(venueLng) || !Number.isFinite(radiusM)) {
+      res.status(500).json({ message: "Venue geofence is misconfigured. Please contact a manager." });
+      return null;
+    }
+    const { lat, lng } = req.body || {};
+    const userLat = parseFloat(String(lat ?? ""));
+    const userLng = parseFloat(String(lng ?? ""));
+    if (!Number.isFinite(userLat) || !Number.isFinite(userLng)) {
+      res.status(400).json({ message: "Location is required to clock in or out. Please enable location services and try again." });
+      return null;
+    }
+    if (userLat < -90 || userLat > 90 || userLng < -180 || userLng > 180) {
+      res.status(400).json({ message: "Invalid GPS coordinates supplied." });
+      return null;
+    }
+    const distM = haversineM(venueLat, venueLng, userLat, userLng);
+    if (distM > radiusM) {
+      res.status(403).json({
+        message: `You must be within ${radiusM}m of the venue to clock in or out. You are currently ${Math.round(distM)}m away. If you believe this is an error, please speak to your manager.`,
+        distanceM: Math.round(distM),
+        radiusM
+      });
+      return null;
+    }
+    return {
+      lat: String(userLat),
+      lng: String(userLng),
+      audit: { geofenceEnforced: true, flags }
+    };
+  }
+  async function computeAnomalyFlags(staffId, newLat, newLng) {
+    if (!newLat || !newLng) return [];
+    const flags = [];
+    const recent = await storage.getTimeEntriesForStaff(staffId, 1);
+    const prev = recent[0];
+    if (!prev) return flags;
+    const prevLat = prev.clockOutLat ?? prev.clockInLat;
+    const prevLng = prev.clockOutLng ?? prev.clockInLng;
+    const prevAtRaw = prev.clockedOutAt ?? prev.clockedInAt;
+    if (!prevLat || !prevLng || !prevAtRaw) return flags;
+    if (prevLat === newLat && prevLng === newLng) {
+      flags.push("identical_coords");
+    }
+    const a = parseFloat(prevLat);
+    const b = parseFloat(prevLng);
+    const c = parseFloat(newLat);
+    const d = parseFloat(newLng);
+    if (Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c) && Number.isFinite(d)) {
+      const distM = haversineM(a, b, c, d);
+      const ms = Date.now() - new Date(prevAtRaw).getTime();
+      if (ms > 0) {
+        const speedKph = distM / 1e3 / (ms / 36e5);
+        if (speedKph > 200) flags.push("impossible_travel");
+      }
+    }
+    return flags;
+  }
   app2.post("/api/hr/clock-in", staffAuth, async (req, res) => {
     const existing = await storage.getActiveClockEntry(req.staffUser.id);
     if (existing) return res.status(409).json({ message: "Already clocked in" });
-    const { lat, lng } = req.body;
-    const entry = await storage.clockIn(req.staffUser.id, lat ? String(lat) : void 0, lng ? String(lng) : void 0);
-    res.status(201).json(entry);
+    const result = await enforceGeofenceOrRespond(req, res);
+    if (!result) return;
+    const anomaly = await computeAnomalyFlags(req.staffUser.id, result.lat, result.lng);
+    const flags = [...result.audit.flags, ...anomaly];
+    try {
+      const entry = await storage.clockIn(
+        req.staffUser.id,
+        result.lat || void 0,
+        result.lng || void 0,
+        {
+          geofenceEnforced: result.audit.geofenceEnforced,
+          flags,
+          clientIp: String(req.ip ?? "").slice(0, 64) || void 0,
+          userAgent: String(req.headers?.["user-agent"] ?? "").slice(0, 256) || void 0
+        }
+      );
+      res.status(201).json(entry);
+    } catch (err) {
+      const msg = String(err?.message ?? "");
+      if (err?.code === "23505" || /staff_time_entries_active_uniq|duplicate key/i.test(msg)) {
+        return res.status(409).json({ message: "Already clocked in" });
+      }
+      throw err;
+    }
   });
   app2.post("/api/hr/clock-out", staffAuth, async (req, res) => {
     const active = await storage.getActiveClockEntry(req.staffUser.id);
     if (!active) return res.status(404).json({ message: "No active clock-in found" });
-    const { lat, lng } = req.body;
-    const entry = await storage.clockOut(active.id, lat ? String(lat) : void 0, lng ? String(lng) : void 0);
+    const result = await enforceGeofenceOrRespond(req, res);
+    if (!result) return;
+    const flags = [...result.audit.flags];
+    if (active.clockInLat && active.clockInLng && result.lat && result.lng) {
+      if (active.clockInLat === result.lat && active.clockInLng === result.lng) {
+        flags.push("identical_coords");
+      }
+      const a = parseFloat(active.clockInLat);
+      const b = parseFloat(active.clockInLng);
+      const c = parseFloat(result.lat);
+      const d = parseFloat(result.lng);
+      if (Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c) && Number.isFinite(d)) {
+        const distM = haversineM(a, b, c, d);
+        const ms = Date.now() - new Date(active.clockedInAt).getTime();
+        if (ms > 0) {
+          const speedKph = distM / 1e3 / (ms / 36e5);
+          if (speedKph > 200) flags.push("impossible_travel");
+        }
+      }
+    }
+    const entry = await storage.clockOut(
+      active.id,
+      result.lat || void 0,
+      result.lng || void 0,
+      { geofenceEnforced: result.audit.geofenceEnforced, flags }
+    );
+    if (!entry) return res.status(409).json({ message: "Shift was already clocked out" });
     res.json(entry);
   });
   app2.get("/api/hr/time-entries", staffAuth, async (req, res) => {
