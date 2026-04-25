@@ -5298,6 +5298,27 @@
     });
 
     const staffColHdr=isMgrRender?`<th style="padding:10px 14px;text-align:left;border-bottom:1px solid var(--border)">Staff</th>`:'';
+    // Trust column shows server-side geofence verification + any fraud flags
+    // attached at clock-in/out time. See enforceGeofenceOrRespond() in
+    // server/routes.ts for the catalogue. Coordinates are still
+    // client-supplied so this is a "server-checked" signal, not attestation —
+    // managers should treat flagged entries as candidates for amendment.
+    const trustColHdr=isMgrRender?`<th style="padding:10px 14px;text-align:center;border-bottom:1px solid var(--border)">Trust</th>`:'';
+    function trustBadge(e){
+      const flagSet=new Set();
+      (e.clockInFlags||'').split(',').filter(Boolean).forEach(f=>flagSet.add(f));
+      (e.clockOutFlags||'').split(',').filter(Boolean).forEach(f=>flagSet.add(f));
+      const flags=Array.from(flagSet);
+      if(e.geofenceEnforced && flags.length===0){
+        return `<span title="Server verified GPS within configured geofence at clock-in and clock-out" style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;background:rgba(34,197,94,.12);color:var(--green)">✓ verified</span>`;
+      }
+      if(flags.length>0){
+        const labelMap={no_mobile_ua:'non-mobile client',no_geofence_configured:'geofence not set',identical_coords:'identical GPS to prior entry',impossible_travel:'impossible-travel speed'};
+        const list=flags.map(f=>labelMap[f]||f).join(', ');
+        return `<span title="Server flagged: ${esc(list)}" style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;background:rgba(239,68,68,.12);color:var(--red)">⚠ ${flags.length} flag${flags.length>1?'s':''}</span>`;
+      }
+      return `<span title="Geofence not enforced (not configured or partial check)" style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;background:rgba(148,163,184,.12);color:var(--text-2)">— unverified</span>`;
+    }
     let html=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="background:var(--surface-2)">
         ${staffColHdr}
@@ -5305,13 +5326,16 @@
         <th style="padding:10px 14px;text-align:left;border-bottom:1px solid var(--border)">Clock Out</th>
         <th style="padding:10px 14px;text-align:right;border-bottom:1px solid var(--border)">Hours</th>
         <th style="padding:10px 14px;text-align:center;border-bottom:1px solid var(--border)">Status</th>
+        ${trustColHdr}
         <th style="padding:10px 14px;text-align:right;border-bottom:1px solid var(--border)">Week Total</th>
       </tr></thead><tbody>`;
+    const colspan=isMgrRender?7:5;
     hrAttendanceData.forEach(e=>{
       const hrs=durationHrs(e);
       const weekHrs=weekMap[e.staffId]||0;
       const isThisWeek=new Date(e.clockedInAt)>=weekStart;
       const staffCol=isMgrRender?`<td style="padding:10px 14px;font-weight:600">${esc(e.staffName||'')}</td>`:'';
+      const trustCol=isMgrRender?`<td style="padding:10px 14px;text-align:center">${trustBadge(e)}</td>`:'';
       html+=`<tr style="border-bottom:1px solid var(--border);${e.status==='active'?'background:rgba(34,197,94,.05)':''}">
         ${staffCol}
         <td style="padding:10px 14px;color:var(--text-2)">${fmtDt(e.clockedInAt)}</td>
@@ -5320,20 +5344,33 @@
         <td style="padding:10px 14px;text-align:center">
           <span style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;background:${e.status==='active'?'rgba(34,197,94,.12)':e.status==='amended'?'rgba(217,119,6,.12)':'rgba(148,163,184,.12)'};color:${e.status==='active'?'var(--green)':e.status==='amended'?'var(--amber)':'var(--text-2)'}">${e.status}</span>
         </td>
+        ${trustCol}
         <td style="padding:10px 14px;text-align:right">${isThisWeek?`<span style="font-weight:700;color:${wtColour(weekHrs)}">${weekHrs.toFixed(1)}h</span>`:'—'}</td>
       </tr>`;
       if(isMgrRender&&weekHrs>=44&&isThisWeek){
-        html+=`<tr style="background:rgba(239,68,68,.04)"><td colspan="6" style="padding:4px 14px;font-size:11px;color:var(--red)">⚠ ${esc(e.staffName||'')} is approaching/exceeding 48h limit (Working Time Regulations 1998)</td></tr>`;
+        html+=`<tr style="background:rgba(239,68,68,.04)"><td colspan="${colspan}" style="padding:4px 14px;font-size:11px;color:var(--red)">⚠ ${esc(e.staffName||'')} is approaching/exceeding 48h limit (Working Time Regulations 1998)</td></tr>`;
       }
     });
     html+='</tbody></table></div>';
+    if(isMgrRender){
+      html+=`<p style="margin-top:8px;font-size:11px;color:var(--text-2)">Trust column reflects server-side geofence verification. Flagged entries should be reviewed before being treated as authoritative — open the entry to amend, or speak to the staff member.</p>`;
+    }
     c.innerHTML=html;
   }
 
   function exportAttendanceCSV(){
     if(!hrAttendanceData.length){alert('No data to export');return;}
-    const rows=[['Staff','Clock In','Clock Out','Hours','Status']];
-    hrAttendanceData.forEach(e=>{const h=durationHrs(e);rows.push([e.staffName||'',e.clockedInAt,e.clockedOutAt||'',h||'',e.status]);});
+    // Include the server-side trust signals so anyone consuming the CSV
+    // (payroll, HMRC export, manager spreadsheet) can see whether each shift
+    // was geofence-verified and which fraud-control flags fired.
+    const rows=[['Staff','Clock In','Clock Out','Hours','Status','Geofence Verified','Flags']];
+    hrAttendanceData.forEach(e=>{
+      const h=durationHrs(e);
+      const flagSet=new Set();
+      (e.clockInFlags||'').split(',').filter(Boolean).forEach(f=>flagSet.add(f));
+      (e.clockOutFlags||'').split(',').filter(Boolean).forEach(f=>flagSet.add(f));
+      rows.push([e.staffName||'',e.clockedInAt,e.clockedOutAt||'',h||'',e.status,e.geofenceEnforced?'yes':'no',Array.from(flagSet).join('|')]);
+    });
     const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
     const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);a.download='attendance.csv';a.click();
   }

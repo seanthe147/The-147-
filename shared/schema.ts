@@ -539,6 +539,17 @@ export type AvailabilityRule = typeof availabilityRules.$inferSelect;
 // ══════════════════════════════════════════════════════════════════════════════
 
 // ── Clock-in / Clock-out time entries ─────────────────────────────────────────
+// Trust / fraud-control fields:
+//   geofenceEnforced: true only when the server actually verified GPS against
+//     a configured venue geofence at the time of THIS clock action. False if
+//     the geofence was unset (no policy) or if no verification was possible.
+//     Used by manager UIs to distinguish authoritative shifts from advisory
+//     ones — coordinates are still client-supplied so this is "server checked
+//     the math", not "server attested the device".
+//   clockInFlags / clockOutFlags: comma-separated reason codes the server
+//     attached at create/update time. See enforceGeofenceOrRespond() in
+//     server/routes.ts for the catalogue. Empty/null = no flags.
+//   clientIp / userAgent: forensic trail for after-the-fact investigation.
 export const staffTimeEntries = pgTable("staff_time_entries", {
   id: serial("id").primaryKey(),
   staffId: integer("staff_id").notNull(),             // references staffUsers.id
@@ -553,6 +564,11 @@ export const staffTimeEntries = pgTable("staff_time_entries", {
   amendedBy: integer("amended_by"),
   amendedAt: timestamp("amended_at"),
   amendReason: text("amend_reason"),
+  geofenceEnforced: boolean("geofence_enforced").notNull().default(false),
+  clockInFlags: text("clock_in_flags"),
+  clockOutFlags: text("clock_out_flags"),
+  clientIp: text("client_ip"),
+  userAgent: text("user_agent"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

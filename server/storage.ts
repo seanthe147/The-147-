@@ -351,6 +351,27 @@ export async function runStartupMigrations() {
          AND (square_customer_group_id IS NULL OR square_customer_group_id = '');
     `);
 
+    // Attendance trust columns + concurrency guard (Task #104).
+    // db:push handles these in normal deploys; the IF NOT EXISTS clauses make
+    // this safe to run on every boot as belt-and-suspenders for environments
+    // where the schema push hasn't been applied yet.
+    await client.query(`
+      ALTER TABLE staff_time_entries
+        ADD COLUMN IF NOT EXISTS geofence_enforced BOOLEAN NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS clock_in_flags TEXT,
+        ADD COLUMN IF NOT EXISTS clock_out_flags TEXT,
+        ADD COLUMN IF NOT EXISTS client_ip TEXT,
+        ADD COLUMN IF NOT EXISTS user_agent TEXT;
+    `);
+    // Partial unique index — at most one "active" (i.e. not-yet-clocked-out)
+    // entry per staff member at any given time. Prevents the
+    // getActiveClockEntry-then-insert race window from creating duplicate
+    // open shifts under concurrent requests.
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS staff_time_entries_active_uniq
+        ON staff_time_entries (staff_id) WHERE status = 'active';
+    `);
+
     console.log("[DB] Startup migrations applied");
   } catch (err: any) {
     console.error("[DB] Startup migration failed (non-fatal):", err.message);
@@ -1926,21 +1947,47 @@ export class DatabaseStorage implements IStorage {
     return entry ?? null;
   }
 
-  async clockIn(staffId: number, lat?: string, lng?: string): Promise<StaffTimeEntry> {
+  async clockIn(
+    staffId: number,
+    lat?: string,
+    lng?: string,
+    audit?: { geofenceEnforced?: boolean; flags?: string[]; clientIp?: string; userAgent?: string },
+  ): Promise<StaffTimeEntry> {
     const [entry] = await db.insert(staffTimeEntries).values({
       staffId, clockedInAt: new Date(), status: "active",
       clockInLat: lat ? encrypt(lat) : null,
       clockInLng: lng ? encrypt(lng) : null,
+      geofenceEnforced: audit?.geofenceEnforced ?? false,
+      clockInFlags: audit?.flags && audit.flags.length ? audit.flags.join(",") : null,
+      clientIp: audit?.clientIp ?? null,
+      userAgent: audit?.userAgent ?? null,
     }).returning();
     return decryptTimeEntry(entry);
   }
 
-  async clockOut(entryId: number, lat?: string, lng?: string): Promise<StaffTimeEntry | null> {
+  async clockOut(
+    entryId: number,
+    lat?: string,
+    lng?: string,
+    audit?: { geofenceEnforced?: boolean; flags?: string[] },
+  ): Promise<StaffTimeEntry | null> {
+    // Atomic clock-out:
+    //   • The WHERE clause includes status='active' so two concurrent
+    //     clock-out requests can't both succeed — the second update finds
+    //     no matching row and returns nothing.
+    //   • To preserve geofenceEnforced=true only when BOTH halves of the
+    //     shift were verified, we use a SQL expression that AND's the
+    //     existing column with the new value. This avoids a read-then-write
+    //     race that could overwrite a flag set by a concurrent path.
+    const newEnforced = audit?.geofenceEnforced ?? false;
     const [entry] = await db.update(staffTimeEntries)
       .set({ clockedOutAt: new Date(), status: "completed",
         clockOutLat: lat ? encrypt(lat) : null,
-        clockOutLng: lng ? encrypt(lng) : null })
-      .where(eq(staffTimeEntries.id, entryId))
+        clockOutLng: lng ? encrypt(lng) : null,
+        geofenceEnforced: sql`${staffTimeEntries.geofenceEnforced} AND ${newEnforced}`,
+        clockOutFlags: audit?.flags && audit.flags.length ? audit.flags.join(",") : null,
+      })
+      .where(and(eq(staffTimeEntries.id, entryId), eq(staffTimeEntries.status, "active")))
       .returning();
     return entry ? decryptTimeEntry(entry) : null;
   }

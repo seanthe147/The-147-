@@ -8077,37 +8077,68 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     res.json({ active: active ?? null });
   });
 
-  // Server-side geofence enforcement for clock-in / clock-out.
+  // Server-side geofence enforcement + fraud-flag computation for
+  // clock-in / clock-out.
   //
-  // The client (app/staff-hr.tsx) does its own check before calling these
-  // endpoints, but that is purely advisory — anyone with a valid staff
-  // bearer token can craft a direct HTTP request and bypass the client.
-  // This helper repeats the check on the server using the configured
-  // geofence settings so attendance records always reflect on-site presence.
+  // The client (app/staff-hr.tsx) does its own distance check before calling
+  // these endpoints, but that is purely advisory — anyone with a valid staff
+  // bearer token can craft a direct HTTP request and bypass it. The server
+  // therefore:
+  //   1. Re-runs the geofence math against configured venue coordinates so
+  //      records that go through the API are at least consistent with the
+  //      claimed location (closes the "no GPS" / "outside radius" path).
+  //   2. Stamps each entry with `geofenceEnforced` so manager UIs can
+  //      distinguish authoritative shifts from advisory ones.
+  //   3. Computes operational fraud-detection flags (no_mobile_ua,
+  //      no_geofence_configured, identical_coords, impossible_travel) so
+  //      attendance records carry a server-side trust signal even though
+  //      the underlying coordinates are still client-supplied. These flags
+  //      are surfaced to managers in the staff dashboard.
   //
-  // Behaviour:
-  //   • If the venue has not configured geofence_lat / geofence_lng,
-  //     the geofence is treated as disabled and any GPS coords (or none)
-  //     are accepted — preserves the current "no policy" behaviour.
-  //   • If geofence IS configured, the request MUST include numeric
-  //     lat / lng and the haversine distance from the venue must be
-  //     within the configured radius (default 200 m).
-  //   • All failures return JSON the client can surface (400 for missing
-  //     / malformed coords, 403 for outside the geofence).
-  async function enforceGeofenceOrRespond(req: any, res: any): Promise<{ lat: string; lng: string } | null> {
+  // Returns null when the helper has already sent an error response; the
+  // route should return immediately. Otherwise returns the cleaned coords
+  // plus an audit envelope to persist alongside the time entry.
+  type GeofenceAudit = {
+    geofenceEnforced: boolean;
+    flags: string[];
+  };
+  function haversineM(aLat: number, aLng: number, bLat: number, bLng: number): number {
+    const R = 6371000;
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const dLat = toRad(bLat - aLat);
+    const dLng = toRad(bLng - aLng);
+    const h =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+  async function enforceGeofenceOrRespond(
+    req: any,
+    res: any,
+  ): Promise<{ lat: string; lng: string; audit: GeofenceAudit } | null> {
     const cfgLat = await storage.getSetting("geofence_lat");
     const cfgLng = await storage.getSetting("geofence_lng");
     const cfgRadius = await storage.getSetting("geofence_radius");
-    // Geofence not configured → accept request as-is (preserves existing UX
-    // for venues that have not yet set a venue location). We only treat
-    // the geofence as "unset" when BOTH lat and lng are absent; if exactly
-    // one is present we treat that as a misconfiguration and fail closed
-    // so an admin error can't silently disable the policy.
+    const flags: string[] = [];
+
+    // User-agent heuristic: if the request doesn't look like it came from the
+    // mobile client (Expo / iOS / Android), flag it. Doesn't block — we don't
+    // want to lock out legitimate web fallbacks — but managers can see it.
+    const ua: string = String(req.headers?.["user-agent"] ?? "");
+    const looksMobile = /(Expo|okhttp|CFNetwork|iPhone|iPad|Android|Mobile|Darwin)/i.test(ua);
+    if (!looksMobile) flags.push("no_mobile_ua");
+
+    // Geofence not configured → fall open BUT mark the entry as unverified
+    // so it shows up in audit views as advisory rather than authoritative.
+    // We only treat the geofence as "unset" when BOTH lat and lng are absent;
+    // if exactly one is present that's an admin misconfig and we fail closed.
     if (!cfgLat && !cfgLng) {
       const { lat, lng } = req.body || {};
+      flags.push("no_geofence_configured");
       return {
         lat: lat ? String(lat) : "",
         lng: lng ? String(lng) : "",
+        audit: { geofenceEnforced: false, flags },
       };
     }
     if (!cfgLat || !cfgLng) {
@@ -8118,7 +8149,6 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     const venueLng = parseFloat(cfgLng);
     const radiusM = cfgRadius ? Number(cfgRadius) : 200;
     if (!Number.isFinite(venueLat) || !Number.isFinite(venueLng) || !Number.isFinite(radiusM)) {
-      // Misconfigured geofence — fail closed so attendance can't slip through.
       res.status(500).json({ message: "Venue geofence is misconfigured. Please contact a manager." });
       return null;
     }
@@ -8133,15 +8163,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       res.status(400).json({ message: "Invalid GPS coordinates supplied." });
       return null;
     }
-    // Haversine distance in metres.
-    const R = 6371000;
-    const toRad = (d: number) => (d * Math.PI) / 180;
-    const dLat = toRad(userLat - venueLat);
-    const dLng = toRad(userLng - venueLng);
-    const a =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos(toRad(venueLat)) * Math.cos(toRad(userLat)) * Math.sin(dLng / 2) ** 2;
-    const distM = 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+    const distM = haversineM(venueLat, venueLng, userLat, userLng);
     if (distM > radiusM) {
       res.status(403).json({
         message: `You must be within ${radiusM}m of the venue to clock in or out. You are currently ${Math.round(distM)}m away. If you believe this is an error, please speak to your manager.`,
@@ -8150,32 +8172,121 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       });
       return null;
     }
-    return { lat: String(userLat), lng: String(userLng) };
+    return {
+      lat: String(userLat),
+      lng: String(userLng),
+      audit: { geofenceEnforced: true, flags },
+    };
+  }
+
+  // Compare new clock coords against the staff member's previous entry to
+  // surface tamper signals (identical-jitter coords, impossible-travel speed).
+  async function computeAnomalyFlags(
+    staffId: number,
+    newLat: string,
+    newLng: string,
+  ): Promise<string[]> {
+    if (!newLat || !newLng) return [];
+    const flags: string[] = [];
+    const recent = await storage.getTimeEntriesForStaff(staffId, 1);
+    const prev = recent[0];
+    if (!prev) return flags;
+    // Pick the most recent reference coords + timestamp from the prior entry.
+    const prevLat = prev.clockOutLat ?? prev.clockInLat;
+    const prevLng = prev.clockOutLng ?? prev.clockInLng;
+    const prevAtRaw = prev.clockedOutAt ?? prev.clockedInAt;
+    if (!prevLat || !prevLng || !prevAtRaw) return flags;
+    if (prevLat === newLat && prevLng === newLng) {
+      // Real GPS readings always have some jitter even when the device hasn't
+      // physically moved; identical strings strongly suggest a scripted call.
+      flags.push("identical_coords");
+    }
+    const a = parseFloat(prevLat);
+    const b = parseFloat(prevLng);
+    const c = parseFloat(newLat);
+    const d = parseFloat(newLng);
+    if (Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c) && Number.isFinite(d)) {
+      const distM = haversineM(a, b, c, d);
+      const ms = Date.now() - new Date(prevAtRaw).getTime();
+      if (ms > 0) {
+        const speedKph = (distM / 1000) / (ms / 3_600_000);
+        // 200 km/h is faster than any realistic ground transport between
+        // clock events; aircraft would generally produce gaps measured in
+        // hours, not minutes, and this venue is single-site.
+        if (speedKph > 200) flags.push("impossible_travel");
+      }
+    }
+    return flags;
   }
 
   app.post("/api/hr/clock-in", staffAuth, async (req: any, res) => {
     const existing = await storage.getActiveClockEntry(req.staffUser.id);
     if (existing) return res.status(409).json({ message: "Already clocked in" });
-    const coords = await enforceGeofenceOrRespond(req, res);
-    if (!coords) return; // helper already sent the response
-    const entry = await storage.clockIn(
-      req.staffUser.id,
-      coords.lat || undefined,
-      coords.lng || undefined,
-    );
-    res.status(201).json(entry);
+    const result = await enforceGeofenceOrRespond(req, res);
+    if (!result) return;
+    const anomaly = await computeAnomalyFlags(req.staffUser.id, result.lat, result.lng);
+    const flags = [...result.audit.flags, ...anomaly];
+    try {
+      const entry = await storage.clockIn(
+        req.staffUser.id,
+        result.lat || undefined,
+        result.lng || undefined,
+        {
+          geofenceEnforced: result.audit.geofenceEnforced,
+          flags,
+          clientIp: String(req.ip ?? "").slice(0, 64) || undefined,
+          userAgent: String(req.headers?.["user-agent"] ?? "").slice(0, 256) || undefined,
+        },
+      );
+      res.status(201).json(entry);
+    } catch (err: any) {
+      // Partial unique index "staff_time_entries_active_uniq" rejects a
+      // second concurrent insert — surface as the same 409 the precheck
+      // would have returned, so we don't get duplicate active shifts.
+      const msg = String(err?.message ?? "");
+      if (err?.code === "23505" || /staff_time_entries_active_uniq|duplicate key/i.test(msg)) {
+        return res.status(409).json({ message: "Already clocked in" });
+      }
+      throw err;
+    }
   });
 
   app.post("/api/hr/clock-out", staffAuth, async (req: any, res) => {
     const active = await storage.getActiveClockEntry(req.staffUser.id);
     if (!active) return res.status(404).json({ message: "No active clock-in found" });
-    const coords = await enforceGeofenceOrRespond(req, res);
-    if (!coords) return; // helper already sent the response
+    const result = await enforceGeofenceOrRespond(req, res);
+    if (!result) return;
+    // For impossible-travel on clock-out, compare against THIS shift's
+    // clock-in coords (the most relevant reference point).
+    const flags = [...result.audit.flags];
+    if (active.clockInLat && active.clockInLng && result.lat && result.lng) {
+      if (active.clockInLat === result.lat && active.clockInLng === result.lng) {
+        flags.push("identical_coords");
+      }
+      const a = parseFloat(active.clockInLat);
+      const b = parseFloat(active.clockInLng);
+      const c = parseFloat(result.lat);
+      const d = parseFloat(result.lng);
+      if (Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c) && Number.isFinite(d)) {
+        const distM = haversineM(a, b, c, d);
+        const ms = Date.now() - new Date(active.clockedInAt).getTime();
+        if (ms > 0) {
+          const speedKph = (distM / 1000) / (ms / 3_600_000);
+          if (speedKph > 200) flags.push("impossible_travel");
+        }
+      }
+    }
     const entry = await storage.clockOut(
       active.id,
-      coords.lat || undefined,
-      coords.lng || undefined,
+      result.lat || undefined,
+      result.lng || undefined,
+      { geofenceEnforced: result.audit.geofenceEnforced, flags },
     );
+    // clockOut's WHERE includes status='active' — if a concurrent request
+    // already finalised this shift it returns null, and we surface that as
+    // 409 rather than letting the second clock-out silently overwrite the
+    // first one's flags.
+    if (!entry) return res.status(409).json({ message: "Shift was already clocked out" });
     res.json(entry);
   });
 
