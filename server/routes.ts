@@ -8077,19 +8077,105 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     res.json({ active: active ?? null });
   });
 
+  // Server-side geofence enforcement for clock-in / clock-out.
+  //
+  // The client (app/staff-hr.tsx) does its own check before calling these
+  // endpoints, but that is purely advisory — anyone with a valid staff
+  // bearer token can craft a direct HTTP request and bypass the client.
+  // This helper repeats the check on the server using the configured
+  // geofence settings so attendance records always reflect on-site presence.
+  //
+  // Behaviour:
+  //   • If the venue has not configured geofence_lat / geofence_lng,
+  //     the geofence is treated as disabled and any GPS coords (or none)
+  //     are accepted — preserves the current "no policy" behaviour.
+  //   • If geofence IS configured, the request MUST include numeric
+  //     lat / lng and the haversine distance from the venue must be
+  //     within the configured radius (default 200 m).
+  //   • All failures return JSON the client can surface (400 for missing
+  //     / malformed coords, 403 for outside the geofence).
+  async function enforceGeofenceOrRespond(req: any, res: any): Promise<{ lat: string; lng: string } | null> {
+    const cfgLat = await storage.getSetting("geofence_lat");
+    const cfgLng = await storage.getSetting("geofence_lng");
+    const cfgRadius = await storage.getSetting("geofence_radius");
+    // Geofence not configured → accept request as-is (preserves existing UX
+    // for venues that have not yet set a venue location). We only treat
+    // the geofence as "unset" when BOTH lat and lng are absent; if exactly
+    // one is present we treat that as a misconfiguration and fail closed
+    // so an admin error can't silently disable the policy.
+    if (!cfgLat && !cfgLng) {
+      const { lat, lng } = req.body || {};
+      return {
+        lat: lat ? String(lat) : "",
+        lng: lng ? String(lng) : "",
+      };
+    }
+    if (!cfgLat || !cfgLng) {
+      res.status(500).json({ message: "Venue geofence is misconfigured (missing latitude or longitude). Please contact a manager." });
+      return null;
+    }
+    const venueLat = parseFloat(cfgLat);
+    const venueLng = parseFloat(cfgLng);
+    const radiusM = cfgRadius ? Number(cfgRadius) : 200;
+    if (!Number.isFinite(venueLat) || !Number.isFinite(venueLng) || !Number.isFinite(radiusM)) {
+      // Misconfigured geofence — fail closed so attendance can't slip through.
+      res.status(500).json({ message: "Venue geofence is misconfigured. Please contact a manager." });
+      return null;
+    }
+    const { lat, lng } = req.body || {};
+    const userLat = parseFloat(String(lat ?? ""));
+    const userLng = parseFloat(String(lng ?? ""));
+    if (!Number.isFinite(userLat) || !Number.isFinite(userLng)) {
+      res.status(400).json({ message: "Location is required to clock in or out. Please enable location services and try again." });
+      return null;
+    }
+    if (userLat < -90 || userLat > 90 || userLng < -180 || userLng > 180) {
+      res.status(400).json({ message: "Invalid GPS coordinates supplied." });
+      return null;
+    }
+    // Haversine distance in metres.
+    const R = 6371000;
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const dLat = toRad(userLat - venueLat);
+    const dLng = toRad(userLng - venueLng);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(venueLat)) * Math.cos(toRad(userLat)) * Math.sin(dLng / 2) ** 2;
+    const distM = 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+    if (distM > radiusM) {
+      res.status(403).json({
+        message: `You must be within ${radiusM}m of the venue to clock in or out. You are currently ${Math.round(distM)}m away. If you believe this is an error, please speak to your manager.`,
+        distanceM: Math.round(distM),
+        radiusM,
+      });
+      return null;
+    }
+    return { lat: String(userLat), lng: String(userLng) };
+  }
+
   app.post("/api/hr/clock-in", staffAuth, async (req: any, res) => {
     const existing = await storage.getActiveClockEntry(req.staffUser.id);
     if (existing) return res.status(409).json({ message: "Already clocked in" });
-    const { lat, lng } = req.body;
-    const entry = await storage.clockIn(req.staffUser.id, lat ? String(lat) : undefined, lng ? String(lng) : undefined);
+    const coords = await enforceGeofenceOrRespond(req, res);
+    if (!coords) return; // helper already sent the response
+    const entry = await storage.clockIn(
+      req.staffUser.id,
+      coords.lat || undefined,
+      coords.lng || undefined,
+    );
     res.status(201).json(entry);
   });
 
   app.post("/api/hr/clock-out", staffAuth, async (req: any, res) => {
     const active = await storage.getActiveClockEntry(req.staffUser.id);
     if (!active) return res.status(404).json({ message: "No active clock-in found" });
-    const { lat, lng } = req.body;
-    const entry = await storage.clockOut(active.id, lat ? String(lat) : undefined, lng ? String(lng) : undefined);
+    const coords = await enforceGeofenceOrRespond(req, res);
+    if (!coords) return; // helper already sent the response
+    const entry = await storage.clockOut(
+      active.id,
+      coords.lat || undefined,
+      coords.lng || undefined,
+    );
     res.json(entry);
   });
 
