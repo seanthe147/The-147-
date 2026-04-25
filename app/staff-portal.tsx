@@ -169,7 +169,7 @@ function LoginScreen() {
       setError(result.error || "Registration failed");
       triggerShake();
     } else {
-      setSuccess("Account created! You can now sign in.");
+      setSuccess("Account created. The owner will need to approve it before you can sign in.");
       setMode("login");
       setMasterPin("");
       setConfirmPin("");
@@ -532,7 +532,12 @@ function DashboardScreen() {
             />
           )}
 
-          {/* Extra tools for regular staff on web only */}
+          {/* Extra tools for regular staff on web only.
+              NOTE: Bookings management is now manager-only on the backend
+              (the booking calendar, customer search, and booking
+              edit/cancel/no-show/complete endpoints all require
+              managerAuth). The "Bookings" entry has been removed from
+              this section so non-managers don't see a tool that 403s. */}
           {!isManager && Platform.OS === "web" && (
             <>
               <AdminTool
@@ -542,14 +547,6 @@ function DashboardScreen() {
                 color="#0EA5E9"
                 onPress={() => router.push("/admin-events-payments")}
                 testID="portal-take-payment"
-              />
-              <AdminTool
-                icon="calendar"
-                title="Bookings"
-                description="View and manage table bookings"
-                color={Colors.brand.green}
-                onPress={() => router.push("/admin-bookings")}
-                testID="portal-bookings"
               />
               <AdminTool
                 icon="calendar-clear"

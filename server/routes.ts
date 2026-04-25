@@ -1245,7 +1245,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     const assignedRole = role || "staff";
-    const needsApproval = assignedRole === "manager" || assignedRole === "owner";
+    // Every newly registered account — including plain staff — must be
+    // approved by an owner before it can sign in. The shared venue STAFF_PIN
+    // is treated as an onboarding aid only, not as a standalone credential
+    // that grants access. This prevents anyone who knows (or once knew)
+    // the PIN from minting themselves a usable account on demand.
     const staffUser = await storage.createStaffUser({
       username: username.trim(),
       passwordHash: pwHash,
@@ -1256,14 +1260,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       mustChangePassword: !pwHash,
       displayName: displayName?.trim() || undefined,
       role: assignedRole,
-      approvalStatus: needsApproval ? "pending" : "approved",
+      approvalStatus: "pending",
     });
 
     clearFailedLogins(clientIp);
     res.status(201).json({
-      message: needsApproval
-        ? "Account created and awaiting manager approval before you can sign in."
-        : "Staff account created",
+      message: "Account created and awaiting owner approval before you can sign in.",
       username: staffUser.username,
       displayName: staffUser.displayName,
       role: staffUser.role,
@@ -1619,7 +1621,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ message: "Staff account deleted" });
   });
 
-  app.get("/api/staff/customers/search", staffAuth, async (req, res) => {
+  app.get("/api/staff/customers/search", staffAuth, managerAuth, async (req, res) => {
     const q = String(req.query.q || "").trim();
     if (q.length < 2) return res.json([]);
     try {
@@ -2852,7 +2854,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Staff-only: create repeat bookings (daily or weekly) — NOT available to customers or widget
-  app.post("/api/staff/bookings/repeat", staffAuth, async (req, res) => {
+  app.post("/api/staff/bookings/repeat", staffAuth, managerAuth, async (req, res) => {
     const { repeatType, repeatCount, ...bookingData } = req.body ?? {};
     if (!repeatType || !["daily", "weekly"].includes(repeatType)) {
       return res.status(400).json({ message: "repeatType must be 'daily' or 'weekly'" });
@@ -3003,7 +3005,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(204).send();
   });
 
-  app.get("/api/bookings", staffAuth, async (req, res) => {
+  app.get("/api/bookings", staffAuth, managerAuth, async (req, res) => {
     const { date } = req.query;
     if (date) {
       const bookingsList = await storage.getBookingsByDate(String(date));
@@ -3013,7 +3015,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(allBookings);
   });
 
-  app.get("/api/bookings/:id", staffAuth, async (req, res) => {
+  app.get("/api/bookings/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const booking = await storage.getBooking(id);
@@ -3379,7 +3381,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Staff: mark a booking as completed and auto-refund any paid deposit
-  app.patch("/api/bookings/:id/complete", staffAuth, async (req, res) => {
+  app.patch("/api/bookings/:id/complete", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const booking = await storage.getBooking(id);
@@ -3416,7 +3418,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Staff: mark a booking as no-show — deposit is kept, no refund issued
-  app.patch("/api/bookings/:id/noshow", staffAuth, async (req, res) => {
+  app.patch("/api/bookings/:id/noshow", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const booking = await storage.getBooking(id);
@@ -3426,7 +3428,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ message: "Booking marked as no-show" });
   });
 
-  app.patch("/api/bookings/:id/status", staffAuth, async (req, res) => {
+  app.patch("/api/bookings/:id/status", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const { status } = req.body;
@@ -3455,7 +3457,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(booking);
   });
 
-  app.put("/api/bookings/:id", staffAuth, async (req, res) => {
+  app.put("/api/bookings/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const existing = await storage.getBooking(id);
@@ -3502,7 +3504,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(updated);
   });
 
-  app.delete("/api/bookings/:id", staffAuth, async (req, res) => {
+  app.delete("/api/bookings/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const deleted = await storage.deleteBooking(id);
