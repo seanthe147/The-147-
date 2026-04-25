@@ -16,7 +16,7 @@ The application employs a mobile-first approach with a React Native frontend bui
 
 **Backend:**
 - **API:** Provides RESTful endpoints for managing offers, push tokens, notifications, bookings, customer accounts, and loyalty programs.
-- **Staff Web Dashboard:** An HTML application served by the Express backend for desktop-based staff management.
+- **Staff Web Dashboard:** An HTML application served by the Express backend for desktop-based staff management. Includes a global RBAC-aware search box in the topbar (`GET /api/staff/search?q=…`) that returns results across products, events, customers, bookings, memberships and staff users; each group is server-filtered so plain staff see only products and events while managers/owners see all six. Booking search is encryption-aware (id fast-path → emailHash fast-path → bounded in-memory decrypt-and-substring scan of the most recent 500 rows) because booking PII is encrypted at rest. Smoke test: `npx tsx scripts/test-global-search.ts`.
 - **Security:** Implements AES-256-GCM encryption for PII, scrypt-hashed PINs for staff, in-memory rate limiting, brute-force lockout, HTML escaping, Subresource Integrity (SRI), secure HTTP headers, and robust session management.
 
 **Technical Implementations:**

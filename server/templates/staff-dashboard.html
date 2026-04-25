@@ -129,6 +129,21 @@
     /* ── Main ── */
     .main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
     .topbar{height:56px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 28px;gap:16px;flex-shrink:0}
+    .global-search-wrap{position:relative;margin-left:auto;width:280px;max-width:32vw}
+    .global-search-wrap .global-search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-2);pointer-events:none}
+    #globalSearchInput{width:100%;height:34px;padding:0 12px 0 30px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;font-family:inherit;outline:none;transition:border-color .15s,box-shadow .15s}
+    #globalSearchInput:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,175,55,.15)}
+    #globalSearchInput::-webkit-search-cancel-button{cursor:pointer}
+    .global-search-results{position:absolute;top:calc(100% + 6px);right:0;left:0;max-height:60vh;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.35);z-index:1000;padding:6px}
+    .gs-group{padding:6px 4px 2px}
+    .gs-group-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-2);padding:4px 8px}
+    .gs-item{display:block;width:100%;text-align:left;padding:8px 10px;border-radius:6px;border:none;background:transparent;color:var(--text);font-family:inherit;font-size:13px;cursor:pointer;line-height:1.3}
+    .gs-item:hover,.gs-item:focus{background:rgba(255,255,255,.06);outline:none}
+    .gs-item-label{font-weight:600}
+    .gs-item-sub{font-size:11px;color:var(--text-2);margin-top:2px}
+    .gs-empty{padding:18px 12px;text-align:center;color:var(--text-2);font-size:13px}
+    .gs-loading{padding:14px;text-align:center;color:var(--text-2);font-size:12px}
+    @media (max-width:760px){.global-search-wrap{display:none}}
     .topbar-title{font-size:16px;font-weight:700;color:var(--text)}
     .topbar-sub{font-size:13px;color:var(--text-2);margin-left:4px}
     .topbar-actions{margin-left:auto;display:flex;align-items:center;gap:10px}
@@ -560,6 +575,11 @@
           <span class="topbar-sub" id="topbarSub"></span>
         </div>
         <div class="topbar-actions" id="topbarActions"></div>
+        <div class="global-search-wrap" id="globalSearchWrap">
+          <svg class="global-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="search" id="globalSearchInput" placeholder="Search…" autocomplete="off" spellcheck="false" />
+          <div class="global-search-results" id="globalSearchResults" hidden></div>
+        </div>
         <div id="orderingToggleWrap" style="margin-left:auto;display:flex;align-items:center;gap:10px">
           <div style="display:flex;flex-direction:column;align-items:flex-end;line-height:1.2;max-width:240px">
             <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-2)">Online Ordering</span>
@@ -2738,6 +2758,90 @@
   el('nextDay').addEventListener('click',()=>shiftDay(1));
   el('todayBtn').addEventListener('click',()=>{state.currentDate=todayStr();updateDateUI();loadBookings()});
   el('searchInput').addEventListener('input',()=>{state.searchQ=el('searchInput').value.toLowerCase();renderBookings()});
+
+  /* ── Global search (RBAC-aware, server-filtered) ── */
+  (function setupGlobalSearch(){
+    const input=el('globalSearchInput');
+    const wrap=el('globalSearchWrap');
+    const results=el('globalSearchResults');
+    if(!input||!wrap||!results) return;
+    let timer=null;
+    let lastReqId=0;
+    const GROUPS=[
+      {key:'bookings',title:'Bookings',page:'bookings'},
+      {key:'customers',title:'Customers',page:'bookings'},
+      {key:'memberships',title:'Memberships',page:'memberships'},
+      {key:'products',title:'Products',page:'menu'},
+      {key:'events',title:'Events',page:'payments'},
+      {key:'staff',title:'Staff',page:'staff'},
+    ];
+    function escapeHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+    function close(){results.hidden=true;results.innerHTML='';}
+    function open(html){results.innerHTML=html;results.hidden=false;}
+    function handleClick(group,item){
+      close();
+      input.value='';
+      const target=GROUPS.find(g=>g.key===group);
+      if(!target) return;
+      navigateTo(target.page);
+      // Best-effort deep-link: prefill local search where one exists.
+      if(group==='bookings' || group==='customers'){
+        setTimeout(()=>{
+          const local=el('searchInput');
+          if(local){
+            const q=group==='bookings'?String(item.id):(item.label||'').split('·')[0].trim();
+            local.value=q;
+            local.dispatchEvent(new Event('input',{bubbles:true}));
+          }
+        },50);
+      }
+    }
+    async function runSearch(q){
+      const myId=++lastReqId;
+      try{
+        const r=await api('/api/staff/search?q='+encodeURIComponent(q));
+        if(myId!==lastReqId) return; // stale
+        const data=await r.json();
+        const groups=data.groups||{};
+        const blocks=[];
+        let total=0;
+        for(const g of GROUPS){
+          const list=Array.isArray(groups[g.key])?groups[g.key]:[];
+          if(!list.length) continue;
+          total+=list.length;
+          const items=list.map(it=>{
+            const sub=it.sub?`<div class="gs-item-sub">${escapeHtml(it.sub)}</div>`:'';
+            return `<button type="button" class="gs-item" data-group="${g.key}" data-id="${escapeHtml(it.id)}" data-label="${escapeHtml(it.label||'')}">
+              <div class="gs-item-label">${escapeHtml(it.label||'')}</div>${sub}
+            </button>`;
+          }).join('');
+          blocks.push(`<div class="gs-group"><div class="gs-group-title">${g.title}</div>${items}</div>`);
+        }
+        if(!total){
+          open(`<div class="gs-empty">No matches for &ldquo;${escapeHtml(q)}&rdquo;</div>`);
+        }else{
+          open(blocks.join(''));
+          results.querySelectorAll('.gs-item').forEach(btn=>{
+            btn.addEventListener('click',()=>{
+              handleClick(btn.dataset.group,{id:btn.dataset.id,label:btn.dataset.label});
+            });
+          });
+        }
+      }catch(e){
+        if(myId===lastReqId) open('<div class="gs-empty">Search failed</div>');
+      }
+    }
+    input.addEventListener('input',()=>{
+      const q=input.value.trim();
+      if(timer){clearTimeout(timer);timer=null;}
+      if(q.length<2){close();return;}
+      open('<div class="gs-loading">Searching…</div>');
+      timer=setTimeout(()=>runSearch(q),250);
+    });
+    input.addEventListener('focus',()=>{const q=input.value.trim();if(q.length>=2)runSearch(q);});
+    input.addEventListener('keydown',e=>{if(e.key==='Escape'){input.value='';close();input.blur();}});
+    document.addEventListener('click',e=>{if(!wrap.contains(e.target))close();});
+  })();
   document.querySelectorAll('.filter-pill[data-type]').forEach(p=>{
     p.addEventListener('click',()=>{
       state.tableFilter=p.dataset.type;

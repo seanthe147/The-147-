@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { eq, lt, lte, sql, and, gt, isNull, isNotNull, gte, desc, inArray, ne } from "drizzle-orm";
+import { eq, lt, lte, sql, and, gt, isNull, isNotNull, gte, desc, inArray, ne, ilike, or } from "drizzle-orm";
 import {
   type User,
   type InsertUser,
@@ -418,6 +418,7 @@ export interface IStorage {
   createBooking(booking: InsertBooking): Promise<Booking>;
   getBookings(): Promise<Booking[]>;
   getBookingsByDate(date: string): Promise<Booking[]>;
+  searchBookings(q: string, limit?: number): Promise<Booking[]>;
   getBooking(id: number): Promise<Booking | undefined>;
   updateBookingStatus(id: number, status: string): Promise<Booking | undefined>;
   updateBooking(id: number, data: Partial<InsertBooking>): Promise<Booking | undefined>;
@@ -610,6 +611,78 @@ export class DatabaseStorage implements IStorage {
   async getBookingsByDate(date: string): Promise<Booking[]> {
     const results = await db.select().from(bookings).where(eq(bookings.date, date)).orderBy(bookings.startTime);
     return results.map(decryptBookingFields);
+  }
+
+  // Booking PII (customer_name/email/phone) is encrypted at rest, so SQL ILIKE
+  // against those columns matches ciphertext and is useless. We use three paths
+  // in priority order to balance correctness with performance:
+  //   1. Numeric query → exact id lookup (cheap, indexed).
+  //   2. Email-shaped query → emailHash exact lookup (cheap, indexed).
+  //   3. Otherwise → fetch the most recent SCAN_LIMIT bookings, decrypt each,
+  //      and substring-match in memory. Mirrors how searchCustomers works.
+  // SCAN_LIMIT bounds the worst-case work per keystroke; older bookings are
+  // not full-text searchable until we add derived searchable columns.
+  async searchBookings(q: string, limit = 5): Promise<Booking[]> {
+    const trimmed = q.trim();
+    if (trimmed.length < 2) return [];
+    const seen = new Set<number>();
+    const out: Booking[] = [];
+    const push = (b: Booking) => {
+      if (seen.has(b.id) || out.length >= limit) return;
+      seen.add(b.id);
+      out.push(b);
+    };
+
+    // Path 1 — exact id match.
+    const asNumber = Number(trimmed);
+    if (Number.isInteger(asNumber) && asNumber > 0 && asNumber < 2_147_483_647) {
+      const [byId] = await db.select().from(bookings).where(eq(bookings.id, asNumber)).limit(1);
+      if (byId) push(decryptBookingFields(byId));
+    }
+
+    // Path 2 — exact email-hash lookup. emailHash is set by encryptBookingFields.
+    if (trimmed.includes("@")) {
+      const hash = hashEmail(trimmed);
+      const byEmail = await db
+        .select()
+        .from(bookings)
+        .where(eq(bookings.emailHash, hash))
+        .orderBy(desc(bookings.date), desc(bookings.startTime))
+        .limit(limit);
+      for (const b of byEmail) push(decryptBookingFields(b));
+    }
+    if (out.length >= limit) return out;
+
+    // Path 3 — bounded in-memory substring scan (handles legacy plaintext rows
+    // and partial name/phone queries against encrypted rows).
+    const SCAN_LIMIT = 500;
+    const recent = await db
+      .select()
+      .from(bookings)
+      .orderBy(desc(bookings.date), desc(bookings.startTime))
+      .limit(SCAN_LIMIT);
+    const needle = trimmed.toLowerCase();
+    const needleDigits = trimmed.replace(/\D/g, "");
+    for (const raw of recent) {
+      if (out.length >= limit) break;
+      let dec: Booking;
+      try {
+        dec = decryptBookingFields(raw);
+      } catch {
+        continue;
+      }
+      const name = (dec.customerName || "").toLowerCase();
+      const email = (dec.customerEmail || "").toLowerCase();
+      const phone = (dec.customerPhone || "").toLowerCase();
+      const phoneDigits = phone.replace(/\D/g, "");
+      const hit =
+        name.includes(needle) ||
+        email.includes(needle) ||
+        phone.includes(needle) ||
+        (needleDigits.length >= 3 && phoneDigits.includes(needleDigits));
+      if (hit) push(dec);
+    }
+    return out;
   }
 
   async getBooking(id: number): Promise<Booking | undefined> {

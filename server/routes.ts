@@ -1633,6 +1633,171 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Global RBAC-aware search.
+  // - Always requires an approved staff session (staffAuth).
+  // - Each result group is gated server-side by role. Plain staff cannot see
+  //   customers, bookings, memberships, or other staff records — those groups
+  //   are simply not queried for them.
+  // - Returns a uniform shape so the dashboard can render results without
+  //   guessing the caller's permissions on the client.
+  app.get("/api/staff/search", staffAuth, async (req, res) => {
+    const q = String(req.query.q || "").trim();
+    const groups = {
+      products: [] as Array<{ id: string; label: string; sub?: string }>,
+      events: [] as Array<{ id: string; label: string; sub?: string }>,
+      customers: [] as Array<{ id: string; label: string; sub?: string }>,
+      bookings: [] as Array<{ id: string; label: string; sub?: string }>,
+      memberships: [] as Array<{ id: string; label: string; sub?: string }>,
+      staff: [] as Array<{ id: string; label: string; sub?: string }>,
+    };
+
+    const role: string = (req as any).staffUser?.role || "staff";
+    const isManager = role === "manager" || role === "owner";
+
+    if (q.length < 2) {
+      return res.json({ q, role, groups });
+    }
+
+    const needle = q.toLowerCase();
+    const tasks: Promise<unknown>[] = [];
+
+    // ── PRODUCTS (all staff) ────────────────────────────────────────────────
+    tasks.push((async () => {
+      try {
+        const categories = await square.getMenuFromSquare();
+        const matches: { id: string; label: string; sub?: string }[] = [];
+        for (const cat of categories) {
+          for (const item of cat.items) {
+            const name = String(item.name || "");
+            const variant = String(item.variationName || "");
+            if (
+              name.toLowerCase().includes(needle) ||
+              variant.toLowerCase().includes(needle)
+            ) {
+              const priceNum = Number(item.price);
+              const priceLabel = Number.isFinite(priceNum) ? `£${(priceNum / 100).toFixed(2)}` : "";
+              const subParts = [cat.name, variant && variant !== name ? variant : null, priceLabel]
+                .filter(Boolean);
+              matches.push({
+                id: item.variationId,
+                label: name || variant || "(unnamed)",
+                sub: subParts.join(" · "),
+              });
+              if (matches.length >= 5) break;
+            }
+          }
+          if (matches.length >= 5) break;
+        }
+        groups.products = matches;
+      } catch (err) {
+        console.error("[global-search] products error:", err);
+      }
+    })());
+
+    // ── EVENTS (all staff) ──────────────────────────────────────────────────
+    tasks.push((async () => {
+      try {
+        const events = await storage.getActiveEvents();
+        groups.events = events
+          .filter(e =>
+            (e.title || "").toLowerCase().includes(needle) ||
+            (e.description || "").toLowerCase().includes(needle)
+          )
+          .slice(0, 5)
+          .map(e => ({
+            id: String(e.id),
+            label: e.title || `Event #${e.id}`,
+            sub: [e.eventType === "weekly" ? `Weekly · ${e.dayOfWeek || ""}`.trim() : e.date, e.time]
+              .filter(Boolean)
+              .join(" · "),
+          }));
+      } catch (err) {
+        console.error("[global-search] events error:", err);
+      }
+    })());
+
+    // ── MANAGER-ONLY GROUPS ────────────────────────────────────────────────
+    if (isManager) {
+      // Customers
+      tasks.push((async () => {
+        try {
+          const customers = await storage.searchCustomers(q, 5);
+          groups.customers = customers.map(c => ({
+            id: c.id != null ? String(c.id) : c.email,
+            label: c.name || c.email || c.phone || "(unnamed)",
+            sub: [c.email, c.phone].filter(Boolean).join(" · "),
+          }));
+        } catch (err) {
+          console.error("[global-search] customers error:", err);
+        }
+      })());
+
+      // Bookings
+      tasks.push((async () => {
+        try {
+          const matches = await storage.searchBookings(q, 5);
+          groups.bookings = matches.map(b => ({
+            id: String(b.id),
+            label: `#${b.id} · ${b.customerName || "(no name)"}`,
+            sub: [
+              b.date,
+              b.startTime,
+              b.tableType,
+              b.tableNumber ? `Table ${b.tableNumber}` : null,
+              b.status,
+            ].filter(Boolean).join(" · "),
+          }));
+        } catch (err) {
+          console.error("[global-search] bookings error:", err);
+        }
+      })());
+
+      // Memberships (plans)
+      tasks.push((async () => {
+        try {
+          const plans = await storage.getMembershipPlans(false);
+          groups.memberships = plans
+            .filter(p =>
+              (p.name || "").toLowerCase().includes(needle) ||
+              (p.tier || "").toLowerCase().includes(needle)
+            )
+            .slice(0, 5)
+            .map(p => ({
+              id: String(p.id),
+              label: p.name || p.tier,
+              sub: `${p.tier} · £${(p.priceMonthly / 100).toFixed(2)}/mo`,
+            }));
+        } catch (err) {
+          console.error("[global-search] memberships error:", err);
+        }
+      })());
+
+      // Staff users
+      tasks.push((async () => {
+        try {
+          const all = await storage.getAllStaffUsers();
+          groups.staff = all
+            .filter(s =>
+              (s.username || "").toLowerCase().includes(needle) ||
+              (s.displayName || "").toLowerCase().includes(needle)
+            )
+            .slice(0, 5)
+            .map(s => ({
+              id: String(s.id),
+              label: s.displayName || s.username,
+              sub: [s.username, s.role, s.active ? null : "inactive", s.approvalStatus !== "approved" ? s.approvalStatus : null]
+                .filter(Boolean).join(" · "),
+            }));
+        } catch (err) {
+          console.error("[global-search] staff error:", err);
+        }
+      })());
+    }
+
+    await Promise.all(tasks);
+    res.json({ q, role, groups });
+  });
+
   // Manager-initiated password reset — emails the verified customer a reset link.
   // Mirrors POST /api/customers/forgot-password but requires staff manager auth
   // and identifies the customer by id (preferred) or email.
