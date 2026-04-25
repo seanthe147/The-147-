@@ -1032,6 +1032,57 @@ var init_storage = __esm({
         const results = await db.select().from(bookings).where(eq(bookings.date, date)).orderBy(bookings.startTime);
         return results.map(decryptBookingFields);
       }
+      // Booking PII (customer_name/email/phone) is encrypted at rest, so SQL ILIKE
+      // against those columns matches ciphertext and is useless. We use three paths
+      // in priority order to balance correctness with performance:
+      //   1. Numeric query → exact id lookup (cheap, indexed).
+      //   2. Email-shaped query → emailHash exact lookup (cheap, indexed).
+      //   3. Otherwise → fetch the most recent SCAN_LIMIT bookings, decrypt each,
+      //      and substring-match in memory. Mirrors how searchCustomers works.
+      // SCAN_LIMIT bounds the worst-case work per keystroke; older bookings are
+      // not full-text searchable until we add derived searchable columns.
+      async searchBookings(q, limit = 5) {
+        const trimmed = q.trim();
+        if (trimmed.length < 2) return [];
+        const seen = /* @__PURE__ */ new Set();
+        const out = [];
+        const push = (b) => {
+          if (seen.has(b.id) || out.length >= limit) return;
+          seen.add(b.id);
+          out.push(b);
+        };
+        const asNumber = Number(trimmed);
+        if (Number.isInteger(asNumber) && asNumber > 0 && asNumber < 2147483647) {
+          const [byId] = await db.select().from(bookings).where(eq(bookings.id, asNumber)).limit(1);
+          if (byId) push(decryptBookingFields(byId));
+        }
+        if (trimmed.includes("@")) {
+          const hash = hashEmail(trimmed);
+          const byEmail = await db.select().from(bookings).where(eq(bookings.emailHash, hash)).orderBy(desc(bookings.date), desc(bookings.startTime)).limit(limit);
+          for (const b of byEmail) push(decryptBookingFields(b));
+        }
+        if (out.length >= limit) return out;
+        const SCAN_LIMIT = 500;
+        const recent = await db.select().from(bookings).orderBy(desc(bookings.date), desc(bookings.startTime)).limit(SCAN_LIMIT);
+        const needle = trimmed.toLowerCase();
+        const needleDigits = trimmed.replace(/\D/g, "");
+        for (const raw of recent) {
+          if (out.length >= limit) break;
+          let dec;
+          try {
+            dec = decryptBookingFields(raw);
+          } catch {
+            continue;
+          }
+          const name = (dec.customerName || "").toLowerCase();
+          const email = (dec.customerEmail || "").toLowerCase();
+          const phone = (dec.customerPhone || "").toLowerCase();
+          const phoneDigits = phone.replace(/\D/g, "");
+          const hit = name.includes(needle) || email.includes(needle) || phone.includes(needle) || needleDigits.length >= 3 && phoneDigits.includes(needleDigits);
+          if (hit) push(dec);
+        }
+        return out;
+      }
       async getBooking(id) {
         const [booking] = await db.select().from(bookings).where(eq(bookings.id, id));
         return booking ? decryptBookingFields(booking) : void 0;
@@ -5998,6 +6049,127 @@ async function registerRoutes(app2) {
       res.json([]);
     }
   });
+  app2.get("/api/staff/search", staffAuth, async (req, res) => {
+    const q = String(req.query.q || "").trim();
+    const groups = {
+      products: [],
+      events: [],
+      customers: [],
+      bookings: [],
+      memberships: [],
+      staff: []
+    };
+    const role = req.staffUser?.role || "staff";
+    const isManager = role === "manager" || role === "owner";
+    if (q.length < 2) {
+      return res.json({ q, role, groups });
+    }
+    const needle = q.toLowerCase();
+    const tasks = [];
+    tasks.push((async () => {
+      try {
+        const categories = await getMenuFromSquare();
+        const matches = [];
+        for (const cat of categories) {
+          for (const item of cat.items) {
+            const name = String(item.name || "");
+            const variant = String(item.variationName || "");
+            if (name.toLowerCase().includes(needle) || variant.toLowerCase().includes(needle)) {
+              const priceNum = Number(item.price);
+              const priceLabel = Number.isFinite(priceNum) ? `\xA3${(priceNum / 100).toFixed(2)}` : "";
+              const subParts = [cat.name, variant && variant !== name ? variant : null, priceLabel].filter(Boolean);
+              matches.push({
+                id: item.variationId,
+                label: name || variant || "(unnamed)",
+                sub: subParts.join(" \xB7 ")
+              });
+              if (matches.length >= 5) break;
+            }
+          }
+          if (matches.length >= 5) break;
+        }
+        groups.products = matches;
+      } catch (err) {
+        console.error("[global-search] products error:", err);
+      }
+    })());
+    tasks.push((async () => {
+      try {
+        const events2 = await storage.getActiveEvents();
+        groups.events = events2.filter(
+          (e) => (e.title || "").toLowerCase().includes(needle) || (e.description || "").toLowerCase().includes(needle)
+        ).slice(0, 5).map((e) => ({
+          id: String(e.id),
+          label: e.title || `Event #${e.id}`,
+          sub: [e.eventType === "weekly" ? `Weekly \xB7 ${e.dayOfWeek || ""}`.trim() : e.date, e.time].filter(Boolean).join(" \xB7 ")
+        }));
+      } catch (err) {
+        console.error("[global-search] events error:", err);
+      }
+    })());
+    if (isManager) {
+      tasks.push((async () => {
+        try {
+          const customers2 = await storage.searchCustomers(q, 5);
+          groups.customers = customers2.map((c) => ({
+            id: c.id != null ? String(c.id) : c.email,
+            label: c.name || c.email || c.phone || "(unnamed)",
+            sub: [c.email, c.phone].filter(Boolean).join(" \xB7 ")
+          }));
+        } catch (err) {
+          console.error("[global-search] customers error:", err);
+        }
+      })());
+      tasks.push((async () => {
+        try {
+          const matches = await storage.searchBookings(q, 5);
+          groups.bookings = matches.map((b) => ({
+            id: String(b.id),
+            label: `#${b.id} \xB7 ${b.customerName || "(no name)"}`,
+            sub: [
+              b.date,
+              b.startTime,
+              b.tableType,
+              b.tableNumber ? `Table ${b.tableNumber}` : null,
+              b.status
+            ].filter(Boolean).join(" \xB7 ")
+          }));
+        } catch (err) {
+          console.error("[global-search] bookings error:", err);
+        }
+      })());
+      tasks.push((async () => {
+        try {
+          const plans = await storage.getMembershipPlans(false);
+          groups.memberships = plans.filter(
+            (p) => (p.name || "").toLowerCase().includes(needle) || (p.tier || "").toLowerCase().includes(needle)
+          ).slice(0, 5).map((p) => ({
+            id: String(p.id),
+            label: p.name || p.tier,
+            sub: `${p.tier} \xB7 \xA3${(p.priceMonthly / 100).toFixed(2)}/mo`
+          }));
+        } catch (err) {
+          console.error("[global-search] memberships error:", err);
+        }
+      })());
+      tasks.push((async () => {
+        try {
+          const all = await storage.getAllStaffUsers();
+          groups.staff = all.filter(
+            (s) => (s.username || "").toLowerCase().includes(needle) || (s.displayName || "").toLowerCase().includes(needle)
+          ).slice(0, 5).map((s) => ({
+            id: String(s.id),
+            label: s.displayName || s.username,
+            sub: [s.username, s.role, s.active ? null : "inactive", s.approvalStatus !== "approved" ? s.approvalStatus : null].filter(Boolean).join(" \xB7 ")
+          }));
+        } catch (err) {
+          console.error("[global-search] staff error:", err);
+        }
+      })());
+    }
+    await Promise.all(tasks);
+    res.json({ q, role, groups });
+  });
   app2.post("/api/staff/customers/forgot-password", staffAuth, managerAuth, async (req, res) => {
     const staffActor = req.staffUser;
     const actorUsername = staffActor?.username || "system";
@@ -9513,10 +9685,26 @@ async function registerRoutes(app2) {
     if (!emailRegex.test(email)) {
       return res.status(400).json({ message: "Invalid email address" });
     }
+    const regRl = checkRateLimit(`reg:${clientIp}`, 5, 15 * 60 * 1e3);
+    if (!regRl.allowed) {
+      res.setHeader("Retry-After", String(regRl.retryAfter));
+      return res.status(429).json({ message: "Too many attempts. Please try again later." });
+    }
     try {
       const existing = await storage.getCustomerByEmail(email);
       if (existing) {
-        return res.status(409).json({ message: "An account with this email already exists" });
+        const notifyRl = checkRateLimit(`reg-notify:${email.toLowerCase()}`, 1, 60 * 60 * 1e3);
+        if (notifyRl.allowed) {
+          const domain = process.env.REPLIT_DOMAINS?.split(",")[0] ?? "";
+          const origin = domain ? `https://${domain}` : "";
+          sendEmailViaSMTP(
+            existing.email,
+            "Someone tried to register with your email",
+            `<p>Hi ${existing.name},</p><p>Someone attempted to create a new account at The 147 Club using your email address. If this was you, you already have an account \u2014 simply <a href="${origin}/account">sign in</a>. If it was not you, no action is needed.</p>`
+          ).catch(() => {
+          });
+        }
+        return res.status(200).json({ success: true });
       }
       const { hash, salt } = hashPin(password);
       const passwordHash = `${salt}:${hash}`;
@@ -9527,13 +9715,7 @@ async function registerRoutes(app2) {
         emailVerifyTokenHash: verifyTokenHash,
         emailVerifyTokenExpiresAt: verifyExpiresAt
       });
-      const token = randomBytes3(48).toString("hex");
-      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3);
-      await storage.createCustomerSession(token, customer.id, expiresAt);
-      res.status(201).json({
-        token,
-        customer: { id: customer.id, name: customer.name, email: customer.email, phone: customer.phone, emailVerified: false }
-      });
+      res.status(200).json({ success: true });
       sendVerificationEmail({ name: customer.name, email: customer.email, tokenRaw: verifyTokenRaw });
       syncSquareMembershipForCustomer(customer.id, customer.email);
     } catch (err) {
@@ -9676,11 +9858,15 @@ async function registerRoutes(app2) {
         return res.json({ success: true });
       }
       if (!customer.emailVerified) {
-        return res.status(403).json({
-          code: "EMAIL_NOT_VERIFIED",
-          message: "Please verify your email address before resetting your password. We can resend the verification link.",
-          email: customer.email
-        });
+        const lastSent2 = customer.emailVerifyLastSentAt;
+        if (!lastSent2 || Date.now() - lastSent2.getTime() >= 6e4) {
+          const verifyTokenRaw = randomBytes3(32).toString("hex");
+          const verifyTokenHash = createHash2("sha256").update(verifyTokenRaw).digest("hex");
+          const verifyExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1e3);
+          await storage.setEmailVerificationToken(customer.id, verifyTokenHash, verifyExpiresAt);
+          sendVerificationEmail({ name: customer.name, email: customer.email, tokenRaw: verifyTokenRaw });
+        }
+        return res.json({ success: true });
       }
       const lastSent = customer.passwordResetLastSentAt;
       if (lastSent && Date.now() - lastSent.getTime() < 6e4) {
@@ -10035,33 +10221,6 @@ Phone: ${phone}` : ""}`,
     }));
     res.set("Cache-Control", "no-store");
     res.json(enriched);
-  });
-  app2.post("/api/membership/check-email", async (req, res) => {
-    const ip = getClientIp(req);
-    const limit = checkRateLimit(`member-check:${ip}`, 20, 60 * 1e3);
-    if (!limit.allowed) {
-      res.setHeader("Retry-After", String(limit.retryAfter));
-      return res.status(429).json({ isMember: false });
-    }
-    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
-    if (!email || email.length < 5 || email.length > 254 || !email.includes("@") || !email.includes(".")) {
-      return res.json({ isMember: false });
-    }
-    res.set("Cache-Control", "no-store");
-    try {
-      const cust = await storage.getCustomerByEmail(email);
-      if (!cust) return res.json({ isMember: false });
-      const sub = await storage.getMembershipSubscriptionByCustomer(cust.id);
-      const isActive = sub?.status === "active";
-      const notCancelled = !sub?.cancelledAt;
-      const periodValid = !sub?.currentPeriodEnd || new Date(sub.currentPeriodEnd) >= /* @__PURE__ */ new Date();
-      const hasDiscount = (sub?.plan?.foodDrinkDiscount ?? 0) > 0;
-      const isMember = !!(sub && isActive && notCancelled && periodValid && hasDiscount);
-      return res.json({ isMember });
-    } catch (err) {
-      console.warn("[MEMBERSHIP] check-email failed:", err.message);
-      return res.json({ isMember: false });
-    }
   });
   app2.get("/api/membership/my-subscription", customerAuth, async (req, res) => {
     const customerId = req.customerId;
