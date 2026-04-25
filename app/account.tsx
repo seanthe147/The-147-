@@ -156,8 +156,8 @@ export default function AccountScreen() {
 
 function AuthView({ login, register, requestPasswordReset, resendVerificationEmailFor, prefillEmail, initialMode }: {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  register: (name: string, email: string, phone: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  requestPasswordReset: (email: string) => Promise<{ success: boolean; error?: string; needsVerification?: boolean }>;
+  register: (name: string, email: string, phone: string, password: string) => Promise<{ success: boolean; pending?: boolean; error?: string }>;
+  requestPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
   resendVerificationEmailFor: (email: string) => Promise<{ success: boolean; error?: string }>;
   prefillEmail?: string;
   initialMode?: AuthMode;
@@ -173,10 +173,9 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
   const [mode, setMode] = useState<AuthMode>(initialMode ?? "login");
   const [showForgot, setShowForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
-  const [forgotState, setForgotState] = useState<"idle" | "sending" | "sent" | "needs-verification">("idle");
+  const [forgotState, setForgotState] = useState<"idle" | "sending" | "sent">("idle");
   const [forgotMessage, setForgotMessage] = useState<string | null>(null);
-  const [resendingVerify, setResendingVerify] = useState(false);
-  const [resendVerifyMsg, setResendVerifyMsg] = useState<string | null>(null);
+  const [registerPending, setRegisterPending] = useState(false);
   const [email, setEmail] = useState(prefillEmail ?? "");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -188,18 +187,12 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
   const handleForgot = async () => {
     const email = forgotEmail.trim();
     setForgotMessage(null);
-    setResendVerifyMsg(null);
     if (!email || !email.includes("@")) {
       setForgotMessage("Please enter a valid email address.");
       return;
     }
     setForgotState("sending");
     const result = await requestPasswordReset(email);
-    if (result.needsVerification) {
-      setForgotState("needs-verification");
-      setForgotMessage(result.error || "Please verify your email first.");
-      return;
-    }
     if (result.success) {
       setForgotState("sent");
       setForgotMessage("If an account exists for that email, we've sent a reset link. Please check your inbox.");
@@ -207,22 +200,6 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
     }
     setForgotState("idle");
     setForgotMessage(result.error || "Could not send reset link.");
-  };
-
-  const [resendVerifySent, setResendVerifySent] = useState(false);
-
-  const handleResendVerify = async () => {
-    setResendingVerify(true);
-    setResendVerifyMsg(null);
-    const result = await resendVerificationEmailFor(forgotEmail.trim());
-    setResendingVerify(false);
-    if (result.success) {
-      setResendVerifySent(true);
-      setResendVerifyMsg("Verification email sent — check your inbox.");
-    } else {
-      setResendVerifySent(false);
-      setResendVerifyMsg(result.error || "Could not send verification email.");
-    }
   };
 
   if (showForgot) {
@@ -233,7 +210,7 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
         </View>
         <Text style={styles.authTitle}>Reset Password</Text>
         <Text style={styles.authSubtitle}>
-          Enter the email on your account and we'll send you a reset link. For your security, your email must be verified before we can send the link.
+          Enter the email on your account and we'll send you a reset link.
         </Text>
 
         <Text style={styles.inputLabel}>Email Address</Text>
@@ -249,7 +226,7 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
           testID="forgot-email"
         />
 
-        {forgotMessage && forgotState !== "needs-verification" ? (
+        {forgotMessage ? (
           <View style={forgotState === "sent" ? styles.infoBanner : styles.errorBanner}>
             <Ionicons
               name={forgotState === "sent" ? "checkmark-circle" : "alert-circle"}
@@ -257,24 +234,6 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
               color={forgotState === "sent" ? "#16A34A" : "#DC2626"}
             />
             <Text style={forgotState === "sent" ? styles.infoText : styles.errorText}>{forgotMessage}</Text>
-          </View>
-        ) : null}
-
-        {forgotState === "needs-verification" ? (
-          <View style={styles.warningBanner}>
-            <Text style={styles.warningTitle}>Verify your email first</Text>
-            <Text style={styles.warningText}>{forgotMessage}</Text>
-            <Pressable
-              onPress={handleResendVerify}
-              disabled={resendingVerify}
-              style={({ pressed }) => [styles.warningButton, { opacity: pressed || resendingVerify ? 0.7 : 1 }]}
-              testID="forgot-resend-verification"
-            >
-              <Text style={styles.warningButtonText}>
-                {resendingVerify ? "Sending..." : resendVerifySent ? "Verification email sent ✓" : "Resend verification email"}
-              </Text>
-            </Pressable>
-            {resendVerifyMsg ? <Text style={styles.warningHint}>{resendVerifyMsg}</Text> : null}
           </View>
         ) : null}
 
@@ -296,7 +255,6 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
             setShowForgot(false);
             setForgotState("idle");
             setForgotMessage(null);
-            setResendVerifyMsg(null);
           }}
           style={styles.switchMode}
         >
@@ -371,7 +329,9 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
       setError(result.error || "Registration failed");
       return;
     }
-    await maybePromptBiometric({ email: trimmedEmail, password: enteredPassword });
+    // Registration always results in a "check your email" pending state —
+    // the server never returns a session token during registration.
+    setRegisterPending(true);
   };
 
   const handleBiometricSignIn = async () => {
@@ -381,6 +341,26 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
       setError(result.error);
     }
   };
+
+  if (registerPending) {
+    return (
+      <ScrollView style={styles.scrollContent} contentContainerStyle={styles.scrollInner} keyboardShouldPersistTaps="handled">
+        <View style={styles.authIcon}>
+          <Ionicons name="mail-outline" size={70} color={Colors.brand.blue} />
+        </View>
+        <Text style={styles.authTitle}>Check Your Email</Text>
+        <Text style={styles.authSubtitle}>
+          If that email address is available, we've created your account and sent a verification link. Please check your inbox and follow the link to get started.
+        </Text>
+        <Pressable
+          onPress={() => { setRegisterPending(false); setMode("login"); }}
+          style={({ pressed }) => [styles.submitButton, { opacity: pressed ? 0.7 : 1, marginTop: 24 }]}
+        >
+          <Text style={styles.submitButtonText}>Back to Sign In</Text>
+        </Pressable>
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView style={styles.scrollContent} contentContainerStyle={styles.scrollInner} keyboardShouldPersistTaps="handled">

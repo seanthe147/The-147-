@@ -5852,10 +5852,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!emailRegex.test(email)) {
       return res.status(400).json({ message: "Invalid email address" });
     }
+    // Per-IP registration rate limit — independent of login-failure tracking.
+    const regRl = checkRateLimit(`reg:${clientIp}`, 5, 15 * 60 * 1000);
+    if (!regRl.allowed) {
+      res.setHeader("Retry-After", String(regRl.retryAfter));
+      return res.status(429).json({ message: "Too many attempts. Please try again later." });
+    }
     try {
       const existing = await storage.getCustomerByEmail(email);
       if (existing) {
-        return res.status(409).json({ message: "An account with this email already exists" });
+        // Don't reveal whether the email is already registered. Return the
+        // same generic success response that a successful registration returns,
+        // so unauthenticated callers cannot determine account existence.
+        // A one-per-hour notification email is sent to the existing owner as a
+        // security heads-up. We use a rate-limit key keyed to the email address
+        // (not a DB timestamp) so the throttle is reliably enforced and updated
+        // atomically without an extra DB write.
+        const notifyRl = checkRateLimit(`reg-notify:${email.toLowerCase()}`, 1, 60 * 60 * 1000);
+        if (notifyRl.allowed) {
+          const domain = process.env.REPLIT_DOMAINS?.split(",")[0] ?? "";
+          const origin = domain ? `https://${domain}` : "";
+          sendEmailViaSMTP(
+            existing.email,
+            "Someone tried to register with your email",
+            `<p>Hi ${existing.name},</p><p>Someone attempted to create a new account at The 147 Club using your email address. If this was you, you already have an account — simply <a href="${origin}/account">sign in</a>. If it was not you, no action is needed.</p>`
+          ).catch(() => {});
+        }
+        return res.status(200).json({ success: true });
       }
       const { hash, salt } = hashPin(password);
       const passwordHash = `${salt}:${hash}`;
@@ -5867,13 +5890,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         emailVerifyTokenHash: verifyTokenHash,
         emailVerifyTokenExpiresAt: verifyExpiresAt,
       });
-      const token = randomBytes(48).toString("hex");
-      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-      await storage.createCustomerSession(token, customer.id, expiresAt);
-      res.status(201).json({
-        token,
-        customer: { id: customer.id, name: customer.name, email: customer.email, phone: customer.phone, emailVerified: false },
-      });
+      // No session token is returned in the registration response — the client
+      // must log in after verifying their email. This ensures the response is
+      // identical in shape to the existing-account path and prevents enumeration
+      // via response content or status code differences.
+      res.status(200).json({ success: true });
       // Non-blocking: send verification email
       sendVerificationEmail({ name: customer.name, email: customer.email, tokenRaw: verifyTokenRaw });
       // Non-blocking: auto-link any existing Square membership for this email
@@ -6012,9 +6033,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Forgot password — request a reset link.
-  // Privacy: when the email isn't registered we still return 200 (no enumeration).
-  // BUT when the account exists and the email is NOT verified, we refuse and tell
-  // the UI so it can prompt the user to finish verification first.
+  // Privacy: always return 200 regardless of whether the email is registered or
+  // verified, so that unauthenticated callers cannot determine account existence
+  // or verification state. When the account exists but is unverified we silently
+  // resend the verification email instead so the user can complete that step.
   app.post("/api/customers/forgot-password", async (req, res) => {
     const clientIp = getClientIp(req);
     if (!checkSensitiveRateLimit(clientIp)) {
@@ -6035,11 +6057,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ success: true });
       }
       if (!customer.emailVerified) {
-        return res.status(403).json({
-          code: "EMAIL_NOT_VERIFIED",
-          message: "Please verify your email address before resetting your password. We can resend the verification link.",
-          email: customer.email,
-        });
+        // Account exists but email is unverified. Don't reveal this state via
+        // a distinct error code — instead silently resend the verification email
+        // so the user can complete verification, then return generic success.
+        const lastSent = customer.emailVerifyLastSentAt;
+        if (!lastSent || Date.now() - lastSent.getTime() >= 60_000) {
+          const verifyTokenRaw = randomBytes(32).toString("hex");
+          const verifyTokenHash = createHash("sha256").update(verifyTokenRaw).digest("hex");
+          const verifyExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+          await storage.setEmailVerificationToken(customer.id, verifyTokenHash, verifyExpiresAt);
+          sendVerificationEmail({ name: customer.name, email: customer.email, tokenRaw: verifyTokenRaw });
+        }
+        return res.json({ success: true });
       }
       // Per-account cooldown — one reset email per 60s
       const lastSent = customer.passwordResetLastSentAt;
@@ -6432,43 +6461,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }));
     res.set("Cache-Control", "no-store");
     res.json(enriched);
-  });
-
-  // ── Membership — check whether an email is registered to an active member ───
-  // Used by the checkout UI so we can prompt members who are typing their email
-  // as a guest to sign in and claim their discount instead of silently paying
-  // full price. Returns only a boolean — never the plan, name, or any other
-  // membership detail — to limit usefulness for enumeration.
-  app.post("/api/membership/check-email", async (req, res) => {
-    const ip = getClientIp(req);
-    // Rate limit: 20 lookups per minute per IP. Plenty for a real checkout
-    // (one debounced lookup per email entered) and tight enough to discourage
-    // bulk enumeration of the customer table.
-    const limit = checkRateLimit(`member-check:${ip}`, 20, 60 * 1000);
-    if (!limit.allowed) {
-      res.setHeader("Retry-After", String(limit.retryAfter));
-      return res.status(429).json({ isMember: false });
-    }
-    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
-    // Cheap email shape check — no need to lookup nonsense strings.
-    if (!email || email.length < 5 || email.length > 254 || !email.includes("@") || !email.includes(".")) {
-      return res.json({ isMember: false });
-    }
-    res.set("Cache-Control", "no-store");
-    try {
-      const cust = await storage.getCustomerByEmail(email);
-      if (!cust) return res.json({ isMember: false });
-      const sub = await storage.getMembershipSubscriptionByCustomer(cust.id);
-      const isActive = sub?.status === "active";
-      const notCancelled = !sub?.cancelledAt;
-      const periodValid = !sub?.currentPeriodEnd || new Date(sub.currentPeriodEnd) >= new Date();
-      const hasDiscount = (sub?.plan?.foodDrinkDiscount ?? 0) > 0;
-      const isMember = !!(sub && isActive && notCancelled && periodValid && hasDiscount);
-      return res.json({ isMember });
-    } catch (err: any) {
-      console.warn("[MEMBERSHIP] check-email failed:", err.message);
-      return res.json({ isMember: false });
-    }
   });
 
   // ── Membership — customer: get own subscription ──────────────────────────────

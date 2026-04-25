@@ -827,36 +827,6 @@ function CartSheet({
     staleTime: 5 * 60 * 1000,
   });
 
-  // ── Member-discount sign-in prompt ──────────────────────────────────────────
-  // When a guest types an email that belongs to an active member, prompt them
-  // to sign in so they don't silently pay full price. Server returns only a
-  // boolean — no plan or PII — so this is safe to expose.
-  const [emailIsMember, setEmailIsMember] = useState(false);
-  useEffect(() => {
-    if (customer) { setEmailIsMember(false); return; }
-    const email = guestEmail.trim().toLowerCase();
-    if (!guestMode || email.length < 5 || !email.includes("@") || !email.includes(".")) {
-      setEmailIsMember(false);
-      return;
-    }
-    let cancelled = false;
-    const t = setTimeout(async () => {
-      try {
-        const url = new URL("/api/membership/check-email", getApiUrl());
-        const res = await fetch(url.toString(), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email }),
-        });
-        if (!res.ok) { if (!cancelled) setEmailIsMember(false); return; }
-        const data = await res.json();
-        if (!cancelled) setEmailIsMember(!!data?.isMember);
-      } catch {
-        if (!cancelled) setEmailIsMember(false);
-      }
-    }, 500);
-    return () => { cancelled = true; clearTimeout(t); };
-  }, [guestEmail, guestMode, customer]);
 
   const isValidMember =
     memberSub?.status === "active" &&
@@ -1387,37 +1357,6 @@ function CartSheet({
                         returnKeyType="done"
                       />
                     </View>
-                    {emailIsMember ? (
-                      <View style={styles.memberPromptBanner} testID="member-signin-prompt">
-                        <View style={{ flexDirection: "row" as const, alignItems: "flex-start" as const, gap: 8 }}>
-                          <Ionicons name="diamond" size={18} color="#0047AB" style={{ marginTop: 1 }} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.memberPromptTitle}>This email is registered as a member</Text>
-                            <Text style={styles.memberPromptBody}>
-                              Sign in to claim your member discount on this order — otherwise you'll be charged the full price.
-                            </Text>
-                          </View>
-                        </View>
-                        <Pressable
-                          onPress={() => {
-                            const email = guestEmail.trim();
-                            handleClose();
-                            router.push({
-                              pathname: "/account",
-                              params: {
-                                returnTo: "order",
-                                prefillEmail: email,
-                              },
-                            });
-                          }}
-                          style={({ pressed }) => [styles.memberPromptBtn, { opacity: pressed ? 0.85 : 1 }]}
-                          testID="member-signin-btn"
-                        >
-                          <Ionicons name="person-circle-outline" size={18} color="#fff" />
-                          <Text style={styles.memberPromptBtnText}>Sign In to Claim Discount</Text>
-                        </Pressable>
-                      </View>
-                    ) : null}
                     <Pressable onPress={() => setGuestMode(false)} hitSlop={8}>
                       <Text style={styles.coBackLink}>← Back to options</Text>
                     </Pressable>
@@ -2820,43 +2759,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.brand.blue,
     marginTop: 4,
-  },
-  memberPromptBanner: {
-    backgroundColor: "#EFF6FF",
-    borderWidth: 1,
-    borderColor: "#BFDBFE",
-    borderRadius: 12,
-    padding: 12,
-    marginTop: 12,
-    marginBottom: 4,
-    gap: 10,
-  },
-  memberPromptTitle: {
-    fontFamily: "Montserrat_700Bold",
-    fontSize: 14,
-    color: "#0A1628",
-  },
-  memberPromptBody: {
-    fontFamily: "Montserrat_400Regular",
-    fontSize: 13,
-    color: "#1E3A5F",
-    marginTop: 2,
-    lineHeight: 18,
-  },
-  memberPromptBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    backgroundColor: Colors.brand.blue,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-  },
-  memberPromptBtnText: {
-    fontFamily: "Montserrat_700Bold",
-    fontSize: 14,
-    color: "#fff",
   },
   coNotesHeader: {
     flexDirection: "row",

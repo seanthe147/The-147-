@@ -28,13 +28,13 @@ interface CustomerAuthContextValue {
   isLoading: boolean;
   customer: CustomerProfile | null;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  register: (name: string, email: string, phone: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  register: (name: string, email: string, phone: string, password: string) => Promise<{ success: boolean; pending?: boolean; error?: string }>;
   logout: () => Promise<void>;
   updateProfile: (data: { name?: string; phone?: string }) => Promise<{ success: boolean; error?: string }>;
   deleteAccount: () => Promise<{ success: boolean; error?: string }>;
   refreshProfile: () => Promise<void>;
   resendVerificationEmail: () => Promise<{ success: boolean; error?: string }>;
-  requestPasswordReset: (email: string) => Promise<{ success: boolean; error?: string; needsVerification?: boolean }>;
+  requestPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
   resendVerificationEmailFor: (email: string) => Promise<{ success: boolean; error?: string }>;
   getCustomerToken: () => string | null;
   biometricSupported: boolean;
@@ -149,7 +149,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
   }, [bindPushToken]);
 
-  const register = useCallback(async (name: string, email: string, phone: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  const register = useCallback(async (name: string, email: string, phone: string, password: string): Promise<{ success: boolean; pending?: boolean; error?: string }> => {
     try {
       const baseUrl = getApiUrl();
       const url = new URL("/api/customers/register", baseUrl);
@@ -164,17 +164,15 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: data.message || "Registration failed" };
       }
 
-      const data = await res.json();
-      await AsyncStorage.setItem(TOKEN_KEY, data.token);
-      setToken(data.token);
-      setCustomer(data.customer);
-      setLastLoginCredentials({ email, password });
-      bindPushToken(data.token).catch(() => {});
-      return { success: true };
+      // Server always returns { success: true } with no session token — the
+      // user must verify their email and then log in. This keeps the response
+      // identical whether the email was already registered or not, preventing
+      // account enumeration through response differences.
+      return { success: true, pending: true };
     } catch {
       return { success: false, error: "Connection error" };
     }
-  }, [bindPushToken]);
+  }, []);
 
   const logout = useCallback(async () => {
     if (token) {
@@ -269,7 +267,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
   }, [token]);
 
-  const requestPasswordReset = useCallback(async (email: string): Promise<{ success: boolean; error?: string; needsVerification?: boolean }> => {
+  const requestPasswordReset = useCallback(async (email: string): Promise<{ success: boolean; error?: string }> => {
     try {
       const baseUrl = getApiUrl();
       const url = new URL("/api/customers/forgot-password", baseUrl);
@@ -278,10 +276,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
-      const data: { message?: string; code?: string; email?: string } = await res.json().catch(() => ({}));
-      if (res.status === 403 && data.code === "EMAIL_NOT_VERIFIED") {
-        return { success: false, needsVerification: true, error: data.message || "Please verify your email first." };
-      }
+      const data: { message?: string } = await res.json().catch(() => ({}));
       if (!res.ok) {
         return { success: false, error: data.message || "Could not send reset link" };
       }

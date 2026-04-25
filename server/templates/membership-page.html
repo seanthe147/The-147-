@@ -431,9 +431,10 @@
             </span>
           </label>
           <div class="form-err" id="regErr"></div>
+          <div id="regMsg" style="display:none;background:#DCFCE7;border:1px solid #86EFAC;color:#166534;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.45;margin-bottom:10px;"></div>
           <button class="submit-btn" id="regBtn" style="background:#0047AB;color:#fff;opacity:.55;cursor:not-allowed" disabled onclick="doRegister()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
-            Create Account &amp; Pay
+            Create Account
           </button>
         </div>
 
@@ -454,15 +455,10 @@
 
         <!-- Forgot password -->
         <div class="tab-panel" id="panelForgot" style="display:none;">
-          <p style="color:#4B5A72;font-size:13px;line-height:1.5;margin-bottom:14px;">Enter the email on your account and we'll send a reset link. For your security, your email must be verified before we can send the link.</p>
+          <p style="color:#4B5A72;font-size:13px;line-height:1.5;margin-bottom:14px;">Enter the email on your account and we'll send you a reset link.</p>
           <div class="fld"><label>Email</label><input type="email" id="fEmail" placeholder="john@example.com" autocomplete="email"></div>
           <div class="form-err" id="forgotErr"></div>
           <div class="form-msg" id="forgotMsg" style="display:none;background:#DCFCE7;border:1px solid #86EFAC;color:#166534;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.45;margin-bottom:10px;"></div>
-          <div id="forgotUnverified" style="display:none;background:#FEF3C7;border:1px solid #FCD34D;color:#92400E;padding:12px;border-radius:10px;font-size:13px;line-height:1.45;margin-bottom:10px;">
-            <div style="font-weight:700;margin-bottom:6px;">Verify your email first</div>
-            <div id="forgotUnverifiedMsg" style="margin-bottom:8px;">Please confirm your email address before resetting your password.</div>
-            <button type="button" id="forgotResendBtn" onclick="doResendVerify()" style="background:#0047AB;color:#fff;border:0;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Resend verification email</button>
-          </div>
           <button class="submit-btn" id="forgotBtn" style="background:#0047AB;color:#fff" onclick="doForgot()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
             Send reset link
@@ -657,7 +653,6 @@
     if(le)document.getElementById('fEmail').value=le;
     document.getElementById('forgotErr').classList.remove('show');
     document.getElementById('forgotMsg').style.display='none';
-    document.getElementById('forgotUnverified').style.display='none';
   }
   function hideForgot(){
     document.getElementById('panelForgot').style.display='none';
@@ -665,7 +660,6 @@
     if(activeTab==='login')document.getElementById('panelLogin').classList.add('active');
     document.getElementById('forgotErr').classList.remove('show');
     document.getElementById('forgotMsg').style.display='none';
-    document.getElementById('forgotUnverified').style.display='none';
   }
   window.showForgot=showForgot;window.hideForgot=hideForgot;
   window.openModal=openModal;
@@ -715,16 +709,14 @@
       });
       const d=await r.json();
       if(!r.ok){err.textContent=d.message||'Registration failed.';err.classList.add('show');return}
-      authToken=d.token;
-      try{localStorage.setItem('the147_customer_token',d.token)}catch(_){}
-      // Newly registered — surface the verification email notice in the success pane
-      const vn=document.getElementById('verifyNotice');
-      if(vn)vn.style.display='block';
-      // ...and the page-wide banner for any future visit
-      showVerifyBanner(false);
-      await doJoin();
+      // Server always returns { success: true } without a session token —
+      // the user must verify their email and then sign in. This makes the
+      // response indistinguishable between new and already-registered addresses.
+      const msg=document.getElementById('regMsg');
+      if(msg){msg.textContent="If that email isn't already registered, we've created your account and sent a verification link. Please check your inbox, then sign in.";msg.style.display='block';}
+      return;
     }catch{err.textContent='Network error — please try again.';err.classList.add('show');}
-    finally{btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>Create Account & Pay';syncConsentBtn();}
+    finally{btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>Create Account';syncConsentBtn();}
   }
   window.doRegister=doRegister;
 
@@ -758,20 +750,13 @@
     const email=document.getElementById('fEmail').value.trim();
     const err=document.getElementById('forgotErr');
     const msg=document.getElementById('forgotMsg');
-    const unv=document.getElementById('forgotUnverified');
-    err.classList.remove('show');msg.style.display='none';unv.style.display='none';
+    err.classList.remove('show');msg.style.display='none';
     if(!email||!email.includes('@')){err.textContent='Please enter a valid email address.';err.classList.add('show');return;}
     const btn=document.getElementById('forgotBtn');
     btn.disabled=true;btn.textContent='Sending…';
     try{
       const r=await fetch(API+'/api/customers/forgot-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})});
       const d=await r.json().catch(()=>({}));
-      if(r.status===403 && d.code==='EMAIL_NOT_VERIFIED'){
-        document.getElementById('forgotUnverifiedMsg').textContent=d.message||'Please confirm your email address before resetting your password.';
-        unv.dataset.email=d.email||email;
-        unv.style.display='block';
-        return;
-      }
       if(!r.ok){err.textContent=d.message||'Could not send reset link.';err.classList.add('show');return;}
       msg.textContent="If an account exists for that email, we've sent a reset link. Please check your inbox.";
       msg.style.display='block';
@@ -779,20 +764,6 @@
     finally{btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>Send reset link';}
   }
   window.doForgot=doForgot;
-
-  async function doResendVerify(){
-    const unv=document.getElementById('forgotUnverified');
-    const email=unv.dataset.email||document.getElementById('fEmail').value.trim();
-    if(!email)return;
-    const btn=document.getElementById('forgotResendBtn');
-    btn.disabled=true;const orig=btn.textContent;btn.textContent='Sending…';
-    try{
-      await fetch(API+'/api/customers/resend-verification-public',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})});
-      btn.textContent='Verification email sent ✓';
-      setTimeout(()=>{btn.disabled=false;btn.textContent=orig;},60000);
-    }catch{btn.disabled=false;btn.textContent=orig;}
-  }
-  window.doResendVerify=doResendVerify;
 
   /* ── verification banner ── */
   function showVerifyBanner(isResent){
