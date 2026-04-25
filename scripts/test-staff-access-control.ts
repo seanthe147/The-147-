@@ -16,6 +16,7 @@
 import { storage } from "../server/storage";
 import { hashPassword } from "../server/encryption";
 import { randomBytes } from "node:crypto";
+import type { InsertBooking } from "../shared/schema";
 
 const PORT = process.env.PORT || "5000";
 const BASE = `http://localhost:${PORT}`;
@@ -84,54 +85,53 @@ async function call(method: string, path: string, token: string | null, body?: u
     console.log(`[setup] manager=${managerSession.username} staff=${staffSession.username}`);
 
     // ── FINDING 1: registration must NOT auto-approve any role ─────────────
+    // STAFF_PIN presence is enforced by the fail-closed guard above, so it's
+    // safe to assume it's set here.
     console.log("\n=== Finding 1: shared PIN cannot mint auto-approved accounts ===");
-    const staffPin = process.env.STAFF_PIN;
-    if (!staffPin) {
-      console.log("  SKIP STAFF_PIN not set in this environment — cannot exercise /api/staff/register");
-    } else {
-      const newUsername = `ac_reg_${rid()}`;
-      createdUsernamesForCleanup.push(newUsername);
-      const reg = await call("POST", "/api/staff/register", null, {
-        masterPin: staffPin,
-        username: newUsername,
-        password: "Testing!1234",
-        role: "staff",
-      });
-      check(reg.status === 201, `register: 201 Created (got ${reg.status})`);
-      check(reg.body?.approvalStatus === "pending", `register: plain "staff" role lands in 'pending' (got ${reg.body?.approvalStatus})`);
+    const staffPin = process.env.STAFF_PIN!;
 
-      // Try to log in as the freshly registered (still-pending) account.
-      const login = await call("POST", "/api/staff/login", null, {
-        username: newUsername,
-        password: "Testing!1234",
-      });
-      check(login.status === 401 || login.status === 403, `login: pending account is rejected (got ${login.status})`);
+    const newUsername = `ac_reg_${rid()}`;
+    createdUsernamesForCleanup.push(newUsername);
+    const reg = await call("POST", "/api/staff/register", null, {
+      masterPin: staffPin,
+      username: newUsername,
+      password: "Testing!1234",
+      role: "staff",
+    });
+    check(reg.status === 201, `register: 201 Created (got ${reg.status})`);
+    check(reg.body?.approvalStatus === "pending", `register: plain "staff" role lands in 'pending' (got ${reg.body?.approvalStatus})`);
 
-      // Sanity: same flow with role=manager must also stay pending (it always
-      // did, but pin this so future refactors don't re-introduce role-based
-      // auto-approval the other way).
-      const mgrUsername = `ac_reg_mgr_${rid()}`;
-      createdUsernamesForCleanup.push(mgrUsername);
-      const regMgr = await call("POST", "/api/staff/register", null, {
-        masterPin: staffPin,
-        username: mgrUsername,
-        password: "Testing!1234",
-        role: "manager",
-      });
-      check(regMgr.body?.approvalStatus === "pending", `register: "manager" role lands in 'pending' (got ${regMgr.body?.approvalStatus})`);
+    // Try to log in as the freshly registered (still-pending) account.
+    const login = await call("POST", "/api/staff/login", null, {
+      username: newUsername,
+      password: "Testing!1234",
+    });
+    check(login.status === 401 || login.status === 403, `login: pending account is rejected (got ${login.status})`);
 
-      // Negative: wrong masterPin must not create an account.
-      const badUsername = `ac_reg_bad_${rid()}`;
-      const regBad = await call("POST", "/api/staff/register", null, {
-        masterPin: "obviously-wrong-pin",
-        username: badUsername,
-        password: "Testing!1234",
-        role: "staff",
-      });
-      check(regBad.status === 401, `register: wrong masterPin rejected with 401 (got ${regBad.status})`);
-      const leaked = await storage.getStaffUserByUsername(badUsername);
-      check(!leaked, "register: no account row created when masterPin is wrong");
-    }
+    // Sanity: same flow with role=manager must also stay pending (it always
+    // did, but pin this so future refactors don't re-introduce role-based
+    // auto-approval the other way).
+    const mgrUsername = `ac_reg_mgr_${rid()}`;
+    createdUsernamesForCleanup.push(mgrUsername);
+    const regMgr = await call("POST", "/api/staff/register", null, {
+      masterPin: staffPin,
+      username: mgrUsername,
+      password: "Testing!1234",
+      role: "manager",
+    });
+    check(regMgr.body?.approvalStatus === "pending", `register: "manager" role lands in 'pending' (got ${regMgr.body?.approvalStatus})`);
+
+    // Negative: wrong masterPin must not create an account.
+    const badUsername = `ac_reg_bad_${rid()}`;
+    const regBad = await call("POST", "/api/staff/register", null, {
+      masterPin: "obviously-wrong-pin",
+      username: badUsername,
+      password: "Testing!1234",
+      role: "staff",
+    });
+    check(regBad.status === 401, `register: wrong masterPin rejected with 401 (got ${regBad.status})`);
+    const leaked = await storage.getStaffUserByUsername(badUsername);
+    check(!leaked, "register: no account row created when masterPin is wrong");
 
     // ── FINDING 2: plain staff cannot reach manager-only endpoints ─────────
     console.log("\n=== Finding 2: plain staff sessions get 403 on manager-only endpoints ===");
@@ -139,7 +139,7 @@ async function call(method: string, path: string, token: string | null, body?: u
     // Seed a real booking so the per-:id endpoints have something to act on.
     // The booking storage layer encrypts PII, so we use a marker name that
     // won't conflict with real data.
-    const created = await storage.createBooking({
+    const seedBooking: InsertBooking = {
       customerName: `AcTest_${rid()}`,
       customerEmail: `ac_${rid()}@example.test`,
       customerPhone: "07700900000",
@@ -154,7 +154,8 @@ async function call(method: string, path: string, token: string | null, body?: u
       gdprConsent: true,
       depositRequired: false,
       depositPaid: false,
-    } as any);
+    };
+    const created = await storage.createBooking(seedBooking);
     testBookingId = created.id;
 
     type Probe = { method: string; path: string; body?: unknown; label: string };
