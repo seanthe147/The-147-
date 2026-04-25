@@ -2810,8 +2810,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           description: `Dining Deposit – Booking ${bookingRef} (${guestCount} guests)`,
           referenceId: bookingRef,
           redirectUrl,
+          buyerEmail: parsed.data.customerEmail,
         });
-        await storage.updateBooking(booking.id, { depositPaymentId: paymentLink.paymentLinkId });
+        // Store the Square order ID (not the link ID) so the webhook can
+        // perform an exact server-side match via payment.order_id.
+        const depositKey = paymentLink.orderId ?? paymentLink.paymentLinkId;
+        await storage.updateBooking(booking.id, { depositPaymentId: depositKey });
 
         if (depositHandling === "send_link") {
           const emailSent = await sendDepositLinkEmail({
@@ -3295,7 +3299,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       let booking: Awaited<ReturnType<typeof storage.getBooking>> | undefined;
 
-      // Strategy 0: exact match via payment_note booking reference (most reliable)
+      // Strategy 0: exact match via payment_note booking reference
+      // (dynamic-link path sets payment_note to the '147-XXXXX' ref)
       if (paymentNote && paymentNote.startsWith("147-")) {
         const bookingId = parseInt(paymentNote.replace("147-", "").replace(/^0+/, "") || "0");
         if (!isNaN(bookingId) && bookingId > 0) {
@@ -3307,34 +3312,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Strategy 1: match by buyer email
+      // Strategy 0.5: exact server-side match via Square order ID stored at
+      // payment-link creation time. This is the most tamper-proof binding for
+      // dynamic links because the key is generated server-side and never
+      // exposed to the customer.
       if (!booking) {
-        const buyerEmail = payment.buyer_email_address as string | undefined;
-        if (buyerEmail) {
-          const byEmail = await storage.getBookingsByEmail(buyerEmail);
-          const pending = byEmail.filter(b => b.status === "pending_deposit");
-          if (pending.length > 0) {
-            booking = pending.sort((a, b) => b.id - a.id)[0];
-            console.log(`[WEBHOOK] Matched booking #${booking.id} by email: ${maskEmail(buyerEmail)}`);
+        const paymentOrderId = payment.order_id as string | undefined;
+        if (paymentOrderId) {
+          const byOrderId = await storage.getBookingByDepositPaymentId(paymentOrderId).catch(() => undefined);
+          if (byOrderId && byOrderId.status === "pending_deposit") {
+            booking = byOrderId;
+            console.log(`[WEBHOOK] Matched booking #${booking.id} by Square order ID: ${paymentOrderId}`);
           }
         }
       }
 
-      // Strategy 2: time-proximity fallback (most recent pending deposit within 4 hours)
+      // No further fallbacks. Email-based matching is intentionally omitted:
+      // it cannot distinguish which booking the payer intended and allows
+      // wrong-booking confirmation (especially in static-link mode where all
+      // bookings share one Square URL). If neither Strategy 0 nor 0.5 matched,
+      // the payment is left unreconciled for manual staff review.
       if (!booking) {
-        const all = await storage.getBookings();
-        const cutoff = Date.now() - 4 * 60 * 60 * 1000;
-        const recent = all
-          .filter(b => b.status === "pending_deposit" && new Date(b.createdAt ?? 0).getTime() > cutoff)
-          .sort((a, b) => b.id - a.id);
-        if (recent.length > 0) {
-          booking = recent[0];
-          console.log(`[WEBHOOK] Matched booking #${booking.id} by time proximity (no email match)`);
-        }
-      }
-
-      if (!booking) {
-        console.warn("[WEBHOOK] No pending_deposit booking found for this payment");
+        console.warn("[WEBHOOK] No server-bound pending_deposit booking found for this payment — leaving unconfirmed for manual review");
         return res.sendStatus(200);
       }
 

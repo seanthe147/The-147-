@@ -345,10 +345,11 @@ export async function createDepositPaymentLink(opts: {
   description: string;
   referenceId: string;
   redirectUrl: string;
-}): Promise<{ url: string; paymentLinkId: string }> {
+  buyerEmail?: string;
+}): Promise<{ url: string; paymentLinkId: string; orderId?: string }> {
   const locationId = getLocationId();
 
-  const data = await squareRequest("POST", "/v2/online-checkout/payment-links", {
+  const body: Record<string, unknown> = {
     idempotency_key: `deposit-${opts.referenceId}-${Date.now()}`,
     quick_pay: {
       name: opts.description,
@@ -362,12 +363,19 @@ export async function createDepositPaymentLink(opts: {
       redirect_url: opts.redirectUrl,
     },
     payment_note: opts.referenceId,
-  });
+  };
+
+  if (opts.buyerEmail) {
+    body.pre_populated_data = { buyer_email: opts.buyerEmail };
+  }
+
+  const data = await squareRequest("POST", "/v2/online-checkout/payment-links", body);
 
   const link = data.payment_link;
   return {
     url: link.url,
     paymentLinkId: link.id,
+    orderId: (link.order_id as string | undefined) ?? undefined,
   };
 }
 

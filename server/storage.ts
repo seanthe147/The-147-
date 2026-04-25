@@ -430,6 +430,7 @@ export interface IStorage {
   validateStaffSession(token: string): Promise<StaffSession | undefined>;
   invalidateStaffSession(token: string): Promise<boolean>;
   getBookingsByEmail(email: string): Promise<Booking[]>;
+  getBookingByDepositPaymentId(depositPaymentId: string): Promise<Booking | undefined>;
   deleteBookingsByEmail(email: string): Promise<number>;
   deletePushTokensByEmail(email: string): Promise<number>;
   deleteOrdersByEmail(email: string): Promise<number>;
@@ -752,6 +753,11 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(staffSessions.staffUsername, normalised), eq(staffSessions.active, true)))
       .returning();
     return result.length;
+  }
+
+  async getBookingByDepositPaymentId(depositPaymentId: string): Promise<Booking | undefined> {
+    const [booking] = await db.select().from(bookings).where(eq(bookings.depositPaymentId, depositPaymentId));
+    return booking ? decryptBookingFields(booking) : undefined;
   }
 
   async getBookingsByEmail(email: string): Promise<Booking[]> {
