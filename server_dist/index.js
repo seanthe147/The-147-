@@ -5673,7 +5673,6 @@ async function registerRoutes(app2) {
       return res.status(400).json({ message: "Role must be 'staff', 'manager', or 'owner'" });
     }
     const assignedRole = role || "staff";
-    const needsApproval = assignedRole === "manager" || assignedRole === "owner";
     const staffUser = await storage.createStaffUser({
       username: username.trim(),
       passwordHash: pwHash,
@@ -5684,11 +5683,11 @@ async function registerRoutes(app2) {
       mustChangePassword: !pwHash,
       displayName: displayName?.trim() || void 0,
       role: assignedRole,
-      approvalStatus: needsApproval ? "pending" : "approved"
+      approvalStatus: "pending"
     });
     clearFailedLogins(clientIp);
     res.status(201).json({
-      message: needsApproval ? "Account created and awaiting manager approval before you can sign in." : "Staff account created",
+      message: "Account created and awaiting owner approval before you can sign in.",
       username: staffUser.username,
       displayName: staffUser.displayName,
       role: staffUser.role,
@@ -5955,7 +5954,7 @@ async function registerRoutes(app2) {
     if (!deleted) return res.status(404).json({ message: "Staff user not found" });
     res.json({ message: "Staff account deleted" });
   });
-  app2.get("/api/staff/customers/search", staffAuth, async (req, res) => {
+  app2.get("/api/staff/customers/search", staffAuth, managerAuth, async (req, res) => {
     const q = String(req.query.q || "").trim();
     if (q.length < 2) return res.json([]);
     try {
@@ -7017,7 +7016,7 @@ async function registerRoutes(app2) {
     }).catch((err) => console.error("[BOOKING] Email send error:", err));
     res.status(201).json(booking);
   });
-  app2.post("/api/staff/bookings/repeat", staffAuth, async (req, res) => {
+  app2.post("/api/staff/bookings/repeat", staffAuth, managerAuth, async (req, res) => {
     const { repeatType, repeatCount, ...bookingData } = req.body ?? {};
     if (!repeatType || !["daily", "weekly"].includes(repeatType)) {
       return res.status(400).json({ message: "repeatType must be 'daily' or 'weekly'" });
@@ -7169,7 +7168,7 @@ async function registerRoutes(app2) {
     if (!deleted) return res.status(404).json({ message: "Popup not found" });
     res.status(204).send();
   });
-  app2.get("/api/bookings", staffAuth, async (req, res) => {
+  app2.get("/api/bookings", staffAuth, managerAuth, async (req, res) => {
     const { date } = req.query;
     if (date) {
       const bookingsList = await storage.getBookingsByDate(String(date));
@@ -7178,7 +7177,7 @@ async function registerRoutes(app2) {
     const allBookings = await storage.getBookings();
     res.json(allBookings);
   });
-  app2.get("/api/bookings/:id", staffAuth, async (req, res) => {
+  app2.get("/api/bookings/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const booking = await storage.getBooking(id);
@@ -7489,7 +7488,7 @@ async function registerRoutes(app2) {
     const bookingRef = `147-${id.toString().padStart(5, "0")}`;
     res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Payment Received</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f9fafb}div{text-align:center;padding:32px}</style></head><body><div><div style="font-size:48px">&#10003;</div><h2 style="color:#16A34A">Payment Received</h2><p>Your deposit for booking <strong>${bookingRef}</strong> has been submitted.</p><p style="color:#6b7280;font-size:14px">Your booking will be confirmed shortly. You can close this window and return to The 147 app.</p></div></body></html>`);
   });
-  app2.patch("/api/bookings/:id/complete", staffAuth, async (req, res) => {
+  app2.patch("/api/bookings/:id/complete", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const booking = await storage.getBooking(id);
@@ -7521,7 +7520,7 @@ async function registerRoutes(app2) {
     });
     res.json({ message: "Booking marked as completed", depositRefunded, refundId, refundError });
   });
-  app2.patch("/api/bookings/:id/noshow", staffAuth, async (req, res) => {
+  app2.patch("/api/bookings/:id/noshow", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const booking = await storage.getBooking(id);
@@ -7530,7 +7529,7 @@ async function registerRoutes(app2) {
     console.log(`[NO-SHOW] Booking #${id} marked as no-show \u2014 deposit retained`);
     res.json({ message: "Booking marked as no-show" });
   });
-  app2.patch("/api/bookings/:id/status", staffAuth, async (req, res) => {
+  app2.patch("/api/bookings/:id/status", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const { status } = req.body;
@@ -7553,7 +7552,7 @@ async function registerRoutes(app2) {
     }
     res.json(booking);
   });
-  app2.put("/api/bookings/:id", staffAuth, async (req, res) => {
+  app2.put("/api/bookings/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const existing = await storage.getBooking(id);
@@ -7596,7 +7595,7 @@ async function registerRoutes(app2) {
     if (!updated) return res.status(404).json({ message: "Booking not found" });
     res.json(updated);
   });
-  app2.delete("/api/bookings/:id", staffAuth, async (req, res) => {
+  app2.delete("/api/bookings/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const deleted = await storage.deleteBooking(id);
