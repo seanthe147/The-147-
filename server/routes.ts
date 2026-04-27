@@ -2929,6 +2929,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         depositRequired: true,
         depositPaid: true,
       });
+      {
+        const u = (req as any).staffUser;
+        if (u) {
+          void storage.logBookingAction({
+            bookingId: booking.id,
+            action: "created",
+            staffUsername: u.username,
+            staffId: u.id ?? null,
+            toValue: { customerName: booking.customerName, date: booking.date, startTime: booking.startTime, tableType: booking.tableType, tableNumber: booking.tableNumber, status: booking.status, depositPaid: true },
+            note: "Created by staff (deposit marked as paid in person)",
+          });
+        }
+      }
       sendBookingConfirmationEmail({
         customerName: parsed.data.customerName,
         customerEmail: parsed.data.customerEmail,
@@ -2951,6 +2964,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       depositRequired: requiresDeposit,
       depositPaid: false,
     });
+    {
+      const u = (req as any).staffUser;
+      if (u) {
+        void storage.logBookingAction({
+          bookingId: booking.id,
+          action: "created",
+          staffUsername: u.username,
+          staffId: u.id ?? null,
+          toValue: { customerName: booking.customerName, date: booking.date, startTime: booking.startTime, tableType: booking.tableType, tableNumber: booking.tableNumber, status: booking.status, depositRequired: requiresDeposit },
+          note: requiresDeposit ? "Created by staff (deposit pending)" : "Created by staff",
+        });
+      }
+    }
 
     if (requiresDeposit) {
       const staticDepositUrl = process.env.SQUARE_DEPOSIT_LINK_URL;
@@ -3098,6 +3124,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         const booking = await storage.createBooking({ ...parsed.data, date: dateStr, tableNumber: finalTableNumber ?? undefined });
         createdBookings.push(booking);
+        {
+          const u = (req as any).staffUser;
+          void storage.logBookingAction({
+            bookingId: booking.id,
+            action: "created",
+            staffUsername: u?.username || (req as any).staffUsername || "unknown",
+            staffId: u?.id ?? null,
+            toValue: { customerName: booking.customerName, date: booking.date, startTime: booking.startTime, tableType: booking.tableType, tableNumber: booking.tableNumber },
+            note: `Created via repeat (${repeatType}, ${i + 1} of ${count})`,
+          });
+        }
       } catch (err) {
         console.error(`[repeat-booking] Error for date ${dateStr}:`, err);
         skippedDates.push(dateStr);
@@ -3519,6 +3556,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         squarePaymentId: payment.id ?? null,
       });
       console.log(`[WEBHOOK] Booking #${booking.id} confirmed automatically after deposit payment`);
+      void storage.logBookingAction({
+        bookingId: booking.id,
+        action: "status_changed",
+        staffUsername: "system:square-webhook",
+        staffId: null,
+        fromValue: { status: booking.status, depositPaid: booking.depositPaid },
+        toValue: { status: "confirmed", depositPaid: true, squarePaymentId: payment.id ?? null },
+        note: `Auto-confirmed after Square deposit payment ${payment.id ?? "(unknown id)"}`,
+      });
 
       // Send confirmation email
       sendBookingConfirmationEmail({
@@ -3588,6 +3634,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       status: "completed",
       ...(depositRefunded ? { depositRefunded: true } : {}),
     } as Parameters<typeof storage.updateBooking>[1]);
+    {
+      const u = (req as any).staffUser;
+      const note = depositRefunded
+        ? `Deposit refund issued (${refundId})`
+        : refundError
+          ? `Refund attempted but failed: ${refundError}`
+          : (booking.depositPaid ? "No refund (already refunded earlier)" : "No deposit on file");
+      void storage.logBookingAction({
+        bookingId: id,
+        action: "completed",
+        staffUsername: u?.username || (req as any).staffUsername || "unknown",
+        staffId: u?.id ?? null,
+        fromValue: { status: booking.status, depositRefunded: booking.depositRefunded },
+        toValue: { status: "completed", depositRefunded: depositRefunded || booking.depositRefunded, refundId: refundId ?? null },
+        note,
+      });
+    }
     res.json({ message: "Booking marked as completed", depositRefunded, refundId, refundError });
   });
 
@@ -3599,6 +3662,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!booking) return res.status(404).json({ message: "Booking not found" });
     await storage.updateBooking(id, { status: "no_show" } as Parameters<typeof storage.updateBooking>[1]);
     console.log(`[NO-SHOW] Booking #${id} marked as no-show — deposit retained`);
+    {
+      const u = (req as any).staffUser;
+      void storage.logBookingAction({
+        bookingId: id,
+        action: "noshow",
+        staffUsername: u?.username || (req as any).staffUsername || "unknown",
+        staffId: u?.id ?? null,
+        fromValue: { status: booking.status },
+        toValue: { status: "no_show" },
+        note: booking.depositPaid ? "Deposit retained" : null,
+      });
+    }
     res.json({ message: "Booking marked as no-show" });
   });
 
@@ -3609,8 +3684,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!status || !["confirmed", "cancelled"].includes(status)) {
       return res.status(400).json({ message: "Invalid status" });
     }
+    const previous = await storage.getBooking(id);
     const booking = await storage.updateBookingStatus(id, status);
     if (!booking) return res.status(404).json({ message: "Booking not found" });
+    {
+      const u = (req as any).staffUser;
+      void storage.logBookingAction({
+        bookingId: id,
+        action: "status_changed",
+        staffUsername: u?.username || (req as any).staffUsername || "unknown",
+        staffId: u?.id ?? null,
+        fromValue: { status: previous?.status ?? null },
+        toValue: { status },
+        note: status === "cancelled" ? "Booking cancelled" : "Booking confirmed",
+      });
+    }
 
     // Send targeted push notification to the customer
     try {
@@ -3675,15 +3763,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     const updated = await storage.updateBooking(id, updateData);
     if (!updated) return res.status(404).json({ message: "Booking not found" });
+    {
+      const u = (req as any).staffUser;
+      const trackedFields = ["customerName", "customerEmail", "customerPhone", "tableType", "tableNumber", "guestCount", "date", "startTime", "duration", "notes", "status"] as const;
+      const before: Record<string, unknown> = {};
+      const after: Record<string, unknown> = {};
+      const changes: string[] = [];
+      for (const f of trackedFields) {
+        const oldV = (existing as any)[f];
+        const newV = (updated as any)[f];
+        if (oldV !== newV) {
+          before[f] = oldV;
+          after[f] = newV;
+          changes.push(f);
+        }
+      }
+      if (changes.length > 0) {
+        void storage.logBookingAction({
+          bookingId: id,
+          action: "edited",
+          staffUsername: u?.username || (req as any).staffUsername || "unknown",
+          staffId: u?.id ?? null,
+          fromValue: before,
+          toValue: after,
+          note: `Changed: ${changes.join(", ")}`,
+        });
+      }
+    }
     res.json(updated);
   });
 
   app.delete("/api/bookings/:id", staffAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    // Capture a snapshot BEFORE deleting so the audit log records what was lost.
+    const snapshot = await storage.getBooking(id);
     const deleted = await storage.deleteBooking(id);
     if (!deleted) return res.status(404).json({ message: "Booking not found" });
+    if (snapshot) {
+      const u = (req as any).staffUser;
+      void storage.logBookingAction({
+        bookingId: id,
+        action: "deleted",
+        staffUsername: u?.username || (req as any).staffUsername || "unknown",
+        staffId: u?.id ?? null,
+        fromValue: {
+          customerName: snapshot.customerName,
+          customerEmail: snapshot.customerEmail,
+          customerPhone: snapshot.customerPhone,
+          date: snapshot.date,
+          startTime: snapshot.startTime,
+          duration: snapshot.duration,
+          tableType: snapshot.tableType,
+          tableNumber: snapshot.tableNumber,
+          status: snapshot.status,
+          depositPaid: snapshot.depositPaid,
+        },
+        note: `Booking permanently deleted (${snapshot.customerName} · ${snapshot.date} ${snapshot.startTime})`,
+      });
+    }
     res.status(204).send();
+  });
+
+  // Audit history for a single booking — visible to all staff so they can see
+  // who made changes / who deleted what when handling disputes at the venue.
+  app.get("/api/bookings/:id/audit-log", staffAuth, async (req, res) => {
+    const id = parseInt(req.params.id as string);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const entries = await storage.listBookingAuditLogForBooking(id, 200);
+    res.json(entries);
+  });
+
+  // Recent audit activity across all bookings — manager-only overview.
+  app.get("/api/bookings-audit-log/recent", staffAuth, managerAuth, async (req, res) => {
+    const limit = Math.min(parseInt(String(req.query.limit || "100")) || 100, 500);
+    const entries = await storage.listRecentBookingAuditLog(limit);
+    res.json(entries);
   });
 
   // GDPR export — requires staff manager+ authentication (not public)
@@ -6258,6 +6413,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ message: "Cannot cancel past bookings" });
     }
     const updated = await storage.updateBookingStatus(bookingId, "cancelled");
+    void storage.logBookingAction({
+      bookingId,
+      action: "status_changed",
+      staffUsername: `customer:${booking.customerEmail}`,
+      staffId: null,
+      fromValue: { status: booking.status },
+      toValue: { status: "cancelled" },
+      note: "Cancelled by customer via app",
+    });
     sendBookingCancellationEmail({
       customerName: booking.customerName,
       customerEmail: booking.customerEmail,
@@ -6326,6 +6490,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     const updated = await storage.updateBooking(bookingId, { date, startTime, duration: dur });
+    void storage.logBookingAction({
+      bookingId,
+      action: "edited",
+      staffUsername: `customer:${booking.customerEmail}`,
+      staffId: null,
+      fromValue: { date: booking.date, startTime: booking.startTime, duration: booking.duration },
+      toValue: { date, startTime, duration: dur },
+      note: "Rescheduled by customer via app",
+    });
     sendBookingRescheduleEmail({
       customerName: booking.customerName,
       customerEmail: booking.customerEmail,

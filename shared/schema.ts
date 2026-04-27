@@ -476,6 +476,30 @@ export const membershipAuditLog = pgTable("membership_audit_log", {
 
 export type MembershipAuditEntry = typeof membershipAuditLog.$inferSelect;
 
+// ── Booking audit log ────────────────────────────────────────────────────────
+// Trail of every staff-initiated booking action: create, edit, status change,
+// complete (with refund), no-show, delete. Now that ordinary staff can modify
+// bookings (not only managers), this gives a clear "who did what" record per
+// booking so disputes can be resolved. fromValue / toValue store JSON
+// snapshots of the relevant fields so the diff can be reconstructed without
+// joining other tables. note is a short human-readable summary.
+export const bookingAuditLog = pgTable("booking_audit_log", {
+  id: serial("id").primaryKey(),
+  bookingId: integer("booking_id").notNull(),
+  action: text("action").notNull(),
+  staffUsername: text("staff_username").notNull(),
+  staffId: integer("staff_id"),
+  fromValue: text("from_value"),
+  toValue: text("to_value"),
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  createdAtIdx: index("booking_audit_log_created_at_idx").on(table.createdAt),
+  bookingIdx: index("booking_audit_log_booking_id_idx").on(table.bookingId),
+}));
+
+export type BookingAuditEntry = typeof bookingAuditLog.$inferSelect;
+
 // ── Menu visibility overrides ─────────────────────────────────────────────────
 
 export const menuCategoryVisibility = pgTable("menu_category_visibility", {

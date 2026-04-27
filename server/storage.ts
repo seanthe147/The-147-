@@ -66,6 +66,8 @@ import {
   type PasswordResetAuditEntry,
   membershipAuditLog,
   type MembershipAuditEntry,
+  bookingAuditLog,
+  type BookingAuditEntry,
   staffTimeEntries,
   type StaffTimeEntry,
   staffLeaveRequests,
@@ -318,6 +320,31 @@ export async function runStartupMigrations() {
     await client.query(`
       CREATE INDEX IF NOT EXISTS membership_audit_log_customer_id_idx
         ON membership_audit_log (customer_id);
+    `);
+
+    // Audit trail of staff-initiated booking actions — created/edited/status
+    // change/completed/no-show/deleted. Now that ordinary staff (not just
+    // managers) can modify bookings, this gives a clear "who did what" record.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS booking_audit_log (
+        id SERIAL PRIMARY KEY,
+        booking_id INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        staff_username TEXT NOT NULL,
+        staff_id INTEGER,
+        from_value TEXT,
+        to_value TEXT,
+        note TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS booking_audit_log_created_at_idx
+        ON booking_audit_log (created_at DESC);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS booking_audit_log_booking_id_idx
+        ON booking_audit_log (booking_id);
     `);
 
     // Ensure VIP plan exists (10% food & drink, group-based, excludes stacking with deals)
@@ -2011,6 +2038,46 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(membershipAuditLog)
       .where(eq(membershipAuditLog.subscriptionId, subscriptionId))
       .orderBy(desc(membershipAuditLog.createdAt))
+      .limit(limit);
+  }
+
+  // ── Booking audit log ─────────────────────────────────────────────────────
+  // Never throws — audit logging must not break the request that triggered it.
+  // Errors are logged and swallowed so the booking action still succeeds.
+  async logBookingAction(data: {
+    bookingId: number;
+    action: string;
+    staffUsername: string;
+    staffId?: number | null;
+    fromValue?: unknown;
+    toValue?: unknown;
+    note?: string | null;
+  }): Promise<void> {
+    try {
+      await db.insert(bookingAuditLog).values({
+        bookingId: data.bookingId,
+        action: data.action,
+        staffUsername: data.staffUsername,
+        staffId: data.staffId ?? null,
+        fromValue: data.fromValue !== undefined ? JSON.stringify(data.fromValue) : null,
+        toValue: data.toValue !== undefined ? JSON.stringify(data.toValue) : null,
+        note: data.note ?? null,
+      });
+    } catch (err) {
+      console.error("[booking-audit] logBookingAction failed:", err);
+    }
+  }
+
+  async listBookingAuditLogForBooking(bookingId: number, limit = 100): Promise<BookingAuditEntry[]> {
+    return db.select().from(bookingAuditLog)
+      .where(eq(bookingAuditLog.bookingId, bookingId))
+      .orderBy(desc(bookingAuditLog.createdAt))
+      .limit(limit);
+  }
+
+  async listRecentBookingAuditLog(limit = 100): Promise<BookingAuditEntry[]> {
+    return db.select().from(bookingAuditLog)
+      .orderBy(desc(bookingAuditLog.createdAt))
       .limit(limit);
   }
 
