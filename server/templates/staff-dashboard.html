@@ -2610,10 +2610,15 @@
     const isManagerUser=state.role==='manager'||state.role==='owner';
     // Honour an optional URL hash (e.g. #memberships) so external deep-links
     // — like the weekly leftover-membership audit email — can open straight
-    // onto the right tab. Falls back to bookings for any unknown/missing tab
-    // or for tabs the current role isn't allowed to see.
+    // onto the right tab. Falls back to the role-aware default (bookings for
+    // managers/owners, HR for ordinary staff) for any unknown/missing tab or
+    // for tabs the current role isn't allowed to see.
     const tabNavIds={bookings:'navBookings',messages:'navMessages',comms:'navComms',staff:'navStaff',memberships:'navMemberships',menu:'navMenu',website:'navWebsite',banners:'navBanners',offers:'navOffers',payments:'navPayments',hr:'navHR',gdpr:'navGDPR',settings:'navSettings'};
-    let initialPage='bookings';
+    // Bookings is manager-only on the backend (staffAuth + managerAuth) so a
+    // non-manager landing there gets a 403 → "Failed to load bookings". Pick
+    // a safe default per role: managers/owners → bookings, ordinary staff →
+    // HR & Attendance (which gracefully handles either role).
+    let initialPage=isManagerUser?'bookings':'hr';
     try{
       const hash=(window.location.hash||'').replace(/^#/,'').toLowerCase();
       const navId=tabNavIds[hash];
@@ -2634,7 +2639,10 @@
     el('sidebarName').textContent=state.displayName||state.username||'Staff';
     el('sidebarRole').textContent=state.role.charAt(0).toUpperCase()+state.role.slice(1);
     el('sidebarRole').className='sidebar-user-role role-'+state.role;
-    el('navBookings').classList.remove('hidden');
+    // Bookings calendar (and the New Booking button below) is gated by
+    // managerAuth on the backend — hide for ordinary staff so they don't
+    // land on a permanently-failing tab.
+    el('navBookings').classList.toggle('hidden',!isManager);
     el('navMessages').classList.remove('hidden');
     el('navComms').classList.toggle('hidden',!isManager);
     el('navStaff').classList.toggle('hidden',!isOwner);
@@ -2655,8 +2663,14 @@
     el('navSectionAccount').classList.toggle('hidden',!isManager);
     el('bookingsTabAvailability').classList.toggle('hidden',!isManager);
     el('popupSection').style.display=isManager?'':'none';
-    el('topbarActions').innerHTML=`<button class="btn btn-primary" id="newBookingBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Booking</button>`;
-    el('newBookingBtn').addEventListener('click',()=>openBookingModal(null));
+    // The New Booking button calls POST /api/bookings, which requires
+    // managerAuth — only render it when the user can actually use it.
+    if(isManager){
+      el('topbarActions').innerHTML=`<button class="btn btn-primary" id="newBookingBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Booking</button>`;
+      el('newBookingBtn').addEventListener('click',()=>openBookingModal(null));
+    } else {
+      el('topbarActions').innerHTML='';
+    }
   }
 
   async function doLogout(){
@@ -2695,6 +2709,9 @@
   }
 
   async function silentRefreshBookings(){
+    // Defensive: only managers/owners can hit /api/bookings. Skip silently
+    // for ordinary staff so the 5-min polling loop doesn't spam 403s.
+    if(state.role!=='manager' && state.role!=='owner')return;
     try{
       const r=await api('/api/bookings?date='+state.currentDate);
       if(!r.ok)return;
@@ -2731,6 +2748,10 @@
   window.closeSidebar=closeSidebar;
 
   function navigateTo(page){
+    // Defence in depth: if a non-manager somehow targets bookings (deep link,
+    // browser back/forward, console call), silently redirect to HR rather
+    // than letting them land on a permanently-failing tab.
+    if(page==='bookings' && state.role!=='manager' && state.role!=='owner') page='hr';
     closeSidebar();
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page'+cap(page)));
@@ -2919,6 +2940,13 @@
 
   /* ── Bookings ── */
   async function loadBookings(){
+    // Defensive: /api/bookings is manager-only on the server. If a non-manager
+    // somehow lands here (deep link, console call), show a clear message
+    // instead of the generic "Failed to load bookings — Failed".
+    if(state.role!=='manager' && state.role!=='owner'){
+      el('bookingsContent').innerHTML='<div class="empty-state"><div class="empty-title">Manager access required</div><div class="empty-desc">The bookings calendar is only available to managers and owners.</div></div>';
+      return;
+    }
     el('bookingsContent').innerHTML='<div class="loading-state"><div class="spinner"></div>Loading bookings…</div>';
     try{
       const r=await api('/api/bookings?date='+state.currentDate);
