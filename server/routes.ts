@@ -1334,10 +1334,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           authed = true;
         }
       } else if (staffUser.pinHash && staffUser.pinSalt) {
-        // Legacy account — only the numeric PIN format is accepted here.
-        if (/^\d{4,8}$/.test(credential) && verifyPin(credential, staffUser.pinHash, staffUser.pinSalt)) {
+        // Legacy account — accept the credential against the stored PIN hash
+        // regardless of format. The hash check itself is the authority; the
+        // earlier digit-only regex was a sanity filter, not a security gate,
+        // and was confusing legitimate users who typed their PIN into the
+        // password field. A wrong guess (numeric or otherwise) still fails
+        // the constant-time hash comparison and returns "Invalid credentials".
+        if (verifyPin(credential, staffUser.pinHash, staffUser.pinSalt)) {
           authed = true;
-          // Force password setup on next step.
+          // Force password setup on next step — they sign in with the legacy
+          // PIN exactly once, then the SetPasswordScreen is shown before any
+          // dashboard access. mustChangePassword is set both in the response
+          // (read by the client immediately) and persisted to the DB so the
+          // forced-change survives a token refresh or a different device.
           mustChangePassword = true;
           if (!staffUser.mustChangePassword) {
             await storage.setMustChangePassword(staffUser.username, true);
