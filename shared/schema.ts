@@ -500,6 +500,34 @@ export const bookingAuditLog = pgTable("booking_audit_log", {
 
 export type BookingAuditEntry = typeof bookingAuditLog.$inferSelect;
 
+// ── Generic staff action log ─────────────────────────────────────────────────
+// Catch-all audit trail of every state-changing API call made by an
+// authenticated staff or manager session. Captured automatically by the
+// staffAuth middleware via res.on("finish") so coverage is uniform across all
+// staff routes — no need to hand-instrument each endpoint. Sensitive fields
+// (passwords, PINs, tokens, card details) are stripped from the request body
+// before persistence and large payloads are truncated to keep the table small.
+export const staffActionLog = pgTable("staff_action_log", {
+  id: serial("id").primaryKey(),
+  staffUsername: text("staff_username").notNull(),
+  staffId: integer("staff_id"),
+  staffRole: text("staff_role").notNull(),
+  method: text("method").notNull(),
+  path: text("path").notNull(),
+  route: text("route"),
+  statusCode: integer("status_code").notNull(),
+  requestBody: text("request_body"),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  createdAtIdx: index("staff_action_log_created_at_idx").on(table.createdAt),
+  staffIdx: index("staff_action_log_staff_username_idx").on(table.staffUsername),
+  pathIdx: index("staff_action_log_path_idx").on(table.path),
+}));
+
+export type StaffActionEntry = typeof staffActionLog.$inferSelect;
+
 // ── Menu visibility overrides ─────────────────────────────────────────────────
 
 export const menuCategoryVisibility = pgTable("menu_category_visibility", {

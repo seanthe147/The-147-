@@ -68,6 +68,8 @@ import {
   type MembershipAuditEntry,
   bookingAuditLog,
   type BookingAuditEntry,
+  staffActionLog,
+  type StaffActionEntry,
   staffTimeEntries,
   type StaffTimeEntry,
   staffLeaveRequests,
@@ -345,6 +347,38 @@ export async function runStartupMigrations() {
     await client.query(`
       CREATE INDEX IF NOT EXISTS booking_audit_log_booking_id_idx
         ON booking_audit_log (booking_id);
+    `);
+
+    // Generic staff action log — catch-all audit trail of every state-changing
+    // API call made by an authenticated staff/manager session. Captured by the
+    // staffAuth middleware so coverage is uniform across all endpoints.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS staff_action_log (
+        id SERIAL PRIMARY KEY,
+        staff_username TEXT NOT NULL,
+        staff_id INTEGER,
+        staff_role TEXT NOT NULL,
+        method TEXT NOT NULL,
+        path TEXT NOT NULL,
+        route TEXT,
+        status_code INTEGER NOT NULL,
+        request_body TEXT,
+        ip_address TEXT,
+        user_agent TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS staff_action_log_created_at_idx
+        ON staff_action_log (created_at DESC);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS staff_action_log_staff_username_idx
+        ON staff_action_log (staff_username);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS staff_action_log_path_idx
+        ON staff_action_log (path);
     `);
 
     // Ensure VIP plan exists (10% food & drink, group-based, excludes stacking with deals)
@@ -2078,6 +2112,51 @@ export class DatabaseStorage implements IStorage {
   async listRecentBookingAuditLog(limit = 100): Promise<BookingAuditEntry[]> {
     return db.select().from(bookingAuditLog)
       .orderBy(desc(bookingAuditLog.createdAt))
+      .limit(limit);
+  }
+
+  // ── Generic staff action log ──────────────────────────────────────────────
+  // Never throws — audit logging must not break the request that triggered it.
+  async logStaffAction(data: {
+    staffUsername: string;
+    staffId?: number | null;
+    staffRole: string;
+    method: string;
+    path: string;
+    route?: string | null;
+    statusCode: number;
+    requestBody?: string | null;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+  }): Promise<void> {
+    try {
+      await db.insert(staffActionLog).values({
+        staffUsername: data.staffUsername,
+        staffId: data.staffId ?? null,
+        staffRole: data.staffRole,
+        method: data.method,
+        path: data.path,
+        route: data.route ?? null,
+        statusCode: data.statusCode,
+        requestBody: data.requestBody ?? null,
+        ipAddress: data.ipAddress ?? null,
+        userAgent: data.userAgent ?? null,
+      });
+    } catch (err) {
+      console.error("[staff-audit] logStaffAction failed:", err);
+    }
+  }
+
+  async listRecentStaffActions(limit = 200): Promise<StaffActionEntry[]> {
+    return db.select().from(staffActionLog)
+      .orderBy(desc(staffActionLog.createdAt))
+      .limit(limit);
+  }
+
+  async listStaffActionsByUsername(username: string, limit = 200): Promise<StaffActionEntry[]> {
+    return db.select().from(staffActionLog)
+      .where(eq(staffActionLog.staffUsername, username))
+      .orderBy(desc(staffActionLog.createdAt))
       .limit(limit);
   }
 

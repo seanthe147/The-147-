@@ -905,6 +905,103 @@ function timingSafeCompare(a: string, b: string): boolean {
   return timingSafeEqual(bufA, bufB);
 }
 
+// Paths we deliberately exclude from the generic staff action audit log because
+// they are read-only/heartbeat checks (verify) or generate one entry per page
+// load (logout) — keeping them out keeps the audit table focused on real
+// state-changing actions.
+const AUDIT_SKIP_PATHS = new Set<string>([
+  "/api/staff/verify",
+  "/api/staff/logout",
+]);
+
+// Field names whose values must NEVER be persisted in the audit log.
+const SENSITIVE_BODY_KEYS = new Set<string>([
+  "password", "currentpassword", "newpassword", "oldpassword",
+  "pin", "currentpin", "newpin", "oldpin",
+  "token", "accesstoken", "refreshtoken", "sessiontoken", "csrftoken", "verificationtoken",
+  "secret", "apikey", "key",
+  "otp", "code", "authcode", "verificationcode",
+  "signature", "sourceid", "nonce",
+  "cardnumber", "cvv", "cvc", "cardcvv",
+]);
+
+function sanitizeBodyForAudit(body: unknown): unknown {
+  if (body === null || body === undefined) return body;
+  if (typeof body !== "object") return body;
+  if (Array.isArray(body)) return body.map((v) => sanitizeBodyForAudit(v));
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(body as Record<string, unknown>)) {
+    if (SENSITIVE_BODY_KEYS.has(k.toLowerCase())) {
+      out[k] = "[REDACTED]";
+    } else if (typeof v === "object") {
+      out[k] = sanitizeBodyForAudit(v);
+    } else if (typeof v === "string" && v.length > 1000) {
+      out[k] = v.slice(0, 1000) + "...(truncated)";
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+function attachStaffActionAudit(req: Request, res: Response): void {
+  // Skip read-only requests and heartbeat endpoints.
+  if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return;
+  if (AUDIT_SKIP_PATHS.has(req.path)) return;
+
+  const startedAt = Date.now();
+  res.on("finish", () => {
+    try {
+      // Skip 401 (unauth) — request didn't actually do anything. Log everything
+      // else (2xx success, 4xx client error like 403/404/409, 5xx server error)
+      // so attempted-but-blocked actions are still visible to managers.
+      if (res.statusCode === 401) return;
+
+      const username = (req as any).staffUsername as string | null;
+      const user = (req as any).staffUser as { id?: number } | null;
+      const role = (req as any).staffRole as string | undefined;
+      // Without an authenticated staff session we have no actor to attribute
+      // the action to — skip rather than write a misleading row.
+      if (!username || !role) return;
+
+      let bodyJson: string | null = null;
+      try {
+        const sanitized = sanitizeBodyForAudit(req.body);
+        if (sanitized !== undefined) {
+          const s = JSON.stringify(sanitized);
+          if (s && s !== "{}" && s !== "null") {
+            bodyJson = s.length > 4000 ? s.slice(0, 4000) + "...(truncated)" : s;
+          }
+        }
+      } catch {
+        bodyJson = null;
+      }
+
+      const xff = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim();
+      const ip = xff || req.ip || (req.socket as any)?.remoteAddress || null;
+      const ua = (req.headers["user-agent"] as string | undefined) || null;
+
+      void storage.logStaffAction({
+        staffUsername: username,
+        staffId: user?.id ?? null,
+        staffRole: role,
+        method: req.method,
+        path: req.originalUrl.split("?")[0].slice(0, 500),
+        route: req.route?.path ? String(req.route.path).slice(0, 500) : null,
+        statusCode: res.statusCode,
+        requestBody: bodyJson,
+        ipAddress: ip ? String(ip).slice(0, 64) : null,
+        userAgent: ua ? ua.slice(0, 500) : null,
+      });
+      // Latency is not stored, but we read startedAt to keep the closure honest
+      // and allow future metric collection without changing this signature.
+      void startedAt;
+    } catch (err) {
+      console.error("[staff-audit] hook failed:", err);
+    }
+  });
+}
+
 async function staffAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -947,6 +1044,10 @@ async function staffAuth(req: Request, res: Response, next: NextFunction) {
     (req as any).staffUsername = null;
     (req as any).staffUser = null;
   }
+  // Install the generic staff action audit log hook. Runs once per
+  // authenticated staff request; logs on response finish so it captures the
+  // actual outcome (status code) without delaying the response.
+  attachStaffActionAudit(req, res);
   next();
 }
 
@@ -3838,6 +3939,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/bookings-audit-log/recent", staffAuth, managerAuth, async (req, res) => {
     const limit = Math.min(parseInt(String(req.query.limit || "100")) || 100, 500);
     const entries = await storage.listRecentBookingAuditLog(limit);
+    res.json(entries);
+  });
+
+  // Generic staff action log — every state-changing API call attributable to a
+  // staff/manager session. Manager-only because it can include other people's
+  // edits and request bodies (already sanitised of secrets).
+  app.get("/api/staff-action-log/recent", staffAuth, managerAuth, async (req, res) => {
+    const limit = Math.min(parseInt(String(req.query.limit || "200")) || 200, 1000);
+    const entries = await storage.listRecentStaffActions(limit);
+    res.json(entries);
+  });
+
+  app.get("/api/staff-action-log/by-staff/:username", staffAuth, managerAuth, async (req, res) => {
+    const username = String(req.params.username || "").trim();
+    if (!username) return res.status(400).json({ message: "Username required" });
+    const limit = Math.min(parseInt(String(req.query.limit || "200")) || 200, 1000);
+    const entries = await storage.listStaffActionsByUsername(username, limit);
     res.json(entries);
   });
 
