@@ -533,11 +533,9 @@ function DashboardScreen() {
           )}
 
           {/* Extra tools for regular staff on web only.
-              NOTE: Bookings management is now manager-only on the backend
-              (the booking calendar, customer search, and booking
-              edit/cancel/no-show/complete endpoints all require
-              managerAuth). The "Bookings" entry has been removed from
-              this section so non-managers don't see a tool that 403s. */}
+              Bookings management is available to all staff via the
+              HTML dashboard at /staff-dashboard, so we don't duplicate
+              it as a tool here on the Expo web build. */}
           {!isManager && Platform.OS === "web" && (
             <>
               <AdminTool
