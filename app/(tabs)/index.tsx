@@ -35,6 +35,53 @@ function resolveImageUrl(path: string): string {
   return new URL(path, base).toString();
 }
 
+interface LoyaltyMeSnapshot {
+  linked: boolean;
+  account?: { balance: number } | null;
+}
+
+// Always-visible points pill on the home screen header. Quietly fetches the
+// signed-in customer's loyalty balance and tucks it next to the hours chip.
+// Renders nothing for signed-out customers or those who haven't linked yet —
+// no need for a noisy "Join now" prompt up here, the loyalty tab handles that.
+const HomePointsPill = memo(function HomePointsPill() {
+  const { isAuthenticated, customer, getCustomerToken } = useCustomerAuth();
+  // Key includes customer.id so that signing out + signing in as a different
+  // customer on a shared device doesn't briefly surface the previous user's
+  // points. Same key shape as the loyalty tab — so enroll/refresh on either
+  // screen invalidates both.
+  const { data } = useQuery<LoyaltyMeSnapshot>({
+    queryKey: ["/api/loyalty/me", customer?.id],
+    queryFn: async () => {
+      const token = getCustomerToken();
+      if (!token) throw new Error("Not signed in");
+      const res = await fetch(new URL("/api/loyalty/me", getApiUrl()).toString(), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: isAuthenticated,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: true,
+  });
+
+  if (!isAuthenticated || !data?.linked || !data.account) return null;
+
+  return (
+    <Pressable
+      onPress={() => {
+        if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        router.push("/(tabs)/loyalty");
+      }}
+      style={({ pressed }) => [styles.pointsPill, { opacity: pressed ? 0.8 : 1 }]}
+    >
+      <Ionicons name="star" size={13} color={Colors.brand.gold} />
+      <Text style={styles.pointsPillText}>{data.account.balance}</Text>
+    </Pressable>
+  );
+});
+
 const QuickActionPill = memo(function QuickActionPill({
   icon,
   label,
@@ -433,6 +480,7 @@ export default function HomeScreen() {
       <View style={styles.heroTopBar}>
         <ExpoImage source={logoImage} style={styles.logoImage} contentFit="contain" cachePolicy="memory" />
         <View style={styles.heroTopRight}>
+          <HomePointsPill />
           <Pressable
             onPress={() => router.push("/about")}
             style={({ pressed }) => [styles.hoursChip, { opacity: pressed ? 0.8 : 1 }]}
@@ -647,6 +695,23 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
+  },
+  pointsPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(217,165,46,0.18)",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(217,165,46,0.45)",
+  },
+  pointsPillText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 12,
+    color: "#FFFFFF",
+    letterSpacing: 0.3,
   },
   liveDot: {
     width: 6,

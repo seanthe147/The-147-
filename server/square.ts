@@ -46,7 +46,7 @@ export class SquareError extends Error {
   }
 }
 
-function toE164(phone: string): string {
+export function toE164(phone: string): string {
   const digits = phone.replace(/\D/g, "");
   if (digits.startsWith("44")) return `+${digits}`;
   if (digits.startsWith("0")) return `+44${digits.slice(1)}`;

@@ -534,6 +534,7 @@ export interface IStorage {
   getCustomerById(id: number): Promise<Customer | undefined>;
   getAllCustomers(): Promise<Customer[]>;
   updateCustomer(id: number, data: Partial<{ name: string; phone: string }>): Promise<Customer | undefined>;
+  setSquareLoyaltyAccountId(id: number, accountId: string | null): Promise<void>;
   deleteCustomer(id: number): Promise<boolean>;
   createCustomerSession(token: string, customerId: number, expiresAt: Date): Promise<CustomerSession>;
   validateCustomerSession(token: string): Promise<CustomerSession | undefined>;
@@ -1608,6 +1609,13 @@ export class DatabaseStorage implements IStorage {
     if (data.phone) encData.phone = encrypt(data.phone);
     const [updated] = await db.update(customers).set(encData).where(eq(customers.id, id)).returning();
     return updated ? decryptCustomer(updated) : undefined;
+  }
+
+  // Cache the customer's Square Loyalty account ID locally so subsequent
+  // requests don't need to search Square by phone number every time. Plain
+  // text — Square's account IDs are non-secret identifiers.
+  async setSquareLoyaltyAccountId(id: number, accountId: string | null): Promise<void> {
+    await db.update(customers).set({ squareLoyaltyAccountId: accountId }).where(eq(customers.id, id));
   }
 
   async deleteCustomer(id: number): Promise<boolean> {

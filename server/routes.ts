@@ -6046,6 +6046,159 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Authenticated loyalty (no phone+OTP) ────────────────────────────────────
+  // Phase 2 of the loyalty UX rebuild: once a customer is signed into their main
+  // 147 account we can use the phone number on their profile to find/create their
+  // Square loyalty account directly, cache the link on the customer row, and skip
+  // the legacy phone+OTP flow entirely. The legacy /api/loyalty/* endpoints stay
+  // intact so signed-out users (or those whose loyalty phone differs from their
+  // account) still have a path in.
+  app.get("/api/loyalty/me", customerAuth, async (req, res) => {
+    if (!square.isConfigured()) {
+      return res.json({ configured: false, active: false, linked: false, hasPhone: false });
+    }
+    const customerId = (req as any).customerId as number;
+    const customer = await storage.getCustomerById(customerId);
+    if (!customer) return res.status(404).json({ message: "Customer not found" });
+
+    const phoneCleaned = customer.phone ? customer.phone.replace(/\s/g, "") : null;
+    const hasPhone = !!phoneCleaned && phoneCleaned.length >= 10;
+
+    try {
+      const program = await square.getLoyaltyProgram();
+      if (!program) {
+        return res.json({ configured: true, active: false, linked: false, hasPhone, account: null });
+      }
+      const programActive = program.status === "ACTIVE";
+      const baseProgram = {
+        id: program.id,
+        terminology: program.terminology,
+        reward_tiers: program.reward_tiers?.map((t: any) => ({
+          id: t.id, name: t.name, points: t.points, definition: t.definition,
+        })) ?? [],
+        accrual_rules: program.accrual_rules?.map((r: any) => ({
+          accrual_type: r.accrual_type,
+          points: r.points,
+          spend_data: r.spend_amount_money ? {
+            amount: r.spend_amount_money.amount,
+            currency: r.spend_amount_money.currency,
+          } : undefined,
+        })) ?? [],
+      };
+
+      if (!programActive) {
+        return res.json({ configured: true, active: false, linked: false, hasPhone, program: baseProgram, account: null });
+      }
+      if (!hasPhone) {
+        return res.json({ configured: true, active: true, linked: false, hasPhone: false, program: baseProgram, account: null });
+      }
+
+      // Try cached account ID first; if Square 404s OR the cached account's
+      // phone no longer matches the customer's profile (e.g. they changed
+      // numbers, or staff re-mapped the loyalty account), discard the cache
+      // and re-search by current profile phone. This prevents a stale link
+      // from showing the wrong account's points after a phone change.
+      const expectedE164 = square.toE164(phoneCleaned!);
+      let account: any = null;
+      if (customer.squareLoyaltyAccountId) {
+        try {
+          const cached = await square.getLoyaltyAccount(customer.squareLoyaltyAccountId);
+          const cachedPhone = cached?.mapping?.phone_number ?? null;
+          // Trust the cache when (a) the account has no phone mapping (then
+          // ID is the only link we have) or (b) the mapped phone matches
+          // current profile phone. Otherwise discard.
+          if (cached && (!cachedPhone || cachedPhone === expectedE164)) {
+            account = cached;
+          }
+        } catch {
+          account = null;
+        }
+      }
+      if (!account) {
+        account = await square.searchLoyaltyAccount(phoneCleaned!);
+        if (account?.id) {
+          if (account.id !== customer.squareLoyaltyAccountId) {
+            await storage.setSquareLoyaltyAccountId(customerId, account.id);
+          }
+        } else if (customer.squareLoyaltyAccountId) {
+          // Stored link no longer resolves to anything — clear it so we
+          // don't keep retrying the same dead ID.
+          await storage.setSquareLoyaltyAccountId(customerId, null);
+        }
+      }
+
+      if (!account) {
+        return res.json({
+          configured: true, active: true, linked: false, hasPhone: true, canEnroll: true,
+          program: baseProgram, account: null,
+        });
+      }
+
+      const [events, rewards] = await Promise.all([
+        square.searchLoyaltyEvents(account.id, 15).catch(() => []),
+        square.searchIssuedRewards(account.id).catch(() => []),
+      ]);
+
+      res.json({
+        configured: true,
+        active: true,
+        linked: true,
+        hasPhone: true,
+        program: baseProgram,
+        account: {
+          id: account.id,
+          balance: account.balance,
+          lifetime_points: account.lifetime_points,
+          enrolled_at: account.enrolled_at,
+          phone: account.mapping?.phone_number,
+        },
+        events,
+        rewards,
+      });
+    } catch (err: any) {
+      console.error("/api/loyalty/me error:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/loyalty/me/enroll", customerAuth, async (req, res) => {
+    if (!square.isConfigured()) {
+      return res.status(503).json({ message: "Loyalty program not configured" });
+    }
+    const customerId = (req as any).customerId as number;
+    const customer = await storage.getCustomerById(customerId);
+    if (!customer) return res.status(404).json({ message: "Customer not found" });
+
+    const phoneCleaned = customer.phone ? customer.phone.replace(/\s/g, "") : null;
+    if (!phoneCleaned || phoneCleaned.length < 10) {
+      return res.status(400).json({ message: "Please add a valid phone number to your profile to join the rewards programme." });
+    }
+
+    try {
+      const program = await square.getLoyaltyProgram();
+      if (!program || program.status !== "ACTIVE") {
+        return res.status(400).json({ message: "No active loyalty program" });
+      }
+      // Re-check before creating to handle the race where the customer already
+      // has an account from a previous in-store visit.
+      const existing = await square.searchLoyaltyAccount(phoneCleaned);
+      const account = existing ?? await square.createLoyaltyAccount(phoneCleaned, program.id);
+      await storage.setSquareLoyaltyAccountId(customerId, account.id);
+      res.json({
+        account: {
+          id: account.id,
+          balance: account.balance,
+          lifetime_points: account.lifetime_points,
+          enrolled_at: account.enrolled_at,
+          phone: account.mapping?.phone_number,
+        },
+      });
+    } catch (err: any) {
+      console.error("/api/loyalty/me/enroll error:", err.message);
+      res.status(err.statusCode || 500).json({ message: err.message });
+    }
+  });
+
   app.get("/staff", (_req, res) => {
     const templatePath = path.resolve(process.cwd(), "server", "templates", "staff-dashboard.html");
     const html = fs.readFileSync(templatePath, "utf-8");
@@ -6539,7 +6692,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ message: "No valid fields to update" });
     }
-    const updated = await storage.updateCustomer((req as any).customerId, updates);
+    const customerId = (req as any).customerId as number;
+    // If the phone number is being changed, drop any cached Square loyalty
+    // link first — otherwise /api/loyalty/me will keep returning the old
+    // account until the cached ID expires.
+    if (updates.phone !== undefined) {
+      const prev = await storage.getCustomerById(customerId);
+      if (prev && prev.squareLoyaltyAccountId && prev.phone !== updates.phone) {
+        await storage.setSquareLoyaltyAccountId(customerId, null);
+      }
+    }
+    const updated = await storage.updateCustomer(customerId, updates);
     if (!updated) {
       return res.status(404).json({ message: "Account not found" });
     }

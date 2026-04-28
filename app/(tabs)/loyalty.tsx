@@ -17,10 +17,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { LinearGradient } from "expo-linear-gradient";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
 import { getApiUrl } from "@/lib/query-client";
+import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 
 const SESSION_KEY = "loyalty_session";
 function loyaltyUrl(path: string): string {
@@ -181,6 +182,83 @@ function ActiveRewardsSection({
   );
 }
 
+function NextRewardCard({
+  balance,
+  rewardTiers,
+  terminology,
+}: {
+  balance: number;
+  rewardTiers: RewardTier[];
+  terminology?: { one: string; other: string };
+}) {
+  if (!rewardTiers || rewardTiers.length === 0) return null;
+  const sorted = [...rewardTiers].sort((a, b) => a.points - b.points);
+  const next = sorted.find((t) => balance < t.points);
+  const pointsLabel = terminology ? terminology.other : "points";
+
+  // No "next" tier means the customer can already redeem the highest reward.
+  if (!next) {
+    const highest = sorted[sorted.length - 1];
+    return (
+      <View style={styles.nextRewardCard}>
+        <LinearGradient
+          colors={["#16A34A", "#15803D"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.nextRewardGradient}
+        >
+          <View style={styles.nextRewardTopRow}>
+            <Ionicons name="sparkles" size={20} color="#FFF" />
+            <Text style={styles.nextRewardEyebrow}>You've earned every reward!</Text>
+          </View>
+          <Text style={styles.nextRewardHeadline}>
+            Ask staff to redeem your {highest.name}
+          </Text>
+          <View style={styles.nextRewardProgressBg}>
+            <View style={[styles.nextRewardProgressFill, { width: "100%", backgroundColor: "rgba(255,255,255,0.95)" }]} />
+          </View>
+          <Text style={styles.nextRewardSub}>
+            You have {balance} {pointsLabel} — every tier is unlocked.
+          </Text>
+        </LinearGradient>
+      </View>
+    );
+  }
+
+  const remaining = next.points - balance;
+  const progress = Math.min(balance / next.points, 1);
+  return (
+    <View style={styles.nextRewardCard}>
+      <LinearGradient
+        colors={[Colors.brand.navy, Colors.brand.blue]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.nextRewardGradient}
+      >
+        <View style={styles.nextRewardTopRow}>
+          <Ionicons name="trending-up" size={20} color={Colors.brand.gold} />
+          <Text style={styles.nextRewardEyebrow}>Next reward</Text>
+        </View>
+        <Text style={styles.nextRewardHeadline}>
+          {remaining} {pointsLabel} to {next.name}
+        </Text>
+        <View style={styles.nextRewardProgressBg}>
+          <View
+            style={[
+              styles.nextRewardProgressFill,
+              { width: `${Math.max(progress * 100, 4)}%`, backgroundColor: Colors.brand.gold },
+            ]}
+          />
+        </View>
+        <View style={styles.nextRewardFooter}>
+          <Text style={styles.nextRewardSub}>{balance} of {next.points}</Text>
+          <Text style={styles.nextRewardSub}>{Math.round(progress * 100)}%</Text>
+        </View>
+      </LinearGradient>
+    </View>
+  );
+}
+
 function RewardTierCard({
   tier,
   balance,
@@ -335,10 +413,25 @@ function ActivityFeed({
 }
 
 
+interface LoyaltyMeResponse {
+  configured: boolean;
+  active: boolean;
+  linked: boolean;
+  hasPhone: boolean;
+  canEnroll?: boolean;
+  program?: LoyaltyProgram;
+  account?: LoyaltyAccount | null;
+  events?: LoyaltyEvent[];
+  rewards?: IssuedReward[];
+}
+
 export default function LoyaltyScreen() {
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === "web";
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
+  const queryClient = useQueryClient();
+
+  const { isAuthenticated, customer, getCustomerToken } = useCustomerAuth();
 
   const [step, setStep] = useState<AuthStep>("loading");
   const [phone, setPhone] = useState("");
@@ -349,6 +442,42 @@ export default function LoyaltyScreen() {
 
   const { data: membershipPlans = [] } = useQuery<MembershipPlan[]>({
     queryKey: ["/api/membership/plans"],
+  });
+
+  // ── New authenticated path: pulls everything in one call using the
+  // customer's main session, no phone+OTP needed.
+  const meQuery = useQuery<LoyaltyMeResponse>({
+    queryKey: ["/api/loyalty/me", customer?.id],
+    queryFn: async () => {
+      const token = getCustomerToken();
+      if (!token) throw new Error("Not signed in");
+      const res = await fetch(loyaltyUrl("/api/loyalty/me"), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to load loyalty");
+      return res.json();
+    },
+    enabled: isAuthenticated,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
+  });
+
+  const enrollMeMutation = useMutation({
+    mutationFn: async () => {
+      const token = getCustomerToken();
+      if (!token) throw new Error("Not signed in");
+      const res = await fetch(loyaltyUrl("/api/loyalty/me/enroll"), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Could not enrol");
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/loyalty/me", customer?.id] });
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    },
   });
 
   useEffect(() => {
@@ -573,6 +702,183 @@ export default function LoyaltyScreen() {
               Our loyalty rewards program is almost ready. We'll let you know when you can start earning points!
             </Text>
           </View>
+        ) : isAuthenticated ? (
+          // ── Phase 2: signed-in customers skip phone+OTP entirely ─────────
+          meQuery.isLoading ? (
+            <View style={styles.loadingWrap}>
+              <ActivityIndicator size="large" color={Colors.brand.blue} />
+              <Text style={styles.loadingText}>Loading your rewards…</Text>
+            </View>
+          ) : meQuery.isError ? (
+            <View style={styles.statusCard}>
+              <Ionicons name="cloud-offline-outline" size={40} color={Colors.light.textSecondary} />
+              <Text style={styles.statusTitle}>Couldn't load your rewards</Text>
+              <Text style={styles.statusText}>
+                {(meQuery.error as Error)?.message || "Please try again."}
+              </Text>
+              <Pressable
+                onPress={() => meQuery.refetch()}
+                style={({ pressed }) => [styles.refreshButton, { opacity: pressed ? 0.85 : 1, marginTop: 12 }]}
+              >
+                <Ionicons name="refresh" size={18} color={Colors.brand.blue} />
+                <Text style={styles.refreshButtonText}>Try again</Text>
+              </Pressable>
+            </View>
+          ) : !meQuery.data?.hasPhone ? (
+            <View style={styles.lookupCard}>
+              <View style={styles.lockIconRow}>
+                <Ionicons name="call-outline" size={28} color={Colors.brand.blue} />
+              </View>
+              <Text style={styles.sectionTitle}>Add your phone number</Text>
+              <Text style={styles.lookupDescription}>
+                We use the phone number on your profile to link you to The 147 Rewards. Add one to your profile and we'll do the rest.
+              </Text>
+              <Pressable
+                onPress={() => router.push("/account")}
+                style={({ pressed }) => [styles.lookupButton, { opacity: pressed ? 0.85 : 1 }]}
+              >
+                <Ionicons name="person-circle-outline" size={18} color="#FFF" />
+                <Text style={styles.buttonText}>Update Profile</Text>
+              </Pressable>
+            </View>
+          ) : !meQuery.data?.linked ? (
+            <>
+              {meQuery.data?.program?.accrual_rules && meQuery.data.program.accrual_rules.length > 0 && (
+                <View style={styles.howItWorksCard}>
+                  <Text style={styles.sectionTitle}>How It Works</Text>
+                  {meQuery.data.program.accrual_rules.map((rule, i) => (
+                    <View key={i} style={styles.ruleRow}>
+                      <Ionicons name="add-circle" size={20} color={Colors.brand.blue} />
+                      <Text style={styles.ruleText}>
+                        {rule.accrual_type === "SPEND"
+                          ? `Earn ${rule.points} ${meQuery.data!.program?.terminology?.other || "points"} for every £${((rule.spend_data?.amount || 100) / 100).toFixed(0)} spent`
+                          : rule.accrual_type === "VISIT"
+                          ? `Earn ${rule.points} ${meQuery.data!.program?.terminology?.other || "points"} per visit`
+                          : `Earn ${rule.points} ${meQuery.data!.program?.terminology?.other || "points"}`}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              <View style={styles.lookupCard}>
+                <View style={styles.lockIconRow}>
+                  <Ionicons name="gift-outline" size={28} color={Colors.brand.gold} />
+                </View>
+                <Text style={styles.sectionTitle}>Join The 147 Rewards</Text>
+                <Text style={styles.lookupDescription}>
+                  Earn points every time you spend at the venue and unlock exclusive rewards. One tap to join — we'll use the phone number on your profile.
+                </Text>
+                <Pressable
+                  onPress={() => enrollMeMutation.mutate()}
+                  disabled={enrollMeMutation.isPending}
+                  style={({ pressed }) => [
+                    styles.enrollButton,
+                    enrollMeMutation.isPending && styles.buttonDisabled,
+                    { opacity: pressed ? 0.85 : 1 },
+                  ]}
+                >
+                  {enrollMeMutation.isPending ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <>
+                      <Ionicons name="star" size={18} color="#FFF" />
+                      <Text style={styles.buttonText}>Join Now</Text>
+                    </>
+                  )}
+                </Pressable>
+                {enrollMeMutation.isError && (
+                  <Text style={styles.errorText}>
+                    {(enrollMeMutation.error as Error)?.message || "Could not enrol."}
+                  </Text>
+                )}
+              </View>
+            </>
+          ) : meQuery.data.account ? (
+            <>
+              <PointsDisplay
+                balance={meQuery.data.account.balance}
+                terminology={meQuery.data.program?.terminology}
+              />
+              <NextRewardCard
+                balance={meQuery.data.account.balance}
+                rewardTiers={meQuery.data.program?.reward_tiers ?? []}
+                terminology={meQuery.data.program?.terminology}
+              />
+
+              <View style={styles.statsRow}>
+                <View style={styles.statCard}>
+                  <Ionicons name="trophy-outline" size={20} color={Colors.brand.gold} />
+                  <Text style={styles.statValue}>{meQuery.data.account.lifetime_points}</Text>
+                  <Text style={styles.statLabel}>
+                    Lifetime {meQuery.data.program?.terminology?.other || "Points"}
+                  </Text>
+                </View>
+                <View style={styles.statCard}>
+                  <Ionicons name="calendar-outline" size={20} color={Colors.brand.blue} />
+                  <Text style={styles.statValue}>
+                    {new Date(meQuery.data.account.enrolled_at).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
+                  </Text>
+                  <Text style={styles.statLabel}>Member Since</Text>
+                </View>
+              </View>
+
+              {meQuery.data.rewards && meQuery.data.rewards.length > 0 && (
+                <ActiveRewardsSection
+                  rewards={meQuery.data.rewards}
+                  program={meQuery.data.program ?? null}
+                />
+              )}
+
+              {meQuery.data.program?.reward_tiers && meQuery.data.program.reward_tiers.length > 0 && (
+                <View style={styles.rewardsSection}>
+                  <View style={styles.sectionTitleRow}>
+                    <Ionicons name="ribbon" size={18} color={Colors.brand.gold} />
+                    <Text style={styles.sectionTitle}>All Reward Tiers</Text>
+                  </View>
+                  {meQuery.data.program.reward_tiers
+                    .slice()
+                    .sort((a, b) => a.points - b.points)
+                    .map((tier) => (
+                      <RewardTierCard
+                        key={tier.id}
+                        tier={tier}
+                        balance={meQuery.data!.account!.balance}
+                        terminology={meQuery.data!.program?.terminology}
+                      />
+                    ))}
+                </View>
+              )}
+
+              {meQuery.data.events && meQuery.data.events.length > 0 && (
+                <ActivityFeed
+                  events={meQuery.data.events}
+                  program={meQuery.data.program ?? null}
+                />
+              )}
+
+              <View style={styles.actionRow}>
+                <Pressable
+                  onPress={() => meQuery.refetch()}
+                  disabled={meQuery.isFetching}
+                  style={({ pressed }) => [styles.refreshButton, { opacity: pressed ? 0.85 : 1 }]}
+                >
+                  <Ionicons name="refresh" size={18} color={Colors.brand.blue} />
+                  <Text style={styles.refreshButtonText}>
+                    {meQuery.isFetching ? "Refreshing…" : "Refresh"}
+                  </Text>
+                </Pressable>
+              </View>
+
+              <View style={styles.infoCard}>
+                <View style={styles.infoRow}>
+                  <Ionicons name="information-circle-outline" size={18} color={Colors.light.textSecondary} />
+                  <Text style={styles.infoText}>
+                    Points are earned automatically when you pay at The 147. Show this screen at the till to redeem rewards.
+                  </Text>
+                </View>
+              </View>
+            </>
+          ) : null
         ) : step === "phone" ? (
           <>
             {program?.accrual_rules && program.accrual_rules.length > 0 && (
@@ -691,6 +997,11 @@ export default function LoyaltyScreen() {
             ) : account ? (
               <>
                 <PointsDisplay balance={account.balance} terminology={program?.terminology} />
+                <NextRewardCard
+                  balance={account.balance}
+                  rewardTiers={program?.reward_tiers ?? []}
+                  terminology={program?.terminology}
+                />
 
                 <View style={styles.statsRow}>
                   <View style={styles.statCard}>
@@ -1050,6 +1361,54 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 2,
     fontFamily: "Montserrat_600SemiBold",
+  },
+  nextRewardCard: {
+    marginHorizontal: 20,
+    marginTop: 12,
+  },
+  nextRewardGradient: {
+    borderRadius: 16,
+    padding: 20,
+    gap: 10,
+  },
+  nextRewardTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  nextRewardEyebrow: {
+    fontSize: 11,
+    fontFamily: "Montserrat_600SemiBold",
+    color: "rgba(255,255,255,0.85)",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+  },
+  nextRewardHeadline: {
+    fontSize: 20,
+    fontFamily: "Montserrat_700Bold",
+    color: "#FFF",
+    lineHeight: 26,
+  },
+  nextRewardProgressBg: {
+    height: 10,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderRadius: 5,
+    overflow: "hidden",
+    marginTop: 4,
+  },
+  nextRewardProgressFill: {
+    height: "100%",
+    borderRadius: 5,
+  },
+  nextRewardFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  nextRewardSub: {
+    fontSize: 12,
+    fontFamily: "Montserrat_500Medium",
+    color: "rgba(255,255,255,0.85)",
   },
   statsRow: {
     flexDirection: "row",

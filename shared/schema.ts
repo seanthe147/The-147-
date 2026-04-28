@@ -226,6 +226,10 @@ export const customers = pgTable("customers", {
   passwordResetTokenExpiresAt: timestamp("password_reset_token_expires_at"),
   passwordResetLastSentAt: timestamp("password_reset_last_sent_at"),
   expiresAt: timestamp("expires_at"),
+  // Cached link to the customer's Square Loyalty account so we don't have to
+  // search by phone on every request and so we can skip the phone+OTP flow
+  // entirely once the customer has signed into their main account.
+  squareLoyaltyAccountId: text("square_loyalty_account_id"),
 });
 
 export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true, createdAt: true });
