@@ -237,6 +237,11 @@ export const customers = pgTable("customers", {
   // bonus to this customer. Lets us idempotently grant the bonus exactly
   // once per year regardless of how many times /api/loyalty/me is called.
   lastBirthdayBonusYear: integer("last_birthday_bonus_year"),
+  // The four-digit calendar year in which we last sent the "happy birthday
+  // week" push notification. Separate from lastBirthdayBonusYear because
+  // the bonus is awarded only when the customer opens the app, while the
+  // push fires once at the start of the window to *invite* them in.
+  lastBirthdayPushYear: integer("last_birthday_push_year"),
 });
 
 export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true, createdAt: true });

@@ -3499,6 +3499,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.sendStatus(200);
     }
 
+    // ── Square Loyalty events ──────────────────────────────────────────────
+    // Fire a push to the linked customer whenever their balance changes
+    // (earn/redeem/adjust at the till, manual staff adjustment, etc.). We
+    // only act on accumulate/redeem/adjust events that actually move points.
+    // Other event types (CREATE_REWARD, DELETE_REWARD, etc.) are ignored.
+    if (eventType === "loyalty.event.created") {
+      try {
+        const loyaltyEvent = event?.data?.object?.loyalty_event ?? event?.data?.object?.event;
+        if (!loyaltyEvent) return res.sendStatus(200);
+
+        const accountId: string | undefined = loyaltyEvent.loyalty_account_id;
+        const evtType: string = loyaltyEvent.type ?? "";
+        if (!accountId) return res.sendStatus(200);
+
+        // The birthday-bonus credit is granted from inside /api/loyalty/me
+        // and is followed by an immediate UI refresh in the same response,
+        // so the user sees the new points without needing a push. We detect
+        // those by the `reason` we pass to adjustLoyaltyPoints.
+        const adjustReason: string = loyaltyEvent.adjust_points?.reason ?? "";
+        const isOurOwnBirthdayBonus = adjustReason.startsWith("Birthday bonus");
+
+        const customer = await storage.getCustomerBySquareLoyaltyAccountId(accountId);
+        if (!customer) {
+          console.log(`[WEBHOOK] loyalty.event.created for unknown account ${accountId} — ignored`);
+          return res.sendStatus(200);
+        }
+
+        // Build the push copy based on the specific event. We only send a
+        // push when the event represents a real, non-zero change the
+        // customer should know about — otherwise we ack and drop. This
+        // keeps "0-point" events (which Square does emit for some flows)
+        // from generating a useless "Points updated" buzz.
+        let title: string | null = null;
+        let body: string | null = null;
+        if (evtType === "ACCUMULATE_POINTS") {
+          const earned = loyaltyEvent.accumulate_points?.points ?? 0;
+          if (earned > 0) {
+            title = "You earned points 🎱";
+            body = `You just earned ${earned} point${earned === 1 ? "" : "s"} at The 147. Open the app to see your new balance.`;
+          }
+        } else if (evtType === "REDEEM_REWARD") {
+          title = "Reward redeemed 🎉";
+          body = "Your reward has been applied. Enjoy!";
+        } else if (evtType === "ADJUST_POINTS" && !isOurOwnBirthdayBonus) {
+          const adj = loyaltyEvent.adjust_points?.points ?? 0;
+          if (adj > 0) {
+            title = "Bonus points added";
+            body = `${adj} bonus point${adj === 1 ? "" : "s"} added to your balance.`;
+          } else if (adj < 0) {
+            title = "Points adjusted";
+            body = `${Math.abs(adj)} point${Math.abs(adj) === 1 ? "" : "s"} were removed from your balance.`;
+          }
+        }
+        if (!title || !body) {
+          // Not an event we want to push for — ack and move on.
+          return res.sendStatus(200);
+        }
+
+        const { sendPushToCustomerEmail } = await import("./push");
+        await sendPushToCustomerEmail(customer.email, title, body, {
+          type: "loyalty_balance_changed",
+          accountId,
+        });
+        console.log(`[WEBHOOK] Loyalty push sent to customer ${customer.id} for ${evtType}`);
+      } catch (err) {
+        console.error("[WEBHOOK] loyalty.event.created error:", err);
+      }
+      return res.sendStatus(200);
+    }
+
+    // We could also subscribe to loyalty.account.balance_changed in Square, but
+    // every balance change is already paired with a loyalty.event.created so
+    // handling both would just duplicate pushes. Acknowledge and ignore.
+    if (eventType === "loyalty.account.balance_changed") {
+      return res.sendStatus(200);
+    }
+
     if (eventType !== "payment.updated") return res.sendStatus(200);
     const payment = event?.data?.object?.payment;
     if (!payment) return res.sendStatus(200);
@@ -6335,16 +6412,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       tasks.push(storage.setSetting(LOYALTY_BIRTHDAY_BONUS_KEY, String(n)));
     }
+    // Capture the previous double-points state BEFORE we write — we use it
+    // below to decide whether the staff are turning the day ON (and we should
+    // broadcast a push) or simply re-saving an already-on day.
+    let prevDoublePoints = false;
     if (doublePointsToday !== undefined) {
       if (typeof doublePointsToday !== "boolean") {
         return res.status(400).json({ message: "doublePointsToday must be a boolean" });
       }
+      const prevRaw = await storage.getSetting(LOYALTY_DOUBLE_POINTS_KEY);
+      prevDoublePoints = prevRaw === "true";
       tasks.push(storage.setSetting(LOYALTY_DOUBLE_POINTS_KEY, doublePointsToday ? "true" : "false"));
     }
     if (tasks.length === 0) {
       return res.status(400).json({ message: "No valid fields to update" });
     }
     await Promise.all(tasks);
+
+    // Fire-and-forget: when staff flip double-points ON, broadcast a single
+    // push to every enrolled loyalty customer — but only once per calendar
+    // day, so toggling off-then-on doesn't spam everyone twice. The per-day
+    // marker is stored in settings as the YYYY-MM-DD we last broadcast.
+    if (doublePointsToday === true && !prevDoublePoints) {
+      // Use Europe/London local date (the venue's timezone) so a flag flipped
+      // at 23:30 UTC on a Friday in summer (00:30 BST Saturday) doesn't get
+      // accidentally broadcast twice — once "tonight" and once "tomorrow".
+      const todayParts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Europe/London",
+        year: "numeric", month: "2-digit", day: "2-digit",
+      }).formatToParts(new Date());
+      const tp = (t: string) => todayParts.find((p) => p.type === t)?.value ?? "";
+      const today = `${tp("year")}-${tp("month")}-${tp("day")}`;
+      const lastBroadcast = await storage.getSetting("loyalty.doublePointsLastBroadcastDate");
+      if (lastBroadcast !== today) {
+        await storage.setSetting("loyalty.doublePointsLastBroadcastDate", today);
+        (async () => {
+          try {
+            const { sendPushToTokens } = await import("./push");
+            const enrolled = await storage.getCustomersWithLoyaltyAccount();
+            const tokenLists = await Promise.all(
+              enrolled.map((c) => storage.getPushTokensByEmail(c.email).catch(() => [])),
+            );
+            const tokens = tokenLists.flat().map((t) => t.token);
+            if (tokens.length) {
+              await sendPushToTokens(
+                tokens,
+                "Double points today! 🎯",
+                "All visits earn 2× loyalty points at The 147 today. Pop in and play!",
+                { type: "double_points_day" },
+              );
+              console.log(`[LOYALTY] Broadcast double-points push to ${tokens.length} device(s)`);
+            }
+          } catch (err) {
+            console.error("[LOYALTY] Failed to broadcast double-points push:", err);
+          }
+        })();
+      }
+    }
+
     res.json(await loadLoyaltyConfig());
   });
 

@@ -7,6 +7,48 @@ import * as path from "path";
 import nodemailer from "nodemailer";
 import * as http from "http";
 import { ensureBuildInfo, getBuildInfo, runDeployVerification, detectPublicBaseUrl } from "./build-info";
+
+// The venue is in Bradford (Europe/London). All loyalty day-boundary checks
+// — birthday window opens, "double points today" reset, broadcast dedupe —
+// must happen against London local time, not the server's UTC clock, or
+// they will fire an hour early/late during BST and may skip a calendar day
+// around midnight UTC. routes.ts has its own getLondonNow(); the schedulers
+// in this file use this small helper for the same reason.
+const VENUE_TZ = "Europe/London";
+function getLondonDateString(): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: VENUE_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+function getLondonYearAndMonthDay(): { year: number; monthDay: string } {
+  const dateStr = getLondonDateString();
+  return { year: parseInt(dateStr.slice(0, 4), 10), monthDay: dateStr.slice(5) };
+}
+function msUntilNextLondonMidnight(): number {
+  // Find the wall-clock now in London, then compute milliseconds until the
+  // next 00:00:01 in London. We add a 1s grace so the run lands just inside
+  // the new day rather than racing the boundary.
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: VENUE_TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date());
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "0";
+  let h = parseInt(get("hour"), 10);
+  if (h === 24) h = 0;
+  const m = parseInt(get("minute"), 10);
+  const s = parseInt(get("second"), 10);
+  const secondsSinceMidnight = h * 3600 + m * 60 + s;
+  const secondsUntil = (24 * 3600 - secondsSinceMidnight) + 1;
+  return secondsUntil * 1000;
+}
 // getBuildInfo is used by the /api/build-info route below.
 
 const app = express();
@@ -582,6 +624,99 @@ function setupErrorHandler(app: express.Application) {
   });
 }
 
+// Push a single "happy birthday week" notification per customer per year as
+// soon as their 7-day birthday window opens. The window itself is computed
+// the same way as in routes.ts (birthdayWindowForYear): starts on the
+// customer's birthday at 00:00 local and runs for 7 days. We only push at
+// the start of the window — the in-app banner takes care of reminding them
+// every time they open the app.
+function scheduleBirthdayWeekPushes() {
+  async function runBirthdayPushes() {
+    try {
+      const { storage: store } = await import("./storage");
+      const { sendPushToCustomerEmail } = await import("./push");
+      const { year, monthDay } = getLondonYearAndMonthDay();
+
+      const due = await store.getCustomersInBirthdayWindow(year, monthDay);
+      if (!due.length) return;
+
+      // Look up the current birthday-bonus value so the push can mention it.
+      // Fall back to a generic message if loyalty isn't configured.
+      let bonusPoints = 0;
+      try {
+        const raw = await store.getSetting("loyalty.birthdayBonus");
+        const n = Number(raw);
+        if (Number.isFinite(n) && n > 0) bonusPoints = n;
+      } catch { /* settings table empty — use generic copy */ }
+
+      for (const customer of due) {
+        try {
+          const body = bonusPoints > 0
+            ? `Happy birthday week from The 147! Open the app to claim your ${bonusPoints}-point birthday bonus.`
+            : "Happy birthday week from The 147! Open the app to see your birthday treat.";
+          await sendPushToCustomerEmail(customer.email, "Happy birthday! 🎂", body, {
+            type: "birthday_week",
+          });
+          await store.setLastBirthdayPushYear(customer.id, year);
+          log(`[Birthday] Sent birthday-week push to customer #${customer.id}`);
+        } catch (err) {
+          console.error(`[Birthday] Failed for customer #${customer.id}:`, err);
+        }
+      }
+    } catch (err) {
+      console.error("[Birthday] Scheduler error:", err);
+    }
+  }
+  // Run once shortly after boot to catch anyone whose birthday window
+  // already opened today (handles redeploys mid-day), then schedule the
+  // next run for just after London midnight so birthday pushes arrive at
+  // 00:00 local on the day the window opens. After the first midnight
+  // run, repeat every 24 hours. The per-year marker keeps it idempotent.
+  setTimeout(runBirthdayPushes, 60 * 1000);
+  setTimeout(() => {
+    runBirthdayPushes();
+    setInterval(runBirthdayPushes, 24 * 60 * 60 * 1000);
+  }, msUntilNextLondonMidnight());
+}
+
+// Auto-clear the doublePointsToday flag when the calendar day rolls over.
+// Without this, staff could turn double-points on for a Saturday event and
+// it would silently stay on indefinitely. Runs every 30 minutes — enough
+// resolution to catch any timezone drift around midnight.
+function scheduleDoublePointsDailyReset() {
+  // Track the London-local date we last performed the reset check, so each
+  // calendar day only triggers one clear. The very first check on startup
+  // looks at the date the broadcast marker was last set: if it's an older
+  // day than today (or absent), we clear immediately. That handles the
+  // "server crashed and restarted next morning with stale flag" case.
+  let lastCheckedDate: string | null = null;
+  async function maybeReset() {
+    try {
+      const today = getLondonDateString();
+      if (today === lastCheckedDate) return;
+      const { storage: store } = await import("./storage");
+      const current = await store.getSetting("loyalty.doublePointsToday");
+      if (current === "true") {
+        const lastBroadcast = await store.getSetting("loyalty.doublePointsLastBroadcastDate");
+        if (lastBroadcast !== today) {
+          // The flag is on, but it wasn't broadcast today — that means it
+          // was set on a previous day (or by the boot-up of an old server)
+          // and the calendar has rolled over. Clear it.
+          await store.setSetting("loyalty.doublePointsToday", "false");
+          log(`[Loyalty] Auto-cleared stale doublePointsToday at start of ${today} (last broadcast: ${lastBroadcast ?? "never"})`);
+        }
+      }
+      lastCheckedDate = today;
+    } catch (err) {
+      console.error("[Loyalty] Daily reset error:", err);
+    }
+  }
+  // Run immediately on boot, then every 30 minutes — enough resolution to
+  // catch the day rollover regardless of when the server happened to start.
+  setTimeout(maybeReset, 5 * 1000);
+  setInterval(maybeReset, 30 * 60 * 1000);
+}
+
 function scheduleBookingReminders() {
   async function runReminders() {
     try {
@@ -1039,6 +1174,10 @@ function scheduleRetentionCleanup() {
   scheduleOrderExpiry();
   // Remind pending memberships at 24h and auto-cancel at 72h if payment never completed
   scheduleMembershipPaymentReminders();
+  // Push customers a "happy birthday week" notification at the start of their window
+  scheduleBirthdayWeekPushes();
+  // Auto-clear the doublePointsToday flag overnight so it never lingers past midnight
+  scheduleDoublePointsDailyReset();
 })().catch((err) => {
   console.error("FATAL SERVER ERROR:", err);
   process.exit(1);

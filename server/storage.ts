@@ -222,6 +222,17 @@ export async function runStartupMigrations() {
         ADD COLUMN IF NOT EXISTS password_reset_token_expires_at TIMESTAMP,
         ADD COLUMN IF NOT EXISTS password_reset_last_sent_at TIMESTAMP;
     `);
+
+    // Loyalty programme columns (Phases 3–5). Adding them here as well as
+    // through drizzle's db:push so production hot-deploys don't blow up if
+    // the schema sync ran on a stale revision.
+    await client.query(`
+      ALTER TABLE customers
+        ADD COLUMN IF NOT EXISTS square_loyalty_account_id TEXT,
+        ADD COLUMN IF NOT EXISTS date_of_birth TEXT,
+        ADD COLUMN IF NOT EXISTS last_birthday_bonus_year INTEGER,
+        ADD COLUMN IF NOT EXISTS last_birthday_push_year INTEGER;
+    `);
     // Remove old unique constraint on customers.email (now stored encrypted; email_hash is the unique lookup)
     await client.query(`
       DO $$ BEGIN
@@ -537,6 +548,10 @@ export interface IStorage {
   updateCustomer(id: number, data: Partial<{ name: string; phone: string; dateOfBirth: string | null }>): Promise<Customer | undefined>;
   setSquareLoyaltyAccountId(id: number, accountId: string | null): Promise<void>;
   setLastBirthdayBonusYear(id: number, year: number): Promise<void>;
+  setLastBirthdayPushYear(id: number, year: number): Promise<void>;
+  getCustomerBySquareLoyaltyAccountId(accountId: string): Promise<Customer | undefined>;
+  getCustomersInBirthdayWindow(year: number, monthDay: string): Promise<Customer[]>;
+  getCustomersWithLoyaltyAccount(): Promise<Customer[]>;
   deleteCustomer(id: number): Promise<boolean>;
   createCustomerSession(token: string, customerId: number, expiresAt: Date): Promise<CustomerSession>;
   validateCustomerSession(token: string): Promise<CustomerSession | undefined>;
@@ -1628,6 +1643,56 @@ export class DatabaseStorage implements IStorage {
   // per year per customer regardless of how often the endpoint is called.
   async setLastBirthdayBonusYear(id: number, year: number): Promise<void> {
     await db.update(customers).set({ lastBirthdayBonusYear: year }).where(eq(customers.id, id));
+  }
+
+  async setLastBirthdayPushYear(id: number, year: number): Promise<void> {
+    await db.update(customers).set({ lastBirthdayPushYear: year }).where(eq(customers.id, id));
+  }
+
+  // Reverse lookup used by Square loyalty webhooks: given a Square loyalty
+  // account ID, find the local customer so we can route the push notification.
+  async getCustomerBySquareLoyaltyAccountId(accountId: string): Promise<Customer | undefined> {
+    if (!accountId) return undefined;
+    const [row] = await db
+      .select()
+      .from(customers)
+      .where(eq(customers.squareLoyaltyAccountId, accountId))
+      .limit(1);
+    return row ? decryptCustomer(row) : undefined;
+  }
+
+  // Find every customer whose birthday MM-DD matches the supplied string and
+  // who hasn't already been pushed this year. DOBs are encrypted, so this
+  // does a full scan + in-memory filter — fine for a venue customer base in
+  // the low thousands. Caller is the daily birthday-push scheduler.
+  async getCustomersInBirthdayWindow(year: number, monthDay: string): Promise<Customer[]> {
+    // Mirror the Feb-29 → Feb-28 fallback that birthdayWindowForYear() in
+    // routes.ts uses, so leap-day customers still receive their birthday
+    // push in non-leap years (on Feb 28). We detect the non-leap-year
+    // condition by checking whether Feb 29 of `year` actually exists.
+    const isLeap = new Date(year, 1, 29).getMonth() === 1;
+    const all = await db.select().from(customers);
+    const out: Customer[] = [];
+    for (const row of all) {
+      const decrypted = decryptCustomer(row);
+      if (!decrypted.dateOfBirth) continue;
+      let md = decrypted.dateOfBirth.slice(5); // "YYYY-MM-DD" → "MM-DD"
+      if (md === "02-29" && !isLeap) md = "02-28";
+      if (md !== monthDay) continue;
+      if ((decrypted.lastBirthdayPushYear ?? 0) >= year) continue;
+      out.push(decrypted);
+    }
+    return out;
+  }
+
+  // Every enrolled-in-loyalty customer (we have a Square account ID for them).
+  // Used by the double-points-day broadcast push.
+  async getCustomersWithLoyaltyAccount(): Promise<Customer[]> {
+    const rows = await db
+      .select()
+      .from(customers)
+      .where(isNotNull(customers.squareLoyaltyAccountId));
+    return rows.map(decryptCustomer);
   }
 
   async deleteCustomer(id: number): Promise<boolean> {

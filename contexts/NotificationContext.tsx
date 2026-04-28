@@ -6,7 +6,7 @@ import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { EventSubscription } from "expo-modules-core";
 import { router } from "expo-router";
-import { apiRequest } from "@/lib/query-client";
+import { apiRequest, queryClient } from "@/lib/query-client";
 
 // Routes a notification tap to the appropriate in-app screen. Today the
 // only typed payload is `order-status`, sent when staff advance an order to
@@ -153,6 +153,15 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     notificationListener.current = Notifications.addNotificationReceivedListener((n) => {
       setNotification(n);
+
+      // When a loyalty-related push arrives in the foreground, refresh the
+      // loyalty cache so the balance/banner updates without the customer
+      // having to pull-to-refresh. We invalidate by the root /api/loyalty/me
+      // key — RQ will refetch any active subscriber regardless of customer id.
+      const data = n?.request?.content?.data as { type?: string } | undefined;
+      if (data?.type === "loyalty_balance_changed" || data?.type === "double_points_day" || data?.type === "birthday_week") {
+        queryClient.invalidateQueries({ queryKey: ["/api/loyalty/me"] });
+      }
     });
 
     responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
