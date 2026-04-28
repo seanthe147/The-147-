@@ -230,6 +230,13 @@ export const customers = pgTable("customers", {
   // search by phone on every request and so we can skip the phone+OTP flow
   // entirely once the customer has signed into their main account.
   squareLoyaltyAccountId: text("square_loyalty_account_id"),
+  // Date of birth, stored encrypted as ISO YYYY-MM-DD. Used to grant a
+  // birthday-week loyalty bonus. Optional — customers may decline to share.
+  dateOfBirth: text("date_of_birth"),
+  // The four-digit calendar year in which we last awarded the birthday
+  // bonus to this customer. Lets us idempotently grant the bonus exactly
+  // once per year regardless of how many times /api/loyalty/me is called.
+  lastBirthdayBonusYear: integer("last_birthday_bonus_year"),
 });
 
 export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true, createdAt: true });

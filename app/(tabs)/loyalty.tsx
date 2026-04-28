@@ -182,6 +182,54 @@ function ActiveRewardsSection({
   );
 }
 
+function BirthdayBanner({
+  birthday,
+  terminology,
+}: {
+  birthday: {
+    hasDob: boolean;
+    active: boolean;
+    bonusAwardedThisYear: boolean;
+    bonusPoints: number;
+    dayOfYear: string | null;
+  };
+  terminology?: { one: string; other: string };
+}) {
+  const pointsLabel = terminology?.other || "points";
+  // Don't surface anything if no DOB and no bonus configured.
+  if (!birthday.hasDob) {
+    return (
+      <View style={styles.birthdayBannerInfo} testID="birthday-banner-prompt">
+        <Ionicons name="gift-outline" size={18} color={Colors.brand.blue} />
+        <Text style={styles.birthdayBannerInfoText}>
+          Add your birthday in your account to unlock {birthday.bonusPoints} bonus {pointsLabel} on your special week.
+        </Text>
+      </View>
+    );
+  }
+  if (birthday.active && !birthday.bonusAwardedThisYear) {
+    return (
+      <View style={styles.birthdayBannerActive} testID="birthday-banner-active">
+        <Ionicons name="gift" size={20} color="#7C2D12" />
+        <Text style={styles.birthdayBannerActiveText}>
+          🎂 Happy birthday week! Refresh to claim your {birthday.bonusPoints} bonus {pointsLabel}.
+        </Text>
+      </View>
+    );
+  }
+  if (birthday.active && birthday.bonusAwardedThisYear) {
+    return (
+      <View style={styles.birthdayBannerClaimed} testID="birthday-banner-claimed">
+        <Ionicons name="checkmark-circle" size={18} color="#166534" />
+        <Text style={styles.birthdayBannerClaimedText}>
+          🎉 Birthday bonus of {birthday.bonusPoints} {pointsLabel} added — enjoy!
+        </Text>
+      </View>
+    );
+  }
+  return null;
+}
+
 function NextRewardCard({
   balance,
   rewardTiers,
@@ -423,6 +471,17 @@ interface LoyaltyMeResponse {
   account?: LoyaltyAccount | null;
   events?: LoyaltyEvent[];
   rewards?: IssuedReward[];
+  birthday?: {
+    hasDob: boolean;
+    active: boolean;
+    bonusAwardedThisYear: boolean;
+    bonusPoints: number;
+    dayOfYear: string | null;
+  };
+  promo?: {
+    doublePointsToday: boolean;
+    visitPoints: number;
+  };
 }
 
 export default function LoyaltyScreen() {
@@ -804,6 +863,20 @@ export default function LoyaltyScreen() {
                 rewardTiers={meQuery.data.program?.reward_tiers ?? []}
                 terminology={meQuery.data.program?.terminology}
               />
+
+              {meQuery.data.promo?.doublePointsToday && (
+                <View style={styles.doublePointsBanner} testID="double-points-banner">
+                  <Ionicons name="flash" size={18} color="#92400E" />
+                  <Text style={styles.doublePointsText}>Double points today on all visits!</Text>
+                </View>
+              )}
+
+              {meQuery.data.birthday && (
+                <BirthdayBanner
+                  birthday={meQuery.data.birthday}
+                  terminology={meQuery.data.program?.terminology}
+                />
+              )}
 
               <View style={styles.statsRow}>
                 <View style={styles.statCard}>
@@ -1365,6 +1438,78 @@ const styles = StyleSheet.create({
   nextRewardCard: {
     marginHorizontal: 20,
     marginTop: 12,
+  },
+  doublePointsBanner: {
+    marginHorizontal: 20,
+    marginTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FEF3C7",
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#FCD34D",
+  },
+  doublePointsText: {
+    flex: 1,
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: "#92400E",
+  },
+  birthdayBannerInfo: {
+    marginHorizontal: 20,
+    marginTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#EFF6FF",
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+  },
+  birthdayBannerInfoText: {
+    flex: 1,
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: Colors.brand.blue,
+  },
+  birthdayBannerActive: {
+    marginHorizontal: 20,
+    marginTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FED7AA",
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#FB923C",
+  },
+  birthdayBannerActiveText: {
+    flex: 1,
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: "#7C2D12",
+  },
+  birthdayBannerClaimed: {
+    marginHorizontal: 20,
+    marginTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#DCFCE7",
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#86EFAC",
+  },
+  birthdayBannerClaimedText: {
+    flex: 1,
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: "#166534",
   },
   nextRewardGradient: {
     borderRadius: 16,

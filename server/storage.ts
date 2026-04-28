@@ -96,12 +96,13 @@ import {
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
 
-function decryptCustomer<T extends { email: string; name: string; phone?: string | null }>(c: T): T {
+function decryptCustomer<T extends { email: string; name: string; phone?: string | null; dateOfBirth?: string | null }>(c: T): T {
   return {
     ...c,
     email: decrypt(c.email),
     name: decrypt(c.name),
     phone: c.phone ? decrypt(c.phone) : c.phone,
+    dateOfBirth: c.dateOfBirth ? decrypt(c.dateOfBirth) : c.dateOfBirth,
   };
 }
 
@@ -533,8 +534,9 @@ export interface IStorage {
   getCustomerByEmail(email: string): Promise<Customer | undefined>;
   getCustomerById(id: number): Promise<Customer | undefined>;
   getAllCustomers(): Promise<Customer[]>;
-  updateCustomer(id: number, data: Partial<{ name: string; phone: string }>): Promise<Customer | undefined>;
+  updateCustomer(id: number, data: Partial<{ name: string; phone: string; dateOfBirth: string | null }>): Promise<Customer | undefined>;
   setSquareLoyaltyAccountId(id: number, accountId: string | null): Promise<void>;
+  setLastBirthdayBonusYear(id: number, year: number): Promise<void>;
   deleteCustomer(id: number): Promise<boolean>;
   createCustomerSession(token: string, customerId: number, expiresAt: Date): Promise<CustomerSession>;
   validateCustomerSession(token: string): Promise<CustomerSession | undefined>;
@@ -1603,10 +1605,13 @@ export class DatabaseStorage implements IStorage {
     return rows.map(decryptCustomer);
   }
 
-  async updateCustomer(id: number, data: Partial<{ name: string; phone: string }>): Promise<Customer | undefined> {
-    const encData: Record<string, string> = {};
+  async updateCustomer(id: number, data: Partial<{ name: string; phone: string; dateOfBirth: string | null }>): Promise<Customer | undefined> {
+    const encData: Record<string, string | null> = {};
     if (data.name) encData.name = encrypt(data.name);
     if (data.phone) encData.phone = encrypt(data.phone);
+    // dateOfBirth: null = clear, string = encrypt and store, undefined = leave alone
+    if (data.dateOfBirth === null) encData.dateOfBirth = null;
+    else if (typeof data.dateOfBirth === "string") encData.dateOfBirth = encrypt(data.dateOfBirth);
     const [updated] = await db.update(customers).set(encData).where(eq(customers.id, id)).returning();
     return updated ? decryptCustomer(updated) : undefined;
   }
@@ -1616,6 +1621,13 @@ export class DatabaseStorage implements IStorage {
   // text — Square's account IDs are non-secret identifiers.
   async setSquareLoyaltyAccountId(id: number, accountId: string | null): Promise<void> {
     await db.update(customers).set({ squareLoyaltyAccountId: accountId }).where(eq(customers.id, id));
+  }
+
+  // Track which calendar year we last awarded the birthday bonus to a
+  // customer. Used by /api/loyalty/me to ensure the bonus is granted once
+  // per year per customer regardless of how often the endpoint is called.
+  async setLastBirthdayBonusYear(id: number, year: number): Promise<void> {
+    await db.update(customers).set({ lastBirthdayBonusYear: year }).where(eq(customers.id, id));
   }
 
   async deleteCustomer(id: number): Promise<boolean> {

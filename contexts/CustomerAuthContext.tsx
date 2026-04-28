@@ -21,6 +21,7 @@ interface CustomerProfile {
   email: string;
   phone: string | null;
   emailVerified?: boolean;
+  dateOfBirth?: string | null;
 }
 
 interface CustomerAuthContextValue {
@@ -30,7 +31,7 @@ interface CustomerAuthContextValue {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (name: string, email: string, phone: string, password: string) => Promise<{ success: boolean; pending?: boolean; error?: string }>;
   logout: () => Promise<void>;
-  updateProfile: (data: { name?: string; phone?: string }) => Promise<{ success: boolean; error?: string }>;
+  updateProfile: (data: { name?: string; phone?: string; dateOfBirth?: string | null }) => Promise<{ success: boolean; error?: string }>;
   deleteAccount: () => Promise<{ success: boolean; error?: string }>;
   refreshProfile: () => Promise<void>;
   resendVerificationEmail: () => Promise<{ success: boolean; error?: string }>;
@@ -192,7 +193,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     setCustomer(null);
   }, [token]);
 
-  const updateProfile = useCallback(async (data: { name?: string; phone?: string }): Promise<{ success: boolean; error?: string }> => {
+  const updateProfile = useCallback(async (data: { name?: string; phone?: string; dateOfBirth?: string | null }): Promise<{ success: boolean; error?: string }> => {
     if (!token) return { success: false, error: "Not logged in" };
     try {
       const baseUrl = getApiUrl();

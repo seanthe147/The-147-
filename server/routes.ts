@@ -3752,7 +3752,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
         note,
       });
     }
-    res.json({ message: "Booking marked as completed", depositRefunded, refundId, refundError });
+
+    // ── Phase 3: award visit-based loyalty points ──
+    // Only run when transitioning *into* completed (so re-completing a
+    // booking can't double-credit), and only when the booker has a
+    // matching customer record with a linked Square loyalty account.
+    // Square's accumulate API uses our idempotency key (`visit-{id}`),
+    // which provides a second layer of double-award protection.
+    let pointsAwarded = 0;
+    let pointsDoubled = false;
+    if (booking.status !== "completed") {
+      try {
+        const cust = await storage.getCustomerByEmail(booking.customerEmail);
+        if (cust?.squareLoyaltyAccountId && square.isConfigured()) {
+          const cfg = await loadLoyaltyConfig();
+          const base = cfg.visitPoints;
+          const multiplier = cfg.doublePointsToday ? 2 : 1;
+          const amount = base * multiplier;
+          if (amount > 0) {
+            await square.accumulateLoyaltyPoints(
+              cust.squareLoyaltyAccountId,
+              amount,
+              `visit-${id}`,
+            );
+            pointsAwarded = amount;
+            pointsDoubled = multiplier > 1;
+            console.log(`[LOYALTY] Awarded ${amount} visit pts (x${multiplier}) to customer ${cust.id} for booking #${id}`);
+          }
+        }
+      } catch (lpErr: any) {
+        console.error(`[LOYALTY] Visit-points award failed for booking #${id}:`, lpErr.message);
+      }
+    }
+
+    res.json({
+      message: "Booking marked as completed",
+      depositRefunded,
+      refundId,
+      refundError,
+      loyalty: { pointsAwarded, doublePoints: pointsDoubled },
+    });
   });
 
   // Staff: mark a booking as no-show — deposit is kept, no refund issued
@@ -6047,6 +6086,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Authenticated loyalty (no phone+OTP) ────────────────────────────────────
+  // ── Phase 3 helpers: loyalty configuration + birthday bonus + visit points ──
+  // Settings live in the existing `siteSettings` key/value table so staff can
+  // edit them without a deploy. Defaults are sane for a UK snooker hall.
+  const LOYALTY_VISIT_POINTS_KEY = "loyalty.visitPoints";
+  const LOYALTY_BIRTHDAY_BONUS_KEY = "loyalty.birthdayBonus";
+  const LOYALTY_DOUBLE_POINTS_KEY = "loyalty.doublePointsToday";
+  const LOYALTY_VISIT_POINTS_DEFAULT = 5;
+  const LOYALTY_BIRTHDAY_BONUS_DEFAULT = 50;
+
+  type LoyaltyConfig = {
+    visitPoints: number;
+    birthdayBonus: number;
+    doublePointsToday: boolean;
+  };
+  async function loadLoyaltyConfig(): Promise<LoyaltyConfig> {
+    const [vpRaw, bbRaw, dpRaw] = await Promise.all([
+      storage.getSetting(LOYALTY_VISIT_POINTS_KEY),
+      storage.getSetting(LOYALTY_BIRTHDAY_BONUS_KEY),
+      storage.getSetting(LOYALTY_DOUBLE_POINTS_KEY),
+    ]);
+    const vp = vpRaw ? parseInt(vpRaw, 10) : NaN;
+    const bb = bbRaw ? parseInt(bbRaw, 10) : NaN;
+    return {
+      visitPoints: Number.isFinite(vp) && vp >= 0 ? vp : LOYALTY_VISIT_POINTS_DEFAULT,
+      birthdayBonus: Number.isFinite(bb) && bb >= 0 ? bb : LOYALTY_BIRTHDAY_BONUS_DEFAULT,
+      doublePointsToday: dpRaw === "true",
+    };
+  }
+
+  // Birthday-week window: the seven calendar days starting on the customer's
+  // birthday in the *current* year. Returns null if DOB isn't set or parsable.
+  // Feb 29 birthdays fall back to Feb 28 in non-leap years.
+  function birthdayWindowForYear(dobIso: string | null | undefined, year: number): { start: Date; end: Date; thisYearBirthday: Date } | null {
+    if (!dobIso || !/^\d{4}-\d{2}-\d{2}$/.test(dobIso)) return null;
+    const [, monthStr, dayStr] = dobIso.split("-");
+    let month = parseInt(monthStr, 10);
+    let day = parseInt(dayStr, 10);
+    if (!month || !day) return null;
+    // Feb 29 in non-leap year → use Feb 28
+    if (month === 2 && day === 29) {
+      const isLeap = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+      if (!isLeap) day = 28;
+    }
+    const thisYearBirthday = new Date(year, month - 1, day, 0, 0, 0, 0);
+    if (isNaN(thisYearBirthday.getTime())) return null;
+    const end = new Date(thisYearBirthday);
+    end.setDate(end.getDate() + 7);
+    return { start: thisYearBirthday, end, thisYearBirthday };
+  }
+
   // Phase 2 of the loyalty UX rebuild: once a customer is signed into their main
   // 147 account we can use the phone number on their profile to find/create their
   // Square loyalty account directly, cache the link on the customer row, and skip
@@ -6134,6 +6223,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // ── Birthday bonus: award once per calendar year if the customer is in
+      // their seven-day birthday window.
+      //
+      // Order matters: we call Square FIRST (it dedupes via idempotency key
+      // `birthday-{customerId}-{year}`), then persist the marker only on
+      // success. This avoids the failure mode where a transient Square error
+      // marks the customer "awarded" without actually crediting points.
+      // Concurrent /me calls are safe — Square's idempotency guarantees a
+      // single credit even if two requests slip past the cached marker check.
+      const config = await loadLoyaltyConfig();
+      const now = new Date();
+      const year = now.getFullYear();
+      const window = birthdayWindowForYear(customer.dateOfBirth, year);
+      let birthdayActive = false;
+      let birthdayAwarded = (customer.lastBirthdayBonusYear ?? 0) >= year;
+      if (window) {
+        const inWindow = now >= window.start && now < window.end;
+        birthdayActive = inWindow;
+        if (
+          inWindow &&
+          config.birthdayBonus > 0 &&
+          (customer.lastBirthdayBonusYear ?? 0) < year
+        ) {
+          try {
+            await square.adjustLoyaltyPoints(
+              account.id,
+              config.birthdayBonus,
+              `Birthday bonus ${year}`,
+              `birthday-${customerId}-${year}`,
+            );
+            // Square confirmed (or deduped). Persist the marker so next call
+            // can short-circuit. If this DB write fails the next /me request
+            // will simply call Square again with the same idempotency key —
+            // no double-credit, just an extra Square round-trip.
+            await storage.setLastBirthdayBonusYear(customerId, year);
+            birthdayAwarded = true;
+            // Reflect the new balance immediately.
+            try {
+              const refreshed = await square.getLoyaltyAccount(account.id);
+              if (refreshed) account = refreshed;
+            } catch {
+              account.balance = (account.balance ?? 0) + config.birthdayBonus;
+            }
+          } catch (bErr: any) {
+            console.error(`[LOYALTY] Birthday bonus failed for customer ${customerId}:`, bErr.message);
+          }
+        }
+      }
+
       const [events, rewards] = await Promise.all([
         square.searchLoyaltyEvents(account.id, 15).catch(() => []),
         square.searchIssuedRewards(account.id).catch(() => []),
@@ -6154,11 +6292,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
         },
         events,
         rewards,
+        birthday: {
+          hasDob: !!customer.dateOfBirth,
+          active: birthdayActive,
+          bonusAwardedThisYear: birthdayAwarded || (customer.lastBirthdayBonusYear ?? 0) >= year,
+          bonusPoints: config.birthdayBonus,
+          dayOfYear: window ? `${String(window.thisYearBirthday.getMonth() + 1).padStart(2, "0")}-${String(window.thisYearBirthday.getDate()).padStart(2, "0")}` : null,
+        },
+        promo: {
+          doublePointsToday: config.doublePointsToday,
+          visitPoints: config.visitPoints,
+        },
       });
     } catch (err: any) {
       console.error("/api/loyalty/me error:", err.message);
       res.status(500).json({ message: err.message });
     }
+  });
+
+  // ── Staff: read/update loyalty programme settings ──
+  // Manager+ only. Settings are stored as plain key/value rows in
+  // siteSettings so they take effect immediately and survive restarts.
+  app.get("/api/staff/loyalty/settings", staffAuth, managerAuth, async (_req, res) => {
+    const cfg = await loadLoyaltyConfig();
+    res.json(cfg);
+  });
+
+  app.patch("/api/staff/loyalty/settings", staffAuth, managerAuth, async (req, res) => {
+    const { visitPoints, birthdayBonus, doublePointsToday } = req.body ?? {};
+    const tasks: Promise<void>[] = [];
+    if (visitPoints !== undefined) {
+      const n = Number(visitPoints);
+      if (!Number.isInteger(n) || n < 0 || n > 1000) {
+        return res.status(400).json({ message: "visitPoints must be an integer between 0 and 1000" });
+      }
+      tasks.push(storage.setSetting(LOYALTY_VISIT_POINTS_KEY, String(n)));
+    }
+    if (birthdayBonus !== undefined) {
+      const n = Number(birthdayBonus);
+      if (!Number.isInteger(n) || n < 0 || n > 10000) {
+        return res.status(400).json({ message: "birthdayBonus must be an integer between 0 and 10000" });
+      }
+      tasks.push(storage.setSetting(LOYALTY_BIRTHDAY_BONUS_KEY, String(n)));
+    }
+    if (doublePointsToday !== undefined) {
+      if (typeof doublePointsToday !== "boolean") {
+        return res.status(400).json({ message: "doublePointsToday must be a boolean" });
+      }
+      tasks.push(storage.setSetting(LOYALTY_DOUBLE_POINTS_KEY, doublePointsToday ? "true" : "false"));
+    }
+    if (tasks.length === 0) {
+      return res.status(400).json({ message: "No valid fields to update" });
+    }
+    await Promise.all(tasks);
+    res.json(await loadLoyaltyConfig());
   });
 
   app.post("/api/loyalty/me/enroll", customerAuth, async (req, res) => {
@@ -6481,7 +6668,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!customer) {
       return res.status(404).json({ message: "Account not found" });
     }
-    res.json({ id: customer.id, name: customer.name, email: customer.email, phone: customer.phone, emailVerified: customer.emailVerified });
+    res.json({
+      id: customer.id,
+      name: customer.name,
+      email: customer.email,
+      phone: customer.phone,
+      emailVerified: customer.emailVerified,
+      dateOfBirth: customer.dateOfBirth ?? null,
+    });
   });
 
   // Resend the email verification link (rate-limited per customer to one every 60s)
@@ -6673,8 +6867,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.patch("/api/customers/me", customerAuth, async (req, res) => {
-    const { name, phone } = req.body;
-    const updates: Partial<{ name: string; phone: string }> = {};
+    const { name, phone, dateOfBirth } = req.body;
+    const updates: Partial<{ name: string; phone: string; dateOfBirth: string | null }> = {};
     if (name !== undefined) {
       const trimmed = String(name).trim();
       if (!trimmed || trimmed.length < 2 || trimmed.length > 100) {
@@ -6689,6 +6883,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       updates.phone = trimmed;
     }
+    if (dateOfBirth !== undefined) {
+      // Allow explicit clear via null or empty string. Otherwise require an
+      // ISO YYYY-MM-DD that parses to a real, past date and isn't ridiculous
+      // (>120 years old or in the future). We keep the year so birthdays in
+      // leap years (Feb 29) can be surfaced predictably each year.
+      if (dateOfBirth === null || dateOfBirth === "") {
+        updates.dateOfBirth = null;
+      } else {
+        const dob = String(dateOfBirth).trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
+          return res.status(400).json({ message: "Date of birth must be in YYYY-MM-DD format" });
+        }
+        // Strictly validate the calendar date — JS Date silently normalizes
+        // invalid inputs (e.g. 2024-02-31 → Mar 2). We must reject those so
+        // bad birthdays can't leak into the bonus-window logic downstream.
+        const [yStr, mStr, dStr] = dob.split("-");
+        const y = Number(yStr), m = Number(mStr), d = Number(dStr);
+        const parsed = new Date(Date.UTC(y, m - 1, d));
+        if (
+          isNaN(parsed.getTime()) ||
+          parsed.getUTCFullYear() !== y ||
+          parsed.getUTCMonth() !== m - 1 ||
+          parsed.getUTCDate() !== d
+        ) {
+          return res.status(400).json({ message: "Invalid date of birth" });
+        }
+        const now = new Date();
+        const ageYears = (now.getTime() - parsed.getTime()) / (365.25 * 24 * 3600 * 1000);
+        if (ageYears < 0) return res.status(400).json({ message: "Date of birth cannot be in the future" });
+        if (ageYears > 120) return res.status(400).json({ message: "Invalid date of birth" });
+        updates.dateOfBirth = dob;
+      }
+    }
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ message: "No valid fields to update" });
     }
@@ -6702,11 +6929,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.setSquareLoyaltyAccountId(customerId, null);
       }
     }
+    // If DOB is being changed (or cleared), reset the birthday-bonus year
+    // marker. Otherwise a customer who fixed a typo on their DOB this year
+    // would never get the bonus on the corrected birthday.
+    if (updates.dateOfBirth !== undefined) {
+      const prev = await storage.getCustomerById(customerId);
+      if (prev && prev.dateOfBirth !== updates.dateOfBirth && prev.lastBirthdayBonusYear != null) {
+        await storage.setLastBirthdayBonusYear(customerId, 0);
+      }
+    }
     const updated = await storage.updateCustomer(customerId, updates);
     if (!updated) {
       return res.status(404).json({ message: "Account not found" });
     }
-    res.json({ id: updated.id, name: updated.name, email: updated.email, phone: updated.phone });
+    res.json({
+      id: updated.id,
+      name: updated.name,
+      email: updated.email,
+      phone: updated.phone,
+      dateOfBirth: updated.dateOfBirth ?? null,
+    });
   });
 
   // Bind a push token to the authenticated customer's email.

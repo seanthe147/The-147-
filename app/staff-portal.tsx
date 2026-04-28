@@ -614,6 +614,14 @@ function DashboardScreen() {
                 testID="portal-push-notifications"
               />
               <AdminTool
+                icon="ribbon"
+                title="Loyalty Settings"
+                description="Visit points, birthday bonus, double points day"
+                color={Colors.brand.gold}
+                onPress={() => router.push("/admin-loyalty")}
+                testID="portal-loyalty-settings"
+              />
+              <AdminTool
                 icon="megaphone"
                 title="Staff Notices"
                 description="Post and manage notices for all staff"

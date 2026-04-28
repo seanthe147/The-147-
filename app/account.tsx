@@ -530,9 +530,9 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
 }
 
 function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVerificationEmail }: {
-  customer: { id: number; name: string; email: string; phone: string | null; emailVerified?: boolean };
+  customer: { id: number; name: string; email: string; phone: string | null; emailVerified?: boolean; dateOfBirth?: string | null };
   logout: () => Promise<void>;
-  updateProfile: (data: { name?: string; phone?: string }) => Promise<{ success: boolean; error?: string }>;
+  updateProfile: (data: { name?: string; phone?: string; dateOfBirth?: string | null }) => Promise<{ success: boolean; error?: string }>;
   deleteAccount: () => Promise<{ success: boolean; error?: string }>;
   resendVerificationEmail: () => Promise<{ success: boolean; error?: string }>;
 }) {
@@ -589,6 +589,8 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
   const [editingProfile, setEditingProfile] = useState(false);
   const [editName, setEditName] = useState(customer.name);
   const [editPhone, setEditPhone] = useState(customer.phone || "");
+  // DOB shown/edited as YYYY-MM-DD. Optional — empty string means "clear".
+  const [editDob, setEditDob] = useState(customer.dateOfBirth || "");
   const [saving, setSaving] = useState(false);
 
   const bookingsQuery = useQuery<CustomerBooking[]>({
@@ -689,8 +691,23 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
   };
 
   const handleSaveProfile = async () => {
+    const dobTrimmed = editDob.trim();
+    if (dobTrimmed && !/^\d{4}-\d{2}-\d{2}$/.test(dobTrimmed)) {
+      const msg = "Date of birth must be in YYYY-MM-DD format";
+      if (Platform.OS === "web") window.alert(msg);
+      else Alert.alert("Invalid date", msg);
+      return;
+    }
     setSaving(true);
-    const result = await updateProfile({ name: editName.trim(), phone: editPhone.trim() });
+    const result = await updateProfile({
+      name: editName.trim(),
+      phone: editPhone.trim(),
+      // Pass `null` to explicitly clear, the trimmed string to set, and
+      // skip the field entirely if it was unchanged so we don't churn.
+      ...(dobTrimmed !== (customer.dateOfBirth || "")
+        ? { dateOfBirth: dobTrimmed === "" ? null : dobTrimmed }
+        : {}),
+    });
     setSaving(false);
     if (result.success) {
       setEditingProfile(false);
@@ -746,6 +763,17 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
                   placeholderTextColor="#9CA3AF"
                   keyboardType="phone-pad"
                 />
+                <TextInput
+                  style={[styles.input, { marginBottom: 4 }]}
+                  value={editDob}
+                  onChangeText={setEditDob}
+                  placeholder="Date of birth (YYYY-MM-DD) — optional"
+                  placeholderTextColor="#9CA3AF"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  testID="profile-dob-input"
+                />
+                <Text style={styles.dobHint}>Add your birthday to unlock a free reward in your birthday week.</Text>
                 <View style={styles.editActions}>
                   <Pressable
                     onPress={handleSaveProfile}
@@ -754,7 +782,7 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
                   >
                     <Text style={styles.saveButtonText}>{saving ? "Saving..." : "Save"}</Text>
                   </Pressable>
-                  <Pressable onPress={() => { setEditingProfile(false); setEditName(customer.name); setEditPhone(customer.phone || ""); }} style={styles.cancelEditButton}>
+                  <Pressable onPress={() => { setEditingProfile(false); setEditName(customer.name); setEditPhone(customer.phone || ""); setEditDob(customer.dateOfBirth || ""); }} style={styles.cancelEditButton}>
                     <Text style={styles.cancelEditText}>Cancel</Text>
                   </Pressable>
                 </View>
@@ -764,6 +792,7 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
                 <Text style={styles.profileName}>{customer.name}</Text>
                 <Text style={styles.profileEmail}>{customer.email}</Text>
                 {customer.phone ? <Text style={styles.profilePhone}>{customer.phone}</Text> : null}
+                {customer.dateOfBirth ? <Text style={styles.profilePhone}>🎂 {customer.dateOfBirth}</Text> : null}
               </>
             )}
           </View>
@@ -1690,6 +1719,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.light.textSecondary,
     marginTop: 2,
+  },
+  dobHint: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 11,
+    color: Colors.light.textSecondary,
+    marginBottom: 10,
+    fontStyle: "italic",
   },
   editButton: {
     padding: 8,
