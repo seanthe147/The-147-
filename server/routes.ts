@@ -4092,10 +4092,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/deals", async (_req, res) => {
     try {
-      const deals = await square.getSquareDeals();
-      res.json(deals);
+      const [deals, prefs] = await Promise.all([
+        square.getSquareDeals(),
+        storage.getDealPreferences().catch(() => []),
+      ]);
+      const prefById = new Map(prefs.map((p) => [p.squareDiscountId, p] as const));
+      // Hidden filter first, then sort by manager-curated order. Deals without
+      // a preference row sort as 0 (top), tie-broken by name so the order is
+      // stable for new deals before a manager curates them.
+      const visible = deals.filter((d) => !prefById.get(d.id)?.hidden);
+      visible.sort((a, b) => {
+        const sa = prefById.get(a.id)?.sortOrder ?? 0;
+        const sb = prefById.get(b.id)?.sortOrder ?? 0;
+        if (sa !== sb) return sa - sb;
+        return a.name.localeCompare(b.name);
+      });
+      res.json(visible);
     } catch {
       res.json([]);
+    }
+  });
+
+  // Manager-only: returns every Square deal with its current display
+  // preference merged in, so the dashboard can show hidden ones too. Sorted
+  // identically to /api/deals so reorder math on the client matches what
+  // customers see.
+  app.get("/api/staff/deals", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      const [deals, prefs] = await Promise.all([
+        square.getSquareDeals(),
+        storage.getDealPreferences().catch(() => []),
+      ]);
+      const prefById = new Map(prefs.map((p) => [p.squareDiscountId, p] as const));
+      const merged = deals.map((d) => {
+        const p = prefById.get(d.id);
+        return { ...d, hidden: !!p?.hidden, sortOrder: p?.sortOrder ?? 0 };
+      });
+      merged.sort((a, b) => {
+        if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+        return a.name.localeCompare(b.name);
+      });
+      res.json(merged);
+    } catch (err) {
+      console.error("Staff deals fetch failed:", err);
+      res.status(500).json({ error: "Failed to load deals" });
+    }
+  });
+
+  app.put("/api/staff/deals/:squareDiscountId", staffAuth, managerAuth, async (req, res) => {
+    const sid = String(req.params.squareDiscountId || "").trim();
+    if (!sid) return res.status(400).json({ error: "Missing discount id" });
+    const patch: { hidden?: boolean } = {};
+    if (typeof req.body?.hidden === "boolean") patch.hidden = req.body.hidden;
+    if (Object.keys(patch).length === 0) {
+      return res.status(400).json({ error: "Nothing to update" });
+    }
+    try {
+      const row = await storage.upsertDealPreference(sid, patch);
+      res.json(row);
+    } catch (err) {
+      console.error("Deal preference update failed:", err);
+      res.status(500).json({ error: "Failed to update deal" });
+    }
+  });
+
+  app.post("/api/staff/deals/reorder", staffAuth, managerAuth, async (req, res) => {
+    const orderedIds = req.body?.orderedIds;
+    if (!Array.isArray(orderedIds) || !orderedIds.every((x) => typeof x === "string" && x)) {
+      return res.status(400).json({ error: "orderedIds must be an array of Square discount IDs" });
+    }
+    try {
+      await storage.reorderDealPreferences(orderedIds);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Deal reorder failed:", err);
+      res.status(500).json({ error: "Failed to reorder deals" });
     }
   });
 

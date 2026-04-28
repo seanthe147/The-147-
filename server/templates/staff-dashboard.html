@@ -538,6 +538,10 @@
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
           Offers
         </div>
+        <div class="nav-item hidden" data-page="deals" id="navDeals">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l2-2 4 4L20 3l1 1L9 16l-6-4z"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7"/></svg>
+          Current Deals
+        </div>
         <div class="nav-item hidden" data-page="payments" id="navPayments">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
           Events &amp; Payments
@@ -1015,6 +1019,26 @@
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.4;margin-bottom:12px"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/></svg>
             <p style="margin:0;font-size:15px;font-weight:600">No banners yet</p>
             <p style="margin:6px 0 0;font-size:13px">Upload your first promotional image to display it in the app</p>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- CURRENT DEALS PAGE -->
+      <div class="page" id="pageDeals">
+        <div class="page-body">
+          <div class="menu-refresh-bar">
+            <p style="font-size:13px;color:var(--text-2);margin:0">Deals are pulled live from <strong>Square</strong>. Hide ones you don't want on the customer home screen, and use the arrows to set the order they appear in. Hidden deals still apply automatically at checkout — they just won't show in the "Current Deals" strip.</p>
+            <button class="btn btn-sm" onclick="loadDeals()" style="background:var(--bg);border:1px solid var(--border);color:var(--text)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+              Refresh from Square
+            </button>
+          </div>
+          <div id="dealsGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;padding:0 0 20px"></div>
+          <div id="dealsEmpty" style="display:none;text-align:center;padding:60px 20px;color:var(--text-2)">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.4;margin-bottom:12px"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+            <p style="margin:0;font-size:15px;font-weight:600">No deals from Square yet</p>
+            <p style="margin:6px 0 0;font-size:13px">Create discounts in your Square dashboard and they'll appear here.</p>
           </div>
         </div>
       </div>
@@ -2658,7 +2682,7 @@
     // — like the weekly leftover-membership audit email — can open straight
     // onto the right tab. Falls back to bookings for any unknown/missing tab
     // or for tabs the current role isn't allowed to see.
-    const tabNavIds={bookings:'navBookings',messages:'navMessages',comms:'navComms',staff:'navStaff',memberships:'navMemberships',menu:'navMenu',website:'navWebsite',banners:'navBanners',offers:'navOffers',payments:'navPayments',hr:'navHR',gdpr:'navGDPR',auditlog:'navAuditLog',settings:'navSettings'};
+    const tabNavIds={bookings:'navBookings',messages:'navMessages',comms:'navComms',staff:'navStaff',memberships:'navMemberships',menu:'navMenu',website:'navWebsite',banners:'navBanners',offers:'navOffers',deals:'navDeals',payments:'navPayments',hr:'navHR',gdpr:'navGDPR',auditlog:'navAuditLog',settings:'navSettings'};
     let initialPage='bookings';
     try{
       const hash=(window.location.hash||'').replace(/^#/,'').toLowerCase();
@@ -2692,6 +2716,7 @@
     el('navWebsite').classList.toggle('hidden',!isOwner);
     el('navBanners').classList.toggle('hidden',!isManager);
     el('navOffers').classList.toggle('hidden',!isManager);
+    el('navDeals').classList.toggle('hidden',!isManager);
     // Payment endpoints (Stripe + Square charge/intent/finalize) are manager-only
     // server-side, so hide the nav entry for non-managers to avoid a confusing 403.
     el('navPayments').classList.toggle('hidden',!isManager);
@@ -2781,13 +2806,13 @@
     closeSidebar();
     // Manager-only pages: redirect non-managers back to Bookings if they
     // try to deep-link directly via #hash or programmatic navigation.
-    const managerOnlyPages=['gdpr','auditlog','settings','payments'];
+    const managerOnlyPages=['gdpr','auditlog','settings','payments','deals'];
     if(managerOnlyPages.indexOf(page)>=0&&state.role!=='manager'&&state.role!=='owner'){
       page='bookings';
     }
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page'+cap(page)));
-    const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',website:'Website',banners:'App Banners',offers:'Offers',payments:'Events & Payments',hr:'HR & Attendance',gdpr:'GDPR & Compliance',auditlog:'Audit Log'};
+    const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',website:'Website',banners:'App Banners',offers:'Offers',deals:'Current Deals',payments:'Events & Payments',hr:'HR & Attendance',gdpr:'GDPR & Compliance',auditlog:'Audit Log'};
     el('topbarTitle').textContent=titles[page]||'';
     el('topbarSub').textContent='';
     if(page==='bookings'){el('topbarActions').style.display='';switchBookingsTab('bookings');loadBookings();loadDashboardNotices();startBookingsPolling();}
@@ -2800,6 +2825,7 @@
     if(page==='banners')loadBanners();
     if(page==='website')loadWebsiteEditor();
     if(page==='offers')loadOffers();
+    if(page==='deals')loadDeals();
     if(page==='hr')loadHR();
     if(page==='payments')loadPaymentsPage();
     if(page==='auditlog')loadAuditLog();
@@ -5062,6 +5088,140 @@
     }
   }
   window.moveBanner=moveBanner;
+
+  /* ── Current Deals (Square-driven) ── */
+  let dealsData=[];
+  let dealReorderInFlight=false;
+
+  async function loadDeals(){
+    const grid=el('dealsGrid');
+    const empty=el('dealsEmpty');
+    grid.innerHTML='<div class="loading-state"><div class="spinner"></div>Loading deals from Square…</div>';
+    empty.style.display='none';
+    try{
+      const r=await api('/api/staff/deals');
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      dealsData=await r.json();
+      renderDeals();
+    }catch(e){
+      grid.innerHTML='<p style="color:var(--red);padding:20px">Failed to load deals from Square. Please try again in a moment.</p>';
+    }
+  }
+  window.loadDeals=loadDeals;
+
+  function formatDealValue(d){
+    if(d.discountType==='FIXED_PERCENTAGE'&&d.percentage){
+      const n=parseFloat(d.percentage);
+      return isFinite(n)?n+'% off':d.percentage+' off';
+    }
+    if(d.discountType==='FIXED_AMOUNT'&&d.amountPence!=null){
+      return '£'+(d.amountPence/100).toFixed(2)+' off';
+    }
+    return '';
+  }
+
+  function renderDeals(){
+    const grid=el('dealsGrid');
+    const empty=el('dealsEmpty');
+    if(!dealsData.length){
+      grid.innerHTML='';
+      empty.style.display='';
+      return;
+    }
+    empty.style.display='none';
+    // dealsData arrives pre-sorted from the server. Maintain that order on
+    // the client so reorder math is always against the on-screen sequence.
+    const sorted=[...dealsData];
+    const visibleCount=sorted.filter(d=>!d.hidden).length;
+    let visibleIdx=0;
+    grid.innerHTML=sorted.map((d,i)=>{
+      const isHidden=!!d.hidden;
+      const value=formatDealValue(d);
+      const expiry=d.expiresOn||'';
+      // Up/down chevrons disabled at boundaries. Hidden deals can still be
+      // reordered — managers might want to slot one back in at a specific
+      // position before un-hiding it.
+      const upDisabled=i===0;
+      const downDisabled=i===sorted.length-1;
+      const positionLabel=isHidden?'Hidden from app':'Display order: '+(++visibleIdx)+' of '+visibleCount;
+      return `
+        <div style="background:var(--surface);border-radius:14px;border:1px solid var(--border);overflow:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column;${isHidden?'opacity:.55':''}">
+          <div style="background:linear-gradient(135deg,#0047AB,#1E6FD9);padding:14px 14px 12px;position:relative;min-height:72px">
+            <div style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,.45);color:#fff;font-size:11px;font-weight:700;border-radius:10px;padding:2px 8px;letter-spacing:.3px">#${i+1}</div>
+            ${value?`<div style="position:absolute;top:10px;right:10px;background:rgba(255,255,255,.22);backdrop-filter:blur(6px);border-radius:20px;padding:3px 10px;font-size:12px;font-weight:700;color:#fff;letter-spacing:.3px">${esc(value)}</div>`:''}
+            <div style="font-size:16px;font-weight:700;color:#fff;margin-top:18px;padding-right:${value?'80px':'0'}">${esc(d.name)}</div>
+            ${expiry?`<div style="font-size:11px;color:rgba(255,255,255,.8);margin-top:4px">Ends ${esc(expiry)}</div>`:''}
+          </div>
+          <div style="padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px;flex:1">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+              <span style="font-size:12px;color:var(--text-2);font-weight:600">${esc(positionLabel)}</span>
+              <div style="display:flex;gap:4px">
+                <button onclick="moveDeal('${esc(d.id)}',-1)" ${upDisabled?'disabled':''} title="Move up" style="width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);cursor:${upDisabled?'not-allowed':'pointer'};opacity:${upDisabled?'.4':'1'};display:flex;align-items:center;justify-content:center">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
+                </button>
+                <button onclick="moveDeal('${esc(d.id)}',1)" ${downDisabled?'disabled':''} title="Move down" style="width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);cursor:${downDisabled?'not-allowed':'pointer'};opacity:${downDisabled?'.4':'1'};display:flex;align-items:center;justify-content:center">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+              </div>
+            </div>
+            <button onclick="toggleDealHidden('${esc(d.id)}',${!isHidden})" style="padding:7px 0;border-radius:8px;border:1.5px solid ${isHidden?'var(--green)':'var(--red)'};background:${isHidden?'rgba(34,197,94,.06)':'rgba(239,68,68,.06)'};color:${isHidden?'var(--green)':'var(--red)'};font-size:12px;font-weight:600;cursor:pointer">
+              ${isHidden?'Show in app':'Hide from app'}
+            </button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // Per-deal lock so rapid clicking the hide/show button can't fire two
+  // requests that race and leave the server in an opposite state to the UI.
+  const dealToggleInFlight=new Set();
+  async function toggleDealHidden(squareDiscountId,hidden){
+    if(dealToggleInFlight.has(squareDiscountId)) return;
+    const d=dealsData.find(x=>x.id===squareDiscountId);
+    if(!d) return;
+    const prev=d.hidden;
+    d.hidden=hidden;
+    dealToggleInFlight.add(squareDiscountId);
+    renderDeals();
+    try{
+      const r=await api('/api/staff/deals/'+encodeURIComponent(squareDiscountId),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({hidden})});
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const saved=await r.json();
+      // Snap to server truth so any drift (e.g. another manager toggled it)
+      // is reflected immediately.
+      d.hidden=!!saved.hidden;
+    }catch(e){
+      d.hidden=prev;
+      alert('Failed to update this deal. Please try again.');
+    }finally{
+      dealToggleInFlight.delete(squareDiscountId);
+      renderDeals();
+    }
+  }
+  window.toggleDealHidden=toggleDealHidden;
+
+  async function moveDeal(squareDiscountId,direction){
+    if(dealReorderInFlight) return;
+    const idx=dealsData.findIndex(d=>d.id===squareDiscountId);
+    const newIdx=idx+direction;
+    if(idx<0||newIdx<0||newIdx>=dealsData.length) return;
+    [dealsData[idx],dealsData[newIdx]]=[dealsData[newIdx],dealsData[idx]];
+    dealsData.forEach((d,i)=>{d.sortOrder=i;});
+    dealReorderInFlight=true;
+    renderDeals();
+    document.querySelectorAll('#dealsGrid button[onclick^="moveDeal("]').forEach(btn=>{btn.disabled=true;btn.style.cursor='wait';btn.style.opacity='.45';});
+    try{
+      const r=await api('/api/staff/deals/reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderedIds:dealsData.map(d=>d.id)})});
+      if(!r.ok) throw new Error('HTTP '+r.status);
+    }catch(e){
+      alert('Failed to save the new order. Reloading…');
+      await loadDeals();
+    }finally{
+      dealReorderInFlight=false;
+      renderDeals();
+    }
+  }
+  window.moveDeal=moveDeal;
 
   async function toggleBannerPage(id,field,value){
     try{

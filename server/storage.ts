@@ -47,6 +47,8 @@ import {
   type MarketingPage,
   type InsertMarketingPage,
   bannerImages,
+  dealPreferences,
+  type DealPreference,
   customers,
   customerSessions,
   staffNotices,
@@ -1438,6 +1440,64 @@ export class DatabaseStorage implements IStorage {
   async deleteBannerImage(id: number): Promise<boolean> {
     const [row] = await db.delete(bannerImages).where(eq(bannerImages.id, id)).returning();
     return !!row;
+  }
+
+  // ── Square deal display preferences ──
+  // These rows are keyed by Square discount IDs and only exist as a curation
+  // layer over the live deals returned from Square. Missing prefs default to
+  // visible + sortOrder=0 so new deals don't disappear silently.
+  async getDealPreferences(): Promise<DealPreference[]> {
+    return db.select().from(dealPreferences);
+  }
+
+  async upsertDealPreference(squareDiscountId: string, patch: { hidden?: boolean; sortOrder?: number }): Promise<DealPreference> {
+    // Single-statement upsert keyed on the unique squareDiscountId column so
+    // two concurrent toggles for the same deal can't race past a SELECT and
+    // both try to INSERT (which would 500 on the unique violation).
+    const setOnConflict: { hidden?: boolean; sortOrder?: number; updatedAt: Date } = { updatedAt: new Date() };
+    if (patch.hidden !== undefined) setOnConflict.hidden = patch.hidden;
+    if (patch.sortOrder !== undefined) setOnConflict.sortOrder = patch.sortOrder;
+    const [row] = await db.insert(dealPreferences)
+      .values({
+        squareDiscountId,
+        hidden: patch.hidden ?? false,
+        sortOrder: patch.sortOrder ?? 0,
+      })
+      .onConflictDoUpdate({
+        target: dealPreferences.squareDiscountId,
+        set: setOnConflict,
+      })
+      .returning();
+    return row;
+  }
+
+  // Atomic bulk reorder of deals. Accepts the desired final order as an array
+  // of Square discount IDs (position 0 is shown first). Upserts each one's
+  // sortOrder inside a single transaction so the home strip never sees a
+  // partially-shuffled state. Hidden flags are preserved on existing rows.
+  async reorderDealPreferences(orderedSquareDiscountIds: string[]): Promise<DealPreference[]> {
+    const seen = new Set<string>();
+    const dedup: string[] = [];
+    for (const id of orderedSquareDiscountIds) {
+      if (typeof id === "string" && id && !seen.has(id)) {
+        seen.add(id);
+        dedup.push(id);
+      }
+    }
+    await db.transaction(async (tx) => {
+      for (let i = 0; i < dedup.length; i++) {
+        const sid = dedup[i];
+        const existing = await tx.select().from(dealPreferences).where(eq(dealPreferences.squareDiscountId, sid)).limit(1);
+        if (existing.length) {
+          await tx.update(dealPreferences)
+            .set({ sortOrder: i, updatedAt: new Date() })
+            .where(eq(dealPreferences.squareDiscountId, sid));
+        } else {
+          await tx.insert(dealPreferences).values({ squareDiscountId: sid, hidden: false, sortOrder: i });
+        }
+      }
+    });
+    return db.select().from(dealPreferences);
   }
 
   // Atomic bulk reorder. Accepts the desired final order as an array of banner

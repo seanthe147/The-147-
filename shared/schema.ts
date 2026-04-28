@@ -263,6 +263,22 @@ export const insertBannerImageSchema = createInsertSchema(bannerImages).omit({ i
 export type InsertBannerImage = z.infer<typeof insertBannerImageSchema>;
 export type BannerImage = typeof bannerImages.$inferSelect;
 
+// Per-deal display preferences for the customer-app "Current Deals" strip.
+// Keyed by Square's discount catalog ID — no cascade because deals live in
+// Square (not our DB). When a deal vanishes from Square, its row here just
+// stops being joined against and becomes dead weight (cleanup is cheap and
+// non-urgent). Unhidden by default; sortOrder=0 also lets brand-new deals
+// surface at the top until a manager curates them.
+export const dealPreferences = pgTable("deal_preferences", {
+  id: serial("id").primaryKey(),
+  squareDiscountId: text("square_discount_id").notNull().unique(),
+  hidden: boolean("hidden").notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type DealPreference = typeof dealPreferences.$inferSelect;
+
 export const staffNotices = pgTable("staff_notices", {
   id: serial("id").primaryKey(),
   message: text("message").notNull(),
