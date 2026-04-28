@@ -1440,6 +1440,28 @@ export class DatabaseStorage implements IStorage {
     return !!row;
   }
 
+  // Atomic bulk reorder. Accepts the desired final order as an array of banner
+  // ids (position 0 is shown first). Updates every row's sortOrder in a single
+  // transaction so the home-screen banner strip is never observed in a
+  // partially-updated state. Ids that don't currently exist are silently
+  // ignored. Returns the freshly-ordered list of all banners.
+  async reorderBannerImages(orderedIds: number[]): Promise<BannerImage[]> {
+    const seen = new Set<number>();
+    const dedup: number[] = [];
+    for (const id of orderedIds) {
+      if (Number.isFinite(id) && !seen.has(id)) {
+        seen.add(id);
+        dedup.push(Number(id));
+      }
+    }
+    await db.transaction(async (tx) => {
+      for (let i = 0; i < dedup.length; i++) {
+        await tx.update(bannerImages).set({ sortOrder: i }).where(eq(bannerImages.id, dedup[i]));
+      }
+    });
+    return db.select().from(bannerImages).orderBy(bannerImages.sortOrder);
+  }
+
   async createCustomer(email: string, name: string, phone: string | null, passwordHash: string, opts?: { emailVerifyTokenHash?: string; emailVerifyTokenExpiresAt?: Date }): Promise<Customer> {
     const normalised = email.toLowerCase().trim();
     const [customer] = await db.insert(customers).values({

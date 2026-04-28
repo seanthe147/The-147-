@@ -5490,6 +5490,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(updated);
   });
 
+  // Atomic bulk reorder of banner images. Body: { orderedIds: number[] } where
+  // position 0 is shown first. The whole thing runs in one transaction so the
+  // home strip is never observed mid-shuffle.
+  app.post("/api/banner-images/reorder", staffAuth, managerAuth, async (req, res) => {
+    const orderedIds = req.body?.orderedIds;
+    if (!Array.isArray(orderedIds) || !orderedIds.every((x) => Number.isInteger(x))) {
+      return res.status(400).json({ error: "orderedIds must be an array of integers" });
+    }
+    try {
+      const banners = await storage.reorderBannerImages(orderedIds);
+      res.json(banners);
+    } catch (err) {
+      console.error("Banner reorder failed:", err);
+      res.status(500).json({ error: "Failed to reorder banners" });
+    }
+  });
+
   app.delete("/api/banner-images/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });

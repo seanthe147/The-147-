@@ -4964,15 +4964,32 @@
       return;
     }
     empty.style.display='none';
-    grid.innerHTML=bannersData.map(b=>`
+    // Sort by sortOrder ascending (id as a stable tie-breaker so cards don't
+    // jump around if multiple banners share the same sortOrder, e.g. legacy
+    // rows still defaulted to 0 before the reorder controls existed).
+    bannersData.sort((a,b)=>(a.sortOrder-b.sortOrder)||(a.id-b.id));
+    const total=bannersData.length;
+    grid.innerHTML=bannersData.map((b,idx)=>`
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow)">
         <div style="position:relative;height:160px;background:#0a1628">
           <img src="${b.imageUrl}" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'">
+          <div style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,.62);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;letter-spacing:.5px">#${idx+1}</div>
           <div style="position:absolute;top:8px;right:8px;display:flex;gap:6px">
             <span style="background:${b.active?'rgba(16,185,129,.9)':'rgba(0,0,0,.6)'};color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px">${b.active?'ACTIVE':'HIDDEN'}</span>
           </div>
         </div>
         <div style="padding:12px 14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px">
+            <span style="font-size:11px;color:var(--text-2);font-weight:600">Display order: ${idx+1} of ${total}</span>
+            <div style="display:flex;gap:4px">
+              <button type="button" onclick="moveBanner(${b.id},-1)" ${idx===0?'disabled':''} title="Move up (show earlier)" aria-label="Move banner up" style="width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);background:${idx===0?'var(--bg2)':'var(--bg)'};color:${idx===0?'var(--text-2)':'var(--text-1)'};border-radius:6px;cursor:${idx===0?'not-allowed':'pointer'};opacity:${idx===0?'.45':'1'};padding:0">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
+              </button>
+              <button type="button" onclick="moveBanner(${b.id},1)" ${idx===total-1?'disabled':''} title="Move down (show later)" aria-label="Move banner down" style="width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);background:${idx===total-1?'var(--bg2)':'var(--bg)'};color:${idx===total-1?'var(--text-2)':'var(--text-1)'};border-radius:6px;cursor:${idx===total-1?'not-allowed':'pointer'};opacity:${idx===total-1?'.45':'1'};padding:0">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+            </div>
+          </div>
           <div style="font-size:13px;font-weight:600;color:var(--text-1);margin-bottom:8px">${b.title||'<em style="color:var(--text-2);font-weight:400">No title</em>'}</div>
           <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
             <span style="font-size:11px;color:var(--text-2);font-weight:600;margin-right:2px">Show on:</span>
@@ -5007,6 +5024,44 @@
       </div>
     `).join('');
   }
+
+  // Single-flight guard: while a reorder save is in flight, the chevrons are
+  // disabled in the UI and any extra clicks are dropped here defensively.
+  // Without this, rapid clicking would race overlapping bulk-reorder POSTs and
+  // could end up with a final DB state that doesn't match what's on screen.
+  let bannerReorderInFlight=false;
+  async function moveBanner(id,direction){
+    if(bannerReorderInFlight) return;
+    const sorted=[...bannersData].sort((a,b)=>(a.sortOrder-b.sortOrder)||(a.id-b.id));
+    const idx=sorted.findIndex(b=>b.id===id);
+    const newIdx=idx+direction;
+    if(idx<0||newIdx<0||newIdx>=sorted.length) return;
+    [sorted[idx],sorted[newIdx]]=[sorted[newIdx],sorted[idx]];
+    // Renumber 0..N-1 locally so the optimistic re-render matches what the
+    // server is about to persist.
+    sorted.forEach((b,i)=>{
+      const orig=bannersData.find(x=>x.id===b.id);
+      if(orig) orig.sortOrder=i;
+    });
+    bannerReorderInFlight=true;
+    renderBanners();
+    // Visually mark every chevron as in-flight while the bulk save runs.
+    document.querySelectorAll('#bannerGrid button[onclick^="moveBanner("]').forEach(btn=>{btn.disabled=true;btn.style.cursor='wait';btn.style.opacity='.45';});
+    try{
+      const r=await api('/api/banner-images/reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderedIds:sorted.map(b=>b.id)})});
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      // Re-sync from the server response so any drift (e.g. another manager
+      // adding a banner mid-reorder) is reflected immediately.
+      bannersData=await r.json();
+    }catch(e){
+      alert('Failed to save the new order. Reloading…');
+      await loadBanners();
+    }finally{
+      bannerReorderInFlight=false;
+      renderBanners();
+    }
+  }
+  window.moveBanner=moveBanner;
 
   async function toggleBannerPage(id,field,value){
     try{
