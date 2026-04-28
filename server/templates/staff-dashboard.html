@@ -550,6 +550,10 @@
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           GDPR &amp; Compliance
         </div>
+        <div class="nav-item hidden" data-page="auditlog" id="navAuditLog">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
+          Audit Log
+        </div>
         <div class="nav-section hidden" id="navSectionAccount" style="margin-top:8px">Account</div>
         <div class="nav-item hidden" data-page="settings" id="navSettings">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -1638,6 +1642,48 @@
         </div>
       </div>
 
+      <div class="page" id="pageAuditlog">
+        <div class="page-body" style="max-width:1200px;padding:24px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;gap:12px;flex-wrap:wrap">
+            <div>
+              <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:4px">Staff &amp; Manager Activity</div>
+              <div style="font-size:12px;color:var(--text-2)">Every state-changing action made by a signed-in staff or manager session. Read-only views and login checks are excluded. Sensitive fields (passwords, tokens, card details) are automatically blanked out.</div>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="loadAuditLog()" style="white-space:nowrap">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg>
+              Refresh
+            </button>
+          </div>
+
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;padding:12px;background:var(--bg2);border-radius:var(--r);border:1px solid var(--border)">
+            <input type="text" id="auditFilterUser" class="form-input" placeholder="Filter by staff username…" style="flex:1;min-width:180px;font-size:13px;padding:8px 10px" oninput="renderAuditLog()" />
+            <select id="auditFilterMethod" class="form-input" style="font-size:13px;padding:8px 10px;width:auto" onchange="renderAuditLog()">
+              <option value="">All methods</option>
+              <option value="POST">POST (create)</option>
+              <option value="PUT">PUT (replace)</option>
+              <option value="PATCH">PATCH (update)</option>
+              <option value="DELETE">DELETE (remove)</option>
+            </select>
+            <select id="auditFilterStatus" class="form-input" style="font-size:13px;padding:8px 10px;width:auto" onchange="renderAuditLog()">
+              <option value="">All outcomes</option>
+              <option value="success">Successful (2xx)</option>
+              <option value="client">Blocked / failed (4xx)</option>
+              <option value="server">Server error (5xx)</option>
+            </select>
+            <select id="auditFilterRange" class="form-input" style="font-size:13px;padding:8px 10px;width:auto" onchange="loadAuditLog()">
+              <option value="200">Last 200</option>
+              <option value="500">Last 500</option>
+              <option value="1000">Last 1000</option>
+            </select>
+          </div>
+
+          <div id="auditSummary" style="font-size:12px;color:var(--text-2);margin-bottom:8px"></div>
+          <div id="auditList" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden">
+            <div class="loading-state" style="padding:32px"><div class="spinner"></div>Loading activity…</div>
+          </div>
+        </div>
+      </div>
+
       <div class="page" id="pageSettings">
         <div class="page-body">
           <div class="settings-section">
@@ -2612,7 +2658,7 @@
     // — like the weekly leftover-membership audit email — can open straight
     // onto the right tab. Falls back to bookings for any unknown/missing tab
     // or for tabs the current role isn't allowed to see.
-    const tabNavIds={bookings:'navBookings',messages:'navMessages',comms:'navComms',staff:'navStaff',memberships:'navMemberships',menu:'navMenu',website:'navWebsite',banners:'navBanners',offers:'navOffers',payments:'navPayments',hr:'navHR',gdpr:'navGDPR',settings:'navSettings'};
+    const tabNavIds={bookings:'navBookings',messages:'navMessages',comms:'navComms',staff:'navStaff',memberships:'navMemberships',menu:'navMenu',website:'navWebsite',banners:'navBanners',offers:'navOffers',payments:'navPayments',hr:'navHR',gdpr:'navGDPR',auditlog:'navAuditLog',settings:'navSettings'};
     let initialPage='bookings';
     try{
       const hash=(window.location.hash||'').replace(/^#/,'').toLowerCase();
@@ -2651,6 +2697,7 @@
     el('navPayments').classList.toggle('hidden',!isManager);
     document.body.classList.toggle('role-staff-only',!isManager);
     el('navGDPR').classList.toggle('hidden',!isManager);
+    el('navAuditLog').classList.toggle('hidden',!isManager);
     el('navSettings').classList.toggle('hidden',!isManager);
     el('navSectionAccount').classList.toggle('hidden',!isManager);
     el('bookingsTabAvailability').classList.toggle('hidden',!isManager);
@@ -2732,9 +2779,15 @@
 
   function navigateTo(page){
     closeSidebar();
+    // Manager-only pages: redirect non-managers back to Bookings if they
+    // try to deep-link directly via #hash or programmatic navigation.
+    const managerOnlyPages=['gdpr','auditlog','settings','payments'];
+    if(managerOnlyPages.indexOf(page)>=0&&state.role!=='manager'&&state.role!=='owner'){
+      page='bookings';
+    }
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page'+cap(page)));
-    const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',website:'Website',banners:'App Banners',offers:'Offers',payments:'Events & Payments',hr:'HR & Attendance',gdpr:'GDPR & Compliance'};
+    const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',website:'Website',banners:'App Banners',offers:'Offers',payments:'Events & Payments',hr:'HR & Attendance',gdpr:'GDPR & Compliance',auditlog:'Audit Log'};
     el('topbarTitle').textContent=titles[page]||'';
     el('topbarSub').textContent='';
     if(page==='bookings'){el('topbarActions').style.display='';switchBookingsTab('bookings');loadBookings();loadDashboardNotices();startBookingsPolling();}
@@ -2749,6 +2802,7 @@
     if(page==='offers')loadOffers();
     if(page==='hr')loadHR();
     if(page==='payments')loadPaymentsPage();
+    if(page==='auditlog')loadAuditLog();
   }
   function cap(s){return s.charAt(0).toUpperCase()+s.slice(1)}
 
@@ -5326,6 +5380,231 @@
     if(tab==='rota')loadRota();
   }
   window.switchHRTab=switchHRTab;
+
+  /* ── Staff & manager audit log (manager+ only) ────────────────────────── */
+  let auditEntries=[];
+  async function loadAuditLog(){
+    const list=el('auditList');
+    const summary=el('auditSummary');
+    if(!list) return;
+    list.innerHTML='<div class="loading-state" style="padding:32px"><div class="spinner"></div>Loading activity…</div>';
+    summary.textContent='';
+    const limit=parseInt(el('auditFilterRange').value||'200');
+    try{
+      const r=await api('/api/staff-action-log/recent?limit='+limit);
+      if(!r.ok){throw new Error('HTTP '+r.status);}
+      auditEntries=await r.json();
+      renderAuditLog();
+    }catch(e){
+      list.innerHTML='<div style="padding:24px;color:var(--red);font-size:13px">Failed to load activity: '+esc(String(e.message||e))+'</div>';
+    }
+  }
+  window.loadAuditLog=loadAuditLog;
+
+  function fmtAuditTime(iso){
+    if(!iso) return '';
+    const d=new Date(iso);
+    const now=new Date();
+    const diffSec=Math.floor((now-d)/1000);
+    let rel;
+    if(diffSec<60) rel='just now';
+    else if(diffSec<3600) rel=Math.floor(diffSec/60)+'m ago';
+    else if(diffSec<86400) rel=Math.floor(diffSec/3600)+'h ago';
+    else if(diffSec<604800) rel=Math.floor(diffSec/86400)+'d ago';
+    else rel=d.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+    const abs=d.toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+    return '<span title="'+esc(d.toISOString())+'">'+esc(rel)+' <span style="color:var(--text-2);font-size:11px">·</span> <span style="color:var(--text-2);font-size:11px">'+esc(abs)+'</span></span>';
+  }
+
+  function methodColour(m){
+    switch(m){
+      case 'POST': return {bg:'rgba(34,197,94,.10)',fg:'#16A34A'};
+      case 'PUT': return {bg:'rgba(59,130,246,.10)',fg:'#2563EB'};
+      case 'PATCH': return {bg:'rgba(168,85,247,.10)',fg:'#7C3AED'};
+      case 'DELETE': return {bg:'rgba(239,68,68,.10)',fg:'#DC2626'};
+      default: return {bg:'var(--bg2)',fg:'var(--text-2)'};
+    }
+  }
+
+  function statusColour(code){
+    if(code>=200&&code<300) return {bg:'rgba(34,197,94,.10)',fg:'#16A34A',label:String(code)};
+    if(code>=400&&code<500) return {bg:'rgba(245,158,11,.10)',fg:'#D97706',label:String(code)};
+    if(code>=500) return {bg:'rgba(239,68,68,.10)',fg:'#DC2626',label:String(code)};
+    return {bg:'var(--bg2)',fg:'var(--text-2)',label:String(code)};
+  }
+
+  function roleBadge(role){
+    const r=String(role||'').toLowerCase();
+    if(r==='owner') return '<span style="font-size:10px;font-weight:700;padding:1px 6px;background:rgba(212,175,55,.18);color:#A87E0E;border-radius:10px;text-transform:uppercase;letter-spacing:.4px">Owner</span>';
+    if(r==='manager') return '<span style="font-size:10px;font-weight:700;padding:1px 6px;background:rgba(59,130,246,.14);color:#2563EB;border-radius:10px;text-transform:uppercase;letter-spacing:.4px">Manager</span>';
+    return '<span style="font-size:10px;font-weight:600;padding:1px 6px;background:var(--bg2);color:var(--text-2);border-radius:10px;text-transform:uppercase;letter-spacing:.4px">Staff</span>';
+  }
+
+  // Friendly labels for the most common audited paths so the list is scannable
+  // at a glance ("Edited booking #123" rather than "PUT /api/bookings/123").
+  function describeAuditPath(method,path,route){
+    const p=String(path||'');
+    const m=String(method||'');
+    function id(re){const x=p.match(re);return x?x[1]:null;}
+    // Bookings
+    if(/^\/api\/bookings\/\d+\/complete/.test(p)) return 'Marked booking #'+id(/\/bookings\/(\d+)/)+' as completed';
+    if(/^\/api\/bookings\/\d+\/noshow/.test(p)) return 'Marked booking #'+id(/\/bookings\/(\d+)/)+' as no-show';
+    if(/^\/api\/bookings\/\d+\/status/.test(p)) return 'Changed status of booking #'+id(/\/bookings\/(\d+)/);
+    if(/^\/api\/bookings\/\d+$/.test(p)&&m==='PUT') return 'Edited booking #'+id(/\/bookings\/(\d+)/);
+    if(/^\/api\/bookings\/\d+$/.test(p)&&m==='DELETE') return 'Deleted booking #'+id(/\/bookings\/(\d+)/);
+    if(p==='/api/staff/bookings/repeat') return 'Created repeat booking series';
+    if(p==='/api/bookings'&&m==='POST') return 'Created a new booking';
+    if(/^\/api\/customers\/bookings\/\d+\/cancel/.test(p)) return 'Customer-initiated cancel of booking #'+id(/\/bookings\/(\d+)/);
+    if(/^\/api\/customers\/bookings\/\d+\/reschedule/.test(p)) return 'Customer-initiated reschedule of booking #'+id(/\/bookings\/(\d+)/);
+    // Blocked periods
+    if(p==='/api/blocked-periods'&&m==='POST') return 'Blocked an availability period';
+    if(/^\/api\/blocked-periods\/\d+/.test(p)&&m==='DELETE') return 'Removed an availability block';
+    // Staff users
+    if(p==='/api/staff/change-pin') return 'Changed own staff PIN';
+    if(p==='/api/staff/set-password') return 'Set own staff password';
+    if(p==='/api/staff/reset-password') return "Reset another staff member's password";
+    if(p==='/api/staff/reset-pin') return "Reset another staff member's PIN";
+    if(p==='/api/staff/update-role') return "Changed a staff member's role";
+    if(p==='/api/staff/toggle-active') return 'Activated/deactivated a staff account';
+    if(p==='/api/staff/approve') return 'Approved or rejected a staff registration';
+    if(/^\/api\/staff\/\d+$/.test(p)&&m==='DELETE') return 'Deleted a staff account';
+    // Memberships
+    if(p==='/api/staff/membership/plans'&&m==='POST') return 'Created a membership plan';
+    if(/^\/api\/staff\/membership\/plans\/\d+/.test(p)&&m==='PUT') return 'Updated a membership plan';
+    if(p==='/api/staff/membership/subscriptions'&&m==='POST') return 'Created a membership subscription';
+    if(/^\/api\/staff\/membership\/subscriptions\/\d+/.test(p)&&m==='PATCH') return 'Updated a membership subscription';
+    if(p==='/api/staff/membership/payment-link') return 'Sent a membership payment link';
+    if(p==='/api/staff/membership/sync-all') return 'Synced all memberships from Square';
+    if(p==='/api/staff/membership/square-sync') return 'Synced one membership from Square';
+    // Menu / orders
+    if(/^\/api\/staff\/orders\/\d+\/advance/.test(p)) return 'Advanced order #'+id(/\/orders\/(\d+)/);
+    if(/^\/api\/staff\/orders\/\d+\/revert/.test(p)) return 'Reverted order #'+id(/\/orders\/(\d+)/);
+    if(/^\/api\/staff\/orders\/\d+\/refund/.test(p)) return 'Refunded order #'+id(/\/orders\/(\d+)/);
+    if(/sold-out/.test(p)) return 'Toggled menu item sold-out';
+    if(/hidden$/.test(p)&&p.indexOf('/menu/items/')>0) return 'Hid / unhid a menu item';
+    if(/^\/api\/staff\/menu\/categories\//.test(p)) return 'Toggled a menu category';
+    if(p==='/api/staff/ordering-status') return 'Toggled online ordering on/off';
+    if(p==='/api/staff/ordering-schedule') return 'Updated weekly ordering schedule';
+    if(p==='/api/staff/ordering-overrides') return 'Added an ordering schedule override';
+    // Payments
+    if(p==='/api/staff/payments/square/charge') return 'Charged a card via Square';
+    if(p==='/api/staff/payments/create-intent') return 'Started a Stripe manual payment';
+    if(p==='/api/staff/payments/finalize') return 'Finalised a Stripe manual payment';
+    // Offers / banners / events / web content
+    if(p==='/api/offers'&&m==='POST') return 'Created a promotional offer';
+    if(/^\/api\/offers\/\d+/.test(p)&&m==='PUT') return 'Edited a promotional offer';
+    if(/^\/api\/offers\/\d+/.test(p)&&m==='DELETE') return 'Deleted a promotional offer';
+    if(/^\/api\/staff\/offers\/\d+\/toggle/.test(p)) return 'Toggled an offer on/off';
+    if(p==='/api/banner-images'&&m==='POST') return 'Added a home-screen banner';
+    if(/^\/api\/banner-images\/\d+/.test(p)&&m==='PUT') return 'Edited a home-screen banner';
+    if(/^\/api\/banner-images\/\d+/.test(p)&&m==='DELETE') return 'Deleted a home-screen banner';
+    if(p==='/api/events'&&m==='POST') return 'Created an event';
+    if(/^\/api\/events\/\d+/.test(p)&&m==='PUT') return 'Edited an event';
+    if(/^\/api\/events\/\d+/.test(p)&&m==='DELETE') return 'Deleted an event';
+    if(p==='/api/staff/web-content') return 'Updated website / app home content';
+    if(p==='/api/staff/marketing-pages'&&m==='POST') return 'Created a marketing page';
+    if(/^\/api\/staff\/marketing-pages\/.+/.test(p)&&m==='PUT') return 'Edited a marketing page';
+    if(/^\/api\/staff\/marketing-pages\/.+/.test(p)&&m==='DELETE') return 'Deleted a marketing page';
+    // HR / rota / leave / incidents
+    if(p==='/api/hr/clock-in') return 'Clocked in';
+    if(p==='/api/hr/clock-out') return 'Clocked out';
+    if(/^\/api\/hr\/time-entries\/\d+\/amend/.test(p)) return 'Amended a time entry';
+    if(p==='/api/hr/leave-requests'&&m==='POST') return 'Submitted a leave request';
+    if(/^\/api\/hr\/leave-requests\/\d+\/review/.test(p)) return 'Reviewed a leave request';
+    if(/^\/api\/hr\/leave-allowance\//.test(p)) return 'Updated a leave allowance';
+    if(/^\/api\/hr\/staff\/\d+\/employment/.test(p)) return 'Updated employment details';
+    if(p==='/api/hr/incidents'&&m==='POST') return 'Filed an incident report';
+    if(/^\/api\/hr\/incidents\/\d+\/status/.test(p)) return 'Updated incident status';
+    if(p==='/api/hr/rota/shifts'&&m==='POST') return 'Created or updated a rota shift';
+    if(/^\/api\/hr\/rota\/shifts\/\d+/.test(p)&&m==='DELETE') return 'Removed a rota shift';
+    if(p==='/api/hr/rota/publish') return 'Published the weekly rota';
+    if(p==='/api/hr/geofence') return 'Updated clock-in geofence';
+    if(/^\/api\/hr\/staff\/\d+\/documents/.test(p)&&m==='POST') return 'Uploaded a staff document';
+    if(/^\/api\/hr\/documents\/\d+/.test(p)&&m==='DELETE') return 'Deleted a staff document';
+    // Comms
+    if(p==='/api/notifications/send'||p==='/api/push/send') return 'Sent a customer push notification';
+    if(p==='/api/staff-notices'&&m==='POST') return 'Posted a staff notice';
+    if(/^\/api\/staff-notices\/\d+/.test(p)&&m==='DELETE') return 'Removed a staff notice';
+    if(p==='/api/staff-popups'&&m==='POST') return 'Posted a staff pop-up';
+    if(/^\/api\/staff-popups\/\d+/.test(p)&&m==='DELETE') return 'Removed a staff pop-up';
+    // Loyalty
+    if(p==='/api/loyalty/points/add') return 'Added loyalty points';
+    if(p==='/api/loyalty/points/adjust') return 'Adjusted loyalty points';
+    if(p==='/api/loyalty/redeem') return 'Redeemed loyalty reward';
+    // Settings + GDPR
+    if(/^\/api\/settings\//.test(p)) return 'Updated a system setting';
+    if(p==='/api/gdpr/erase') return 'Erased a customer record (GDPR)';
+    if(p==='/api/gdpr/retention-cleanup') return 'Triggered GDPR retention cleanup';
+    // Contact / messages
+    if(/^\/api\/contact\/\d+\/status/.test(p)) return 'Updated a contact-form message status';
+    if(/^\/api\/contact\/\d+\/reply/.test(p)) return 'Replied to a contact-form message';
+    return m+' '+p;
+  }
+
+  function renderAuditLog(){
+    const list=el('auditList');
+    const summary=el('auditSummary');
+    if(!list) return;
+    const userQ=(el('auditFilterUser').value||'').trim().toLowerCase();
+    const methodQ=el('auditFilterMethod').value||'';
+    const statusQ=el('auditFilterStatus').value||'';
+    const filtered=auditEntries.filter(e=>{
+      if(userQ&&!String(e.staffUsername||'').toLowerCase().includes(userQ)) return false;
+      if(methodQ&&e.method!==methodQ) return false;
+      if(statusQ==='success'&&!(e.statusCode>=200&&e.statusCode<300)) return false;
+      if(statusQ==='client'&&!(e.statusCode>=400&&e.statusCode<500)) return false;
+      if(statusQ==='server'&&!(e.statusCode>=500)) return false;
+      return true;
+    });
+    summary.textContent=filtered.length+' of '+auditEntries.length+' actions shown';
+    if(!filtered.length){
+      list.innerHTML='<div style="padding:32px;text-align:center;color:var(--text-2);font-size:13px">No matching staff activity found.</div>';
+      return;
+    }
+    list.innerHTML=filtered.map(e=>{
+      const mc=methodColour(e.method);
+      const sc=statusColour(e.statusCode);
+      const desc=describeAuditPath(e.method,e.path,e.route);
+      let bodyPretty='';
+      if(e.requestBody){
+        try{const obj=JSON.parse(e.requestBody);bodyPretty=JSON.stringify(obj,null,2);}
+        catch{bodyPretty=e.requestBody;}
+      }
+      // Force numeric to be safe even though backend always sends an integer id —
+      // detailId is interpolated into element ids and a data attribute below.
+      const safeId=Number(e.id)||0;
+      const detailId='auditDetail'+safeId;
+      return '<div style="border-bottom:1px solid var(--border);padding:12px 16px;display:flex;flex-direction:column;gap:6px">'
+        +'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+        +'<span style="font-size:10px;font-weight:700;padding:2px 7px;background:'+mc.bg+';color:'+mc.fg+';border-radius:4px;letter-spacing:.5px;font-family:ui-monospace,SFMono-Regular,monospace">'+esc(e.method)+'</span>'
+        +'<span style="font-size:10px;font-weight:700;padding:2px 7px;background:'+sc.bg+';color:'+sc.fg+';border-radius:4px;font-family:ui-monospace,SFMono-Regular,monospace">'+esc(sc.label)+'</span>'
+        +'<div style="font-size:13px;color:var(--text);font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(desc)+'</div>'
+        +'<div style="font-size:11px;color:var(--text-2)">'+fmtAuditTime(e.createdAt)+'</div>'
+        +'</div>'
+        +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--text-2)">'
+        +roleBadge(e.staffRole)
+        +'<span style="font-weight:600;color:var(--text)">'+esc(e.staffUsername||'unknown')+'</span>'
+        +(e.ipAddress?'<span>· from '+esc(e.ipAddress)+'</span>':'')
+        +' <button type="button" data-audit-toggle="'+safeId+'" style="margin-left:auto;background:none;border:none;color:var(--gold);font-size:11px;font-weight:600;cursor:pointer;padding:0">Details</button>'
+        +'</div>'
+        +'<div id="'+detailId+'" style="display:none;background:var(--bg2);border-radius:6px;padding:10px 12px;font-size:11px;color:var(--text-2);font-family:ui-monospace,SFMono-Regular,monospace;line-height:1.5;word-break:break-all">'
+        +'<div><span style="color:var(--text);font-weight:600">URL:</span> '+esc(e.path)+'</div>'
+        +(e.route?'<div><span style="color:var(--text);font-weight:600">Route:</span> '+esc(e.route)+'</div>':'')
+        +(e.userAgent?'<div style="margin-top:4px"><span style="color:var(--text);font-weight:600">User-Agent:</span> '+esc(e.userAgent)+'</div>':'')
+        +(bodyPretty?'<div style="margin-top:6px"><span style="color:var(--text);font-weight:600">Request body:</span><pre style="margin:4px 0 0;white-space:pre-wrap;color:var(--text-2)">'+esc(bodyPretty)+'</pre></div>':'')
+        +'</div>'
+        +'</div>';
+    }).join('');
+    // Wire details toggles via delegated event listeners — avoids inline JS
+    // composition (XSS-safe) and works for re-rendered rows.
+    list.querySelectorAll('button[data-audit-toggle]').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        const d=document.getElementById('auditDetail'+btn.getAttribute('data-audit-toggle'));
+        if(d) d.style.display=d.style.display==='none'?'block':'none';
+      });
+    });
+  }
+  window.renderAuditLog=renderAuditLog;
 
   async function loadHR(){
     const isMgrHR=state.role==='manager'||state.role==='owner';
