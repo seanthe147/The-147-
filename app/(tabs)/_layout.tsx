@@ -67,7 +67,6 @@ export default function TabLayout() {
         name="order"
         options={{
           title: "Order",
-          lazy: false,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="restaurant" size={size} color={color} />
           ),

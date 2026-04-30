@@ -14,6 +14,7 @@ import {
 } from "@/lib/biometric";
 
 const TOKEN_KEY = "customer_session_token";
+const PROFILE_CACHE_KEY = "customer_profile_cache";
 
 interface CustomerProfile {
   id: number;
@@ -70,7 +71,16 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
-  const fetchProfile = useCallback(async (sessionToken: string): Promise<CustomerProfile | null> => {
+  // Returns:
+  //   { profile }       — server returned 2xx
+  //   { unauthorized }  — server returned 4xx (token rejected — sign out)
+  //   { networkError }  — request never completed (offline, timeout, captive
+  //                       portal). Caller MUST keep the optimistic session;
+  //                       a transient network failure must not log the user
+  //                       out of an app that's already been signed in.
+  const fetchProfile = useCallback(async (
+    sessionToken: string,
+  ): Promise<{ profile?: CustomerProfile; unauthorized?: boolean; networkError?: boolean }> => {
     try {
       const baseUrl = getApiUrl();
       const url = new URL("/api/customers/me", baseUrl);
@@ -78,32 +88,85 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         headers: { Authorization: `Bearer ${sessionToken}` },
       });
       if (res.ok) {
-        return await res.json();
+        const profile = (await res.json()) as CustomerProfile;
+        return { profile };
       }
-      return null;
+      if (res.status === 401 || res.status === 403 || res.status === 404) {
+        return { unauthorized: true };
+      }
+      // 5xx — treat like a network error so a flaky server doesn't log
+      // people out.
+      return { networkError: true };
     } catch {
-      return null;
+      return { networkError: true };
     }
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
-        const stored = await AsyncStorage.getItem(TOKEN_KEY);
+        // Read token + cached profile in parallel so we can hydrate the UI
+        // immediately. The profile cache is refreshed in the background after
+        // first paint so a stale field never blocks rendering.
+        const [stored, cachedProfileRaw] = await Promise.all([
+          AsyncStorage.getItem(TOKEN_KEY),
+          AsyncStorage.getItem(PROFILE_CACHE_KEY),
+        ]);
+        if (cancelled) return;
         if (stored) {
-          const profile = await fetchProfile(stored);
-          if (profile) {
-            setToken(stored);
-            setCustomer(profile);
-          } else {
-            await AsyncStorage.removeItem(TOKEN_KEY);
+          // Hydrate from cache so the app renders as signed-in instantly.
+          if (cachedProfileRaw) {
+            try {
+              const cached = JSON.parse(cachedProfileRaw) as CustomerProfile;
+              if (cached && typeof cached.id === "number") {
+                setCustomer(cached);
+              }
+            } catch {}
           }
+          setToken(stored);
+          setIsLoading(false);
+          // Background revalidation: confirm the token is still valid and
+          // pick up any server-side profile changes.
+          //
+          // Race guard — every state/storage mutation below first re-reads
+          // the on-disk token. If the user has logged out OR logged in as a
+          // different account while this verify was in flight, the on-disk
+          // token will no longer match `stored` and we drop the result on
+          // the floor. Without this guard a slow stale verify could clear
+          // a brand-new session.
+          fetchProfile(stored)
+            .then(async (result) => {
+              if (cancelled) return;
+              const current = await AsyncStorage.getItem(TOKEN_KEY);
+              if (current !== stored) return; // session changed mid-flight
+              if (result.profile) {
+                setCustomer(result.profile);
+                AsyncStorage.setItem(
+                  PROFILE_CACHE_KEY,
+                  JSON.stringify(result.profile),
+                ).catch(() => {});
+              } else if (result.unauthorized) {
+                // 4xx — token was explicitly rejected. Sign out cleanly.
+                await AsyncStorage.removeItem(TOKEN_KEY).catch(() => {});
+                await AsyncStorage.removeItem(PROFILE_CACHE_KEY).catch(() => {});
+                setToken(null);
+                setCustomer(null);
+              }
+              // result.networkError — keep optimistic session; the next
+              // authed request will retry.
+            })
+            .catch(() => {});
+        } else {
+          setIsLoading(false);
         }
       } catch {
-      } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [fetchProfile]);
 
   // After a successful login/register, bind any stored device push token to the
@@ -140,6 +203,12 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
 
       const data = await res.json();
       await AsyncStorage.setItem(TOKEN_KEY, data.token);
+      if (data.customer) {
+        AsyncStorage.setItem(
+          PROFILE_CACHE_KEY,
+          JSON.stringify(data.customer),
+        ).catch(() => {});
+      }
       setToken(data.token);
       setCustomer(data.customer);
       setLastLoginCredentials({ email, password });
@@ -188,6 +257,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       }
     }
     await AsyncStorage.removeItem(TOKEN_KEY);
+    AsyncStorage.removeItem(PROFILE_CACHE_KEY).catch(() => {});
     setLastLoginCredentials(null);
     setToken(null);
     setCustomer(null);
@@ -210,8 +280,12 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         const resp = await res.json();
         return { success: false, error: resp.message || "Update failed" };
       }
-      const updated = await res.json();
+      const updated = (await res.json()) as CustomerProfile;
       setCustomer(updated);
+      AsyncStorage.setItem(
+        PROFILE_CACHE_KEY,
+        JSON.stringify(updated),
+      ).catch(() => {});
       return { success: true };
     } catch {
       return { success: false, error: "Connection error" };
@@ -231,7 +305,11 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         const resp = await res.json();
         return { success: false, error: resp.message || "Deletion failed" };
       }
+      // Clear every locally-cached identifier for the deleted account.
+      // PROFILE_CACHE_KEY in particular contains PII (name/email/phone/DOB)
+      // and must not survive an account deletion.
       await AsyncStorage.removeItem(TOKEN_KEY);
+      await AsyncStorage.removeItem(PROFILE_CACHE_KEY);
       await clearBiometricCredentials();
       setBiometricEnabled(false);
       setLastLoginCredentials(null);
@@ -245,8 +323,14 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
 
   const refreshProfile = useCallback(async () => {
     if (!token) return;
-    const profile = await fetchProfile(token);
-    if (profile) setCustomer(profile);
+    const result = await fetchProfile(token);
+    if (result.profile) {
+      setCustomer(result.profile);
+      AsyncStorage.setItem(
+        PROFILE_CACHE_KEY,
+        JSON.stringify(result.profile),
+      ).catch(() => {});
+    }
   }, [token, fetchProfile]);
 
   const resendVerificationEmail = useCallback(async (): Promise<{ success: boolean; error?: string }> => {

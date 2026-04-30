@@ -132,17 +132,24 @@ export const queryClient = new QueryClient({
 });
 
 export function prefetchAppData() {
-  // Fire-and-forget background prefetch so by the time the customer taps
-  // Order, Membership, or Events the data is already cached. We deliberately
-  // include the menu (heaviest payload) and ordering-status (cheap, but the
-  // Order tab can't render without it) here — without these, the Order tab
-  // showed a spinner for 1–3s on first open even on fast networks.
+  // Two-tier prefetch so the home screen's network bandwidth is never starved
+  // by heavier queries (menu, plans) the customer hasn't asked for yet.
+  //
+  // Tier 1 — fires immediately after first paint. These are the exact query
+  // keys the Home tab subscribes to, so on a warm cache it renders without a
+  // single spinner.
   queryClient.prefetchQuery({ queryKey: ["/api/settings"] });
-  queryClient.prefetchQuery({ queryKey: ["/api/banner-images"] });
+  queryClient.prefetchQuery({ queryKey: ["/api/banner-images?page=home"] });
   queryClient.prefetchQuery({ queryKey: ["/api/events?type=event"] });
-  queryClient.prefetchQuery({ queryKey: ["/api/events?type=weekly"] });
-  queryClient.prefetchQuery({ queryKey: ["/api/membership/plans"] });
-  queryClient.prefetchQuery({ queryKey: ["/api/menu"] });
-  queryClient.prefetchQuery({ queryKey: ["/api/ordering-status"] });
-  queryClient.prefetchQuery({ queryKey: ["/api/public/square-config"] });
+
+  // Tier 2 — deferred so the Home tab finishes loading first. By the time
+  // the customer taps Order / Membership / Events, the cache is warm too.
+  setTimeout(() => {
+    queryClient.prefetchQuery({ queryKey: ["/api/menu"] });
+    queryClient.prefetchQuery({ queryKey: ["/api/ordering-status"] });
+    queryClient.prefetchQuery({ queryKey: ["/api/public/square-config"] });
+    queryClient.prefetchQuery({ queryKey: ["/api/banner-images?page=order"] });
+    queryClient.prefetchQuery({ queryKey: ["/api/membership/plans"] });
+    queryClient.prefetchQuery({ queryKey: ["/api/events?type=weekly"] });
+  }, 600);
 }

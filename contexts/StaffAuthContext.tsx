@@ -38,42 +38,85 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
-        const stored = await AsyncStorage.getItem(STORAGE_KEY);
-        const storedUsername = await AsyncStorage.getItem(USERNAME_KEY);
-        const storedRole = await AsyncStorage.getItem(ROLE_KEY);
-        const storedDisplayName = await AsyncStorage.getItem(DISPLAY_NAME_KEY);
-        const storedMustChange = await AsyncStorage.getItem(MUST_CHANGE_KEY);
+        // Read every staff key in parallel — sequential AsyncStorage awaits
+        // were adding ~50–150ms to startup on cold launches.
+        const [stored, storedUsername, storedRole, storedDisplayName, storedMustChange] =
+          await Promise.all([
+            AsyncStorage.getItem(STORAGE_KEY),
+            AsyncStorage.getItem(USERNAME_KEY),
+            AsyncStorage.getItem(ROLE_KEY),
+            AsyncStorage.getItem(DISPLAY_NAME_KEY),
+            AsyncStorage.getItem(MUST_CHANGE_KEY),
+          ]);
+        if (cancelled) return;
+
         if (stored) {
-          const baseUrl = getApiUrl();
-          const url = new URL("/api/staff/verify", baseUrl);
-          const res = await fetch(url.toString(), {
-            headers: { Authorization: `Bearer ${stored}` },
-          });
-          if (res.ok) {
-            const data = await res.json();
-            // Set in-memory token synchronously before updating React state
-            setStaffToken(stored);
-            setToken(stored);
-            setUsername(data.username || storedUsername);
-            setRole((data.role as StaffRole) || (storedRole as StaffRole) || "staff");
-            setDisplayName(data.displayName || storedDisplayName || null);
-            setMustChangePassword(storedMustChange === "1");
-          } else {
-            setStaffToken(null);
-            await AsyncStorage.removeItem(STORAGE_KEY);
-            await AsyncStorage.removeItem(USERNAME_KEY);
-            await AsyncStorage.removeItem(ROLE_KEY);
-            await AsyncStorage.removeItem(DISPLAY_NAME_KEY);
-            await AsyncStorage.removeItem(MUST_CHANGE_KEY);
-          }
+          // Optimistically hydrate from cache so the UI can render right
+          // away. The /api/staff/verify call below runs in the background
+          // and either confirms (no-op) or revokes the session.
+          setStaffToken(stored);
+          setToken(stored);
+          setUsername(storedUsername);
+          setRole((storedRole as StaffRole) || "staff");
+          setDisplayName(storedDisplayName);
+          setMustChangePassword(storedMustChange === "1");
+          setIsLoading(false);
+
+          (async () => {
+            try {
+              const baseUrl = getApiUrl();
+              const url = new URL("/api/staff/verify", baseUrl);
+              const res = await fetch(url.toString(), {
+                headers: { Authorization: `Bearer ${stored}` },
+              });
+              if (cancelled) return;
+              // Race guard — if the user logged out, switched accounts, or
+              // logged in fresh while this verify was in flight, the on-disk
+              // token will no longer match `stored`. Drop the stale result.
+              const current = await AsyncStorage.getItem(STORAGE_KEY);
+              if (current !== stored) return;
+              if (res.ok) {
+                const data = await res.json();
+                // Refresh with anything the server returns that may have
+                // changed since the last login (display name, role, etc).
+                if (data.username) setUsername(data.username);
+                if (data.role) setRole(data.role as StaffRole);
+                if (data.displayName !== undefined) setDisplayName(data.displayName || null);
+              } else if (res.status === 401 || res.status === 403 || res.status === 404) {
+                // Explicit 4xx — token rejected. Clear everything.
+                setStaffToken(null);
+                setToken(null);
+                setUsername(null);
+                setDisplayName(null);
+                setRole("staff");
+                setMustChangePassword(false);
+                await Promise.all([
+                  AsyncStorage.removeItem(STORAGE_KEY),
+                  AsyncStorage.removeItem(USERNAME_KEY),
+                  AsyncStorage.removeItem(ROLE_KEY),
+                  AsyncStorage.removeItem(DISPLAY_NAME_KEY),
+                  AsyncStorage.removeItem(MUST_CHANGE_KEY),
+                ]);
+              }
+              // Anything else (5xx) — keep the optimistic session.
+            } catch {
+              // Network error — keep the optimistic session; the next
+              // authed request will surface a 401 if the token is bad.
+            }
+          })();
+        } else {
+          setIsLoading(false);
         }
       } catch {
-      } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const login = useCallback(async (loginUsername: string, secret: string) => {
