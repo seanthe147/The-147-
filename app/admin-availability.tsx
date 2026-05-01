@@ -342,7 +342,7 @@ export default function AdminAvailabilityScreen() {
       <View style={styles.noteCard}>
         <Ionicons name="information-circle-outline" size={18} color={Colors.brand.blue} style={{ marginRight: 8 }} />
         <Text style={styles.noteText}>
-          Dining is automatically restricted to Thursday–Sunday, 12pm–8pm as a business rule.
+          Dining is automatically restricted to Wednesday–Sunday, 12pm–8pm as a business rule.
           Use blocks above for additional closures or event days.
         </Text>
       </View>

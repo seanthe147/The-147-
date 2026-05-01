@@ -4648,7 +4648,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   interface OrderingOverride { date: string; closed: boolean; startTime?: string; endTime?: string; note?: string; }
   interface OrderingStatusResult { enabled: boolean; reason: string; nextOpen?: string; closesAt?: string; manualOverride?: boolean; }
 
-  const DEFAULT_SCHEDULE: OrderingSchedule = { days: [4, 5, 6, 0], startTime: "12:00", endTime: "20:00" };
+  // Wednesday (3), Thursday (4), Friday (5), Saturday (6), Sunday (0).
+  // Day-of-week ints follow JS Date.getDay() — Sunday is 0, not 7.
+  const DEFAULT_SCHEDULE: OrderingSchedule = { days: [3, 4, 5, 6, 0], startTime: "12:00", endTime: "20:00" };
   const DAY_NAMES_FULL = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
   const DAY_NAMES_SHORT = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
