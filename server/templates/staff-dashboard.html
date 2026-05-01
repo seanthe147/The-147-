@@ -730,7 +730,7 @@
 
               <div style="display:flex;align-items:flex-start;gap:10px;background:#EFF6FF;border-radius:12px;padding:14px;margin-top:8px">
                 <span style="font-size:16px;flex-shrink:0">ℹ️</span>
-                <span style="font-size:12px;color:var(--blue);line-height:1.6">Dining is automatically restricted to Thursday–Sunday, 12pm–8pm as a business rule. Use blocks above for additional closures or event days.</span>
+                <span style="font-size:12px;color:var(--blue);line-height:1.6">Dining is automatically restricted to Wednesday–Sunday, 12pm–8pm as a business rule. Use blocks above for additional closures or event days.</span>
               </div>
             </div>
           </div>
@@ -4501,8 +4501,8 @@
     const existing=catAvailRules.find(r=>r.targetId===catId&&!r.startDate&&!r.endDate);
     _catHoursRuleId=existing?existing.id:null;
     el('catHoursTitle').textContent=catName+' — Hours';
-    // Pre-fill days (default Thu/Fri/Sat/Sun if no rule)
-    _catHoursSelectedDays=existing?JSON.parse(existing.daysOfWeek||'[]').slice():[4,5,6,0];
+    // Pre-fill days (default Wed/Thu/Fri/Sat/Sun if no rule)
+    _catHoursSelectedDays=existing?JSON.parse(existing.daysOfWeek||'[]').slice():[3,4,5,6,0];
     const picker=el('catHoursDayPicker');
     picker.innerHTML=SCHED_DAYS.map((name,i)=>{
       const sel=_catHoursSelectedDays.includes(i);
@@ -6396,7 +6396,7 @@
 
   /* ── Ordering Schedule & Overrides ────────────────────────────────────── */
   const SCHED_DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  let scheduleData={days:[4,5,6,0],startTime:'12:00',endTime:'20:00'};
+  let scheduleData={days:[3,4,5,6,0],startTime:'12:00',endTime:'20:00'};
   let overridesData=[];
 
   function fmtTime(t){

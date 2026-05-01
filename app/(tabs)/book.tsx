@@ -54,8 +54,8 @@ function parseDateLocal(dateStr: string): Date {
 
 function isDiningDay(dateStr: string): boolean {
   const d = parseDateLocal(dateStr);
-  const dow = d.getDay(); // 0=Sun, 4=Thu, 5=Fri, 6=Sat
-  return [0, 4, 5, 6].includes(dow);
+  const dow = d.getDay(); // 0=Sun, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+  return [0, 3, 4, 5, 6].includes(dow);
 }
 
 function getWeekDays(weekOffset: number): Array<{ label: string; date: string; dayName: string; dayNum: string; monthLabel: string }> {
@@ -456,7 +456,7 @@ export default function BookScreen() {
               {isDining && (
                 <View style={styles.diningNotice}>
                   <Ionicons name="information-circle-outline" size={16} color="#92400e" />
-                  <Text style={styles.diningNoticeText}>Dining available Thursday–Sunday, 12pm–8pm only</Text>
+                  <Text style={styles.diningNoticeText}>Dining available Wednesday–Sunday, 12pm–8pm only</Text>
                 </View>
               )}
 

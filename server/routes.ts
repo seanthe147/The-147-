@@ -2923,12 +2923,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const DINING_TABLE_START = 18;
     let finalTableNumber = parsed.data.tableNumber ?? null;
 
-    // Dining restrictions: Thursday–Sunday only, 12:00–20:00
+    // Dining restrictions: Wednesday–Sunday only, 12:00–20:00
     if (parsed.data.tableType === "dining") {
       const bookingDate = new Date(parsed.data.date + "T00:00:00");
       const dow = bookingDate.getDay(); // 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
-      if (![0, 4, 5, 6].includes(dow)) {
-        return res.status(400).json({ message: "Dining is only available Thursday to Sunday" });
+      if (![0, 3, 4, 5, 6].includes(dow)) {
+        return res.status(400).json({ message: "Dining is only available Wednesday to Sunday" });
       }
       const startMins = toSlotMins(parsed.data.startTime);
       const endMins = startMins + (parsed.data.duration ?? 1) * 60;
