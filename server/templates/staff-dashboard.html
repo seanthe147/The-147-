@@ -2670,9 +2670,10 @@
 
   function showLogin(){
     // Tear down any background pollers before swapping to the login screen
-    // so they don't keep firing /api/* requests every 10s once the session
-    // has gone (also covers the 401-from-api() → showLogin() path above).
+    // so they don't keep firing /api/* requests once the session has gone
+    // (also covers the 401-from-api() → showLogin() path above).
     stopOrdersPolling();
+    stopBookingsPolling();
     el('loginScreen').style.display='flex';
     el('app').style.display='none';
     el('lPin').value='';el('lUsername').value='';
@@ -2760,7 +2761,12 @@
 
   function startBookingsPolling(){
     if(bookingsPollInterval)return;
-    bookingsPollInterval=setInterval(()=>silentRefreshBookings(),300000);
+    // 30s — quick enough that newly arriving bookings (online widget,
+    // staff at another terminal, deposit confirmations) appear on the
+    // current date view without anyone clicking refresh, slow enough to
+    // stay polite to the API. The "X new bookings arrived" toast +
+    // new-card flash already make the auto-update obvious.
+    bookingsPollInterval=setInterval(()=>silentRefreshBookings(),30000);
   }
 
   function stopBookingsPolling(){
@@ -2802,10 +2808,20 @@
   }
 
   async function silentRefreshBookings(){
+    // Capture the date the request was launched against — at 30s polling
+    // it's realistic for staff to flip the date arrows mid-flight, and
+    // committing yesterday's bookings to today's view (or vice-versa)
+    // would mislabel arrival times in a way staff can't easily catch.
+    const reqDate=state.currentDate;
     try{
-      const r=await api('/api/bookings?date='+state.currentDate);
+      const r=await api('/api/bookings?date='+reqDate);
       if(!r.ok)return;
       const fresh=await r.json();
+      // A 5xx that returns `{message:...}` would otherwise blow up the
+      // diff below; bail in silent mode and let the next tick recover.
+      if(!Array.isArray(fresh))return;
+      // User navigated to a different date while we were waiting — drop.
+      if(reqDate!==state.currentDate)return;
       const oldIds=new Set(state.bookings.map(b=>b.id));
       const newIds=fresh.filter(b=>!oldIds.has(b.id));
       const newCount=newIds.length;
@@ -3037,15 +3053,22 @@
 
   /* ── Bookings ── */
   async function loadBookings(){
+    // Same date-capture guard as silentRefreshBookings — if staff click
+    // the date arrows while the initial fetch is still in flight, the
+    // older (slower) response shouldn't clobber the newer view.
+    const reqDate=state.currentDate;
     el('bookingsContent').innerHTML='<div class="loading-state"><div class="spinner"></div>Loading bookings…</div>';
     try{
-      const r=await api('/api/bookings?date='+state.currentDate);
+      const r=await api('/api/bookings?date='+reqDate);
       if(!r.ok)throw new Error('Failed');
-      state.bookings=await r.json();
+      const fresh=await r.json();
+      if(reqDate!==state.currentDate)return;
+      state.bookings=fresh;
       renderBookings();
       el('liveUpdatedText').textContent=formatUpdatedTime(new Date());
     }catch(e){
       if(e.message==='Session expired')return;
+      if(reqDate!==state.currentDate)return;
       el('bookingsContent').innerHTML='<div class="empty-state"><div class="empty-title">Failed to load bookings</div><div class="empty-desc">'+esc(e.message)+'</div></div>';
     }
   }
