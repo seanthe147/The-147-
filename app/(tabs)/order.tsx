@@ -871,9 +871,18 @@ function CartSheet({
     try {
       const apiBase = getApiUrl();
       const url = new URL("/api/orders/checkout", apiBase);
+      // Include the signed-in customer's session token so the server can
+      // identify the buyer and apply their member discount. Without this,
+      // every order is treated as a guest and the discount is silently
+      // dropped — even though the cart preview showed it.
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (customer) {
+        const token = await getCustomerToken();
+        if (token) headers.Authorization = `Bearer ${token}`;
+      }
       const res = await fetch(url.toString(), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(buildOrderPayload()),
       });
       const data = await res.json();
@@ -914,9 +923,18 @@ function CartSheet({
     try {
       const apiBase = getApiUrl();
       const url = new URL("/api/orders/create", apiBase);
+      // Include the signed-in customer's session token so the server can
+      // identify the buyer and apply their member discount. Without this,
+      // every order is treated as a guest and the discount is silently
+      // dropped — even though the cart preview showed it.
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (customer) {
+        const token = await getCustomerToken();
+        if (token) headers.Authorization = `Bearer ${token}`;
+      }
       const res = await fetch(url.toString(), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(buildOrderPayload()),
       });
       const data = await res.json();
