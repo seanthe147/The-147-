@@ -858,6 +858,17 @@ export default function LoyaltyScreen() {
             </>
           ) : meQuery.data.account ? (
             <>
+              {firstName ? (
+                // Personal intro above the gold points pill so the
+                // balance feels like "yours" rather than a generic
+                // dashboard number. We deliberately don't repeat the
+                // first name here — the header subtitle already
+                // greeted them by name a few px above, and saying it
+                // twice in one screen feels name-heavy.
+                <Text style={styles.personalIntro}>
+                  Here's where you stand
+                </Text>
+              ) : null}
               <PointsDisplay
                 balance={meQuery.data.account.balance}
                 terminology={meQuery.data.program?.terminology}
@@ -1265,6 +1276,15 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.7)",
     textAlign: "center",
     fontFamily: "Montserrat_400Regular",
+  },
+  personalIntro: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+    textAlign: "center",
+    marginTop: 16,
+    marginBottom: -4,
+    paddingHorizontal: 20,
   },
   loadingWrap: {
     padding: 40,

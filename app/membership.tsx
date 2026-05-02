@@ -18,6 +18,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Colors from "@/constants/colors";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
+import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import { getApiUrl, prefetchSquarePaymentSdk } from "@/lib/query-client";
 import { SquarePaymentSheet } from "@/components/SquarePaymentSheet";
@@ -105,6 +106,7 @@ function todayString() {
 export default function MembershipScreen() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoading: authLoading, customer } = useCustomerAuth();
+  const { firstName } = useCustomerGreeting();
   const { isAuthenticated: isStaffLoggedIn } = useStaffAuth();
   const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [joining, setJoining] = useState(false);
@@ -354,9 +356,13 @@ export default function MembershipScreen() {
             <View style={styles.heroIcon}>
               <Ionicons name="card" size={32} color={Colors.brand.blue} />
             </View>
-            <Text style={styles.heroTitle}>The 147 Membership</Text>
+            <Text style={styles.heroTitle}>
+              {firstName ? `Hi ${firstName} — find your plan` : "The 147 Membership"}
+            </Text>
             <Text style={styles.heroSub}>
-              Join our exclusive membership programme and make the most of every visit — discounts, priority booking, and more.
+              {firstName
+                ? "Pick the plan that suits how you play. Members get discounts, priority booking, and more."
+                : "Join our exclusive membership programme and make the most of every visit — discounts, priority booking, and more."}
             </Text>
           </View>
 
@@ -641,6 +647,13 @@ function ActiveMembership({
   const plan = subscription.plan;
   const planColor = plan?.color || Colors.brand.blue;
   const meta = plan ? getPlanMeta(plan.tier) : { name: "card" as const, tagline: "" };
+  // Personalised greeting + cardholder name. The member card renders
+  // the customer's full name as the "cardholder" so it feels like a
+  // real club card — and a warm greeting sits above the card so opening
+  // this screen feels personal rather than transactional.
+  const { customer } = useCustomerAuth();
+  const { greeting } = useCustomerGreeting();
+  const cardholderName = customer?.name?.trim() || null;
 
   const retryMutation = useMutation({
     mutationFn: async () => {
@@ -701,6 +714,15 @@ function ActiveMembership({
       ]}
       showsVerticalScrollIndicator={false}
     >
+      {greeting ? (
+        // Personal greeting sits above the membership card so opening
+        // the screen feels like a warm welcome rather than an account
+        // statement. The card itself then carries the cardholder's
+        // name in big letters — together they make members feel
+        // recognised for paying to be here.
+        <Text style={styles.activeGreeting}>{greeting}</Text>
+      ) : null}
+
       <View style={[styles.memberCard, { borderColor: planColor + "60" }]}>
         <View style={[styles.memberCardAccent, { backgroundColor: planColor }]} />
         <View style={styles.memberCardContent}>
@@ -709,8 +731,13 @@ function ActiveMembership({
               <Ionicons name={meta.name} size={28} color={planColor} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.memberCardLabel}>THE 147 MEMBER</Text>
-              <Text style={[styles.memberCardPlan, { color: planColor }]}>
+              <Text style={styles.memberCardLabel}>MEMBER</Text>
+              {cardholderName ? (
+                <Text style={styles.memberCardName} numberOfLines={1}>
+                  {cardholderName}
+                </Text>
+              ) : null}
+              <Text style={[styles.memberCardPlan, { color: planColor }]} numberOfLines={1}>
                 {plan?.name ?? "Membership"} Plan
               </Text>
             </View>
@@ -1005,11 +1032,24 @@ const styles = StyleSheet.create({
   memberCardIcon: {
     width: 52, height: 52, borderRadius: 16, alignItems: "center", justifyContent: "center",
   },
+  activeGreeting: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+    marginBottom: 8,
+    paddingHorizontal: 2,
+  },
+  memberCardName: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 20,
+    color: Colors.light.text,
+    marginTop: 2,
+  },
   memberCardLabel: {
     fontFamily: "Montserrat_600SemiBold", fontSize: 10,
     color: Colors.light.textSecondary, letterSpacing: 1.2,
   },
-  memberCardPlan: { fontFamily: "Montserrat_700Bold", fontSize: 20, marginTop: 2 },
+  memberCardPlan: { fontFamily: "Montserrat_600SemiBold", fontSize: 13, marginTop: 4 },
   statusBadge: {
     flexDirection: "row", alignItems: "center", gap: 5,
     paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12,
