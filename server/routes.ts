@@ -1211,6 +1211,25 @@ async function resolveMemberDiscountImpl(
         result.discountPercent = sub.plan!.foodDrinkDiscount;
         result.discountLabel = `${sub.plan!.name} Member Discount`;
         result.excludeWithDeals = !!((sub.plan as any)?.excludeWithDeals);
+      } else if (sub && isActive && notCancelled && periodValid && !planActive) {
+        // Loud warning for the silent-failure mode that bit us in May 2026:
+        // a customer has a perfectly valid active subscription (sub.planId is
+        // set) but the plan itself was deactivated in the staff portal.
+        // getMembershipSubscriptionByCustomer filters the joined plan by
+        // active=true and returns it as null, which causes the discount to
+        // be silently dropped at every checkout for every member on that
+        // plan. Surface it so it shows up in production logs immediately.
+        console.warn(
+          `[ORDER][AUDIT][PLAN-INACTIVE] Customer #${signedInCustomerId} (${signedInEmail}) ` +
+          `has an active subscription on plan #${(sub as any).planId} but that plan is ` +
+          `marked inactive in the staff portal — discount NOT applied. ` +
+          `Re-activate the plan to restore member pricing.`,
+        );
+      } else if (sub && isActive && notCancelled && periodValid && planActive && !hasDiscount) {
+        console.warn(
+          `[ORDER][AUDIT][PLAN-NO-DISCOUNT] Customer #${signedInCustomerId} (${signedInEmail}) ` +
+          `is on plan "${sub.plan!.name}" which has foodDrinkDiscount=0 — nothing to apply.`,
+        );
       }
     } catch (err: any) {
       console.warn("[ORDER] Could not look up signed-in member discount:", err.message);
