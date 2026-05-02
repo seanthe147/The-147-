@@ -1665,15 +1665,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(404).json({ message: "Staff user not found" });
     }
 
+    // Defense-in-depth: ownerAuth above already guarantees the caller is
+    // an owner, so this check is unreachable in normal operation. We keep
+    // it so the route body itself documents the owner-only intent and
+    // would still fail closed if the middleware were ever loosened.
     const requestingUser = (req as any).staffUser;
     if (staffUser.role === "owner" && requestingUser?.role !== "owner") {
-      return res.status(403).json({ message: "Managers cannot reset credentials for owner accounts" });
+      return res.status(403).json({ message: "Only owner accounts may reset another owner's credentials" });
     }
 
     const { hash, salt } = hashPassword(tempPassword);
     // mustChangePassword=true so the user is forced to pick a new one immediately.
     await storage.updateStaffPassword(staffUser.username, hash, salt, true);
-    // Manager-initiated rotation: kill every session this user currently holds
+    // Owner-initiated rotation: kill every session this user currently holds
     // so a stale or stolen token cannot survive the credential change.
     await storage.invalidateStaffSessionsByUserId(staffUser.id).catch(() => undefined);
     res.json({ message: "Password reset successfully for " + staffUser.username });
@@ -1699,14 +1703,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(404).json({ message: "Staff user not found" });
     }
 
+    // Defense-in-depth: see the matching note on /api/staff/reset-password.
+    // Unreachable under ownerAuth, kept so the route body documents the
+    // owner-only intent and fails closed if middleware is ever changed.
     const requestingUser = (req as any).staffUser;
     if (staffUser.role === "owner" && requestingUser?.role !== "owner") {
-      return res.status(403).json({ message: "Managers cannot reset credentials for owner accounts" });
+      return res.status(403).json({ message: "Only owner accounts may reset another owner's credentials" });
     }
 
     const { hash, salt } = hashPin(newPin);
     await storage.updateStaffPin(username.trim(), hash, salt);
-    // Manager-initiated rotation: revoke existing sessions for this user.
+    // Owner-initiated rotation: revoke existing sessions for this user.
     await storage.invalidateStaffSessionsByUserId(staffUser.id).catch(() => undefined);
     res.json({ message: "PIN reset successfully for " + staffUser.username });
   });
