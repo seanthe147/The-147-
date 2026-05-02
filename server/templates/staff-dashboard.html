@@ -2694,15 +2694,10 @@
     const isManagerUser=state.role==='manager'||state.role==='owner';
     // Honour an optional URL hash (e.g. #memberships) so external deep-links
     // — like the weekly leftover-membership audit email — can open straight
-    // onto the right tab. Falls back to the role-aware default (bookings for
-    // managers/owners, HR for ordinary staff) for any unknown/missing tab or
-    // for tabs the current role isn't allowed to see.
+    // onto the right tab. Falls back to Bookings for everyone (floor staff
+    // included — they need the calendar for daily shift work).
     const tabNavIds={bookings:'navBookings',messages:'navMessages',comms:'navComms',staff:'navStaff',memberships:'navMemberships',menu:'navMenu',website:'navWebsite',banners:'navBanners',offers:'navOffers',deals:'navDeals',payments:'navPayments',hr:'navHR',gdpr:'navGDPR',auditlog:'navAuditLog',settings:'navSettings'};
-    // Bookings is manager-only on the backend (staffAuth + managerAuth) so a
-    // non-manager landing there gets a 403 → "Failed to load bookings". Pick
-    // a safe default per role: managers/owners → bookings, ordinary staff →
-    // HR & Attendance (which gracefully handles either role).
-    let initialPage=isManagerUser?'bookings':'hr';
+    let initialPage='bookings';
     try{
       const hash=(window.location.hash||'').replace(/^#/,'').toLowerCase();
       const navId=tabNavIds[hash];
@@ -2723,10 +2718,11 @@
     el('sidebarName').textContent=state.displayName||state.username||'Staff';
     el('sidebarRole').textContent=state.role.charAt(0).toUpperCase()+state.role.slice(1);
     el('sidebarRole').className='sidebar-user-role role-'+state.role;
-    // Bookings calendar (and the New Booking button below) is gated by
-    // managerAuth on the backend — hide for ordinary staff so they don't
-    // land on a permanently-failing tab.
-    el('navBookings').classList.toggle('hidden',!isManager);
+    // Bookings calendar is available to all approved staff — floor staff
+    // need the calendar to take phone reservations, mark arrivals/no-shows
+    // and handle walk-ins. Destructive actions (Delete) are still hidden
+    // for non-managers in renderBookings().
+    el('navBookings').classList.remove('hidden');
     el('navMessages').classList.remove('hidden');
     el('navComms').classList.toggle('hidden',!isManager);
     el('navStaff').classList.toggle('hidden',!isOwner);
@@ -2749,14 +2745,11 @@
     el('navSectionAccount').classList.toggle('hidden',!isManager);
     el('bookingsTabAvailability').classList.toggle('hidden',!isManager);
     el('popupSection').style.display=isManager?'':'none';
-    // The New Booking button calls POST /api/bookings, which requires
-    // managerAuth — only render it when the user can actually use it.
-    if(isManager){
-      el('topbarActions').innerHTML=`<button class="btn btn-primary" id="newBookingBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Booking</button>`;
-      el('newBookingBtn').addEventListener('click',()=>openBookingModal(null));
-    } else {
-      el('topbarActions').innerHTML='';
-    }
+    // New Booking is available to all approved staff — POST /api/bookings is
+    // the public booking endpoint and floor staff need to add walk-ins and
+    // phone reservations during a shift.
+    el('topbarActions').innerHTML=`<button class="btn btn-primary" id="newBookingBtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Booking</button>`;
+    el('newBookingBtn').addEventListener('click',()=>openBookingModal(null));
   }
 
   async function doLogout(){
@@ -2822,9 +2815,6 @@
   }
 
   async function silentRefreshBookings(){
-    // Defensive: only managers/owners can hit /api/bookings. Skip silently
-    // for ordinary staff so the polling loop doesn't spam 403s.
-    if(state.role!=='manager' && state.role!=='owner')return;
     // Capture the date the request was launched against — at 30s polling
     // it's realistic for staff to flip the date arrows mid-flight, and
     // committing yesterday's bookings to today's view (or vice-versa)
@@ -2874,11 +2864,9 @@
     closeSidebar();
     // Manager-only pages: redirect non-managers back to Bookings if they
     // try to deep-link directly via #hash or programmatic navigation.
-    const managerOnlyPages=['bookings','gdpr','auditlog','settings','payments','deals'];
+    const managerOnlyPages=['gdpr','auditlog','settings','payments','deals'];
     if(managerOnlyPages.indexOf(page)>=0&&state.role!=='manager'&&state.role!=='owner'){
-      // Bookings is manager-only too now — fall back to HR so non-managers
-      // don't land on a 403'd tab via deep-link or programmatic navigation.
-      page='hr';
+      page='bookings';
     }
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page'+cap(page)));
@@ -3072,13 +3060,6 @@
 
   /* ── Bookings ── */
   async function loadBookings(){
-    // Defensive: /api/bookings is manager-only on the server. If a non-manager
-    // somehow lands here (deep link, console call), show a clear message
-    // instead of the generic "Failed to load bookings — Failed".
-    if(state.role!=='manager' && state.role!=='owner'){
-      el('bookingsContent').innerHTML='<div class="empty-state"><div class="empty-title">Manager access required</div><div class="empty-desc">The bookings calendar is only available to managers and owners.</div></div>';
-      return;
-    }
     // Same date-capture guard as silentRefreshBookings — if staff click
     // the date arrows while the initial fetch is still in flight, the
     // older (slower) response shouldn't clobber the newer view.
@@ -3167,7 +3148,7 @@
           <div class="b-arrival-row">
             <button class="btn btn-secondary btn-sm" data-id="${b.id}" data-action="edit">Edit</button>
             ${!isCanc&&!isArrived&&!isNoShow?`<button class="btn btn-warning btn-sm" data-id="${b.id}" data-action="cancel">Cancel</button>`:''}
-            <button class="btn btn-danger btn-sm" data-id="${b.id}" data-action="delete">Delete</button>
+            ${isManager?`<button class="btn btn-danger btn-sm" data-id="${b.id}" data-action="delete">Delete</button>`:''}
           </div>
         </div>
       </div>`;

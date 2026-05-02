@@ -1751,7 +1751,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ message: "Staff account deleted" });
   });
 
-  app.get("/api/staff/customers/search", staffAuth, managerAuth, async (req, res) => {
+  app.get("/api/staff/customers/search", staffAuth, async (req, res) => {
     const q = String(req.query.q || "").trim();
     if (q.length < 2) return res.json([]);
     try {
@@ -1846,48 +1846,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     })());
 
+    // ── CUSTOMERS + BOOKINGS (all approved staff) ──────────────────────────
+    // Floor staff need to look up customer details and find bookings during
+    // shift work (taking phone reservations, marking arrivals, handling
+    // walk-ins). The matching endpoints (/api/bookings,
+    // /api/staff/customers/search) are also staff-accessible, so global
+    // search results stay consistent with what staff can actually open.
+    tasks.push((async () => {
+      try {
+        const customers = await storage.searchCustomers(q, 5);
+        groups.customers = customers.map(c => ({
+          id: c.id != null ? String(c.id) : c.email,
+          label: c.name || c.email || c.phone || "(unnamed)",
+          sub: [c.email, c.phone].filter(Boolean).join(" · "),
+        }));
+      } catch (err) {
+        console.error("[global-search] customers error:", err);
+      }
+    })());
+
+    tasks.push((async () => {
+      try {
+        const matches = await storage.searchBookings(q, 5);
+        groups.bookings = matches.map(b => ({
+          id: String(b.id),
+          label: `#${b.id} · ${b.customerName || "(no name)"}`,
+          sub: [
+            b.date,
+            b.startTime,
+            b.tableType,
+            b.tableNumber ? `Table ${b.tableNumber}` : null,
+            b.status,
+          ].filter(Boolean).join(" · "),
+        }));
+      } catch (err) {
+        console.error("[global-search] bookings error:", err);
+      }
+    })());
+
     // ── MANAGER-ONLY GROUPS ────────────────────────────────────────────────
-    // Customers, bookings, memberships and staff search results are restricted
-    // to managers/owners — they expose customer PII (decrypted email/phone)
-    // and booking records that ordinary staff aren't authorised to see. The
-    // matching write/read endpoints (/api/bookings, /api/staff/customers/search,
-    // etc.) are also gated by managerAuth, so showing the search hits to plain
-    // staff would just lead to 403s when they tried to act on them.
+    // Membership plans (business config) and the staff user list (privacy)
+    // remain restricted to managers/owners.
     if (isManager) {
-      // Customers
-      tasks.push((async () => {
-        try {
-          const customers = await storage.searchCustomers(q, 5);
-          groups.customers = customers.map(c => ({
-            id: c.id != null ? String(c.id) : c.email,
-            label: c.name || c.email || c.phone || "(unnamed)",
-            sub: [c.email, c.phone].filter(Boolean).join(" · "),
-          }));
-        } catch (err) {
-          console.error("[global-search] customers error:", err);
-        }
-      })());
-
-      // Bookings
-      tasks.push((async () => {
-        try {
-          const matches = await storage.searchBookings(q, 5);
-          groups.bookings = matches.map(b => ({
-            id: String(b.id),
-            label: `#${b.id} · ${b.customerName || "(no name)"}`,
-            sub: [
-              b.date,
-              b.startTime,
-              b.tableType,
-              b.tableNumber ? `Table ${b.tableNumber}` : null,
-              b.status,
-            ].filter(Boolean).join(" · "),
-          }));
-        } catch (err) {
-          console.error("[global-search] bookings error:", err);
-        }
-      })());
-
       // Memberships (plans)
       tasks.push((async () => {
         try {
@@ -3185,7 +3185,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Staff-only: create repeat bookings (daily or weekly) — NOT available to customers or widget
-  app.post("/api/staff/bookings/repeat", staffAuth, managerAuth, async (req, res) => {
+  app.post("/api/staff/bookings/repeat", staffAuth, async (req, res) => {
     const { repeatType, repeatCount, ...bookingData } = req.body ?? {};
     if (!repeatType || !["daily", "weekly"].includes(repeatType)) {
       return res.status(400).json({ message: "repeatType must be 'daily' or 'weekly'" });
@@ -3347,7 +3347,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(204).send();
   });
 
-  app.get("/api/bookings", staffAuth, managerAuth, async (req, res) => {
+  app.get("/api/bookings", staffAuth, async (req, res) => {
     const { date } = req.query;
     if (date) {
       const bookingsList = await storage.getBookingsByDate(String(date));
@@ -3357,7 +3357,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(allBookings);
   });
 
-  app.get("/api/bookings/:id", staffAuth, managerAuth, async (req, res) => {
+  app.get("/api/bookings/:id", staffAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const booking = await storage.getBooking(id);
@@ -3902,7 +3902,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Staff: mark a booking as completed and auto-refund any paid deposit
-  app.patch("/api/bookings/:id/complete", staffAuth, managerAuth, async (req, res) => {
+  app.patch("/api/bookings/:id/complete", staffAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const booking = await storage.getBooking(id);
@@ -3995,7 +3995,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Staff: mark a booking as no-show — deposit is kept, no refund issued
-  app.patch("/api/bookings/:id/noshow", staffAuth, managerAuth, async (req, res) => {
+  app.patch("/api/bookings/:id/noshow", staffAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const booking = await storage.getBooking(id);
@@ -4017,7 +4017,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ message: "Booking marked as no-show" });
   });
 
-  app.patch("/api/bookings/:id/status", staffAuth, managerAuth, async (req, res) => {
+  app.patch("/api/bookings/:id/status", staffAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const { status } = req.body;
@@ -4059,7 +4059,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(booking);
   });
 
-  app.put("/api/bookings/:id", staffAuth, managerAuth, async (req, res) => {
+  app.put("/api/bookings/:id", staffAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const existing = await storage.getBooking(id);
