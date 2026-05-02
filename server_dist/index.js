@@ -13,7 +13,7 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, serial, timestamp, boolean, integer, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
-var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, marketingPages, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, passwordResetAuditLog, membershipAuditLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffDocuments, insertStaffDocumentSchema, staffOnboarding, insertStaffOnboardingSchema, staffPushTokens, paymentLog, insertPaymentLogSchema;
+var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, marketingPages, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, dealPreferences, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, passwordResetAuditLog, membershipAuditLog, bookingAuditLog, staffActionLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffDocuments, insertStaffDocumentSchema, staffOnboarding, insertStaffOnboardingSchema, staffPushTokens, paymentLog, insertPaymentLogSchema;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
@@ -191,7 +191,47 @@ var init_schema = __esm({
       passwordResetTokenHash: text("password_reset_token_hash"),
       passwordResetTokenExpiresAt: timestamp("password_reset_token_expires_at"),
       passwordResetLastSentAt: timestamp("password_reset_last_sent_at"),
-      expiresAt: timestamp("expires_at")
+      expiresAt: timestamp("expires_at"),
+      // Cached link to the customer's Square Loyalty account so we don't have to
+      // search by phone on every request and so we can skip the phone+OTP flow
+      // entirely once the customer has signed into their main account.
+      squareLoyaltyAccountId: text("square_loyalty_account_id"),
+      // Date of birth, stored encrypted as ISO YYYY-MM-DD. Used to grant a
+      // birthday-week loyalty bonus. Optional — customers may decline to share.
+      dateOfBirth: text("date_of_birth"),
+      // The four-digit calendar year in which we last awarded the birthday
+      // bonus to this customer. Lets us idempotently grant the bonus exactly
+      // once per year regardless of how many times /api/loyalty/me is called.
+      lastBirthdayBonusYear: integer("last_birthday_bonus_year"),
+      // The four-digit calendar year in which we last sent the "happy birthday
+      // week" push notification. Separate from lastBirthdayBonusYear because
+      // the bonus is awarded only when the customer opens the app, while the
+      // push fires once at the start of the window to *invite* them in.
+      lastBirthdayPushYear: integer("last_birthday_push_year"),
+      // ── Saved card on file (FEATURE_SAVED_CARDS) ───────────────────────────
+      // Cached link to the customer's Square Customer record so we can attach a
+      // card on file without searching by email each time. Created lazily the
+      // first time the customer asks to save a card during checkout. Membership
+      // signup uses its own membershipSubscriptions.squareCustomerId; this
+      // column covers customers who have *not* joined the membership.
+      squareCustomerId: text("square_customer_id"),
+      // The single saved card we offer as the "Pay with •••• 4242" CTA. We
+      // intentionally keep ONE card per customer (the most recently saved) for
+      // the test version — multi-card UX would need a card-picker sheet which
+      // is out of scope. The denormalised brand/last4/exp* columns are stored
+      // so the cart can render the CTA without an extra Square round-trip.
+      squareCardId: text("square_card_id"),
+      squareCardBrand: text("square_card_brand"),
+      squareCardLast4: text("square_card_last4"),
+      squareCardExpMonth: integer("square_card_exp_month"),
+      squareCardExpYear: integer("square_card_exp_year"),
+      // ── Dietary preferences (FEATURE_DIETARY_FILTERS) ──────────────────────
+      // Comma-separated list of tag codes the customer wants the menu to be
+      // pre-filtered to. Tag codes match menuItemOverrides.dietaryTags below
+      // (e.g. "V,VG,GF,DF,NF" — Vegetarian, Vegan, Gluten-Free, Dairy-Free,
+      // Nut-Free). Stored as plain text rather than text[] so the existing
+      // drizzle / zod / encryption tooling doesn't need a new array codec.
+      dietaryFilters: text("dietary_filters")
     });
     insertCustomerSchema = createInsertSchema(customers).omit({ id: true, createdAt: true });
     customerSessions = pgTable("customer_sessions", {
@@ -216,6 +256,13 @@ var init_schema = __esm({
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     insertBannerImageSchema = createInsertSchema(bannerImages).omit({ id: true, createdAt: true });
+    dealPreferences = pgTable("deal_preferences", {
+      id: serial("id").primaryKey(),
+      squareDiscountId: text("square_discount_id").notNull().unique(),
+      hidden: boolean("hidden").notNull().default(false),
+      sortOrder: integer("sort_order").notNull().default(0),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    });
     staffNotices = pgTable("staff_notices", {
       id: serial("id").primaryKey(),
       message: text("message").notNull(),
@@ -376,6 +423,38 @@ var init_schema = __esm({
       subscriptionIdx: index("membership_audit_log_subscription_id_idx").on(table.subscriptionId),
       customerIdx: index("membership_audit_log_customer_id_idx").on(table.customerId)
     }));
+    bookingAuditLog = pgTable("booking_audit_log", {
+      id: serial("id").primaryKey(),
+      bookingId: integer("booking_id").notNull(),
+      action: text("action").notNull(),
+      staffUsername: text("staff_username").notNull(),
+      staffId: integer("staff_id"),
+      fromValue: text("from_value"),
+      toValue: text("to_value"),
+      note: text("note"),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    }, (table) => ({
+      createdAtIdx: index("booking_audit_log_created_at_idx").on(table.createdAt),
+      bookingIdx: index("booking_audit_log_booking_id_idx").on(table.bookingId)
+    }));
+    staffActionLog = pgTable("staff_action_log", {
+      id: serial("id").primaryKey(),
+      staffUsername: text("staff_username").notNull(),
+      staffId: integer("staff_id"),
+      staffRole: text("staff_role").notNull(),
+      method: text("method").notNull(),
+      path: text("path").notNull(),
+      route: text("route"),
+      statusCode: integer("status_code").notNull(),
+      requestBody: text("request_body"),
+      ipAddress: text("ip_address"),
+      userAgent: text("user_agent"),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    }, (table) => ({
+      createdAtIdx: index("staff_action_log_created_at_idx").on(table.createdAt),
+      staffIdx: index("staff_action_log_staff_username_idx").on(table.staffUsername),
+      pathIdx: index("staff_action_log_path_idx").on(table.path)
+    }));
     menuCategoryVisibility = pgTable("menu_category_visibility", {
       categoryId: text("category_id").primaryKey(),
       hidden: boolean("hidden").notNull().default(false),
@@ -388,6 +467,14 @@ var init_schema = __esm({
       name: text("name").notNull(),
       soldOut: boolean("sold_out").notNull().default(false),
       hidden: boolean("hidden").notNull().default(false),
+      // ── Dietary tags (FEATURE_DIETARY_FILTERS) ──────────────────────────────
+      // Comma-separated tag codes that describe an item's dietary suitability:
+      // V (Vegetarian), VG (Vegan), GF (Gluten-Free), DF (Dairy-Free),
+      // NF (Nut-Free). Empty / null means "untagged" — the filter UI surfaces
+      // those items only when the customer has no active filter selected, so
+      // staff can roll the feature out gradually without disappearing the
+      // un-tagged half of the menu.
+      dietaryTags: text("dietary_tags"),
       updatedBy: text("updated_by").notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
@@ -687,7 +774,8 @@ function decryptCustomer(c) {
     ...c,
     email: decrypt(c.email),
     name: decrypt(c.name),
-    phone: c.phone ? decrypt(c.phone) : c.phone
+    phone: c.phone ? decrypt(c.phone) : c.phone,
+    dateOfBirth: c.dateOfBirth ? decrypt(c.dateOfBirth) : c.dateOfBirth
   };
 }
 function decryptPaymentLog(p) {
@@ -783,6 +871,13 @@ async function runStartupMigrations() {
         ADD COLUMN IF NOT EXISTS password_reset_last_sent_at TIMESTAMP;
     `);
     await client.query(`
+      ALTER TABLE customers
+        ADD COLUMN IF NOT EXISTS square_loyalty_account_id TEXT,
+        ADD COLUMN IF NOT EXISTS date_of_birth TEXT,
+        ADD COLUMN IF NOT EXISTS last_birthday_bonus_year INTEGER,
+        ADD COLUMN IF NOT EXISTS last_birthday_push_year INTEGER;
+    `);
+    await client.query(`
       DO $$ BEGIN
         IF EXISTS (
           SELECT 1 FROM pg_constraint
@@ -875,6 +970,55 @@ async function runStartupMigrations() {
     await client.query(`
       CREATE INDEX IF NOT EXISTS membership_audit_log_customer_id_idx
         ON membership_audit_log (customer_id);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS booking_audit_log (
+        id SERIAL PRIMARY KEY,
+        booking_id INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        staff_username TEXT NOT NULL,
+        staff_id INTEGER,
+        from_value TEXT,
+        to_value TEXT,
+        note TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS booking_audit_log_created_at_idx
+        ON booking_audit_log (created_at DESC);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS booking_audit_log_booking_id_idx
+        ON booking_audit_log (booking_id);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS staff_action_log (
+        id SERIAL PRIMARY KEY,
+        staff_username TEXT NOT NULL,
+        staff_id INTEGER,
+        staff_role TEXT NOT NULL,
+        method TEXT NOT NULL,
+        path TEXT NOT NULL,
+        route TEXT,
+        status_code INTEGER NOT NULL,
+        request_body TEXT,
+        ip_address TEXT,
+        user_agent TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS staff_action_log_created_at_idx
+        ON staff_action_log (created_at DESC);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS staff_action_log_staff_username_idx
+        ON staff_action_log (staff_username);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS staff_action_log_path_idx
+        ON staff_action_log (path);
     `);
     await client.query(`
       INSERT INTO membership_plans
@@ -1293,10 +1437,14 @@ var init_storage = __esm({
         return count;
       }
       async cleanupExpiredSessions() {
-        const result = await db.delete(staffSessions).where(
-          lte(staffSessions.expiresAt, /* @__PURE__ */ new Date())
+        const now = /* @__PURE__ */ new Date();
+        const staffDeleted = await db.delete(staffSessions).where(
+          lte(staffSessions.expiresAt, now)
         ).returning();
-        return result.length;
+        const customerDeleted = await db.delete(customerSessions).where(
+          lte(customerSessions.expiresAt, now)
+        ).returning();
+        return staffDeleted.length + customerDeleted.length;
       }
       async anonymizeOldHRRecords() {
         let count = 0;
@@ -1605,6 +1753,74 @@ var init_storage = __esm({
         const [row] = await db.delete(bannerImages).where(eq(bannerImages.id, id)).returning();
         return !!row;
       }
+      // ── Square deal display preferences ──
+      // These rows are keyed by Square discount IDs and only exist as a curation
+      // layer over the live deals returned from Square. Missing prefs default to
+      // visible + sortOrder=0 so new deals don't disappear silently.
+      async getDealPreferences() {
+        return db.select().from(dealPreferences);
+      }
+      async upsertDealPreference(squareDiscountId, patch) {
+        const setOnConflict = { updatedAt: /* @__PURE__ */ new Date() };
+        if (patch.hidden !== void 0) setOnConflict.hidden = patch.hidden;
+        if (patch.sortOrder !== void 0) setOnConflict.sortOrder = patch.sortOrder;
+        const [row] = await db.insert(dealPreferences).values({
+          squareDiscountId,
+          hidden: patch.hidden ?? false,
+          sortOrder: patch.sortOrder ?? 0
+        }).onConflictDoUpdate({
+          target: dealPreferences.squareDiscountId,
+          set: setOnConflict
+        }).returning();
+        return row;
+      }
+      // Atomic bulk reorder of deals. Accepts the desired final order as an array
+      // of Square discount IDs (position 0 is shown first). Upserts each one's
+      // sortOrder inside a single transaction so the home strip never sees a
+      // partially-shuffled state. Hidden flags are preserved on existing rows.
+      async reorderDealPreferences(orderedSquareDiscountIds) {
+        const seen = /* @__PURE__ */ new Set();
+        const dedup = [];
+        for (const id of orderedSquareDiscountIds) {
+          if (typeof id === "string" && id && !seen.has(id)) {
+            seen.add(id);
+            dedup.push(id);
+          }
+        }
+        await db.transaction(async (tx) => {
+          for (let i = 0; i < dedup.length; i++) {
+            const sid = dedup[i];
+            const existing = await tx.select().from(dealPreferences).where(eq(dealPreferences.squareDiscountId, sid)).limit(1);
+            if (existing.length) {
+              await tx.update(dealPreferences).set({ sortOrder: i, updatedAt: /* @__PURE__ */ new Date() }).where(eq(dealPreferences.squareDiscountId, sid));
+            } else {
+              await tx.insert(dealPreferences).values({ squareDiscountId: sid, hidden: false, sortOrder: i });
+            }
+          }
+        });
+        return db.select().from(dealPreferences);
+      }
+      // Atomic bulk reorder. Accepts the desired final order as an array of banner
+      // ids (position 0 is shown first). Updates every row's sortOrder in a single
+      // transaction so the home-screen banner strip is never observed in a
+      // partially-updated state. Ids that don't currently exist are silently
+      // ignored. Returns the freshly-ordered list of all banners.
+      async reorderBannerImages(orderedIds) {
+        const seen = /* @__PURE__ */ new Set();
+        const dedup = [];
+        for (const id of orderedIds) {
+          if (Number.isFinite(id) && !seen.has(id)) {
+            seen.add(id);
+            dedup.push(Number(id));
+          }
+        }
+        await db.transaction(async (tx) => {
+          for (let i = 0; i < dedup.length; i++) {
+            await tx.update(bannerImages).set({ sortOrder: i }).where(eq(bannerImages.id, dedup[i]));
+          }
+        });
+        return db.select().from(bannerImages).orderBy(bannerImages.sortOrder);
+      }
       async createCustomer(email, name, phone, passwordHash, opts) {
         const normalised = email.toLowerCase().trim();
         const [customer] = await db.insert(customers).values({
@@ -1676,8 +1892,57 @@ var init_storage = __esm({
         const encData = {};
         if (data.name) encData.name = encrypt(data.name);
         if (data.phone) encData.phone = encrypt(data.phone);
+        if (data.dateOfBirth === null) encData.dateOfBirth = null;
+        else if (typeof data.dateOfBirth === "string") encData.dateOfBirth = encrypt(data.dateOfBirth);
         const [updated] = await db.update(customers).set(encData).where(eq(customers.id, id)).returning();
         return updated ? decryptCustomer(updated) : void 0;
+      }
+      // Cache the customer's Square Loyalty account ID locally so subsequent
+      // requests don't need to search Square by phone number every time. Plain
+      // text — Square's account IDs are non-secret identifiers.
+      async setSquareLoyaltyAccountId(id, accountId) {
+        await db.update(customers).set({ squareLoyaltyAccountId: accountId }).where(eq(customers.id, id));
+      }
+      // Track which calendar year we last awarded the birthday bonus to a
+      // customer. Used by /api/loyalty/me to ensure the bonus is granted once
+      // per year per customer regardless of how often the endpoint is called.
+      async setLastBirthdayBonusYear(id, year) {
+        await db.update(customers).set({ lastBirthdayBonusYear: year }).where(eq(customers.id, id));
+      }
+      async setLastBirthdayPushYear(id, year) {
+        await db.update(customers).set({ lastBirthdayPushYear: year }).where(eq(customers.id, id));
+      }
+      // Reverse lookup used by Square loyalty webhooks: given a Square loyalty
+      // account ID, find the local customer so we can route the push notification.
+      async getCustomerBySquareLoyaltyAccountId(accountId) {
+        if (!accountId) return void 0;
+        const [row] = await db.select().from(customers).where(eq(customers.squareLoyaltyAccountId, accountId)).limit(1);
+        return row ? decryptCustomer(row) : void 0;
+      }
+      // Find every customer whose birthday MM-DD matches the supplied string and
+      // who hasn't already been pushed this year. DOBs are encrypted, so this
+      // does a full scan + in-memory filter — fine for a venue customer base in
+      // the low thousands. Caller is the daily birthday-push scheduler.
+      async getCustomersInBirthdayWindow(year, monthDay) {
+        const isLeap = new Date(year, 1, 29).getMonth() === 1;
+        const all = await db.select().from(customers);
+        const out = [];
+        for (const row of all) {
+          const decrypted = decryptCustomer(row);
+          if (!decrypted.dateOfBirth) continue;
+          let md = decrypted.dateOfBirth.slice(5);
+          if (md === "02-29" && !isLeap) md = "02-28";
+          if (md !== monthDay) continue;
+          if ((decrypted.lastBirthdayPushYear ?? 0) >= year) continue;
+          out.push(decrypted);
+        }
+        return out;
+      }
+      // Every enrolled-in-loyalty customer (we have a Square account ID for them).
+      // Used by the double-points-day broadcast push.
+      async getCustomersWithLoyaltyAccount() {
+        const rows = await db.select().from(customers).where(isNotNull(customers.squareLoyaltyAccountId));
+        return rows.map(decryptCustomer);
       }
       async deleteCustomer(id) {
         await db.delete(customerSessions).where(eq(customerSessions.customerId, id));
@@ -1996,7 +2261,11 @@ var init_storage = __esm({
         return rows[0] ? decryptAppOrder(rows[0]) : null;
       }
       async updateAppOrderPaid(squareOrderId, squarePaymentId) {
-        await db.update(appOrders).set({ status: "paid", squarePaymentId }).where(eq(appOrders.squareOrderId, squareOrderId));
+        const result = await db.update(appOrders).set({ status: "paid", squarePaymentId }).where(and(
+          eq(appOrders.squareOrderId, squareOrderId),
+          eq(appOrders.status, "pending")
+        ));
+        return (result.rowCount ?? 0) > 0;
       }
       async updateAppOrderStatus(id, status) {
         await db.update(appOrders).set({ status }).where(eq(appOrders.id, id));
@@ -2069,6 +2338,56 @@ var init_storage = __esm({
       }
       async listMembershipAuditLogForSubscription(subscriptionId, limit = 100) {
         return db.select().from(membershipAuditLog).where(eq(membershipAuditLog.subscriptionId, subscriptionId)).orderBy(desc(membershipAuditLog.createdAt)).limit(limit);
+      }
+      // ── Booking audit log ─────────────────────────────────────────────────────
+      // Never throws — audit logging must not break the request that triggered it.
+      // Errors are logged and swallowed so the booking action still succeeds.
+      async logBookingAction(data) {
+        try {
+          await db.insert(bookingAuditLog).values({
+            bookingId: data.bookingId,
+            action: data.action,
+            staffUsername: data.staffUsername,
+            staffId: data.staffId ?? null,
+            fromValue: data.fromValue !== void 0 ? JSON.stringify(data.fromValue) : null,
+            toValue: data.toValue !== void 0 ? JSON.stringify(data.toValue) : null,
+            note: data.note ?? null
+          });
+        } catch (err) {
+          console.error("[booking-audit] logBookingAction failed:", err);
+        }
+      }
+      async listBookingAuditLogForBooking(bookingId, limit = 100) {
+        return db.select().from(bookingAuditLog).where(eq(bookingAuditLog.bookingId, bookingId)).orderBy(desc(bookingAuditLog.createdAt)).limit(limit);
+      }
+      async listRecentBookingAuditLog(limit = 100) {
+        return db.select().from(bookingAuditLog).orderBy(desc(bookingAuditLog.createdAt)).limit(limit);
+      }
+      // ── Generic staff action log ──────────────────────────────────────────────
+      // Never throws — audit logging must not break the request that triggered it.
+      async logStaffAction(data) {
+        try {
+          await db.insert(staffActionLog).values({
+            staffUsername: data.staffUsername,
+            staffId: data.staffId ?? null,
+            staffRole: data.staffRole,
+            method: data.method,
+            path: data.path,
+            route: data.route ?? null,
+            statusCode: data.statusCode,
+            requestBody: data.requestBody ?? null,
+            ipAddress: data.ipAddress ?? null,
+            userAgent: data.userAgent ?? null
+          });
+        } catch (err) {
+          console.error("[staff-audit] logStaffAction failed:", err);
+        }
+      }
+      async listRecentStaffActions(limit = 200) {
+        return db.select().from(staffActionLog).orderBy(desc(staffActionLog.createdAt)).limit(limit);
+      }
+      async listStaffActionsByUsername(username, limit = 200) {
+        return db.select().from(staffActionLog).where(eq(staffActionLog.staffUsername, username)).orderBy(desc(staffActionLog.createdAt)).limit(limit);
       }
       // ══════════════════════════════════════════════════════════════════
       // STAFF HR — TIME ENTRIES
@@ -2413,6 +2732,80 @@ var init_storage = __esm({
         const [row] = await db.select().from(paymentLog).where(eq(paymentLog.stripePaymentIntentId, intentId));
         return row ? decryptPaymentLog(row) : null;
       }
+      // ────────────────────────────────────────────────────────────────────────
+      // Feature-flagged additions (May 2026 test version)
+      // The methods below back the four feature flags defined in
+      // shared/featureFlags.ts. Each one is a thin write wrapper — the public
+      // read paths reuse the existing getCustomerById / getMenuItemOverrides
+      // methods above so we don't fan out the encryption / decryption surface.
+      // ────────────────────────────────────────────────────────────────────────
+      /**
+       * Persist a single saved card on a customer (FEATURE_SAVED_CARDS). One card
+       * per customer in the test version — calling this overwrites whatever was
+       * there before (and the caller is responsible for first DELETEing the old
+       * card on Square's side via Square's /v2/cards/{id}/disable). Caller must
+       * have already created or looked up the Square Customer.
+       */
+      async setCustomerSavedCard(customerId, card) {
+        await db.update(customers).set({
+          squareCustomerId: card.squareCustomerId,
+          squareCardId: card.squareCardId,
+          squareCardBrand: card.brand,
+          squareCardLast4: card.last4,
+          squareCardExpMonth: card.expMonth,
+          squareCardExpYear: card.expYear
+        }).where(eq(customers.id, customerId));
+      }
+      /** Forget the saved card. squareCustomerId is preserved so a re-save
+       *  doesn't have to re-create the Square Customer. */
+      async clearCustomerSavedCard(customerId) {
+        await db.update(customers).set({
+          squareCardId: null,
+          squareCardBrand: null,
+          squareCardLast4: null,
+          squareCardExpMonth: null,
+          squareCardExpYear: null
+        }).where(eq(customers.id, customerId));
+      }
+      /** Update the dietary-preference filter on a customer (FEATURE_DIETARY_FILTERS).
+       *  Pass null to clear. */
+      async setCustomerDietaryFilters(customerId, filters) {
+        await db.update(customers).set({ dietaryFilters: filters }).where(eq(customers.id, customerId));
+      }
+      /** Set / replace the dietary-tag string for a menu variation (FEATURE_DIETARY_FILTERS).
+       *  Mirrors setMenuItemSoldOut / setMenuItemHidden — preserves the other
+       *  override flags by reading the existing row first. Pass null/empty
+       *  string to clear all tags. */
+      async setMenuItemDietaryTags(variationId, itemId, name, dietaryTags, updatedBy) {
+        const existing = await db.select().from(menuItemOverrides).where(eq(menuItemOverrides.variationId, variationId));
+        const currentSoldOut = existing[0]?.soldOut ?? false;
+        const currentHidden = existing[0]?.hidden ?? false;
+        const cleaned = dietaryTags && dietaryTags.trim() ? dietaryTags.trim() : null;
+        await db.insert(menuItemOverrides).values({ variationId, itemId, name, soldOut: currentSoldOut, hidden: currentHidden, dietaryTags: cleaned, updatedBy, updatedAt: /* @__PURE__ */ new Date() }).onConflictDoUpdate({
+          target: menuItemOverrides.variationId,
+          set: { itemId, name, dietaryTags: cleaned, updatedBy, updatedAt: /* @__PURE__ */ new Date() }
+        });
+      }
+      /**
+       * Most recent paid app-order for a customer (FEATURE_PERSONALISED_HOME).
+       * Used to power the "Reorder last round" home card. Hash-then-plaintext
+       * lookup mirrors getCustomerOrders so legacy + encrypted records both
+       * resolve. Returns null if the customer has never placed a paid order.
+       */
+      async getLastPaidAppOrderForCustomer(email) {
+        const PAID_STATUSES = ["paid", "preparing", "ready", "delivered", "collected", "completed"];
+        const emailHash = hashEmail(email);
+        const byHash = await db.select().from(appOrders).where(and(
+          eq(appOrders.customerEmailHash, emailHash),
+          inArray(appOrders.status, PAID_STATUSES)
+        )).orderBy(desc(appOrders.createdAt)).limit(1);
+        if (byHash.length > 0) return decryptAppOrder(byHash[0]);
+        const byPlain = await db.select().from(appOrders).where(and(
+          eq(appOrders.customerEmail, email),
+          inArray(appOrders.status, PAID_STATUSES)
+        )).orderBy(desc(appOrders.createdAt)).limit(1);
+        return byPlain.length > 0 ? decryptAppOrder(byPlain[0]) : null;
+      }
     };
     storage = new DatabaseStorage();
   }
@@ -2426,6 +2819,7 @@ __export(square_exports, {
   addCustomerToGroup: () => addCustomerToGroup,
   adjustLoyaltyPoints: () => adjustLoyaltyPoints,
   cancelSquareSubscription: () => cancelSquareSubscription,
+  chargeSavedCard: () => chargeSavedCard,
   createCardPayment: () => createCardPayment,
   createCatalogSubscriptionPlan: () => createCatalogSubscriptionPlan,
   createDepositPaymentLink: () => createDepositPaymentLink,
@@ -2438,6 +2832,7 @@ __export(square_exports, {
   createSquareSubscription: () => createSquareSubscription,
   createSubscriptionCheckoutLink: () => createSubscriptionCheckoutLink,
   deleteLoyaltyReward: () => deleteLoyaltyReward,
+  disableSquareCard: () => disableSquareCard,
   findSquareCustomerByEmail: () => findSquareCustomerByEmail,
   getApplicationId: () => getApplicationId,
   getCustomerGroupIds: () => getCustomerGroupIds,
@@ -2466,7 +2861,8 @@ __export(square_exports, {
   searchIssuedRewards: () => searchIssuedRewards,
   searchLoyaltyAccount: () => searchLoyaltyAccount,
   searchLoyaltyEvents: () => searchLoyaltyEvents,
-  syncPlanToSquareCatalog: () => syncPlanToSquareCatalog
+  syncPlanToSquareCatalog: () => syncPlanToSquareCatalog,
+  toE164: () => toE164
 });
 function getLocationId() {
   const loc = process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID;
@@ -2637,6 +3033,25 @@ async function findSquareCustomerByEmail(email) {
     limit: 1
   });
   return data.customers?.[0] || null;
+}
+async function disableSquareCard(cardId) {
+  await squareRequest("POST", `/v2/cards/${cardId}/disable`, {});
+}
+async function chargeSavedCard(opts) {
+  const body = {
+    idempotency_key: opts.idempotencyKey,
+    source_id: opts.squareCardId,
+    customer_id: opts.squareCustomerId,
+    amount_money: { amount: opts.amountPence, currency: "GBP" },
+    location_id: getLocationId(),
+    autocomplete: true
+  };
+  if (opts.note) body.note = opts.note.slice(0, 500);
+  if (opts.referenceId) body.reference_id = opts.referenceId.slice(0, 40);
+  if (opts.buyerEmail) body.buyer_email_address = opts.buyerEmail;
+  if (opts.orderId) body.order_id = opts.orderId;
+  const data = await squareRequest("POST", "/v2/payments", body);
+  return data.payment;
 }
 async function saveCardOnFile(opts) {
   const body = {
@@ -3215,11 +3630,19 @@ async function buildSquareOrderBody(items, tableNote, customer, discountPercent,
   const catalogPriceById = /* @__PURE__ */ new Map();
   const catalogTypeById = /* @__PURE__ */ new Map();
   const idsToFetch = Array.from(catalogIds);
+  const catalogChunks = [];
   for (let i = 0; i < idsToFetch.length; i += 100) {
-    const chunk = idsToFetch.slice(i, i + 100);
-    const data = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
-      object_ids: chunk
-    });
+    catalogChunks.push(idsToFetch.slice(i, i + 100));
+  }
+  const [catalogResults, activeDeals] = await Promise.all([
+    Promise.all(
+      catalogChunks.map(
+        (chunk) => squareRequest("POST", "/v2/catalog/batch-retrieve", { object_ids: chunk })
+      )
+    ),
+    getSquareDeals().catch(() => [])
+  ]);
+  for (const data of catalogResults) {
     for (const o of data.objects || []) {
       if (o.is_deleted) continue;
       if (o.type === "ITEM_VARIATION") {
@@ -3249,7 +3672,6 @@ async function buildSquareOrderBody(items, tableNote, customer, discountPercent,
       }
     }
   }
-  const activeDeals = await getSquareDeals().catch(() => []);
   const dealByVariationId = /* @__PURE__ */ new Map();
   for (const deal of activeDeals) {
     if (!deal.applicableVariationIds) continue;
@@ -4319,6 +4741,80 @@ var init_web_content = __esm({
   }
 });
 
+// server/push.ts
+var push_exports = {};
+__export(push_exports, {
+  sendPushToCustomerEmail: () => sendPushToCustomerEmail,
+  sendPushToTokens: () => sendPushToTokens
+});
+async function sendPushToTokens(tokens, title, body, data) {
+  if (!tokens.length) return { successCount: 0, failureCount: 0 };
+  const messages = tokens.map((to) => ({
+    to,
+    sound: "default",
+    title,
+    body,
+    ...data ? { data } : {}
+  }));
+  let successCount = 0;
+  let failureCount = 0;
+  const deadTokens = [];
+  for (let i = 0; i < messages.length; i += 100) {
+    const batch = messages.slice(i, i + 100);
+    try {
+      const response = await fetch("https://exp.host/--/api/v2/push/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify(batch)
+      });
+      const json = await response.json();
+      if (json.errors && json.errors.length) {
+        console.error("[push] Expo API error:", JSON.stringify(json.errors));
+        failureCount += batch.length;
+        continue;
+      }
+      if (Array.isArray(json.data)) {
+        json.data.forEach((result, index2) => {
+          const token = batch[index2]?.to;
+          if (result.status === "ok") {
+            successCount += 1;
+          } else {
+            failureCount += 1;
+            if (result.details?.error === "DeviceNotRegistered" && token) {
+              deadTokens.push(token);
+            }
+          }
+        });
+      } else {
+        failureCount += batch.length;
+      }
+    } catch (err) {
+      console.error("[push] network error sending to Expo:", err);
+      failureCount += batch.length;
+    }
+  }
+  for (const token of deadTokens) {
+    try {
+      await storage.removePushToken(token);
+    } catch (err) {
+      console.error(`[push] failed to remove dead token ${token}:`, err);
+    }
+  }
+  return { successCount, failureCount };
+}
+async function sendPushToCustomerEmail(email, title, body, data) {
+  if (!email) return { successCount: 0, failureCount: 0 };
+  const tokens = await storage.getPushTokensByEmail(email);
+  if (!tokens.length) return { successCount: 0, failureCount: 0 };
+  return sendPushToTokens(tokens.map((t) => t.token), title, body, data);
+}
+var init_push = __esm({
+  "server/push.ts"() {
+    "use strict";
+    init_storage();
+  }
+});
+
 // shared/membership-benefits.ts
 var membership_benefits_exports = {};
 __export(membership_benefits_exports, {
@@ -4371,8 +4867,6 @@ import express from "express";
 // server/routes.ts
 init_storage();
 init_schema();
-init_encryption();
-init_square();
 import { createServer } from "node:http";
 import { randomBytes as randomBytes3, timingSafeEqual, createHash as createHash2 } from "node:crypto";
 import * as fs from "node:fs";
@@ -4380,6 +4874,40 @@ import * as path from "node:path";
 import multer from "multer";
 import sharp from "sharp";
 import nodemailer from "nodemailer";
+
+// shared/featureFlags.ts
+var DEFAULT_FEATURE_FLAGS = {
+  savedCards: false,
+  orderPreparingPush: false,
+  dietaryFilters: false,
+  personalisedHome: false,
+  kdsSync: false
+};
+var FEATURE_FLAG_ENV = {
+  savedCards: "FEATURE_SAVED_CARDS",
+  orderPreparingPush: "FEATURE_ORDER_PREPARING_PUSH",
+  dietaryFilters: "FEATURE_DIETARY_FILTERS",
+  personalisedHome: "FEATURE_PERSONALISED_HOME",
+  kdsSync: "FEATURE_KDS_SYNC"
+};
+function parseFlagEnv(value) {
+  if (!value) return false;
+  const v = value.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
+// server/featureFlags.ts
+function getServerFeatureFlags() {
+  const out = { ...DEFAULT_FEATURE_FLAGS };
+  Object.keys(FEATURE_FLAG_ENV).forEach((k) => {
+    out[k] = parseFlagEnv(process.env[FEATURE_FLAG_ENV[k]]);
+  });
+  return out;
+}
+
+// server/routes.ts
+init_encryption();
+init_square();
 
 // server/reorder-matching.ts
 var norm = (s) => (s ?? "").trim().toLowerCase();
@@ -5487,6 +6015,102 @@ function timingSafeCompare(a, b) {
   if (bufA.length !== bufB.length) return false;
   return timingSafeEqual(bufA, bufB);
 }
+var AUDIT_SKIP_PATHS = /* @__PURE__ */ new Set([
+  "/api/staff/verify",
+  "/api/staff/logout"
+]);
+var SENSITIVE_BODY_KEYS = /* @__PURE__ */ new Set([
+  "password",
+  "currentpassword",
+  "newpassword",
+  "oldpassword",
+  "pin",
+  "currentpin",
+  "newpin",
+  "oldpin",
+  "token",
+  "accesstoken",
+  "refreshtoken",
+  "sessiontoken",
+  "csrftoken",
+  "verificationtoken",
+  "secret",
+  "apikey",
+  "key",
+  "otp",
+  "code",
+  "authcode",
+  "verificationcode",
+  "signature",
+  "sourceid",
+  "nonce",
+  "cardnumber",
+  "cvv",
+  "cvc",
+  "cardcvv"
+]);
+function sanitizeBodyForAudit(body) {
+  if (body === null || body === void 0) return body;
+  if (typeof body !== "object") return body;
+  if (Array.isArray(body)) return body.map((v) => sanitizeBodyForAudit(v));
+  const out = {};
+  for (const [k, v] of Object.entries(body)) {
+    if (SENSITIVE_BODY_KEYS.has(k.toLowerCase())) {
+      out[k] = "[REDACTED]";
+    } else if (typeof v === "object") {
+      out[k] = sanitizeBodyForAudit(v);
+    } else if (typeof v === "string" && v.length > 1e3) {
+      out[k] = v.slice(0, 1e3) + "...(truncated)";
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+function attachStaffActionAudit(req, res) {
+  if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return;
+  if (AUDIT_SKIP_PATHS.has(req.path)) return;
+  const startedAt = Date.now();
+  res.on("finish", () => {
+    try {
+      if (res.statusCode === 401) return;
+      const username = req.staffUsername;
+      const user = req.staffUser;
+      const role = req.staffRole;
+      if (!username || !role) return;
+      let bodyJson = null;
+      try {
+        const sanitized = sanitizeBodyForAudit(req.body);
+        if (sanitized !== void 0) {
+          const s = JSON.stringify(sanitized);
+          if (s && s !== "{}" && s !== "null") {
+            bodyJson = s.length > 4e3 ? s.slice(0, 4e3) + "...(truncated)" : s;
+          }
+        }
+      } catch {
+        bodyJson = null;
+      }
+      const xff = req.headers["x-forwarded-for"]?.split(",")[0]?.trim();
+      const ip = xff || req.ip || req.socket?.remoteAddress || null;
+      const ua = req.headers["user-agent"] || null;
+      void storage.logStaffAction({
+        staffUsername: username,
+        staffId: user?.id ?? null,
+        staffRole: role,
+        method: req.method,
+        path: req.originalUrl.split("?")[0].slice(0, 500),
+        route: req.route?.path ? String(req.route.path).slice(0, 500) : null,
+        statusCode: res.statusCode,
+        requestBody: bodyJson,
+        ipAddress: ip ? String(ip).slice(0, 64) : null,
+        userAgent: ua ? ua.slice(0, 500) : null
+      });
+      void startedAt;
+    } catch (err) {
+      console.error("[staff-audit] hook failed:", err);
+    }
+  });
+}
 async function staffAuth(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -5522,6 +6146,7 @@ async function staffAuth(req, res, next) {
     req.staffUsername = null;
     req.staffUser = null;
   }
+  attachStaffActionAudit(req, res);
   next();
 }
 async function managerAuth(req, res, next) {
@@ -5655,6 +6280,14 @@ async function resolveMemberDiscountImpl(req, formCustomer, syncSquareMembership
         result.discountPercent = sub.plan.foodDrinkDiscount;
         result.discountLabel = `${sub.plan.name} Member Discount`;
         result.excludeWithDeals = !!sub.plan?.excludeWithDeals;
+      } else if (sub && isActive && notCancelled && periodValid && !planActive) {
+        console.warn(
+          `[ORDER][AUDIT][PLAN-INACTIVE] Customer #${signedInCustomerId} (${signedInEmail}) has an active subscription on plan #${sub.planId} but that plan is marked inactive in the staff portal \u2014 discount NOT applied. Re-activate the plan to restore member pricing.`
+        );
+      } else if (sub && isActive && notCancelled && periodValid && planActive && !hasDiscount) {
+        console.warn(
+          `[ORDER][AUDIT][PLAN-NO-DISCOUNT] Customer #${signedInCustomerId} (${signedInEmail}) is on plan "${sub.plan.name}" which has foodDrinkDiscount=0 \u2014 nothing to apply.`
+        );
       }
     } catch (err) {
       console.warn("[ORDER] Could not look up signed-in member discount:", err.message);
@@ -5816,7 +6449,7 @@ async function registerRoutes(app2) {
           authed = true;
         }
       } else if (staffUser.pinHash && staffUser.pinSalt) {
-        if (/^\d{4,8}$/.test(credential) && verifyPin(credential, staffUser.pinHash, staffUser.pinSalt)) {
+        if (verifyPin(credential, staffUser.pinHash, staffUser.pinSalt)) {
           authed = true;
           mustChangePassword = true;
           if (!staffUser.mustChangePassword) {
@@ -6038,7 +6671,7 @@ async function registerRoutes(app2) {
     if (!deleted) return res.status(404).json({ message: "Staff user not found" });
     res.json({ message: "Staff account deleted" });
   });
-  app2.get("/api/staff/customers/search", staffAuth, managerAuth, async (req, res) => {
+  app2.get("/api/staff/customers/search", staffAuth, async (req, res) => {
     const q = String(req.query.q || "").trim();
     if (q.length < 2) return res.json([]);
     try {
@@ -6107,37 +6740,37 @@ async function registerRoutes(app2) {
         console.error("[global-search] events error:", err);
       }
     })());
+    tasks.push((async () => {
+      try {
+        const customers2 = await storage.searchCustomers(q, 5);
+        groups.customers = customers2.map((c) => ({
+          id: c.id != null ? String(c.id) : c.email,
+          label: c.name || c.email || c.phone || "(unnamed)",
+          sub: [c.email, c.phone].filter(Boolean).join(" \xB7 ")
+        }));
+      } catch (err) {
+        console.error("[global-search] customers error:", err);
+      }
+    })());
+    tasks.push((async () => {
+      try {
+        const matches = await storage.searchBookings(q, 5);
+        groups.bookings = matches.map((b) => ({
+          id: String(b.id),
+          label: `#${b.id} \xB7 ${b.customerName || "(no name)"}`,
+          sub: [
+            b.date,
+            b.startTime,
+            b.tableType,
+            b.tableNumber ? `Table ${b.tableNumber}` : null,
+            b.status
+          ].filter(Boolean).join(" \xB7 ")
+        }));
+      } catch (err) {
+        console.error("[global-search] bookings error:", err);
+      }
+    })());
     if (isManager) {
-      tasks.push((async () => {
-        try {
-          const customers2 = await storage.searchCustomers(q, 5);
-          groups.customers = customers2.map((c) => ({
-            id: c.id != null ? String(c.id) : c.email,
-            label: c.name || c.email || c.phone || "(unnamed)",
-            sub: [c.email, c.phone].filter(Boolean).join(" \xB7 ")
-          }));
-        } catch (err) {
-          console.error("[global-search] customers error:", err);
-        }
-      })());
-      tasks.push((async () => {
-        try {
-          const matches = await storage.searchBookings(q, 5);
-          groups.bookings = matches.map((b) => ({
-            id: String(b.id),
-            label: `#${b.id} \xB7 ${b.customerName || "(no name)"}`,
-            sub: [
-              b.date,
-              b.startTime,
-              b.tableType,
-              b.tableNumber ? `Table ${b.tableNumber}` : null,
-              b.status
-            ].filter(Boolean).join(" \xB7 ")
-          }));
-        } catch (err) {
-          console.error("[global-search] bookings error:", err);
-        }
-      })());
       tasks.push((async () => {
         try {
           const plans = await storage.getMembershipPlans(false);
@@ -7035,8 +7668,8 @@ async function registerRoutes(app2) {
     if (parsed.data.tableType === "dining") {
       const bookingDate = /* @__PURE__ */ new Date(parsed.data.date + "T00:00:00");
       const dow = bookingDate.getDay();
-      if (![0, 4, 5, 6].includes(dow)) {
-        return res.status(400).json({ message: "Dining is only available Thursday to Sunday" });
+      if (![0, 3, 4, 5, 6].includes(dow)) {
+        return res.status(400).json({ message: "Dining is only available Wednesday to Sunday" });
       }
       const startMins = toSlotMins(parsed.data.startTime);
       const endMins = startMins + (parsed.data.duration ?? 1) * 60;
@@ -7130,6 +7763,19 @@ async function registerRoutes(app2) {
         depositRequired: true,
         depositPaid: true
       });
+      {
+        const u = req.staffUser;
+        if (u) {
+          void storage.logBookingAction({
+            bookingId: booking2.id,
+            action: "created",
+            staffUsername: u.username,
+            staffId: u.id ?? null,
+            toValue: { customerName: booking2.customerName, date: booking2.date, startTime: booking2.startTime, tableType: booking2.tableType, tableNumber: booking2.tableNumber, status: booking2.status, depositPaid: true },
+            note: "Created by staff (deposit marked as paid in person)"
+          });
+        }
+      }
       sendBookingConfirmationEmail({
         customerName: parsed.data.customerName,
         customerEmail: parsed.data.customerEmail,
@@ -7150,6 +7796,19 @@ async function registerRoutes(app2) {
       depositRequired: requiresDeposit,
       depositPaid: false
     });
+    {
+      const u = req.staffUser;
+      if (u) {
+        void storage.logBookingAction({
+          bookingId: booking.id,
+          action: "created",
+          staffUsername: u.username,
+          staffId: u.id ?? null,
+          toValue: { customerName: booking.customerName, date: booking.date, startTime: booking.startTime, tableType: booking.tableType, tableNumber: booking.tableNumber, status: booking.status, depositRequired: requiresDeposit },
+          note: requiresDeposit ? "Created by staff (deposit pending)" : "Created by staff"
+        });
+      }
+    }
     if (requiresDeposit) {
       const staticDepositUrl = process.env.SQUARE_DEPOSIT_LINK_URL;
       const bookingRef = `147-${booking.id.toString().padStart(5, "0")}`;
@@ -7223,7 +7882,7 @@ async function registerRoutes(app2) {
     }).catch((err) => console.error("[BOOKING] Email send error:", err));
     res.status(201).json(booking);
   });
-  app2.post("/api/staff/bookings/repeat", staffAuth, managerAuth, async (req, res) => {
+  app2.post("/api/staff/bookings/repeat", staffAuth, async (req, res) => {
     const { repeatType, repeatCount, ...bookingData } = req.body ?? {};
     if (!repeatType || !["daily", "weekly"].includes(repeatType)) {
       return res.status(400).json({ message: "repeatType must be 'daily' or 'weekly'" });
@@ -7302,6 +7961,17 @@ async function registerRoutes(app2) {
         }
         const booking = await storage.createBooking({ ...parsed.data, date: dateStr, tableNumber: finalTableNumber ?? void 0 });
         createdBookings.push(booking);
+        {
+          const u = req.staffUser;
+          void storage.logBookingAction({
+            bookingId: booking.id,
+            action: "created",
+            staffUsername: u?.username || req.staffUsername || "unknown",
+            staffId: u?.id ?? null,
+            toValue: { customerName: booking.customerName, date: booking.date, startTime: booking.startTime, tableType: booking.tableType, tableNumber: booking.tableNumber },
+            note: `Created via repeat (${repeatType}, ${i + 1} of ${count})`
+          });
+        }
       } catch (err) {
         console.error(`[repeat-booking] Error for date ${dateStr}:`, err);
         skippedDates.push(dateStr);
@@ -7375,7 +8045,7 @@ async function registerRoutes(app2) {
     if (!deleted) return res.status(404).json({ message: "Popup not found" });
     res.status(204).send();
   });
-  app2.get("/api/bookings", staffAuth, managerAuth, async (req, res) => {
+  app2.get("/api/bookings", staffAuth, async (req, res) => {
     const { date } = req.query;
     if (date) {
       const bookingsList = await storage.getBookingsByDate(String(date));
@@ -7384,7 +8054,7 @@ async function registerRoutes(app2) {
     const allBookings = await storage.getBookings();
     res.json(allBookings);
   });
-  app2.get("/api/bookings/:id", staffAuth, managerAuth, async (req, res) => {
+  app2.get("/api/bookings/:id", staffAuth, async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const booking = await storage.getBooking(id);
@@ -7533,6 +8203,118 @@ async function registerRoutes(app2) {
       }
       return res.sendStatus(200);
     }
+    if (eventType === "loyalty.event.created") {
+      try {
+        const loyaltyEvent = event?.data?.object?.loyalty_event ?? event?.data?.object?.event;
+        if (!loyaltyEvent) return res.sendStatus(200);
+        const accountId = loyaltyEvent.loyalty_account_id;
+        const evtType = loyaltyEvent.type ?? "";
+        if (!accountId) return res.sendStatus(200);
+        const adjustReason = loyaltyEvent.adjust_points?.reason ?? "";
+        const isOurOwnBirthdayBonus = adjustReason.startsWith("Birthday bonus");
+        const customer = await storage.getCustomerBySquareLoyaltyAccountId(accountId);
+        if (!customer) {
+          console.log(`[WEBHOOK] loyalty.event.created for unknown account ${accountId} \u2014 ignored`);
+          return res.sendStatus(200);
+        }
+        let title = null;
+        let body = null;
+        if (evtType === "ACCUMULATE_POINTS") {
+          const earned = loyaltyEvent.accumulate_points?.points ?? 0;
+          if (earned > 0) {
+            title = "You earned points \u{1F3B1}";
+            body = `You just earned ${earned} point${earned === 1 ? "" : "s"} at The 147. Open the app to see your new balance.`;
+          }
+        } else if (evtType === "REDEEM_REWARD") {
+          title = "Reward redeemed \u{1F389}";
+          body = "Your reward has been applied. Enjoy!";
+        } else if (evtType === "ADJUST_POINTS" && !isOurOwnBirthdayBonus) {
+          const adj = loyaltyEvent.adjust_points?.points ?? 0;
+          if (adj > 0) {
+            title = "Bonus points added";
+            body = `${adj} bonus point${adj === 1 ? "" : "s"} added to your balance.`;
+          } else if (adj < 0) {
+            title = "Points adjusted";
+            body = `${Math.abs(adj)} point${Math.abs(adj) === 1 ? "" : "s"} were removed from your balance.`;
+          }
+        }
+        if (!title || !body) {
+          return res.sendStatus(200);
+        }
+        const { sendPushToCustomerEmail: sendPushToCustomerEmail2 } = await Promise.resolve().then(() => (init_push(), push_exports));
+        await sendPushToCustomerEmail2(customer.email, title, body, {
+          type: "loyalty_balance_changed",
+          accountId
+        });
+        console.log(`[WEBHOOK] Loyalty push sent to customer ${customer.id} for ${evtType}`);
+      } catch (err) {
+        console.error("[WEBHOOK] loyalty.event.created error:", err);
+      }
+      return res.sendStatus(200);
+    }
+    if (eventType === "loyalty.account.balance_changed") {
+      return res.sendStatus(200);
+    }
+    if (eventType === "order.fulfillment.updated") {
+      if (!getServerFeatureFlags().kdsSync) return res.sendStatus(200);
+      try {
+        const update = event?.data?.object?.order_fulfillment_updated;
+        const sqOrderId = update?.order_id;
+        const transitions = Array.isArray(update?.fulfillment_update) ? update.fulfillment_update : [];
+        const becameCompleted = transitions.some((t) => t?.new_state === "COMPLETED");
+        if (!sqOrderId || !becameCompleted) return res.sendStatus(200);
+        const appOrder = await storage.getOrderBySquareOrderId(sqOrderId);
+        if (!appOrder) {
+          return res.sendStatus(200);
+        }
+        const ALREADY_DONE = /* @__PURE__ */ new Set([
+          "completed",
+          "delivered",
+          "collected",
+          "cancelled",
+          "refunded"
+        ]);
+        if (ALREADY_DONE.has(appOrder.status)) {
+          console.log(`[WEBHOOK] KDS sync: order #${appOrder.id} already ${appOrder.status} \u2014 skipping`);
+          return res.sendStatus(200);
+        }
+        const SYNCABLE = /* @__PURE__ */ new Set(["paid", "preparing", "ready"]);
+        if (!SYNCABLE.has(appOrder.status)) {
+          return res.sendStatus(200);
+        }
+        const fromStatus = appOrder.status;
+        await storage.updateAppOrderStatus(appOrder.id, "completed");
+        await storage.logOrderAction({
+          orderId: appOrder.id,
+          staffUsername: "system:square-kds",
+          action: "advance:completed"
+        });
+        console.log(`[WEBHOOK] KDS sync: order #${appOrder.id} ${fromStatus}\u2192completed`);
+        if (appOrder.pushToken) {
+          const ref = appOrder.id.toString().padStart(5, "0");
+          const data = {
+            type: "order-status",
+            appOrderId: appOrder.id,
+            token: appOrder.confirmationToken ?? "",
+            status: "completed"
+          };
+          sendTargetedPush(
+            [appOrder.pushToken],
+            "Order complete \u{1F389}",
+            `Order #${ref} is complete \u2014 enjoy!`,
+            data
+          ).catch((err) => {
+            console.error("[Push] KDS-sync notification failed:", err?.message ?? err);
+          });
+        }
+      } catch (err) {
+        console.error("[WEBHOOK] order.fulfillment.updated error:", err);
+      }
+      return res.sendStatus(200);
+    }
+    if (eventType === "order.updated") {
+      return res.sendStatus(200);
+    }
     if (eventType !== "payment.updated") return res.sendStatus(200);
     const payment = event?.data?.object?.payment;
     if (!payment) return res.sendStatus(200);
@@ -7619,8 +8401,16 @@ async function registerRoutes(app2) {
         try {
           const appOrder = await storage.getOrderBySquareOrderId(paymentOrderId);
           if (appOrder && appOrder.status === "pending") {
-            await storage.updateAppOrderPaid(paymentOrderId, payment.id);
-            console.log(`[WEBHOOK] App order #${appOrder.id} marked paid (Square order: ${paymentOrderId})`);
+            const transitioned = await storage.updateAppOrderPaid(paymentOrderId, payment.id);
+            if (transitioned) {
+              console.log(`[WEBHOOK] App order #${appOrder.id} marked paid (Square order: ${paymentOrderId})`);
+              await storage.logOrderAction({
+                orderId: appOrder.id,
+                staffUsername: "system",
+                action: "paid",
+                reason: `Square payment ${payment.id}`
+              }).catch((e) => console.error("[WEBHOOK] Audit log failed:", e.message));
+            }
             return res.sendStatus(200);
           }
         } catch (err) {
@@ -7663,6 +8453,15 @@ async function registerRoutes(app2) {
         squarePaymentId: payment.id ?? null
       });
       console.log(`[WEBHOOK] Booking #${booking.id} confirmed automatically after deposit payment`);
+      void storage.logBookingAction({
+        bookingId: booking.id,
+        action: "status_changed",
+        staffUsername: "system:square-webhook",
+        staffId: null,
+        fromValue: { status: booking.status, depositPaid: booking.depositPaid },
+        toValue: { status: "confirmed", depositPaid: true, squarePaymentId: payment.id ?? null },
+        note: `Auto-confirmed after Square deposit payment ${payment.id ?? "(unknown id)"}`
+      });
       sendBookingConfirmationEmail({
         customerName: booking.customerName,
         customerEmail: booking.customerEmail,
@@ -7685,7 +8484,7 @@ async function registerRoutes(app2) {
     const bookingRef = `147-${id.toString().padStart(5, "0")}`;
     res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Payment Received</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f9fafb}div{text-align:center;padding:32px}</style></head><body><div><div style="font-size:48px">&#10003;</div><h2 style="color:#16A34A">Payment Received</h2><p>Your deposit for booking <strong>${bookingRef}</strong> has been submitted.</p><p style="color:#6b7280;font-size:14px">Your booking will be confirmed shortly. You can close this window and return to The 147 app.</p></div></body></html>`);
   });
-  app2.patch("/api/bookings/:id/complete", staffAuth, managerAuth, async (req, res) => {
+  app2.patch("/api/bookings/:id/complete", staffAuth, async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const booking = await storage.getBooking(id);
@@ -7715,26 +8514,95 @@ async function registerRoutes(app2) {
       status: "completed",
       ...depositRefunded ? { depositRefunded: true } : {}
     });
-    res.json({ message: "Booking marked as completed", depositRefunded, refundId, refundError });
+    {
+      const u = req.staffUser;
+      const note = depositRefunded ? `Deposit refund issued (${refundId})` : refundError ? `Refund attempted but failed: ${refundError}` : booking.depositPaid ? "No refund (already refunded earlier)" : "No deposit on file";
+      void storage.logBookingAction({
+        bookingId: id,
+        action: "completed",
+        staffUsername: u?.username || req.staffUsername || "unknown",
+        staffId: u?.id ?? null,
+        fromValue: { status: booking.status, depositRefunded: booking.depositRefunded },
+        toValue: { status: "completed", depositRefunded: depositRefunded || booking.depositRefunded, refundId: refundId ?? null },
+        note
+      });
+    }
+    let pointsAwarded = 0;
+    let pointsDoubled = false;
+    if (booking.status !== "completed") {
+      try {
+        const cust = await storage.getCustomerByEmail(booking.customerEmail);
+        if (cust?.squareLoyaltyAccountId && isConfigured()) {
+          const cfg = await loadLoyaltyConfig();
+          const base = cfg.visitPoints;
+          const multiplier = cfg.doublePointsToday ? 2 : 1;
+          const amount = base * multiplier;
+          if (amount > 0) {
+            await accumulateLoyaltyPoints(
+              cust.squareLoyaltyAccountId,
+              amount,
+              `visit-${id}`
+            );
+            pointsAwarded = amount;
+            pointsDoubled = multiplier > 1;
+            console.log(`[LOYALTY] Awarded ${amount} visit pts (x${multiplier}) to customer ${cust.id} for booking #${id}`);
+          }
+        }
+      } catch (lpErr) {
+        console.error(`[LOYALTY] Visit-points award failed for booking #${id}:`, lpErr.message);
+      }
+    }
+    res.json({
+      message: "Booking marked as completed",
+      depositRefunded,
+      refundId,
+      refundError,
+      loyalty: { pointsAwarded, doublePoints: pointsDoubled }
+    });
   });
-  app2.patch("/api/bookings/:id/noshow", staffAuth, managerAuth, async (req, res) => {
+  app2.patch("/api/bookings/:id/noshow", staffAuth, async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const booking = await storage.getBooking(id);
     if (!booking) return res.status(404).json({ message: "Booking not found" });
     await storage.updateBooking(id, { status: "no_show" });
     console.log(`[NO-SHOW] Booking #${id} marked as no-show \u2014 deposit retained`);
+    {
+      const u = req.staffUser;
+      void storage.logBookingAction({
+        bookingId: id,
+        action: "noshow",
+        staffUsername: u?.username || req.staffUsername || "unknown",
+        staffId: u?.id ?? null,
+        fromValue: { status: booking.status },
+        toValue: { status: "no_show" },
+        note: booking.depositPaid ? "Deposit retained" : null
+      });
+    }
     res.json({ message: "Booking marked as no-show" });
   });
-  app2.patch("/api/bookings/:id/status", staffAuth, managerAuth, async (req, res) => {
+  app2.patch("/api/bookings/:id/status", staffAuth, async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const { status } = req.body;
     if (!status || !["confirmed", "cancelled"].includes(status)) {
       return res.status(400).json({ message: "Invalid status" });
     }
+    const previous = await storage.getBooking(id);
     const booking = await storage.updateBookingStatus(id, status);
     if (!booking) return res.status(404).json({ message: "Booking not found" });
+    {
+      const u = req.staffUser;
+      void storage.logBookingAction({
+        bookingId: id,
+        action: "status_changed",
+        staffUsername: u?.username || req.staffUsername || "unknown",
+        staffId: u?.id ?? null,
+        fromValue: { status: previous?.status ?? null },
+        toValue: { status },
+        note: status === "cancelled" ? "Booking cancelled" : "Booking confirmed"
+      });
+    }
     try {
       const customerTokens = await storage.getPushTokensByEmail(booking.customerEmail);
       if (customerTokens.length) {
@@ -7749,7 +8617,7 @@ async function registerRoutes(app2) {
     }
     res.json(booking);
   });
-  app2.put("/api/bookings/:id", staffAuth, managerAuth, async (req, res) => {
+  app2.put("/api/bookings/:id", staffAuth, async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const existing = await storage.getBooking(id);
@@ -7790,14 +8658,87 @@ async function registerRoutes(app2) {
     }
     const updated = await storage.updateBooking(id, updateData);
     if (!updated) return res.status(404).json({ message: "Booking not found" });
+    {
+      const u = req.staffUser;
+      const trackedFields = ["customerName", "customerEmail", "customerPhone", "tableType", "tableNumber", "guestCount", "date", "startTime", "duration", "notes", "status"];
+      const before = {};
+      const after = {};
+      const changes = [];
+      for (const f of trackedFields) {
+        const oldV = existing[f];
+        const newV = updated[f];
+        if (oldV !== newV) {
+          before[f] = oldV;
+          after[f] = newV;
+          changes.push(f);
+        }
+      }
+      if (changes.length > 0) {
+        void storage.logBookingAction({
+          bookingId: id,
+          action: "edited",
+          staffUsername: u?.username || req.staffUsername || "unknown",
+          staffId: u?.id ?? null,
+          fromValue: before,
+          toValue: after,
+          note: `Changed: ${changes.join(", ")}`
+        });
+      }
+    }
     res.json(updated);
   });
   app2.delete("/api/bookings/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const snapshot = await storage.getBooking(id);
     const deleted = await storage.deleteBooking(id);
     if (!deleted) return res.status(404).json({ message: "Booking not found" });
+    if (snapshot) {
+      const u = req.staffUser;
+      void storage.logBookingAction({
+        bookingId: id,
+        action: "deleted",
+        staffUsername: u?.username || req.staffUsername || "unknown",
+        staffId: u?.id ?? null,
+        fromValue: {
+          customerName: snapshot.customerName,
+          customerEmail: snapshot.customerEmail,
+          customerPhone: snapshot.customerPhone,
+          date: snapshot.date,
+          startTime: snapshot.startTime,
+          duration: snapshot.duration,
+          tableType: snapshot.tableType,
+          tableNumber: snapshot.tableNumber,
+          status: snapshot.status,
+          depositPaid: snapshot.depositPaid
+        },
+        note: `Booking permanently deleted (${snapshot.customerName} \xB7 ${snapshot.date} ${snapshot.startTime})`
+      });
+    }
     res.status(204).send();
+  });
+  app2.get("/api/bookings/:id/audit-log", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const entries = await storage.listBookingAuditLogForBooking(id, 200);
+    res.json(entries);
+  });
+  app2.get("/api/bookings-audit-log/recent", staffAuth, managerAuth, async (req, res) => {
+    const limit = Math.min(parseInt(String(req.query.limit || "100")) || 100, 500);
+    const entries = await storage.listRecentBookingAuditLog(limit);
+    res.json(entries);
+  });
+  app2.get("/api/staff-action-log/recent", staffAuth, managerAuth, async (req, res) => {
+    const limit = Math.min(parseInt(String(req.query.limit || "200")) || 200, 1e3);
+    const entries = await storage.listRecentStaffActions(limit);
+    res.json(entries);
+  });
+  app2.get("/api/staff-action-log/by-staff/:username", staffAuth, managerAuth, async (req, res) => {
+    const username = String(req.params.username || "").trim();
+    if (!username) return res.status(400).json({ message: "Username required" });
+    const limit = Math.min(parseInt(String(req.query.limit || "200")) || 200, 1e3);
+    const entries = await storage.listStaffActionsByUsername(username, limit);
+    res.json(entries);
   });
   app2.get("/api/gdpr/export", staffAuth, managerAuth, async (req, res) => {
     const clientIp = getClientIp(req);
@@ -7929,11 +8870,76 @@ async function registerRoutes(app2) {
   }
   app2.get("/api/deals", async (_req, res) => {
     try {
-      const deals = await getSquareDeals();
-      res.json(deals);
+      const [deals, prefs] = await Promise.all([
+        getSquareDeals(),
+        storage.getDealPreferences().catch(() => [])
+      ]);
+      const prefById = new Map(prefs.map((p) => [p.squareDiscountId, p]));
+      const visible = deals.filter((d) => !prefById.get(d.id)?.hidden);
+      visible.sort((a, b) => {
+        const sa = prefById.get(a.id)?.sortOrder ?? 0;
+        const sb = prefById.get(b.id)?.sortOrder ?? 0;
+        if (sa !== sb) return sa - sb;
+        return a.name.localeCompare(b.name);
+      });
+      res.json(visible);
     } catch {
       res.json([]);
     }
+  });
+  app2.get("/api/staff/deals", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      const [deals, prefs] = await Promise.all([
+        getSquareDeals(),
+        storage.getDealPreferences().catch(() => [])
+      ]);
+      const prefById = new Map(prefs.map((p) => [p.squareDiscountId, p]));
+      const merged = deals.map((d) => {
+        const p = prefById.get(d.id);
+        return { ...d, hidden: !!p?.hidden, sortOrder: p?.sortOrder ?? 0 };
+      });
+      merged.sort((a, b) => {
+        if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+        return a.name.localeCompare(b.name);
+      });
+      res.json(merged);
+    } catch (err) {
+      console.error("Staff deals fetch failed:", err);
+      res.status(500).json({ error: "Failed to load deals" });
+    }
+  });
+  app2.put("/api/staff/deals/:squareDiscountId", staffAuth, managerAuth, async (req, res) => {
+    const sid = String(req.params.squareDiscountId || "").trim();
+    if (!sid) return res.status(400).json({ error: "Missing discount id" });
+    const patch = {};
+    if (typeof req.body?.hidden === "boolean") patch.hidden = req.body.hidden;
+    if (Object.keys(patch).length === 0) {
+      return res.status(400).json({ error: "Nothing to update" });
+    }
+    try {
+      const row = await storage.upsertDealPreference(sid, patch);
+      res.json(row);
+    } catch (err) {
+      console.error("Deal preference update failed:", err);
+      res.status(500).json({ error: "Failed to update deal" });
+    }
+  });
+  app2.post("/api/staff/deals/reorder", staffAuth, managerAuth, async (req, res) => {
+    const orderedIds = req.body?.orderedIds;
+    if (!Array.isArray(orderedIds) || !orderedIds.every((x) => typeof x === "string" && x)) {
+      return res.status(400).json({ error: "orderedIds must be an array of Square discount IDs" });
+    }
+    try {
+      await storage.reorderDealPreferences(orderedIds);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Deal reorder failed:", err);
+      res.status(500).json({ error: "Failed to reorder deals" });
+    }
+  });
+  app2.get("/api/feature-flags", async (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.json(getServerFeatureFlags());
   });
   app2.get("/api/menu", async (_req, res) => {
     try {
@@ -7974,6 +8980,8 @@ async function registerRoutes(app2) {
           return true;
         }).map((item) => {
           const override = itemOverrideMap.get(item.variationId);
+          const tagsRaw = override?.dietaryTags ?? null;
+          const dietaryTags = tagsRaw ? tagsRaw.split(",").map((t) => t.trim()).filter(Boolean) : [];
           const base = {
             id: item.id,
             variationId: item.variationId,
@@ -7982,7 +8990,8 @@ async function registerRoutes(app2) {
             description: item.description,
             price: item.price,
             imageUrl: item.imageUrl,
-            ...item.modifiers && item.modifiers.length > 0 ? { modifiers: item.modifiers } : {}
+            ...item.modifiers && item.modifiers.length > 0 ? { modifiers: item.modifiers } : {},
+            ...dietaryTags.length > 0 ? { dietaryTags } : {}
           };
           return override?.soldOut ? { ...base, soldOut: true } : base;
         });
@@ -8075,6 +9084,31 @@ async function registerRoutes(app2) {
     } catch (err) {
       console.error("[STAFF MENU] Item sold-out error:", err.message);
       res.status(500).json({ message: "Failed to update item" });
+    }
+  });
+  app2.put("/api/staff/menu/items/:variationId/dietary-tags", staffAuth, managerAuth, async (req, res) => {
+    if (!getServerFeatureFlags().dietaryFilters) {
+      return res.status(404).json({ message: "Dietary tags are not enabled" });
+    }
+    const { variationId } = req.params;
+    const { dietaryTags, itemId, name } = req.body;
+    if (!itemId || !name) return res.status(400).json({ message: "itemId and name required" });
+    const VALID = /* @__PURE__ */ new Set(["V", "VG", "GF", "DF", "NF"]);
+    let cleaned = null;
+    if (typeof dietaryTags === "string" && dietaryTags.trim()) {
+      const parts = Array.from(new Set(
+        dietaryTags.split(",").map((t) => t.trim().toUpperCase()).filter((t) => VALID.has(t))
+      ));
+      cleaned = parts.length > 0 ? parts.join(",") : null;
+    }
+    try {
+      const updatedBy = req.staffUser?.username ?? "staff";
+      await storage.setMenuItemDietaryTags(variationId, itemId, name, cleaned, updatedBy);
+      invalidateMenuCache();
+      res.json({ ok: true, dietaryTags: cleaned });
+    } catch (err) {
+      console.error("[STAFF MENU] Item dietary-tags error:", err.message);
+      res.status(500).json({ message: "Failed to update dietary tags" });
     }
   });
   app2.put("/api/staff/menu/items/:variationId/hidden", staffAuth, managerAuth, async (req, res) => {
@@ -8212,11 +9246,11 @@ async function registerRoutes(app2) {
       res.status(500).json({ message: "Failed to delete rule" });
     }
   });
-  const VENUE_TZ = "Europe/London";
+  const VENUE_TZ2 = "Europe/London";
   const LONDON_DOW = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
   function getLondonNow() {
     const parts = new Intl.DateTimeFormat("en-GB", {
-      timeZone: VENUE_TZ,
+      timeZone: VENUE_TZ2,
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -8237,7 +9271,7 @@ async function registerRoutes(app2) {
   function getTodayStr() {
     return getLondonNow().dateStr;
   }
-  const DEFAULT_SCHEDULE = { days: [4, 5, 6, 0], startTime: "12:00", endTime: "20:00" };
+  const DEFAULT_SCHEDULE = { days: [3, 4, 5, 6, 0], startTime: "12:00", endTime: "20:00" };
   const DAY_NAMES_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const DAY_NAMES_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   async function getOrderingSchedule() {
@@ -8557,7 +9591,7 @@ async function registerRoutes(app2) {
   app2.post("/api/orders/:appOrderId/pay", async (req, res) => {
     const appOrderId = parseInt(String(req.params.appOrderId));
     if (isNaN(appOrderId)) return res.status(400).json({ message: "Invalid order id" });
-    const { sourceId, verificationToken, buyerEmail } = req.body || {};
+    const { sourceId, verificationToken, buyerEmail, saveCard } = req.body || {};
     if (typeof sourceId !== "string" || !sourceId.trim()) {
       return res.status(400).json({ message: "Missing payment token" });
     }
@@ -8587,9 +9621,63 @@ async function registerRoutes(app2) {
       });
       const succeeded = payment.status === "COMPLETED" || payment.status === "APPROVED";
       if (succeeded) {
-        await storage.updateAppOrderPaid(order.squareOrderId, payment.id).catch(
-          (e) => console.error("[ORDER] Failed to mark paid:", e.message)
-        );
+        const transitioned = await storage.updateAppOrderPaid(order.squareOrderId, payment.id).catch((e) => {
+          console.error("[ORDER] Failed to mark paid:", e.message);
+          return false;
+        });
+        if (transitioned) {
+          await storage.logOrderAction({
+            orderId: order.id,
+            staffUsername: "system",
+            action: "paid",
+            reason: `Square payment ${payment.id} (in-app)`
+          }).catch((e) => console.error("[ORDER] Audit log failed:", e.message));
+        }
+      }
+      if (succeeded && saveCard === true && getServerFeatureFlags().savedCards) {
+        const auth = (req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
+        if (auth && auth.length >= 32 && auth.length <= 128) {
+          const session = await storage.validateCustomerSession(auth).catch(() => null);
+          const customer = session ? await storage.getCustomerById(session.customerId).catch(() => null) : null;
+          if (customer) {
+            try {
+              let squareCustomerId = customer.squareCustomerId ?? null;
+              if (!squareCustomerId) {
+                const found = await findSquareCustomerByEmail(customer.email);
+                squareCustomerId = found?.id ?? null;
+              }
+              if (!squareCustomerId) {
+                const created = await createSquareCustomer(
+                  customer.name,
+                  customer.email,
+                  customer.phone || void 0
+                );
+                squareCustomerId = created?.id ?? null;
+              }
+              if (squareCustomerId) {
+                const card = await saveCardOnFile({
+                  customerId: squareCustomerId,
+                  sourceId: sourceId.trim(),
+                  verificationToken: verificationToken || null,
+                  cardholderName: customer.name
+                });
+                if (card?.id) {
+                  await storage.setCustomerSavedCard(customer.id, {
+                    squareCustomerId,
+                    squareCardId: card.id,
+                    brand: card.card_brand ?? null,
+                    last4: card.last_4 ?? null,
+                    expMonth: typeof card.exp_month === "number" ? card.exp_month : null,
+                    expYear: typeof card.exp_year === "number" ? card.exp_year : null
+                  });
+                  console.log(`[SAVED CARD] Saved card ${card.id} for customer ${customer.id}`);
+                }
+              }
+            } catch (saveErr) {
+              console.error("[SAVED CARD] Save failed (payment unaffected):", saveErr?.message ?? saveErr);
+            }
+          }
+        }
       }
       res.json({
         ok: succeeded,
@@ -8632,6 +9720,7 @@ async function registerRoutes(app2) {
         "ready",
         "delivered",
         "collected",
+        "completed",
         "cancelled",
         "refunded"
       ]);
@@ -8655,6 +9744,7 @@ async function registerRoutes(app2) {
         ready: { label: hasTable ? "Ready \u2014 on its way" : "Ready to collect", detail: hasTable ? `A team member is bringing it to ${tableNote}.` : "Please come to the bar to collect your order.", isTerminal: false },
         delivered: { label: "Enjoy!", detail: hasTable ? `Your order has been delivered to ${tableNote}.` : "Your order has been served.", isTerminal: true },
         collected: { label: "Enjoy!", detail: "Thanks \u2014 your order has been collected.", isTerminal: true },
+        completed: { label: "Order complete!", detail: hasTable ? `Your order is on its way to ${tableNote}. Enjoy!` : "Your order is ready at the bar. Enjoy!", isTerminal: true },
         cancelled: { label: "Cancelled", detail: "This order was cancelled by staff.", isTerminal: true },
         refunded: { label: "Refunded", detail: "This order has been refunded.", isTerminal: true }
       };
@@ -8785,11 +9875,11 @@ async function registerRoutes(app2) {
     if (isNaN(id)) return res.status(400).json({ message: "Invalid order ID" });
     const target = String((req.body || {}).status || "").trim();
     const ALLOWED = {
-      paid: ["preparing", "ready", "delivered", "collected"],
-      preparing: ["ready", "delivered", "collected"],
-      ready: ["delivered", "collected"]
+      paid: ["preparing", "ready", "delivered", "collected", "completed"],
+      preparing: ["ready", "delivered", "collected", "completed"],
+      ready: ["delivered", "collected", "completed"]
     };
-    const TERMINAL = /* @__PURE__ */ new Set(["delivered", "collected"]);
+    const TERMINAL = /* @__PURE__ */ new Set(["delivered", "collected", "completed"]);
     const staffUsername = req.staffUsername;
     try {
       const order = await storage.getAppOrder(id);
@@ -8817,8 +9907,18 @@ async function registerRoutes(app2) {
         collected: {
           title: "Thanks!",
           body: `Order #${id.toString().padStart(5, "0")} collected \u2014 enjoy!`
+        },
+        completed: {
+          title: "Order complete \u{1F389}",
+          body: `Order #${id.toString().padStart(5, "0")} is complete \u2014 enjoy!`
         }
       };
+      if (target === "preparing" && getServerFeatureFlags().orderPreparingPush) {
+        NOTIFY.preparing = {
+          title: "Your order is being prepared \u{1F468}\u200D\u{1F373}",
+          body: `The kitchen has started on order #${id.toString().padStart(5, "0")}.`
+        };
+      }
       const message = NOTIFY[target];
       if (message && order.pushToken) {
         const data = {
@@ -8848,7 +9948,7 @@ async function registerRoutes(app2) {
     try {
       const order = await storage.getAppOrder(id);
       if (!order) return res.status(404).json({ message: "Order not found" });
-      const REVERTABLE = /* @__PURE__ */ new Set(["preparing", "ready", "delivered", "collected"]);
+      const REVERTABLE = /* @__PURE__ */ new Set(["preparing", "ready", "delivered", "collected", "completed"]);
       if (!REVERTABLE.has(order.status)) {
         return res.status(400).json({ message: `Cannot revert an order that is ${order.status}` });
       }
@@ -9085,6 +10185,19 @@ async function registerRoutes(app2) {
     const updated = await storage.updateBannerImage(id, req.body);
     if (!updated) return res.status(404).json({ error: "Banner image not found" });
     res.json(updated);
+  });
+  app2.post("/api/banner-images/reorder", staffAuth, managerAuth, async (req, res) => {
+    const orderedIds = req.body?.orderedIds;
+    if (!Array.isArray(orderedIds) || !orderedIds.every((x) => Number.isInteger(x))) {
+      return res.status(400).json({ error: "orderedIds must be an array of integers" });
+    }
+    try {
+      const banners = await storage.reorderBannerImages(orderedIds);
+      res.json(banners);
+    } catch (err) {
+      console.error("Banner reorder failed:", err);
+      res.status(500).json({ error: "Failed to reorder banners" });
+    }
   });
   app2.delete("/api/banner-images/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id);
@@ -9523,6 +10636,284 @@ async function registerRoutes(app2) {
       res.status(err.statusCode || 500).json({ message: err.message });
     }
   });
+  const LOYALTY_VISIT_POINTS_KEY = "loyalty.visitPoints";
+  const LOYALTY_BIRTHDAY_BONUS_KEY = "loyalty.birthdayBonus";
+  const LOYALTY_DOUBLE_POINTS_KEY = "loyalty.doublePointsToday";
+  const LOYALTY_VISIT_POINTS_DEFAULT = 5;
+  const LOYALTY_BIRTHDAY_BONUS_DEFAULT = 50;
+  async function loadLoyaltyConfig() {
+    const [vpRaw, bbRaw, dpRaw] = await Promise.all([
+      storage.getSetting(LOYALTY_VISIT_POINTS_KEY),
+      storage.getSetting(LOYALTY_BIRTHDAY_BONUS_KEY),
+      storage.getSetting(LOYALTY_DOUBLE_POINTS_KEY)
+    ]);
+    const vp = vpRaw ? parseInt(vpRaw, 10) : NaN;
+    const bb = bbRaw ? parseInt(bbRaw, 10) : NaN;
+    return {
+      visitPoints: Number.isFinite(vp) && vp >= 0 ? vp : LOYALTY_VISIT_POINTS_DEFAULT,
+      birthdayBonus: Number.isFinite(bb) && bb >= 0 ? bb : LOYALTY_BIRTHDAY_BONUS_DEFAULT,
+      doublePointsToday: dpRaw === "true"
+    };
+  }
+  function birthdayWindowForYear(dobIso, year) {
+    if (!dobIso || !/^\d{4}-\d{2}-\d{2}$/.test(dobIso)) return null;
+    const [, monthStr, dayStr] = dobIso.split("-");
+    let month = parseInt(monthStr, 10);
+    let day = parseInt(dayStr, 10);
+    if (!month || !day) return null;
+    if (month === 2 && day === 29) {
+      const isLeap = year % 4 === 0 && year % 100 !== 0 || year % 400 === 0;
+      if (!isLeap) day = 28;
+    }
+    const thisYearBirthday = new Date(year, month - 1, day, 0, 0, 0, 0);
+    if (isNaN(thisYearBirthday.getTime())) return null;
+    const end = new Date(thisYearBirthday);
+    end.setDate(end.getDate() + 7);
+    return { start: thisYearBirthday, end, thisYearBirthday };
+  }
+  app2.get("/api/loyalty/me", customerAuth, async (req, res) => {
+    if (!isConfigured()) {
+      return res.json({ configured: false, active: false, linked: false, hasPhone: false });
+    }
+    const customerId = req.customerId;
+    const customer = await storage.getCustomerById(customerId);
+    if (!customer) return res.status(404).json({ message: "Customer not found" });
+    const phoneCleaned = customer.phone ? customer.phone.replace(/\s/g, "") : null;
+    const hasPhone = !!phoneCleaned && phoneCleaned.length >= 10;
+    try {
+      const program = await getLoyaltyProgram();
+      if (!program) {
+        return res.json({ configured: true, active: false, linked: false, hasPhone, account: null });
+      }
+      const programActive = program.status === "ACTIVE";
+      const baseProgram = {
+        id: program.id,
+        terminology: program.terminology,
+        reward_tiers: program.reward_tiers?.map((t) => ({
+          id: t.id,
+          name: t.name,
+          points: t.points,
+          definition: t.definition
+        })) ?? [],
+        accrual_rules: program.accrual_rules?.map((r) => ({
+          accrual_type: r.accrual_type,
+          points: r.points,
+          spend_data: r.spend_amount_money ? {
+            amount: r.spend_amount_money.amount,
+            currency: r.spend_amount_money.currency
+          } : void 0
+        })) ?? []
+      };
+      if (!programActive) {
+        return res.json({ configured: true, active: false, linked: false, hasPhone, program: baseProgram, account: null });
+      }
+      if (!hasPhone) {
+        return res.json({ configured: true, active: true, linked: false, hasPhone: false, program: baseProgram, account: null });
+      }
+      const expectedE164 = toE164(phoneCleaned);
+      let account = null;
+      if (customer.squareLoyaltyAccountId) {
+        try {
+          const cached2 = await getLoyaltyAccount(customer.squareLoyaltyAccountId);
+          const cachedPhone = cached2?.mapping?.phone_number ?? null;
+          if (cached2 && (!cachedPhone || cachedPhone === expectedE164)) {
+            account = cached2;
+          }
+        } catch {
+          account = null;
+        }
+      }
+      if (!account) {
+        account = await searchLoyaltyAccount(phoneCleaned);
+        if (account?.id) {
+          if (account.id !== customer.squareLoyaltyAccountId) {
+            await storage.setSquareLoyaltyAccountId(customerId, account.id);
+          }
+        } else if (customer.squareLoyaltyAccountId) {
+          await storage.setSquareLoyaltyAccountId(customerId, null);
+        }
+      }
+      if (!account) {
+        return res.json({
+          configured: true,
+          active: true,
+          linked: false,
+          hasPhone: true,
+          canEnroll: true,
+          program: baseProgram,
+          account: null
+        });
+      }
+      const config = await loadLoyaltyConfig();
+      const now = /* @__PURE__ */ new Date();
+      const year = now.getFullYear();
+      const window = birthdayWindowForYear(customer.dateOfBirth, year);
+      let birthdayActive = false;
+      let birthdayAwarded = (customer.lastBirthdayBonusYear ?? 0) >= year;
+      if (window) {
+        const inWindow = now >= window.start && now < window.end;
+        birthdayActive = inWindow;
+        if (inWindow && config.birthdayBonus > 0 && (customer.lastBirthdayBonusYear ?? 0) < year) {
+          try {
+            await adjustLoyaltyPoints(
+              account.id,
+              config.birthdayBonus,
+              `Birthday bonus ${year}`,
+              `birthday-${customerId}-${year}`
+            );
+            await storage.setLastBirthdayBonusYear(customerId, year);
+            birthdayAwarded = true;
+            try {
+              const refreshed = await getLoyaltyAccount(account.id);
+              if (refreshed) account = refreshed;
+            } catch {
+              account.balance = (account.balance ?? 0) + config.birthdayBonus;
+            }
+          } catch (bErr) {
+            console.error(`[LOYALTY] Birthday bonus failed for customer ${customerId}:`, bErr.message);
+          }
+        }
+      }
+      const [events2, rewards] = await Promise.all([
+        searchLoyaltyEvents(account.id, 15).catch(() => []),
+        searchIssuedRewards(account.id).catch(() => [])
+      ]);
+      res.json({
+        configured: true,
+        active: true,
+        linked: true,
+        hasPhone: true,
+        program: baseProgram,
+        account: {
+          id: account.id,
+          balance: account.balance,
+          lifetime_points: account.lifetime_points,
+          enrolled_at: account.enrolled_at,
+          phone: account.mapping?.phone_number
+        },
+        events: events2,
+        rewards,
+        birthday: {
+          hasDob: !!customer.dateOfBirth,
+          active: birthdayActive,
+          bonusAwardedThisYear: birthdayAwarded || (customer.lastBirthdayBonusYear ?? 0) >= year,
+          bonusPoints: config.birthdayBonus,
+          dayOfYear: window ? `${String(window.thisYearBirthday.getMonth() + 1).padStart(2, "0")}-${String(window.thisYearBirthday.getDate()).padStart(2, "0")}` : null
+        },
+        promo: {
+          doublePointsToday: config.doublePointsToday,
+          visitPoints: config.visitPoints
+        }
+      });
+    } catch (err) {
+      console.error("/api/loyalty/me error:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app2.get("/api/staff/loyalty/settings", staffAuth, managerAuth, async (_req, res) => {
+    const cfg = await loadLoyaltyConfig();
+    res.json(cfg);
+  });
+  app2.patch("/api/staff/loyalty/settings", staffAuth, managerAuth, async (req, res) => {
+    const { visitPoints, birthdayBonus, doublePointsToday } = req.body ?? {};
+    const tasks = [];
+    if (visitPoints !== void 0) {
+      const n = Number(visitPoints);
+      if (!Number.isInteger(n) || n < 0 || n > 1e3) {
+        return res.status(400).json({ message: "visitPoints must be an integer between 0 and 1000" });
+      }
+      tasks.push(storage.setSetting(LOYALTY_VISIT_POINTS_KEY, String(n)));
+    }
+    if (birthdayBonus !== void 0) {
+      const n = Number(birthdayBonus);
+      if (!Number.isInteger(n) || n < 0 || n > 1e4) {
+        return res.status(400).json({ message: "birthdayBonus must be an integer between 0 and 10000" });
+      }
+      tasks.push(storage.setSetting(LOYALTY_BIRTHDAY_BONUS_KEY, String(n)));
+    }
+    let prevDoublePoints = false;
+    if (doublePointsToday !== void 0) {
+      if (typeof doublePointsToday !== "boolean") {
+        return res.status(400).json({ message: "doublePointsToday must be a boolean" });
+      }
+      const prevRaw = await storage.getSetting(LOYALTY_DOUBLE_POINTS_KEY);
+      prevDoublePoints = prevRaw === "true";
+      tasks.push(storage.setSetting(LOYALTY_DOUBLE_POINTS_KEY, doublePointsToday ? "true" : "false"));
+    }
+    if (tasks.length === 0) {
+      return res.status(400).json({ message: "No valid fields to update" });
+    }
+    await Promise.all(tasks);
+    if (doublePointsToday === true && !prevDoublePoints) {
+      const todayParts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Europe/London",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      }).formatToParts(/* @__PURE__ */ new Date());
+      const tp = (t) => todayParts.find((p) => p.type === t)?.value ?? "";
+      const today = `${tp("year")}-${tp("month")}-${tp("day")}`;
+      const lastBroadcast = await storage.getSetting("loyalty.doublePointsLastBroadcastDate");
+      if (lastBroadcast !== today) {
+        await storage.setSetting("loyalty.doublePointsLastBroadcastDate", today);
+        (async () => {
+          try {
+            const { sendPushToTokens: sendPushToTokens2 } = await Promise.resolve().then(() => (init_push(), push_exports));
+            const enrolled = await storage.getCustomersWithLoyaltyAccount();
+            const tokenLists = await Promise.all(
+              enrolled.map((c) => storage.getPushTokensByEmail(c.email).catch(() => []))
+            );
+            const tokens = tokenLists.flat().map((t) => t.token);
+            if (tokens.length) {
+              await sendPushToTokens2(
+                tokens,
+                "Double points today! \u{1F3AF}",
+                "All visits earn 2\xD7 loyalty points at The 147 today. Pop in and play!",
+                { type: "double_points_day" }
+              );
+              console.log(`[LOYALTY] Broadcast double-points push to ${tokens.length} device(s)`);
+            }
+          } catch (err) {
+            console.error("[LOYALTY] Failed to broadcast double-points push:", err);
+          }
+        })();
+      }
+    }
+    res.json(await loadLoyaltyConfig());
+  });
+  app2.post("/api/loyalty/me/enroll", customerAuth, async (req, res) => {
+    if (!isConfigured()) {
+      return res.status(503).json({ message: "Loyalty program not configured" });
+    }
+    const customerId = req.customerId;
+    const customer = await storage.getCustomerById(customerId);
+    if (!customer) return res.status(404).json({ message: "Customer not found" });
+    const phoneCleaned = customer.phone ? customer.phone.replace(/\s/g, "") : null;
+    if (!phoneCleaned || phoneCleaned.length < 10) {
+      return res.status(400).json({ message: "Please add a valid phone number to your profile to join the rewards programme." });
+    }
+    try {
+      const program = await getLoyaltyProgram();
+      if (!program || program.status !== "ACTIVE") {
+        return res.status(400).json({ message: "No active loyalty program" });
+      }
+      const existing = await searchLoyaltyAccount(phoneCleaned);
+      const account = existing ?? await createLoyaltyAccount(phoneCleaned, program.id);
+      await storage.setSquareLoyaltyAccountId(customerId, account.id);
+      res.json({
+        account: {
+          id: account.id,
+          balance: account.balance,
+          lifetime_points: account.lifetime_points,
+          enrolled_at: account.enrolled_at,
+          phone: account.mapping?.phone_number
+        }
+      });
+    } catch (err) {
+      console.error("/api/loyalty/me/enroll error:", err.message);
+      res.status(err.statusCode || 500).json({ message: err.message });
+    }
+  });
   app2.get("/staff", (_req, res) => {
     const templatePath = path.resolve(process.cwd(), "server", "templates", "staff-dashboard.html");
     const html = fs.readFileSync(templatePath, "utf-8");
@@ -9564,7 +10955,7 @@ async function registerRoutes(app2) {
       const sqCustomer = await findSquareCustomerByEmail(email).catch(() => null);
       if (!sqCustomer) return;
       const sqSubs = await listSquareSubscriptionsForCustomer(sqCustomer.id).catch(() => []);
-      const subPlans = allPlans.filter((p) => p.active && (p.squarePlanVariationId || p.squarePlanVariationIdAlt));
+      const subPlans = allPlans.filter((p) => p.active && !p.hideFromSignup && (p.squarePlanVariationId || p.squarePlanVariationIdAlt));
       const planMatchesVariation = (p, variationId) => p.squarePlanVariationId === variationId || p.squarePlanVariationIdAlt === variationId;
       const matchedSub = sqSubs.find(
         (s) => (s.status === "ACTIVE" || s.status === "PENDING") && subPlans.some((p) => planMatchesVariation(p, s.plan_variation_id))
@@ -9588,7 +10979,7 @@ async function registerRoutes(app2) {
         console.log(`[MEMBERSHIP] Auto-synced Square subscription ${matchedSub.id} \u2192 customer #${customerId} (${email})`);
         return;
       }
-      const groupPlans = allPlans.filter((p) => p.active && p.squareCustomerGroupId);
+      const groupPlans = allPlans.filter((p) => p.active && !p.hideFromSignup && p.squareCustomerGroupId);
       if (groupPlans.length) {
         const customerGroupIds = await getCustomerGroupIds(sqCustomer.id).catch(() => []);
         const groupMatch = groupPlans.find((p) => customerGroupIds.includes(p.squareCustomerGroupId));
@@ -9772,7 +11163,14 @@ async function registerRoutes(app2) {
     if (!customer) {
       return res.status(404).json({ message: "Account not found" });
     }
-    res.json({ id: customer.id, name: customer.name, email: customer.email, phone: customer.phone, emailVerified: customer.emailVerified });
+    res.json({
+      id: customer.id,
+      name: customer.name,
+      email: customer.email,
+      phone: customer.phone,
+      emailVerified: customer.emailVerified,
+      dateOfBirth: customer.dateOfBirth ?? null
+    });
   });
   app2.post("/api/customers/me/resend-verification", customerAuth, async (req, res) => {
     const customerId = req.customerId;
@@ -9939,7 +11337,7 @@ async function registerRoutes(app2) {
     res.send(renderResetPasswordPage({ token: tokenRaw }));
   });
   app2.patch("/api/customers/me", customerAuth, async (req, res) => {
-    const { name, phone } = req.body;
+    const { name, phone, dateOfBirth } = req.body;
     const updates = {};
     if (name !== void 0) {
       const trimmed = String(name).trim();
@@ -9955,14 +11353,239 @@ async function registerRoutes(app2) {
       }
       updates.phone = trimmed;
     }
+    if (dateOfBirth !== void 0) {
+      if (dateOfBirth === null || dateOfBirth === "") {
+        updates.dateOfBirth = null;
+      } else {
+        const dob = String(dateOfBirth).trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
+          return res.status(400).json({ message: "Date of birth must be in YYYY-MM-DD format" });
+        }
+        const [yStr, mStr, dStr] = dob.split("-");
+        const y = Number(yStr), m = Number(mStr), d = Number(dStr);
+        const parsed = new Date(Date.UTC(y, m - 1, d));
+        if (isNaN(parsed.getTime()) || parsed.getUTCFullYear() !== y || parsed.getUTCMonth() !== m - 1 || parsed.getUTCDate() !== d) {
+          return res.status(400).json({ message: "Invalid date of birth" });
+        }
+        const now = /* @__PURE__ */ new Date();
+        const ageYears = (now.getTime() - parsed.getTime()) / (365.25 * 24 * 3600 * 1e3);
+        if (ageYears < 0) return res.status(400).json({ message: "Date of birth cannot be in the future" });
+        if (ageYears > 120) return res.status(400).json({ message: "Invalid date of birth" });
+        updates.dateOfBirth = dob;
+      }
+    }
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ message: "No valid fields to update" });
     }
-    const updated = await storage.updateCustomer(req.customerId, updates);
+    const customerId = req.customerId;
+    if (updates.phone !== void 0) {
+      const prev = await storage.getCustomerById(customerId);
+      if (prev && prev.squareLoyaltyAccountId && prev.phone !== updates.phone) {
+        await storage.setSquareLoyaltyAccountId(customerId, null);
+      }
+    }
+    if (updates.dateOfBirth !== void 0) {
+      const prev = await storage.getCustomerById(customerId);
+      if (prev && prev.dateOfBirth !== updates.dateOfBirth && prev.lastBirthdayBonusYear != null) {
+        await storage.setLastBirthdayBonusYear(customerId, 0);
+      }
+    }
+    const updated = await storage.updateCustomer(customerId, updates);
     if (!updated) {
       return res.status(404).json({ message: "Account not found" });
     }
-    res.json({ id: updated.id, name: updated.name, email: updated.email, phone: updated.phone });
+    res.json({
+      id: updated.id,
+      name: updated.name,
+      email: updated.email,
+      phone: updated.phone,
+      dateOfBirth: updated.dateOfBirth ?? null
+    });
+  });
+  app2.get("/api/customers/me/saved-card", customerAuth, async (req, res) => {
+    if (!getServerFeatureFlags().savedCards) {
+      return res.status(404).json({ message: "Saved cards are not enabled" });
+    }
+    try {
+      const customerId = req.customerId;
+      const customer = await storage.getCustomerById(customerId);
+      if (!customer || !customer.squareCardId) {
+        return res.status(404).json({ message: "No saved card" });
+      }
+      res.json({
+        brand: customer.squareCardBrand ?? "Card",
+        last4: customer.squareCardLast4 ?? "\u2022\u2022\u2022\u2022",
+        expMonth: customer.squareCardExpMonth ?? null,
+        expYear: customer.squareCardExpYear ?? null
+      });
+    } catch (err) {
+      console.error("[SAVED CARD] GET failed:", err.message);
+      res.status(500).json({ message: "Could not load saved card" });
+    }
+  });
+  app2.delete("/api/customers/me/saved-card", customerAuth, async (req, res) => {
+    if (!getServerFeatureFlags().savedCards) {
+      return res.status(404).json({ message: "Saved cards are not enabled" });
+    }
+    try {
+      const customerId = req.customerId;
+      const customer = await storage.getCustomerById(customerId);
+      if (customer?.squareCardId) {
+        try {
+          await disableSquareCard(customer.squareCardId);
+        } catch (sqErr) {
+          console.error("[SAVED CARD] Square disable failed (continuing):", sqErr?.message ?? sqErr);
+        }
+      }
+      await storage.clearCustomerSavedCard(customerId);
+      res.status(204).send();
+    } catch (err) {
+      console.error("[SAVED CARD] DELETE failed:", err.message);
+      res.status(500).json({ message: "Could not remove saved card" });
+    }
+  });
+  app2.post("/api/orders/:appOrderId/pay-with-saved-card", customerAuth, async (req, res) => {
+    if (!getServerFeatureFlags().savedCards) {
+      return res.status(404).json({ message: "Saved cards are not enabled" });
+    }
+    if (!isWebPaymentsConfigured()) {
+      return res.status(503).json({ message: "In-app payments are not configured." });
+    }
+    const appOrderId = parseInt(String(req.params.appOrderId));
+    if (isNaN(appOrderId)) return res.status(400).json({ message: "Invalid order id" });
+    try {
+      const customerId = req.customerId;
+      const customer = await storage.getCustomerById(customerId);
+      if (!customer?.squareCustomerId || !customer?.squareCardId) {
+        return res.status(412).json({ message: "No saved card on file" });
+      }
+      const order = await storage.getAppOrder(appOrderId);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      const callerEmailHash = customer.email ? hashEmail(customer.email) : null;
+      if (!order.customerEmailHash || !callerEmailHash || order.customerEmailHash !== callerEmailHash) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+      if (order.status !== "pending") {
+        return res.status(409).json({ message: `Order is already ${order.status}` });
+      }
+      if (!order.squareOrderId) {
+        return res.status(400).json({ message: "Order is missing Square reference" });
+      }
+      const idemRaw = `app-order-${appOrderId}|saved-${customer.squareCardId}`;
+      const idempotencyKey = createHash2("sha256").update(idemRaw).digest("hex").slice(0, 45);
+      const payment = await chargeSavedCard({
+        squareCustomerId: customer.squareCustomerId,
+        squareCardId: customer.squareCardId,
+        amountPence: order.totalPence,
+        idempotencyKey,
+        note: order.tableNote ? `Order ${appOrderId} \u2014 ${order.tableNote}` : `Order ${appOrderId}`,
+        referenceId: `app-order-${appOrderId}`,
+        buyerEmail: customer.email,
+        orderId: order.squareOrderId
+      });
+      const succeeded = payment.status === "COMPLETED" || payment.status === "APPROVED";
+      if (succeeded) {
+        const transitioned = await storage.updateAppOrderPaid(order.squareOrderId, payment.id).catch((e) => {
+          console.error("[ORDER] Failed to mark paid:", e.message);
+          return false;
+        });
+        if (transitioned) {
+          await storage.logOrderAction({
+            orderId: order.id,
+            staffUsername: "system",
+            action: "paid",
+            reason: `Square payment ${payment.id} (saved card)`
+          }).catch((e) => console.error("[ORDER] Audit log failed:", e.message));
+        }
+      }
+      res.json({
+        ok: succeeded,
+        status: payment.status,
+        paymentId: payment.id,
+        appOrderId: order.id
+      });
+    } catch (err) {
+      const squareErrors = Array.isArray(err?.errors) ? err.errors : Array.isArray(err?.result?.errors) ? err.result.errors : [];
+      const first = squareErrors[0] || {};
+      const errorCode = first.code;
+      const errorDetail = first.detail || err?.message;
+      console.error("[SAVED CARD] Pay failed:", { code: err?.code, errorCode, detail: errorDetail });
+      res.status(400).json({
+        message: errorDetail || "Card charge failed",
+        errorCode: errorCode || null
+      });
+    }
+  });
+  app2.patch("/api/customers/me/dietary-filters", customerAuth, async (req, res) => {
+    if (!getServerFeatureFlags().dietaryFilters) {
+      return res.status(404).json({ message: "Dietary filters are not enabled" });
+    }
+    const VALID = /* @__PURE__ */ new Set(["V", "VG", "GF", "DF", "NF"]);
+    const { filters } = req.body || {};
+    let cleaned = null;
+    if (Array.isArray(filters)) {
+      const parts = Array.from(new Set(
+        filters.map((t) => typeof t === "string" ? t.trim().toUpperCase() : "").filter((t) => VALID.has(t))
+      ));
+      cleaned = parts.length > 0 ? parts.join(",") : null;
+    } else if (typeof filters === "string" && filters.trim()) {
+      const parts = Array.from(new Set(
+        filters.split(",").map((t) => t.trim().toUpperCase()).filter((t) => VALID.has(t))
+      ));
+      cleaned = parts.length > 0 ? parts.join(",") : null;
+    }
+    try {
+      const customerId = req.customerId;
+      await storage.setCustomerDietaryFilters(customerId, cleaned);
+      res.json({ ok: true, filters: cleaned ? cleaned.split(",") : [] });
+    } catch (err) {
+      console.error("[DIETARY] PATCH failed:", err.message);
+      res.status(500).json({ message: "Could not save dietary filters" });
+    }
+  });
+  app2.get("/api/customers/me/home-cards", customerAuth, async (req, res) => {
+    if (!getServerFeatureFlags().personalisedHome) {
+      return res.json({ cards: [] });
+    }
+    try {
+      const customerId = req.customerId;
+      const email = req.customerEmail;
+      const customer = await storage.getCustomerById(customerId);
+      const cards = [];
+      const lastOrder = await storage.getLastPaidAppOrderForCustomer(email).catch(() => null);
+      if (lastOrder) {
+        let summary = "your last round";
+        try {
+          const parsed = JSON.parse(lastOrder.itemsJson || "[]");
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const first = parsed[0];
+            const firstLabel = `${first.name || "Item"}${first.quantity > 1 ? ` \xD7 ${first.quantity}` : ""}`;
+            summary = parsed.length > 1 ? `${firstLabel} + ${parsed.length - 1} more` : firstLabel;
+          }
+        } catch {
+        }
+        cards.push({
+          type: "reorder",
+          appOrderId: lastOrder.id,
+          summary,
+          totalPence: lastOrder.totalPence,
+          placedAt: lastOrder.createdAt
+        });
+      }
+      if (customer?.dietaryFilters && getServerFeatureFlags().dietaryFilters) {
+        const filterCodes = customer.dietaryFilters.split(",").filter(Boolean);
+        if (filterCodes.length > 0) {
+          cards.push({
+            type: "dietary_reminder",
+            filters: filterCodes
+          });
+        }
+      }
+      res.json({ cards });
+    } catch (err) {
+      console.error("[HOME CARDS] failed:", err.message);
+      res.json({ cards: [] });
+    }
   });
   app2.post("/api/customers/me/push-token", customerAuth, async (req, res) => {
     const { token } = req.body;
@@ -10032,6 +11655,15 @@ async function registerRoutes(app2) {
       return res.status(400).json({ message: "Cannot cancel past bookings" });
     }
     const updated = await storage.updateBookingStatus(bookingId, "cancelled");
+    void storage.logBookingAction({
+      bookingId,
+      action: "status_changed",
+      staffUsername: `customer:${booking.customerEmail}`,
+      staffId: null,
+      fromValue: { status: booking.status },
+      toValue: { status: "cancelled" },
+      note: "Cancelled by customer via app"
+    });
     sendBookingCancellationEmail({
       customerName: booking.customerName,
       customerEmail: booking.customerEmail,
@@ -10097,6 +11729,15 @@ async function registerRoutes(app2) {
       }
     }
     const updated = await storage.updateBooking(bookingId, { date, startTime, duration: dur });
+    void storage.logBookingAction({
+      bookingId,
+      action: "edited",
+      staffUsername: `customer:${booking.customerEmail}`,
+      staffId: null,
+      fromValue: { date: booking.date, startTime: booking.startTime, duration: booking.duration },
+      toValue: { date, startTime, duration: dur },
+      note: "Rescheduled by customer via app"
+    });
     sendBookingRescheduleEmail({
       customerName: booking.customerName,
       customerEmail: booking.customerEmail,
@@ -10222,8 +11863,33 @@ Phone: ${phone}` : ""}`,
     res.set("Cache-Control", "no-store");
     res.json(enriched);
   });
+  const mySubscriptionSyncThrottle = /* @__PURE__ */ new Map();
+  const MY_SUB_SYNC_THROTTLE_MS = 15e3;
+  const MY_SUB_SYNC_PRUNE_AFTER_MS = 6e4;
+  function pruneMySubSyncThrottle() {
+    const cutoff = Date.now() - MY_SUB_SYNC_PRUNE_AFTER_MS;
+    for (const [id, ts] of mySubscriptionSyncThrottle) {
+      if (ts < cutoff) mySubscriptionSyncThrottle.delete(id);
+    }
+  }
   app2.get("/api/membership/my-subscription", customerAuth, async (req, res) => {
     const customerId = req.customerId;
+    const customerEmail = req.customerEmail;
+    const lastSync = mySubscriptionSyncThrottle.get(customerId) ?? 0;
+    const shouldSync = Date.now() - lastSync >= MY_SUB_SYNC_THROTTLE_MS;
+    if (shouldSync) {
+      mySubscriptionSyncThrottle.set(customerId, Date.now());
+      if (mySubscriptionSyncThrottle.size > 200) pruneMySubSyncThrottle();
+    }
+    if (shouldSync) {
+      const existingSub = await storage.getMembershipSubscriptionByCustomer(customerId);
+      const syncPromise = syncSquareMembershipForCustomer(customerId, customerEmail).catch(
+        (e) => console.warn("[MEMBERSHIP] my-subscription auto-sync failed (non-fatal):", e?.message)
+      );
+      if (!existingSub) {
+        await syncPromise;
+      }
+    }
     const sub = await storage.getMembershipSubscriptionByCustomer(customerId);
     res.json(sub ?? null);
   });
@@ -10240,6 +11906,12 @@ Phone: ${phone}` : ""}`,
       }
       const plan = await storage.getMembershipPlan(parseInt(planId));
       if (!plan || !plan.active) return res.status(404).json({ message: "Plan not found" });
+      if (plan.hideFromSignup) {
+        return res.status(403).json({
+          message: "This membership is by invitation only. Please contact the club to be added.",
+          code: "PLAN_STAFF_ONLY"
+        });
+      }
       const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
       const periodStart = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) && startDate > today ? startDate : today;
       const periodEndDate = /* @__PURE__ */ new Date(periodStart + "T12:00:00Z");
@@ -10372,6 +12044,12 @@ Phone: ${phone}` : ""}`,
       }
       const plan = await storage.getMembershipPlan(parseInt(planId));
       if (!plan || !plan.active) return res.status(404).json({ message: "Plan not found" });
+      if (plan.hideFromSignup) {
+        return res.status(403).json({
+          message: "This membership is by invitation only. Please contact the club to be added.",
+          code: "PLAN_STAFF_ONLY"
+        });
+      }
       const customer = await storage.getCustomerById(customerId);
       if (!customer) return res.status(404).json({ message: "Customer not found" });
       const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
@@ -12583,6 +14261,38 @@ function detectPublicBaseUrl() {
 }
 
 // server/index.ts
+var VENUE_TZ = "Europe/London";
+function getLondonDateString() {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: VENUE_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(/* @__PURE__ */ new Date());
+  const get = (t) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+function getLondonYearAndMonthDay() {
+  const dateStr = getLondonDateString();
+  return { year: parseInt(dateStr.slice(0, 4), 10), monthDay: dateStr.slice(5) };
+}
+function msUntilNextLondonMidnight() {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: VENUE_TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  }).formatToParts(/* @__PURE__ */ new Date());
+  const get = (t) => parts.find((p) => p.type === t)?.value ?? "0";
+  let h = parseInt(get("hour"), 10);
+  if (h === 24) h = 0;
+  const m = parseInt(get("minute"), 10);
+  const s = parseInt(get("second"), 10);
+  const secondsSinceMidnight = h * 3600 + m * 60 + s;
+  const secondsUntil = 24 * 3600 - secondsSinceMidnight + 1;
+  return secondsUntil * 1e3;
+}
 var app = express();
 app.set("trust proxy", 1);
 var log = console.log;
@@ -12973,7 +14683,18 @@ function configureExpoAndLanding(app2) {
       if (req.path.startsWith("/api")) return next();
       const platform = req.header("expo-platform");
       if (platform === "ios" || platform === "android") return next();
-      if (req.path === "/verify-email" || req.path === "/reset-password") return next();
+      const devServerPages = /* @__PURE__ */ new Set([
+        "/staff",
+        "/membership",
+        "/delete-account",
+        "/privacy-policy",
+        "/terms",
+        "/staff-privacy-notice",
+        "/booking-widget",
+        "/verify-email",
+        "/reset-password"
+      ]);
+      if (devServerPages.has(req.path)) return next();
       const proxyReq = http.request(
         {
           hostname: "localhost",
@@ -13032,6 +14753,66 @@ function setupErrorHandler(app2) {
     }
     return res.status(status).json({ message });
   });
+}
+function scheduleBirthdayWeekPushes() {
+  async function runBirthdayPushes() {
+    try {
+      const { storage: store } = await Promise.resolve().then(() => (init_storage(), storage_exports));
+      const { sendPushToCustomerEmail: sendPushToCustomerEmail2 } = await Promise.resolve().then(() => (init_push(), push_exports));
+      const { year, monthDay } = getLondonYearAndMonthDay();
+      const due = await store.getCustomersInBirthdayWindow(year, monthDay);
+      if (!due.length) return;
+      let bonusPoints = 0;
+      try {
+        const raw = await store.getSetting("loyalty.birthdayBonus");
+        const n = Number(raw);
+        if (Number.isFinite(n) && n > 0) bonusPoints = n;
+      } catch {
+      }
+      for (const customer of due) {
+        try {
+          const body = bonusPoints > 0 ? `Happy birthday week from The 147! Open the app to claim your ${bonusPoints}-point birthday bonus.` : "Happy birthday week from The 147! Open the app to see your birthday treat.";
+          await sendPushToCustomerEmail2(customer.email, "Happy birthday! \u{1F382}", body, {
+            type: "birthday_week"
+          });
+          await store.setLastBirthdayPushYear(customer.id, year);
+          log(`[Birthday] Sent birthday-week push to customer #${customer.id}`);
+        } catch (err) {
+          console.error(`[Birthday] Failed for customer #${customer.id}:`, err);
+        }
+      }
+    } catch (err) {
+      console.error("[Birthday] Scheduler error:", err);
+    }
+  }
+  setTimeout(runBirthdayPushes, 60 * 1e3);
+  setTimeout(() => {
+    runBirthdayPushes();
+    setInterval(runBirthdayPushes, 24 * 60 * 60 * 1e3);
+  }, msUntilNextLondonMidnight());
+}
+function scheduleDoublePointsDailyReset() {
+  let lastCheckedDate = null;
+  async function maybeReset() {
+    try {
+      const today = getLondonDateString();
+      if (today === lastCheckedDate) return;
+      const { storage: store } = await Promise.resolve().then(() => (init_storage(), storage_exports));
+      const current = await store.getSetting("loyalty.doublePointsToday");
+      if (current === "true") {
+        const lastBroadcast = await store.getSetting("loyalty.doublePointsLastBroadcastDate");
+        if (lastBroadcast !== today) {
+          await store.setSetting("loyalty.doublePointsToday", "false");
+          log(`[Loyalty] Auto-cleared stale doublePointsToday at start of ${today} (last broadcast: ${lastBroadcast ?? "never"})`);
+        }
+      }
+      lastCheckedDate = today;
+    } catch (err) {
+      console.error("[Loyalty] Daily reset error:", err);
+    }
+  }
+  setTimeout(maybeReset, 5 * 1e3);
+  setInterval(maybeReset, 30 * 60 * 1e3);
 }
 function scheduleBookingReminders() {
   async function runReminders() {
@@ -13425,6 +15206,8 @@ function scheduleRetentionCleanup() {
   scheduleDepositAutoCancel();
   scheduleOrderExpiry();
   scheduleMembershipPaymentReminders();
+  scheduleBirthdayWeekPushes();
+  scheduleDoublePointsDailyReset();
 })().catch((err) => {
   console.error("FATAL SERVER ERROR:", err);
   process.exit(1);
