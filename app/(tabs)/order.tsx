@@ -1102,6 +1102,14 @@ function CartSheet({
           <Text style={styles.cartTotalPrice}>{formatPrice(totalPrice)}</Text>
         </View>
       )}
+      <View style={styles.discountNoteRow}>
+        <Ionicons name="information-circle-outline" size={13} color={Colors.light.textSecondary} />
+        <Text style={styles.discountNoteText}>
+          {customer
+            ? "Any member discount is applied automatically at checkout."
+            : "Sign in before checkout to receive your member discount."}
+        </Text>
+      </View>
     </View>
   );
 
@@ -2515,6 +2523,19 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_700Bold",
     fontSize: 18,
     color: Colors.brand.blue,
+  },
+  discountNoteRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+    marginTop: 4,
+  },
+  discountNoteText: {
+    flex: 1,
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 11,
+    lineHeight: 15,
+    color: Colors.light.textSecondary,
   },
   checkoutBtn: {
     marginHorizontal: 20,
