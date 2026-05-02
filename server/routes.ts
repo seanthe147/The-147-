@@ -7909,8 +7909,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Membership — customer: get own subscription ──────────────────────────────
+  // In-memory throttle for the auto-sync below. Each app account can trigger
+  // at most one Square round-trip every 15 s — enough to make staff-granted
+  // memberships (e.g. adding a customer to the VIP group in Square, or signing
+  // them up via Square POS) visible the next time the customer opens the
+  // membership page, without hammering Square if the customer keeps tapping
+  // refresh. Map size is bounded by a periodic prune so it can't grow
+  // unbounded over a long-running process.
+  const mySubscriptionSyncThrottle = new Map<number, number>();
+  const MY_SUB_SYNC_THROTTLE_MS = 15_000;
+  const MY_SUB_SYNC_PRUNE_AFTER_MS = 60_000;
+  function pruneMySubSyncThrottle() {
+    const cutoff = Date.now() - MY_SUB_SYNC_PRUNE_AFTER_MS;
+    for (const [id, ts] of mySubscriptionSyncThrottle) {
+      if (ts < cutoff) mySubscriptionSyncThrottle.delete(id);
+    }
+  }
   app.get("/api/membership/my-subscription", customerAuth, async (req, res) => {
     const customerId = (req as any).customerId as number;
+    const customerEmail = (req as any).customerEmail as string;
+    // Pull a fresh snapshot from Square. Without this, the page just mirrors
+    // whatever was synced at last login — so a customer added to a Square
+    // customer group (VIP / Staff / etc.) or signed up via Square POS
+    // wouldn't see their membership in the app until they logged out and
+    // back in, and wouldn't get their discount on in-app orders either.
+    //
+    // Throttled per-customer (set BEFORE await so concurrent requests for the
+    // same customer don't both fire the sync — important because the client
+    // refetches on mount and on app-foreground).
+    const lastSync = mySubscriptionSyncThrottle.get(customerId) ?? 0;
+    const shouldSync = Date.now() - lastSync >= MY_SUB_SYNC_THROTTLE_MS;
+    if (shouldSync) {
+      mySubscriptionSyncThrottle.set(customerId, Date.now());
+      if (mySubscriptionSyncThrottle.size > 200) pruneMySubSyncThrottle();
+    }
+    // Snappy-load trade-off: if the customer already has a subscription
+    // locally, fire-and-forget the sync so the page renders immediately
+    // (next refetch will pick up any remote change). Only AWAIT the sync
+    // when there's no local subscription yet — that's the case where the
+    // customer might be a Square-group member we haven't recorded yet,
+    // and we want the very first render to show their card, not the
+    // join flow.
+    if (shouldSync) {
+      const existingSub = await storage.getMembershipSubscriptionByCustomer(customerId);
+      const syncPromise = syncSquareMembershipForCustomer(customerId, customerEmail).catch((e: any) =>
+        console.warn("[MEMBERSHIP] my-subscription auto-sync failed (non-fatal):", e?.message),
+      );
+      if (!existingSub) {
+        await syncPromise;
+      }
+    }
     const sub = await storage.getMembershipSubscriptionByCustomer(customerId);
     res.json(sub ?? null);
   });

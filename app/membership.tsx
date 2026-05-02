@@ -10,6 +10,7 @@ import {
   Alert,
   Linking,
   TextInput,
+  RefreshControl,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -136,9 +137,21 @@ export default function MembershipScreen() {
     queryKey: ["/api/membership/plans"],
   });
 
-  const { data: subscription, isLoading: subLoading } = useQuery<MembershipSubscription | null>({
+  const {
+    data: subscription,
+    isLoading: subLoading,
+    isRefetching: subRefetching,
+    refetch: refetchSubscription,
+  } = useQuery<MembershipSubscription | null>({
     queryKey: ["/api/membership/my-subscription"],
     enabled: isAuthenticated,
+    // Hitting this endpoint also makes the server re-check Square for any
+    // new customer-group / POS-granted memberships, so we want the page to
+    // actively refresh when the customer brings the app forward — not sit
+    // on a stale snapshot from this morning's login.
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
     queryFn: async () => {
       const token = await getToken();
       const url = new URL("/api/membership/my-subscription", getApiUrl());
@@ -342,7 +355,12 @@ export default function MembershipScreen() {
           <ActivityIndicator size="large" color={Colors.brand.blue} />
         </View>
       ) : subscription ? (
-        <ActiveMembership subscription={subscription} insets={insets} />
+        <ActiveMembership
+          subscription={subscription}
+          insets={insets}
+          onRefresh={() => { refetchSubscription(); }}
+          refreshing={subRefetching}
+        />
       ) : (
         <ScrollView
           style={styles.scroll}
@@ -351,6 +369,21 @@ export default function MembershipScreen() {
             { paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 20) },
           ]}
           showsVerticalScrollIndicator={false}
+          // Pull-to-refresh on the join flow too: a customer who was just
+          // added to a Square customer group might be looking at the join
+          // screen and not realise they're already a member. A swipe down
+          // re-checks Square (server-side) and the page will re-render as
+          // ActiveMembership if a membership was found.
+          refreshControl={
+            isAuthenticated ? (
+              <RefreshControl
+                refreshing={subRefetching}
+                onRefresh={() => { refetchSubscription(); }}
+                tintColor={Colors.brand.blue}
+                colors={[Colors.brand.blue]}
+              />
+            ) : undefined
+          }
         >
           <View style={styles.hero}>
             <View style={styles.heroIcon}>
@@ -640,9 +673,13 @@ export default function MembershipScreen() {
 function ActiveMembership({
   subscription,
   insets,
+  onRefresh,
+  refreshing,
 }: {
   subscription: MembershipSubscription;
   insets: ReturnType<typeof useSafeAreaInsets>;
+  onRefresh: () => void;
+  refreshing: boolean;
 }) {
   const plan = subscription.plan;
   const planColor = plan?.color || Colors.brand.blue;
@@ -713,6 +750,17 @@ function ActiveMembership({
         { paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 20) },
       ]}
       showsVerticalScrollIndicator={false}
+      // Swipe down to re-sync with Square. Useful right after staff add
+      // benefits in the back office — the customer can pull to refresh
+      // and see their plan / discount level update without logging out.
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={Colors.brand.blue}
+          colors={[Colors.brand.blue]}
+        />
+      }
     >
       {greeting ? (
         // Personal greeting sits above the membership card so opening

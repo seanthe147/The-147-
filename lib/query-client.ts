@@ -1,6 +1,21 @@
 import { fetch } from "expo/fetch";
-import { Platform } from "react-native";
-import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { Platform, AppState, AppStateStatus } from "react-native";
+import { QueryClient, QueryFunction, focusManager } from "@tanstack/react-query";
+
+// Bridge React Native's AppState into TanStack Query's focus manager so that
+// `refetchOnWindowFocus: true` actually fires when the user backgrounds and
+// foregrounds the app on iOS/Android. Without this, that option is web-only
+// and pages like the membership screen would never re-check Square when the
+// customer brought the app forward — they'd see a stale snapshot from
+// whenever the screen first mounted.
+if (Platform.OS !== "web") {
+  focusManager.setEventListener((handleFocus) => {
+    const sub = AppState.addEventListener("change", (status: AppStateStatus) => {
+      handleFocus(status === "active");
+    });
+    return () => sub.remove();
+  });
+}
 
 export function getApiUrl(): string {
   if (Platform.OS === "web" && typeof window !== "undefined") {
