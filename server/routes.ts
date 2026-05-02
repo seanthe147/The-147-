@@ -7427,6 +7427,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const plan = await storage.getMembershipPlan(parseInt(planId));
       if (!plan || !plan.active) return res.status(404).json({ message: "Plan not found" });
+      // Hidden plans (e.g. VIP, Blue Light, comps) can only be assigned by
+      // staff via the dashboard. Reject any direct sign-up attempt — even if
+      // the customer somehow has the plan id, they must be added manually.
+      if ((plan as any).hideFromSignup) {
+        return res.status(403).json({
+          message: "This membership is by invitation only. Please contact the club to be added.",
+          code: "PLAN_STAFF_ONLY",
+        });
+      }
 
       const today = new Date().toISOString().slice(0, 10);
       // Honour startDate if it is a valid future date (staff-only feature sent from app)
@@ -7612,6 +7621,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const plan = await storage.getMembershipPlan(parseInt(planId));
       if (!plan || !plan.active) return res.status(404).json({ message: "Plan not found" });
+      // Hidden plans (e.g. VIP, Blue Light, comps) can only be assigned by
+      // staff via the dashboard. Reject any direct sign-up attempt — even if
+      // the customer somehow has the plan id, they must be added manually.
+      if ((plan as any).hideFromSignup) {
+        return res.status(403).json({
+          message: "This membership is by invitation only. Please contact the club to be added.",
+          code: "PLAN_STAFF_ONLY",
+        });
+      }
 
       const customer = await storage.getCustomerById(customerId);
       if (!customer) return res.status(404).json({ message: "Customer not found" });

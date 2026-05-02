@@ -6958,6 +6958,7 @@
       groupSel.appendChild(opt);
     }
     el('epActive').checked=plan.active!==false;
+    el('epHideFromSignup').checked=!!plan.hideFromSignup;
     el('epErr').classList.remove('show');
     el('editPlanModal').dataset.planId=planId;
     openOverlay('editPlanModal');
@@ -6995,6 +6996,7 @@
       squareCustomerGroupId:el('epSquareGroupId').value.trim()||null,
       excludeWithDeals:el('epExcludeWithDeals').checked,
       active:el('epActive').checked,
+      hideFromSignup:el('epHideFromSignup').checked,
     };
     el('epSaveBtn').disabled=true;
     try{
