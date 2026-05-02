@@ -499,6 +499,21 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.heroCenter}>
+        {isAuthenticated && customer?.name ? (
+          // Personalised greeting — only renders for signed-in customers.
+          // First word of `customer.name` keeps it casual ("Good morning,
+          // Stuart" rather than "Good morning, Stuart John Smith"), and
+          // the time window matches the obvious one (morning until noon,
+          // afternoon until 6pm, evening otherwise).
+          <Text style={styles.heroGreeting} numberOfLines={1}>
+            {(() => {
+              const h = new Date().getHours();
+              const part = h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+              const firstName = customer.name.trim().split(/\s+/)[0];
+              return `${part}, ${firstName}`;
+            })()}
+          </Text>
+        ) : null}
         <Text style={styles.heroTitle}>The 147</Text>
         <View style={styles.heroTagline}>
           <View style={styles.tagDivider} />
@@ -736,6 +751,16 @@ const styles = StyleSheet.create({
   heroCenter: {
     alignItems: "center",
     marginVertical: 20,
+  },
+  heroGreeting: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 14,
+    color: "rgba(255,255,255,0.85)",
+    letterSpacing: 0.3,
+    marginBottom: 6,
+    textShadowColor: "rgba(0,0,0,0.3)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   heroTitle: {
     fontFamily: "Montserrat_700Bold",
