@@ -3596,6 +3596,92 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.sendStatus(200);
     }
 
+    // ── Square KDS fulfillment sync (FEATURE_KDS_SYNC) ──────────────────────
+    // When kitchen staff hit "Complete" on Square KDS, Square emits this
+    // event. We mirror the COMPLETED transition into our app_orders table so
+    // the customer's receipt screen and the staff portal both flip to
+    // "Order complete" without anyone having to tap a second time in our
+    // dashboard. Intermediate fulfillment states (RESERVED/PREPARED) are
+    // intentionally NOT mapped — they would race with the staff portal's
+    // manual "Start preparing" / "Mark ready" workflow and cause the order
+    // to flicker between states. Gated behind the kdsSync flag so the
+    // dashboard "Complete" buttons keep being the source of truth until
+    // the venue is happy with the KDS workflow.
+    if (eventType === "order.fulfillment.updated") {
+      if (!getServerFeatureFlags().kdsSync) return res.sendStatus(200);
+      try {
+        const update = event?.data?.object?.order_fulfillment_updated;
+        const sqOrderId: string | undefined = update?.order_id;
+        const transitions: any[] = Array.isArray(update?.fulfillment_update)
+          ? update.fulfillment_update : [];
+        const becameCompleted = transitions.some((t: any) => t?.new_state === "COMPLETED");
+        if (!sqOrderId || !becameCompleted) return res.sendStatus(200);
+
+        const appOrder = await storage.getOrderBySquareOrderId(sqOrderId);
+        if (!appOrder) {
+          // Not one of our app orders — could be a POS-originated order
+          // sharing the same KDS. Silently ack.
+          return res.sendStatus(200);
+        }
+        // Don't move backwards out of a terminal state, and don't fire if
+        // the staff portal already advanced this order to delivered/collected.
+        const ALREADY_DONE = new Set([
+          "completed", "delivered", "collected", "cancelled", "refunded",
+        ]);
+        if (ALREADY_DONE.has(appOrder.status)) {
+          console.log(`[WEBHOOK] KDS sync: order #${appOrder.id} already ${appOrder.status} — skipping`);
+          return res.sendStatus(200);
+        }
+        // Only sync from kitchen-lifecycle states. If the order isn't paid
+        // yet (e.g. webhooks arrived out of order, or it was cancelled
+        // before the kitchen got to it) we skip rather than guess.
+        const SYNCABLE = new Set(["paid", "preparing", "ready"]);
+        if (!SYNCABLE.has(appOrder.status)) {
+          return res.sendStatus(200);
+        }
+
+        const fromStatus = appOrder.status;
+        await storage.updateAppOrderStatus(appOrder.id, "completed");
+        await storage.logOrderAction({
+          orderId: appOrder.id,
+          staffUsername: "system:square-kds",
+          action: "advance:completed",
+        });
+        console.log(`[WEBHOOK] KDS sync: order #${appOrder.id} ${fromStatus}→completed`);
+
+        // Notify the originating device. Same data shape as the staff
+        // advance route so the existing deep-link handler (type:
+        // "order-status") routes the tap back into the receipt screen.
+        if (appOrder.pushToken) {
+          const ref = appOrder.id.toString().padStart(5, "0");
+          const data = {
+            type: "order-status" as const,
+            appOrderId: appOrder.id,
+            token: appOrder.confirmationToken ?? "",
+            status: "completed",
+          };
+          sendTargetedPush(
+            [appOrder.pushToken],
+            "Order complete 🎉",
+            `Order #${ref} is complete — enjoy!`,
+            data,
+          ).catch((err: any) => {
+            console.error("[Push] KDS-sync notification failed:", err?.message ?? err);
+          });
+        }
+      } catch (err) {
+        console.error("[WEBHOOK] order.fulfillment.updated error:", err);
+      }
+      return res.sendStatus(200);
+    }
+
+    // Square also emits `order.updated` for every order mutation. We rely
+    // on `order.fulfillment.updated` above for KDS state, so silently ack
+    // these to avoid duplicate processing if the venue subscribes to both.
+    if (eventType === "order.updated") {
+      return res.sendStatus(200);
+    }
+
     if (eventType !== "payment.updated") return res.sendStatus(200);
     const payment = event?.data?.object?.payment;
     if (!payment) return res.sendStatus(200);
@@ -5287,7 +5373,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // terminal failure states. "pending" is hidden so we don't leak unpaid
       // orders.
       const VISIBLE_STATUSES = new Set([
-        "paid", "preparing", "ready", "delivered", "collected",
+        "paid", "preparing", "ready", "delivered", "collected", "completed",
         "cancelled", "refunded",
       ]);
       if (!VISIBLE_STATUSES.has(order.status)) {
@@ -5309,6 +5395,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ready:     { label: hasTable ? "Ready — on its way" : "Ready to collect", detail: hasTable ? `A team member is bringing it to ${tableNote}.` : "Please come to the bar to collect your order.", isTerminal: false },
         delivered: { label: "Enjoy!",           detail: hasTable ? `Your order has been delivered to ${tableNote}.` : "Your order has been served.", isTerminal: true },
         collected: { label: "Enjoy!",           detail: "Thanks — your order has been collected.",        isTerminal: true },
+        completed: { label: "Order complete!",  detail: hasTable ? `Your order is on its way to ${tableNote}. Enjoy!` : "Your order is ready at the bar. Enjoy!", isTerminal: true },
         cancelled: { label: "Cancelled",        detail: "This order was cancelled by staff.",             isTerminal: true },
         refunded:  { label: "Refunded",         detail: "This order has been refunded.",                  isTerminal: true },
       };
@@ -5471,11 +5558,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Allowed forward transitions. "delivered" is for table service, "collected"
     // for bar pickup — staff pick whichever applies.
     const ALLOWED: Record<string, string[]> = {
-      paid:      ["preparing", "ready", "delivered", "collected"],
-      preparing: ["ready", "delivered", "collected"],
-      ready:     ["delivered", "collected"],
+      paid:      ["preparing", "ready", "delivered", "collected", "completed"],
+      preparing: ["ready", "delivered", "collected", "completed"],
+      ready:     ["delivered", "collected", "completed"],
     };
-    const TERMINAL = new Set(["delivered", "collected"]);
+    const TERMINAL = new Set(["delivered", "collected", "completed"]);
     const staffUsername = (req as any).staffUsername as string | null;
     try {
       const order = await storage.getAppOrder(id);
@@ -5514,6 +5601,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         collected: {
           title: "Thanks!",
           body: `Order #${id.toString().padStart(5, "0")} collected — enjoy!`,
+        },
+        completed: {
+          title: "Order complete 🎉",
+          body: `Order #${id.toString().padStart(5, "0")} is complete — enjoy!`,
         },
       };
       // FEATURE_ORDER_PREPARING_PUSH: opt-in "Your order is being prepared"
@@ -5578,7 +5669,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!order) return res.status(404).json({ message: "Order not found" });
       // Only kitchen-lifecycle statuses can be reverted. Cancel/refund/expire
       // have their own dedicated routes and require different handling.
-      const REVERTABLE = new Set(["preparing", "ready", "delivered", "collected"]);
+      const REVERTABLE = new Set(["preparing", "ready", "delivered", "collected", "completed"]);
       if (!REVERTABLE.has(order.status)) {
         return res.status(400).json({ message: `Cannot revert an order that is ${order.status}` });
       }

@@ -2892,7 +2892,7 @@ export class DatabaseStorage implements IStorage {
    * resolve. Returns null if the customer has never placed a paid order.
    */
   async getLastPaidAppOrderForCustomer(email: string): Promise<AppOrder | null> {
-    const PAID_STATUSES = ["paid", "preparing", "ready", "delivered", "collected"];
+    const PAID_STATUSES = ["paid", "preparing", "ready", "delivered", "collected", "completed"];
     const emailHash = hashEmail(email);
     const byHash = await db.select().from(appOrders)
       .where(and(

@@ -56,6 +56,7 @@ const STATUS_TONE: Record<string, { bg: string; fg: string; icon: keyof typeof I
   ready:     { bg: "#DCFCE7", fg: "#15803D", icon: "checkmark-done-outline" },
   delivered: { bg: "#DCFCE7", fg: "#15803D", icon: "happy-outline" },
   collected: { bg: "#DCFCE7", fg: "#15803D", icon: "happy-outline" },
+  completed: { bg: "#DCFCE7", fg: "#15803D", icon: "happy-outline" },
   cancelled: { bg: "#FEE2E2", fg: "#B91C1C", icon: "close-circle-outline" },
   refunded:  { bg: "#FEE2E2", fg: "#B91C1C", icon: "return-down-back-outline" },
 };

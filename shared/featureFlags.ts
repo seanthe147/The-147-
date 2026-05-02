@@ -13,6 +13,11 @@
 //                       chip row above the menu, plus a per-customer default.
 //   personalisedHome  — "Welcome back, X" + "Reorder last round" +
 //                       loyalty-progress card at the top of the home tab.
+//   kdsSync           — Mirror Square KDS "Complete" taps into our
+//                       app_orders table so the customer receipt and the
+//                       staff portal both flip to "Order complete" without
+//                       a second tap. Subscribes to Square's
+//                       order.fulfillment.updated webhook event.
 //
 // Defaults are ALL OFF. To turn a feature on for an environment, set the
 // matching FEATURE_* env var to "1" (or "true") on the server. The server
@@ -27,6 +32,7 @@ export interface FeatureFlags {
   orderPreparingPush: boolean;
   dietaryFilters: boolean;
   personalisedHome: boolean;
+  kdsSync: boolean;
 }
 
 export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
@@ -34,6 +40,7 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   orderPreparingPush: false,
   dietaryFilters: false,
   personalisedHome: false,
+  kdsSync: false,
 };
 
 /** Env-var name for each flag. Co-located so server + client stay in sync. */
@@ -42,6 +49,7 @@ export const FEATURE_FLAG_ENV: Record<keyof FeatureFlags, string> = {
   orderPreparingPush: "FEATURE_ORDER_PREPARING_PUSH",
   dietaryFilters: "FEATURE_DIETARY_FILTERS",
   personalisedHome: "FEATURE_PERSONALISED_HOME",
+  kdsSync: "FEATURE_KDS_SYNC",
 };
 
 /** Parse a single env-var value into a boolean. Empty / unset → false. */

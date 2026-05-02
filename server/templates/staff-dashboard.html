@@ -4766,6 +4766,7 @@
     ready:    {label:'Ready',     cls:'pill-green'},
     delivered:{label:'Delivered', cls:'pill-gray'},
     collected:{label:'Collected', cls:'pill-gray'},
+    completed:{label:'Order complete', cls:'pill-gray'},
     cancelled:{label:'Cancelled', cls:'pill-red'},
     refunded: {label:'Refunded',  cls:'pill-amber'},
     expired:  {label:'Expired',   cls:'pill-gray'},
@@ -4935,7 +4936,7 @@
       if(o.status==='paid')    return wrap(advBtn('Start preparing','preparing',true), refundBtn);
       if(o.status==='preparing') return wrap(advBtn('Mark ready','ready',true), undoBtn);
       if(o.status==='ready')   return wrap(advBtn(finalLabel, finalStatus, true), undoBtn);
-      if(o.status==='delivered'||o.status==='collected') return wrap(undoBtn);
+      if(o.status==='delivered'||o.status==='collected'||o.status==='completed') return wrap(undoBtn);
       if(o.audit){
         const by=o.audit.staffUsername||'admin';
         const note=o.audit.reason?` — "${o.audit.reason}"`:'';

@@ -1130,6 +1130,7 @@ function OrderCard({ order, active }: { order: AppOrder; active?: boolean }) {
     ready:     { label: "Ready",            bg: "#D1FAE5", text: "#065F46" },
     delivered: { label: "Delivered",        bg: "#D1FAE5", text: "#065F46" },
     collected: { label: "Collected",        bg: "#D1FAE5", text: "#065F46" },
+    completed: { label: "Order complete",   bg: "#D1FAE5", text: "#065F46" },
     cancelled: { label: "Cancelled",        bg: "#FEE2E2", text: "#991B1B" },
     refunded:  { label: "Refunded",         bg: "#FEF3C7", text: "#92400E" },
   };
