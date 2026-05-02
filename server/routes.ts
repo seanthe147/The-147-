@@ -3046,7 +3046,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const DEPOSIT_GUEST_THRESHOLD = 7;
     const DEPOSIT_AMOUNT_PENCE = 500; // £5
     // depositHandling (staff-only): 'mark_paid' | 'send_link' | undefined (widget default)
-    const depositHandling = (req.body as { depositHandling?: string }).depositHandling;
+    // SECURITY: this route is intentionally public (the booking widget is
+    // unauthenticated), but `depositHandling` is a staff-only field. Without
+    // the check below, any unauthenticated caller could send
+    // `"depositHandling":"mark_paid"` for a 7+ guest dining booking and the
+    // server would create a confirmed booking with depositPaid=true,
+    // bypassing the Square deposit step and reserving venue capacity for
+    // free. We therefore validate the bearer staff session inline and
+    // ignore `depositHandling` entirely unless a real staff user is
+    // attached to the request. We deliberately do not 401 here — public
+    // widget requests must continue to work — we just silently downgrade
+    // to the normal deposit flow.
+    const requestedDepositHandling = (req.body as { depositHandling?: string }).depositHandling;
+    let staffUserForDeposit: any = null;
+    if (requestedDepositHandling === "mark_paid" || requestedDepositHandling === "send_link") {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        const token = authHeader.slice(7);
+        if (token.length >= 32 && token.length <= 128) {
+          try {
+            const session = await storage.validateStaffSession(token);
+            if (session?.staffUsername) {
+              const user = await storage.getStaffUserByUsername(session.staffUsername);
+              if (
+                user &&
+                user.active !== false &&
+                user.approvalStatus !== "rejected" &&
+                user.approvalStatus !== "pending"
+              ) {
+                staffUserForDeposit = user;
+                (req as any).staffUser = user;
+                (req as any).staffUsername = session.staffUsername;
+                (req as any).staffRole = user.role || "staff";
+              }
+            }
+          } catch {
+            // Treat any session-validation error as no-staff and fall through.
+          }
+        }
+      }
+    }
+    const depositHandling = staffUserForDeposit ? requestedDepositHandling : undefined;
+    if (requestedDepositHandling && !staffUserForDeposit) {
+      console.warn(
+        `[BOOKING] Ignoring depositHandling=${requestedDepositHandling} from non-staff request (ip=${ip})`,
+      );
+    }
     const guestCount = parsed.data.guestCount ?? 0;
     const isLargeParty = parsed.data.tableType === "dining" && guestCount >= DEPOSIT_GUEST_THRESHOLD;
 
