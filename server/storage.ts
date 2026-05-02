@@ -2123,10 +2123,23 @@ export class DatabaseStorage implements IStorage {
     return rows[0] ? decryptAppOrder(rows[0]) : null;
   }
 
-  async updateAppOrderPaid(squareOrderId: string, squarePaymentId: string): Promise<void> {
-    await db.update(appOrders)
+  async updateAppOrderPaid(squareOrderId: string, squarePaymentId: string): Promise<boolean> {
+    // Atomically transition pending → paid. Returns true only on first
+    // successful transition. This is the safety net for two races:
+    //   (1) The expireStaleOrders job marks an order 'expired' just before a
+    //       Square webhook for the same order arrives. Without the status
+    //       guard, the webhook would silently flip 'expired' back to 'paid'.
+    //   (2) Two webhooks (payment.created and payment.updated) racing to
+    //       process the same payment — only the first writes succeed; the
+    //       second is a no-op and any side-effects (audit log, push) won't
+    //       fire twice.
+    const result = await db.update(appOrders)
       .set({ status: "paid", squarePaymentId })
-      .where(eq(appOrders.squareOrderId, squareOrderId));
+      .where(and(
+        eq(appOrders.squareOrderId, squareOrderId),
+        eq(appOrders.status, "pending"),
+      ));
+    return ((result as any).rowCount ?? 0) > 0;
   }
 
   async updateAppOrderStatus(id: number, status: string): Promise<void> {

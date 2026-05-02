@@ -3690,8 +3690,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           const appOrder = await storage.getOrderBySquareOrderId(paymentOrderId);
           if (appOrder && appOrder.status === "pending") {
-            await storage.updateAppOrderPaid(paymentOrderId, payment.id);
-            console.log(`[WEBHOOK] App order #${appOrder.id} marked paid (Square order: ${paymentOrderId})`);
+            // updateAppOrderPaid is now atomic (status='pending' guard),
+            // so we only run side-effects when the row was actually
+            // transitioned. This deduplicates audit/push when two webhooks
+            // race for the same payment.
+            const transitioned = await storage.updateAppOrderPaid(paymentOrderId, payment.id);
+            if (transitioned) {
+              console.log(`[WEBHOOK] App order #${appOrder.id} marked paid (Square order: ${paymentOrderId})`);
+              await storage.logOrderAction({
+                orderId: appOrder.id,
+                staffUsername: "system",
+                action: "paid",
+                reason: `Square payment ${payment.id}`,
+              }).catch((e: any) => console.error("[WEBHOOK] Audit log failed:", e.message));
+            }
             return res.sendStatus(200);
           }
         } catch (err: any) {
@@ -5087,9 +5099,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       const succeeded = payment.status === "COMPLETED" || payment.status === "APPROVED";
       if (succeeded) {
-        await storage.updateAppOrderPaid(order.squareOrderId, payment.id).catch((e: any) =>
-          console.error("[ORDER] Failed to mark paid:", e.message)
-        );
+        // Atomic pending → paid; only log audit if this call actually
+        // performed the transition (the webhook may have beaten us to it).
+        const transitioned = await storage.updateAppOrderPaid(order.squareOrderId, payment.id).catch((e: any) => {
+          console.error("[ORDER] Failed to mark paid:", e.message);
+          return false;
+        });
+        if (transitioned) {
+          await storage.logOrderAction({
+            orderId: order.id,
+            staffUsername: "system",
+            action: "paid",
+            reason: `Square payment ${payment.id} (in-app)`,
+          }).catch((e: any) => console.error("[ORDER] Audit log failed:", e.message));
+        }
       }
       res.json({
         ok: succeeded,
@@ -6589,7 +6612,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // ── 1. Check Square subscriptions ──────────────────────────────────────
       const sqSubs: any[] = await square.listSquareSubscriptionsForCustomer(sqCustomer.id).catch(() => []);
-      const subPlans = allPlans.filter(p => p.active && (p.squarePlanVariationId || (p as any).squarePlanVariationIdAlt));
+      // hideFromSignup plans (VIP, complimentary tiers, etc.) are
+      // staff-assigned only — never auto-grant them via Square sync, even
+      // if the customer is found in the corresponding Square subscription.
+      // Without this guard, anyone added directly to the VIP plan in
+      // Square (intentionally or by mistake) would be auto-elevated on
+      // their next app sign-in.
+      const subPlans = allPlans.filter(p => p.active && !p.hideFromSignup && (p.squarePlanVariationId || (p as any).squarePlanVariationIdAlt));
       const planMatchesVariation = (p: any, variationId: string) =>
         p.squarePlanVariationId === variationId || p.squarePlanVariationIdAlt === variationId;
       const matchedSub = sqSubs.find((s: any) =>
@@ -6612,7 +6641,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // ── 2. Check Square customer groups ────────────────────────────────────
-      const groupPlans = allPlans.filter(p => p.active && (p as any).squareCustomerGroupId);
+      // Same staff-only guard as subPlans above. The VIP plan is gated
+      // behind a Square customer group, so this is the primary attack
+      // vector if the guard is missing — anyone added to that group in
+      // Square would be auto-elevated on next app sign-in.
+      const groupPlans = allPlans.filter(p => p.active && !p.hideFromSignup && (p as any).squareCustomerGroupId);
       if (groupPlans.length) {
         const customerGroupIds = await square.getCustomerGroupIds(sqCustomer.id).catch(() => [] as string[]);
         const groupMatch = groupPlans.find(p => customerGroupIds.includes((p as any).squareCustomerGroupId));
