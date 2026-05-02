@@ -1967,6 +1967,15 @@
         <label for="epActive" style="font-size:13px;color:var(--text);cursor:pointer">Plan is active (visible for new subscriptions)</label>
       </div>
 
+      <!-- Staff-assigned only toggle -->
+      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px">
+        <input type="checkbox" id="epHideFromSignup" style="width:16px;height:16px;cursor:pointer;margin-top:2px">
+        <div style="flex:1">
+          <label for="epHideFromSignup" style="font-size:13px;color:var(--text);cursor:pointer;font-weight:500">Staff-assigned only (hide from public sign-up)</label>
+          <div style="font-size:11px;color:var(--text-3);margin-top:3px;line-height:1.5">Customers won't see this plan in the app's "Join a membership" list and can't subscribe to it themselves. Only staff can assign members to it (e.g. VIP, Blue Light, comps). Existing subscriptions and member discounts are unaffected.</div>
+        </div>
+      </div>
+
       <div class="modal-err" id="epErr"></div>
     </div>
     <div class="modal-ft">
@@ -6892,6 +6901,7 @@
     el('epSquareGroupId').innerHTML='<option value="">— None —</option>';
     el('epExcludeWithDeals').checked=false;
     el('epActive').checked=true;
+    el('epHideFromSignup').checked=false;
     el('epErr').classList.remove('show');
     el('editPlanModal').dataset.planId='';
     openOverlay('editPlanModal');
