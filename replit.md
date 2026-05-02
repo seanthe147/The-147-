@@ -16,7 +16,7 @@ The application uses a mobile-first approach with a React Native frontend (Expo,
 
 **Backend:**
 - **API:** Manages offers, push notifications, bookings, customer accounts, and loyalty.
-- **Staff Web Dashboard:** HTML application for staff management, featuring a global RBAC-aware search.
+- **Staff Web Dashboard:** HTML application for staff management, featuring a global RBAC-aware search. The Orders sub-tab auto-refreshes every 10s via a silent poller (`startOrdersPolling`/`silentRefreshOrders` in `staff-dashboard.html`) so kitchen status changes — including KDS-sync `completed` flips and newly placed orders — appear without a manual reload. The poller only runs while staff are on the Menu → Orders sub-tab; switching sub-tabs or pages stops it. Loading spinner and error states are skipped on silent refreshes so a transient API blip never blanks the table mid-shift. The dev-mode SPA catch-all in `server/index.ts` mirrors the production `serverPages` exclusion list so `/staff` (and the other server-rendered HTML pages) reach their handlers in dev instead of being proxied to Metro.
 - **Security:** AES-256-GCM encryption for PII, scrypt-hashed PINs, rate limiting, brute-force lockout, HTML escaping, SRI, secure HTTP headers, and robust session management.
 
 **Technical Implementations:**

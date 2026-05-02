@@ -2669,6 +2669,10 @@
   }
 
   function showLogin(){
+    // Tear down any background pollers before swapping to the login screen
+    // so they don't keep firing /api/* requests every 10s once the session
+    // has gone (also covers the 401-from-api() → showLogin() path above).
+    stopOrdersPolling();
     el('loginScreen').style.display='flex';
     el('app').style.display='none';
     el('lPin').value='';el('lUsername').value='';
@@ -2763,6 +2767,28 @@
     if(bookingsPollInterval){clearInterval(bookingsPollInterval);bookingsPollInterval=null;}
   }
 
+  // Live polling for the Orders sub-tab. Kitchen status changes (paid →
+  // preparing → ready → delivered/collected/completed, the KDS-sync
+  // webhook, new orders arriving) are time-sensitive, so we re-fetch
+  // every 10s while staff are actually looking at the panel. Started by
+  // switchMenuTab('orders'), stopped on every other sub-tab and on every
+  // navigation away from the Menu page so we're never polling in the
+  // background.
+  let ordersPollInterval=null;
+  function startOrdersPolling(){
+    if(ordersPollInterval)return;
+    ordersPollInterval=setInterval(()=>silentRefreshOrders(),10000);
+  }
+  function stopOrdersPolling(){
+    if(ordersPollInterval){clearInterval(ordersPollInterval);ordersPollInterval=null;}
+  }
+  async function silentRefreshOrders(){
+    // Re-render the orders table in place without the loading spinner,
+    // and swallow transient errors so a single blip doesn't blank the
+    // panel mid-shift — the next tick will recover.
+    try{ await loadOrders({silent:true}); }catch(e){/* silent */}
+  }
+
   function formatUpdatedTime(d){
     const h=d.getHours(),m=d.getMinutes(),s=d.getSeconds();
     return 'Updated at '+pad(h)+':'+pad(m)+':'+pad(s);
@@ -2826,6 +2852,9 @@
     el('topbarSub').textContent='';
     if(page==='bookings'){el('topbarActions').style.display='';switchBookingsTab('bookings');loadBookings();loadDashboardNotices();startBookingsPolling();}
     else{el('topbarActions').style.display='none';stopBookingsPolling();}
+    // Always stop orders polling on navigation; switchMenuTab('orders')
+    // below will restart it when we land on the Orders sub-tab.
+    if(page!=='menu')stopOrdersPolling();
     if(page==='messages')loadMessages(true);
     if(page==='comms'){switchCommsTab('notices');loadNotices();loadPopups();}
     if(page==='staff')loadStaff();
@@ -4278,6 +4307,9 @@
     });
     if(tab==='categories')loadCategorySettings();
     if(tab==='availability')loadAvailabilityRules();
+    // Live polling only runs while the Orders sub-tab is visible.
+    if(tab==='orders')startOrdersPolling();
+    else stopOrdersPolling();
   }
 
   window.switchMenuTab=switchMenuTab;
@@ -4881,18 +4913,37 @@
     });
   }
 
-  async function loadOrders(){
+  // Monotonic counter so the silent poller and a manual click can't
+  // race — older completions whose token doesn't match the latest are
+  // dropped instead of overwriting fresher data.
+  let ordersFetchSeq=0;
+  async function loadOrders(opts){
+    // `silent:true` is used by the 10s background poller — it skips the
+    // loading spinner so the table refreshes in place, and bails out
+    // entirely on any failure (network, non-2xx, malformed payload) so a
+    // single failed fetch doesn't blank the panel mid-shift. The next
+    // tick will recover.
+    const silent=!!(opts&&opts.silent);
+    const myToken=++ordersFetchSeq;
     const wrap=el('ordersTableWrap');
-    wrap.innerHTML='<div class="menu-loading">Loading orders…</div>';
+    if(!silent)wrap.innerHTML='<div class="menu-loading">Loading orders…</div>';
     let orders;
     try{
       const r=await api('/api/staff/orders?limit=100');
+      // A 5xx that returns `{message: ...}` would otherwise parse fine
+      // and then trip the empty-state branch below, replacing a populated
+      // table with "No orders yet". Treat any non-2xx as a failure.
+      if(!r.ok)throw new Error('HTTP '+r.status);
       orders=await r.json();
+      if(!Array.isArray(orders))throw new Error('Malformed orders payload');
     }catch(e){
-      wrap.innerHTML='<div class="menu-loading" style="color:var(--red)">Failed to load orders. Try refreshing.</div>';
+      if(!silent)wrap.innerHTML='<div class="menu-loading" style="color:var(--red)">Failed to load orders. Try refreshing.</div>';
       return;
     }
-    if(!orders||!orders.length){
+    // A newer fetch (manual click after a slow poll, or vice-versa) has
+    // already completed — drop this stale response.
+    if(myToken!==ordersFetchSeq)return;
+    if(!orders.length){
       wrap.innerHTML='<div class="empty-state"><p style="color:var(--text-2);font-size:14px">No orders yet.<br>Orders placed through the app will appear here.</p></div>';
       return;
     }

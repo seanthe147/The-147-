@@ -542,8 +542,22 @@ function configureExpoAndLanding(app: express.Application) {
       // Skip native mobile paths
       const platform = req.header("expo-platform");
       if (platform === "ios" || platform === "android") return next();
-      // Server-rendered routes registered in registerRoutes()
-      if (req.path === "/verify-email" || req.path === "/reset-password") return next();
+      // Server-rendered HTML pages registered in registerRoutes() must not be
+      // proxied to Metro — Metro would just return the Expo shell, hiding the
+      // real dashboard / page content. Keep this list in sync with the
+      // `serverPages` Set in the production branch below.
+      const devServerPages = new Set([
+        "/staff",
+        "/membership",
+        "/delete-account",
+        "/privacy-policy",
+        "/terms",
+        "/staff-privacy-notice",
+        "/booking-widget",
+        "/verify-email",
+        "/reset-password",
+      ]);
+      if (devServerPages.has(req.path)) return next();
       // Proxy all other web requests to Metro so Expo Router handles client-side routes
       const proxyReq = http.request(
         {
