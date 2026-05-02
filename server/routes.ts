@@ -272,9 +272,10 @@ async function sendMigrationEmail(subId: number, req: Request): Promise<{ succes
     token = makeMigrationToken();
     await storage.updateMembershipSubscription(sub.id, { migrationToken: token } as any);
   }
-  const host = req.headers.host || "the147bradford.replit.app";
-  const proto = (req.headers["x-forwarded-proto"] as string) || "https";
-  const migrateUrl = `${proto}://${host}/migrate/${token}`;
+  // Build the migration link from the trusted configured origin, NOT from
+  // request headers — Host / X-Forwarded-Proto are attacker-controllable
+  // and an emailed link with a poisoned domain would be a phishing vector.
+  const migrateUrl = `${getPublicAppOrigin()}/migrate/${token}`;
   const { subject, html } = buildMigrationEmail({ name: sub.customer.name, plan: sub.plan, migrateUrl });
   const sent = await sendEmailViaSMTP(sub.customer.email, subject, html);
   if (!sent) return { success: false, message: "SMTP not configured or send failed" };
@@ -2343,9 +2344,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const host = req.headers.host || "the147bradford.replit.app";
-      const proto = (req.headers["x-forwarded-proto"] as string) || "https";
-      const redirectUrl = `${proto}://${host}/migrate/${token}/done`;
+      // Use the trusted configured origin for the Square checkout return URL
+      // — Host / X-Forwarded-Proto are attacker-controllable. A poisoned
+      // header would otherwise let an attacker mint a real Square checkout
+      // link that redirects to their domain after payment, leaking the
+      // bearer migration token in the URL path.
+      const redirectUrl = `${getPublicAppOrigin()}/migrate/${token}/done`;
 
       const checkout = await square.createSubscriptionCheckoutLink({
         planVariationId: variationId,
@@ -3129,9 +3133,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Fallback: attempt dynamic Square payment link creation
       try {
-        const appDomain = process.env.EXPO_PUBLIC_DOMAIN || req.get("host") || "localhost:5000";
-        const protocol = appDomain.includes("localhost") ? "http" : "https";
-        const redirectUrl = `${protocol}://${appDomain}/api/bookings/${booking.id}/deposit-return`;
+        // Build the Square deposit return URL from the trusted configured
+        // origin — POST /api/bookings is unauthenticated and the previous
+        // header-based construction let anyone with a spoofed Host header
+        // mint a real Square checkout link that redirects to an attacker
+        // domain after payment.
+        const redirectUrl = `${getPublicAppOrigin()}/api/bookings/${booking.id}/deposit-return`;
         const paymentLink = await square.createDepositPaymentLink({
           amountPence: DEPOSIT_AMOUNT_PENCE,
           description: `Dining Deposit – Booking ${bookingRef} (${guestCount} guests)`,
