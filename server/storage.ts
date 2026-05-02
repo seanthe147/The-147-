@@ -1036,10 +1036,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async cleanupExpiredSessions(): Promise<number> {
-    const result = await db.delete(staffSessions).where(
-      lte(staffSessions.expiresAt, new Date())
+    // Clean both staff and customer sessions. Previously this only deleted
+    // staffSessions, which left expired customer_sessions accumulating
+    // indefinitely (15+ stale rows observed in production).
+    const now = new Date();
+    const staffDeleted = await db.delete(staffSessions).where(
+      lte(staffSessions.expiresAt, now)
     ).returning();
-    return result.length;
+    const customerDeleted = await db.delete(customerSessions).where(
+      lte(customerSessions.expiresAt, now)
+    ).returning();
+    return staffDeleted.length + customerDeleted.length;
   }
 
   async anonymizeOldHRRecords(): Promise<number> {
