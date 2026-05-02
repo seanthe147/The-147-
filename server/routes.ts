@@ -1639,9 +1639,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ message: "Password updated successfully" });
   });
 
-  // New: manager resets another staff user's password to a temporary value
-  // and forces them to change it on next login.
-  app.post("/api/staff/reset-password", staffAuth, managerAuth, async (req, res) => {
+  // Owner resets another staff user's password to a temporary value and
+  // forces them to change it on next login.
+  // SECURITY: this is owner-only (matches the rest of staff-account
+  // administration: /update-role, /toggle-active, DELETE /:id, /approve).
+  // It used to allow managerAuth, which let a manager pick a temp password
+  // for any non-owner staff member, sign in as them, and perform actions
+  // (including HR self-service writes) attributed to the victim — a
+  // cross-role-boundary impersonation vector. The owner-only inner check
+  // below is now redundant given ownerAuth but kept as defense-in-depth.
+  app.post("/api/staff/reset-password", staffAuth, ownerAuth, async (req, res) => {
     const { username, tempPassword } = req.body;
 
     if (!username || typeof username !== "string" || username.trim().length < 3) {
@@ -1672,7 +1679,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ message: "Password reset successfully for " + staffUser.username });
   });
 
-  app.post("/api/staff/reset-pin", staffAuth, managerAuth, async (req, res) => {
+  // Owner-only: see the SECURITY note on /api/staff/reset-password above.
+  // Resetting another staff member's PIN allows in-person (kiosk-style)
+  // login as that user, so it must be gated to owners just like password
+  // reset and the other staff-account-administration endpoints.
+  app.post("/api/staff/reset-pin", staffAuth, ownerAuth, async (req, res) => {
     const { username, newPin } = req.body;
 
     if (!username || typeof username !== "string" || username.trim().length < 3) {
