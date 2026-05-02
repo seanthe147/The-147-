@@ -36,12 +36,37 @@ export function buildPaymentSheetHtml(opts: {
   const PHASE_TIMEOUT_MS = 12000;
   // Bridge: postMessage works for both react-native-webview (window.ReactNativeWebView)
   // and the web fallback (parent window via window.parent.postMessage).
+  // Square's tokenization endpoint — different host from the SDK CDN. Adding
+  // a preconnect hint here means the TLS handshake to this origin completes
+  // in parallel with the SDK download, instead of being a serial cost the
+  // first time the customer hits Pay.
+  const tokenizationOrigin =
+    opts.environment === "production"
+      ? "https://pci-connect.squareup.com"
+      : "https://pci-connect.squareupsandbox.com";
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>Payment</title>
+  <!--
+    Resource hints — kick off DNS resolution, TLS handshake, and the SDK
+    download as early as possible so the card form is interactive sooner.
+    The browser cannot start fetching the SDK until our inline <script> at
+    the bottom appends the tag, but a <link rel="preload"> here lets it
+    speculatively start the network request during HTML parse, typically
+    saving 100–300 ms of round-trip time on cold mobile connections.
+
+    These hints are mostly free on warm connections and never harmful — at
+    worst the browser ignores an unsupported keyword.
+  -->
+  <link rel="preconnect" href="${sdkSrc.replace(/\/v1\/square\.js$/, "")}" crossorigin />
+  <link rel="preconnect" href="${tokenizationOrigin}" crossorigin />
+  <link rel="preconnect" href="https://applepay.cdn-apple.com" crossorigin />
+  <link rel="dns-prefetch" href="${sdkSrc.replace(/\/v1\/square\.js$/, "")}" />
+  <link rel="dns-prefetch" href="${tokenizationOrigin}" />
+  <link rel="preload" as="script" href="${sdkSrc}" crossorigin />
   <!--
     Apple's official Apple Pay button web component. Required by App Store
     Guideline 4.9 — using only the  Pay wordmark on a custom black button
@@ -364,6 +389,11 @@ export function buildPaymentSheetHtml(opts: {
         var s = document.createElement("script");
         s.src = srcUrl;
         s.async = true;
+        // Match the <link rel="preload" crossorigin> hint in <head> — without
+        // an explicit crossOrigin on the injected <script>, the browser treats
+        // the preload and the script as different cache keys and re-fetches
+        // the SDK, defeating the preload optimisation.
+        s.crossOrigin = "anonymous";
         s.onload = function () {
           // Drop late onload from a superseded attempt or after we've
           // already booted/fataled.
@@ -481,6 +511,10 @@ export function buildPaymentSheetHtml(opts: {
         var label = methodLabel || "Card";
         return paymentMethod.tokenize().then(function (result) {
           if (result.status === "OK") {
+            // End-to-end success marker — the card token has been issued by
+            // Square. The native bridge will then POST it to /api/orders/:id/pay.
+            // Pairs with payment_started so we can compute success rate.
+            diag("payment_tokenized", { method: label });
             verifyAndSend(result.token);
           } else {
             // Build a diagnostic message that includes Square's error code +
@@ -534,10 +568,16 @@ export function buildPaymentSheetHtml(opts: {
           }
         }
         hideLoading();
+        // The card form is now visible and interactive — this is the
+        // customer-perceived "ready to pay" moment. Diagnostic phase used
+        // server-side to chart end-to-end TTI (sheet open → interactive)
+        // separately from the technical SDK / card-attach milestones.
+        diag("paint_complete");
         payBtn.addEventListener("click", function () {
           setStatus("");
           payBtn.disabled = true;
           payBtn.textContent = "Processing…";
+          diag("payment_started", { method: "card" });
           tokenizeAndSend(card, "Card").finally(function () {
             payBtn.disabled = false;
             payBtn.textContent = PAY_LABEL;
@@ -589,6 +629,7 @@ export function buildPaymentSheetHtml(opts: {
             var divider = document.getElementById("or-divider");
             if (divider) divider.style.display = "block";
             btn.addEventListener("click", function () {
+              diag("payment_started", { method: "apple_pay" });
               tokenizeAndSend(ap, "Apple Pay");
             });
           } catch (e) { /* swallow — card form must still work */ }
@@ -616,6 +657,7 @@ export function buildPaymentSheetHtml(opts: {
               var divider = document.getElementById("or-divider");
               if (divider) divider.style.display = "block";
               el.addEventListener("click", function () {
+                diag("payment_started", { method: "google_pay" });
                 tokenizeAndSend(gp, "Google Pay");
               });
             } catch (e) { /* swallow */ }

@@ -60,3 +60,13 @@ The pre-install script decodes these variables, writes the files to disk inside 
 - **Resend:** Email service for OTPs and booking confirmations.
 - **Google Fonts:** Provides the Montserrat typeface.
 - **Stripe:** Used for staff-initiated payments (phone/MOTO) with Stripe Elements, requiring `STRIPE_PUBLISHABLE_KEY` and `STRIPE_SECRET_KEY`.
+
+## Payment Sheet Performance (Square WebView)
+
+The customer-facing in-app payment sheet (`components/SquarePaymentSheet.tsx` + `components/squarePaymentSheetHtml.ts`) is a `react-native-webview` hosting Square's Web Payments SDK. Several speed optimisations sit on top of it; if you change the payment flow, preserve them:
+
+- **HTML resource hints:** the WebView's `<head>` includes `<link rel="preconnect">` + `<link rel="dns-prefetch">` for the Square SDK CDN (prod and sandbox), the Square tokenization endpoint (`pci-connect.squareup.com` / `pci-connect.squareupsandbox.com`), and Apple Pay's CDN, plus a `<link rel="preload" as="script" crossorigin>` for the SDK itself. The injected SDK `<script>` MUST set `s.crossOrigin = "anonymous"` for the preload to be reused — without this the browser refetches and the optimisation is wasted.
+- **DNS warm-up:** `prefetchSquarePaymentSdk()` in `lib/query-client.ts` fires HEAD requests to both prod + sandbox Square CDNs and the Apple Pay CDN to warm the OS-level DNS / TLS caches. Called from the cart open effect in `app/(tabs)/order.tsx` and from the membership "Continue to Payment" branch in `app/membership.tsx`. Throttled to once per 5 minutes via `_squareWarmedAt`. Failures are silently swallowed (CORS rejections on web are expected and harmless).
+- **Square config prefetch:** `/api/public/square-config` is a tier-1 prefetch in `prefetchAppData()` (not tier-2) so the cart's gating useQuery is never blocking on the Pay tap.
+- **Backend parallelisation:** `buildSquareOrderBody` in `server/square.ts` runs the catalog batch-retrieve chunks AND `getSquareDeals()` in a single `Promise.all`, instead of catalog-then-deals serially. Saves ~150–400 ms per checkout.
+- **Diagnostics funnel:** the WebView emits `sdk_loading` → `sdk_loaded` → `card_attached` → `paint_complete` → `payment_started` (with `method: "card" | "apple_pay" | "google_pay"`) → `payment_tokenized` → token POST. All are POSTed fire-and-forget to `/api/public/payment-sheet-diagnostics` from the React Native bridge in `SquarePaymentSheet.tsx`. The endpoint is rate-limited per IP and only logs (no DB writes). Search production logs for `[payment-sheet-diag]` to chart funnel drop-off, and use `paint_complete` ↔ `payment_tokenized` to compute end-to-end success rate by method.

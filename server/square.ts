@@ -1152,11 +1152,25 @@ async function buildSquareOrderBody(
   const catalogPriceById = new Map<string, number>();
   const catalogTypeById = new Map<string, string>();
   const idsToFetch = Array.from(catalogIds);
+  // Build chunks of ≤100 ids (Square's batch-retrieve cap) and fire them all
+  // in parallel alongside the deals lookup below. The previous implementation
+  // awaited each chunk in series and then awaited deals after, adding 150–400 ms
+  // of avoidable Square round-trips to every checkout. With typical carts of
+  // 1–2 chunks + 1 deals call, parallelisation collapses 3 sequential RTTs into
+  // 1 wall-clock RTT.
+  const catalogChunks: string[][] = [];
   for (let i = 0; i < idsToFetch.length; i += 100) {
-    const chunk = idsToFetch.slice(i, i + 100);
-    const data = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
-      object_ids: chunk,
-    });
+    catalogChunks.push(idsToFetch.slice(i, i + 100));
+  }
+  const [catalogResults, activeDeals] = await Promise.all([
+    Promise.all(
+      catalogChunks.map((chunk) =>
+        squareRequest("POST", "/v2/catalog/batch-retrieve", { object_ids: chunk }),
+      ),
+    ),
+    getSquareDeals().catch(() => [] as Deal[]),
+  ]);
+  for (const data of catalogResults) {
     for (const o of (data.objects || []) as any[]) {
       if (o.is_deleted) continue;
       if (o.type === "ITEM_VARIATION") {
@@ -1187,7 +1201,7 @@ async function buildSquareOrderBody(
     }
   }
 
-  const activeDeals = await getSquareDeals().catch(() => [] as Deal[]);
+  // activeDeals was fetched above in parallel with the catalog lookup.
   const dealByVariationId = new Map<string, Deal>();
   for (const deal of activeDeals) {
     if (!deal.applicableVariationIds) continue;

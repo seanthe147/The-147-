@@ -40,7 +40,7 @@ import Colors from "@/constants/colors";
 import { useCart } from "@/contexts/CartContext";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { getApiUrl } from "@/lib/query-client";
+import { getApiUrl, prefetchSquarePaymentSdk } from "@/lib/query-client";
 import { SquarePaymentSheet } from "@/components/SquarePaymentSheet";
 import * as LocalAuthentication from "expo-local-authentication";
 import { getBiometricKind, biometricLabel, shouldPromptForPaymentBiometric } from "@/lib/biometric";
@@ -796,6 +796,11 @@ function CartSheet({
           setGuestEmail(initialGuestEmail);
         }
       }
+      // Warm DNS + TLS for Square's payment CDN now — the customer is one
+      // tap away from opening the in-app payment sheet, and the OS-level
+      // resolver/session cache is shared with the WebView. Saves 100–300 ms
+      // off the SDK's first byte on cold mobile connections.
+      prefetchSquarePaymentSdk();
       onInitialConsumed?.();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

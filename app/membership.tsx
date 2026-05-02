@@ -19,7 +19,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import Colors from "@/constants/colors";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
-import { getApiUrl } from "@/lib/query-client";
+import { getApiUrl, prefetchSquarePaymentSdk } from "@/lib/query-client";
 import { SquarePaymentSheet } from "@/components/SquarePaymentSheet";
 import { getPlanBenefits, type BenefitKey } from "@shared/membership-benefits";
 
@@ -297,6 +297,10 @@ export default function MembershipScreen() {
     const continueCopy = useNativeSheet
       ? "Enter your card details to complete sign-up — your card will be charged automatically each billing period."
       : "You'll be taken to a secure payment page to complete your sign-up.";
+    // Customer is one tap away from confirming and opening the in-app
+    // payment sheet — warm Square's CDN now (DNS + TLS at the OS level)
+    // so the sheet's first byte arrives sooner.
+    if (useNativeSheet) prefetchSquarePaymentSdk();
     Alert.alert(
       "Confirm Membership",
       `Join the ${selectedPlan.name} plan for £${(price / 100).toFixed(2)} ${periodLabel}?${savingNote}${startNote}\n\n${continueCopy}`,

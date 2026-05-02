@@ -137,19 +137,56 @@ export function prefetchAppData() {
   //
   // Tier 1 — fires immediately after first paint. These are the exact query
   // keys the Home tab subscribes to, so on a warm cache it renders without a
-  // single spinner.
+  // single spinner. /api/public/square-config sits here too because the
+  // checkout WebView gates on it the moment the customer taps Pay — if the
+  // request hasn't completed by then we wrongly fall back to hosted browser
+  // checkout. Cheap GET so it doesn't dent the home tab's bandwidth budget.
   queryClient.prefetchQuery({ queryKey: ["/api/settings"] });
   queryClient.prefetchQuery({ queryKey: ["/api/banner-images?page=home"] });
   queryClient.prefetchQuery({ queryKey: ["/api/events?type=event"] });
+  queryClient.prefetchQuery({ queryKey: ["/api/public/square-config"] });
 
   // Tier 2 — deferred so the Home tab finishes loading first. By the time
   // the customer taps Order / Membership / Events, the cache is warm too.
   setTimeout(() => {
     queryClient.prefetchQuery({ queryKey: ["/api/menu"] });
     queryClient.prefetchQuery({ queryKey: ["/api/ordering-status"] });
-    queryClient.prefetchQuery({ queryKey: ["/api/public/square-config"] });
     queryClient.prefetchQuery({ queryKey: ["/api/banner-images?page=order"] });
     queryClient.prefetchQuery({ queryKey: ["/api/membership/plans"] });
     queryClient.prefetchQuery({ queryKey: ["/api/events?type=weekly"] });
   }, 600);
+}
+
+// Warm the OS-level DNS + TLS cache for Square's payment CDN before the
+// customer actually opens the in-app payment sheet. The HTTP cache is NOT
+// shared between the JS runtime and the in-app WebView, but DNS + TLS
+// session resumption ARE shared at the OS level — so a tiny no-op fetch
+// here typically shaves 100–300 ms off the WebView's first request to
+// Square on cold mobile connections.
+//
+// Fire-and-forget. Never throws. Calling more than once per session is
+// cheap (the OS will just return cached resolutions).
+let _squareWarmedAt = 0;
+export function prefetchSquarePaymentSdk() {
+  // Don't re-warm more than once every 5 minutes — DNS / TLS records are
+  // already cached, so repeat calls just waste mobile data.
+  const now = Date.now();
+  if (now - _squareWarmedAt < 5 * 60 * 1000) return;
+  _squareWarmedAt = now;
+  // Warm BOTH the production and sandbox CDNs. We don't know which the
+  // server's /api/public/square-config will return until the cart actually
+  // mounts the WebView, and a HEAD on the unused one is essentially free
+  // (single DNS lookup + TLS handshake — no payload). This guarantees the
+  // sandbox/dev environment gets the same speed-up as production.
+  const targets = [
+    "https://web.squarecdn.com/v1/square.js",
+    "https://sandbox.web.squarecdn.com/v1/square.js",
+    "https://applepay.cdn-apple.com/jsapi/v1.1.0/apple-pay-sdk.js",
+  ];
+  for (const url of targets) {
+    // HEAD is enough to resolve DNS, complete TLS handshake, and prime the
+    // CDN edge — without paying for the full bundle. expo/fetch handles HEAD
+    // correctly on iOS/Android. Failures are silently swallowed.
+    fetch(url, { method: "HEAD" } as any).catch(() => {});
+  }
 }
