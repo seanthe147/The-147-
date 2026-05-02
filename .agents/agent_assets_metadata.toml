@@ -83,3 +83,9 @@ id = "4-XHOqINxA8R-Dj4FN86A"
 uri = "file://PCI_COMPLIANCE.md"
 type = "text"
 title = "PCI Compliance Note — The 147 Bradford"
+
+[[outputs]]
+id = "mBSZHIfUzJEO7bCPU9y7a"
+uri = "file://research/square-api-opportunities.md"
+type = "text"
+title = "Square API Opportunities for The 147 — Research Report"
