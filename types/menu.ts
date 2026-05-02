@@ -29,7 +29,24 @@ export interface MenuItem {
   soldOut?: boolean;
   imageUrl?: string;
   modifiers?: ModifierList[];
+  // FEATURE_DIETARY_FILTERS: comma-separated tag codes from the menu
+  // override table — e.g. ["V", "GF"]. Always present in the API response
+  // (the server omits the field when empty), so the client decides whether
+  // to render the badges based on its own feature-flag check.
+  dietaryTags?: string[];
 }
+
+// Canonical set of dietary tag codes the staff dashboard + customer filter
+// chips speak. Kept here so the order screen, account screen, and (future)
+// staff dashboard never drift on labels / colours.
+export const DIETARY_TAGS = [
+  { code: "V",  label: "Veggie",      colour: "#16A34A" },
+  { code: "VG", label: "Vegan",       colour: "#15803D" },
+  { code: "GF", label: "Gluten-Free", colour: "#D97706" },
+  { code: "DF", label: "Dairy-Free",  colour: "#0891B2" },
+  { code: "NF", label: "Nut-Free",    colour: "#9333EA" },
+] as const;
+export type DietaryTagCode = typeof DIETARY_TAGS[number]["code"];
 
 export interface MenuCategory {
   id: string;

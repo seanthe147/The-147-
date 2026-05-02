@@ -8,7 +8,8 @@ import sharp from "sharp";
 import nodemailer from "nodemailer";
 import { storage } from "./storage";
 import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema } from "@shared/schema";
-import { hashPin, verifyPin, hashPassword, verifyPassword } from "./encryption";
+import { getServerFeatureFlags } from "./featureFlags";
+import { hashPin, verifyPin, hashPassword, verifyPassword, hashEmail } from "./encryption";
 import * as square from "./square";
 import { buildReorderPayload, type ReorderMenuItem, type ReorderRawItem } from "./reorder-matching";
 import { fetchTicketSourceEvents, type AppEvent } from "./ticketsource";
@@ -4317,6 +4318,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Public: feature-flag snapshot ─────────────────────────────────────────
+  // Tells the client which experiments are turned on for THIS environment.
+  // Default OFF so a client built against this server never accidentally
+  // surfaces a gated feature when the env var is unset. Cached at the
+  // client for the session — see hooks/useFeatureFlags.ts. The shape is
+  // typed at shared/featureFlags.ts so client + server can never drift.
+  app.get("/api/feature-flags", async (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.json(getServerFeatureFlags());
+  });
+
   app.get("/api/menu", async (_req, res) => {
     try {
       const [categories, categoryOverrides, itemOverrides, catSettingsArr, availRules] = await Promise.all([
@@ -4367,6 +4379,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           })
           .map(item => {
             const override = itemOverrideMap.get(item.variationId);
+            // FEATURE_DIETARY_FILTERS: surface comma-separated tag codes
+            // (e.g. "V,VG,GF") on every menu item that has them. The codes
+            // are unconditional in the response — the client decides
+            // whether to render the badges based on its own flag check, so
+            // toggling the flag never requires a server restart to clear
+            // browser caches. Empty / null tags are simply omitted.
+            const tagsRaw = override?.dietaryTags ?? null;
+            const dietaryTags = tagsRaw
+              ? tagsRaw.split(",").map(t => t.trim()).filter(Boolean)
+              : [];
             const base: any = {
               id: item.id,
               variationId: item.variationId,
@@ -4376,6 +4398,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               price: item.price,
               imageUrl: item.imageUrl,
               ...(item.modifiers && item.modifiers.length > 0 ? { modifiers: item.modifiers } : {}),
+              ...(dietaryTags.length > 0 ? { dietaryTags } : {}),
             };
             return override?.soldOut ? { ...base, soldOut: true } : base;
           });
@@ -4491,6 +4514,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: any) {
       console.error("[STAFF MENU] Item sold-out error:", err.message);
       res.status(500).json({ message: "Failed to update item" });
+    }
+  });
+
+  // FEATURE_DIETARY_FILTERS: set/replace the dietary tag string for a
+  // menu variation (manager/owner only — same trust level as hide). Body
+  // takes a comma-separated tag string ("V,VG,GF,DF,NF") or null/empty
+  // to clear. Tag codes are normalised to uppercase, deduped, and capped
+  // at the supported set so a typo doesn't leak through to the client.
+  // No-op when the feature flag is OFF, returning 404 — keeps the staff
+  // dashboard from appearing to "work" against a venue that hasn't
+  // enabled the feature.
+  app.put("/api/staff/menu/items/:variationId/dietary-tags", staffAuth, managerAuth, async (req: any, res) => {
+    if (!getServerFeatureFlags().dietaryFilters) {
+      return res.status(404).json({ message: "Dietary tags are not enabled" });
+    }
+    const { variationId } = req.params;
+    const { dietaryTags, itemId, name } = req.body;
+    if (!itemId || !name) return res.status(400).json({ message: "itemId and name required" });
+    const VALID = new Set(["V", "VG", "GF", "DF", "NF"]);
+    let cleaned: string | null = null;
+    if (typeof dietaryTags === "string" && dietaryTags.trim()) {
+      const parts = Array.from(new Set(
+        dietaryTags
+          .split(",")
+          .map(t => t.trim().toUpperCase())
+          .filter(t => VALID.has(t))
+      ));
+      cleaned = parts.length > 0 ? parts.join(",") : null;
+    }
+    try {
+      const updatedBy = req.staffUser?.username ?? "staff";
+      await storage.setMenuItemDietaryTags(variationId, itemId, name, cleaned, updatedBy);
+      square.invalidateMenuCache();
+      res.json({ ok: true, dietaryTags: cleaned });
+    } catch (err: any) {
+      console.error("[STAFF MENU] Item dietary-tags error:", err.message);
+      res.status(500).json({ message: "Failed to update dietary tags" });
     }
   });
 
@@ -5069,7 +5129,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/orders/:appOrderId/pay", async (req, res) => {
     const appOrderId = parseInt(String(req.params.appOrderId));
     if (isNaN(appOrderId)) return res.status(400).json({ message: "Invalid order id" });
-    const { sourceId, verificationToken, buyerEmail } = req.body || {};
+    const { sourceId, verificationToken, buyerEmail, saveCard } = req.body || {};
     if (typeof sourceId !== "string" || !sourceId.trim()) {
       return res.status(400).json({ message: "Missing payment token" });
     }
@@ -5112,6 +5172,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
             action: "paid",
             reason: `Square payment ${payment.id} (in-app)`,
           }).catch((e: any) => console.error("[ORDER] Audit log failed:", e.message));
+        }
+      }
+      // FEATURE_SAVED_CARDS: opt-in card-on-file save AFTER a successful
+      // charge. We only attempt this when:
+      //   1. The flag is on for this environment.
+      //   2. The customer ticked the in-sheet "Save card" checkbox
+      //      (sourceId still represents a one-shot tokenised nonce, but
+      //      Square's /v2/cards endpoint accepts the same source_id used
+      //      by /v2/payments within the lifetime of the nonce — so we
+      //      reuse it instead of asking the customer to re-tokenise).
+      //   3. The request has a valid customer session — anonymous orders
+      //      have no account to attach the card to.
+      // Failures here are logged but never fail the customer's payment —
+      // the cart already moved to "paid" above and the receipt is the
+      // source of truth.
+      if (
+        succeeded &&
+        saveCard === true &&
+        getServerFeatureFlags().savedCards
+      ) {
+        const auth = (req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
+        if (auth && auth.length >= 32 && auth.length <= 128) {
+          const session = await storage.validateCustomerSession(auth).catch(() => null);
+          const customer = session ? await storage.getCustomerById(session.customerId).catch(() => null) : null;
+          if (customer) {
+            try {
+              // Look up (or create) the Square Customer record we'll
+              // attach the card to. We DON'T reuse the membership's
+              // squareCustomerId — keeping payments and memberships
+              // isolated means cancelling membership doesn't drop the
+              // saved card and vice versa.
+              let squareCustomerId = customer.squareCustomerId ?? null;
+              if (!squareCustomerId) {
+                const found = await square.findSquareCustomerByEmail(customer.email);
+                squareCustomerId = found?.id ?? null;
+              }
+              if (!squareCustomerId) {
+                const created = await square.createSquareCustomer(
+                  customer.name,
+                  customer.email,
+                  customer.phone || undefined,
+                );
+                squareCustomerId = created?.id ?? null;
+              }
+              if (squareCustomerId) {
+                const card = await square.saveCardOnFile({
+                  customerId: squareCustomerId,
+                  sourceId: sourceId.trim(),
+                  verificationToken: verificationToken || null,
+                  cardholderName: customer.name,
+                });
+                if (card?.id) {
+                  await storage.setCustomerSavedCard(customer.id, {
+                    squareCustomerId,
+                    squareCardId: card.id,
+                    brand: card.card_brand ?? null,
+                    last4: card.last_4 ?? null,
+                    expMonth: typeof card.exp_month === "number" ? card.exp_month : null,
+                    expYear: typeof card.exp_year === "number" ? card.exp_year : null,
+                  });
+                  console.log(`[SAVED CARD] Saved card ${card.id} for customer ${customer.id}`);
+                }
+              }
+            } catch (saveErr: any) {
+              console.error("[SAVED CARD] Save failed (payment unaffected):", saveErr?.message ?? saveErr);
+            }
+          }
         }
       }
       res.json({
@@ -5389,6 +5516,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           body: `Order #${id.toString().padStart(5, "0")} collected — enjoy!`,
         },
       };
+      // FEATURE_ORDER_PREPARING_PUSH: opt-in "Your order is being prepared"
+      // notification when the kitchen advances paid → preparing. Gated
+      // because some venues prefer staying quiet between "received" and
+      // "ready" — flipping the env var enables the extra ping per env.
+      // The "ready" / "delivered" / "collected" pushes below are
+      // unconditional and always sent.
+      if (target === "preparing" && getServerFeatureFlags().orderPreparingPush) {
+        NOTIFY.preparing = {
+          title: "Your order is being prepared 👨‍🍳",
+          body: `The kitchen has started on order #${id.toString().padStart(5, "0")}.`,
+        };
+      }
       const message = NOTIFY[target];
       if (message && order.pushToken) {
         // Tapping the notification deep-links back into the receipt screen
@@ -7132,6 +7271,248 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Bind a push token to the authenticated customer's email.
   // Only the session owner's email (from the DB) is used — caller cannot choose.
+  // ── FEATURE_SAVED_CARDS: Read-only summary of the customer's stored card.
+  // Returns 404 (not 200 with null) when no card is saved so the React Query
+  // cache can use the simpler "this 404 means no card" pattern. Returns 404
+  // when the feature flag is OFF for the same reason — surfaces gated by
+  // flags should treat the absence of the endpoint as "feature disabled".
+  app.get("/api/customers/me/saved-card", customerAuth, async (req, res) => {
+    if (!getServerFeatureFlags().savedCards) {
+      return res.status(404).json({ message: "Saved cards are not enabled" });
+    }
+    try {
+      const customerId = (req as any).customerId as number;
+      const customer = await storage.getCustomerById(customerId);
+      if (!customer || !customer.squareCardId) {
+        return res.status(404).json({ message: "No saved card" });
+      }
+      res.json({
+        brand: customer.squareCardBrand ?? "Card",
+        last4: customer.squareCardLast4 ?? "••••",
+        expMonth: customer.squareCardExpMonth ?? null,
+        expYear: customer.squareCardExpYear ?? null,
+      });
+    } catch (err: any) {
+      console.error("[SAVED CARD] GET failed:", err.message);
+      res.status(500).json({ message: "Could not load saved card" });
+    }
+  });
+
+  // FEATURE_SAVED_CARDS: forget the saved card. Disables on Square's side
+  // (best-effort — Square outages don't block the local clear) and then
+  // clears the columns on the customer row. Always 204 even when no card
+  // existed, so the UI never has to special-case "already gone".
+  app.delete("/api/customers/me/saved-card", customerAuth, async (req, res) => {
+    if (!getServerFeatureFlags().savedCards) {
+      return res.status(404).json({ message: "Saved cards are not enabled" });
+    }
+    try {
+      const customerId = (req as any).customerId as number;
+      const customer = await storage.getCustomerById(customerId);
+      if (customer?.squareCardId) {
+        try {
+          await square.disableSquareCard(customer.squareCardId);
+        } catch (sqErr: any) {
+          console.error("[SAVED CARD] Square disable failed (continuing):", sqErr?.message ?? sqErr);
+        }
+      }
+      await storage.clearCustomerSavedCard(customerId);
+      res.status(204).send();
+    } catch (err: any) {
+      console.error("[SAVED CARD] DELETE failed:", err.message);
+      res.status(500).json({ message: "Could not remove saved card" });
+    }
+  });
+
+  // FEATURE_SAVED_CARDS: one-tap "Pay with saved card" for an existing
+  // pending order. The order itself was created by the same /api/orders
+  // POST flow used by the regular checkout — only the payment step is
+  // different. Mirrors the success / saved-card-attach side of the
+  // /api/orders/:id/pay handler above so the eventual rollout can reuse
+  // the same audit log + push-token plumbing on the kitchen side.
+  app.post("/api/orders/:appOrderId/pay-with-saved-card", customerAuth, async (req, res) => {
+    if (!getServerFeatureFlags().savedCards) {
+      return res.status(404).json({ message: "Saved cards are not enabled" });
+    }
+    if (!square.isWebPaymentsConfigured()) {
+      return res.status(503).json({ message: "In-app payments are not configured." });
+    }
+    const appOrderId = parseInt(String(req.params.appOrderId));
+    if (isNaN(appOrderId)) return res.status(400).json({ message: "Invalid order id" });
+    try {
+      const customerId = (req as any).customerId as number;
+      const customer = await storage.getCustomerById(customerId);
+      if (!customer?.squareCustomerId || !customer?.squareCardId) {
+        return res.status(412).json({ message: "No saved card on file" });
+      }
+      const order = await storage.getAppOrder(appOrderId);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      // SECURITY (IDOR fix): app order ids are enumerable serial integers,
+      // so before we charge the caller's saved card we must verify the
+      // caller actually placed this order. Compare by emailHash (kept on
+      // app_orders alongside the encrypted email for fast lookups). We
+      // intentionally return 404 — not 403 — so a probing attacker can't
+      // distinguish "exists but not yours" from "doesn't exist".
+      const callerEmailHash = customer.email ? hashEmail(customer.email) : null;
+      if (!order.customerEmailHash || !callerEmailHash || order.customerEmailHash !== callerEmailHash) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+      if (order.status !== "pending") {
+        return res.status(409).json({ message: `Order is already ${order.status}` });
+      }
+      if (!order.squareOrderId) {
+        return res.status(400).json({ message: "Order is missing Square reference" });
+      }
+      // The saved-card id is reused as the source — Square debounces by
+      // idempotency key over a 24h window, so include the order id (not
+      // the source) in the seed.
+      const idemRaw = `app-order-${appOrderId}|saved-${customer.squareCardId}`;
+      const idempotencyKey = createHash("sha256").update(idemRaw).digest("hex").slice(0, 45);
+      const payment = await square.chargeSavedCard({
+        squareCustomerId: customer.squareCustomerId,
+        squareCardId: customer.squareCardId,
+        amountPence: order.totalPence,
+        idempotencyKey,
+        note: order.tableNote ? `Order ${appOrderId} — ${order.tableNote}` : `Order ${appOrderId}`,
+        referenceId: `app-order-${appOrderId}`,
+        buyerEmail: customer.email,
+        orderId: order.squareOrderId,
+      });
+      const succeeded = payment.status === "COMPLETED" || payment.status === "APPROVED";
+      if (succeeded) {
+        const transitioned = await storage.updateAppOrderPaid(order.squareOrderId, payment.id).catch((e: any) => {
+          console.error("[ORDER] Failed to mark paid:", e.message);
+          return false;
+        });
+        if (transitioned) {
+          await storage.logOrderAction({
+            orderId: order.id,
+            staffUsername: "system",
+            action: "paid",
+            reason: `Square payment ${payment.id} (saved card)`,
+          }).catch((e: any) => console.error("[ORDER] Audit log failed:", e.message));
+        }
+      }
+      res.json({
+        ok: succeeded,
+        status: payment.status,
+        paymentId: payment.id,
+        appOrderId: order.id,
+      });
+    } catch (err: any) {
+      const squareErrors = Array.isArray(err?.errors) ? err.errors : (Array.isArray(err?.result?.errors) ? err.result.errors : []);
+      const first = squareErrors[0] || {};
+      const errorCode: string | undefined = first.code;
+      const errorDetail: string | undefined = first.detail || err?.message;
+      console.error("[SAVED CARD] Pay failed:", { code: err?.code, errorCode, detail: errorDetail });
+      res.status(400).json({
+        message: errorDetail || "Card charge failed",
+        errorCode: errorCode || null,
+      });
+    }
+  });
+
+  // ── FEATURE_DIETARY_FILTERS: customer's persisted dietary filter set.
+  // The set is stored as a comma-separated string of tag codes ("V,GF" etc).
+  // Empty / null means "no preference — show everything". PATCH validates
+  // against the same canonical set used by the staff endpoint.
+  app.patch("/api/customers/me/dietary-filters", customerAuth, async (req, res) => {
+    if (!getServerFeatureFlags().dietaryFilters) {
+      return res.status(404).json({ message: "Dietary filters are not enabled" });
+    }
+    const VALID = new Set(["V", "VG", "GF", "DF", "NF"]);
+    const { filters } = req.body || {};
+    let cleaned: string | null = null;
+    if (Array.isArray(filters)) {
+      const parts = Array.from(new Set(
+        filters
+          .map(t => typeof t === "string" ? t.trim().toUpperCase() : "")
+          .filter(t => VALID.has(t))
+      ));
+      cleaned = parts.length > 0 ? parts.join(",") : null;
+    } else if (typeof filters === "string" && filters.trim()) {
+      const parts = Array.from(new Set(
+        filters.split(",").map(t => t.trim().toUpperCase()).filter(t => VALID.has(t))
+      ));
+      cleaned = parts.length > 0 ? parts.join(",") : null;
+    }
+    try {
+      const customerId = (req as any).customerId as number;
+      await storage.setCustomerDietaryFilters(customerId, cleaned);
+      res.json({ ok: true, filters: cleaned ? cleaned.split(",") : [] });
+    } catch (err: any) {
+      console.error("[DIETARY] PATCH failed:", err.message);
+      res.status(500).json({ message: "Could not save dietary filters" });
+    }
+  });
+
+  // ── FEATURE_PERSONALISED_HOME: cards to display on the home tab.
+  // The shape is intentionally a flat array of typed cards so the home
+  // screen can render them in order without knowing about each feature.
+  // Cards are derived purely from existing data (last paid order,
+  // dietary filters) — no new state to track. Returns an empty array
+  // when nothing is personalisable for this customer (the home screen
+  // then falls back to the static welcome card).
+  app.get("/api/customers/me/home-cards", customerAuth, async (req, res) => {
+    if (!getServerFeatureFlags().personalisedHome) {
+      return res.json({ cards: [] });
+    }
+    try {
+      const customerId = (req as any).customerId as number;
+      const email = (req as any).customerEmail as string;
+      const customer = await storage.getCustomerById(customerId);
+      const cards: Array<Record<string, unknown>> = [];
+
+      // Card 1: "Reorder your last round" — only when there's a paid
+      // order in history. We surface the items as a compact label
+      // ("Pint of Carling × 2 + 1 more") so the card is readable at a
+      // glance without expanding into a full receipt.
+      const lastOrder = await storage.getLastPaidAppOrderForCustomer(email).catch(() => null);
+      if (lastOrder) {
+        let summary = "your last round";
+        try {
+          const parsed = JSON.parse(lastOrder.itemsJson || "[]");
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const first = parsed[0];
+            const firstLabel = `${first.name || "Item"}${first.quantity > 1 ? ` × ${first.quantity}` : ""}`;
+            summary = parsed.length > 1
+              ? `${firstLabel} + ${parsed.length - 1} more`
+              : firstLabel;
+          }
+        } catch {}
+        cards.push({
+          type: "reorder",
+          appOrderId: lastOrder.id,
+          summary,
+          totalPence: lastOrder.totalPence,
+          placedAt: lastOrder.createdAt,
+        });
+      }
+
+      // Card 2: "Your filters are on" reminder — only shown when the
+      // customer has saved dietary filters AND the dietary filters
+      // feature is also enabled. Helps explain why the menu may look
+      // shorter than they remember.
+      if (
+        customer?.dietaryFilters &&
+        getServerFeatureFlags().dietaryFilters
+      ) {
+        const filterCodes = customer.dietaryFilters.split(",").filter(Boolean);
+        if (filterCodes.length > 0) {
+          cards.push({
+            type: "dietary_reminder",
+            filters: filterCodes,
+          });
+        }
+      }
+
+      res.json({ cards });
+    } catch (err: any) {
+      console.error("[HOME CARDS] failed:", err.message);
+      res.json({ cards: [] }); // Never block the home screen
+    }
+  });
+
   app.post("/api/customers/me/push-token", customerAuth, async (req, res) => {
     const { token } = req.body;
     if (!token || typeof token !== "string" || token.length < 10 || token.length > 300) {

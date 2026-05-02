@@ -17,7 +17,7 @@ import { buildPaymentSheetHtml } from "@/components/squarePaymentSheetHtml";
 export interface SquarePaymentSheetProps {
   visible: boolean;
   onClose: () => void;
-  onTokenized: (payload: { sourceId: string; verificationToken?: string | null }) => void;
+  onTokenized: (payload: { sourceId: string; verificationToken?: string | null; saveCard?: boolean }) => void;
   /** Called if the SDK fails to load/init so the caller can fall back to hosted checkout. */
   onUnavailable?: (reason: string) => void;
   applicationId: string | null;
@@ -32,8 +32,12 @@ export interface SquarePaymentSheetProps {
    * Square verifyBuyer intent. Defaults to "CHARGE" for one-off payments. Use
    * "STORE" when saving a card on file for recurring billing (memberships) so
    * SCA/3DS is performed up front and the verification token is forwarded.
+   * Use "CHARGE_AND_STORE" (paired with `showSaveCard: true`) to render an
+   * opt-in checkbox during checkout — when ticked, the sheet runs SCA up
+   * front so the server can both charge the card AND save it for one-tap
+   * reorder. (FEATURE_SAVED_CARDS)
    */
-  intent?: "CHARGE" | "STORE";
+  intent?: "CHARGE" | "STORE" | "CHARGE_AND_STORE";
   /**
    * Optional recurring billing description shown to the user when this card
    * will be saved for a subscription (e.g. memberships). Pass something like
@@ -43,10 +47,17 @@ export interface SquarePaymentSheetProps {
    * Membership" so it's clear what they're agreeing to.
    */
   recurringDescription?: string | null;
+  /**
+   * When true (and intent is "CHARGE_AND_STORE") render an opt-in
+   * "Save card for one-tap reorder" checkbox below the pay button. The
+   * checkbox state is reported back to the host via `saveCard` on the
+   * tokenized payload. Defaults to false.
+   */
+  showSaveCard?: boolean;
 }
 
 type BridgeMessage =
-  | { type: "token"; token: string; verificationToken?: string | null }
+  | { type: "token"; token: string; verificationToken?: string | null; saveCard?: boolean }
   | { type: "error"; message: string }
   | { type: "fatal"; message: string }
   | ({ type: "diag"; phase: string } & Record<string, unknown>);
@@ -91,8 +102,9 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
       intent: props.intent || "CHARGE",
       buyerEmail: props.buyerEmail || null,
       recurringDescription: props.recurringDescription || null,
+      showSaveCard: !!props.showSaveCard,
     });
-  }, [props.applicationId, props.locationId, props.environment, props.amountPence, props.currency, props.intent, props.buyerEmail, props.recurringDescription]);
+  }, [props.applicationId, props.locationId, props.environment, props.amountPence, props.currency, props.intent, props.buyerEmail, props.recurringDescription, props.showSaveCard]);
 
   // Reset error when the sheet is reopened
   useEffect(() => {
@@ -123,7 +135,11 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
     const msg = raw as Partial<BridgeMessage> & { type?: string };
     if (msg.type === "token" && typeof (msg as { token?: unknown }).token === "string") {
       const m = msg as Extract<BridgeMessage, { type: "token" }>;
-      props.onTokenized({ sourceId: m.token, verificationToken: m.verificationToken ?? null });
+      props.onTokenized({
+        sourceId: m.token,
+        verificationToken: m.verificationToken ?? null,
+        saveCard: !!m.saveCard,
+      });
     } else if (msg.type === "error" && typeof (msg as { message?: unknown }).message === "string") {
       setInternalError((msg as Extract<BridgeMessage, { type: "error" }>).message);
     } else if (msg.type === "fatal" && typeof (msg as { message?: unknown }).message === "string") {

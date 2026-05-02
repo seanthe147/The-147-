@@ -17,9 +17,28 @@ export function buildPaymentSheetHtml(opts: {
   environment: "production" | "sandbox";
   amountPence: number;
   currency: string;
-  intent?: "CHARGE" | "STORE";
+  /**
+   * Square verifyBuyer intent.
+   *   "CHARGE"           — one-off payment, no SCA challenge up front.
+   *   "STORE"            — tokenize for future use (e.g. memberships).
+   *                        SCA performed via verifyBuyer({ intent: "STORE" }).
+   *   "CHARGE_AND_STORE" — pay this order AND save the card on file. Used by
+   *                        FEATURE_SAVED_CARDS so the customer can opt-in via
+   *                        a checkbox during checkout. SCA is performed with
+   *                        intent "STORE" so the verification token can be
+   *                        forwarded to Square's /v2/cards endpoint.
+   */
+  intent?: "CHARGE" | "STORE" | "CHARGE_AND_STORE";
   buyerEmail?: string | null;
   recurringDescription?: string | null;
+  /**
+   * When true (and intent is "CHARGE_AND_STORE"), render an opt-in checkbox
+   * below the card form labelled "Save card for one-tap reorder". The
+   * checkbox state is forwarded to the host as `saveCard` on the token
+   * message. When false the host receives saveCard=false and behaves
+   * exactly like a plain CHARGE.
+   */
+  showSaveCard?: boolean;
 }): string {
   const sdkSrc =
     opts.environment === "production"
@@ -147,6 +166,22 @@ export function buildPaymentSheetHtml(opts: {
 
     #recurring-fineprint { display: none; font-size: 11.5px; color: #6B7280; line-height: 1.5; margin-top: 10px; text-align: center; }
 
+    /* ── FEATURE_SAVED_CARDS opt-in checkbox ──
+       Hidden by default; the inline script un-hides it when SHOW_SAVE_CARD
+       is true and the card form has finished initialising. The checkbox
+       sits BELOW the pay button so it never visually competes with the
+       primary action — opt-in is intentional, not the default.
+    */
+    #save-card-row {
+      display: none; align-items: flex-start; gap: 10px;
+      margin-top: 14px; padding: 11px 12px;
+      background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 10px;
+      cursor: pointer; user-select: none; -webkit-user-select: none;
+    }
+    #save-card-row input[type="checkbox"] { width: 18px; height: 18px; margin: 1px 0 0 0; accent-color: #0047AB; flex-shrink: 0; }
+    #save-card-row .save-card-label { font-size: 13px; font-weight: 600; color: #0A1628; line-height: 1.35; }
+    #save-card-row .save-card-sub { font-size: 11.5px; color: #6B7280; font-weight: 500; line-height: 1.4; margin-top: 2px; }
+
     #status { margin-top: 10px; font-size: 13px; color: #DC2626; min-height: 16px; text-align: center; font-weight: 500; }
 
     #loading { display: flex; align-items: center; justify-content: center; gap: 10px; color: #6B7280; font-size: 13px; padding: 24px 0; }
@@ -194,6 +229,13 @@ export function buildPaymentSheetHtml(opts: {
       <div id="card-container"></div>
       <button id="pay-card-btn" type="button">Pay £${amountStr}</button>
       <div id="recurring-fineprint"></div>
+      <label id="save-card-row" for="save-card-checkbox">
+        <input id="save-card-checkbox" type="checkbox" />
+        <div>
+          <div class="save-card-label">Save card for one-tap reorder</div>
+          <div class="save-card-sub">Stored securely with Square. You can remove it from your account at any time.</div>
+        </div>
+      </label>
     </div>
   </div>
 
@@ -222,6 +264,7 @@ export function buildPaymentSheetHtml(opts: {
       var INTENT = ${JSON.stringify(opts.intent || "CHARGE")};
       var BUYER_EMAIL = ${JSON.stringify(opts.buyerEmail || "")};
       var RECURRING_DESC = ${JSON.stringify(opts.recurringDescription || "")};
+      var SHOW_SAVE_CARD = ${JSON.stringify(!!opts.showSaveCard)};
       var SDK_SRC = ${JSON.stringify(sdkSrc)};
       var PHASE_TIMEOUT_MS = ${PHASE_TIMEOUT_MS};
       var ENVIRONMENT = ${JSON.stringify(opts.environment)};
@@ -473,12 +516,26 @@ export function buildPaymentSheetHtml(opts: {
       }
 
       function verifyAndSend(token) {
-        // For STORE intent (saving a card on file for recurring billing) we
-        // run verifyBuyer up front so SCA/3DS challenges happen here. For
-        // CHARGE intent we currently skip verifyBuyer and let the server
-        // attempt the payment without 3DS — preserving existing behaviour.
-        if (INTENT !== "STORE") {
-          send({ type: "token", token: token });
+        // FEATURE_SAVED_CARDS: read the opt-in checkbox state at tokenize
+        // time. Only meaningful for INTENT === "CHARGE_AND_STORE" — for
+        // every other intent the saveCard flag is forwarded as false and
+        // the server ignores it.
+        var saveCardChecked = false;
+        if (SHOW_SAVE_CARD) {
+          var cb = document.getElementById("save-card-checkbox");
+          saveCardChecked = !!(cb && cb.checked);
+        }
+        // The "we need an SCA challenge up front" paths are STORE (membership
+        // sign-up) and CHARGE_AND_STORE *when* the customer has opted in to
+        // saving the card. For plain CHARGE — and for CHARGE_AND_STORE with
+        // the checkbox unchecked — skip verifyBuyer to preserve existing
+        // one-tap behaviour: the server will still try the payment without
+        // a 3DS token (Square will challenge there if it must).
+        var needsSca =
+          INTENT === "STORE" ||
+          (INTENT === "CHARGE_AND_STORE" && saveCardChecked);
+        if (!needsSca) {
+          send({ type: "token", token: token, saveCard: saveCardChecked });
           return;
         }
         try {
@@ -489,21 +546,21 @@ export function buildPaymentSheetHtml(opts: {
             billingContact: BUYER_EMAIL ? { email: BUYER_EMAIL } : {},
           };
           payments.verifyBuyer(token, verifyDetails).then(function (vr) {
-            send({ type: "token", token: token, verificationToken: vr && vr.token ? vr.token : null });
+            send({ type: "token", token: token, verificationToken: vr && vr.token ? vr.token : null, saveCard: saveCardChecked });
           }).catch(function (err) {
             // Some cards do not require SCA — Square returns an error in that
             // case. Forward the token without a verificationToken so the
             // server can still try to save the card.
             var msg = (err && err.message) || "";
             if (/not\\s+required|no\\s+challenge|UNSUPPORTED/i.test(msg)) {
-              send({ type: "token", token: token, verificationToken: null });
+              send({ type: "token", token: token, verificationToken: null, saveCard: saveCardChecked });
             } else {
               setStatus(msg || "Card verification failed");
               send({ type: "error", message: msg || "Card verification failed" });
             }
           });
         } catch (e) {
-          send({ type: "token", token: token, verificationToken: null });
+          send({ type: "token", token: token, verificationToken: null, saveCard: saveCardChecked });
         }
       }
 
@@ -568,6 +625,14 @@ export function buildPaymentSheetHtml(opts: {
           }
         }
         hideLoading();
+        // FEATURE_SAVED_CARDS: reveal the save-card checkbox now that the
+        // card form is interactive. Hidden by default in CSS so it never
+        // flashes during loading — appears only when the host has opted
+        // into showing it (authenticated customer, no card already saved).
+        if (SHOW_SAVE_CARD) {
+          var saveRow = document.getElementById("save-card-row");
+          if (saveRow) saveRow.style.display = "flex";
+        }
         // The card form is now visible and interactive — this is the
         // customer-perceived "ready to pay" moment. Diagnostic phase used
         // server-side to chart end-to-end TTI (sheet open → interactive)

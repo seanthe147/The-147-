@@ -22,6 +22,7 @@ import * as Haptics from "expo-haptics";
 import { useQuery } from "@tanstack/react-query";
 import { getApiUrl } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
+import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import Colors from "@/constants/colors";
 import { OPENING_HOURS } from "@/lib/data";
 import type { Event, BannerImage, Offer } from "@shared/schema";
@@ -567,6 +568,13 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.body}>
+          {/* FEATURE_PERSONALISED_HOME: personalised cards rendered above
+              quick actions. The hook returns an empty array unless the
+              flag is on, the customer is signed in, and there's something
+              relevant to show — so this section silently disappears in
+              every other case. */}
+          <PersonalisedHomeCards />
+
           <View style={styles.quickNav}>
             <QuickActionPill
               icon="calendar-outline"
@@ -1150,4 +1158,155 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.brand.blue,
   },
+
+  // FEATURE_PERSONALISED_HOME — section + cards on the home tab.
+  personalisedSection: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 4,
+    gap: 10,
+  },
+  personalisedTitle: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 13,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    color: Colors.light.textSecondary,
+    marginBottom: 4,
+  },
+  personalisedCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#EEF0F3",
+    padding: 14,
+    gap: 12,
+  },
+  personalisedIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.brand.blue + "1A",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  personalisedBody: {
+    flex: 1,
+  },
+  personalisedHeading: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 14,
+    color: Colors.light.text,
+    marginBottom: 2,
+  },
+  personalisedSub: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+  },
 });
+
+/**
+ * FEATURE_PERSONALISED_HOME
+ * Renders the customer's personalised cards (last-order reorder, dietary
+ * reminder, etc) at the top of the home body. Returns null when the flag
+ * is off, the customer isn't signed in, or the server returned no cards
+ * — keeping the home layout identical to the pre-flag version in those
+ * cases.
+ */
+function PersonalisedHomeCards() {
+  const { customer, getCustomerToken } = useCustomerAuth();
+  const { flags } = useFeatureFlags();
+
+  type ReorderCard = {
+    type: "reorder";
+    appOrderId: number;
+    summary: string;
+    totalPence: number;
+    placedAt: string;
+  };
+  type DietaryCard = {
+    type: "dietary_reminder";
+    filters: string[];
+  };
+  type HomeCard = ReorderCard | DietaryCard;
+
+  const { data } = useQuery<{ cards: HomeCard[] }>({
+    queryKey: ["/api/customers/me/home-cards", customer?.id],
+    enabled: !!flags.personalisedHome && !!customer,
+    staleTime: 60 * 1000,
+    queryFn: async () => {
+      const token = getCustomerToken();
+      if (!token) return { cards: [] };
+      const res = await fetch(new URL("/api/customers/me/home-cards", getApiUrl()).toString(), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return { cards: [] };
+      return res.json();
+    },
+  });
+
+  const cards = data?.cards ?? [];
+  if (!flags.personalisedHome || !customer || cards.length === 0) return null;
+
+  return (
+    <View style={styles.personalisedSection}>
+      <Text style={styles.personalisedTitle}>For you</Text>
+      {cards.map((card, idx) => {
+        if (card.type === "reorder") {
+          return (
+            <Pressable
+              key={`reorder-${card.appOrderId}`}
+              onPress={() => {
+                if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push("/(tabs)/order");
+              }}
+              style={({ pressed }) => [styles.personalisedCard, { transform: [{ scale: pressed ? 0.98 : 1 }] }]}
+              testID="home-card-reorder"
+            >
+              <View style={styles.personalisedIconWrap}>
+                <Ionicons name="repeat" size={20} color={Colors.brand.blue} />
+              </View>
+              <View style={styles.personalisedBody}>
+                <Text style={styles.personalisedHeading} numberOfLines={1}>
+                  Reorder your last round
+                </Text>
+                <Text style={styles.personalisedSub} numberOfLines={1}>
+                  {card.summary} · £{(card.totalPence / 100).toFixed(2)}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={Colors.light.textSecondary} />
+            </Pressable>
+          );
+        }
+        // dietary_reminder
+        return (
+          <Pressable
+            key={`dietary-${idx}`}
+            onPress={() => {
+              if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push("/(tabs)/order");
+            }}
+            style={({ pressed }) => [styles.personalisedCard, { transform: [{ scale: pressed ? 0.98 : 1 }] }]}
+            testID="home-card-dietary"
+          >
+            <View style={[styles.personalisedIconWrap, { backgroundColor: "#16A34A1A" }]}>
+              <Ionicons name="leaf" size={20} color="#16A34A" />
+            </View>
+            <View style={styles.personalisedBody}>
+              <Text style={styles.personalisedHeading} numberOfLines={1}>
+                Showing {card.filters.join(", ")} options
+              </Text>
+              <Text style={styles.personalisedSub} numberOfLines={1}>
+                Tap to browse the filtered menu
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={Colors.light.textSecondary} />
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}

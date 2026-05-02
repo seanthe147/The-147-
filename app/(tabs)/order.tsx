@@ -36,6 +36,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
+import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
 import { useCart } from "@/contexts/CartContext";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
@@ -50,6 +51,8 @@ import {
   clearPendingConfirmation,
 } from "@/lib/pending-order";
 import type { MenuCategory, MenuItem, ModifierList, SelectedModifier } from "@/types/menu";
+import { DIETARY_TAGS, type DietaryTagCode } from "@/types/menu";
+import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const BANNER_HEIGHT = 200;
@@ -624,10 +627,13 @@ function ItemCard({
   item,
   onOpenModifiers,
   highlighted,
+  showDietaryTags,
 }: {
   item: MenuItem;
   onOpenModifiers: (item: MenuItem) => void;
   highlighted?: boolean;
+  /** FEATURE_DIETARY_FILTERS: render dietary badges next to the item name. */
+  showDietaryTags?: boolean;
 }) {
   const { addItem, updateQuantity, getQuantity } = useCart();
   const qty = getQuantity(item.variationId);
@@ -635,6 +641,14 @@ function ItemCard({
   const cartName = item.variationName ? `${item.name} — ${item.variationName}` : item.name;
   const hasImage = !!item.imageUrl;
   const hasModifiers = !!(item.modifiers && item.modifiers.length > 0);
+  // FEATURE_DIETARY_FILTERS: resolve tag codes to {label, colour}. Skipped
+  // when the parent didn't opt in via showDietaryTags so menus rendered
+  // for venues without the flag stay visually identical to before.
+  const tagBadges = (showDietaryTags && item.dietaryTags && item.dietaryTags.length > 0)
+    ? item.dietaryTags
+        .map(code => DIETARY_TAGS.find(t => t.code === code))
+        .filter((t): t is typeof DIETARY_TAGS[number] => !!t)
+    : [];
 
   const handleAdd = () => {
     if (hasModifiers) {
@@ -682,6 +696,15 @@ function ItemCard({
         </View>
         {!!item.description && (
           <Text style={[styles.itemDesc, soldOut && { opacity: 0.4 }]} numberOfLines={2}>{item.description}</Text>
+        )}
+        {tagBadges.length > 0 && (
+          <View style={styles.dietaryRow}>
+            {tagBadges.map(t => (
+              <View key={t.code} style={[styles.dietaryBadge, { backgroundColor: t.colour + "1A", borderColor: t.colour + "55" }]}>
+                <Text style={[styles.dietaryBadgeText, { color: t.colour }]}>{t.code}</Text>
+              </View>
+            ))}
+          </View>
         )}
         <Text style={[styles.itemPrice, soldOut && { opacity: 0.4 }]}>{formatPrice(item.price)}</Text>
       </View>
@@ -752,6 +775,7 @@ function CartSheet({
   const { items, updateQuantity, clearCart, totalPrice } = useCart();
   const { customer, getCustomerToken } = useCustomerAuth();
   const { expoPushToken } = useNotifications();
+  const { flags } = useFeatureFlags();
   const [step, setStep] = useState<"cart" | "customer">("cart");
   const [tableNote, setTableNote] = useState("");
   const [orderNote, setOrderNote] = useState("");
@@ -766,6 +790,29 @@ function CartSheet({
   const [cancelledNotice, setCancelledNotice] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+
+  // FEATURE_SAVED_CARDS: snapshot of the customer's stored card, if any.
+  // Only fetched when both the flag is on AND the customer is authenticated
+  // (anonymous orders have no account to attach a card to). The endpoint
+  // returns 404 when nothing is saved — we map that to `null` so the rest
+  // of the checkout can do a simple truthy check.
+  const { data: savedCard } = useQuery<
+    { brand: string; last4: string; expMonth: number | null; expYear: number | null } | null
+  >({
+    queryKey: ["/api/customers/me/saved-card", customer?.id],
+    enabled: !!flags.savedCards && !!customer,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const token = getCustomerToken();
+      if (!token) return null;
+      const res = await fetch(new URL("/api/customers/me/saved-card", getApiUrl()).toString(), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`saved-card ${res.status}`);
+      return res.json();
+    },
+  });
 
   // Square Web Payments SDK config (cached for the session)
   const { data: squareConfig } = useQuery<{
@@ -917,6 +964,105 @@ function CartSheet({
   const snapshottedItemsRef = React.useRef<{ name: string; quantity: number; price: number; modifiers?: string[] }[]>([]);
   const snapshottedTableRef = React.useRef<string>("");
 
+  // FEATURE_SAVED_CARDS: one-tap reorder using the customer's saved card.
+  // Creates the pending order on the server (so totals/discounts are
+  // re-validated), then immediately POSTs to /pay-with-saved-card. On
+  // success the user goes straight to the confirmation screen, skipping
+  // the payment sheet entirely. On failure we surface the error inline
+  // and keep the cart so the user can try again or use a new card.
+  const handlePayWithSavedCard = async () => {
+    if (items.length === 0) return;
+    if (!customer) return;
+    setLoading(true);
+    setPayError(null);
+    try {
+      const apiBase = getApiUrl();
+      const token = await getCustomerToken();
+      if (!token) throw new Error("Not signed in");
+
+      // Step 1: create the pending order (same payload as normal flow).
+      const createUrl = new URL("/api/orders/create", apiBase);
+      const createRes = await fetch(createUrl.toString(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(buildOrderPayload()),
+      });
+      const createData = await createRes.json();
+      if (!createRes.ok) {
+        if (createRes.status === 503) {
+          void queryClient.invalidateQueries({ queryKey: ["/api/ordering-status"] });
+        }
+        throw new Error(createData.message || "Could not start checkout");
+      }
+
+      // Snapshot for confirmation screen
+      snapshottedItemsRef.current = items.map((i) => ({
+        name: i.name,
+        quantity: i.quantity,
+        price: i.price,
+        ...(i.modifiers?.length ? { modifiers: i.modifiers.map((m) => m.name) } : {}),
+      }));
+      snapshottedTableRef.current = tableNote.trim();
+      const created = { appOrderId: createData.appOrderId, amountPence: createData.amountPence, confirmationToken: createData.confirmationToken };
+      setPendingOrder(created);
+      if (typeof created.confirmationToken === "string" && created.confirmationToken.length > 0) {
+        void setPendingConfirmation({ appOrderId: created.appOrderId, token: created.confirmationToken });
+      }
+
+      // Step 2: charge the saved card.
+      setPaying(true);
+      const payUrl = new URL(`/api/orders/${created.appOrderId}/pay-with-saved-card`, apiBase);
+      const payRes = await fetch(payUrl.toString(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const payData = await payRes.json();
+      const alreadyPaid =
+        payRes.status === 409 &&
+        typeof payData?.message === "string" &&
+        /already.?paid|already.?processed/i.test(payData.message);
+      if (!alreadyPaid && (!payRes.ok || !payData.ok)) {
+        // 412 = no card on file (race with delete from another device).
+        // Refetch the saved-card query so the UI removes the CTA, then
+        // surface a helpful message rather than a raw API error.
+        if (payRes.status === 412) {
+          void queryClient.invalidateQueries({ queryKey: ["/api/customers/me/saved-card", customer.id] });
+          throw new Error("Your saved card is no longer on file. Please use a different card.");
+        }
+        throw new Error(payData.message || "Payment was declined.");
+      }
+
+      // Step 3: success — same teardown as the normal flow.
+      const confirmationParams: Record<string, string> = {
+        appOrderId: String(created.appOrderId),
+        tableNote: snapshottedTableRef.current,
+        totalPence: String(created.amountPence),
+        items: JSON.stringify(snapshottedItemsRef.current),
+      };
+      if (created.confirmationToken) {
+        confirmationParams.token = created.confirmationToken;
+      }
+      setPendingOrder(null);
+      onClose();
+      clearCart();
+      setTableNote("");
+      setOrderNote("");
+      setStep("cart");
+      router.push({ pathname: "/order-confirmation", params: confirmationParams });
+    } catch (err: any) {
+      setPayError(err.message || "Payment failed. Please try again.");
+    } finally {
+      setLoading(false);
+      setPaying(false);
+    }
+  };
+
   const handleCheckout = async () => {
     if (items.length === 0) return;
     if (!squareConfig?.configured) {
@@ -974,7 +1120,7 @@ function CartSheet({
     }
   };
 
-  const handleTokenized = async (payload: { sourceId: string; verificationToken?: string | null }) => {
+  const handleTokenized = async (payload: { sourceId: string; verificationToken?: string | null; saveCard?: boolean }) => {
     if (!pendingOrder) return;
     // Biometric (Face ID / Touch ID / Fingerprint) confirmation step. We
     // only prompt on devices that have it enrolled — if the device doesn't
@@ -1006,13 +1152,23 @@ function CartSheet({
     try {
       const apiBase = getApiUrl();
       const url = new URL(`/api/orders/${pendingOrder.appOrderId}/pay`, apiBase);
+      // FEATURE_SAVED_CARDS: forward the save-card opt-in flag and the
+      // session token. The session is required so the server can attach
+      // the card to the right customer; without it the server safely
+      // ignores saveCard and behaves like a plain charge.
+      const payHeaders: Record<string, string> = { "Content-Type": "application/json" };
+      if (flags.savedCards && payload.saveCard && customer) {
+        const t = await getCustomerToken();
+        if (t) payHeaders.Authorization = `Bearer ${t}`;
+      }
       const res = await fetch(url.toString(), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: payHeaders,
         body: JSON.stringify({
           sourceId: payload.sourceId,
           verificationToken: payload.verificationToken ?? undefined,
           buyerEmail: customer?.email || guestEmail.trim() || undefined,
+          ...(flags.savedCards && payload.saveCard ? { saveCard: true } : {}),
         }),
       });
       const data = await res.json();
@@ -1418,22 +1574,55 @@ function CartSheet({
               {/* Compact order summary */}
               <TotalSummary />
 
-              {/* Place order button */}
-              <Pressable
-                onPress={handleCheckout}
-                disabled={loading}
-                style={({ pressed }) => [styles.checkoutBtn, { opacity: pressed || loading ? 0.8 : 1, marginHorizontal: 16 }]}
-                testID="checkout-btn"
-              >
-                {loading ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <>
-                    <Text style={styles.checkoutBtnText}>Place Order</Text>
-                    <Text style={styles.checkoutBtnSub}>Apple Pay · Google Pay · Card</Text>
-                  </>
-                )}
-              </Pressable>
+              {/* FEATURE_SAVED_CARDS: one-tap "Pay with •••• 4242" button
+                  shown when the customer has a card on file. Tapping it
+                  creates the order and immediately charges the saved card —
+                  no payment sheet appears. The "Use a different card" link
+                  below falls back to the standard sheet flow. */}
+              {flags.savedCards && customer && savedCard ? (
+                <View style={{ paddingHorizontal: 16 }}>
+                  <Pressable
+                    onPress={handlePayWithSavedCard}
+                    disabled={loading || paying}
+                    style={({ pressed }) => [styles.checkoutBtn, { opacity: pressed || loading || paying ? 0.8 : 1 }]}
+                    testID="checkout-saved-card-btn"
+                  >
+                    {(loading || paying) ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <>
+                        <Text style={styles.checkoutBtnText}>Pay with {savedCard.brand} •••• {savedCard.last4}</Text>
+                        <Text style={styles.checkoutBtnSub}>One-tap reorder</Text>
+                      </>
+                    )}
+                  </Pressable>
+                  <Pressable
+                    onPress={handleCheckout}
+                    disabled={loading || paying}
+                    hitSlop={8}
+                    style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, marginTop: 12, alignItems: "center" })}
+                  >
+                    <Text style={styles.useNewCardLink}>Use a different card →</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                /* Place order button */
+                <Pressable
+                  onPress={handleCheckout}
+                  disabled={loading}
+                  style={({ pressed }) => [styles.checkoutBtn, { opacity: pressed || loading ? 0.8 : 1, marginHorizontal: 16 }]}
+                  testID="checkout-btn"
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <>
+                      <Text style={styles.checkoutBtnText}>Place Order</Text>
+                      <Text style={styles.checkoutBtnSub}>Apple Pay · Google Pay · Card</Text>
+                    </>
+                  )}
+                </Pressable>
+              )}
             </ScrollView>
           )}
         </View>
@@ -1451,6 +1640,13 @@ function CartSheet({
       buyerEmail={customer?.email || guestEmail.trim() || null}
       inProgress={paying}
       errorMessage={payError}
+      // FEATURE_SAVED_CARDS: opt-in checkbox is only shown when (a) the flag
+      // is on, (b) the buyer is signed in, AND (c) they don't already have
+      // a saved card. CHARGE_AND_STORE intent triggers a 3DS challenge if
+      // the customer ticks the box; otherwise it behaves identically to
+      // CHARGE so latency / SCA UX is unaffected for non-opt-in users.
+      intent={flags.savedCards && customer && !savedCard ? "CHARGE_AND_STORE" : "CHARGE"}
+      showSaveCard={!!(flags.savedCards && customer && !savedCard)}
     />
     </>
   );
@@ -1481,7 +1677,12 @@ export default function OrderScreen() {
   const [modifierItem, setModifierItem] = useState<MenuItem | null>(null);
   const [highlightItemId, setHighlightItemId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  // FEATURE_DIETARY_FILTERS: which tag codes the customer has toggled on.
+  // Local state only for the test-version — when the flag promotes to a
+  // long-lived feature we'll persist this via PATCH /api/customers/me/dietary-filters.
+  const [dietaryFilters, setDietaryFilters] = useState<Set<DietaryTagCode>>(new Set());
   const { totalItems, totalPrice, addItem } = useCart();
+  const { flags: featureFlags } = useFeatureFlags();
   const categoryScrollRef = useRef<ScrollView>(null);
   const searchRef = useRef<TextInput>(null);
 
@@ -1530,10 +1731,29 @@ export default function OrderScreen() {
   // True when we are showing a sub-category grid (parent has children, no leaf selected)
   const showingSubcategoryGrid = !!activeTopCategory && !activeSubcategory && (activeTopCategory.subcategories?.length ?? 0) > 0;
 
-  const activeItems = useMemo(
-    () => (showingSubcategoryGrid ? [] : activeCategoryData?.items ?? []),
-    [activeCategoryData, showingSubcategoryGrid]
-  );
+  const activeItems = useMemo(() => {
+    const base = showingSubcategoryGrid ? [] : (activeCategoryData?.items ?? []);
+    // FEATURE_DIETARY_FILTERS: when chips are active, hide items that don't
+    // include EVERY selected tag. We intentionally don't hide untagged items
+    // when no chips are selected — that would empty the menu for venues
+    // that haven't tagged anything yet.
+    if (!featureFlags.dietaryFilters || dietaryFilters.size === 0) return base;
+    return base.filter(item => {
+      const tags = item.dietaryTags ?? [];
+      for (const f of dietaryFilters) {
+        if (!tags.includes(f)) return false;
+      }
+      return true;
+    });
+  }, [activeCategoryData, showingSubcategoryGrid, featureFlags.dietaryFilters, dietaryFilters]);
+
+  const toggleDietaryFilter = useCallback((code: DietaryTagCode) => {
+    setDietaryFilters(prev => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code); else next.add(code);
+      return next;
+    });
+  }, []);
 
   const headerHeight = insets.top + 56 + (Platform.OS === "web" ? webTopInset : 0);
   const searchBarHeight = 52;
@@ -1651,7 +1871,7 @@ export default function OrderScreen() {
   }, [params.hlCatId, params.hlItemId, categories]);
 
   const renderItem = useCallback(({ item }: { item: MenuItem }) => (
-    <ItemCard item={item} onOpenModifiers={handleOpenModifiers} highlighted={item.id === highlightItemId} />
+    <ItemCard item={item} onOpenModifiers={handleOpenModifiers} highlighted={item.id === highlightItemId} showDietaryTags={featureFlags.dietaryFilters} />
   ), [handleOpenModifiers, highlightItemId]);
 
   const handleSelectCategory = useCallback((id: string) => {
@@ -1785,7 +2005,7 @@ export default function OrderScreen() {
                       <View style={styles.searchCatLabel}>
                         <Text style={styles.searchCatLabelText}>{categoryName}</Text>
                       </View>
-                      <ItemCard item={item} onOpenModifiers={handleOpenModifiers} />
+                      <ItemCard item={item} onOpenModifiers={handleOpenModifiers} showDietaryTags={featureFlags.dietaryFilters} />
                     </View>
                   ))}
                 </View>
@@ -1817,6 +2037,53 @@ export default function OrderScreen() {
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>What would you like?</Text>
               </View>
+
+              {/* FEATURE_DIETARY_FILTERS: chip row of allergen / lifestyle
+                  filters. Tapping a chip toggles it; "Clear" resets all.
+                  Filtering is applied inside activeItems so only the menu
+                  list reacts — the category grid stays visible. */}
+              {featureFlags.dietaryFilters && (
+                <View style={styles.dietaryChipBar}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.dietaryChipScroll}
+                  >
+                    {DIETARY_TAGS.map(tag => {
+                      const active = dietaryFilters.has(tag.code);
+                      return (
+                        <Pressable
+                          key={tag.code}
+                          onPress={() => {
+                            if (Platform.OS !== "web") Haptics.selectionAsync();
+                            toggleDietaryFilter(tag.code);
+                          }}
+                          style={({ pressed }) => [
+                            styles.dietaryChip,
+                            active && { backgroundColor: tag.colour, borderColor: tag.colour },
+                            pressed && { opacity: 0.7 },
+                          ]}
+                          testID={`dietary-chip-${tag.code}`}
+                        >
+                          <Text style={[styles.dietaryChipText, active && styles.dietaryChipTextActive]}>
+                            {tag.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                    {dietaryFilters.size > 0 && (
+                      <Pressable
+                        onPress={() => setDietaryFilters(new Set())}
+                        style={({ pressed }) => [styles.dietaryClearChip, pressed && { opacity: 0.6 }]}
+                        testID="dietary-chip-clear"
+                      >
+                        <Ionicons name="close" size={14} color={Colors.light.textSecondary} />
+                        <Text style={styles.dietaryClearText}>Clear</Text>
+                      </Pressable>
+                    )}
+                  </ScrollView>
+                </View>
+              )}
 
               <CategoryGrid categories={categories} onSelect={handleSelectCategory} />
             </>
@@ -2833,5 +3100,74 @@ const styles = StyleSheet.create({
     color: Colors.light.textSecondary,
     textAlign: "right",
     marginTop: 4,
+  },
+
+  // FEATURE_DIETARY_FILTERS — badges shown on each ItemCard.
+  dietaryRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 4,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  dietaryBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  dietaryBadgeText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 9,
+    letterSpacing: 0.4,
+  },
+
+  // FEATURE_DIETARY_FILTERS — horizontally-scrolling chip row above the
+  // category grid. Active chips fill with their tag colour.
+  dietaryChipBar: {
+    marginTop: -6,
+    marginBottom: 6,
+  },
+  dietaryChipScroll: {
+    paddingHorizontal: 16,
+    gap: 8,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  dietaryChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+    backgroundColor: Colors.light.surfaceElevated,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+  },
+  dietaryChipText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+  },
+  dietaryChipTextActive: {
+    color: "#FFFFFF",
+  },
+  dietaryClearChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  dietaryClearText: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+  },
+
+  // FEATURE_SAVED_CARDS — link below the saved-card CTA that lets the
+  // customer fall through to the standard new-card sheet.
+  useNewCardLink: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 13,
+    color: Colors.brand.blue,
   },
 });

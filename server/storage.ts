@@ -2808,6 +2808,110 @@ export class DatabaseStorage implements IStorage {
     return row ? decryptPaymentLog(row) : null;
   }
 
+  // ────────────────────────────────────────────────────────────────────────
+  // Feature-flagged additions (May 2026 test version)
+  // The methods below back the four feature flags defined in
+  // shared/featureFlags.ts. Each one is a thin write wrapper — the public
+  // read paths reuse the existing getCustomerById / getMenuItemOverrides
+  // methods above so we don't fan out the encryption / decryption surface.
+  // ────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Persist a single saved card on a customer (FEATURE_SAVED_CARDS). One card
+   * per customer in the test version — calling this overwrites whatever was
+   * there before (and the caller is responsible for first DELETEing the old
+   * card on Square's side via Square's /v2/cards/{id}/disable). Caller must
+   * have already created or looked up the Square Customer.
+   */
+  async setCustomerSavedCard(
+    customerId: number,
+    card: {
+      squareCustomerId: string;
+      squareCardId: string;
+      brand: string | null;
+      last4: string | null;
+      expMonth: number | null;
+      expYear: number | null;
+    }
+  ): Promise<void> {
+    await db.update(customers).set({
+      squareCustomerId: card.squareCustomerId,
+      squareCardId: card.squareCardId,
+      squareCardBrand: card.brand,
+      squareCardLast4: card.last4,
+      squareCardExpMonth: card.expMonth,
+      squareCardExpYear: card.expYear,
+    }).where(eq(customers.id, customerId));
+  }
+
+  /** Forget the saved card. squareCustomerId is preserved so a re-save
+   *  doesn't have to re-create the Square Customer. */
+  async clearCustomerSavedCard(customerId: number): Promise<void> {
+    await db.update(customers).set({
+      squareCardId: null,
+      squareCardBrand: null,
+      squareCardLast4: null,
+      squareCardExpMonth: null,
+      squareCardExpYear: null,
+    }).where(eq(customers.id, customerId));
+  }
+
+  /** Update the dietary-preference filter on a customer (FEATURE_DIETARY_FILTERS).
+   *  Pass null to clear. */
+  async setCustomerDietaryFilters(customerId: number, filters: string | null): Promise<void> {
+    await db.update(customers).set({ dietaryFilters: filters }).where(eq(customers.id, customerId));
+  }
+
+  /** Set / replace the dietary-tag string for a menu variation (FEATURE_DIETARY_FILTERS).
+   *  Mirrors setMenuItemSoldOut / setMenuItemHidden — preserves the other
+   *  override flags by reading the existing row first. Pass null/empty
+   *  string to clear all tags. */
+  async setMenuItemDietaryTags(
+    variationId: string,
+    itemId: string,
+    name: string,
+    dietaryTags: string | null,
+    updatedBy: string
+  ): Promise<void> {
+    const existing = await db.select().from(menuItemOverrides).where(eq(menuItemOverrides.variationId, variationId));
+    const currentSoldOut = existing[0]?.soldOut ?? false;
+    const currentHidden = existing[0]?.hidden ?? false;
+    const cleaned = dietaryTags && dietaryTags.trim() ? dietaryTags.trim() : null;
+    await db.insert(menuItemOverrides)
+      .values({ variationId, itemId, name, soldOut: currentSoldOut, hidden: currentHidden, dietaryTags: cleaned, updatedBy, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: menuItemOverrides.variationId,
+        set: { itemId, name, dietaryTags: cleaned, updatedBy, updatedAt: new Date() },
+      });
+  }
+
+  /**
+   * Most recent paid app-order for a customer (FEATURE_PERSONALISED_HOME).
+   * Used to power the "Reorder last round" home card. Hash-then-plaintext
+   * lookup mirrors getCustomerOrders so legacy + encrypted records both
+   * resolve. Returns null if the customer has never placed a paid order.
+   */
+  async getLastPaidAppOrderForCustomer(email: string): Promise<AppOrder | null> {
+    const PAID_STATUSES = ["paid", "preparing", "ready", "delivered", "collected"];
+    const emailHash = hashEmail(email);
+    const byHash = await db.select().from(appOrders)
+      .where(and(
+        eq(appOrders.customerEmailHash, emailHash),
+        inArray(appOrders.status, PAID_STATUSES)
+      ))
+      .orderBy(desc(appOrders.createdAt))
+      .limit(1);
+    if (byHash.length > 0) return decryptAppOrder(byHash[0]);
+    const byPlain = await db.select().from(appOrders)
+      .where(and(
+        eq(appOrders.customerEmail, email),
+        inArray(appOrders.status, PAID_STATUSES)
+      ))
+      .orderBy(desc(appOrders.createdAt))
+      .limit(1);
+    return byPlain.length > 0 ? decryptAppOrder(byPlain[0]) : null;
+  }
+
 }
 
 export const storage = new DatabaseStorage();

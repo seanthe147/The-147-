@@ -242,6 +242,30 @@ export const customers = pgTable("customers", {
   // the bonus is awarded only when the customer opens the app, while the
   // push fires once at the start of the window to *invite* them in.
   lastBirthdayPushYear: integer("last_birthday_push_year"),
+  // ── Saved card on file (FEATURE_SAVED_CARDS) ───────────────────────────
+  // Cached link to the customer's Square Customer record so we can attach a
+  // card on file without searching by email each time. Created lazily the
+  // first time the customer asks to save a card during checkout. Membership
+  // signup uses its own membershipSubscriptions.squareCustomerId; this
+  // column covers customers who have *not* joined the membership.
+  squareCustomerId: text("square_customer_id"),
+  // The single saved card we offer as the "Pay with •••• 4242" CTA. We
+  // intentionally keep ONE card per customer (the most recently saved) for
+  // the test version — multi-card UX would need a card-picker sheet which
+  // is out of scope. The denormalised brand/last4/exp* columns are stored
+  // so the cart can render the CTA without an extra Square round-trip.
+  squareCardId: text("square_card_id"),
+  squareCardBrand: text("square_card_brand"),
+  squareCardLast4: text("square_card_last4"),
+  squareCardExpMonth: integer("square_card_exp_month"),
+  squareCardExpYear: integer("square_card_exp_year"),
+  // ── Dietary preferences (FEATURE_DIETARY_FILTERS) ──────────────────────
+  // Comma-separated list of tag codes the customer wants the menu to be
+  // pre-filtered to. Tag codes match menuItemOverrides.dietaryTags below
+  // (e.g. "V,VG,GF,DF,NF" — Vegetarian, Vegan, Gluten-Free, Dairy-Free,
+  // Nut-Free). Stored as plain text rather than text[] so the existing
+  // drizzle / zod / encryption tooling doesn't need a new array codec.
+  dietaryFilters: text("dietary_filters"),
 });
 
 export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true, createdAt: true });
@@ -577,6 +601,14 @@ export const menuItemOverrides = pgTable("menu_item_overrides", {
   name: text("name").notNull(),
   soldOut: boolean("sold_out").notNull().default(false),
   hidden: boolean("hidden").notNull().default(false),
+  // ── Dietary tags (FEATURE_DIETARY_FILTERS) ──────────────────────────────
+  // Comma-separated tag codes that describe an item's dietary suitability:
+  // V (Vegetarian), VG (Vegan), GF (Gluten-Free), DF (Dairy-Free),
+  // NF (Nut-Free). Empty / null means "untagged" — the filter UI surfaces
+  // those items only when the customer has no active filter selected, so
+  // staff can roll the feature out gradually without disappearing the
+  // un-tagged half of the menu.
+  dietaryTags: text("dietary_tags"),
   updatedBy: text("updated_by").notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

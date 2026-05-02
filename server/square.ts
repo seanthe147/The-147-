@@ -228,6 +228,49 @@ export async function findSquareCustomerByEmail(email: string) {
 }
 
 /**
+ * Disable a card on file (FEATURE_SAVED_CARDS — Forget Card flow). Square
+ * doesn't offer hard-delete on the cards endpoint; disabling makes the card
+ * unusable for future charges and is what the Square dashboard does too.
+ * Errors are swallowed by the caller so a Square outage can never block
+ * the local DB from also forgetting the card.
+ */
+export async function disableSquareCard(cardId: string): Promise<void> {
+  await squareRequest("POST", `/v2/cards/${cardId}/disable`, {});
+}
+
+/**
+ * One-tap charge against a previously-saved card on file (FEATURE_SAVED_CARDS).
+ * Square accepts the saved-card id directly as `source_id` on the standard
+ * /v2/payments endpoint — no extra "merchant initiated" flag is required for
+ * customer-present reorders, which is exactly the flow we want here.
+ */
+export async function chargeSavedCard(opts: {
+  squareCustomerId: string;
+  squareCardId: string;
+  amountPence: number;
+  idempotencyKey: string;
+  note?: string;
+  referenceId?: string;
+  buyerEmail?: string | null;
+  orderId?: string | null;
+}): Promise<{ id: string; status: string; receipt_url?: string }> {
+  const body: any = {
+    idempotency_key: opts.idempotencyKey,
+    source_id: opts.squareCardId,
+    customer_id: opts.squareCustomerId,
+    amount_money: { amount: opts.amountPence, currency: "GBP" },
+    location_id: getLocationId(),
+    autocomplete: true,
+  };
+  if (opts.note) body.note = opts.note.slice(0, 500);
+  if (opts.referenceId) body.reference_id = opts.referenceId.slice(0, 40);
+  if (opts.buyerEmail) body.buyer_email_address = opts.buyerEmail;
+  if (opts.orderId) body.order_id = opts.orderId;
+  const data = await squareRequest("POST", "/v2/payments", body);
+  return data.payment;
+}
+
+/**
  * Save a tokenised card on file against a Square customer so it can be re-used
  * for recurring billing (memberships). `sourceId` comes from the Web Payments
  * SDK `tokenize()` call. `verificationToken` is the optional 3DS/SCA token from
