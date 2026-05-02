@@ -19,6 +19,7 @@ import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
+import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
 import Colors from "@/constants/colors";
 import { TABLE_TYPES } from "@/lib/data";
 
@@ -102,6 +103,7 @@ export default function BookScreen() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [depositPaymentUrl, setDepositPaymentUrl] = useState<string | null>(null);
   const { isAuthenticated, customer, login, register } = useCustomerAuth();
+  const { greeting } = useCustomerGreeting();
   const [autoFilled, setAutoFilled] = useState(false);
 
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -297,6 +299,14 @@ export default function BookScreen() {
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Book a Table</Text>
+        {greeting ? (
+          // Personal touch when signed in. Stays visible across every
+          // step of the booking flow (table → success) so the warmth
+          // carries through to the confirmation moment.
+          <Text style={styles.headerSubtitle} numberOfLines={1}>
+            {greeting} — let's get you booked in
+          </Text>
+        ) : null}
       </View>
 
       {step !== "success" && (
@@ -1057,6 +1067,12 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_700Bold",
     fontSize: 22,
     color: "#FFFFFF",
+  },
+  headerSubtitle: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 13,
+    color: "rgba(255,255,255,0.75)",
+    marginTop: 2,
   },
   progressRow: {
     flexDirection: "row",

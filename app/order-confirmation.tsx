@@ -9,6 +9,7 @@ import Colors from "@/constants/colors";
 import { clearPendingConfirmation } from "@/lib/pending-order";
 import { getApiUrl } from "@/lib/query-client";
 import { useCart } from "@/contexts/CartContext";
+import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
 import type { SelectedModifier } from "@/types/menu";
 
 interface ReorderResponse {
@@ -153,6 +154,7 @@ export default function OrderConfirmationScreen() {
   // Reorder: rebuild the cart from this past receipt and bounce the
   // customer back to the order tab so they can pick a table and pay.
   const { addItems } = useCart();
+  const { firstName } = useCustomerGreeting();
   const [reordering, setReordering] = useState(false);
   const canReorder = !!appOrderId && !!token && status !== "cancelled" && status !== "refunded";
 
@@ -214,7 +216,9 @@ export default function OrderConfirmationScreen() {
         <View style={styles.iconRing}>
           <Ionicons name="checkmark" size={42} color="#16A34A" />
         </View>
-        <Text style={styles.title}>Order placed!</Text>
+        <Text style={styles.title}>
+          {firstName ? `Thanks, ${firstName}!` : "Order placed!"}
+        </Text>
         <Text style={styles.subtitle}>
           {tableNote
             ? `We'll bring your order to ${tableNote}.`

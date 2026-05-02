@@ -22,6 +22,7 @@ import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
 import { getApiUrl } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
+import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
 
 const SESSION_KEY = "loyalty_session";
 function loyaltyUrl(path: string): string {
@@ -491,6 +492,7 @@ export default function LoyaltyScreen() {
   const queryClient = useQueryClient();
 
   const { isAuthenticated, customer, getCustomerToken } = useCustomerAuth();
+  const { firstName } = useCustomerGreeting();
 
   const [step, setStep] = useState<AuthStep>("loading");
   const [phone, setPhone] = useState("");
@@ -736,7 +738,9 @@ export default function LoyaltyScreen() {
           <Ionicons name="diamond" size={28} color={Colors.brand.gold} />
           <Text style={styles.headerTitle}>Membership</Text>
           <Text style={styles.headerSubtitle}>
-            Earn points every time you visit The 147
+            {firstName
+              ? `Welcome back, ${firstName} — earn points every time you visit`
+              : "Earn points every time you visit The 147"}
           </Text>
         </LinearGradient>
 

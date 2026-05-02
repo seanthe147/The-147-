@@ -22,6 +22,7 @@ import * as Haptics from "expo-haptics";
 import { useQuery } from "@tanstack/react-query";
 import { getApiUrl } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
+import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import Colors from "@/constants/colors";
 import { OPENING_HOURS } from "@/lib/data";
@@ -446,7 +447,8 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
-  const { isAuthenticated, customer } = useCustomerAuth();
+  const { isAuthenticated } = useCustomerAuth();
+  const { greeting } = useCustomerGreeting();
 
   const { data: bannerImages, isLoading: bannersLoading } = useQuery<BannerImage[]>({
     queryKey: ["/api/banner-images?page=home"],
@@ -499,19 +501,13 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.heroCenter}>
-        {isAuthenticated && customer?.name ? (
-          // Personalised greeting — only renders for signed-in customers.
-          // First word of `customer.name` keeps it casual ("Good morning,
-          // Stuart" rather than "Good morning, Stuart John Smith"), and
-          // the time window matches the obvious one (morning until noon,
-          // afternoon until 6pm, evening otherwise).
+        {greeting ? (
+          // Personalised greeting via the shared useCustomerGreeting
+          // hook — only renders for signed-in customers and stays in
+          // sync with the same logic used on Loyalty, Book, Account
+          // and the order confirmation screen.
           <Text style={styles.heroGreeting} numberOfLines={1}>
-            {(() => {
-              const h = new Date().getHours();
-              const part = h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
-              const firstName = customer.name.trim().split(/\s+/)[0];
-              return `${part}, ${firstName}`;
-            })()}
+            {greeting}
           </Text>
         ) : null}
         <Text style={styles.heroTitle}>The 147</Text>

@@ -18,6 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
+import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
 import { useCart } from "@/contexts/CartContext";
 import { apiRequest, queryClient, getApiUrl } from "@/lib/query-client";
 import type { SelectedModifier } from "@/types/menu";
@@ -96,6 +97,7 @@ export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { isAuthenticated, isLoading: authLoading, customer, login, register, logout, updateProfile, deleteAccount, resendVerificationEmail, requestPasswordReset, resendVerificationEmailFor } = useCustomerAuth();
+  const { greeting } = useCustomerGreeting();
   const params = useLocalSearchParams<{ returnTo?: string; prefillEmail?: string; authMode?: string }>();
   const returnTo = typeof params.returnTo === "string" ? params.returnTo : undefined;
   const prefillEmail = typeof params.prefillEmail === "string" ? params.prefillEmail : undefined;
@@ -135,7 +137,16 @@ export default function AccountScreen() {
         <Pressable onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="close" size={24} color="#FFFFFF" />
         </Pressable>
-        <Text style={styles.headerTitle}>My Account</Text>
+        <View style={styles.headerTitleWrap}>
+          <Text style={styles.headerTitle}>My Account</Text>
+          {greeting ? (
+            // Subtle personal greeting under the title — only renders
+            // when signed in. Centred to match the title.
+            <Text style={styles.headerSubtitle} numberOfLines={1}>
+              {greeting}
+            </Text>
+          ) : null}
+        </View>
         <View style={{ width: 40 }} />
       </View>
       {isAuthenticated && customer ? (
@@ -1498,10 +1509,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  headerTitleWrap: {
+    flex: 1,
+    alignItems: "center",
+  },
   headerTitle: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 20,
     color: "#FFFFFF",
+  },
+  headerSubtitle: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: "rgba(255,255,255,0.75)",
+    marginTop: 2,
   },
   scrollContent: {
     flex: 1,
