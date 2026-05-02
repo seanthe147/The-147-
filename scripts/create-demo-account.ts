@@ -76,15 +76,31 @@ async function main() {
       console.log("Created new demo account.");
     }
 
-    console.log("");
-    console.log("================ DEMO CREDENTIALS ================");
-    console.log("Email:    " + email);
-    console.log("Password: " + password);
-    console.log("Expires:  " + expiresAt.toISOString() + "  (" + hours + "h from now)");
-    console.log("==================================================");
-    console.log("");
-    console.log("After expiry, login is rejected with 401 \"This account has expired.\"");
-    console.log("Re-run this script to extend the window.");
+    // Refuse to print plaintext credentials in production. This script is
+    // intended for local/dev use only — running it against the production
+    // database would leak the demo account password into the deploy logs
+    // (and into anything that aggregates them). Force-allow with
+    // ALLOW_DEMO_CREDENTIALS_PRINT=1 when you really need to.
+    const isProd = process.env.NODE_ENV === "production";
+    const explicitOverride = process.env.ALLOW_DEMO_CREDENTIALS_PRINT === "1";
+    if (isProd && !explicitOverride) {
+      console.log("");
+      console.log("Demo account created. Credentials NOT printed because NODE_ENV=production.");
+      console.log("If you really need to print them, re-run with ALLOW_DEMO_CREDENTIALS_PRINT=1.");
+      console.log("Email: " + email);
+      console.log("Password: <redacted — set in DEMO_ACCOUNT_PASSWORD env var or use the override>");
+      console.log("Expires: " + expiresAt.toISOString() + "  (" + hours + "h from now)");
+    } else {
+      console.log("");
+      console.log("================ DEMO CREDENTIALS ================");
+      console.log("Email:    " + email);
+      console.log("Password: " + password);
+      console.log("Expires:  " + expiresAt.toISOString() + "  (" + hours + "h from now)");
+      console.log("==================================================");
+      console.log("");
+      console.log("After expiry, login is rejected with 401 \"This account has expired.\"");
+      console.log("Re-run this script to extend the window.");
+    }
   } finally {
     await pool.end();
   }
