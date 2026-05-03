@@ -28,6 +28,13 @@ const TABLE_LABELS: Record<string, string> = {
   darts: "Darts",
 };
 
+const LIVE_STATE_META: Record<"upcoming" | "in-play" | "ending-soon" | "finished", { label: string; color: string; bg: string }> = {
+  "upcoming":     { label: "Upcoming",     color: "#1E40AF", bg: "#DBEAFE" },
+  "in-play":      { label: "In play",      color: "#065F46", bg: "#D1FAE5" },
+  "ending-soon":  { label: "Ending soon",  color: "#9A3412", bg: "#FED7AA" },
+  "finished":     { label: "Finished",     color: "#6B7280", bg: "#F3F4F6" },
+};
+
 const TABLE_ICONS: Record<string, string> = {
   snooker: "ellipse",
   pool: "ellipse-outline",
@@ -202,6 +209,33 @@ export default function AdminBookingsScreen() {
   const [selectedDate, setSelectedDate] = useState(localDateStr(new Date()));
 
   const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart.toISOString()]);
+
+  const todayStr = localDateStr(new Date());
+  const isToday = selectedDate === todayStr;
+
+  // Live data for today — gives us the colour-coded state stripe
+  // (upcoming/in-play/ending-soon/finished) and the Square POS "In use" badge.
+  // Only enabled when viewing today's bookings; future/past dates don't have
+  // a meaningful "live" state.
+  const liveQuery = useQuery<{
+    bookings: Array<{
+      bookingId: number;
+      state: "upcoming" | "in-play" | "ending-soon" | "finished";
+      minsToEnd: number;
+      endTime: string;
+      squareSession: { totalPence: number; itemCount: number } | null;
+    }>;
+  }>({
+    queryKey: ["/api/staff/tables-live"],
+    enabled: isToday,
+    refetchInterval: isToday ? 30_000 : false,
+  });
+
+  const liveByBookingId = useMemo(() => {
+    const m = new Map<number, NonNullable<typeof liveQuery.data>["bookings"][number]>();
+    for (const b of liveQuery.data?.bookings ?? []) m.set(b.bookingId, b);
+    return m;
+  }, [liveQuery.data]);
 
   const bookingsQuery = useQuery<Booking[]>({
     queryKey: ["/api/bookings", `?date=${selectedDate}`],
@@ -581,8 +615,11 @@ export default function AdminBookingsScreen() {
             {confirmedBookings.length > 0 && (
               <>
                 <Text style={styles.sectionLabel}>CONFIRMED</Text>
-                {confirmedBookings.map((booking) => (
-                  <View key={booking.id} style={styles.bookingCard}>
+                {confirmedBookings.map((booking) => {
+                  const live = liveByBookingId.get(booking.id);
+                  const stateMeta = live ? LIVE_STATE_META[live.state] : null;
+                  return (
+                  <View key={booking.id} style={[styles.bookingCard, stateMeta && { borderLeftColor: stateMeta.color, borderLeftWidth: 6 }]}>
                     <View style={styles.bookingHeader}>
                       <View style={styles.timeBlock}>
                         <Text style={styles.timeBlockText}>{booking.startTime}</Text>
@@ -594,6 +631,19 @@ export default function AdminBookingsScreen() {
                           <Text style={styles.bookingTableType}>
                             {TABLE_LABELS[booking.tableType] || booking.tableType}{booking.tableNumber ? ` - Table ${booking.tableNumber}` : ""}
                           </Text>
+                          {stateMeta && (
+                            <View style={[styles.livePill, { backgroundColor: stateMeta.bg }]}>
+                              <Text style={[styles.livePillText, { color: stateMeta.color }]}>{stateMeta.label}</Text>
+                            </View>
+                          )}
+                          {live?.squareSession && (
+                            <View style={[styles.livePill, { backgroundColor: "#D1FAE5" }]}>
+                              <Ionicons name="receipt" size={10} color="#065F46" />
+                              <Text style={[styles.livePillText, { color: "#065F46", marginLeft: 3 }]}>
+                                £{(live.squareSession.totalPence / 100).toFixed(2)}
+                              </Text>
+                            </View>
+                          )}
                         </View>
                         <Text style={styles.bookingName}>{booking.customerName}</Text>
                         <View style={styles.contactRow}>
@@ -653,7 +703,8 @@ export default function AdminBookingsScreen() {
                       </View>
                     </View>
                   </View>
-                ))}
+                  );
+                })}
               </>
             )}
 
@@ -1087,6 +1138,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    flexWrap: "wrap",
+  },
+  livePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 999,
+    marginLeft: 4,
+  },
+  livePillText: {
+    fontSize: 10,
+    fontFamily: "Montserrat_700Bold",
+    fontWeight: "700",
   },
   bookingTableType: {
     fontFamily: "Montserrat_600SemiBold",
