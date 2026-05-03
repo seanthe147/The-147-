@@ -564,6 +564,39 @@ function renderVerifyResultPage(kind: "success" | "error", message: string): str
     ? `<svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="${accent}" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`
     : `<svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="${accent}" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
   const title = isSuccess ? "Email verified" : "We couldn't verify that link";
+  const appScheme = "the147://";
+  const websiteUrl = "https://www.the147.co.uk";
+  // On phones, attempt to deep-link into the installed app; if it isn't installed
+  // (no scheme handler), fall back to the public website. On desktop/tablet,
+  // always go straight to the website.
+  const redirectScript = isSuccess ? `<script>(function(){
+    try {
+      var ua = navigator.userAgent || "";
+      var isMobile = /iPhone|iPad|iPod|Android/i.test(ua);
+      var btn = document.getElementById("openBtn");
+      if (!btn) return;
+      if (isMobile) {
+        btn.textContent = "Open the app";
+        btn.setAttribute("href", ${JSON.stringify(appScheme)});
+        btn.addEventListener("click", function(e){
+          // Try to launch the app, fall back to the website after ~1.5s if the
+          // page is still visible (i.e. the app didn't take over).
+          var fallback = setTimeout(function(){
+            if (!document.hidden) window.location.href = ${JSON.stringify(websiteUrl)};
+          }, 1500);
+          document.addEventListener("visibilitychange", function once(){
+            if (document.hidden) {
+              clearTimeout(fallback);
+              document.removeEventListener("visibilitychange", once);
+            }
+          });
+        });
+      } else {
+        btn.textContent = "Visit www.the147.co.uk";
+        btn.setAttribute("href", ${JSON.stringify(websiteUrl)});
+      }
+    } catch (e) {}
+  })();</script>` : "";
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${escHtml(title)} — The 147</title><style>
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;background:#F2F5FA;color:#0D1526;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
@@ -573,7 +606,7 @@ function renderVerifyResultPage(kind: "success" | "error", message: string): str
   p{color:#4B5A72;font-size:15px;line-height:1.6;margin-bottom:24px}
   a.btn{display:inline-block;background:#0047AB;color:#fff;font-weight:700;font-size:14px;padding:12px 24px;border-radius:12px;text-decoration:none}
   .brand{margin-top:24px;font-size:12px;color:#8EA0BB}
-  </style></head><body><div class="card"><div class="ring">${icon}</div><h1>${escHtml(title)}</h1><p>${escHtml(message)}</p><a class="btn" href="/">Back to The 147</a><div class="brand">The 147 — Snooker, Bar &amp; Restaurant</div></div></body></html>`;
+  </style></head><body><div class="card"><div class="ring">${icon}</div><h1>${escHtml(title)}</h1><p>${escHtml(message)}</p><a id="openBtn" class="btn" href="${websiteUrl}">Visit www.the147.co.uk</a><div class="brand">The 147 — Snooker, Bar &amp; Restaurant</div></div>${redirectScript}</body></html>`;
 }
 
 async function sendMembershipPaymentLinkEmail(opts: {
