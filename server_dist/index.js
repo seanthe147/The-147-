@@ -13,7 +13,7 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, serial, timestamp, boolean, integer, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
-var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, marketingPages, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, dealPreferences, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, passwordResetAuditLog, membershipAuditLog, bookingAuditLog, staffActionLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffDocuments, insertStaffDocumentSchema, staffOnboarding, insertStaffOnboardingSchema, staffPushTokens, paymentLog, insertPaymentLogSchema;
+var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, tabs, tabItems, tableSessions, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, marketingPages, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, dealPreferences, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, passwordResetAuditLog, membershipAuditLog, bookingAuditLog, staffActionLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffDocuments, insertStaffDocumentSchema, staffOnboarding, insertStaffOnboardingSchema, staffPushTokens, paymentLog, insertPaymentLogSchema;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
@@ -114,6 +114,59 @@ var init_schema = __esm({
       guestCount: z.number().int().nullable().optional(),
       notes: z.string().nullable().optional(),
       emailHash: z.string().nullable().optional()
+    });
+    tabs = pgTable("tabs", {
+      id: serial("id").primaryKey(),
+      bookingId: integer("booking_id"),
+      // optional link to a booking
+      tableType: text("table_type").notNull(),
+      // snooker | pool | dining | bar
+      tableNumber: text("table_number"),
+      // e.g. "Table 4" or null for bar
+      customerName: text("customer_name"),
+      // free-text for walk-ups
+      customerEmail: text("customer_email"),
+      status: text("status").notNull().default("open"),
+      // open | closed | voided
+      openedByStaffId: integer("opened_by_staff_id"),
+      openedByName: text("opened_by_name"),
+      openedAt: timestamp("opened_at").defaultNow().notNull(),
+      closedAt: timestamp("closed_at"),
+      closedByName: text("closed_by_name"),
+      closeMethod: text("close_method"),
+      // cash | card | comp | added-to-booking
+      totalPence: integer("total_pence").notNull().default(0),
+      notes: text("notes")
+    });
+    tabItems = pgTable("tab_items", {
+      id: serial("id").primaryKey(),
+      tabId: integer("tab_id").notNull(),
+      name: text("name").notNull(),
+      unitPricePence: integer("unit_price_pence").notNull(),
+      quantity: integer("quantity").notNull().default(1),
+      addedByName: text("added_by_name"),
+      addedAt: timestamp("added_at").defaultNow().notNull(),
+      voided: boolean("voided").notNull().default(false),
+      voidReason: text("void_reason")
+    });
+    tableSessions = pgTable("table_sessions", {
+      id: serial("id").primaryKey(),
+      squareOrderId: text("square_order_id").notNull().unique(),
+      ticketName: text("ticket_name"),
+      // raw "Snooker 4" etc.
+      tableType: text("table_type"),
+      // snooker | pool | dining
+      tableNumber: text("table_number"),
+      // numeric portion as text
+      state: text("state").notNull().default("open"),
+      // open | paid | cancelled
+      totalPence: integer("total_pence").notNull().default(0),
+      itemCount: integer("item_count").notNull().default(0),
+      paymentMethod: text("payment_method"),
+      // CARD | CASH | etc.
+      openedAt: timestamp("opened_at").defaultNow().notNull(),
+      closedAt: timestamp("closed_at"),
+      lastSyncedAt: timestamp("last_synced_at").defaultNow().notNull()
     });
     staffSessions = pgTable("staff_sessions", {
       id: serial("id").primaryKey(),
@@ -770,6 +823,7 @@ var init_encryption = __esm({
 var storage_exports = {};
 __export(storage_exports, {
   DatabaseStorage: () => DatabaseStorage,
+  db: () => db,
   runStartupMigrations: () => runStartupMigrations,
   storage: () => storage
 });
@@ -1840,6 +1894,10 @@ var init_storage = __esm({
           phone: phone ? encrypt(phone) : null,
           passwordHash,
           privacyConsentAt: /* @__PURE__ */ new Date(),
+          // Encrypt DOB at rest to match updateCustomer's behaviour. The
+          // decryptCustomer wrapper used by every read path will decrypt it
+          // back to canonical YYYY-MM-DD on the way out.
+          dateOfBirth: opts?.dateOfBirth ? encrypt(opts.dateOfBirth) : null,
           emailVerifyTokenHash: opts?.emailVerifyTokenHash ?? null,
           emailVerifyTokenExpiresAt: opts?.emailVerifyTokenExpiresAt ?? null,
           emailVerifyLastSentAt: opts?.emailVerifyTokenHash ? /* @__PURE__ */ new Date() : null
@@ -2861,6 +2919,8 @@ __export(square_exports, {
   getLoyaltyProgram: () => getLoyaltyProgram,
   getMenuFromSquare: () => getMenuFromSquare,
   getOrCreateCustomerGroup: () => getOrCreateCustomerGroup,
+  getOrder: () => getOrder,
+  getPayment: () => getPayment,
   getPublicLocationId: () => getPublicLocationId,
   getSquareDeals: () => getSquareDeals,
   getSquareOrder: () => getSquareOrder,
@@ -2881,6 +2941,7 @@ __export(square_exports, {
   searchIssuedRewards: () => searchIssuedRewards,
   searchLoyaltyAccount: () => searchLoyaltyAccount,
   searchLoyaltyEvents: () => searchLoyaltyEvents,
+  searchOpenOrders: () => searchOpenOrders,
   syncPlanToSquareCatalog: () => syncPlanToSquareCatalog,
   toE164: () => toE164
 });
@@ -3004,6 +3065,36 @@ async function searchIssuedRewards(accountId) {
     return data.rewards || [];
   } catch {
     return [];
+  }
+}
+async function searchOpenOrders() {
+  const locationId = getLocationId();
+  const data = await squareRequest("POST", "/v2/orders/search", {
+    location_ids: [locationId],
+    query: {
+      filter: { state_filter: { states: ["OPEN"] } },
+      sort: { sort_field: "CREATED_AT", sort_order: "DESC" }
+    },
+    limit: 200
+  });
+  return data.orders || [];
+}
+async function getOrder(orderId) {
+  try {
+    const data = await squareRequest("GET", `/v2/orders/${orderId}`);
+    return data.order || null;
+  } catch (err) {
+    if (err instanceof SquareError && err.statusCode === 404) return null;
+    throw err;
+  }
+}
+async function getPayment(paymentId) {
+  try {
+    const data = await squareRequest("GET", `/v2/payments/${paymentId}`);
+    return data.payment || null;
+  } catch (err) {
+    if (err instanceof SquareError && err.statusCode === 404) return null;
+    throw err;
   }
 }
 function isConfigured() {
@@ -4882,7 +4973,9 @@ var init_membership_benefits = __esm({
 });
 
 // server/index.ts
+import * as Sentry from "@sentry/node";
 import express from "express";
+import compression from "compression";
 
 // server/routes.ts
 init_storage();
@@ -4894,6 +4987,7 @@ import * as path from "node:path";
 import multer from "multer";
 import sharp from "sharp";
 import nodemailer from "nodemailer";
+import { and as dAnd, eq as dEq, desc as dDesc } from "drizzle-orm";
 
 // shared/featureFlags.ts
 var DEFAULT_FEATURE_FLAGS = {
@@ -5278,6 +5372,65 @@ function applyCarryOverCap(carryOver, maxCarryOverDays) {
 }
 
 // server/routes.ts
+function parseTicketName(raw) {
+  if (!raw) return null;
+  const m = /^\s*(snooker|pool|dining)\s*(\d{1,3})\s*$/i.exec(raw);
+  if (!m) return null;
+  return { tableType: m[1].toLowerCase(), tableNumber: m[2] };
+}
+async function syncSquareOrderToSession(order) {
+  const orderId = order?.id;
+  if (!orderId) return;
+  const ticketName = order.ticket_name || order.name || "";
+  const parsed = parseTicketName(ticketName);
+  const sqState = order.state || "";
+  const totalPence = Number(order.total_money?.amount ?? order.net_amounts?.total_money?.amount ?? 0);
+  const itemCount = Array.isArray(order.line_items) ? order.line_items.length : 0;
+  const state = sqState === "COMPLETED" ? "paid" : sqState === "CANCELED" ? "cancelled" : "open";
+  const closedAt = state !== "open" ? new Date(order.closed_at || order.updated_at || Date.now()) : null;
+  const existing = await db.select().from(tableSessions).where(dEq(tableSessions.squareOrderId, orderId));
+  if (existing.length === 0 && !parsed) return;
+  const values = {
+    squareOrderId: orderId,
+    ticketName: ticketName || null,
+    tableType: parsed?.tableType ?? existing[0]?.tableType ?? null,
+    tableNumber: parsed?.tableNumber ?? existing[0]?.tableNumber ?? null,
+    state,
+    totalPence: Number.isFinite(totalPence) ? totalPence : 0,
+    itemCount,
+    closedAt: closedAt ?? existing[0]?.closedAt ?? null,
+    lastSyncedAt: /* @__PURE__ */ new Date()
+  };
+  if (existing.length > 0) {
+    if (existing[0].state !== "open" && state === "open") return;
+    await db.update(tableSessions).set(values).where(dEq(tableSessions.squareOrderId, orderId));
+  } else {
+    await db.insert(tableSessions).values(values);
+  }
+}
+async function pollSquareOrders() {
+  if (!isConfigured()) return;
+  try {
+    const orders = await searchOpenOrders();
+    const liveOrderIds = /* @__PURE__ */ new Set();
+    for (const o of orders) {
+      liveOrderIds.add(o.id);
+      await syncSquareOrderToSession(o).catch(() => {
+      });
+    }
+    const localOpen = await db.select().from(tableSessions).where(dEq(tableSessions.state, "open"));
+    for (const s of localOpen) {
+      if (liveOrderIds.has(s.squareOrderId)) continue;
+      const fresh = await getOrder(s.squareOrderId).catch(() => null);
+      if (fresh) await syncSquareOrderToSession(fresh).catch(() => {
+      });
+    }
+  } catch (err) {
+    if (err?.code !== "UNAUTHORIZED") {
+      console.warn("[POS-POLL]", err?.message || err);
+    }
+  }
+}
 function tsIdToNumber(tsId) {
   let hash = 5381;
   for (let i = 0; i < tsId.length; i++) {
@@ -5466,7 +5619,8 @@ async function sendEmailViaSMTP(to, subject, html) {
       auth: { user, pass },
       tls: { rejectUnauthorized: true }
     });
-    await transporter.sendMail({ from: `"The 147" <${user}>`, to, subject, html });
+    const publicFrom = process.env.PUBLIC_FROM_EMAIL || user;
+    await transporter.sendMail({ from: `"The 147" <${publicFrom}>`, to, subject, html, replyTo: publicFrom });
     console.log(`[EMAIL SMTP] Sent to ${maskEmail(to)}`);
     return true;
   } catch (err) {
@@ -5747,6 +5901,36 @@ function renderVerifyResultPage(kind, message) {
   const bg = isSuccess ? "#DCFCE7" : "#FEE2E2";
   const icon = isSuccess ? `<svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="${accent}" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>` : `<svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="${accent}" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
   const title = isSuccess ? "Email verified" : "We couldn't verify that link";
+  const appScheme = "the147://";
+  const websiteUrl = "https://www.the147.co.uk";
+  const redirectScript = isSuccess ? `<script>(function(){
+    try {
+      var ua = navigator.userAgent || "";
+      var isMobile = /iPhone|iPad|iPod|Android/i.test(ua);
+      var btn = document.getElementById("openBtn");
+      if (!btn) return;
+      if (isMobile) {
+        btn.textContent = "Open the app";
+        btn.setAttribute("href", ${JSON.stringify(appScheme)});
+        btn.addEventListener("click", function(e){
+          // Try to launch the app, fall back to the website after ~1.5s if the
+          // page is still visible (i.e. the app didn't take over).
+          var fallback = setTimeout(function(){
+            if (!document.hidden) window.location.href = ${JSON.stringify(websiteUrl)};
+          }, 1500);
+          document.addEventListener("visibilitychange", function once(){
+            if (document.hidden) {
+              clearTimeout(fallback);
+              document.removeEventListener("visibilitychange", once);
+            }
+          });
+        });
+      } else {
+        btn.textContent = "Visit www.the147.co.uk";
+        btn.setAttribute("href", ${JSON.stringify(websiteUrl)});
+      }
+    } catch (e) {}
+  })();</script>` : "";
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${escHtml(title)} \u2014 The 147</title><style>
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;background:#F2F5FA;color:#0D1526;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
@@ -5756,7 +5940,7 @@ function renderVerifyResultPage(kind, message) {
   p{color:#4B5A72;font-size:15px;line-height:1.6;margin-bottom:24px}
   a.btn{display:inline-block;background:#0047AB;color:#fff;font-weight:700;font-size:14px;padding:12px 24px;border-radius:12px;text-decoration:none}
   .brand{margin-top:24px;font-size:12px;color:#8EA0BB}
-  </style></head><body><div class="card"><div class="ring">${icon}</div><h1>${escHtml(title)}</h1><p>${escHtml(message)}</p><a class="btn" href="/">Back to The 147</a><div class="brand">The 147 \u2014 Snooker, Bar &amp; Restaurant</div></div></body></html>`;
+  </style></head><body><div class="card"><div class="ring">${icon}</div><h1>${escHtml(title)}</h1><p>${escHtml(message)}</p><a id="openBtn" class="btn" href="${websiteUrl}">Visit www.the147.co.uk</a><div class="brand">The 147 \u2014 Snooker, Bar &amp; Restaurant</div></div>${redirectScript}</body></html>`;
 }
 async function sendMembershipPaymentLinkEmail(opts) {
   const price = `\xA3${(opts.priceMonthly / 100).toFixed(2)}`;
@@ -8354,7 +8538,17 @@ async function registerRoutes(app2) {
       }
       return res.sendStatus(200);
     }
-    if (eventType === "order.updated") {
+    if (eventType === "order.created" || eventType === "order.updated") {
+      try {
+        const order = event?.data?.object?.order_created || event?.data?.object?.order_updated || event?.data?.object?.order;
+        const orderId = order?.order_id || order?.id || event?.data?.id;
+        if (orderId) {
+          const full = await getOrder(orderId).catch(() => null);
+          if (full) await syncSquareOrderToSession(full);
+        }
+      } catch (err) {
+        console.error("[WEBHOOK] table-session sync error:", err);
+      }
       return res.sendStatus(200);
     }
     if (eventType !== "payment.updated") return res.sendStatus(200);
@@ -8364,6 +8558,18 @@ async function registerRoutes(app2) {
     const amountPence = payment.amount_money?.amount;
     const currency = payment.amount_money?.currency;
     const paymentNote = payment.note || payment.payment_note || "";
+    if (paymentStatus === "COMPLETED" && payment.order_id) {
+      try {
+        const fresh = await getOrder(payment.order_id).catch(() => null);
+        if (fresh) await syncSquareOrderToSession(fresh);
+        const sourceType = payment.source_type || "";
+        const cardBrand = payment.card_details?.card?.card_brand || "";
+        const method = sourceType === "CARD" ? cardBrand ? `CARD (${cardBrand})` : "CARD" : sourceType || "PAID";
+        await db.update(tableSessions).set({ paymentMethod: method, lastSyncedAt: /* @__PURE__ */ new Date() }).where(dEq(tableSessions.squareOrderId, payment.order_id));
+      } catch (err) {
+        console.error("[WEBHOOK] table-session payment sync error:", err);
+      }
+    }
     if (paymentNote.startsWith("MEMBERSHIP:")) {
       const subId = parseInt(paymentNote.split(":")[1] ?? "");
       if (!isNaN(subId)) {
@@ -11095,7 +11301,7 @@ async function registerRoutes(app2) {
       res.setHeader("Retry-After", String(rateCheck.retryAfter));
       return res.status(429).json({ message: "Too many attempts. Please try again later." });
     }
-    const { name, email, phone, password, privacyConsent } = req.body;
+    const { name, email, phone, password, privacyConsent, dateOfBirth } = req.body;
     if (!name || !email || !password) {
       return res.status(400).json({ message: "Name, email, and password are required" });
     }
@@ -11108,6 +11314,23 @@ async function registerRoutes(app2) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({ message: "Invalid email address" });
+    }
+    let dobToStore = null;
+    if (dateOfBirth !== void 0 && dateOfBirth !== null && dateOfBirth !== "") {
+      const dob = String(dateOfBirth).trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
+        return res.status(400).json({ message: "Date of birth must be in YYYY-MM-DD format" });
+      }
+      const [yStr, mStr, dStr] = dob.split("-");
+      const y = Number(yStr), m = Number(mStr), d = Number(dStr);
+      const parsed = new Date(Date.UTC(y, m - 1, d));
+      if (isNaN(parsed.getTime()) || parsed.getUTCFullYear() !== y || parsed.getUTCMonth() !== m - 1 || parsed.getUTCDate() !== d) {
+        return res.status(400).json({ message: "Invalid date of birth" });
+      }
+      const ageYears = (Date.now() - parsed.getTime()) / (365.25 * 24 * 3600 * 1e3);
+      if (ageYears < 0) return res.status(400).json({ message: "Date of birth cannot be in the future" });
+      if (ageYears > 120) return res.status(400).json({ message: "Invalid date of birth" });
+      dobToStore = dob;
     }
     const regRl = checkRateLimit(`reg:${clientIp}`, 5, 15 * 60 * 1e3);
     if (!regRl.allowed) {
@@ -11137,7 +11360,8 @@ async function registerRoutes(app2) {
       const verifyExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1e3);
       const customer = await storage.createCustomer(email, name.trim(), phone?.trim() || null, passwordHash, {
         emailVerifyTokenHash: verifyTokenHash,
-        emailVerifyTokenExpiresAt: verifyExpiresAt
+        emailVerifyTokenExpiresAt: verifyExpiresAt,
+        dateOfBirth: dobToStore
       });
       res.status(200).json({ success: true });
       sendVerificationEmail({ name: customer.name, email: customer.email, tokenRaw: verifyTokenRaw });
@@ -14148,6 +14372,216 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       disclaimer: "Figures are estimates. Verify with your payroll provider before processing payments."
     });
   });
+  async function recalcTabTotal(tabId) {
+    const items = await db.select().from(tabItems).where(dEq(tabItems.tabId, tabId));
+    const total = items.filter((i) => !i.voided).reduce((s, i) => s + i.unitPricePence * i.quantity, 0);
+    await db.update(tabs).set({ totalPence: total }).where(dEq(tabs.id, tabId));
+    return total;
+  }
+  app2.get("/api/staff/tabs", staffAuth, async (req, res) => {
+    try {
+      const raw = req.query.status;
+      const statusQ = typeof raw === "string" ? raw : Array.isArray(raw) && raw.length ? String(raw[0]) : "open";
+      const rows = statusQ === "all" ? await db.select().from(tabs).orderBy(dDesc(tabs.openedAt)).limit(200) : await db.select().from(tabs).where(dEq(tabs.status, statusQ)).orderBy(dDesc(tabs.openedAt)).limit(200);
+      res.json(rows);
+    } catch (err) {
+      console.error("[TABS] list error:", err.message);
+      res.status(500).json({ message: "Could not load tabs" });
+    }
+  });
+  app2.get("/api/staff/tabs/:id", staffAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+      const [tab] = await db.select().from(tabs).where(dEq(tabs.id, id));
+      if (!tab) return res.status(404).json({ message: "Tab not found" });
+      const items = await db.select().from(tabItems).where(dEq(tabItems.tabId, id)).orderBy(tabItems.addedAt);
+      res.json({ tab, items });
+    } catch (err) {
+      console.error("[TABS] get error:", err.message);
+      res.status(500).json({ message: "Could not load tab" });
+    }
+  });
+  app2.post("/api/staff/tabs", staffAuth, async (req, res) => {
+    try {
+      const tableType = String(req.body?.tableType || "").trim();
+      if (!tableType) return res.status(400).json({ message: "tableType is required" });
+      const tableNumber = req.body?.tableNumber ? String(req.body.tableNumber).trim() : null;
+      const customerName = req.body?.customerName ? String(req.body.customerName).trim() : null;
+      const customerEmail = req.body?.customerEmail ? String(req.body.customerEmail).trim() : null;
+      const bookingId = Number.isFinite(Number(req.body?.bookingId)) ? Number(req.body.bookingId) : null;
+      const notes = req.body?.notes ? String(req.body.notes).trim().slice(0, 500) : null;
+      if (tableNumber) {
+        const existing = await db.select().from(tabs).where(
+          dAnd(dEq(tabs.status, "open"), dEq(tabs.tableType, tableType), dEq(tabs.tableNumber, tableNumber))
+        );
+        if (existing.length > 0) {
+          return res.status(409).json({ message: "There is already an open tab on that table.", existingTabId: existing[0].id });
+        }
+      }
+      const [created] = await db.insert(tabs).values({
+        bookingId,
+        tableType,
+        tableNumber,
+        customerName,
+        customerEmail,
+        status: "open",
+        openedByStaffId: req.staffUser?.id ?? null,
+        openedByName: req.staffUser?.displayName || req.staffUser?.username || "staff",
+        totalPence: 0,
+        notes
+      }).returning();
+      res.status(201).json(created);
+    } catch (err) {
+      console.error("[TABS] open error:", err.message);
+      res.status(500).json({ message: "Could not open tab" });
+    }
+  });
+  app2.post("/api/staff/tabs/:id/items", staffAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+      const [tab] = await db.select().from(tabs).where(dEq(tabs.id, id));
+      if (!tab) return res.status(404).json({ message: "Tab not found" });
+      if (tab.status !== "open") return res.status(400).json({ message: "Tab is not open" });
+      const name = String(req.body?.name || "").trim();
+      const unitPricePence = Math.round(Number(req.body?.unitPricePence));
+      const quantity = Math.max(1, Math.min(99, Math.round(Number(req.body?.quantity ?? 1))));
+      if (!name) return res.status(400).json({ message: "Item name required" });
+      if (!Number.isFinite(unitPricePence) || unitPricePence < 0 || unitPricePence > 1e6)
+        return res.status(400).json({ message: "Invalid price" });
+      const [item] = await db.insert(tabItems).values({
+        tabId: id,
+        name: name.slice(0, 120),
+        unitPricePence,
+        quantity,
+        addedByName: req.staffUser?.displayName || req.staffUser?.username || "staff"
+      }).returning();
+      const total = await recalcTabTotal(id);
+      res.status(201).json({ item, totalPence: total });
+    } catch (err) {
+      console.error("[TABS] add item error:", err.message);
+      res.status(500).json({ message: "Could not add item" });
+    }
+  });
+  app2.delete("/api/staff/tabs/:id/items/:itemId", staffAuth, managerAuth, async (req, res) => {
+    try {
+      const tabId = parseInt(req.params.id, 10);
+      const itemId = parseInt(req.params.itemId, 10);
+      const reason = String(req.body?.reason || "voided").trim().slice(0, 200);
+      if (!Number.isFinite(tabId) || !Number.isFinite(itemId)) return res.status(400).json({ message: "Invalid id" });
+      const [tab] = await db.select().from(tabs).where(dEq(tabs.id, tabId));
+      if (!tab) return res.status(404).json({ message: "Tab not found" });
+      if (tab.status !== "open") return res.status(400).json({ message: "Tab is not open" });
+      await db.update(tabItems).set({ voided: true, voidReason: reason }).where(dEq(tabItems.id, itemId));
+      const total = await recalcTabTotal(tabId);
+      res.json({ success: true, totalPence: total });
+    } catch (err) {
+      console.error("[TABS] void item error:", err.message);
+      res.status(500).json({ message: "Could not void item" });
+    }
+  });
+  app2.post("/api/staff/tabs/:id/close", staffAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+      const method = String(req.body?.method || "").trim();
+      if (!["cash", "card", "comp", "added-to-booking"].includes(method))
+        return res.status(400).json({ message: "Invalid close method" });
+      if (method === "comp") {
+        const role = req.staffUser?.role;
+        if (role !== "manager" && role !== "owner") {
+          return res.status(403).json({ message: "Only managers can comp a tab." });
+        }
+      }
+      const [tab] = await db.select().from(tabs).where(dEq(tabs.id, id));
+      if (!tab) return res.status(404).json({ message: "Tab not found" });
+      if (tab.status !== "open") return res.status(400).json({ message: "Tab is already closed" });
+      const total = await recalcTabTotal(id);
+      await db.update(tabs).set({
+        status: "closed",
+        closedAt: /* @__PURE__ */ new Date(),
+        closedByName: req.staffUser?.displayName || req.staffUser?.username || "staff",
+        closeMethod: method,
+        totalPence: total
+      }).where(dEq(tabs.id, id));
+      res.json({ success: true, totalPence: total });
+    } catch (err) {
+      console.error("[TABS] close error:", err.message);
+      res.status(500).json({ message: "Could not close tab" });
+    }
+  });
+  app2.get("/api/staff/tables-live", staffAuth, async (_req, res) => {
+    try {
+      const now = /* @__PURE__ */ new Date();
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const todays = await db.select().from(bookings).where(dEq(bookings.date, todayStr));
+      const openSessions = await db.select().from(tableSessions).where(dEq(tableSessions.state, "open"));
+      const sessionByKey = /* @__PURE__ */ new Map();
+      for (const s of openSessions) {
+        if (s.tableType && s.tableNumber) {
+          sessionByKey.set(`${s.tableType.toLowerCase()}|${s.tableNumber}`, s);
+        }
+      }
+      const usedSessionIds = /* @__PURE__ */ new Set();
+      const result = todays.filter((b) => b.status !== "cancelled").map((b) => {
+        const [hh, mm] = String(b.startTime).split(":").map((n) => parseInt(n, 10));
+        const start = new Date(now);
+        start.setHours(hh || 0, mm || 0, 0, 0);
+        const end = new Date(start.getTime() + (b.duration || 0) * 6e4);
+        let state;
+        const minsToEnd = (end.getTime() - now.getTime()) / 6e4;
+        const minsToStart = (start.getTime() - now.getTime()) / 6e4;
+        if (minsToStart > 0) state = "upcoming";
+        else if (minsToEnd <= 0) state = "finished";
+        else if (minsToEnd <= 15) state = "ending-soon";
+        else state = "in-play";
+        const sess = b.tableNumber ? sessionByKey.get(`${String(b.tableType).toLowerCase()}|${String(b.tableNumber).replace(/\D/g, "")}`) || sessionByKey.get(`${String(b.tableType).toLowerCase()}|${b.tableNumber}`) : void 0;
+        if (sess) usedSessionIds.add(sess.id);
+        return {
+          bookingId: b.id,
+          tableType: b.tableType,
+          tableNumber: b.tableNumber,
+          customerName: b.customerName,
+          startTime: b.startTime,
+          duration: b.duration,
+          endTime: `${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`,
+          state,
+          minsToEnd: Math.max(0, Math.round(minsToEnd)),
+          minsElapsed: Math.max(0, Math.round((now.getTime() - start.getTime()) / 6e4)),
+          squareSession: sess ? {
+            orderId: sess.squareOrderId,
+            ticketName: sess.ticketName,
+            totalPence: sess.totalPence,
+            itemCount: sess.itemCount,
+            openedAt: sess.openedAt
+          } : null
+        };
+      }).sort((a, b) => a.startTime.localeCompare(b.startTime));
+      const orphanSessions = openSessions.filter((s) => !usedSessionIds.has(s.id)).map((s) => ({
+        orderId: s.squareOrderId,
+        ticketName: s.ticketName,
+        tableType: s.tableType,
+        tableNumber: s.tableNumber,
+        totalPence: s.totalPence,
+        itemCount: s.itemCount,
+        openedAt: s.openedAt
+      }));
+      res.json({ now: now.toISOString(), bookings: result, orphanSessions });
+    } catch (err) {
+      console.error("[TABLES-LIVE] error:", err.message);
+      res.status(500).json({ message: "Could not load live tables" });
+    }
+  });
+  if (isConfigured() && !globalThis.__posPollStarted) {
+    globalThis.__posPollStarted = true;
+    setInterval(() => {
+      void pollSquareOrders();
+    }, 6e4);
+    setTimeout(() => {
+      void pollSquareOrders();
+    }, 3e3);
+  }
   const httpServer = createServer(app2);
   return httpServer;
 }
@@ -14406,6 +14840,16 @@ function detectPublicBaseUrl() {
 }
 
 // server/index.ts
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || "development",
+    release: process.env.GIT_COMMIT || process.env.REPL_COMMIT_SHA,
+    // 10% trace sample is plenty for a venue-scale app — keeps the free tier
+    // comfortable while still catching slow/failing requests.
+    tracesSampleRate: 0.1
+  });
+}
 var VENUE_TZ = "Europe/London";
 function getLondonDateString() {
   const parts = new Intl.DateTimeFormat("en-GB", {
@@ -15254,6 +15698,7 @@ function scheduleRetentionCleanup() {
   }
   setupCors(app);
   setupSecurityHeaders(app);
+  app.use(compression());
   setupBodyParsing(app);
   setupRequestLogging(app);
   const widgetHtmlPath = path3.resolve(process.cwd(), "server", "templates", "booking-widget.html");
@@ -15294,6 +15739,9 @@ function scheduleRetentionCleanup() {
   });
   configureExpoAndLanding(app);
   const server = await registerRoutes(app);
+  if (process.env.SENTRY_DSN) {
+    Sentry.setupExpressErrorHandler(app);
+  }
   setupErrorHandler(app);
   const port = parseInt(process.env.PORT || "5000", 10);
   await new Promise((resolve4) => {
