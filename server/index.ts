@@ -1136,6 +1136,22 @@ function scheduleRetentionCleanup() {
 
   setupErrorHandler(app);
 
+  // Warn loudly when PUBLIC_APP_URL is not explicitly configured.
+  // getPublicAppOrigin() falls back to REPLIT_DOMAINS / REPLIT_DEV_DOMAIN /
+  // a hardcoded constant, but in production the explicit env var must be set
+  // so that payment redirect URLs and email links always point to the correct
+  // origin — a misconfigured or missing value could expose a wrong callback URL.
+  if (!process.env.PUBLIC_APP_URL?.trim()) {
+    const hasReplitDomains = !!process.env.REPLIT_DOMAINS?.trim() || !!process.env.REPLIT_DEV_DOMAIN?.trim();
+    if (!hasReplitDomains) {
+      console.warn(
+        "[security] PUBLIC_APP_URL is not set and no REPLIT_DOMAINS/REPLIT_DEV_DOMAIN detected. " +
+        "Payment redirect URLs and email links will use the hardcoded fallback origin. " +
+        "Set PUBLIC_APP_URL=https://your-domain.com in production to prevent this."
+      );
+    }
+  }
+
   // Open the port immediately so the Replit workflow health check succeeds.
   // Migrations and background tasks run afterwards.
   const port = parseInt(process.env.PORT || "5000", 10);
