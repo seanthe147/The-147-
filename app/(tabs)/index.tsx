@@ -26,6 +26,7 @@ import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import Colors from "@/constants/colors";
 import { OPENING_HOURS } from "@/lib/data";
 import type { Event, BannerImage, Offer } from "@shared/schema";
+import { EnableNotificationsBanner } from "@/components/EnableNotificationsBanner";
 
 const logoImage = require("@/assets/images/logo-147.png");
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -607,6 +608,8 @@ export default function HomeScreen() {
               onPress={goToContact}
             />
           </View>
+
+          <EnableNotificationsBanner />
 
           {bannerImages && bannerImages.length > 0 ? (
             <BannerCarousel images={bannerImages} />
