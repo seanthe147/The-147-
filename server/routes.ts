@@ -7,12 +7,90 @@ import multer from "multer";
 import sharp from "sharp";
 import nodemailer from "nodemailer";
 import { storage, db } from "./storage";
-import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema, tabs, tabItems, bookings as bookingsTable } from "@shared/schema";
+import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema, tabs, tabItems, bookings as bookingsTable, tableSessions } from "@shared/schema";
 import { and as dAnd, eq as dEq, desc as dDesc } from "drizzle-orm";
 import { getServerFeatureFlags } from "./featureFlags";
 import { hashPin, verifyPin, hashPassword, verifyPassword, hashEmail } from "./encryption";
 import * as square from "./square";
 import { buildReorderPayload, type ReorderMenuItem, type ReorderRawItem } from "./reorder-matching";
+
+// ── Square POS → Live Tables sync helpers ───────────────────────────────────
+// Parses a Square ticket name like "Snooker 4" / "Pool 2" / "Dining 7" into a
+// (tableType, tableNumber) pair. Tolerates extra whitespace, casing, and a
+// missing space (e.g. "snooker4"). Returns null for tickets that don't match
+// the convention so non-table orders (online orders, takeaway, etc.) are
+// ignored.
+function parseTicketName(raw: string | null | undefined): { tableType: string; tableNumber: string } | null {
+  if (!raw) return null;
+  const m = /^\s*(snooker|pool|dining)\s*(\d{1,3})\s*$/i.exec(raw);
+  if (!m) return null;
+  return { tableType: m[1].toLowerCase(), tableNumber: m[2] };
+}
+
+// Mirror a single Square order into the table_sessions table. Idempotent —
+// safe to call from a webhook AND from the safety-net poll.
+async function syncSquareOrderToSession(order: any): Promise<void> {
+  const orderId: string | undefined = order?.id;
+  if (!orderId) return;
+  const ticketName: string = order.ticket_name || order.name || "";
+  const parsed = parseTicketName(ticketName);
+  const sqState: string = order.state || "";
+  const totalPence = Number(order.total_money?.amount ?? order.net_amounts?.total_money?.amount ?? 0);
+  const itemCount = Array.isArray(order.line_items) ? order.line_items.length : 0;
+  const state = sqState === "COMPLETED" ? "paid" : sqState === "CANCELED" ? "cancelled" : "open";
+  const closedAt = state !== "open" ? new Date(order.closed_at || order.updated_at || Date.now()) : null;
+
+  const existing = await db.select().from(tableSessions).where(dEq(tableSessions.squareOrderId, orderId));
+  if (existing.length === 0 && !parsed) return;
+
+  const values = {
+    squareOrderId: orderId,
+    ticketName: ticketName || null,
+    tableType: parsed?.tableType ?? existing[0]?.tableType ?? null,
+    tableNumber: parsed?.tableNumber ?? existing[0]?.tableNumber ?? null,
+    state,
+    totalPence: Number.isFinite(totalPence) ? totalPence : 0,
+    itemCount,
+    closedAt: closedAt ?? existing[0]?.closedAt ?? null,
+    lastSyncedAt: new Date(),
+  };
+
+  if (existing.length > 0) {
+    if (existing[0].state !== "open" && state === "open") return;
+    await db.update(tableSessions).set(values).where(dEq(tableSessions.squareOrderId, orderId));
+  } else {
+    await db.insert(tableSessions).values(values);
+  }
+}
+
+// Safety-net poll: every 60 seconds, query Square for OPEN orders and
+// reconcile. Catches the case where a webhook is missed (e.g. transient
+// network blip). Marks any local "open" session whose Square order is no
+// longer OPEN as paid (Square is the source of truth).
+async function pollSquareOrders(): Promise<void> {
+  if (!square.isConfigured()) return;
+  try {
+    const orders = await square.searchOpenOrders();
+    const liveOrderIds = new Set<string>();
+    for (const o of orders) {
+      liveOrderIds.add(o.id);
+      await syncSquareOrderToSession(o).catch(() => {});
+    }
+    // Reconcile: any "open" session in our DB that isn't in Square's OPEN
+    // list anymore has been settled or voided — re-fetch each to find out.
+    const localOpen = await db.select().from(tableSessions).where(dEq(tableSessions.state, "open"));
+    for (const s of localOpen) {
+      if (liveOrderIds.has(s.squareOrderId)) continue;
+      const fresh = await square.getOrder(s.squareOrderId).catch(() => null);
+      if (fresh) await syncSquareOrderToSession(fresh).catch(() => {});
+    }
+  } catch (err: any) {
+    // Don't spam logs if Square is unreachable
+    if (err?.code !== "UNAUTHORIZED") {
+      console.warn("[POS-POLL]", err?.message || err);
+    }
+  }
+}
 import { fetchTicketSourceEvents, type AppEvent } from "./ticketsource";
 import { isStripeConfigured, getStripeClient, getPublishableKey } from "./stripe";
 import { countWorkingDays, calculateLeaveYearBounds, calculateProRataEntitlement, applyCarryOverCap, getEnglandWalesBankHolidays } from "./uk-leave-utils";
@@ -3784,10 +3862,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.sendStatus(200);
     }
 
-    // Square also emits `order.updated` for every order mutation. We rely
-    // on `order.fulfillment.updated` above for KDS state, so silently ack
-    // these to avoid duplicate processing if the venue subscribes to both.
-    if (eventType === "order.updated") {
+    // ── Live Tables / POS sync ─────────────────────────────────────────────
+    // When a check is opened in Square POS for a table, Square fires
+    // order.created; every item add/edit fires order.updated. We mirror these
+    // into the table_sessions table so the Live Tables screen can show "in
+    // use" with the running total. The ticket_name (the label staff type into
+    // Square POS — e.g. "Snooker 4") is parsed for the table type + number.
+    if (eventType === "order.created" || eventType === "order.updated") {
+      try {
+        const order = event?.data?.object?.order_created || event?.data?.object?.order_updated || event?.data?.object?.order;
+        const orderId: string | undefined = order?.order_id || order?.id || event?.data?.id;
+        if (orderId) {
+          const full = await square.getOrder(orderId).catch(() => null);
+          if (full) await syncSquareOrderToSession(full);
+        }
+      } catch (err) {
+        console.error("[WEBHOOK] table-session sync error:", err);
+      }
+      // Don't return — fall through so KDS / other order.updated handlers
+      // above still ran (they returned earlier if they matched).
       return res.sendStatus(200);
     }
 
@@ -3799,6 +3892,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const amountPence = payment.amount_money?.amount;
     const currency = payment.amount_money?.currency;
     const paymentNote: string = payment.note || payment.payment_note || "";
+
+    // ── Live Tables / POS sync — payment side ──────────────────────────────
+    // When a Square payment completes, look up the table session by the
+    // associated order id and stamp the payment method (CARD / CASH / etc.)
+    // so the staff portal can show "Paid by card" instead of just "Paid".
+    if (paymentStatus === "COMPLETED" && payment.order_id) {
+      try {
+        const fresh = await square.getOrder(payment.order_id).catch(() => null);
+        if (fresh) await syncSquareOrderToSession(fresh);
+        const sourceType: string = payment.source_type || "";
+        const cardBrand: string = payment.card_details?.card?.card_brand || "";
+        const method = sourceType === "CARD" ? (cardBrand ? `CARD (${cardBrand})` : "CARD") : sourceType || "PAID";
+        await db.update(tableSessions)
+          .set({ paymentMethod: method, lastSyncedAt: new Date() })
+          .where(dEq(tableSessions.squareOrderId, payment.order_id));
+      } catch (err) {
+        console.error("[WEBHOOK] table-session payment sync error:", err);
+      }
+    }
 
     // ── Membership payment (completed or failed) ────────────────────────────
     if (paymentNote.startsWith("MEMBERSHIP:")) {
@@ -11197,22 +11309,28 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
 
   // ─── LIVE TABLES VIEW ───────────────────────────────────────────────────
   // Returns today's bookings annotated with current state (upcoming, in-play,
-  // ending-soon, finished) plus the open tab id (if any). Computed server-side
-  // so staff devices stay in sync.
+  // ending-soon, finished) plus — crucially — whether the table currently has
+  // an open check in Square POS, the running total, and the item count. The
+  // Square data comes from the table_sessions table which is mirrored from
+  // Square via webhooks (with a 60s poll as a safety net).
   app.get("/api/staff/tables-live", staffAuth, async (_req, res) => {
     try {
       const now = new Date();
       const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
       const todays = await db.select().from(bookingsTable).where(dEq(bookingsTable.date, todayStr));
-      const openTabs = await db.select().from(tabs).where(dEq(tabs.status, "open"));
+      const openSessions = await db.select().from(tableSessions).where(dEq(tableSessions.state, "open"));
 
-      const tabByKey = new Map<string, typeof openTabs[number]>();
-      const tabByBooking = new Map<number, typeof openTabs[number]>();
-      for (const t of openTabs) {
-        if (t.tableNumber) tabByKey.set(`${t.tableType}|${t.tableNumber}`, t);
-        if (t.bookingId) tabByBooking.set(t.bookingId, t);
+      // Index sessions by table for fast lookup. tableType comparison is
+      // case-insensitive because bookings store "snooker"/"pool"/"dining" in
+      // varying casings depending on age of the booking.
+      const sessionByKey = new Map<string, typeof openSessions[number]>();
+      for (const s of openSessions) {
+        if (s.tableType && s.tableNumber) {
+          sessionByKey.set(`${s.tableType.toLowerCase()}|${s.tableNumber}`, s);
+        }
       }
 
+      const usedSessionIds = new Set<number>();
       const result = todays
         .filter((b) => b.status !== "cancelled")
         .map((b) => {
@@ -11228,8 +11346,11 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
           else if (minsToEnd <= 15) state = "ending-soon";
           else state = "in-play";
 
-          const tab = (b.id && tabByBooking.get(b.id))
-            || (b.tableNumber ? tabByKey.get(`${b.tableType}|${b.tableNumber}`) : undefined);
+          const sess = b.tableNumber
+            ? sessionByKey.get(`${String(b.tableType).toLowerCase()}|${String(b.tableNumber).replace(/\D/g, "")}`)
+              || sessionByKey.get(`${String(b.tableType).toLowerCase()}|${b.tableNumber}`)
+            : undefined;
+          if (sess) usedSessionIds.add(sess.id);
 
           return {
             bookingId: b.id,
@@ -11242,23 +11363,48 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
             state,
             minsToEnd: Math.max(0, Math.round(minsToEnd)),
             minsElapsed: Math.max(0, Math.round((now.getTime() - start.getTime()) / 60_000)),
-            openTabId: tab?.id ?? null,
-            openTabTotalPence: tab?.totalPence ?? null,
+            squareSession: sess ? {
+              orderId: sess.squareOrderId,
+              ticketName: sess.ticketName,
+              totalPence: sess.totalPence,
+              itemCount: sess.itemCount,
+              openedAt: sess.openedAt,
+            } : null,
           };
         })
         .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
-      // Also include open tabs that aren't tied to today's bookings (walk-ins)
-      const orphanTabs = openTabs
-        .filter((t) => !t.bookingId || !todays.some((b) => b.id === t.bookingId))
-        .filter((t) => !t.tableNumber || !result.some((r) => r.tableType === t.tableType && r.tableNumber === t.tableNumber && r.openTabId === t.id));
+      // Walk-in / non-booked sessions: any open Square session that didn't
+      // match a booking (e.g. someone sat down without a reservation).
+      const orphanSessions = openSessions
+        .filter((s) => !usedSessionIds.has(s.id))
+        .map((s) => ({
+          orderId: s.squareOrderId,
+          ticketName: s.ticketName,
+          tableType: s.tableType,
+          tableNumber: s.tableNumber,
+          totalPence: s.totalPence,
+          itemCount: s.itemCount,
+          openedAt: s.openedAt,
+        }));
 
-      res.json({ now: now.toISOString(), bookings: result, orphanTabs });
+      res.json({ now: now.toISOString(), bookings: result, orphanSessions });
     } catch (err: any) {
       console.error("[TABLES-LIVE] error:", err.message);
       res.status(500).json({ message: "Could not load live tables" });
     }
   });
+
+  // ── Square POS safety-net poll ─────────────────────────────────────────
+  // Fires every 60s in case a webhook is missed. Cheap (one Orders search)
+  // and Square explicitly recommends a poll alongside webhooks for critical
+  // mirrored state. Skipped when Square isn't configured. Guarded against
+  // HMR / repeat-init leaking intervals.
+  if (square.isConfigured() && !(globalThis as any).__posPollStarted) {
+    (globalThis as any).__posPollStarted = true;
+    setInterval(() => { void pollSquareOrders(); }, 60_000);
+    setTimeout(() => { void pollSquareOrders(); }, 3_000);
+  }
 
   const httpServer = createServer(app);
   return httpServer;

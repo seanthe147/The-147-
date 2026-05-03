@@ -154,6 +154,43 @@ export async function searchIssuedRewards(accountId: string): Promise<any[]> {
   }
 }
 
+// ── Orders (used by Live Tables / POS sync) ─────────────────────────────────
+// Returns OPEN orders at the configured location. Square's Orders search API
+// requires a state filter; we ask for OPEN explicitly so completed/cancelled
+// orders aren't counted as in-use tables.
+export async function searchOpenOrders(): Promise<any[]> {
+  const locationId = getLocationId();
+  const data = await squareRequest("POST", "/v2/orders/search", {
+    location_ids: [locationId],
+    query: {
+      filter: { state_filter: { states: ["OPEN"] } },
+      sort: { sort_field: "CREATED_AT", sort_order: "DESC" },
+    },
+    limit: 200,
+  });
+  return data.orders || [];
+}
+
+export async function getOrder(orderId: string): Promise<any | null> {
+  try {
+    const data = await squareRequest("GET", `/v2/orders/${orderId}`);
+    return data.order || null;
+  } catch (err) {
+    if (err instanceof SquareError && err.statusCode === 404) return null;
+    throw err;
+  }
+}
+
+export async function getPayment(paymentId: string): Promise<any | null> {
+  try {
+    const data = await squareRequest("GET", `/v2/payments/${paymentId}`);
+    return data.payment || null;
+  } catch (err) {
+    if (err instanceof SquareError && err.statusCode === 404) return null;
+    throw err;
+  }
+}
+
 export function isConfigured(): boolean {
   return !!(process.env.SQUARE_ACCESS_TOKEN && (process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID));
 }

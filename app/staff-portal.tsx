@@ -571,9 +571,14 @@ function DashboardScreen() {
           <>
             <Text style={styles.sectionLabel}>ADMIN TOOLS</Text>
             <View style={styles.toolsList}>
-              {/* Bar Tabs and Live Tables temporarily disabled — feature is built
-                  but does not yet sync with the Square POS. Re-enable once POS
-                  integration is in place. */}
+              <AdminTool
+                icon="tv"
+                title="Live Tables"
+                description="See which tables are in use right now (live from Square POS)"
+                color="#059669"
+                onPress={() => router.push("/admin-tables-live")}
+                testID="portal-live-tables"
+              />
               <AdminTool
                 icon="calendar"
                 title="Bookings Calendar"

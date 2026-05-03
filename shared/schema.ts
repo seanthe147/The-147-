@@ -167,6 +167,27 @@ export const tabItems = pgTable("tab_items", {
 export type TabItem = typeof tabItems.$inferSelect;
 export type InsertTabItem = typeof tabItems.$inferInsert;
 
+// Square POS sessions — mirrored from Square Orders so we can show which
+// tables are currently in use (a check is open in Square POS) and the running
+// total. Updated by webhook (order.created / order.updated / payment.updated)
+// with a 60-second safety-net poll in case a webhook is missed.
+export const tableSessions = pgTable("table_sessions", {
+  id: serial("id").primaryKey(),
+  squareOrderId: text("square_order_id").notNull().unique(),
+  ticketName: text("ticket_name"),                   // raw "Snooker 4" etc.
+  tableType: text("table_type"),                     // snooker | pool | dining
+  tableNumber: text("table_number"),                 // numeric portion as text
+  state: text("state").notNull().default("open"),    // open | paid | cancelled
+  totalPence: integer("total_pence").notNull().default(0),
+  itemCount: integer("item_count").notNull().default(0),
+  paymentMethod: text("payment_method"),             // CARD | CASH | etc.
+  openedAt: timestamp("opened_at").defaultNow().notNull(),
+  closedAt: timestamp("closed_at"),
+  lastSyncedAt: timestamp("last_synced_at").defaultNow().notNull(),
+});
+export type TableSession = typeof tableSessions.$inferSelect;
+export type InsertTableSession = typeof tableSessions.$inferInsert;
+
 export const staffSessions = pgTable("staff_sessions", {
   id: serial("id").primaryKey(),
   token: text("token").notNull().unique(),

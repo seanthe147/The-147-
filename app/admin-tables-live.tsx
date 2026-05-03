@@ -11,9 +11,16 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { router, Stack } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/query-client";
+import { useQuery } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
+
+type SquareSession = {
+  orderId: string;
+  ticketName: string | null;
+  totalPence: number;
+  itemCount: number;
+  openedAt: string;
+};
 
 type LiveBooking = {
   bookingId: number;
@@ -26,17 +33,12 @@ type LiveBooking = {
   state: "upcoming" | "in-play" | "ending-soon" | "finished";
   minsToEnd: number;
   minsElapsed: number;
-  openTabId: number | null;
-  openTabTotalPence: number | null;
+  squareSession: SquareSession | null;
 };
 
-type OrphanTab = {
-  id: number;
-  tableType: string;
+type OrphanSession = SquareSession & {
+  tableType: string | null;
   tableNumber: string | null;
-  customerName: string | null;
-  totalPence: number;
-  openedAt: string;
 };
 
 const STATE_META: Record<LiveBooking["state"], { label: string; color: string; bg: string }> = {
@@ -46,7 +48,7 @@ const STATE_META: Record<LiveBooking["state"], { label: string; color: string; b
   "finished":     { label: "Finished",     color: "#6B7280", bg: "#F3F4F6" },
 };
 
-function fmtMoney(pence: number | null): string {
+function fmtMoney(pence: number | null | undefined): string {
   if (pence === null || pence === undefined) return "—";
   return `£${(pence / 100).toFixed(2)}`;
 }
@@ -59,46 +61,14 @@ function fmtRemaining(b: LiveBooking): string {
 
 export default function AdminTablesLiveScreen() {
   const insets = useSafeAreaInsets();
-  const qc = useQueryClient();
 
   const { data, isLoading, refetch, isRefetching } = useQuery<{
     now: string;
     bookings: LiveBooking[];
-    orphanTabs: OrphanTab[];
+    orphanSessions: OrphanSession[];
   }>({
     queryKey: ["/api/staff/tables-live"],
     refetchInterval: 30_000,
-  });
-
-  const openTab = useMutation({
-    mutationFn: async (b: LiveBooking) => {
-      const r = await apiRequest("POST", "/api/staff/tabs", {
-        tableType: b.tableType,
-        tableNumber: b.tableNumber || null,
-        bookingId: b.bookingId,
-        customerName: b.customerName || null,
-      });
-      return r.json();
-    },
-    onSuccess: (created: any) => {
-      qc.invalidateQueries({ queryKey: ["/api/staff/tables-live"] });
-      router.push({ pathname: "/admin-tabs", params: { openTabId: String(created.id) } });
-    },
-    onError: (e: any) => {
-      // apiRequest throws with "STATUS: bodyText". Try to surface 409 details.
-      const msg: string = e?.message || "";
-      const m = /409:\s*(.+)$/.exec(msg);
-      if (m) {
-        try {
-          const body = JSON.parse(m[1]);
-          if (body?.existingTabId) {
-            router.push({ pathname: "/admin-tabs", params: { openTabId: String(body.existingTabId) } });
-            return;
-          }
-        } catch {}
-      }
-      router.push("/admin-tabs");
-    },
   });
 
   return (
@@ -109,9 +79,7 @@ export default function AdminTablesLiveScreen() {
           <Ionicons name="chevron-back" size={24} color="#fff" />
         </Pressable>
         <Text style={styles.headerTitle}>Live Tables</Text>
-        <Pressable onPress={() => router.push("/admin-tabs")} style={styles.headerBtn}>
-          <Ionicons name="receipt" size={22} color="#fff" />
-        </Pressable>
+        <View style={styles.headerBtn} />
       </View>
 
       {isLoading ? (
@@ -122,7 +90,7 @@ export default function AdminTablesLiveScreen() {
           keyExtractor={(b) => String(b.bookingId)}
           ListHeaderComponent={
             <Text style={styles.headerNote}>
-              Today's bookings · auto-refreshes every 30s
+              Today's bookings · live from Square POS · auto-refresh 30s
             </Text>
           }
           ListEmptyComponent={
@@ -133,28 +101,23 @@ export default function AdminTablesLiveScreen() {
           }
           contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}
           refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
-          renderItem={({ item }) => (
-            <LiveCard booking={item} onOpenTab={() => openTab.mutate(item)} />
-          )}
+          renderItem={({ item }) => <LiveCard booking={item} />}
           ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
           ListFooterComponent={
-            (data?.orphanTabs?.length ?? 0) > 0 ? (
+            (data?.orphanSessions?.length ?? 0) > 0 ? (
               <View style={{ marginTop: 24 }}>
-                <Text style={styles.sectionLabel}>WALK-IN TABS</Text>
-                {data!.orphanTabs.map((t) => (
-                  <Pressable
-                    key={t.id}
-                    onPress={() => router.push({ pathname: "/admin-tabs", params: { openTabId: String(t.id) } })}
-                    style={[styles.card, { marginTop: 8 }]}
-                  >
-                    <View style={{ flex: 1 }}>
+                <Text style={styles.sectionLabel}>WALK-IN CHECKS (no booking)</Text>
+                {data!.orphanSessions.map((s) => (
+                  <View key={s.orderId} style={[styles.card, { marginTop: 8 }]}>
+                    <View style={[styles.stateStripe, { backgroundColor: "#065F46" }]} />
+                    <View style={{ flex: 1, paddingLeft: 12 }}>
                       <Text style={styles.tableLine}>
-                        {t.tableNumber ? `${t.tableType} · ${t.tableNumber}` : t.tableType}
+                        {s.ticketName || (s.tableType && s.tableNumber ? `${s.tableType} ${s.tableNumber}` : "Unlabeled check")}
                       </Text>
-                      <Text style={styles.metaLine}>{t.customerName || "Walk-in"}</Text>
+                      <Text style={styles.metaLine}>{s.itemCount} item{s.itemCount === 1 ? "" : "s"}</Text>
                     </View>
-                    <Text style={styles.tabAmount}>{fmtMoney(t.totalPence)}</Text>
-                  </Pressable>
+                    <Text style={styles.tabAmount}>{fmtMoney(s.totalPence)}</Text>
+                  </View>
                 ))}
               </View>
             ) : null
@@ -165,49 +128,43 @@ export default function AdminTablesLiveScreen() {
   );
 }
 
-function LiveCard({ booking, onOpenTab }: { booking: LiveBooking; onOpenTab: () => void }) {
+function LiveCard({ booking }: { booking: LiveBooking }) {
   const meta = STATE_META[booking.state];
+  const sess = booking.squareSession;
   return (
     <View style={styles.card}>
       <View style={[styles.stateStripe, { backgroundColor: meta.color }]} />
-      <View style={{ flex: 1, paddingLeft: 12 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+      <View style={{ flex: 1, paddingLeft: 12, paddingVertical: 12 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <Text style={styles.tableLine}>
             {booking.tableNumber ? `${booking.tableType} · ${booking.tableNumber}` : booking.tableType}
           </Text>
           <View style={[styles.statePill, { backgroundColor: meta.bg }]}>
             <Text style={[styles.statePillText, { color: meta.color }]}>{meta.label}</Text>
           </View>
+          {sess && (
+            <View style={[styles.statePill, { backgroundColor: "#D1FAE5" }]}>
+              <Text style={[styles.statePillText, { color: "#065F46" }]}>In use · Square</Text>
+            </View>
+          )}
         </View>
         <Text style={styles.customerLine} numberOfLines={1}>
           {booking.customerName || "Customer"}
         </Text>
         <Text style={styles.metaLine}>{fmtRemaining(booking)}</Text>
-        {booking.openTabId !== null && (
+        {sess && (
           <View style={styles.tabBadge}>
             <Ionicons name="receipt" size={12} color={Colors.brand.blue} />
-            <Text style={styles.tabBadgeText}>Tab open · {fmtMoney(booking.openTabTotalPence)}</Text>
+            <Text style={styles.tabBadgeText}>
+              {fmtMoney(sess.totalPence)} · {sess.itemCount} item{sess.itemCount === 1 ? "" : "s"}
+            </Text>
           </View>
         )}
       </View>
-      {booking.openTabId !== null ? (
-        <Pressable
-          onPress={() => router.push({ pathname: "/admin-tabs", params: { openTabId: String(booking.openTabId) } })}
-          style={[styles.actionBtn, { backgroundColor: Colors.brand.blue }]}
-          testID={`view-tab-${booking.openTabId}`}
-        >
-          <Ionicons name="eye" size={16} color="#fff" />
-          <Text style={styles.actionBtnText}>View</Text>
-        </Pressable>
-      ) : booking.state !== "finished" ? (
-        <Pressable
-          onPress={onOpenTab}
-          style={[styles.actionBtn, { backgroundColor: "#059669" }]}
-          testID={`open-tab-${booking.bookingId}`}
-        >
-          <Ionicons name="add-circle" size={16} color="#fff" />
-          <Text style={styles.actionBtnText}>Tab</Text>
-        </Pressable>
+      {sess ? (
+        <View style={[styles.totalBadge]}>
+          <Text style={styles.totalBadgeText}>{fmtMoney(sess.totalPence)}</Text>
+        </View>
       ) : null}
     </View>
   );
@@ -237,8 +194,8 @@ const styles = StyleSheet.create({
   statePillText: { fontSize: 11, fontWeight: "700" },
   tabBadge: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6, alignSelf: "flex-start", backgroundColor: "#EFF6FF", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   tabBadgeText: { fontSize: 11, fontWeight: "700", color: Colors.brand.blue },
-  actionBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, marginRight: 12 },
-  actionBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
+  totalBadge: { paddingHorizontal: 12, paddingVertical: 10, marginRight: 12, alignItems: "center" },
+  totalBadgeText: { fontSize: 16, fontWeight: "800", color: Colors.brand.blue },
   sectionLabel: { fontSize: 11, fontWeight: "800", color: "#6B7280", letterSpacing: 0.6 },
   tabAmount: { fontSize: 16, fontWeight: "800", color: Colors.brand.blue, marginRight: 12 },
 });
