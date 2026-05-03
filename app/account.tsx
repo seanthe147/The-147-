@@ -79,11 +79,11 @@ function DOBPicker({ value, onChange, testID }: {
       const d = new Date();
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     })();
-    return React.createElement("input" as any, {
+    const inputProps: React.InputHTMLAttributes<HTMLInputElement> & { "data-testid"?: string } = {
       type: "date",
       value,
       max: today,
-      onChange: (e: any) => onChange(e.target.value || ""),
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChange(e.target.value || ""),
       "data-testid": testID,
       style: {
         height: 48,
@@ -100,7 +100,8 @@ function DOBPicker({ value, onChange, testID }: {
         width: "100%",
         boxSizing: "border-box",
       },
-    });
+    };
+    return React.createElement("input", inputProps);
   }
 
   const dateValue = value ? parseDateLocal(value) : new Date(2000, 0, 1);
@@ -108,7 +109,7 @@ function DOBPicker({ value, onChange, testID }: {
   const minDate = new Date();
   minDate.setFullYear(minDate.getFullYear() - 120);
 
-  const handleChange = (event: any, selectedDate?: Date) => {
+  const handleChange = (event: { type?: string }, selectedDate?: Date) => {
     if (Platform.OS === "android") {
       setShowPicker(false);
       if (event?.type === "set" && selectedDate) {
