@@ -530,6 +530,13 @@ var init_schema = __esm({
       clockOutFlags: text("clock_out_flags"),
       clientIp: text("client_ip"),
       userAgent: text("user_agent"),
+      // When location cannot be independently verified (i.e. coordinates come
+      // from the client and the server has no attestation proof), the entry is
+      // flagged so that managers must explicitly review it before it can be
+      // treated as an authoritative attendance record for payroll purposes.
+      needsManagerReview: boolean("needs_manager_review").notNull().default(false),
+      managerReviewedAt: timestamp("manager_reviewed_at"),
+      managerReviewedBy: integer("manager_reviewed_by"),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     insertStaffTimeEntrySchema = createInsertSchema(staffTimeEntries).omit({ id: true, createdAt: true });
@@ -1047,7 +1054,10 @@ async function runStartupMigrations() {
         ADD COLUMN IF NOT EXISTS clock_in_flags TEXT,
         ADD COLUMN IF NOT EXISTS clock_out_flags TEXT,
         ADD COLUMN IF NOT EXISTS client_ip TEXT,
-        ADD COLUMN IF NOT EXISTS user_agent TEXT;
+        ADD COLUMN IF NOT EXISTS user_agent TEXT,
+        ADD COLUMN IF NOT EXISTS needs_manager_review BOOLEAN NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS manager_reviewed_at TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS manager_reviewed_by INTEGER;
     `);
     await client.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS staff_time_entries_active_uniq
@@ -2406,20 +2416,30 @@ var init_storage = __esm({
           geofenceEnforced: audit?.geofenceEnforced ?? false,
           clockInFlags: audit?.flags && audit.flags.length ? audit.flags.join(",") : null,
           clientIp: audit?.clientIp ?? null,
-          userAgent: audit?.userAgent ?? null
+          userAgent: audit?.userAgent ?? null,
+          // Entries with unverified client-supplied location require a manager
+          // to explicitly approve them before they are treated as authoritative
+          // attendance records for payroll or HR reporting purposes.
+          needsManagerReview: audit?.needsManagerReview ?? false
         }).returning();
         return decryptTimeEntry(entry);
       }
       async clockOut(entryId, lat, lng, audit) {
         const newEnforced = audit?.geofenceEnforced ?? false;
+        const newReview = audit?.needsManagerReview ?? false;
         const [entry] = await db.update(staffTimeEntries).set({
           clockedOutAt: /* @__PURE__ */ new Date(),
           status: "completed",
           clockOutLat: lat ? encrypt(lat) : null,
           clockOutLng: lng ? encrypt(lng) : null,
           geofenceEnforced: sql2`${staffTimeEntries.geofenceEnforced} AND ${newEnforced}`,
-          clockOutFlags: audit?.flags && audit.flags.length ? audit.flags.join(",") : null
+          clockOutFlags: audit?.flags && audit.flags.length ? audit.flags.join(",") : null,
+          needsManagerReview: sql2`${staffTimeEntries.needsManagerReview} OR ${newReview}`
         }).where(and(eq(staffTimeEntries.id, entryId), eq(staffTimeEntries.status, "active"))).returning();
+        return entry ? decryptTimeEntry(entry) : null;
+      }
+      async reviewTimeEntry(id, reviewedBy) {
+        const [entry] = await db.update(staffTimeEntries).set({ needsManagerReview: false, managerReviewedAt: /* @__PURE__ */ new Date(), managerReviewedBy: reviewedBy }).where(eq(staffTimeEntries.id, id)).returning();
         return entry ? decryptTimeEntry(entry) : null;
       }
       async getTimeEntriesForStaff(staffId, limit = 50) {
@@ -4868,7 +4888,7 @@ import express from "express";
 init_storage();
 init_schema();
 import { createServer } from "node:http";
-import { randomBytes as randomBytes3, timingSafeEqual, createHash as createHash2 } from "node:crypto";
+import { randomBytes as randomBytes3, timingSafeEqual, createHash as createHash2, createHmac } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import multer from "multer";
@@ -5465,9 +5485,7 @@ async function sendMigrationEmail(subId, req) {
     token = makeMigrationToken2();
     await storage.updateMembershipSubscription(sub.id, { migrationToken: token });
   }
-  const host = req.headers.host || "the147bradford.replit.app";
-  const proto = req.headers["x-forwarded-proto"] || "https";
-  const migrateUrl = `${proto}://${host}/migrate/${token}`;
+  const migrateUrl = `${getPublicAppOrigin()}/migrate/${token}`;
   const { subject, html } = buildMigrationEmail2({ name: sub.customer.name, plan: sub.plan, migrateUrl });
   const sent = await sendEmailViaSMTP(sub.customer.email, subject, html);
   if (!sent) return { success: false, message: "SMTP not configured or send failed" };
@@ -6579,7 +6597,7 @@ async function registerRoutes(app2) {
     await storage.invalidateStaffSessionsByUserId(staffUser.id, currentToken).catch(() => void 0);
     res.json({ message: "Password updated successfully" });
   });
-  app2.post("/api/staff/reset-password", staffAuth, managerAuth, async (req, res) => {
+  app2.post("/api/staff/reset-password", staffAuth, ownerAuth, async (req, res) => {
     const { username, tempPassword } = req.body;
     if (!username || typeof username !== "string" || username.trim().length < 3) {
       return res.status(400).json({ message: "Username is required" });
@@ -6594,14 +6612,14 @@ async function registerRoutes(app2) {
     }
     const requestingUser = req.staffUser;
     if (staffUser.role === "owner" && requestingUser?.role !== "owner") {
-      return res.status(403).json({ message: "Managers cannot reset credentials for owner accounts" });
+      return res.status(403).json({ message: "Only owner accounts may reset another owner's credentials" });
     }
     const { hash, salt } = hashPassword(tempPassword);
     await storage.updateStaffPassword(staffUser.username, hash, salt, true);
     await storage.invalidateStaffSessionsByUserId(staffUser.id).catch(() => void 0);
     res.json({ message: "Password reset successfully for " + staffUser.username });
   });
-  app2.post("/api/staff/reset-pin", staffAuth, managerAuth, async (req, res) => {
+  app2.post("/api/staff/reset-pin", staffAuth, ownerAuth, async (req, res) => {
     const { username, newPin } = req.body;
     if (!username || typeof username !== "string" || username.trim().length < 3) {
       return res.status(400).json({ message: "Username is required" });
@@ -6615,7 +6633,7 @@ async function registerRoutes(app2) {
     }
     const requestingUser = req.staffUser;
     if (staffUser.role === "owner" && requestingUser?.role !== "owner") {
-      return res.status(403).json({ message: "Managers cannot reset credentials for owner accounts" });
+      return res.status(403).json({ message: "Only owner accounts may reset another owner's credentials" });
     }
     const { hash, salt } = hashPin(newPin);
     await storage.updateStaffPin(username.trim(), hash, salt);
@@ -7170,9 +7188,7 @@ async function registerRoutes(app2) {
           await storage.updateMembershipSubscription(sub.id, { squareCustomerId: sqCustomerId });
         }
       }
-      const host = req.headers.host || "the147bradford.replit.app";
-      const proto = req.headers["x-forwarded-proto"] || "https";
-      const redirectUrl = `${proto}://${host}/migrate/${token}/done`;
+      const redirectUrl = `${getPublicAppOrigin()}/migrate/${token}/done`;
       const checkout = await createSubscriptionCheckoutLink({
         planVariationId: variationId,
         subscriptionId: sub.id,
@@ -7752,7 +7768,35 @@ async function registerRoutes(app2) {
     }
     const DEPOSIT_GUEST_THRESHOLD = 7;
     const DEPOSIT_AMOUNT_PENCE = 500;
-    const depositHandling = req.body.depositHandling;
+    const requestedDepositHandling = req.body.depositHandling;
+    let staffUserForDeposit = null;
+    if (requestedDepositHandling === "mark_paid" || requestedDepositHandling === "send_link") {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        const token = authHeader.slice(7);
+        if (token.length >= 32 && token.length <= 128) {
+          try {
+            const session = await storage.validateStaffSession(token);
+            if (session?.staffUsername) {
+              const user = await storage.getStaffUserByUsername(session.staffUsername);
+              if (user && user.active !== false && user.approvalStatus !== "rejected" && user.approvalStatus !== "pending") {
+                staffUserForDeposit = user;
+                req.staffUser = user;
+                req.staffUsername = session.staffUsername;
+                req.staffRole = user.role || "staff";
+              }
+            }
+          } catch {
+          }
+        }
+      }
+    }
+    const depositHandling = staffUserForDeposit ? requestedDepositHandling : void 0;
+    if (requestedDepositHandling && !staffUserForDeposit) {
+      console.warn(
+        `[BOOKING] Ignoring depositHandling=${requestedDepositHandling} from non-staff request (ip=${ip})`
+      );
+    }
     const guestCount = parsed.data.guestCount ?? 0;
     const isLargeParty = parsed.data.tableType === "dining" && guestCount >= DEPOSIT_GUEST_THRESHOLD;
     if (isLargeParty && depositHandling === "mark_paid") {
@@ -7832,9 +7876,7 @@ async function registerRoutes(app2) {
         return res.status(201).json({ ...booking, depositRequired: true, depositPaymentUrl: staticDepositUrl });
       }
       try {
-        const appDomain = process.env.EXPO_PUBLIC_DOMAIN || req.get("host") || "localhost:5000";
-        const protocol = appDomain.includes("localhost") ? "http" : "https";
-        const redirectUrl = `${protocol}://${appDomain}/api/bookings/${booking.id}/deposit-return`;
+        const redirectUrl = `${getPublicAppOrigin()}/api/bookings/${booking.id}/deposit-return`;
         const paymentLink = await createDepositPaymentLink({
           amountPence: DEPOSIT_AMOUNT_PENCE,
           description: `Dining Deposit \u2013 Booking ${bookingRef} (${guestCount} guests)`,
@@ -8073,10 +8115,10 @@ async function registerRoutes(app2) {
       return res.status(401).json({ message: "Missing signature" });
     }
     try {
-      const { createHmac, timingSafeEqual: timingSafeEqual2 } = await import("node:crypto");
+      const { createHmac: createHmac2, timingSafeEqual: timingSafeEqual2 } = await import("node:crypto");
       const notificationUrl = process.env.SQUARE_WEBHOOK_URL || `https://${process.env.EXPO_PUBLIC_DOMAIN || req.get("host")}/api/webhooks/square`;
       const rawBody = req.rawBody?.toString("utf8") ?? JSON.stringify(req.body);
-      const hmac = createHmac("sha256", sigKey);
+      const hmac = createHmac2("sha256", sigKey);
       hmac.update(notificationUrl + rawBody);
       const expected = hmac.digest("base64");
       const sigBuf = Buffer.from(signature, "base64");
@@ -12219,8 +12261,8 @@ Phone: ${phone}` : ""}`,
       const sig = req.headers["x-square-hmacsha256-signature"];
       if (!sig) return res.status(401).send("Missing signature");
       const notificationUrl = `https://${req.headers.host}${req.originalUrl}`;
-      const { createHmac, timingSafeEqual: timingSafeEqual2 } = await import("node:crypto");
-      const expected = createHmac("sha256", sigKey).update(notificationUrl + bodyStr).digest("base64");
+      const { createHmac: createHmac2, timingSafeEqual: timingSafeEqual2 } = await import("node:crypto");
+      const expected = createHmac2("sha256", sigKey).update(notificationUrl + bodyStr).digest("base64");
       const sigBuf = Buffer.from(sig, "base64");
       const expBuf = Buffer.from(expected, "base64");
       if (sigBuf.length !== expBuf.length || !timingSafeEqual2(sigBuf, expBuf)) {
@@ -13294,9 +13336,61 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     await storage.setSetting("geofence_radius", String(radius ?? 200));
     res.json({ lat: String(lat), lng: String(lng), radius: Number(radius ?? 200) });
   });
+  const VENUE_CODE_WINDOW_SECS = 600;
+  async function getVenueClockSecret() {
+    return storage.getSetting("venue_clock_secret");
+  }
+  async function ensureVenueClockSecret() {
+    const existing = await storage.getSetting("venue_clock_secret");
+    if (existing) return existing;
+    const secret = randomBytes3(32).toString("hex");
+    await storage.setSetting("venue_clock_secret", secret);
+    return secret;
+  }
+  function deriveVenueCode(secret, window) {
+    return createHmac("sha256", secret).update(`venue-clock:${window}`).digest("hex").slice(0, 6).toUpperCase();
+  }
+  async function isValidVenueCode(submitted) {
+    const secret = await getVenueClockSecret();
+    if (!secret) return false;
+    const currentWindow = Math.floor(Date.now() / (VENUE_CODE_WINDOW_SECS * 1e3));
+    for (const w of [currentWindow, currentWindow - 1]) {
+      const expected = deriveVenueCode(secret, w);
+      const a = Buffer.from(submitted.toUpperCase().padEnd(6));
+      const b = Buffer.from(expected);
+      if (a.length === b.length && timingSafeEqual(a, b)) return true;
+    }
+    return false;
+  }
+  app2.get("/api/hr/venue-clock-code", staffAuth, managerAuth, async (_req, res) => {
+    const secret = await ensureVenueClockSecret();
+    const currentWindow = Math.floor(Date.now() / (VENUE_CODE_WINDOW_SECS * 1e3));
+    const code = deriveVenueCode(secret, currentWindow);
+    const nextChangeMs = VENUE_CODE_WINDOW_SECS * 1e3 - Date.now() % (VENUE_CODE_WINDOW_SECS * 1e3);
+    res.json({
+      code,
+      windowSeconds: VENUE_CODE_WINDOW_SECS,
+      nextChangeInSeconds: Math.ceil(nextChangeMs / 1e3)
+    });
+  });
   app2.get("/api/hr/clock-status", staffAuth, async (req, res) => {
     const active = await storage.getActiveClockEntry(req.staffUser.id);
     res.json({ active: active ?? null });
+  });
+  const locationTokens = /* @__PURE__ */ new Map();
+  const LOCATION_TOKEN_TTL_MS = 6e4;
+  function pruneExpiredLocationTokens() {
+    const now = Date.now();
+    for (const [tok, data] of locationTokens) {
+      if (data.expiresAt < now) locationTokens.delete(tok);
+    }
+  }
+  app2.post("/api/hr/location-token", staffAuth, (req, res) => {
+    pruneExpiredLocationTokens();
+    const token = randomBytes3(32).toString("hex");
+    const expiresAt = Date.now() + LOCATION_TOKEN_TTL_MS;
+    locationTokens.set(token, { staffId: req.staffUser.id, expiresAt });
+    res.json({ token, expiresAt: new Date(expiresAt).toISOString() });
   });
   function haversineM(aLat, aLng, bLat, bLng) {
     const R = 6371e3;
@@ -13311,16 +13405,59 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     const cfgLng = await storage.getSetting("geofence_lng");
     const cfgRadius = await storage.getSetting("geofence_radius");
     const flags = [];
+    const { lat, lng, locationToken, venueCode } = req.body || {};
+    const clockSecret = await getVenueClockSecret();
+    if (!clockSecret) {
+      res.status(503).json({
+        message: "Attendance clock is not yet configured. A manager must open the venue clock code display to activate it.",
+        code: "VENUE_CODE_NOT_CONFIGURED"
+      });
+      return null;
+    }
+    if (!venueCode || typeof venueCode !== "string" || venueCode.trim().length === 0) {
+      res.status(400).json({
+        message: "A venue clock code is required. Please enter the code displayed at the venue reception.",
+        code: "VENUE_CODE_REQUIRED"
+      });
+      return null;
+    }
+    const venueCodeValid = await isValidVenueCode(venueCode.trim());
+    if (!venueCodeValid) {
+      flags.push("venue_code_invalid");
+      res.status(403).json({
+        message: "The venue code you entered is incorrect or has expired. Please check the display at the venue reception and try again.",
+        code: "VENUE_CODE_INVALID"
+      });
+      return null;
+    }
+    flags.push("venue_code_verified");
+    const tokenKey = String(locationToken ?? "");
+    const tokenData = locationTokens.get(tokenKey);
+    if (!tokenData) {
+      res.status(400).json({ message: "A valid location token is required. Please try again from the app." });
+      return null;
+    }
+    if (tokenData.staffId !== req.staffUser.id) {
+      locationTokens.delete(tokenKey);
+      res.status(403).json({ message: "Location token does not match your session. Please try again." });
+      return null;
+    }
+    if (tokenData.expiresAt < Date.now()) {
+      locationTokens.delete(tokenKey);
+      res.status(400).json({ message: "Your location verification has expired. Please try clocking in again." });
+      return null;
+    }
+    locationTokens.delete(tokenKey);
     const ua = String(req.headers?.["user-agent"] ?? "");
     const looksMobile = /(Expo|okhttp|CFNetwork|iPhone|iPad|Android|Mobile|Darwin)/i.test(ua);
     if (!looksMobile) flags.push("no_mobile_ua");
     if (!cfgLat && !cfgLng) {
-      const { lat: lat2, lng: lng2 } = req.body || {};
       flags.push("no_geofence_configured");
+      flags.push("client_location_unverified");
       return {
-        lat: lat2 ? String(lat2) : "",
-        lng: lng2 ? String(lng2) : "",
-        audit: { geofenceEnforced: false, flags }
+        lat: lat ? String(lat) : "",
+        lng: lng ? String(lng) : "",
+        audit: { geofenceEnforced: false, needsManagerReview: true, flags }
       };
     }
     if (!cfgLat || !cfgLng) {
@@ -13334,7 +13471,6 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       res.status(500).json({ message: "Venue geofence is misconfigured. Please contact a manager." });
       return null;
     }
-    const { lat, lng } = req.body || {};
     const userLat = parseFloat(String(lat ?? ""));
     const userLng = parseFloat(String(lng ?? ""));
     if (!Number.isFinite(userLat) || !Number.isFinite(userLng)) {
@@ -13354,10 +13490,11 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       });
       return null;
     }
+    flags.push("client_location_unverified");
     return {
       lat: String(userLat),
       lng: String(userLng),
-      audit: { geofenceEnforced: true, flags }
+      audit: { geofenceEnforced: false, needsManagerReview: true, flags }
     };
   }
   async function computeAnomalyFlags(staffId, newLat, newLng) {
@@ -13403,7 +13540,8 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
           geofenceEnforced: result.audit.geofenceEnforced,
           flags,
           clientIp: String(req.ip ?? "").slice(0, 64) || void 0,
-          userAgent: String(req.headers?.["user-agent"] ?? "").slice(0, 256) || void 0
+          userAgent: String(req.headers?.["user-agent"] ?? "").slice(0, 256) || void 0,
+          needsManagerReview: result.audit.needsManagerReview
         }
       );
       res.status(201).json(entry);
@@ -13442,7 +13580,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       active.id,
       result.lat || void 0,
       result.lng || void 0,
-      { geofenceEnforced: result.audit.geofenceEnforced, flags }
+      { geofenceEnforced: result.audit.geofenceEnforced, flags, needsManagerReview: result.audit.needsManagerReview }
     );
     if (!entry) return res.status(409).json({ message: "Shift was already clocked out" });
     res.json(entry);
@@ -13451,12 +13589,28 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     const entries = await storage.getTimeEntriesForStaff(req.staffUser.id);
     res.json(entries);
   });
-  app2.get("/api/hr/time-entries/all", staffAuth, managerAuth, async (_req, res) => {
+  app2.get("/api/hr/time-entries/all", staffAuth, managerAuth, async (req, res) => {
     const entries = await storage.getAllTimeEntries();
     const users2 = await storage.getAllStaffUsers();
     const userMap = Object.fromEntries(users2.map((u) => [u.id, u.displayName || u.username]));
     const enriched = entries.map((e) => ({ ...e, staffName: userMap[e.staffId] || `Staff #${e.staffId}` }));
-    res.json(enriched);
+    const includeUnreviewed = req.query.includeUnreviewed === "true";
+    const result = includeUnreviewed ? enriched : enriched.filter((e) => !e.needsManagerReview);
+    res.json(result);
+  });
+  app2.get("/api/hr/time-entries/pending-review", staffAuth, managerAuth, async (_req, res) => {
+    const entries = await storage.getAllTimeEntries();
+    const users2 = await storage.getAllStaffUsers();
+    const userMap = Object.fromEntries(users2.map((u) => [u.id, u.displayName || u.username]));
+    const pending = entries.filter((e) => e.needsManagerReview && e.status !== "active").map((e) => ({ ...e, staffName: userMap[e.staffId] || `Staff #${e.staffId}` }));
+    res.json(pending);
+  });
+  app2.patch("/api/hr/time-entries/:id/review", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid entry ID" });
+    const entry = await storage.reviewTimeEntry(id, req.staffUser.id);
+    if (!entry) return res.status(404).json({ message: "Entry not found" });
+    res.json(entry);
   });
   app2.patch("/api/hr/time-entries/:id/amend", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id);
