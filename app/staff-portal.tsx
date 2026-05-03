@@ -566,10 +566,13 @@ function DashboardScreen() {
           )}
         </View>
 
-        {/* Admin tools — managers and owners, all platforms */}
+        {/* Admin tools — managers and owners, grouped by job. The old flat
+            list of 13 tiles got long enough that finding anything took
+            scrolling; splitting into FLOOR / CUSTOMERS / MARKETING /
+            CONTENT / OWNER mirrors how the day actually breaks down. */}
         {isManager && (
           <>
-            <Text style={styles.sectionLabel}>ADMIN TOOLS</Text>
+            <Text style={styles.sectionLabel}>FLOOR</Text>
             <View style={styles.toolsList}>
               <AdminTool
                 icon="tv"
@@ -588,31 +591,33 @@ function DashboardScreen() {
                 testID="portal-bookings-calendar"
               />
               <AdminTool
-                icon="pricetag"
-                title="Manage Offers"
-                description="Create, edit and remove promotional offers"
-                color={Colors.brand.blue}
-                onPress={() => router.push("/admin-offers")}
-                testID="portal-manage-offers"
+                icon="ban"
+                title="Availability Blocks"
+                description="Block dates or times from being booked"
+                color="#DC2626"
+                onPress={() => router.push("/admin-availability")}
+                testID="portal-availability-blocks"
+              />
+            </View>
+
+            <Text style={styles.sectionLabel}>CUSTOMERS</Text>
+            <View style={styles.toolsList}>
+              <AdminTool
+                icon="person-circle"
+                title="Customers"
+                description="Look up a customer and send a password reset email"
+                color="#0EA5E9"
+                onPress={() => router.push("/admin-customers")}
+                testID="portal-customers"
               />
               <AdminTool
-                icon="musical-notes"
-                title="Events"
-                description="Create and manage event listings"
-                color="#7C3AED"
-                onPress={() => router.push("/admin-events")}
-                testID="portal-manage-events"
+                icon="card"
+                title="Memberships"
+                description="View and set up customer memberships"
+                color={Colors.brand.blue}
+                onPress={() => router.push("/membership")}
+                testID="portal-memberships"
               />
-              {Platform.OS === "web" && (
-                <AdminTool
-                  icon="card"
-                  title="Events & Payments"
-                  description="Sell tickets and take card payments"
-                  color="#0EA5E9"
-                  onPress={() => router.push("/admin-events-payments")}
-                  testID="portal-events-payments"
-                />
-              )}
               <AdminTool
                 icon="notifications"
                 title="Push Notifications"
@@ -629,14 +634,40 @@ function DashboardScreen() {
                 onPress={() => router.push("/admin-loyalty")}
                 testID="portal-loyalty-settings"
               />
+            </View>
+
+            <Text style={styles.sectionLabel}>EVENTS & OFFERS</Text>
+            <View style={styles.toolsList}>
               <AdminTool
-                icon="megaphone"
-                title="Staff Notices"
-                description="Post and manage notices for all staff"
-                color="#D97706"
-                onPress={() => router.push("/admin-notices")}
-                testID="portal-staff-notices"
+                icon="musical-notes"
+                title="Events"
+                description="Create and manage event listings"
+                color="#7C3AED"
+                onPress={() => router.push("/admin-events")}
+                testID="portal-manage-events"
               />
+              <AdminTool
+                icon="pricetag"
+                title="Manage Offers"
+                description="Create, edit and remove promotional offers"
+                color={Colors.brand.blue}
+                onPress={() => router.push("/admin-offers")}
+                testID="portal-manage-offers"
+              />
+              {Platform.OS === "web" && (
+                <AdminTool
+                  icon="card"
+                  title="Events & Payments"
+                  description="Sell tickets and take card payments"
+                  color="#0EA5E9"
+                  onPress={() => router.push("/admin-events-payments")}
+                  testID="portal-events-payments"
+                />
+              )}
+            </View>
+
+            <Text style={styles.sectionLabel}>APP CONTENT</Text>
+            <View style={styles.toolsList}>
               <AdminTool
                 icon="images"
                 title="Banner Images"
@@ -646,34 +677,30 @@ function DashboardScreen() {
                 testID="portal-banner-image"
               />
               <AdminTool
-                icon="ban"
-                title="Availability Blocks"
-                description="Block dates or times from being booked"
-                color="#DC2626"
-                onPress={() => router.push("/admin-availability")}
-                testID="portal-availability-blocks"
+                icon="megaphone"
+                title="Staff Notices"
+                description="Post and manage notices for all staff"
+                color="#D97706"
+                onPress={() => router.push("/admin-notices")}
+                testID="portal-staff-notices"
               />
-              {/* Customer support tools — manager+ */}
-              <AdminTool
-                icon="person-circle"
-                title="Customers"
-                description="Look up a customer and send a password reset email"
-                color="#0EA5E9"
-                onPress={() => router.push("/admin-customers")}
-                testID="portal-customers"
-              />
-              {/* Staff Accounts / Approval — owner only */}
-              {isOwner && (
-                <AdminTool
-                  icon="people"
-                  title="Staff Accounts"
-                  description="Approve accounts, manage roles, reset PINs"
-                  color="#F59E0B"
-                  onPress={() => router.push("/admin-staff")}
-                  testID="portal-staff-accounts"
-                />
-              )}
             </View>
+
+            {isOwner && (
+              <>
+                <Text style={styles.sectionLabel}>OWNER</Text>
+                <View style={styles.toolsList}>
+                  <AdminTool
+                    icon="people"
+                    title="Staff Accounts"
+                    description="Approve accounts, manage roles, reset PINs"
+                    color="#F59E0B"
+                    onPress={() => router.push("/admin-staff")}
+                    testID="portal-staff-accounts"
+                  />
+                </View>
+              </>
+            )}
           </>
         )}
 
