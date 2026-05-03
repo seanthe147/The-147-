@@ -436,7 +436,10 @@ export async function runStartupMigrations() {
         ADD COLUMN IF NOT EXISTS clock_in_flags TEXT,
         ADD COLUMN IF NOT EXISTS clock_out_flags TEXT,
         ADD COLUMN IF NOT EXISTS client_ip TEXT,
-        ADD COLUMN IF NOT EXISTS user_agent TEXT;
+        ADD COLUMN IF NOT EXISTS user_agent TEXT,
+        ADD COLUMN IF NOT EXISTS needs_manager_review BOOLEAN NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS manager_reviewed_at TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS manager_reviewed_by INTEGER;
     `);
     // Partial unique index — at most one "active" (i.e. not-yet-clocked-out)
     // entry per staff member at any given time. Prevents the
@@ -2363,7 +2366,7 @@ export class DatabaseStorage implements IStorage {
     staffId: number,
     lat?: string,
     lng?: string,
-    audit?: { geofenceEnforced?: boolean; flags?: string[]; clientIp?: string; userAgent?: string },
+    audit?: { geofenceEnforced?: boolean; flags?: string[]; clientIp?: string; userAgent?: string; needsManagerReview?: boolean },
   ): Promise<StaffTimeEntry> {
     const [entry] = await db.insert(staffTimeEntries).values({
       staffId, clockedInAt: new Date(), status: "active",
@@ -2373,6 +2376,10 @@ export class DatabaseStorage implements IStorage {
       clockInFlags: audit?.flags && audit.flags.length ? audit.flags.join(",") : null,
       clientIp: audit?.clientIp ?? null,
       userAgent: audit?.userAgent ?? null,
+      // Entries with unverified client-supplied location require a manager
+      // to explicitly approve them before they are treated as authoritative
+      // attendance records for payroll or HR reporting purposes.
+      needsManagerReview: audit?.needsManagerReview ?? false,
     }).returning();
     return decryptTimeEntry(entry);
   }
@@ -2381,25 +2388,36 @@ export class DatabaseStorage implements IStorage {
     entryId: number,
     lat?: string,
     lng?: string,
-    audit?: { geofenceEnforced?: boolean; flags?: string[] },
+    audit?: { geofenceEnforced?: boolean; flags?: string[]; needsManagerReview?: boolean },
   ): Promise<StaffTimeEntry | null> {
     // Atomic clock-out:
     //   • The WHERE clause includes status='active' so two concurrent
     //     clock-out requests can't both succeed — the second update finds
     //     no matching row and returns nothing.
-    //   • To preserve geofenceEnforced=true only when BOTH halves of the
-    //     shift were verified, we use a SQL expression that AND's the
-    //     existing column with the new value. This avoids a read-then-write
-    //     race that could overwrite a flag set by a concurrent path.
+    //   • geofenceEnforced is AND'd so it is only true when BOTH halves
+    //     of the shift were independently verified (which currently never
+    //     happens with client-supplied coordinates — see routes.ts).
+    //   • needsManagerReview is OR'd: once flagged at clock-in it stays
+    //     flagged regardless of the clock-out audit value.
     const newEnforced = audit?.geofenceEnforced ?? false;
+    const newReview = audit?.needsManagerReview ?? false;
     const [entry] = await db.update(staffTimeEntries)
       .set({ clockedOutAt: new Date(), status: "completed",
         clockOutLat: lat ? encrypt(lat) : null,
         clockOutLng: lng ? encrypt(lng) : null,
         geofenceEnforced: sql`${staffTimeEntries.geofenceEnforced} AND ${newEnforced}`,
         clockOutFlags: audit?.flags && audit.flags.length ? audit.flags.join(",") : null,
+        needsManagerReview: sql`${staffTimeEntries.needsManagerReview} OR ${newReview}`,
       })
       .where(and(eq(staffTimeEntries.id, entryId), eq(staffTimeEntries.status, "active")))
+      .returning();
+    return entry ? decryptTimeEntry(entry) : null;
+  }
+
+  async reviewTimeEntry(id: number, reviewedBy: number): Promise<StaffTimeEntry | null> {
+    const [entry] = await db.update(staffTimeEntries)
+      .set({ needsManagerReview: false, managerReviewedAt: new Date(), managerReviewedBy: reviewedBy })
+      .where(eq(staffTimeEntries.id, id))
       .returning();
     return entry ? decryptTimeEntry(entry) : null;
   }

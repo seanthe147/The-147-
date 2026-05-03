@@ -76,6 +76,9 @@ interface TimeEntry {
   amendedBy: number | null;
   amendedAt: string | null;
   amendReason: string | null;
+  needsManagerReview?: boolean;
+  managerReviewedAt?: string | null;
+  managerReviewedBy?: string | null;
 }
 
 interface AmendModalState {
@@ -164,8 +167,11 @@ export default function AdminRotaScreen() {
   });
 
   const { data: allEntries = [], isLoading: entriesLoading, refetch: refetchEntries } = useQuery<TimeEntry[]>({
-    queryKey: ["/api/hr/time-entries/all"],
-    queryFn: () => hrApi("/api/hr/time-entries/all"),
+    queryKey: ["/api/hr/time-entries/all", "includeUnreviewed"],
+    // Manager audit view: pass includeUnreviewed=true so pending-review entries
+    // appear alongside approved ones. Entries still carry needsManagerReview so
+    // the UI can display them with a distinct "pending" badge.
+    queryFn: () => hrApi("/api/hr/time-entries/all?includeUnreviewed=true"),
     enabled: isAuthenticated && isManager && activeView === "completed",
   });
 
@@ -480,6 +486,17 @@ export default function AdminRotaScreen() {
           <Text style={styles.accessDenied}>Owner access required</Text>
         </View>
       )}
+      {activeView === "completed" && isOwner && (() => {
+        const pendingCount = weekEntries.filter((e: TimeEntry) => e.needsManagerReview && !e.clockedOutAt === false).length;
+        return pendingCount > 0 ? (
+          <View style={styles.pendingReviewBanner}>
+            <Ionicons name="alert-circle-outline" size={16} color="#92400E" />
+            <Text style={styles.pendingReviewBannerText}>
+              {pendingCount} shift{pendingCount !== 1 ? "s" : ""} pending your approval — not counted in payroll until reviewed.
+            </Text>
+          </View>
+        ) : null;
+      })()}
       {activeView === "completed" && isOwner && (
         entriesLoading ? (
           <View style={styles.centered}>
@@ -517,6 +534,12 @@ export default function AdminRotaScreen() {
                       {isActive && (
                         <View style={styles.activeBadge}>
                           <Text style={styles.activeBadgeText}>Active</Text>
+                        </View>
+                      )}
+                      {entry.needsManagerReview && !isActive && (
+                        <View style={styles.pendingBadge}>
+                          <Ionicons name="alert-circle" size={10} color="#92400E" />
+                          <Text style={styles.pendingBadgeText}>Pending Review</Text>
                         </View>
                       )}
                     </View>
@@ -597,6 +620,34 @@ export default function AdminRotaScreen() {
 
                   {isAmended && entry.amendReason && (
                     <Text style={styles.entryAmendNote}>Amendment: {entry.amendReason}</Text>
+                  )}
+                  {entry.needsManagerReview && !isActive && (
+                    <View style={styles.reviewRow}>
+                      <View style={styles.reviewWarning}>
+                        <Ionicons name="information-circle-outline" size={12} color="#92400E" />
+                        <Text style={styles.reviewWarningText}>GPS unverified — approve to count toward payroll</Text>
+                      </View>
+                      <Pressable
+                        onPress={async (ev) => {
+                          ev.stopPropagation();
+                          try {
+                            await hrApi(`/api/hr/time-entries/${entry.id}/review`, { method: "PATCH" });
+                            refetchEntries();
+                          } catch (e: any) {
+                            Alert.alert("Error", e.message || "Failed to approve entry.");
+                          }
+                        }}
+                        style={({ pressed }) => [styles.approveBtn, pressed && { opacity: 0.75 }]}
+                      >
+                        <Ionicons name="checkmark-circle-outline" size={14} color="#fff" />
+                        <Text style={styles.approveBtnText}>Approve</Text>
+                      </Pressable>
+                    </View>
+                  )}
+                  {entry.managerReviewedAt && !entry.needsManagerReview && (
+                    <Text style={styles.reviewedNote}>
+                      <Ionicons name="checkmark-circle" size={11} color="#059669" /> Approved {new Date(entry.managerReviewedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                    </Text>
                   )}
                   <View style={styles.entryEditHint}>
                     <Ionicons name="create-outline" size={13} color={Colors.brand.blue} />
@@ -980,6 +1031,18 @@ const styles = StyleSheet.create({
   amendedBadgeText: { fontSize: 10, fontWeight: "700", color: "#92400E" },
   activeBadge: { backgroundColor: "#D1FAE5", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
   activeBadgeText: { fontSize: 10, fontWeight: "700", color: "#065F46" },
+  pendingBadge: { flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "#FEF3C7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  pendingBadgeText: { fontSize: 10, fontWeight: "700", color: "#92400E" },
+
+  // Pending review banner + approve UI
+  pendingReviewBanner: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#FEF9C3", borderBottomWidth: 1, borderBottomColor: "#FDE68A", paddingHorizontal: 16, paddingVertical: 10 },
+  pendingReviewBannerText: { flex: 1, fontSize: 12, fontWeight: "600", color: "#92400E" },
+  reviewRow: { marginTop: 10, gap: 6 },
+  reviewWarning: { flexDirection: "row", alignItems: "center", gap: 5 },
+  reviewWarningText: { fontSize: 11, color: "#92400E", fontStyle: "italic", flex: 1 },
+  approveBtn: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#059669", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, alignSelf: "flex-start" },
+  approveBtnText: { fontSize: 13, fontWeight: "700", color: "#fff" },
+  reviewedNote: { marginTop: 6, fontSize: 11, color: "#059669", fontWeight: "600" },
 
   // Amend modal
   amendInput: { borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 10, padding: 12, fontSize: 14, color: Colors.light.text, backgroundColor: "#F8FAFC", marginBottom: 4 },

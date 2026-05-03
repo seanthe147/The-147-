@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "node:http";
-import { randomBytes, timingSafeEqual, createHash } from "node:crypto";
+import { randomBytes, timingSafeEqual, createHash, createHmac } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import multer from "multer";
@@ -9814,6 +9814,75 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     res.json({ lat: String(lat), lng: String(lng), radius: Number(radius ?? 200) });
   });
 
+  // ── Rotating venue clock code ─────────────────────────────────────────────────
+  // A TOTP-style proof-of-on-site-presence control.
+  //
+  // The server generates a secret once and persists it in the settings table.
+  // The current clock code is derived via HMAC-SHA256(secret, time_window) and
+  // changes every 10 minutes. It is ONLY surfaced to managers (via the endpoint
+  // below) so it can be displayed at the physical venue (on a screen, tablet,
+  // or printed rotation sheet). Staff who are physically present can read the
+  // code and enter it when clocking in or out; remote attackers who do not have
+  // physical access to the venue cannot know the current code.
+  //
+  // This makes forged clock-in/out requests infeasible: an attacker needs both
+  // a valid staff session AND the current rotating venue code, which changes
+  // every 10 minutes and is not available via any staff-facing API.
+  const VENUE_CODE_WINDOW_SECS = 600; // 10 minutes per code
+
+  async function getVenueClockSecret(): Promise<string | null> {
+    return storage.getSetting("venue_clock_secret");
+  }
+
+  async function ensureVenueClockSecret(): Promise<string> {
+    const existing = await storage.getSetting("venue_clock_secret");
+    if (existing) return existing;
+    const secret = randomBytes(32).toString("hex");
+    await storage.setSetting("venue_clock_secret", secret);
+    return secret;
+  }
+
+  function deriveVenueCode(secret: string, window: number): string {
+    // 6 uppercase hex characters — short enough to type easily, long enough
+    // to prevent brute-force within the 10-minute validity window (16^6 ≈ 16M).
+    return createHmac("sha256", secret)
+      .update(`venue-clock:${window}`)
+      .digest("hex")
+      .slice(0, 6)
+      .toUpperCase();
+  }
+
+  async function isValidVenueCode(submitted: string): Promise<boolean> {
+    const secret = await getVenueClockSecret();
+    if (!secret) return false; // Secret not yet initialised — manager must view code once to bootstrap.
+    const currentWindow = Math.floor(Date.now() / (VENUE_CODE_WINDOW_SECS * 1000));
+    // Accept the current window and the immediately previous one (avoids
+    // rejecting legitimate staff who were typing right at a boundary).
+    for (const w of [currentWindow, currentWindow - 1]) {
+      const expected = deriveVenueCode(secret, w);
+      const a = Buffer.from(submitted.toUpperCase().padEnd(6));
+      const b = Buffer.from(expected);
+      if (a.length === b.length && timingSafeEqual(a, b)) return true;
+    }
+    return false;
+  }
+
+  // GET /api/hr/venue-clock-code — manager only
+  // Returns the current rotating venue clock code plus the seconds until it
+  // changes. This endpoint is manager-gated so the code is NOT accessible to
+  // regular staff via the API — it must be read from a physical venue display.
+  app.get("/api/hr/venue-clock-code", staffAuth, managerAuth, async (_req, res) => {
+    const secret = await ensureVenueClockSecret();
+    const currentWindow = Math.floor(Date.now() / (VENUE_CODE_WINDOW_SECS * 1000));
+    const code = deriveVenueCode(secret, currentWindow);
+    const nextChangeMs = (VENUE_CODE_WINDOW_SECS * 1000) - (Date.now() % (VENUE_CODE_WINDOW_SECS * 1000));
+    res.json({
+      code,
+      windowSeconds: VENUE_CODE_WINDOW_SECS,
+      nextChangeInSeconds: Math.ceil(nextChangeMs / 1000),
+    });
+  });
+
   // ── Clock in / out ───────────────────────────────────────────────────────────
   app.get("/api/hr/clock-status", staffAuth, async (req: any, res) => {
     const active = await storage.getActiveClockEntry(req.staffUser.id);
@@ -9827,16 +9896,24 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
   // these endpoints, but that is purely advisory — anyone with a valid staff
   // bearer token can craft a direct HTTP request and bypass it. The server
   // therefore:
-  //   1. Re-runs the geofence math against configured venue coordinates so
-  //      records that go through the API are at least consistent with the
-  //      claimed location (closes the "no GPS" / "outside radius" path).
-  //   2. Stamps each entry with `geofenceEnforced` so manager UIs can
-  //      distinguish authoritative shifts from advisory ones.
-  //   3. Computes operational fraud-detection flags (no_mobile_ua,
+  //   1. Issues a short-lived, single-use, staff-session-bound location token
+  //      via POST /api/hr/location-token. The clock-in and clock-out endpoints
+  //      require this token in the request body and consume it immediately,
+  //      preventing static/replayed payloads and binding each clock event to a
+  //      live interaction with the authenticated session.
+  //   2. Runs a sanity-filter distance check against the configured geofence.
+  //      Coordinates that are clearly wrong (far outside the radius) are
+  //      rejected. However, this is NOT a security verification — the server
+  //      has no independent way to confirm the coordinates came from the
+  //      employee's real physical location. `geofenceEnforced` is therefore
+  //      always set to FALSE for client-supplied coordinates; making it TRUE
+  //      would be a false security claim.
+  //   3. Stamps every entry with `client_location_unverified` in the flags so
+  //      manager-facing HR views can surface these entries for manual review.
+  //      Managers remain the authoritative approval step for attendance records.
+  //   4. Records operational fraud-detection flags (no_mobile_ua,
   //      no_geofence_configured, identical_coords, impossible_travel) so
-  //      attendance records carry a server-side trust signal even though
-  //      the underlying coordinates are still client-supplied. These flags
-  //      are surfaced to managers in the staff dashboard.
+  //      attendance records carry an additional server-side risk signal.
   //
   // Returns null when the helper has already sent an error response; the
   // route should return immediately. Otherwise returns the cleaned coords
@@ -9844,7 +9921,43 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
   type GeofenceAudit = {
     geofenceEnforced: boolean;
     flags: string[];
+    // true when location is client-supplied and cannot be independently
+    // verified by the server — entry must be approved by a manager before
+    // being treated as an authoritative attendance record.
+    needsManagerReview: boolean;
   };
+
+  // In-memory store for pending location tokens.
+  // token hex string → { staffId, expiresAt (epoch ms) }
+  // Tokens are single-use: they are deleted the moment they are validated.
+  // The process-local Map is sufficient for a single-server deployment; for
+  // horizontally-scaled deployments, replace with a shared cache (e.g. Redis).
+  const locationTokens = new Map<string, { staffId: number; expiresAt: number }>();
+  const LOCATION_TOKEN_TTL_MS = 60_000; // 60 seconds — enough for GPS + network
+
+  // Prune tokens that have already expired to prevent unbounded Map growth.
+  function pruneExpiredLocationTokens(): void {
+    const now = Date.now();
+    for (const [tok, data] of locationTokens) {
+      if (data.expiresAt < now) locationTokens.delete(tok);
+    }
+  }
+
+  // POST /api/hr/location-token
+  // Issues a short-lived, single-use nonce that the mobile client must include
+  // in its clock-in / clock-out request. The token is cryptographically random,
+  // tied to the authenticated staff session, and expires after 60 seconds.
+  // This means a scripted direct-HTTP attacker cannot replay a static payload —
+  // they must obtain a fresh token from within an active, authenticated session
+  // immediately before submitting coordinates.
+  app.post("/api/hr/location-token", staffAuth, (req: any, res) => {
+    pruneExpiredLocationTokens();
+    const token = randomBytes(32).toString("hex");
+    const expiresAt = Date.now() + LOCATION_TOKEN_TTL_MS;
+    locationTokens.set(token, { staffId: req.staffUser.id, expiresAt });
+    res.json({ token, expiresAt: new Date(expiresAt).toISOString() });
+  });
+
   function haversineM(aLat: number, aLng: number, bLat: number, bLng: number): number {
     const R = 6371000;
     const toRad = (d: number) => (d * Math.PI) / 180;
@@ -9864,24 +9977,91 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     const cfgRadius = await storage.getSetting("geofence_radius");
     const flags: string[] = [];
 
-    // User-agent heuristic: if the request doesn't look like it came from the
-    // mobile client (Expo / iOS / Android), flag it. Doesn't block — we don't
-    // want to lock out legitimate web fallbacks — but managers can see it.
+    // ── Rotating venue clock code validation ─────────────────────────────────
+    // The server generates a HMAC-SHA256-derived code that rotates every 10
+    // minutes. It is surfaced ONLY to managers (GET /api/hr/venue-clock-code)
+    // so that it can be displayed at the physical venue — on a screen, tablet,
+    // or rotation sheet — but is NEVER available via any staff-facing API.
+    //
+    // Staff who are physically present can read the code and include it in
+    // their clock request. A remote attacker holding a valid staff bearer token
+    // cannot know the code without physical access to the venue, making forged
+    // clock-in/out requests infeasible regardless of what coordinates they supply.
+    //
+    // If no venue clock secret exists yet (first boot before any manager has
+    // viewed the code page) we reject all clock requests: fail closed rather
+    // than granting unchecked access while the control is uninitialised.
+    const { lat, lng, locationToken, venueCode } = req.body || {};
+
+    const clockSecret = await getVenueClockSecret();
+    if (!clockSecret) {
+      // Secret has not been initialised — a manager must visit the venue clock
+      // code page at least once to bootstrap it.
+      res.status(503).json({
+        message: "Attendance clock is not yet configured. A manager must open the venue clock code display to activate it.",
+        code: "VENUE_CODE_NOT_CONFIGURED",
+      });
+      return null;
+    }
+    if (!venueCode || typeof venueCode !== "string" || venueCode.trim().length === 0) {
+      res.status(400).json({
+        message: "A venue clock code is required. Please enter the code displayed at the venue reception.",
+        code: "VENUE_CODE_REQUIRED",
+      });
+      return null;
+    }
+    const venueCodeValid = await isValidVenueCode(venueCode.trim());
+    if (!venueCodeValid) {
+      flags.push("venue_code_invalid");
+      res.status(403).json({
+        message: "The venue code you entered is incorrect or has expired. Please check the display at the venue reception and try again.",
+        code: "VENUE_CODE_INVALID",
+      });
+      return null;
+    }
+    flags.push("venue_code_verified");
+
+    // ── Anti-replay location token validation ────────────────────────────────
+    // Each clock-in / clock-out must also include a server-issued, single-use,
+    // time-limited location token. This is a defence-in-depth control that
+    // prevents replay of previously-captured valid payloads (which would
+    // include a correct venue code for that window). Together with the rotating
+    // venue code, this makes scripted replay attacks unfeasible even if an
+    // attacker captures a complete valid request.
+    const tokenKey = String(locationToken ?? "");
+    const tokenData = locationTokens.get(tokenKey);
+    if (!tokenData) {
+      res.status(400).json({ message: "A valid location token is required. Please try again from the app." });
+      return null;
+    }
+    if (tokenData.staffId !== req.staffUser.id) {
+      locationTokens.delete(tokenKey);
+      res.status(403).json({ message: "Location token does not match your session. Please try again." });
+      return null;
+    }
+    if (tokenData.expiresAt < Date.now()) {
+      locationTokens.delete(tokenKey);
+      res.status(400).json({ message: "Your location verification has expired. Please try clocking in again." });
+      return null;
+    }
+    // Consume the token immediately — single use only.
+    locationTokens.delete(tokenKey);
+
+    // User-agent heuristic — advisory flag only.
     const ua: string = String(req.headers?.["user-agent"] ?? "");
     const looksMobile = /(Expo|okhttp|CFNetwork|iPhone|iPad|Android|Mobile|Darwin)/i.test(ua);
     if (!looksMobile) flags.push("no_mobile_ua");
 
-    // Geofence not configured → fall open BUT mark the entry as unverified
-    // so it shows up in audit views as advisory rather than authoritative.
-    // We only treat the geofence as "unset" when BOTH lat and lng are absent;
-    // if exactly one is present that's an admin misconfig and we fail closed.
+    // Geofence not configured → still allow clock-in (venue code already
+    // verified physical presence) but mark entry as needing manager review
+    // because location coordinates are entirely unverified.
     if (!cfgLat && !cfgLng) {
-      const { lat, lng } = req.body || {};
       flags.push("no_geofence_configured");
+      flags.push("client_location_unverified");
       return {
         lat: lat ? String(lat) : "",
         lng: lng ? String(lng) : "",
-        audit: { geofenceEnforced: false, flags },
+        audit: { geofenceEnforced: false, needsManagerReview: true, flags },
       };
     }
     if (!cfgLat || !cfgLng) {
@@ -9895,7 +10075,6 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       res.status(500).json({ message: "Venue geofence is misconfigured. Please contact a manager." });
       return null;
     }
-    const { lat, lng } = req.body || {};
     const userLat = parseFloat(String(lat ?? ""));
     const userLng = parseFloat(String(lng ?? ""));
     if (!Number.isFinite(userLat) || !Number.isFinite(userLng)) {
@@ -9915,10 +10094,14 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       });
       return null;
     }
+    // Coordinates passed the distance sanity filter. The server still cannot
+    // independently verify they are real — GPS remains advisory. The venue code
+    // above is the primary proof-of-presence; manager review remains mandatory.
+    flags.push("client_location_unverified");
     return {
       lat: String(userLat),
       lng: String(userLng),
-      audit: { geofenceEnforced: true, flags },
+      audit: { geofenceEnforced: false, needsManagerReview: true, flags },
     };
   }
 
@@ -9979,6 +10162,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
           flags,
           clientIp: String(req.ip ?? "").slice(0, 64) || undefined,
           userAgent: String(req.headers?.["user-agent"] ?? "").slice(0, 256) || undefined,
+          needsManagerReview: result.audit.needsManagerReview,
         },
       );
       res.status(201).json(entry);
@@ -10023,7 +10207,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       active.id,
       result.lat || undefined,
       result.lng || undefined,
-      { geofenceEnforced: result.audit.geofenceEnforced, flags },
+      { geofenceEnforced: result.audit.geofenceEnforced, flags, needsManagerReview: result.audit.needsManagerReview },
     );
     // clockOut's WHERE includes status='active' — if a concurrent request
     // already finalised this shift it returns null, and we surface that as
@@ -10038,12 +10222,47 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     res.json(entries);
   });
 
-  app.get("/api/hr/time-entries/all", staffAuth, managerAuth, async (_req, res) => {
+  app.get("/api/hr/time-entries/all", staffAuth, managerAuth, async (req: any, res) => {
     const entries = await storage.getAllTimeEntries();
     const users = await storage.getAllStaffUsers();
     const userMap = Object.fromEntries(users.map((u: any) => [u.id, u.displayName || u.username]));
     const enriched = entries.map((e: any) => ({ ...e, staffName: userMap[e.staffId] || `Staff #${e.staffId}` }));
-    res.json(enriched);
+    // By default this endpoint returns ONLY manager-approved (authoritative)
+    // entries so that reporting, payroll, and rota consumers cannot accidentally
+    // treat unreviewed advisory records as facts. Callers that need the full
+    // audit view (e.g. the pending-review queue UI) must pass
+    // ?includeUnreviewed=true — an explicit, intentional opt-in.
+    const includeUnreviewed = req.query.includeUnreviewed === "true";
+    const result = includeUnreviewed
+      ? enriched
+      : enriched.filter((e: any) => !e.needsManagerReview);
+    res.json(result);
+  });
+
+  // Dedicated manager endpoint to fetch only entries awaiting review.
+  // Returns completed entries where location was client-supplied and a
+  // manager has not yet approved them. Use PATCH /api/hr/time-entries/:id/review
+  // to approve each entry and remove it from this queue.
+  app.get("/api/hr/time-entries/pending-review", staffAuth, managerAuth, async (_req, res) => {
+    const entries = await storage.getAllTimeEntries();
+    const users = await storage.getAllStaffUsers();
+    const userMap = Object.fromEntries(users.map((u: any) => [u.id, u.displayName || u.username]));
+    const pending = entries
+      .filter((e: any) => e.needsManagerReview && e.status !== "active")
+      .map((e: any) => ({ ...e, staffName: userMap[e.staffId] || `Staff #${e.staffId}` }));
+    res.json(pending);
+  });
+
+  // Manager review — clears the needsManagerReview flag on an attendance entry,
+  // recording which manager approved it and when. Entries with unverified
+  // client-supplied location are flagged at clock-in/out and must be explicitly
+  // approved here before they are treated as authoritative for payroll purposes.
+  app.patch("/api/hr/time-entries/:id/review", staffAuth, managerAuth, async (req: any, res) => {
+    const id = parseInt(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid entry ID" });
+    const entry = await storage.reviewTimeEntry(id, req.staffUser.id);
+    if (!entry) return res.status(404).json({ message: "Entry not found" });
+    res.json(entry);
   });
 
   app.patch("/api/hr/time-entries/:id/amend", staffAuth, managerAuth, async (req: any, res) => {

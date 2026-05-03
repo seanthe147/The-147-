@@ -59,7 +59,9 @@ function weekHoursMs(entries: any[]): number {
   startOfWeek.setHours(0, 0, 0, 0);
   startOfWeek.setDate(now.getDate() - now.getDay() + (now.getDay() === 0 ? -6 : 1));
   return entries
-    .filter((e) => new Date(e.clockedInAt) >= startOfWeek && e.status !== "active")
+    // Exclude entries pending manager review — they are not yet authoritative
+    // attendance records and must not be counted toward payroll hours totals.
+    .filter((e) => new Date(e.clockedInAt) >= startOfWeek && e.status !== "active" && !e.needsManagerReview)
     .reduce((sum, e) => sum + entryDurationMs(e), 0);
 }
 
@@ -101,6 +103,10 @@ export default function StaffHRScreen() {
   const [now, setNow] = useState(Date.now());
   const [gdprAccepted, setGdprAccepted] = useState<boolean | null>(null);
   const [clockLoading, setClockLoading] = useState(false);
+  const [showVenueCodeModal, setShowVenueCodeModal] = useState(false);
+  const [venueCodeInput, setVenueCodeInput] = useState("");
+  const [venueCodeError, setVenueCodeError] = useState<string | null>(null);
+  const [pendingClockAction, setPendingClockAction] = useState<"in" | "out" | null>(null);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -184,19 +190,38 @@ export default function StaffHRScreen() {
   }, [refetchClock, refetchEntries, refetchBalance, refetchLeave, refetchRota]);
 
   // ── Geofence clock action ────────────────────────────────────────────────────
-  const handleClockAction = async () => {
+  // Step 1: Tap Clock In/Out → show venue code modal.
+  // Step 2: User enters the rotating code displayed at the venue reception.
+  // Step 3: submitClockWithVenueCode() runs GPS + anti-replay token + server
+  //         validation. The server validates the code server-side; forged
+  //         coordinates alone are no longer sufficient to create a clock record.
+  const handleClockAction = () => {
+    const action = !!clockStatus?.active ? "out" : "in";
+    setPendingClockAction(action);
+    setVenueCodeInput("");
+    setVenueCodeError(null);
+    setShowVenueCodeModal(true);
+  };
+
+  const submitClockWithVenueCode = async () => {
+    const code = venueCodeInput.trim();
+    if (code.length === 0) {
+      setVenueCodeError("Please enter the venue clock code.");
+      return;
+    }
+    setShowVenueCodeModal(false);
     setClockLoading(true);
     try {
       // Request location permission
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert("Location Required", "Location access is needed to verify you are on site before clocking in or out. This is required by your employer's attendance policy.");
+        Alert.alert("Location Required", "Location access is needed to record your attendance. This is required by your employer's attendance policy.");
         return;
       }
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       const { latitude, longitude } = pos.coords;
 
-      // Geofence check if venue coordinates are configured
+      // Client-side geofence pre-check (advisory — server always re-validates).
       if (geofence?.lat && geofence?.lng) {
         const dist = haversineDistanceM(latitude, longitude, parseFloat(geofence.lat), parseFloat(geofence.lng));
         const radius = geofence.radius ?? 200;
@@ -209,19 +234,29 @@ export default function StaffHRScreen() {
         }
       }
 
-      const isClockedIn = !!clockStatus?.active;
-      if (isClockedIn) {
-        await hrApi("/api/hr/clock-out", { method: "POST", body: JSON.stringify({ lat: String(latitude), lng: String(longitude) }) });
+      // Obtain a server-issued, single-use anti-replay token immediately before
+      // the clock request. Combined with the rotating venue code, this prevents
+      // replay of previously-captured valid payloads.
+      const { token: locationToken } = await hrApi("/api/hr/location-token", { method: "POST" });
+
+      if (pendingClockAction === "out") {
+        await hrApi("/api/hr/clock-out", { method: "POST", body: JSON.stringify({ lat: String(latitude), lng: String(longitude), locationToken, venueCode: code }) });
         Alert.alert("Clocked Out", "Your shift has been recorded. Have a great rest of your day!");
       } else {
-        await hrApi("/api/hr/clock-in", { method: "POST", body: JSON.stringify({ lat: String(latitude), lng: String(longitude) }) });
+        await hrApi("/api/hr/clock-in", { method: "POST", body: JSON.stringify({ lat: String(latitude), lng: String(longitude), locationToken, venueCode: code }) });
         Alert.alert("Clocked In", "Your shift has started. Have a great shift!");
       }
       await Promise.all([refetchClock(), refetchEntries()]);
     } catch (err: any) {
       const msg: string = err.message || "";
       const isAuthError = msg.toLowerCase().includes("authentication") || msg.toLowerCase().includes("expired") || msg.toLowerCase().includes("invalid");
-      if (isAuthError) {
+      const isVenueCodeError = msg.toLowerCase().includes("venue code") || msg.toLowerCase().includes("VENUE_CODE");
+      if (isVenueCodeError) {
+        // Let the user retry with the correct code.
+        setVenueCodeInput("");
+        setVenueCodeError(msg);
+        setShowVenueCodeModal(true);
+      } else if (isAuthError) {
         Alert.alert(
           "Session Expired",
           "Your session has expired. Please log in again.",
@@ -244,7 +279,8 @@ export default function StaffHRScreen() {
     .filter((e: any) => {
       const d = new Date(e.clockedInAt);
       const today = new Date();
-      return d.toDateString() === today.toDateString();
+      // Exclude entries pending manager review — not yet authoritative for payroll.
+      return d.toDateString() === today.toDateString() && !e.needsManagerReview;
     })
     .reduce((sum: number, e: any) => sum + (e.status !== "active" ? entryDurationMs(e) : 0), 0);
 
@@ -523,6 +559,52 @@ export default function StaffHRScreen() {
         </View>
       </ScrollView>
 
+      {/* Venue Clock Code Modal */}
+      <Modal visible={showVenueCodeModal} transparent animationType="fade" onRequestClose={() => setShowVenueCodeModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.venueCodeModal}>
+            <View style={styles.venueCodeHeader}>
+              <Ionicons name="shield-checkmark-outline" size={28} color={Colors.light.tint} />
+              <Text style={styles.venueCodeTitle}>
+                {pendingClockAction === "out" ? "Clock Out" : "Clock In"}
+              </Text>
+            </View>
+            <Text style={styles.venueCodeBody}>
+              Enter the code displayed at the venue reception desk. This rotates every 10 minutes and proves you are on site.
+            </Text>
+            <TextInput
+              style={[styles.venueCodeInput, venueCodeError ? styles.venueCodeInputError : null]}
+              value={venueCodeInput}
+              onChangeText={(t) => { setVenueCodeInput(t.toUpperCase()); setVenueCodeError(null); }}
+              placeholder="e.g. 4A9F2C"
+              placeholderTextColor={Colors.light.textSecondary}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              maxLength={6}
+              returnKeyType="done"
+              onSubmitEditing={submitClockWithVenueCode}
+            />
+            {venueCodeError ? (
+              <Text style={styles.venueCodeErrorText}>{venueCodeError}</Text>
+            ) : null}
+            <View style={styles.venueCodeActions}>
+              <Pressable
+                style={[styles.venueCodeBtn, styles.venueCodeBtnCancel]}
+                onPress={() => { setShowVenueCodeModal(false); setPendingClockAction(null); }}
+              >
+                <Text style={styles.venueCodeBtnCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.venueCodeBtn, styles.venueCodeBtnConfirm]}
+                onPress={submitClockWithVenueCode}
+              >
+                <Text style={styles.venueCodeBtnConfirmText}>Submit</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Leave Request Modal */}
       <LeaveRequestModal
         visible={showLeaveModal}
@@ -775,8 +857,12 @@ function LeaveRequestModal({ visible, onClose, onSuccess, leaveRequests }: { vis
 
 // ── Shift History Modal ───────────────────────────────────────────────────────
 function ShiftHistoryModal({ visible, onClose, entries }: { visible: boolean; onClose: () => void; entries: any[] }) {
-  const totalThisWeekMs = weekHoursMs(entries);
-  const totalAllMs = entries.filter((e) => e.status !== "active" && e.clockedOutAt).reduce((sum, e) => sum + entryDurationMs(e), 0);
+  // Entries pending manager review are not authoritative and must NOT be
+  // included in payroll hour totals until a manager has approved them.
+  const approvedEntries = entries.filter((e) => !e.needsManagerReview);
+  const totalThisWeekMs = weekHoursMs(approvedEntries);
+  const totalAllMs = approvedEntries.filter((e) => e.status !== "active" && e.clockedOutAt).reduce((sum, e) => sum + entryDurationMs(e), 0);
+  const pendingCount = entries.filter((e) => e.needsManagerReview && e.status !== "active").length;
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -791,14 +877,21 @@ function ShiftHistoryModal({ visible, onClose, entries }: { visible: boolean; on
             <Text style={styles.historyStatLabel}>This week</Text>
           </View>
           <View style={styles.historyStatBox}>
-            <Text style={styles.historyStatValue}>{entries.length}</Text>
-            <Text style={styles.historyStatLabel}>Total shifts</Text>
+            <Text style={styles.historyStatValue}>{approvedEntries.length}</Text>
+            <Text style={styles.historyStatLabel}>Approved shifts</Text>
           </View>
           <View style={styles.historyStatBox}>
             <Text style={styles.historyStatValue}>{formatHoursDecimal(totalAllMs)}</Text>
-            <Text style={styles.historyStatLabel}>All recorded</Text>
+            <Text style={styles.historyStatLabel}>All approved hrs</Text>
           </View>
         </View>
+        {pendingCount > 0 && (
+          <View style={{ marginHorizontal: 20, marginBottom: 8, padding: 10, backgroundColor: "#FEF3C7", borderRadius: 8 }}>
+            <Text style={{ fontSize: 13, color: "#92400E" }}>
+              {pendingCount} shift{pendingCount !== 1 ? "s" : ""} pending manager review — hours not yet counted toward payroll.
+            </Text>
+          </View>
+        )}
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
           {entries.length === 0 && (
             <View style={styles.emptyState}>
@@ -807,15 +900,23 @@ function ShiftHistoryModal({ visible, onClose, entries }: { visible: boolean; on
             </View>
           )}
           {entries.map((e) => (
-            <View key={e.id} style={styles.shiftRow}>
+            <View key={e.id} style={[styles.shiftRow, e.needsManagerReview && e.status !== "active" ? { opacity: 0.65 } : null]}>
               <View>
                 <Text style={styles.shiftDate}>{fmtDate(e.clockedInAt)}</Text>
                 <Text style={styles.shiftTime}>{fmtTime(e.clockedInAt)} — {e.clockedOutAt ? fmtTime(e.clockedOutAt) : "ongoing"}</Text>
                 {e.status === "amended" && <Text style={[styles.amendedText, { fontSize: 11, marginTop: 2 }]}>Amended — {e.amendReason}</Text>}
+                {e.needsManagerReview && e.status !== "active" && (
+                  <Text style={{ fontSize: 11, color: "#92400E", marginTop: 2 }}>Pending manager review</Text>
+                )}
               </View>
               <View style={styles.shiftRight}>
                 <Text style={styles.shiftDuration}>{e.clockedOutAt ? formatHoursDecimal(entryDurationMs(e)) : "—"}</Text>
                 {e.status === "amended" && <View style={styles.amendedBadge}><Text style={styles.amendedText}>amended</Text></View>}
+                {e.needsManagerReview && e.status !== "active" && (
+                  <View style={[styles.amendedBadge, { backgroundColor: "#FEF3C7" }]}>
+                    <Text style={[styles.amendedText, { color: "#92400E" }]}>review</Text>
+                  </View>
+                )}
               </View>
             </View>
           ))}
@@ -950,4 +1051,20 @@ const styles = StyleSheet.create({
   rotaShiftChip: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: Colors.brand.blue + "12", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, alignSelf: "flex-start" },
   rotaShiftTime: { fontFamily: "Montserrat_600SemiBold", fontSize: 13, color: Colors.brand.blue },
   rotaShiftRole: { fontFamily: "Montserrat_400Regular", fontSize: 11, color: Colors.brand.blue + "BB" },
+
+  // Venue clock code modal
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "center", alignItems: "center", padding: 24 },
+  venueCodeModal: { backgroundColor: Colors.light.surface, borderRadius: 20, padding: 24, width: "100%", maxWidth: 380, gap: 16 },
+  venueCodeHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
+  venueCodeTitle: { fontFamily: "Montserrat_700Bold", fontSize: 20, color: Colors.light.text },
+  venueCodeBody: { fontFamily: "Montserrat_400Regular", fontSize: 14, color: Colors.light.textSecondary, lineHeight: 20 },
+  venueCodeInput: { borderWidth: 1.5, borderColor: Colors.light.border, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontFamily: "Montserrat_700Bold", fontSize: 22, textAlign: "center", letterSpacing: 8, color: Colors.light.text, backgroundColor: Colors.light.background },
+  venueCodeInputError: { borderColor: "#EF4444" },
+  venueCodeErrorText: { fontFamily: "Montserrat_400Regular", fontSize: 12, color: "#EF4444", textAlign: "center" },
+  venueCodeActions: { flexDirection: "row", gap: 10, marginTop: 4 },
+  venueCodeBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: "center" },
+  venueCodeBtnCancel: { backgroundColor: Colors.light.background, borderWidth: 1, borderColor: Colors.light.border },
+  venueCodeBtnCancelText: { fontFamily: "Montserrat_600SemiBold", fontSize: 15, color: Colors.light.textSecondary },
+  venueCodeBtnConfirm: { backgroundColor: Colors.light.tint },
+  venueCodeBtnConfirmText: { fontFamily: "Montserrat_700Bold", fontSize: 15, color: "#fff" },
 });

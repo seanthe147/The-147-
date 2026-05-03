@@ -685,6 +685,13 @@ export const staffTimeEntries = pgTable("staff_time_entries", {
   clockOutFlags: text("clock_out_flags"),
   clientIp: text("client_ip"),
   userAgent: text("user_agent"),
+  // When location cannot be independently verified (i.e. coordinates come
+  // from the client and the server has no attestation proof), the entry is
+  // flagged so that managers must explicitly review it before it can be
+  // treated as an authoritative attendance record for payroll purposes.
+  needsManagerReview: boolean("needs_manager_review").notNull().default(false),
+  managerReviewedAt: timestamp("manager_reviewed_at"),
+  managerReviewedBy: integer("manager_reviewed_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
