@@ -15743,6 +15743,14 @@ function scheduleRetentionCleanup() {
     Sentry.setupExpressErrorHandler(app);
   }
   setupErrorHandler(app);
+  if (!process.env.PUBLIC_APP_URL?.trim()) {
+    const hasReplitDomains = !!process.env.REPLIT_DOMAINS?.trim() || !!process.env.REPLIT_DEV_DOMAIN?.trim();
+    if (!hasReplitDomains) {
+      console.warn(
+        "[security] PUBLIC_APP_URL is not set and no REPLIT_DOMAINS/REPLIT_DEV_DOMAIN detected. Payment redirect URLs and email links will use the hardcoded fallback origin. Set PUBLIC_APP_URL=https://your-domain.com in production to prevent this."
+      );
+    }
+  }
   const port = parseInt(process.env.PORT || "5000", 10);
   await new Promise((resolve4) => {
     server.listen(port, "0.0.0.0", () => {
