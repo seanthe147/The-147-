@@ -94,6 +94,7 @@ STRIPE_MOTO_ENABLED = "true"
 MANAGER_EMAIL = "Rebecca@the147.co.uk"
 MEMBERSHIP_AUDIT_EMAIL = "Rebecca@the147.co.uk"
 STAFF_NOTIFICATION_EMAIL = "Rebecca@the147.co.uk"
+PUBLIC_FROM_EMAIL = "Info@the147.co.uk"
 
 [postMerge]
 path = "scripts/post-merge.sh"

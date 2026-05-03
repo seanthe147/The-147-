@@ -328,7 +328,12 @@ async function sendEmailViaSMTP(to: string, subject: string, html: string): Prom
       auth: { user, pass },
       tls: { rejectUnauthorized: true },
     });
-    await transporter.sendMail({ from: `"The 147" <${user}>`, to, subject, html });
+    // Public-facing "from" address shown in the customer's inbox. Gmail still
+    // authenticates as `user` (bookings@the147.co.uk) but the visible sender
+    // is the friendlier Info@the147.co.uk — set via PUBLIC_FROM_EMAIL so we
+    // can change it without a redeploy.
+    const publicFrom = process.env.PUBLIC_FROM_EMAIL || user;
+    await transporter.sendMail({ from: `"The 147" <${publicFrom}>`, to, subject, html, replyTo: publicFrom });
     console.log(`[EMAIL SMTP] Sent to ${maskEmail(to)}`);
     return true;
   } catch (err) {
