@@ -458,7 +458,13 @@ function DashboardScreen() {
             </Text>
           </View>
           <Text style={styles.welcomeTitle}>
-            {displayName || username ? `Welcome, ${displayName || username}` : "Dashboard"}
+            {(() => {
+              const name = displayName || username;
+              if (!name) return "Dashboard";
+              const hour = new Date().getHours();
+              const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+              return `${greeting}, ${name}`;
+            })()}
           </Text>
           <Text style={styles.welcomeSubtitle}>
             {isOwner ? "Full venue owner access" : isManager ? "HR & rota management" : "Clock in/out and view your rota"}
