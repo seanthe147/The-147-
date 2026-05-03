@@ -1,4 +1,21 @@
+import * as Sentry from "@sentry/node";
+
+// Initialise Sentry BEFORE any other import that may throw at load time, so
+// errors from those modules are captured. No-op when SENTRY_DSN is unset, so
+// local dev (and any deploy without the secret) costs nothing.
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || "development",
+    release: process.env.GIT_COMMIT || process.env.REPL_COMMIT_SHA,
+    // 10% trace sample is plenty for a venue-scale app — keeps the free tier
+    // comfortable while still catching slow/failing requests.
+    tracesSampleRate: 0.1,
+  });
+}
+
 import express from "express";
+import compression from "compression";
 import type { Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { runStartupMigrations } from "./storage";
@@ -1047,6 +1064,10 @@ function scheduleRetentionCleanup() {
 
   setupCors(app);
   setupSecurityHeaders(app);
+  // gzip every JSON / HTML response above ~1KB. Cuts menu, bookings list and
+  // customer list payloads by ~70-80% on the wire. `filter` keeps the default
+  // (skip already-compressed content like images and existing gzip).
+  app.use(compression());
   setupBodyParsing(app);
   setupRequestLogging(app);
 
@@ -1105,6 +1126,13 @@ function scheduleRetentionCleanup() {
   configureExpoAndLanding(app);
 
   const server = await registerRoutes(app);
+
+  // Sentry's Express error handler must come AFTER all routes but BEFORE our
+  // own error handler, so it captures unhandled exceptions from any route.
+  // No-op when SENTRY_DSN isn't set (the init above didn't run).
+  if (process.env.SENTRY_DSN) {
+    Sentry.setupExpressErrorHandler(app);
+  }
 
   setupErrorHandler(app);
 

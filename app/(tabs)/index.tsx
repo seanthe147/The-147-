@@ -7,7 +7,6 @@ import {
   Pressable,
   Platform,
   Linking,
-  ActivityIndicator,
   Dimensions,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -609,9 +608,7 @@ export default function HomeScreen() {
             />
           </View>
 
-          {bannersLoading ? (
-            <ActivityIndicator size="small" color={Colors.brand.blue} style={{ marginVertical: 20 }} />
-          ) : bannerImages && bannerImages.length > 0 ? (
+          {bannerImages && bannerImages.length > 0 ? (
             <BannerCarousel images={bannerImages} />
           ) : null}
 
