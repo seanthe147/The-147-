@@ -538,7 +538,7 @@ export interface IStorage {
   migrateEncryptExistingBookings(): Promise<number>;
   migrateEncryptExistingPII(): Promise<void>;
   searchCustomers(query: string, limit?: number): Promise<Array<{ id?: number; name: string; phone: string; email: string }>>;
-  createCustomer(email: string, name: string, phone: string | null, passwordHash: string, opts?: { emailVerifyTokenHash?: string; emailVerifyTokenExpiresAt?: Date }): Promise<Customer>;
+  createCustomer(email: string, name: string, phone: string | null, passwordHash: string, opts?: { emailVerifyTokenHash?: string; emailVerifyTokenExpiresAt?: Date; dateOfBirth?: string | null }): Promise<Customer>;
   setEmailVerificationToken(id: number, tokenHash: string, expiresAt: Date): Promise<void>;
   getCustomerByVerifyTokenHash(tokenHash: string): Promise<Customer | undefined>;
   markEmailVerified(id: number): Promise<void>;
@@ -1559,7 +1559,10 @@ export class DatabaseStorage implements IStorage {
       phone: phone ? encrypt(phone) : null,
       passwordHash,
       privacyConsentAt: new Date(),
-      dateOfBirth: opts?.dateOfBirth ?? null,
+      // Encrypt DOB at rest to match updateCustomer's behaviour. The
+       // decryptCustomer wrapper used by every read path will decrypt it
+       // back to canonical YYYY-MM-DD on the way out.
+      dateOfBirth: opts?.dateOfBirth ? encrypt(opts.dateOfBirth) : null,
       emailVerifyTokenHash: opts?.emailVerifyTokenHash ?? null,
       emailVerifyTokenExpiresAt: opts?.emailVerifyTokenExpiresAt ?? null,
       emailVerifyLastSentAt: opts?.emailVerifyTokenHash ? new Date() : null,
