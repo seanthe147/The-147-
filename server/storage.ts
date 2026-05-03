@@ -191,6 +191,7 @@ pool.on("error", (err) => {
 });
 
 const db = drizzle(pool);
+export { db };
 
 // ── Startup migrations — safe, idempotent schema updates ──────────────────────
 export async function runStartupMigrations() {

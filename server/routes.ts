@@ -6,8 +6,9 @@ import * as path from "node:path";
 import multer from "multer";
 import sharp from "sharp";
 import nodemailer from "nodemailer";
-import { storage } from "./storage";
-import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema } from "@shared/schema";
+import { storage, db } from "./storage";
+import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema, tabs, tabItems, bookings as bookingsTable } from "@shared/schema";
+import { and as dAnd, eq as dEq, desc as dDesc } from "drizzle-orm";
 import { getServerFeatureFlags } from "./featureFlags";
 import { hashPin, verifyPin, hashPassword, verifyPassword, hashEmail } from "./encryption";
 import * as square from "./square";
@@ -10802,7 +10803,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
   // ── Pay rate routes ──────────────────────────────────────────────────────────
 
   app.get("/api/hr/staff/:id/pay", staffAuth, managerAuth, async (req: any, res) => {
-    const staffId = parseInt(req.params.id, 10);
+    const staffId = parseInt(req.params.id as string, 10);
     if (isNaN(staffId)) return res.status(400).json({ message: "Invalid staff ID" });
     const pay = await storage.getStaffPay(staffId);
     if (!pay) return res.status(404).json({ message: "Staff member not found" });
@@ -10810,7 +10811,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
   });
 
   app.put("/api/hr/staff/:id/pay", staffAuth, managerAuth, async (req: any, res) => {
-    const staffId = parseInt(req.params.id, 10);
+    const staffId = parseInt(req.params.id as string, 10);
     if (isNaN(staffId)) return res.status(400).json({ message: "Invalid staff ID" });
     const { payType, hourlyRate, annualSalary, weeklyHours } = req.body;
     if (!payType || !["hourly", "salary"].includes(payType)) return res.status(400).json({ message: "payType must be 'hourly' or 'salary'" });
@@ -10836,7 +10837,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
   }
 
   app.get("/api/hr/staff/:id/ssp", staffAuth, managerAuth, async (req: any, res) => {
-    const staffId = parseInt(req.params.id, 10);
+    const staffId = parseInt(req.params.id as string, 10);
     if (isNaN(staffId)) return res.status(400).json({ message: "Invalid staff ID" });
 
     const [pay, staffUser, allLeave] = await Promise.all([
@@ -10955,7 +10956,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
   // ── Holiday Pay Calculator ───────────────────────────────────────────────────
 
   app.get("/api/hr/staff/:id/holiday-pay", staffAuth, managerAuth, async (req: any, res) => {
-    const staffId = parseInt(req.params.id, 10);
+    const staffId = parseInt(req.params.id as string, 10);
     if (isNaN(staffId)) return res.status(400).json({ message: "Invalid staff ID" });
 
     const [pay, staffUser, allLeave] = await Promise.all([
@@ -11023,6 +11024,240 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
         : "Holiday pay is calculated at your contracted daily rate. Under UK law variable-hours workers may be entitled to a 52-week average rate — verify with your payroll provider.",
       disclaimer: "Figures are estimates. Verify with your payroll provider before processing payments.",
     });
+  });
+
+  // ─── BAR TABS ───────────────────────────────────────────────────────────
+  // Staff open a tab against a table or booking, add items as the session
+  // progresses, then close it (cash/card/comp/added-to-booking). Items can be
+  // voided with a reason; closed tabs are read-only.
+
+  async function recalcTabTotal(tabId: number): Promise<number> {
+    const items = await db.select().from(tabItems).where(dEq(tabItems.tabId, tabId));
+    const total = items
+      .filter((i) => !i.voided)
+      .reduce((s, i) => s + i.unitPricePence * i.quantity, 0);
+    await db.update(tabs).set({ totalPence: total }).where(dEq(tabs.id, tabId));
+    return total;
+  }
+
+  // List tabs (?status=open|closed|all, default open)
+  app.get("/api/staff/tabs", staffAuth, async (req, res) => {
+    try {
+      const raw = req.query.status;
+      const statusQ = typeof raw === "string" ? raw : Array.isArray(raw) && raw.length ? String(raw[0]) : "open";
+      const rows = statusQ === "all"
+        ? await db.select().from(tabs).orderBy(dDesc(tabs.openedAt)).limit(200)
+        : await db.select().from(tabs).where(dEq(tabs.status, statusQ)).orderBy(dDesc(tabs.openedAt)).limit(200);
+      res.json(rows);
+    } catch (err: any) {
+      console.error("[TABS] list error:", err.message);
+      res.status(500).json({ message: "Could not load tabs" });
+    }
+  });
+
+  // Get one tab + its items
+  app.get("/api/staff/tabs/:id", staffAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id as string, 10);
+      if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+      const [tab] = await db.select().from(tabs).where(dEq(tabs.id, id));
+      if (!tab) return res.status(404).json({ message: "Tab not found" });
+      const items = await db.select().from(tabItems).where(dEq(tabItems.tabId, id)).orderBy(tabItems.addedAt);
+      res.json({ tab, items });
+    } catch (err: any) {
+      console.error("[TABS] get error:", err.message);
+      res.status(500).json({ message: "Could not load tab" });
+    }
+  });
+
+  // Open a new tab. Body: { tableType, tableNumber?, customerName?, customerEmail?, bookingId?, notes? }
+  app.post("/api/staff/tabs", staffAuth, async (req: any, res) => {
+    try {
+      const tableType = String(req.body?.tableType || "").trim();
+      if (!tableType) return res.status(400).json({ message: "tableType is required" });
+      const tableNumber = req.body?.tableNumber ? String(req.body.tableNumber).trim() : null;
+      const customerName = req.body?.customerName ? String(req.body.customerName).trim() : null;
+      const customerEmail = req.body?.customerEmail ? String(req.body.customerEmail).trim() : null;
+      const bookingId = Number.isFinite(Number(req.body?.bookingId)) ? Number(req.body.bookingId) : null;
+      const notes = req.body?.notes ? String(req.body.notes).trim().slice(0, 500) : null;
+
+      // Block duplicate open tab on the same table
+      if (tableNumber) {
+        const existing = await db.select().from(tabs).where(
+          dAnd(dEq(tabs.status, "open"), dEq(tabs.tableType, tableType), dEq(tabs.tableNumber, tableNumber)),
+        );
+        if (existing.length > 0) {
+          return res.status(409).json({ message: "There is already an open tab on that table.", existingTabId: existing[0].id });
+        }
+      }
+
+      const [created] = await db.insert(tabs).values({
+        bookingId,
+        tableType,
+        tableNumber,
+        customerName,
+        customerEmail,
+        status: "open",
+        openedByStaffId: req.staffUser?.id ?? null,
+        openedByName: req.staffUser?.displayName || req.staffUser?.username || "staff",
+        totalPence: 0,
+        notes,
+      }).returning();
+      res.status(201).json(created);
+    } catch (err: any) {
+      console.error("[TABS] open error:", err.message);
+      res.status(500).json({ message: "Could not open tab" });
+    }
+  });
+
+  // Add an item to a tab. Body: { name, unitPricePence, quantity? }
+  app.post("/api/staff/tabs/:id/items", staffAuth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id as string, 10);
+      if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+      const [tab] = await db.select().from(tabs).where(dEq(tabs.id, id));
+      if (!tab) return res.status(404).json({ message: "Tab not found" });
+      if (tab.status !== "open") return res.status(400).json({ message: "Tab is not open" });
+
+      const name = String(req.body?.name || "").trim();
+      const unitPricePence = Math.round(Number(req.body?.unitPricePence));
+      const quantity = Math.max(1, Math.min(99, Math.round(Number(req.body?.quantity ?? 1))));
+      if (!name) return res.status(400).json({ message: "Item name required" });
+      if (!Number.isFinite(unitPricePence) || unitPricePence < 0 || unitPricePence > 1_000_000)
+        return res.status(400).json({ message: "Invalid price" });
+
+      const [item] = await db.insert(tabItems).values({
+        tabId: id,
+        name: name.slice(0, 120),
+        unitPricePence,
+        quantity,
+        addedByName: req.staffUser?.displayName || req.staffUser?.username || "staff",
+      }).returning();
+      const total = await recalcTabTotal(id);
+      res.status(201).json({ item, totalPence: total });
+    } catch (err: any) {
+      console.error("[TABS] add item error:", err.message);
+      res.status(500).json({ message: "Could not add item" });
+    }
+  });
+
+  // Void an item (managers/owners only — staff can't reduce a bill)
+  app.delete("/api/staff/tabs/:id/items/:itemId", staffAuth, managerAuth, async (req: any, res) => {
+    try {
+      const tabId = parseInt(req.params.id as string, 10);
+      const itemId = parseInt(req.params.itemId as string, 10);
+      const reason = String(req.body?.reason || "voided").trim().slice(0, 200);
+      if (!Number.isFinite(tabId) || !Number.isFinite(itemId)) return res.status(400).json({ message: "Invalid id" });
+      const [tab] = await db.select().from(tabs).where(dEq(tabs.id, tabId));
+      if (!tab) return res.status(404).json({ message: "Tab not found" });
+      if (tab.status !== "open") return res.status(400).json({ message: "Tab is not open" });
+
+      await db.update(tabItems).set({ voided: true, voidReason: reason }).where(dEq(tabItems.id, itemId));
+      const total = await recalcTabTotal(tabId);
+      res.json({ success: true, totalPence: total });
+    } catch (err: any) {
+      console.error("[TABS] void item error:", err.message);
+      res.status(500).json({ message: "Could not void item" });
+    }
+  });
+
+  // Close tab. Body: { method: 'cash'|'card'|'comp'|'added-to-booking', notes? }
+  app.post("/api/staff/tabs/:id/close", staffAuth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id as string, 10);
+      if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+      const method = String(req.body?.method || "").trim();
+      if (!["cash", "card", "comp", "added-to-booking"].includes(method))
+        return res.status(400).json({ message: "Invalid close method" });
+      // "Comp" (on the house) gives the bar away — restrict to managers/owners.
+      if (method === "comp") {
+        const role = req.staffUser?.role;
+        if (role !== "manager" && role !== "owner") {
+          return res.status(403).json({ message: "Only managers can comp a tab." });
+        }
+      }
+      const [tab] = await db.select().from(tabs).where(dEq(tabs.id, id));
+      if (!tab) return res.status(404).json({ message: "Tab not found" });
+      if (tab.status !== "open") return res.status(400).json({ message: "Tab is already closed" });
+
+      const total = await recalcTabTotal(id);
+      await db.update(tabs).set({
+        status: "closed",
+        closedAt: new Date(),
+        closedByName: req.staffUser?.displayName || req.staffUser?.username || "staff",
+        closeMethod: method,
+        totalPence: total,
+      }).where(dEq(tabs.id, id));
+      res.json({ success: true, totalPence: total });
+    } catch (err: any) {
+      console.error("[TABS] close error:", err.message);
+      res.status(500).json({ message: "Could not close tab" });
+    }
+  });
+
+  // ─── LIVE TABLES VIEW ───────────────────────────────────────────────────
+  // Returns today's bookings annotated with current state (upcoming, in-play,
+  // ending-soon, finished) plus the open tab id (if any). Computed server-side
+  // so staff devices stay in sync.
+  app.get("/api/staff/tables-live", staffAuth, async (_req, res) => {
+    try {
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const todays = await db.select().from(bookingsTable).where(dEq(bookingsTable.date, todayStr));
+      const openTabs = await db.select().from(tabs).where(dEq(tabs.status, "open"));
+
+      const tabByKey = new Map<string, typeof openTabs[number]>();
+      const tabByBooking = new Map<number, typeof openTabs[number]>();
+      for (const t of openTabs) {
+        if (t.tableNumber) tabByKey.set(`${t.tableType}|${t.tableNumber}`, t);
+        if (t.bookingId) tabByBooking.set(t.bookingId, t);
+      }
+
+      const result = todays
+        .filter((b) => b.status !== "cancelled")
+        .map((b) => {
+          const [hh, mm] = String(b.startTime).split(":").map((n) => parseInt(n, 10));
+          const start = new Date(now);
+          start.setHours(hh || 0, mm || 0, 0, 0);
+          const end = new Date(start.getTime() + (b.duration || 0) * 60_000);
+          let state: "upcoming" | "in-play" | "ending-soon" | "finished";
+          const minsToEnd = (end.getTime() - now.getTime()) / 60_000;
+          const minsToStart = (start.getTime() - now.getTime()) / 60_000;
+          if (minsToStart > 0) state = "upcoming";
+          else if (minsToEnd <= 0) state = "finished";
+          else if (minsToEnd <= 15) state = "ending-soon";
+          else state = "in-play";
+
+          const tab = (b.id && tabByBooking.get(b.id))
+            || (b.tableNumber ? tabByKey.get(`${b.tableType}|${b.tableNumber}`) : undefined);
+
+          return {
+            bookingId: b.id,
+            tableType: b.tableType,
+            tableNumber: b.tableNumber,
+            customerName: b.customerName,
+            startTime: b.startTime,
+            duration: b.duration,
+            endTime: `${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`,
+            state,
+            minsToEnd: Math.max(0, Math.round(minsToEnd)),
+            minsElapsed: Math.max(0, Math.round((now.getTime() - start.getTime()) / 60_000)),
+            openTabId: tab?.id ?? null,
+            openTabTotalPence: tab?.totalPence ?? null,
+          };
+        })
+        .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+      // Also include open tabs that aren't tied to today's bookings (walk-ins)
+      const orphanTabs = openTabs
+        .filter((t) => !t.bookingId || !todays.some((b) => b.id === t.bookingId))
+        .filter((t) => !t.tableNumber || !result.some((r) => r.tableType === t.tableType && r.tableNumber === t.tableNumber && r.openTabId === t.id));
+
+      res.json({ now: now.toISOString(), bookings: result, orphanTabs });
+    } catch (err: any) {
+      console.error("[TABLES-LIVE] error:", err.message);
+      res.status(500).json({ message: "Could not load live tables" });
+    }
   });
 
   const httpServer = createServer(app);

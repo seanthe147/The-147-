@@ -131,6 +131,42 @@ export const insertBookingSchema = createInsertSchema(bookings)
 export type InsertBooking = z.infer<typeof insertBookingSchema>;
 export type Booking = typeof bookings.$inferSelect;
 
+// Bar tabs — staff open a tab against a table or booking, add items as the
+// session progresses, then close (cash/card/charged-to-booking) at the end.
+export const tabs = pgTable("tabs", {
+  id: serial("id").primaryKey(),
+  bookingId: integer("booking_id"),                  // optional link to a booking
+  tableType: text("table_type").notNull(),           // snooker | pool | dining | bar
+  tableNumber: text("table_number"),                 // e.g. "Table 4" or null for bar
+  customerName: text("customer_name"),               // free-text for walk-ups
+  customerEmail: text("customer_email"),
+  status: text("status").notNull().default("open"),  // open | closed | voided
+  openedByStaffId: integer("opened_by_staff_id"),
+  openedByName: text("opened_by_name"),
+  openedAt: timestamp("opened_at").defaultNow().notNull(),
+  closedAt: timestamp("closed_at"),
+  closedByName: text("closed_by_name"),
+  closeMethod: text("close_method"),                 // cash | card | comp | added-to-booking
+  totalPence: integer("total_pence").notNull().default(0),
+  notes: text("notes"),
+});
+export type Tab = typeof tabs.$inferSelect;
+export type InsertTab = typeof tabs.$inferInsert;
+
+export const tabItems = pgTable("tab_items", {
+  id: serial("id").primaryKey(),
+  tabId: integer("tab_id").notNull(),
+  name: text("name").notNull(),
+  unitPricePence: integer("unit_price_pence").notNull(),
+  quantity: integer("quantity").notNull().default(1),
+  addedByName: text("added_by_name"),
+  addedAt: timestamp("added_at").defaultNow().notNull(),
+  voided: boolean("voided").notNull().default(false),
+  voidReason: text("void_reason"),
+});
+export type TabItem = typeof tabItems.$inferSelect;
+export type InsertTabItem = typeof tabItems.$inferInsert;
+
 export const staffSessions = pgTable("staff_sessions", {
   id: serial("id").primaryKey(),
   token: text("token").notNull().unique(),

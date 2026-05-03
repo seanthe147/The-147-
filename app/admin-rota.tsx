@@ -10,6 +10,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import { getApiUrl, getStaffToken } from "@/lib/query-client";
 import Colors from "@/constants/colors";
+import { TimePicker } from "@/components/DateTimePickers";
+import { useWindowDimensions } from "react-native";
 
 // ── API helper ──────────────────────────────────────────────────────────────
 
@@ -137,6 +139,12 @@ function normaliseTime(t: string): string {
 
 export default function AdminRotaScreen() {
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  const isNarrow = windowWidth < 700;
+  const [narrowDayIdx, setNarrowDayIdx] = useState<number>(() => {
+    const dow = new Date().getDay(); // 0=Sun, 1=Mon, ...
+    return dow === 0 ? 6 : dow - 1; // map to Mon=0..Sun=6
+  });
   const webTop = Platform.OS === "web" ? 67 : 0;
   const { isAuthenticated, isManager, isOwner, isLoading: authLoading } = useStaffAuth();
   const qc = useQueryClient();
@@ -672,6 +680,81 @@ export default function AdminRotaScreen() {
           <Text style={styles.emptyText}>No active staff members found.</Text>
           <Text style={styles.emptySubText}>Add staff in Staff Accounts first.</Text>
         </View>
+      ) : isNarrow ? (
+        // ── NARROW LAYOUT (mobile): day picker + per-staff list for that day ──
+        <View style={{ flex: 1 }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.dayPickerRow}
+          >
+            {DAYS.map((day, i) => {
+              const isToday = dayDates[i] === todayStr;
+              const isSelected = i === narrowDayIdx;
+              const dayDate = new Date(dayDates[i]);
+              return (
+                <Pressable
+                  key={day}
+                  onPress={() => setNarrowDayIdx(i)}
+                  style={[styles.dayChip, isSelected && styles.dayChipActive, isToday && !isSelected && styles.dayChipToday]}
+                  testID={`rota-day-${i}`}
+                >
+                  <Text style={[styles.dayChipDay, isSelected && styles.dayChipDayActive]}>{day}</Text>
+                  <Text style={[styles.dayChipDate, isSelected && styles.dayChipDateActive]}>
+                    {dayDate.getDate()}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+
+          <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: insets.bottom + 24 }}>
+            <Text style={styles.narrowDayHeader}>
+              {new Date(dayDates[narrowDayIdx]).toLocaleDateString("en-GB", {
+                weekday: "long", day: "numeric", month: "long",
+              })}
+            </Text>
+            {staffUsers.map(staff => {
+              const key = `${staff.id}_${narrowDayIdx}`;
+              const dayShifts = shiftMap.get(key) ?? [];
+              const isOnLeave = leaveMap.get(staff.id)?.has(dayDates[narrowDayIdx]) ?? false;
+              return (
+                <Pressable
+                  key={staff.id}
+                  onPress={() => openModal(staff, narrowDayIdx, dayShifts[0] ?? null)}
+                  style={styles.narrowRow}
+                  testID={`rota-narrow-${staff.id}-${narrowDayIdx}`}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.narrowName} numberOfLines={1}>
+                      {staff.displayName || staff.username}
+                    </Text>
+                    <Text style={styles.narrowRole}>{staff.role}</Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end", flexShrink: 0 }}>
+                    {isOnLeave && dayShifts.length === 0 ? (
+                      <View style={styles.narrowLeavePill}>
+                        <Text style={styles.narrowLeaveText}>On Leave</Text>
+                      </View>
+                    ) : dayShifts.length > 0 ? (
+                      dayShifts.map(sh => (
+                        <View key={sh.id} style={styles.narrowShiftPill}>
+                          <Text style={styles.narrowShiftTime}>{sh.shiftStart}–{sh.shiftEnd}</Text>
+                          {sh.role ? <Text style={styles.narrowShiftRole}>{sh.role}</Text> : null}
+                        </View>
+                      ))
+                    ) : (
+                      <View style={styles.narrowAddBtn}>
+                        <Ionicons name="add" size={18} color={Colors.brand.blue} />
+                        <Text style={styles.narrowAddText}>Add shift</Text>
+                      </View>
+                    )}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
       ) : (
         <ScrollView style={styles.gridOuter} contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -768,28 +851,12 @@ export default function AdminRotaScreen() {
             <View style={styles.timeRow}>
               <View style={styles.timeField}>
                 <Text style={styles.fieldLabel}>Start Time</Text>
-                <TextInput
-                  style={styles.timeInput}
-                  value={shiftStart}
-                  onChangeText={setShiftStart}
-                  placeholder="09:00"
-                  placeholderTextColor={Colors.light.textSecondary}
-                  keyboardType="numbers-and-punctuation"
-                  maxLength={5}
-                />
+                <TimePicker value={shiftStart} onChange={setShiftStart} placeholder="09:00" testID="rota-shift-start" />
               </View>
               <View style={styles.timeSep}><Text style={styles.timeSepText}>to</Text></View>
               <View style={styles.timeField}>
                 <Text style={styles.fieldLabel}>End Time</Text>
-                <TextInput
-                  style={styles.timeInput}
-                  value={shiftEnd}
-                  onChangeText={setShiftEnd}
-                  placeholder="17:00"
-                  placeholderTextColor={Colors.light.textSecondary}
-                  keyboardType="numbers-and-punctuation"
-                  maxLength={5}
-                />
+                <TimePicker value={shiftEnd} onChange={setShiftEnd} placeholder="17:00" testID="rota-shift-end" />
               </View>
             </View>
 
@@ -1003,6 +1070,27 @@ const styles = StyleSheet.create({
   saveBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: Colors.brand.blue },
   saveBtnText: { color: "#fff", fontSize: 14, fontWeight: "700" },
   btnRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 10 },
+
+  // Narrow / mobile rota layout
+  dayPickerRow: { paddingHorizontal: 12, paddingVertical: 10, gap: 8, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#E5E7EB" },
+  dayChip: { width: 48, paddingVertical: 8, marginRight: 8, borderRadius: 10, alignItems: "center", backgroundColor: "#F3F4F6", borderWidth: 1, borderColor: "transparent" },
+  dayChipActive: { backgroundColor: Colors.brand.blue, borderColor: Colors.brand.blue },
+  dayChipToday: { borderColor: Colors.brand.blue },
+  dayChipDay: { fontSize: 11, fontWeight: "700", color: "#4B5A72", letterSpacing: 0.4 },
+  dayChipDate: { fontSize: 18, fontWeight: "800", color: Colors.brand.dark, marginTop: 2 },
+  dayChipDayActive: { color: "#fff" },
+  dayChipDateActive: { color: "#fff" },
+  narrowDayHeader: { fontSize: 13, fontWeight: "700", color: "#6B7280", marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.6 },
+  narrowRow: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#fff", borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: "#E5E7EB" },
+  narrowName: { fontSize: 15, fontWeight: "700", color: Colors.brand.dark },
+  narrowRole: { fontSize: 12, color: "#6B7280", marginTop: 2, textTransform: "capitalize" },
+  narrowShiftPill: { backgroundColor: "#EFF6FF", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: "#BFDBFE", marginTop: 4, alignItems: "center" },
+  narrowShiftTime: { fontSize: 13, fontWeight: "800", color: Colors.brand.blue },
+  narrowShiftRole: { fontSize: 10, color: "#1D4ED8", marginTop: 2, textTransform: "capitalize" },
+  narrowLeavePill: { backgroundColor: "#FEE2E2", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  narrowLeaveText: { fontSize: 12, fontWeight: "700", color: "#B91C1C" },
+  narrowAddBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: Colors.brand.blue, borderStyle: "dashed" },
+  narrowAddText: { fontSize: 12, fontWeight: "600", color: Colors.brand.blue },
 
   // Tab bar
   tabBar: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#E2E8F0", backgroundColor: "#fff" },

@@ -18,6 +18,7 @@ import { apiRequest, queryClient } from "@/lib/query-client";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import Colors from "@/constants/colors";
 import type { BlockedPeriod } from "@shared/schema";
+import { DatePicker, TimePicker } from "@/components/DateTimePickers";
 
 const TABLE_TYPES = [
   { value: "", label: "All Tables" },
@@ -201,15 +202,8 @@ export default function AdminAvailabilityScreen() {
 
         {mode === "date" ? (
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Date (YYYY-MM-DD)</Text>
-            <TextInput
-              style={styles.input}
-              value={date}
-              onChangeText={setDate}
-              placeholder="e.g. 2025-12-25"
-              placeholderTextColor="#aaa"
-              autoCapitalize="none"
-            />
+            <Text style={styles.fieldLabel}>Date</Text>
+            <DatePicker value={date} onChange={setDate} placeholder="Pick a date" testID="block-date-picker" />
           </View>
         ) : (
           <View style={styles.field}>
@@ -233,25 +227,11 @@ export default function AdminAvailabilityScreen() {
         <View style={styles.rowFields}>
           <View style={[styles.field, { flex: 1, marginRight: 8 }]}>
             <Text style={styles.fieldLabel}>Start Time (optional)</Text>
-            <TextInput
-              style={styles.input}
-              value={startTime}
-              onChangeText={setStartTime}
-              placeholder="e.g. 14:00"
-              placeholderTextColor="#aaa"
-              autoCapitalize="none"
-            />
+            <TimePicker value={startTime} onChange={setStartTime} placeholder="Any" testID="block-start-time" />
           </View>
           <View style={[styles.field, { flex: 1 }]}>
             <Text style={styles.fieldLabel}>End Time (optional)</Text>
-            <TextInput
-              style={styles.input}
-              value={endTime}
-              onChangeText={setEndTime}
-              placeholder="e.g. 18:00"
-              placeholderTextColor="#aaa"
-              autoCapitalize="none"
-            />
+            <TimePicker value={endTime} onChange={setEndTime} placeholder="Any" testID="block-end-time" />
           </View>
         </View>
 

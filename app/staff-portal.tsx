@@ -572,6 +572,22 @@ function DashboardScreen() {
             <Text style={styles.sectionLabel}>ADMIN TOOLS</Text>
             <View style={styles.toolsList}>
               <AdminTool
+                icon="tv"
+                title="Live Tables"
+                description="What's happening on every table right now"
+                color="#059669"
+                onPress={() => router.push("/admin-tables-live")}
+                testID="portal-live-tables"
+              />
+              <AdminTool
+                icon="receipt"
+                title="Bar Tabs"
+                description="Open, add to and close tabs on the floor"
+                color="#7C3AED"
+                onPress={() => router.push("/admin-tabs")}
+                testID="portal-bar-tabs"
+              />
+              <AdminTool
                 icon="calendar"
                 title="Bookings Calendar"
                 description="View and manage table bookings"
