@@ -10355,29 +10355,7 @@ async function registerRoutes(app2) {
     if (phoneCleaned.length < 10) {
       return res.status(400).json({ message: "Please enter a valid UK phone number" });
     }
-    try {
-      cleanupExpiredLoyaltySessions();
-      const sessionToken = randomBytes3(32).toString("hex");
-      loyaltySessions.set(sessionToken, { phone: phoneCleaned, expiresAt: Date.now() + LOYALTY_SESSION_EXPIRY });
-      const account = await searchLoyaltyAccount(phoneCleaned);
-      if (!account) {
-        return res.json({ sessionToken, found: false, account: null });
-      }
-      res.json({
-        sessionToken,
-        found: true,
-        account: {
-          id: account.id,
-          balance: account.balance,
-          lifetime_points: account.lifetime_points,
-          enrolled_at: account.enrolled_at,
-          phone: account.mapping?.phone_number
-        }
-      });
-    } catch (err) {
-      console.error("Square loyalty phone-auth error:", err.message);
-      res.status(err.statusCode || 500).json({ message: err.message });
-    }
+    res.json({ received: true });
   });
   app2.post("/api/loyalty/send-code", async (req, res) => {
     const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
@@ -10404,6 +10382,19 @@ async function registerRoutes(app2) {
     const phoneCleaned = phone.replace(/\s/g, "");
     if (phoneCleaned.length < 10) {
       return res.status(400).json({ message: "Please enter a valid phone number" });
+    }
+    function normaliseUkPhone(p) {
+      const s = p.replace(/\s/g, "");
+      if (s.startsWith("+44")) return "0" + s.slice(3);
+      if (s.startsWith("44") && s.length >= 11) return "0" + s.slice(2);
+      return s;
+    }
+    const customer = await storage.getCustomerByEmail(emailClean);
+    const customerPhone = normaliseUkPhone(customer?.phone ?? "");
+    const submittedPhone = normaliseUkPhone(phoneCleaned);
+    if (!customer || customerPhone !== submittedPhone) {
+      await new Promise((r) => setTimeout(r, 400));
+      return res.json({ sent: true, expiresIn: OTP_EXPIRY / 1e3 });
     }
     const otpKey = `${emailClean}:${phoneCleaned}`;
     cleanupExpiredOtps();
