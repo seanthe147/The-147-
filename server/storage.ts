@@ -1550,7 +1550,7 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(bannerImages).orderBy(bannerImages.sortOrder);
   }
 
-  async createCustomer(email: string, name: string, phone: string | null, passwordHash: string, opts?: { emailVerifyTokenHash?: string; emailVerifyTokenExpiresAt?: Date }): Promise<Customer> {
+  async createCustomer(email: string, name: string, phone: string | null, passwordHash: string, opts?: { emailVerifyTokenHash?: string; emailVerifyTokenExpiresAt?: Date; dateOfBirth?: string | null }): Promise<Customer> {
     const normalised = email.toLowerCase().trim();
     const [customer] = await db.insert(customers).values({
       email: encrypt(normalised),
@@ -1559,6 +1559,7 @@ export class DatabaseStorage implements IStorage {
       phone: phone ? encrypt(phone) : null,
       passwordHash,
       privacyConsentAt: new Date(),
+      dateOfBirth: opts?.dateOfBirth ?? null,
       emailVerifyTokenHash: opts?.emailVerifyTokenHash ?? null,
       emailVerifyTokenExpiresAt: opts?.emailVerifyTokenExpiresAt ?? null,
       emailVerifyLastSentAt: opts?.emailVerifyTokenHash ? new Date() : null,

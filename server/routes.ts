@@ -7041,7 +7041,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.setHeader("Retry-After", String(rateCheck.retryAfter));
       return res.status(429).json({ message: "Too many attempts. Please try again later." });
     }
-    const { name, email, phone, password, privacyConsent } = req.body;
+    const { name, email, phone, password, privacyConsent, dateOfBirth } = req.body;
     if (!name || !email || !password) {
       return res.status(400).json({ message: "Name, email, and password are required" });
     }
@@ -7054,6 +7054,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({ message: "Invalid email address" });
+    }
+    // Date of birth is optional at sign-up. If provided, validate it the same
+    // way as PATCH /api/customers/me so we can't accept malformed values that
+    // would later break the birthday-bonus window logic.
+    let dobToStore: string | null = null;
+    if (dateOfBirth !== undefined && dateOfBirth !== null && dateOfBirth !== "") {
+      const dob = String(dateOfBirth).trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
+        return res.status(400).json({ message: "Date of birth must be in YYYY-MM-DD format" });
+      }
+      const [yStr, mStr, dStr] = dob.split("-");
+      const y = Number(yStr), m = Number(mStr), d = Number(dStr);
+      const parsed = new Date(Date.UTC(y, m - 1, d));
+      if (
+        isNaN(parsed.getTime()) ||
+        parsed.getUTCFullYear() !== y ||
+        parsed.getUTCMonth() !== m - 1 ||
+        parsed.getUTCDate() !== d
+      ) {
+        return res.status(400).json({ message: "Invalid date of birth" });
+      }
+      const ageYears = (Date.now() - parsed.getTime()) / (365.25 * 24 * 3600 * 1000);
+      if (ageYears < 0) return res.status(400).json({ message: "Date of birth cannot be in the future" });
+      if (ageYears > 120) return res.status(400).json({ message: "Invalid date of birth" });
+      dobToStore = dob;
     }
     // Per-IP registration rate limit — independent of login-failure tracking.
     const regRl = checkRateLimit(`reg:${clientIp}`, 5, 15 * 60 * 1000);
@@ -7092,6 +7117,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const customer = await storage.createCustomer(email, name.trim(), phone?.trim() || null, passwordHash, {
         emailVerifyTokenHash: verifyTokenHash,
         emailVerifyTokenExpiresAt: verifyExpiresAt,
+        dateOfBirth: dobToStore,
       });
       // No session token is returned in the registration response — the client
       // must log in after verifying their email. This ensures the response is

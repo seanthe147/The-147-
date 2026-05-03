@@ -30,7 +30,7 @@ interface CustomerAuthContextValue {
   isLoading: boolean;
   customer: CustomerProfile | null;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  register: (name: string, email: string, phone: string, password: string) => Promise<{ success: boolean; pending?: boolean; error?: string }>;
+  register: (name: string, email: string, phone: string, password: string, dateOfBirth?: string | null) => Promise<{ success: boolean; pending?: boolean; error?: string }>;
   logout: () => Promise<void>;
   updateProfile: (data: { name?: string; phone?: string; dateOfBirth?: string | null }) => Promise<{ success: boolean; error?: string }>;
   deleteAccount: () => Promise<{ success: boolean; error?: string }>;
@@ -219,14 +219,14 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
   }, [bindPushToken]);
 
-  const register = useCallback(async (name: string, email: string, phone: string, password: string): Promise<{ success: boolean; pending?: boolean; error?: string }> => {
+  const register = useCallback(async (name: string, email: string, phone: string, password: string, dateOfBirth?: string | null): Promise<{ success: boolean; pending?: boolean; error?: string }> => {
     try {
       const baseUrl = getApiUrl();
       const url = new URL("/api/customers/register", baseUrl);
       const res = await fetch(url.toString(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, phone, password, privacyConsent: true }),
+        body: JSON.stringify({ name, email, phone, password, privacyConsent: true, dateOfBirth: dateOfBirth || null }),
       });
 
       if (!res.ok) {

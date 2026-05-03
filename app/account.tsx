@@ -26,6 +26,7 @@ import Colors from "@/constants/colors";
 import { TABLE_TYPES } from "@/lib/data";
 import { fetch } from "expo/fetch";
 import { hasPromptedForBiometric, markBiometricPrompted } from "@/lib/biometric";
+import DateTimePicker from "@react-native-community/datetimepicker";
 
 const BOOKING_HOURS = [
   "10:00", "10:30", "11:00", "11:30", "12:00", "12:30",
@@ -61,6 +62,124 @@ function getWeekDays(weekOffset: number) {
 }
 
 type AuthMode = "login" | "register";
+
+// Reusable date-of-birth picker. Renders a native HTML date input on web and
+// the @react-native-community/datetimepicker on iOS/Android. Value is the
+// canonical YYYY-MM-DD string (or "" when cleared) so the server contract is
+// identical across platforms.
+function DOBPicker({ value, onChange, testID }: {
+  value: string;
+  onChange: (next: string) => void;
+  testID?: string;
+}) {
+  const [showPicker, setShowPicker] = useState(false);
+
+  if (Platform.OS === "web") {
+    const today = (() => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    })();
+    return React.createElement("input" as any, {
+      type: "date",
+      value,
+      max: today,
+      onChange: (e: any) => onChange(e.target.value || ""),
+      "data-testid": testID,
+      style: {
+        height: 48,
+        borderWidth: 1,
+        borderColor: "#E5E7EB",
+        borderRadius: 8,
+        paddingLeft: 12,
+        paddingRight: 12,
+        fontSize: 16,
+        fontFamily: "inherit",
+        color: "#111827",
+        backgroundColor: "#FFFFFF",
+        marginBottom: 4,
+        width: "100%",
+        boxSizing: "border-box",
+      },
+    });
+  }
+
+  const dateValue = value ? parseDateLocal(value) : new Date(2000, 0, 1);
+  const maxDate = new Date();
+  const minDate = new Date();
+  minDate.setFullYear(minDate.getFullYear() - 120);
+
+  const handleChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === "android") {
+      setShowPicker(false);
+      if (event?.type === "set" && selectedDate) {
+        onChange(localDateStr(selectedDate));
+      }
+    } else if (selectedDate) {
+      // iOS spinner: live-update the value while the modal is open.
+      onChange(localDateStr(selectedDate));
+    }
+  };
+
+  return (
+    <View>
+      <Pressable
+        onPress={() => setShowPicker(true)}
+        style={styles.dobPickerButton}
+        testID={testID}
+      >
+        <Ionicons name="calendar-outline" size={18} color={Colors.brand.blue} />
+        <Text style={[styles.dobPickerText, !value && styles.dobPickerPlaceholder]}>
+          {value || "Select your date of birth"}
+        </Text>
+        {value ? (
+          <Pressable
+            onPress={() => onChange("")}
+            hitSlop={8}
+            testID={testID ? `${testID}-clear` : undefined}
+          >
+            <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+          </Pressable>
+        ) : null}
+      </Pressable>
+      {showPicker && Platform.OS === "ios" && (
+        <Modal transparent animationType="slide" visible onRequestClose={() => setShowPicker(false)}>
+          <Pressable style={styles.dobModalBackdrop} onPress={() => setShowPicker(false)}>
+            <Pressable style={styles.dobModalSheet} onPress={() => {}}>
+              <DateTimePicker
+                value={dateValue}
+                mode="date"
+                display="spinner"
+                maximumDate={maxDate}
+                minimumDate={minDate}
+                onChange={handleChange}
+              />
+              <Pressable
+                style={styles.dobModalDone}
+                onPress={() => {
+                  // Ensure a value is set even if the user didn't spin the wheel.
+                  if (!value) onChange(localDateStr(dateValue));
+                  setShowPicker(false);
+                }}
+              >
+                <Text style={styles.dobModalDoneText}>Done</Text>
+              </Pressable>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
+      {showPicker && Platform.OS === "android" && (
+        <DateTimePicker
+          value={dateValue}
+          mode="date"
+          display="default"
+          maximumDate={maxDate}
+          minimumDate={minDate}
+          onChange={handleChange}
+        />
+      )}
+    </View>
+  );
+}
 
 interface CustomerBooking {
   id: number;
@@ -167,7 +286,7 @@ export default function AccountScreen() {
 
 function AuthView({ login, register, requestPasswordReset, resendVerificationEmailFor, prefillEmail, initialMode }: {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  register: (name: string, email: string, phone: string, password: string) => Promise<{ success: boolean; pending?: boolean; error?: string }>;
+  register: (name: string, email: string, phone: string, password: string, dateOfBirth?: string | null) => Promise<{ success: boolean; pending?: boolean; error?: string }>;
   requestPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
   resendVerificationEmailFor: (email: string) => Promise<{ success: boolean; error?: string }>;
   prefillEmail?: string;
@@ -191,6 +310,7 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [regDob, setRegDob] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [privacyConsent, setPrivacyConsent] = useState(false);
@@ -334,7 +454,7 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
     setError("");
     const trimmedEmail = email.trim();
     const enteredPassword = password;
-    const result = await register(name.trim(), trimmedEmail, phone.trim(), enteredPassword);
+    const result = await register(name.trim(), trimmedEmail, phone.trim(), enteredPassword, regDob.trim() || null);
     setLoading(false);
     if (!result.success) {
       setError(result.error || "Registration failed");
@@ -438,6 +558,9 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
             keyboardType="phone-pad"
             testID="register-phone"
           />
+          <Text style={styles.inputLabel}>Date of Birth</Text>
+          <DOBPicker value={regDob} onChange={setRegDob} testID="register-dob" />
+          <Text style={styles.dobHint}>Optional — add your birthday to unlock a free reward in your birthday week.</Text>
         </>
       )}
 
@@ -774,16 +897,7 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
                   placeholderTextColor="#9CA3AF"
                   keyboardType="phone-pad"
                 />
-                <TextInput
-                  style={[styles.input, { marginBottom: 4 }]}
-                  value={editDob}
-                  onChangeText={setEditDob}
-                  placeholder="Date of birth (YYYY-MM-DD) — optional"
-                  placeholderTextColor="#9CA3AF"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  testID="profile-dob-input"
-                />
+                <DOBPicker value={editDob} onChange={setEditDob} testID="profile-dob-input" />
                 <Text style={styles.dobHint}>Add your birthday to unlock a free reward in your birthday week.</Text>
                 <View style={styles.editActions}>
                   <Pressable
@@ -1748,6 +1862,53 @@ const styles = StyleSheet.create({
     color: Colors.light.textSecondary,
     marginBottom: 10,
     fontStyle: "italic",
+  },
+  dobPickerButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    height: 48,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    backgroundColor: "#FFFFFF",
+    marginBottom: 4,
+  },
+  dobPickerText: {
+    flex: 1,
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 16,
+    color: "#111827",
+  },
+  dobPickerPlaceholder: {
+    color: "#9CA3AF",
+    fontFamily: "Montserrat_400Regular",
+  },
+  dobModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "flex-end",
+  },
+  dobModalSheet: {
+    backgroundColor: "#FFFFFF",
+    paddingTop: 8,
+    paddingBottom: 24,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+  },
+  dobModalDone: {
+    alignSelf: "center",
+    backgroundColor: Colors.brand.blue,
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  dobModalDoneText: {
+    color: "#FFFFFF",
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 16,
   },
   editButton: {
     padding: 8,
