@@ -6176,29 +6176,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (phoneCleaned.length < 10) {
       return res.status(400).json({ message: "Please enter a valid UK phone number" });
     }
-    try {
-      cleanupExpiredLoyaltySessions();
-      const sessionToken = randomBytes(32).toString("hex");
-      loyaltySessions.set(sessionToken, { phone: phoneCleaned, expiresAt: Date.now() + LOYALTY_SESSION_EXPIRY });
-      const account = await square.searchLoyaltyAccount(phoneCleaned);
-      if (!account) {
-        return res.json({ sessionToken, found: false, account: null });
-      }
-      res.json({
-        sessionToken,
-        found: true,
-        account: {
-          id: account.id,
-          balance: account.balance,
-          lifetime_points: account.lifetime_points,
-          enrolled_at: account.enrolled_at,
-          phone: account.mapping?.phone_number,
-        },
-      });
-    } catch (err: any) {
-      console.error("Square loyalty phone-auth error:", err.message);
-      res.status(err.statusCode || 500).json({ message: err.message });
-    }
+    // NOTE: This endpoint intentionally does NOT create a loyalty session token and
+    // does NOT reveal whether an account exists for the submitted phone number.
+    // A session is only granted after the caller completes OTP verification via
+    // /api/loyalty/send-code → /api/loyalty/verify-code.
+    // Always return the same generic response to prevent account-existence probing.
+    res.json({ received: true });
   });
 
   app.post("/api/loyalty/send-code", async (req, res) => {
@@ -6227,6 +6210,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (phoneCleaned.length < 10) {
       return res.status(400).json({ message: "Please enter a valid phone number" });
     }
+    // Security: verify the submitted email and phone are both registered to the
+    // same customer account before issuing an OTP.  This prevents an attacker
+    // from supplying a victim's phone number alongside their own email address
+    // to receive the OTP themselves and then claim a loyalty session for the
+    // victim's phone.  We use a generic response on mismatch to avoid leaking
+    // whether a phone/email exists in the system (account enumeration).
+    //
+    // Normalise phone to local UK format for comparison so that numbers stored
+    // as "+447xxxxxxxxx" or "447xxxxxxxxx" match "07xxxxxxxxx" and vice-versa.
+    function normaliseUkPhone(p: string): string {
+      const s = p.replace(/\s/g, "");
+      if (s.startsWith("+44")) return "0" + s.slice(3);
+      if (s.startsWith("44") && s.length >= 11) return "0" + s.slice(2);
+      return s;
+    }
+    const customer = await storage.getCustomerByEmail(emailClean);
+    const customerPhone = normaliseUkPhone(customer?.phone ?? "");
+    const submittedPhone = normaliseUkPhone(phoneCleaned);
+    if (!customer || customerPhone !== submittedPhone) {
+      // Simulate the same delay as a real code-send to prevent timing attacks
+      await new Promise((r) => setTimeout(r, 400));
+      return res.json({ sent: true, expiresIn: OTP_EXPIRY / 1000 });
+    }
+
     const otpKey = `${emailClean}:${phoneCleaned}`;
     cleanupExpiredOtps();
     const existing = loyaltyOtps.get(otpKey);

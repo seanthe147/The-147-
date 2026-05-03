@@ -70,7 +70,7 @@ interface IssuedReward {
   created_at: string;
 }
 
-type AuthStep = "loading" | "phone" | "authenticated";
+type AuthStep = "loading" | "phone" | "otp" | "authenticated";
 
 interface MembershipPlan {
   id: number;
@@ -496,6 +496,8 @@ export default function LoyaltyScreen() {
 
   const [step, setStep] = useState<AuthStep>("loading");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [otpCode, setOtpCode] = useState("");
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [account, setAccount] = useState<LoyaltyAccount | null>(null);
   const [lookupDone, setLookupDone] = useState(false);
@@ -589,15 +591,35 @@ export default function LoyaltyScreen() {
     refetchOnWindowFocus: true,
   });
 
-  const phoneAuthMutation = useMutation({
-    mutationFn: async (phoneNumber: string) => {
-      const res = await fetch(loyaltyUrl("/api/loyalty/phone-auth"), {
+  const sendCodeMutation = useMutation({
+    mutationFn: async ({ phoneNumber, emailAddress }: { phoneNumber: string; emailAddress: string }) => {
+      const res = await fetch(loyaltyUrl("/api/loyalty/send-code"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: phoneNumber }),
+        body: JSON.stringify({ phone: phoneNumber, email: emailAddress }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to look up account");
+      if (!res.ok) throw new Error(data.message || "Failed to send verification code");
+      return data;
+    },
+    onSuccess: () => {
+      setError("");
+      setOtpCode("");
+      setStep("otp");
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+
+  const verifyCodeMutation = useMutation({
+    mutationFn: async ({ phoneNumber, emailAddress, code }: { phoneNumber: string; emailAddress: string; code: string }) => {
+      const res = await fetch(loyaltyUrl("/api/loyalty/verify-code"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: phoneNumber, email: emailAddress, code }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Verification failed");
       return data;
     },
     onSuccess: async (data) => {
@@ -605,10 +627,6 @@ export default function LoyaltyScreen() {
       setSessionToken(data.sessionToken);
       await AsyncStorage.setItem(SESSION_KEY, JSON.stringify({ token: data.sessionToken, phone: phoneCleaned }));
       setError("");
-      if (data.found && data.account) {
-        setAccount(data.account);
-        setLookupDone(true);
-      }
       setStep("authenticated");
       if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
@@ -667,7 +685,7 @@ export default function LoyaltyScreen() {
     }
   }, [step, sessionToken]);
 
-  const handlePhoneAuth = useCallback(() => {
+  const handleSendCode = useCallback(() => {
     const phoneCleaned = phone.replace(/\s/g, "");
     if (phoneCleaned.length < 10) {
       const msg = "Please enter a valid UK phone number";
@@ -675,10 +693,33 @@ export default function LoyaltyScreen() {
       else Alert.alert("Invalid Number", msg);
       return;
     }
+    const emailClean = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailClean)) {
+      const msg = "Please enter a valid email address";
+      if (Platform.OS === "web") window.alert(msg);
+      else Alert.alert("Invalid Email", msg);
+      return;
+    }
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setError("");
-    phoneAuthMutation.mutate(phoneCleaned);
-  }, [phone]);
+    sendCodeMutation.mutate({ phoneNumber: phoneCleaned, emailAddress: emailClean });
+  }, [phone, email]);
+
+  const handleVerifyOtp = useCallback(() => {
+    const phoneCleaned = phone.replace(/\s/g, "");
+    const emailClean = email.trim().toLowerCase();
+    const codeTrimmed = otpCode.trim();
+    if (!codeTrimmed) {
+      const msg = "Please enter the verification code";
+      if (Platform.OS === "web") window.alert(msg);
+      else Alert.alert("Code Required", msg);
+      return;
+    }
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setError("");
+    verifyCodeMutation.mutate({ phoneNumber: phoneCleaned, emailAddress: emailClean, code: codeTrimmed });
+  }, [phone, email, otpCode]);
 
   const handleEnroll = useCallback(() => {
     if (!sessionToken) return;
@@ -708,13 +749,15 @@ export default function LoyaltyScreen() {
     setAccount(null);
     setLookupDone(false);
     setPhone("");
+    setEmail("");
+    setOtpCode("");
     setError("");
     setStep("phone");
   }, [sessionToken]);
 
   const program: LoyaltyProgram | null = programData?.program || null;
   const programActive = programData?.active === true;
-  const isLoading = phoneAuthMutation.isPending || lookupMutation.isPending || enrollMutation.isPending;
+  const isLoading = sendCodeMutation.isPending || verifyCodeMutation.isPending || lookupMutation.isPending || enrollMutation.isPending;
   const historyEvents: LoyaltyEvent[] = historyQuery.data?.events ?? [];
   const issuedRewards: IssuedReward[] = historyQuery.data?.rewards ?? [];
 
@@ -993,7 +1036,7 @@ export default function LoyaltyScreen() {
               </View>
               <Text style={styles.sectionTitle}>Access Your Account</Text>
               <Text style={styles.lookupDescription}>
-                Enter the phone number linked to your loyalty account and we'll look it up instantly.
+                Enter your phone number and email address. We'll send you a verification code to confirm it's you.
               </Text>
 
               <View style={styles.inputRow}>
@@ -1008,33 +1051,121 @@ export default function LoyaltyScreen() {
                     keyboardType="phone-pad"
                     autoComplete="tel"
                     maxLength={15}
+                    returnKeyType="next"
+                  />
+                </View>
+              </View>
+
+              <View style={[styles.inputRow, { marginTop: 10 }]}>
+                <View style={styles.inputWrap}>
+                  <Ionicons name="mail-outline" size={18} color={Colors.light.textSecondary} style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.phoneInput}
+                    placeholder="your@email.com"
+                    placeholderTextColor={Colors.light.textSecondary}
+                    value={email}
+                    onChangeText={setEmail}
+                    keyboardType="email-address"
+                    autoComplete="email"
+                    autoCapitalize="none"
                     returnKeyType="go"
-                    onSubmitEditing={handlePhoneAuth}
+                    onSubmitEditing={handleSendCode}
                   />
                 </View>
               </View>
 
               <Text style={styles.fieldHint}>
-                This must be the number registered on your loyalty account. If you need help, ask a member of staff.
+                Your phone number must match the one registered on your loyalty account.
               </Text>
 
               <Pressable
-                onPress={handlePhoneAuth}
-                disabled={isLoading || phone.replace(/\s/g, "").length < 10}
+                onPress={handleSendCode}
+                disabled={isLoading || phone.replace(/\s/g, "").length < 10 || !email.trim()}
                 style={({ pressed }) => [
                   styles.lookupButton,
-                  (isLoading || phone.replace(/\s/g, "").length < 10) && styles.buttonDisabled,
+                  (isLoading || phone.replace(/\s/g, "").length < 10 || !email.trim()) && styles.buttonDisabled,
                   { opacity: pressed ? 0.85 : 1 },
                 ]}
               >
-                {phoneAuthMutation.isPending ? (
+                {sendCodeMutation.isPending ? (
                   <ActivityIndicator size="small" color="#FFF" />
                 ) : (
                   <>
-                    <Ionicons name="search" size={18} color="#FFF" />
-                    <Text style={styles.buttonText}>Find My Account</Text>
+                    <Ionicons name="send-outline" size={18} color="#FFF" />
+                    <Text style={styles.buttonText}>Send Verification Code</Text>
                   </>
                 )}
+              </Pressable>
+
+              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            </View>
+          </>
+        ) : step === "otp" ? (
+          <>
+            <View style={styles.lookupCard}>
+              <View style={styles.lockIconRow}>
+                <Ionicons name="shield-checkmark-outline" size={28} color={Colors.brand.blue} />
+              </View>
+              <Text style={styles.sectionTitle}>Enter Verification Code</Text>
+              <Text style={styles.lookupDescription}>
+                We've sent a verification code to {email.trim().toLowerCase()}. Enter it below to access your account.
+              </Text>
+
+              <View style={styles.inputRow}>
+                <View style={styles.inputWrap}>
+                  <Ionicons name="key-outline" size={18} color={Colors.light.textSecondary} style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.phoneInput}
+                    placeholder="6-digit code"
+                    placeholderTextColor={Colors.light.textSecondary}
+                    value={otpCode}
+                    onChangeText={setOtpCode}
+                    keyboardType="number-pad"
+                    maxLength={6}
+                    returnKeyType="go"
+                    onSubmitEditing={handleVerifyOtp}
+                  />
+                </View>
+              </View>
+
+              <Pressable
+                onPress={handleVerifyOtp}
+                disabled={verifyCodeMutation.isPending || otpCode.trim().length < 4}
+                style={({ pressed }) => [
+                  styles.lookupButton,
+                  (verifyCodeMutation.isPending || otpCode.trim().length < 4) && styles.buttonDisabled,
+                  { opacity: pressed ? 0.85 : 1 },
+                ]}
+              >
+                {verifyCodeMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle-outline" size={18} color="#FFF" />
+                    <Text style={styles.buttonText}>Verify & Continue</Text>
+                  </>
+                )}
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  setStep("phone");
+                  setOtpCode("");
+                  setError("");
+                }}
+                style={({ pressed }) => [styles.logoutButton, { alignSelf: "center", marginTop: 8, opacity: pressed ? 0.7 : 1 }]}
+              >
+                <Ionicons name="arrow-back-outline" size={16} color={Colors.light.textSecondary} />
+                <Text style={styles.logoutButtonText}>Change phone / email</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => sendCodeMutation.mutate({ phoneNumber: phone.replace(/\s/g, ""), emailAddress: email.trim().toLowerCase() })}
+                disabled={sendCodeMutation.isPending}
+                style={({ pressed }) => [styles.logoutButton, { alignSelf: "center", marginTop: 4, opacity: pressed ? 0.7 : 1 }]}
+              >
+                <Ionicons name="refresh-outline" size={16} color={Colors.light.textSecondary} />
+                <Text style={styles.logoutButtonText}>Resend code</Text>
               </Pressable>
 
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
