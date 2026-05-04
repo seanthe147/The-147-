@@ -3593,6 +3593,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.log("[WEBHOOK] Square event received:", eventType);
 
     // ── subscription.updated / subscription.activated ───────────────────────
+    // NOTE: We intentionally do NOT promote local status to "active" here.
+    // Activation is handled exclusively by the invoice.payment_made event once
+    // Square confirms the first (or any subsequent) payment has succeeded.
+    // This handler only syncs non-entitlement lifecycle changes (pause/cancel/pending)
+    // and period metadata, so period dates stay current without granting paid access.
     if (eventType === "subscription.updated" || eventType === "subscription.activated") {
       try {
         const sqSub = event?.data?.object?.subscription;
@@ -3600,16 +3605,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const allSubs = await storage.getMembershipSubscriptions();
           const local = allSubs.find(s => s.squareSubscriptionId === sqSub.id);
           if (local) {
-            const status = sqSub.status === "ACTIVE" ? "active"
-              : sqSub.status === "PAUSED" ? "paused"
-              : sqSub.status === "CANCELED" ? "cancelled"
-              : sqSub.status === "PENDING" ? "pending" : "active";
+            // Only sync non-entitlement status changes. Never promote to "active"
+            // from subscription lifecycle alone — invoice.payment_made handles that.
+            const nonActiveStatus =
+              sqSub.status === "PAUSED" ? "paused" :
+              sqSub.status === "CANCELED" ? "cancelled" :
+              sqSub.status === "PENDING" ? "pending" : null;
+            // sqSub.status === "ACTIVE": do not change local status here.
             await storage.updateMembershipSubscription(local.id, {
-              status,
               currentPeriodStart: sqSub.start_date ?? local.currentPeriodStart ?? undefined,
               currentPeriodEnd: sqSub.charged_through_date ?? local.currentPeriodEnd ?? undefined,
+              ...(nonActiveStatus ? { status: nonActiveStatus } : {}),
             });
-            console.log(`[WEBHOOK] Local membership #${local.id} synced from Square subscription status: ${status}`);
+            console.log(`[WEBHOOK] Local membership #${local.id} synced from Square subscription (sqStatus=${sqSub.status}, localStatus unchanged for ACTIVE)`);
           }
         }
       } catch (err) { console.error("[WEBHOOK] subscription.updated error:", err); }
@@ -8553,11 +8561,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.warn("[membership/join-native] group management non-fatal error:", grpErr);
       }
 
-      // 7) Activate locally if start date is today (Square will charge today via subscription billing).
-      // Deferred starts stay as pending_start until that date is reached.
-      const finalStatus = periodStart > today ? "pending_start" : "active";
+      // 7) Record the Square subscription ID but do NOT activate yet.
+      // Activation happens exclusively via the invoice.payment_made webhook once Square
+      // confirms the first billing attempt succeeded. Deferred starts remain
+      // pending_start; same-day starts remain pending. This mirrors the hosted
+      // checkout flow which also refuses to trust the browser return URL.
       await storage.updateMembershipSubscription(sub.id, {
-        status: finalStatus,
         squareSubscriptionId: squareSub?.id ?? null,
       } as any);
 
@@ -8677,22 +8686,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const type: string = event?.type ?? "";
 
       // subscription.updated / subscription.activated
+      // NOTE: We intentionally do NOT promote local status to "active" here.
+      // Activation is handled exclusively by the invoice.payment_made event once
+      // Square confirms the first (or any subsequent) payment has succeeded.
+      // This handler only syncs non-entitlement lifecycle changes (pause/cancel/pending)
+      // and period metadata, so period dates stay current without granting paid access.
       if (type === "subscription.updated" || type === "subscription.activated") {
         const sqSub = event?.data?.object?.subscription;
         if (sqSub?.id) {
           const existingSubs = await storage.getMembershipSubscriptions();
           const local = existingSubs.find(s => s.squareSubscriptionId === sqSub.id);
           if (local) {
-            const status = sqSub.status === "ACTIVE" ? "active"
-              : sqSub.status === "PAUSED" ? "paused"
-              : sqSub.status === "CANCELED" ? "cancelled"
-              : sqSub.status === "PENDING" ? "pending" : "active";
+            // Only sync non-entitlement status changes. Never promote to "active"
+            // from subscription lifecycle alone — invoice.payment_made handles that.
+            const nonActiveStatus =
+              sqSub.status === "PAUSED" ? "paused" :
+              sqSub.status === "CANCELED" ? "cancelled" :
+              sqSub.status === "PENDING" ? "pending" : null;
+            // sqSub.status === "ACTIVE": do not change local status here.
             await storage.updateMembershipSubscription(local.id, {
-              status,
               currentPeriodStart: sqSub.start_date ?? local.currentPeriodStart ?? undefined,
               currentPeriodEnd: sqSub.charged_through_date ?? local.currentPeriodEnd ?? undefined,
+              ...(nonActiveStatus ? { status: nonActiveStatus } : {}),
             });
-            console.log(`[MEMBERSHIP WEBHOOK] Synced local #${local.id} → ${status}`);
+            console.log(`[MEMBERSHIP WEBHOOK] Synced local #${local.id} (sqStatus=${sqSub.status}, localStatus unchanged for ACTIVE)`);
           }
         }
       }
