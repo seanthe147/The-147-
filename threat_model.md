@@ -54,3 +54,25 @@ The application contains customer, staff, manager, and owner capabilities in one
 ### Repudiation
 
 Staff approvals, password resets, order actions, HR events, and payment handling are sensitive operational actions. These flows should preserve accurate audit trails tied to the acting user and timestamp so abusive or mistaken actions can be investigated.
+
+## 2026-05-04 Scan Refresh
+
+### Production assumptions carried forward
+
+- `NODE_ENV` is assumed to be `production` in deployed environments.
+- Replit-managed TLS is assumed for client-to-server traffic.
+- Mockup sandbox and preview/test-site content remain out of scope unless a live production route depends on them.
+
+### Controls confirmed during this scan
+
+- Staff credential reset routes that previously allowed manager-driven impersonation are now owner-only and revoke target sessions.
+- Square webhook processing fails closed when the signing key is missing and verifies the raw request body before mutating state.
+- Public origin construction for email/payment links no longer trusts the request `Host` header and prefers configured deployment origins.
+- HR onboarding fields and staff documents are stored in the database with encryption for sensitive fields rather than being exposed through `/uploads`.
+
+### Current recurring risk patterns
+
+- **Do not reintroduce raw `X-Forwarded-For` parsing** on public routes. Use trusted-proxy-aware `req.ip` consistently anywhere abuse limits depend on client IPs.
+- **Membership entitlements must track verified billing state**, not just successful subscription creation or browser return flows. New memberships should remain pending until a verified provider event confirms the first payment.
+- **`mustChangePassword` must be enforced server-side** for all staff sessions and reauthentication paths. Client-only gating is insufficient because bearer tokens can call authenticated APIs directly.
+- **Manager-controlled outbound/public URLs must be scheme-validated** before storage or rendering. Only safe navigation schemes such as `https:` should be accepted for public banner/content links.
