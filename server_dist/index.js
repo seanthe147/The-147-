@@ -8325,13 +8325,13 @@ async function registerRoutes(app2) {
           const allSubs = await storage.getMembershipSubscriptions();
           const local = allSubs.find((s) => s.squareSubscriptionId === sqSub.id);
           if (local) {
-            const status = sqSub.status === "ACTIVE" ? "active" : sqSub.status === "PAUSED" ? "paused" : sqSub.status === "CANCELED" ? "cancelled" : sqSub.status === "PENDING" ? "pending" : "active";
+            const nonActiveStatus = sqSub.status === "PAUSED" ? "paused" : sqSub.status === "CANCELED" ? "cancelled" : sqSub.status === "PENDING" ? "pending" : null;
             await storage.updateMembershipSubscription(local.id, {
-              status,
               currentPeriodStart: sqSub.start_date ?? local.currentPeriodStart ?? void 0,
-              currentPeriodEnd: sqSub.charged_through_date ?? local.currentPeriodEnd ?? void 0
+              currentPeriodEnd: sqSub.charged_through_date ?? local.currentPeriodEnd ?? void 0,
+              ...nonActiveStatus ? { status: nonActiveStatus } : {}
             });
-            console.log(`[WEBHOOK] Local membership #${local.id} synced from Square subscription status: ${status}`);
+            console.log(`[WEBHOOK] Local membership #${local.id} synced from Square subscription (sqStatus=${sqSub.status}, localStatus unchanged for ACTIVE)`);
           }
         }
       } catch (err) {
@@ -12398,9 +12398,7 @@ Phone: ${phone}` : ""}`,
       } catch (grpErr) {
         console.warn("[membership/join-native] group management non-fatal error:", grpErr);
       }
-      const finalStatus = periodStart > today ? "pending_start" : "active";
       await storage.updateMembershipSubscription(sub.id, {
-        status: finalStatus,
         squareSubscriptionId: squareSub?.id ?? null
       });
       if (existing && existing.id) {
@@ -12492,13 +12490,13 @@ Phone: ${phone}` : ""}`,
           const existingSubs = await storage.getMembershipSubscriptions();
           const local = existingSubs.find((s) => s.squareSubscriptionId === sqSub.id);
           if (local) {
-            const status = sqSub.status === "ACTIVE" ? "active" : sqSub.status === "PAUSED" ? "paused" : sqSub.status === "CANCELED" ? "cancelled" : sqSub.status === "PENDING" ? "pending" : "active";
+            const nonActiveStatus = sqSub.status === "PAUSED" ? "paused" : sqSub.status === "CANCELED" ? "cancelled" : sqSub.status === "PENDING" ? "pending" : null;
             await storage.updateMembershipSubscription(local.id, {
-              status,
               currentPeriodStart: sqSub.start_date ?? local.currentPeriodStart ?? void 0,
-              currentPeriodEnd: sqSub.charged_through_date ?? local.currentPeriodEnd ?? void 0
+              currentPeriodEnd: sqSub.charged_through_date ?? local.currentPeriodEnd ?? void 0,
+              ...nonActiveStatus ? { status: nonActiveStatus } : {}
             });
-            console.log(`[MEMBERSHIP WEBHOOK] Synced local #${local.id} \u2192 ${status}`);
+            console.log(`[MEMBERSHIP WEBHOOK] Synced local #${local.id} (sqStatus=${sqSub.status}, localStatus unchanged for ACTIVE)`);
           }
         }
       }
