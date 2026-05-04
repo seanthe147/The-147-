@@ -3057,7 +3057,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/bookings", async (req, res) => {
-    const ip = (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
     const rl = checkRateLimit(`booking:${ip}`, 10, 15 * 60 * 1000);
     if (!rl.allowed) {
       res.setHeader("Retry-After", String(rl.retryAfter));
@@ -5325,9 +5325,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Rate-limited per IP to stop a misbehaving client from spamming us. We
   // never trust the body — every field is treated as untrusted user input.
   app.post("/api/public/payment-sheet-diagnostics", (req, res) => {
-    const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
-      || req.socket.remoteAddress
-      || "unknown";
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
     const limit = checkRateLimit(`pmt-diag:${ip}`, 60, 60_000);
     if (!limit.allowed) {
       res.set("Retry-After", String(limit.retryAfter));
@@ -6250,7 +6248,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/contact", async (req, res) => {
-    const ip = (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
     const rl = checkRateLimit(`contact:${ip}`, 5, 15 * 60 * 1000);
     if (!rl.allowed) {
       res.setHeader("Retry-After", String(rl.retryAfter));
@@ -6356,7 +6354,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/loyalty/phone-auth", async (req, res) => {
-    const ip = (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
     const rl = checkRateLimit(`phone-auth:${ip}`, 10, 15 * 60 * 1000);
     if (!rl.allowed) {
       res.setHeader("Retry-After", String(rl.retryAfter));
@@ -6382,7 +6380,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/loyalty/send-code", async (req, res) => {
-    const ip = (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
     const rl = checkRateLimit(`otp:${ip}`, 10, 15 * 60 * 1000);
     if (!rl.allowed) {
       res.setHeader("Retry-After", String(rl.retryAfter));
