@@ -13,6 +13,18 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, serial, timestamp, boolean, integer, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+function isSafePublicUrl(value) {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  let parsed;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return false;
+  }
+  return parsed.protocol === "https:" || parsed.protocol === "http:";
+}
 var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, tabs, tabItems, tableSessions, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, marketingPages, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, dealPreferences, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, passwordResetAuditLog, membershipAuditLog, bookingAuditLog, staffActionLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffDocuments, insertStaffDocumentSchema, staffOnboarding, insertStaffOnboardingSchema, staffPushTokens, paymentLog, insertPaymentLogSchema;
 var init_schema = __esm({
   "shared/schema.ts"() {
@@ -308,7 +320,15 @@ var init_schema = __esm({
       showOnEvents: boolean("show_on_events").notNull().default(true),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
-    insertBannerImageSchema = createInsertSchema(bannerImages).omit({ id: true, createdAt: true });
+    insertBannerImageSchema = createInsertSchema(bannerImages).omit({ id: true, createdAt: true }).superRefine((data, ctx) => {
+      if (data.linkType === "url" && data.linkValue != null && !isSafePublicUrl(data.linkValue)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["linkValue"],
+          message: "Banner URL must start with https:// or http://"
+        });
+      }
+    });
     dealPreferences = pgTable("deal_preferences", {
       id: serial("id").primaryKey(),
       squareDiscountId: text("square_discount_id").notNull().unique(),
@@ -1804,6 +1824,10 @@ var init_storage = __esm({
       }
       async getAllBannerImages() {
         return db.select().from(bannerImages).orderBy(bannerImages.sortOrder);
+      }
+      async getBannerImageById(id) {
+        const [row] = await db.select().from(bannerImages).where(eq(bannerImages.id, id));
+        return row;
       }
       async createBannerImage(data) {
         const [row] = await db.insert(bannerImages).values(data).returning();
@@ -7836,7 +7860,7 @@ async function registerRoutes(app2) {
     res.json({ count: successCount, failed: failureCount, total: tokens.length, notification });
   });
   app2.post("/api/bookings", async (req, res) => {
-    const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
     const rl = checkRateLimit(`booking:${ip}`, 10, 15 * 60 * 1e3);
     if (!rl.allowed) {
       res.setHeader("Retry-After", String(rl.retryAfter));
@@ -9736,7 +9760,7 @@ async function registerRoutes(app2) {
     });
   });
   app2.post("/api/public/payment-sheet-diagnostics", (req, res) => {
-    const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
     const limit = checkRateLimit(`pmt-diag:${ip}`, 60, 6e4);
     if (!limit.allowed) {
       res.set("Retry-After", String(limit.retryAfter));
@@ -10406,7 +10430,11 @@ async function registerRoutes(app2) {
         const sortOrder = parseInt(req.body.sortOrder ?? "0");
         const active = req.body.active !== "false";
         const linkType = req.body.linkType?.trim() || null;
-        const linkValue = req.body.linkValue?.trim() || null;
+        const rawLinkValue = req.body.linkValue?.trim() || null;
+        const linkValue = linkType === "url" ? rawLinkValue : null;
+        if (linkType === "url" && linkValue != null && !isSafePublicUrl(linkValue)) {
+          return res.status(400).json({ message: "Banner URL must start with https:// or http://" });
+        }
         const image2 = await storage.createBannerImage({
           imageUrl,
           title: req.body.title?.trim() || null,
@@ -10424,13 +10452,27 @@ async function registerRoutes(app2) {
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid banner image data", errors: parsed.error.flatten() });
     }
-    const image = await storage.createBannerImage(parsed.data);
+    const safeData = parsed.data.linkType === "url" ? parsed.data : { ...parsed.data, linkValue: null };
+    const image = await storage.createBannerImage(safeData);
     res.status(201).json(image);
   });
   app2.put("/api/banner-images/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-    const updated = await storage.updateBannerImage(id, req.body);
+    const existing = await storage.getBannerImageById(id);
+    if (!existing) return res.status(404).json({ error: "Banner image not found" });
+    const body = req.body ?? {};
+    const finalLinkType = body.linkType !== void 0 ? body.linkType : existing.linkType;
+    const submittedValue = typeof body.linkValue === "string" ? body.linkValue.trim() : body.linkValue;
+    const finalLinkValue = body.linkValue !== void 0 ? submittedValue : existing.linkValue;
+    if (finalLinkType === "url") {
+      if (!finalLinkValue || !isSafePublicUrl(finalLinkValue)) {
+        return res.status(400).json({ message: "Banner URL must start with https:// or http://" });
+      }
+    } else if (body.linkType !== void 0) {
+      body.linkValue = null;
+    }
+    const updated = await storage.updateBannerImage(id, body);
     if (!updated) return res.status(404).json({ error: "Banner image not found" });
     res.json(updated);
   });
@@ -10455,7 +10497,7 @@ async function registerRoutes(app2) {
     res.json({ message: "Banner image deleted" });
   });
   app2.post("/api/contact", async (req, res) => {
-    const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
     const rl = checkRateLimit(`contact:${ip}`, 5, 15 * 60 * 1e3);
     if (!rl.allowed) {
       res.setHeader("Retry-After", String(rl.retryAfter));
@@ -10544,7 +10586,7 @@ async function registerRoutes(app2) {
     res.json({ updated, pushed });
   });
   app2.post("/api/loyalty/phone-auth", async (req, res) => {
-    const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
     const rl = checkRateLimit(`phone-auth:${ip}`, 10, 15 * 60 * 1e3);
     if (!rl.allowed) {
       res.setHeader("Retry-After", String(rl.retryAfter));
@@ -10564,7 +10606,7 @@ async function registerRoutes(app2) {
     res.json({ received: true });
   });
   app2.post("/api/loyalty/send-code", async (req, res) => {
-    const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
     const rl = checkRateLimit(`otp:${ip}`, 10, 15 * 60 * 1e3);
     if (!rl.allowed) {
       res.setHeader("Retry-After", String(rl.retryAfter));
