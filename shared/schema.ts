@@ -355,7 +355,40 @@ export const bannerImages = pgTable("banner_images", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const insertBannerImageSchema = createInsertSchema(bannerImages).omit({ id: true, createdAt: true });
+// Banner `linkValue` is rendered into web `Linking.openURL()` calls on the
+// home and events screens. In a browser, opening a `javascript:` URL would
+// execute attacker-controlled script in the page origin and could exfiltrate
+// auth tokens stored in AsyncStorage (`customer_session_token`,
+// `staff_session_token`). To prevent this stored-XSS sink, we restrict the
+// stored value to plain http/https navigation URLs at every entry point.
+// Helper is exported so the server, the schema, and the two client sinks can
+// all share one definition.
+export function isSafePublicUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return false;
+  }
+  // Only allow standard navigation schemes. Explicitly rejects `javascript:`,
+  // `data:`, `vbscript:`, `file:`, `blob:`, etc.
+  return parsed.protocol === "https:" || parsed.protocol === "http:";
+}
+
+export const insertBannerImageSchema = createInsertSchema(bannerImages)
+  .omit({ id: true, createdAt: true })
+  .superRefine((data, ctx) => {
+    if (data.linkType === "url" && data.linkValue != null && !isSafePublicUrl(data.linkValue)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["linkValue"],
+        message: "Banner URL must start with https:// or http://",
+      });
+    }
+  });
 
 export type InsertBannerImage = z.infer<typeof insertBannerImageSchema>;
 export type BannerImage = typeof bannerImages.$inferSelect;

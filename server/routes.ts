@@ -7,7 +7,8 @@ import multer from "multer";
 import sharp from "sharp";
 import nodemailer from "nodemailer";
 import { storage, db } from "./storage";
-import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema, tabs, tabItems, bookings as bookingsTable, tableSessions } from "@shared/schema";
+import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema, isSafePublicUrl, tabs, tabItems, bookings as bookingsTable, tableSessions } from "@shared/schema";
+import type { InsertBannerImage } from "@shared/schema";
 import { and as dAnd, eq as dEq, desc as dDesc } from "drizzle-orm";
 import { getServerFeatureFlags } from "./featureFlags";
 import { hashPin, verifyPin, hashPassword, verifyPassword, hashEmail } from "./encryption";
@@ -6156,7 +6157,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const sortOrder = parseInt(req.body.sortOrder ?? "0");
         const active = req.body.active !== "false";
         const linkType = req.body.linkType?.trim() || null;
-        const linkValue = req.body.linkValue?.trim() || null;
+        // Force linkValue to null for non-url link types so a "park unsafe
+        // value under linkType=event, then flip linkType to url later"
+        // bypass is impossible at the storage layer. Banners with
+        // linkType="event"|"order" navigate to fixed routes and never
+        // dereference linkValue.
+        const rawLinkValue = req.body.linkValue?.trim() || null;
+        const linkValue = linkType === "url" ? rawLinkValue : null;
+        // Block javascript:, data:, and other non-navigation schemes from
+        // being persisted. The banner is rendered as a tappable link on
+        // public pages, so an unsafe scheme here is a stored-XSS sink on web.
+        if (linkType === "url" && linkValue != null && !isSafePublicUrl(linkValue)) {
+          return res.status(400).json({ message: "Banner URL must start with https:// or http://" });
+        }
         const image = await storage.createBannerImage({
           imageUrl,
           title: req.body.title?.trim() || null,
@@ -6174,14 +6187,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid banner image data", errors: parsed.error.flatten() });
     }
-    const image = await storage.createBannerImage(parsed.data);
+    // Mirror the multipart branch: drop linkValue if linkType isn't "url".
+    const safeData = parsed.data.linkType === "url"
+      ? parsed.data
+      : { ...parsed.data, linkValue: null };
+    const image = await storage.createBannerImage(safeData);
     res.status(201).json(image);
   });
 
   app.put("/api/banner-images/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-    const updated = await storage.updateBannerImage(id, req.body);
+    // Validate the *effective final row* after merging the patch, not just
+    // the submitted fields. This closes a state-transition bypass where an
+    // attacker could (a) save linkValue="javascript:…" while linkType=null,
+    // then (b) flip linkType="url" in a separate PUT without resubmitting
+    // linkValue. Loading the existing row and merging closes that gap.
+    const existing = await storage.getBannerImageById(id);
+    if (!existing) return res.status(404).json({ error: "Banner image not found" });
+    const body = (req.body ?? {}) as Partial<InsertBannerImage>;
+    const finalLinkType = body.linkType !== undefined ? body.linkType : existing.linkType;
+    const submittedValue = typeof body.linkValue === "string" ? body.linkValue.trim() : body.linkValue;
+    const finalLinkValue = body.linkValue !== undefined ? submittedValue : existing.linkValue;
+    if (finalLinkType === "url") {
+      if (!finalLinkValue || !isSafePublicUrl(finalLinkValue)) {
+        return res.status(400).json({ message: "Banner URL must start with https:// or http://" });
+      }
+    } else if (body.linkType !== undefined) {
+      // Manager is changing linkType away from "url" — clear the stored
+      // value so a stale unsafe value can never be reactivated by another
+      // future flip back to "url".
+      (body as { linkValue?: string | null }).linkValue = null;
+    }
+    const updated = await storage.updateBannerImage(id, body);
     if (!updated) return res.status(404).json({ error: "Banner image not found" });
     res.json(updated);
   });

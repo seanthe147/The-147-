@@ -22,6 +22,7 @@ import { useQuery } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 import { getApiUrl } from "@/lib/query-client";
 import type { Event, BannerImage } from "@shared/schema";
+import { isSafePublicUrl } from "@shared/schema";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const BANNER_WIDTH = SCREEN_WIDTH - 40;
@@ -82,7 +83,13 @@ const BannerCarousel = memo(function BannerCarousel({ images }: { images: Banner
           const handleBannerPress = () => {
             if (!item.linkType) return;
             if (item.linkType === "url" && item.linkValue) {
-              Linking.openURL(item.linkValue);
+              // Defense-in-depth: even though the server now rejects unsafe
+              // schemes on write, refuse to open anything that isn't a plain
+              // http(s) URL. On web `Linking.openURL` becomes a navigation,
+              // and `javascript:` URLs would execute in the page origin.
+              if (isSafePublicUrl(item.linkValue)) {
+                Linking.openURL(item.linkValue);
+              }
             }
           };
           return (

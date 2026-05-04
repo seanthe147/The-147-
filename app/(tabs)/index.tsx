@@ -26,6 +26,7 @@ import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import Colors from "@/constants/colors";
 import { OPENING_HOURS } from "@/lib/data";
 import type { Event, BannerImage, Offer } from "@shared/schema";
+import { isSafePublicUrl } from "@shared/schema";
 import { EnableNotificationsBanner } from "@/components/EnableNotificationsBanner";
 
 const logoImage = require("@/assets/images/logo-147.png");
@@ -167,7 +168,13 @@ const BannerCarousel = memo(function BannerCarousel({ images }: { images: Banner
             } else if (item.linkType === "order") {
               router.push("/(tabs)/order");
             } else if (item.linkType === "url" && item.linkValue) {
-              Linking.openURL(item.linkValue);
+              // Defense-in-depth: even though the server now rejects unsafe
+              // schemes on write, refuse to open anything that isn't a plain
+              // http(s) URL. On web `Linking.openURL` becomes a navigation,
+              // and `javascript:` URLs would execute in the page origin.
+              if (isSafePublicUrl(item.linkValue)) {
+                Linking.openURL(item.linkValue);
+              }
             }
           };
           return (

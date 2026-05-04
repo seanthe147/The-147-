@@ -1456,6 +1456,11 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(bannerImages).orderBy(bannerImages.sortOrder);
   }
 
+  async getBannerImageById(id: number): Promise<BannerImage | undefined> {
+    const [row] = await db.select().from(bannerImages).where(eq(bannerImages.id, id));
+    return row;
+  }
+
   async createBannerImage(data: InsertBannerImage): Promise<BannerImage> {
     const [row] = await db.insert(bannerImages).values(data).returning();
     return row;

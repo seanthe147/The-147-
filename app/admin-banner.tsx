@@ -21,6 +21,7 @@ import Colors from "@/constants/colors";
 import { apiRequest, queryClient, getApiUrl, getStaffToken } from "@/lib/query-client";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import type { BannerImage } from "@shared/schema";
+import { isSafePublicUrl } from "@shared/schema";
 
 export default function AdminBannerScreen() {
   const insets = useSafeAreaInsets();
@@ -162,6 +163,12 @@ export default function AdminBannerScreen() {
       if (linkType) {
         formData.append("linkType", linkType);
         if (linkType === "url" && linkUrl.trim()) {
+          if (!isSafePublicUrl(linkUrl.trim())) {
+            const msg = "Banner URL must start with https:// or http://";
+            Platform.OS === "web" ? window.alert(msg) : Alert.alert("Error", msg);
+            setSaving(false);
+            return;
+          }
           formData.append("linkValue", linkUrl.trim());
         }
       }
@@ -235,10 +242,17 @@ export default function AdminBannerScreen() {
 
   const handleSaveLink = async () => {
     if (!editingLinkId) return;
-    if (editLinkType === "url" && !editLinkUrl.trim()) {
-      const msg = "Please enter a URL";
-      Platform.OS === "web" ? window.alert(msg) : Alert.alert("Error", msg);
-      return;
+    if (editLinkType === "url") {
+      if (!editLinkUrl.trim()) {
+        const msg = "Please enter a URL";
+        Platform.OS === "web" ? window.alert(msg) : Alert.alert("Error", msg);
+        return;
+      }
+      if (!isSafePublicUrl(editLinkUrl.trim())) {
+        const msg = "Banner URL must start with https:// or http://";
+        Platform.OS === "web" ? window.alert(msg) : Alert.alert("Error", msg);
+        return;
+      }
     }
     try {
       await apiRequest("PUT", `/api/banner-images/${editingLinkId}`, {
