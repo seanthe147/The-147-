@@ -2100,6 +2100,8 @@ export class DatabaseStorage implements IStorage {
     discountLabel?: string;
     confirmationToken?: string;
     pushToken?: string;
+    paymentMethod?: "online" | "counter";
+    ticketNumber?: number;
   }): Promise<{ id: number }> {
     const rows = await db.insert(appOrders).values({
       ...(data.id !== undefined ? { id: data.id } : {}),
@@ -2117,8 +2119,46 @@ export class DatabaseStorage implements IStorage {
       status: "pending",
       confirmationToken: data.confirmationToken ?? null,
       pushToken: data.pushToken ?? null,
+      paymentMethod: data.paymentMethod ?? "online",
+      ticketNumber: data.ticketNumber ?? null,
     }).returning({ id: appOrders.id });
     return { id: rows[0].id };
+  }
+
+  // Allocate the next kiosk ticket number (1..999) for today. Counts how
+  // many counter-pay orders were created today and returns count+1, capped
+  // at 999 (rolls over to 1 for safety so the printed number always fits
+  // 3 digits and is easy for the customer to remember at the counter).
+  // Race-tolerant: two simultaneous kiosk orders may receive the same
+  // ticket number — that's acceptable because the staff dashboard also
+  // shows the underlying app_orders.id for tie-breaking.
+  async allocateKioskTicketNumber(): Promise<number> {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const rows: any = await db.execute(sql`
+      SELECT COUNT(*)::int AS c
+      FROM ${appOrders}
+      WHERE ${appOrders.paymentMethod} = 'counter'
+        AND ${appOrders.createdAt} >= ${startOfDay.toISOString()}
+    `);
+    const count = Number(rows.rows?.[0]?.c ?? rows[0]?.c ?? 0);
+    const next = count + 1;
+    return next > 999 ? ((next - 1) % 999) + 1 : next;
+  }
+
+  // Atomically mark a counter-pay order as paid. Returns true only on the
+  // first successful pending→paid transition for a 'counter' order. This
+  // protects against two staff members tapping "Mark Paid" at the same
+  // time and from accidentally flipping non-counter orders.
+  async markAppOrderPaidAtCounter(id: number): Promise<boolean> {
+    const result = await db.update(appOrders)
+      .set({ status: "paid" })
+      .where(and(
+        eq(appOrders.id, id),
+        eq(appOrders.status, "pending"),
+        eq(appOrders.paymentMethod, "counter"),
+      ));
+    return ((result as any).rowCount ?? 0) > 0;
   }
 
   async getRecentAppOrders(limit = 100): Promise<AppOrder[]> {

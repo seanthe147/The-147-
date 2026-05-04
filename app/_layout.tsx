@@ -9,6 +9,8 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ConsentBanner } from "@/components/ConsentBanner";
 import { TabBarProvider } from "@/contexts/TabBarContext";
 import { CartProvider } from "@/contexts/CartContext";
+import { KioskProvider } from "@/contexts/KioskContext";
+import { KioskAttractOverlay } from "@/components/KioskAttractOverlay";
 import { ConsentProvider } from "@/contexts/ConsentContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { StaffAuthProvider } from "@/contexts/StaffAuthContext";
@@ -107,11 +109,14 @@ export default function RootLayout() {
               <NotificationProvider>
                 <TabBarProvider>
                   <CartProvider>
-                    <GestureHandlerRootView>
-                      <KeyboardProvider>
-                        <RootLayoutNav />
-                      </KeyboardProvider>
-                    </GestureHandlerRootView>
+                    <KioskProvider>
+                      <GestureHandlerRootView>
+                        <KeyboardProvider>
+                          <RootLayoutNav />
+                          <KioskAttractOverlay />
+                        </KeyboardProvider>
+                      </GestureHandlerRootView>
+                    </KioskProvider>
                   </CartProvider>
                 </TabBarProvider>
               </NotificationProvider>

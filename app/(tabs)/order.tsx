@@ -40,6 +40,8 @@ import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
 import { useCart } from "@/contexts/CartContext";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
+import { useKiosk } from "@/contexts/KioskContext";
+import { KioskCheckoutSheet } from "@/components/KioskCheckoutSheet";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { getApiUrl, prefetchSquarePaymentSdk } from "@/lib/query-client";
 import { SquarePaymentSheet } from "@/components/SquarePaymentSheet";
@@ -1658,6 +1660,7 @@ export default function OrderScreen() {
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const params = useLocalSearchParams<{ hlCatId?: string; hlItemId?: string; hlItemName?: string; openCheckout?: string; checkoutStep?: string; prefillEmail?: string }>();
 
+  const { isKioskMode } = useKiosk();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   const [cartVisible, setCartVisible] = useState(false);
@@ -2109,16 +2112,23 @@ export default function OrderScreen() {
           </Pressable>
         )}
 
-        <CartSheet
-          visible={cartVisible}
-          onClose={() => setCartVisible(false)}
-          initialStep={pendingCheckoutStep}
-          initialGuestEmail={pendingPrefillEmail}
-          onInitialConsumed={() => {
-            setPendingCheckoutStep(undefined);
-            setPendingPrefillEmail(undefined);
-          }}
-        />
+        {isKioskMode ? (
+          <KioskCheckoutSheet
+            visible={cartVisible}
+            onClose={() => setCartVisible(false)}
+          />
+        ) : (
+          <CartSheet
+            visible={cartVisible}
+            onClose={() => setCartVisible(false)}
+            initialStep={pendingCheckoutStep}
+            initialGuestEmail={pendingPrefillEmail}
+            onInitialConsumed={() => {
+              setPendingCheckoutStep(undefined);
+              setPendingPrefillEmail(undefined);
+            }}
+          />
+        )}
         <ModifierModal
           item={modifierItem}
           visible={!!modifierItem}
@@ -2246,16 +2256,23 @@ export default function OrderScreen() {
         </Pressable>
       )}
 
-      <CartSheet
-        visible={cartVisible}
-        onClose={() => setCartVisible(false)}
-        initialStep={pendingCheckoutStep}
-        initialGuestEmail={pendingPrefillEmail}
-        onInitialConsumed={() => {
-          setPendingCheckoutStep(undefined);
-          setPendingPrefillEmail(undefined);
-        }}
-      />
+      {isKioskMode ? (
+        <KioskCheckoutSheet
+          visible={cartVisible}
+          onClose={() => setCartVisible(false)}
+        />
+      ) : (
+        <CartSheet
+          visible={cartVisible}
+          onClose={() => setCartVisible(false)}
+          initialStep={pendingCheckoutStep}
+          initialGuestEmail={pendingPrefillEmail}
+          onInitialConsumed={() => {
+            setPendingCheckoutStep(undefined);
+            setPendingPrefillEmail(undefined);
+          }}
+        />
+      )}
       <ModifierModal
         item={modifierItem}
         visible={!!modifierItem}

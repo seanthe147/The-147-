@@ -9,12 +9,15 @@ import {
   Platform,
   ActivityIndicator,
   Animated,
+  Modal,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
+import { useKiosk } from "@/contexts/KioskContext";
 import Colors from "@/constants/colors";
 import type { StaffNotice } from "@shared/schema";
 
@@ -420,10 +423,109 @@ function AdminTool({ icon, title, description, color, onPress, testID }: AdminTo
   );
 }
 
+function KioskEnableModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { enableKioskMode } = useKiosk();
+  const [pin, setPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const reset = () => {
+    setPin("");
+    setConfirmPin("");
+    setError(null);
+    setSubmitting(false);
+  };
+
+  const handleEnable = async () => {
+    setError(null);
+    if (pin.trim().length < 4) {
+      setError("PIN must be at least 4 digits");
+      return;
+    }
+    if (pin !== confirmPin) {
+      setError("PINs do not match");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await enableKioskMode(pin.trim());
+      reset();
+      onClose();
+      // Send the user to the order tab — kiosk mode will redirect there too
+      // but doing it explicitly avoids a one-frame flash of the staff portal.
+      router.replace("/(tabs)/order");
+    } catch (err: any) {
+      setError(err?.message || "Could not enable kiosk mode");
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={() => { reset(); onClose(); }}>
+      <Pressable style={styles.kioskModalScrim} onPress={() => { reset(); onClose(); }}>
+        <Pressable style={styles.kioskModalCard} onPress={() => {}}>
+          <View style={styles.kioskModalHeader}>
+            <Ionicons name="lock-closed" size={22} color={Colors.brand.blue} />
+            <Text style={styles.kioskModalTitle}>Enable Kiosk Mode</Text>
+          </View>
+          <Text style={styles.kioskModalBody}>
+            The app will lock to the order screen. Customers can browse the menu and send orders to the counter to pay.
+            {"\n\n"}Set a staff PIN. You'll need it to exit kiosk mode by long-pressing the bottom-right corner of the attract screen.
+          </Text>
+          <Text style={styles.kioskModalLabel}>Staff PIN</Text>
+          <TextInput
+            value={pin}
+            onChangeText={setPin}
+            placeholder="At least 4 digits"
+            placeholderTextColor="#9CA3AF"
+            keyboardType="number-pad"
+            secureTextEntry={Platform.OS !== "web"}
+            maxLength={12}
+            style={styles.kioskModalInput}
+            testID="kiosk-enable-pin"
+          />
+          <Text style={styles.kioskModalLabel}>Confirm PIN</Text>
+          <TextInput
+            value={confirmPin}
+            onChangeText={setConfirmPin}
+            placeholder="Re-enter PIN"
+            placeholderTextColor="#9CA3AF"
+            keyboardType="number-pad"
+            secureTextEntry={Platform.OS !== "web"}
+            maxLength={12}
+            style={styles.kioskModalInput}
+            testID="kiosk-enable-pin-confirm"
+          />
+          {error ? <Text style={styles.kioskModalError}>{error}</Text> : null}
+          <View style={styles.kioskModalBtnRow}>
+            <Pressable
+              style={({ pressed }) => [styles.kioskModalBtn, styles.kioskModalBtnGhost, { opacity: pressed ? 0.7 : 1 }]}
+              onPress={() => { reset(); onClose(); }}
+            >
+              <Text style={styles.kioskModalBtnGhostText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.kioskModalBtn, styles.kioskModalBtnPrimary, { opacity: submitting ? 0.6 : pressed ? 0.85 : 1 }]}
+              onPress={handleEnable}
+              disabled={submitting}
+              testID="kiosk-enable-confirm"
+            >
+              {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.kioskModalBtnPrimaryText}>Enable</Text>}
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { logout, username, displayName, role, isManager, isOwner } = useStaffAuth();
+  const { isKioskMode } = useKiosk();
+  const [kioskModalVisible, setKioskModalVisible] = useState(false);
 
   const noticesQuery = useQuery<StaffNotice[]>({
     queryKey: ["/api/staff-notices"],
@@ -709,6 +811,37 @@ function DashboardScreen() {
             )}
           </>
         )}
+
+        {isManager && (
+          <>
+            <Text style={styles.sectionLabel}>KIOSK</Text>
+            <View style={styles.toolsList}>
+              <AdminTool
+                icon={isKioskMode ? "lock-closed" : "tablet-landscape"}
+                title={isKioskMode ? "Kiosk Mode Active" : "Enable Kiosk Mode"}
+                description={
+                  isKioskMode
+                    ? "Long-press the bottom-right corner of the attract screen for 3 seconds to exit"
+                    : "Lock this device to ordering only. Customers send orders to the counter to pay."
+                }
+                color={isKioskMode ? Colors.brand.green : "#0EA5E9"}
+                onPress={() => {
+                  if (isKioskMode) {
+                    Alert.alert(
+                      "Already in Kiosk Mode",
+                      "Long-press the bottom-right corner of the attract screen for 3 seconds, then enter the PIN to exit.",
+                    );
+                    return;
+                  }
+                  setKioskModalVisible(true);
+                }}
+                testID="portal-kiosk-mode"
+              />
+            </View>
+          </>
+        )}
+
+        <KioskEnableModal visible={kioskModalVisible} onClose={() => setKioskModalVisible(false)} />
 
         <Text style={styles.sectionLabel}>SESSION</Text>
 
@@ -1304,5 +1437,91 @@ const styles = StyleSheet.create({
   },
   roleOptionTextActive: {
     color: Colors.brand.blue,
+  },
+  kioskModalScrim: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "center" as const,
+    alignItems: "center" as const,
+    padding: 24,
+  },
+  kioskModalCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 24,
+    width: "100%" as const,
+    maxWidth: 420,
+  },
+  kioskModalHeader: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    gap: 10,
+  },
+  kioskModalTitle: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 20,
+    color: Colors.light.text,
+  },
+  kioskModalBody: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+    lineHeight: 20,
+    marginTop: 12,
+  },
+  kioskModalLabel: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: Colors.light.text,
+    marginTop: 16,
+    marginBottom: 6,
+  },
+  kioskModalInput: {
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 18,
+    letterSpacing: 4,
+    textAlign: "center" as const,
+    color: Colors.light.text,
+    backgroundColor: "#F9FAFB",
+  },
+  kioskModalError: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 13,
+    color: Colors.brand.red,
+    marginTop: 12,
+    textAlign: "center" as const,
+  },
+  kioskModalBtnRow: {
+    flexDirection: "row" as const,
+    gap: 10,
+    marginTop: 20,
+  },
+  kioskModalBtn: {
+    flex: 1,
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+  },
+  kioskModalBtnGhost: {
+    backgroundColor: "#F3F4F6",
+  },
+  kioskModalBtnPrimary: {
+    backgroundColor: Colors.brand.blue,
+  },
+  kioskModalBtnGhostText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 15,
+    color: Colors.light.text,
+  },
+  kioskModalBtnPrimaryText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 15,
+    color: "#fff",
   },
 });

@@ -5321,6 +5321,115 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Kiosk Checkout (no Square link, pay-at-counter) ───────────────────────
+  // Public endpoint used by the in-app kiosk mode. Creates an app_order row
+  // with paymentMethod='counter' and allocates a short, daily-recycling
+  // ticket number (1-999) the customer takes to the bar to pay. No Square
+  // order is created — staff use the dashboard's "Mark Paid" action to
+  // flip the status once payment is taken in person.
+  app.post("/api/orders/kiosk-checkout", async (req, res) => {
+    const ip = (req.ip || req.socket.remoteAddress || "unknown").toString();
+    const rl = checkRateLimit(`kiosk-checkout:${ip}`, 10, 60_000);
+    if (!rl.allowed) {
+      res.setHeader("Retry-After", String(rl.retryAfter));
+      return res.status(429).json({ message: "Too many orders, please slow down." });
+    }
+    const { items, customerName, tableNumber } = req.body ?? {};
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: "Cart is empty" });
+    }
+    const name = typeof customerName === "string" ? customerName.trim() : "";
+    const table = typeof tableNumber === "string" ? tableNumber.trim() : "";
+    if (name.length < 2) {
+      return res.status(400).json({ message: "Name is required" });
+    }
+    if (!/^\d{1,3}$/.test(table)) {
+      return res.status(400).json({ message: "Table number is required" });
+    }
+    try {
+      // Validate ordering window — same gate as the online flow.
+      const orderingEnabled = await getOrderingEnabled();
+      if (!orderingEnabled) {
+        return res.status(503).json({ message: "Ordering is currently unavailable." });
+      }
+
+      // Sum totals server-side from client-supplied prices. The kiosk is a
+      // physical, controlled device on-premises so the client is trusted to
+      // pass the menu prices it just rendered. The dashboard shows the
+      // itemised breakdown and total to staff before they take payment, so
+      // any tampering would be visible at the till.
+      let totalPence = 0;
+      const sanitisedItems: any[] = [];
+      for (const raw of items) {
+        const qty = Math.max(1, Math.min(99, Number(raw?.quantity ?? 1) | 0));
+        const price = Math.max(0, Number(raw?.price ?? 0) | 0);
+        const itemName = String(raw?.name ?? "Item").slice(0, 120);
+        const variationId = String(raw?.variationId ?? "");
+        const itemId = raw?.itemId ? String(raw.itemId) : undefined;
+        const modifiers = Array.isArray(raw?.modifiers) ? raw.modifiers : [];
+        const modPence = modifiers.reduce((s: number, m: any) => s + Math.max(0, Number(m?.price ?? 0) | 0), 0);
+        totalPence += (price + modPence) * qty;
+        sanitisedItems.push({
+          name: itemName,
+          quantity: qty,
+          price,
+          variationId,
+          ...(itemId ? { itemId } : {}),
+          ...(modifiers.length
+            ? {
+                modifiers: modifiers.map((m: any) => String(m?.name ?? "")),
+                modifierIds: modifiers.map((m: any) => String(m?.catalogObjectId ?? "")),
+              }
+            : {}),
+        });
+      }
+
+      const ticketNumber = await storage.allocateKioskTicketNumber();
+      const tableNote = `Table ${table}`;
+      const created = await storage.createAppOrder({
+        tableNote,
+        customerName: name,
+        itemsJson: JSON.stringify(sanitisedItems),
+        totalPence,
+        paymentMethod: "counter",
+        ticketNumber,
+      });
+
+      console.log(`[KIOSK] Order #${created.id} ticket #${ticketNumber} (${name}, ${tableNote}, £${(totalPence / 100).toFixed(2)})`);
+      res.json({ appOrderId: created.id, ticketNumber });
+    } catch (err: any) {
+      console.error("[KIOSK] Checkout failed:", err.message);
+      res.status(500).json({ message: err.message || "Could not create order" });
+    }
+  });
+
+  // ── Staff: mark a kiosk (counter-pay) order as paid ───────────────────────
+  app.post("/api/staff/orders/:id/mark-paid", staffAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid order ID" });
+    try {
+      const order = await storage.getAppOrder(id);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      if (order.paymentMethod !== "counter") {
+        return res.status(400).json({ message: "Only counter-pay orders can be marked paid here" });
+      }
+      if (order.status !== "pending") {
+        return res.status(400).json({ message: `Order is already ${order.status}` });
+      }
+      const ok = await storage.markAppOrderPaidAtCounter(id);
+      if (!ok) return res.status(409).json({ message: "Order could not be updated (was it already paid?)" });
+      const actor = ((req as any).staffUsername as string | null) || "admin";
+      try {
+        await storage.logOrderAction({ orderId: id, staffUsername: actor, action: "mark-paid-counter" });
+      } catch {}
+      console.log(`[KIOSK] Order #${id} marked paid at counter by ${actor}`);
+      res.json({ status: "paid" });
+    } catch (err: any) {
+      console.error("[KIOSK] Mark-paid failed:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ── Public Square Web Payments SDK config ──────────────────────────────────
   // Safe to expose: applicationId, locationId, environment are public values.
   app.get("/api/public/square-config", (_req, res) => {

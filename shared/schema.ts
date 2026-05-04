@@ -559,6 +559,16 @@ export const appOrders = pgTable("app_orders", {
   // token associated with the customer's email — a customer may have the
   // app on multiple devices and only the one that ordered should buzz.
   pushToken: text("push_token"),
+  // How the order will be / was paid:
+  //   "online"  → Square Web Payments / hosted checkout (default)
+  //   "counter" → Kiosk mode — customer takes a numbered ticket to the
+  //               counter and pays staff in person. Staff use the
+  //               dashboard's "Mark Paid" action to flip the status.
+  paymentMethod: text("payment_method").notNull().default("online"),
+  // Short human-readable ticket number (1-999) shown on the kiosk
+  // confirmation screen and on the staff dashboard. Resets per day.
+  // Null for online orders.
+  ticketNumber: integer("ticket_number"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

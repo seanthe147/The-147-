@@ -5091,6 +5091,7 @@
       };
       const cancelBtn=`<button class="btn btn-secondary btn-sm" style="font-size:11px;padding:4px 10px" onclick="cancelOrder(${o.id},'${(o.tableNote||'').replace(/'/g,"\\'")}',${o.totalPence})">Cancel</button>`;
       const refundBtn=`<button class="btn btn-sm" style="font-size:11px;padding:4px 10px;background:var(--red);color:#fff;border:none;border-radius:var(--r);cursor:pointer" onclick="refundOrder(${o.id},'${(o.tableNote||'').replace(/'/g,"\\'")}',${o.totalPence})">Refund</button>`;
+      const markPaidBtn=`<button class="btn btn-sm" style="font-size:11px;padding:4px 10px;background:#16a34a;color:#fff;border:none;border-radius:var(--r);cursor:pointer;font-weight:700" onclick="markKioskPaid(${o.id},${o.ticketNumber||0})">Mark Paid</button>`;
       // "Undo" rolls the order back one kitchen step. Always offered while
       // the order is in a kitchen state (preparing/ready/delivered/collected)
       // — the server enforces the 60s window for non-managers and prompts
@@ -5098,7 +5099,13 @@
       const curLabel=(ORDER_STATUS[o.status]||{}).label||o.status;
       const undoBtn=`<button class="btn btn-secondary btn-sm" title="Undo the last status change" style="font-size:11px;padding:4px 10px" onclick="revertOrder(${o.id},'${esc(curLabel)}')">Undo</button>`;
       const wrap=(...btns)=>`<div style="display:flex;gap:6px;flex-wrap:wrap">${btns.join('')}</div>`;
-      if(o.status==='pending') return cancelBtn;
+      if(o.status==='pending') {
+        // Kiosk (counter-pay) orders need a Mark Paid action so staff can
+        // confirm they've taken the cash/card payment at the bar before
+        // the order moves into the kitchen pipeline.
+        if(o.paymentMethod==='counter') return wrap(markPaidBtn, cancelBtn);
+        return cancelBtn;
+      }
       if(o.status==='paid')    return wrap(advBtn('Start preparing','preparing',true), refundBtn);
       if(o.status==='preparing') return wrap(advBtn('Mark ready','ready',true), undoBtn);
       if(o.status==='ready')   return wrap(advBtn(finalLabel, finalStatus, true), undoBtn);
@@ -5116,9 +5123,18 @@
     }
     const rows=orders.map(o=>{
       const sc=ORDER_STATUS[o.status]||ORDER_STATUS.pending;
-      return`<tr>
-        <td style="white-space:nowrap;color:var(--text-2);font-size:12px">${fmtTime(o.createdAt)}</td>
-        <td><strong>${o.tableNote||'—'}</strong></td>
+      // Kiosk badge — bright amber pill + ticket number prominently shown so
+      // staff can match it to the customer holding the receipt at the bar.
+      const isKiosk=o.paymentMethod==='counter';
+      const kioskBadge=isKiosk
+        ? `<div style="display:inline-block;background:#f59e0b;color:#000;font-size:10px;font-weight:800;padding:2px 7px;border-radius:6px;letter-spacing:.5px;margin-bottom:4px">PAY AT COUNTER</div>`
+        : '';
+      const ticketCell=isKiosk&&o.ticketNumber
+        ? `<div style="font-size:24px;font-weight:800;color:#0A1628;line-height:1">#${o.ticketNumber}</div><div style="font-size:11px;color:var(--text-2);margin-top:2px">${o.tableNote||'—'}</div>`
+        : `<strong>${o.tableNote||'—'}</strong>`;
+      return`<tr${isKiosk?' style="background:rgba(245,158,11,.06)"':''}>
+        <td style="white-space:nowrap;color:var(--text-2);font-size:12px">${kioskBadge}${kioskBadge?'<br>':''}${fmtTime(o.createdAt)}</td>
+        <td>${ticketCell}</td>
         <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${fmtItems(o.itemsJson)}</td>
         <td style="white-space:nowrap;font-weight:600">${fmtTotal(o.totalPence)}${fmtDiscount(o)}</td>
         <td style="color:var(--text-2);font-size:12px">${o.customerName||'Guest'}</td>
@@ -5133,11 +5149,28 @@
         <tbody>${rows}</tbody>
       </table>`;
   }
+  // Mark a kiosk (counter-pay) order as paid. Confirms first because this
+  // permanently moves the order into the kitchen pipeline.
+  async function markKioskPaid(id,ticketNumber){
+    if(!confirm(`Mark order ticket #${ticketNumber||id} as paid?\n\nThis confirms you've taken payment at the counter and sends the order to the kitchen.`))return;
+    try{
+      const r=await api(`/api/staff/orders/${id}/mark-paid`,{method:'POST'});
+      if(!r.ok){
+        const j=await r.json().catch(()=>({}));
+        throw new Error(j.message||'Failed to mark paid');
+      }
+      loadOrders();
+    }catch(e){
+      alert('Mark Paid: '+(e.message||'Failed'));
+    }
+  }
+
   window.loadOrders=loadOrders;
   window.cancelOrder=cancelOrder;
   window.refundOrder=refundOrder;
   window.advanceOrder=advanceOrder;
   window.revertOrder=revertOrder;
+  window.markKioskPaid=markKioskPaid;
 
   /* ── Banner Management ── */
   let bannersData=[];
