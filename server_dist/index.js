@@ -6364,6 +6364,15 @@ async function staffAuth(req, res, next) {
       await storage.invalidateStaffSessionsByUserId(user.id).catch(() => void 0);
       return res.status(401).json({ message: "Account is not approved" });
     }
+    if (user.mustChangePassword === true) {
+      const allowedPaths = ["/api/staff/set-password", "/api/staff/logout", "/api/staff/verify"];
+      if (!allowedPaths.includes(req.path)) {
+        return res.status(403).json({
+          mustChangePassword: true,
+          message: "You must set a new password before accessing the application."
+        });
+      }
+    }
     req.staffRole = user.role || "staff";
     req.staffUsername = session.staffUsername;
     req.staffUser = user;
@@ -6709,10 +6718,12 @@ async function registerRoutes(app2) {
     res.status(204).send();
   });
   app2.get("/api/staff/verify", staffAuth, async (req, res) => {
+    const staffUser = req.staffUser;
     res.json({
       authenticated: true,
       role: req.staffRole || "staff",
-      username: req.staffUsername || null
+      username: req.staffUsername || null,
+      mustChangePassword: staffUser ? staffUser.mustChangePassword === true : false
     });
   });
   app2.get("/api/staff/users", staffAuth, managerAuth, async (_req, res) => {
