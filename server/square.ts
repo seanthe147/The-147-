@@ -181,6 +181,30 @@ export async function getOrder(orderId: string): Promise<any | null> {
   }
 }
 
+// Cancels (voids) an Open Ticket in Square POS by transitioning its state
+// to CANCELED. Used when staff cancel a kiosk order that the customer never
+// paid for — without this, the ticket lingers in the Square POS Open
+// Tickets list forever and clutters staff's view.
+//
+// Square requires the current order version on PUT to prevent concurrent
+// modification, so we GET first to read it. Errors are swallowed and
+// logged because the local DB cancel is the source of truth — a Square
+// failure shouldn't block the staff action.
+export async function cancelSquareOrder(orderId: string): Promise<boolean> {
+  try {
+    const order = await getOrder(orderId);
+    if (!order) return false;
+    if (order.state === "CANCELED" || order.state === "COMPLETED") return true;
+    await squareRequest("PUT", `/v2/orders/${orderId}`, {
+      order: { version: order.version, state: "CANCELED", location_id: order.location_id },
+    });
+    return true;
+  } catch (err: any) {
+    console.error(`[SQUARE] cancelSquareOrder(${orderId}) failed:`, err?.message || err);
+    return false;
+  }
+}
+
 export async function getPayment(paymentId: string): Promise<any | null> {
   try {
     const data = await squareRequest("GET", `/v2/payments/${paymentId}`);

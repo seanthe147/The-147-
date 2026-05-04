@@ -5058,6 +5058,13 @@
     // A newer fetch (manual click after a slow poll, or vice-versa) has
     // already completed — drop this stale response.
     if(myToken!==ordersFetchSeq)return;
+    // Split kiosk (counter-pay) orders that are still pending out of the
+    // main KDS list — they belong in a separate "Awaiting Payment" panel
+    // because the kitchen shouldn't start prep until Square confirms the
+    // customer has paid at the bar (Square fires payment.updated → our
+    // webhook flips status pending→paid → it then appears here).
+    const pendingCounter = orders.filter(o => o.paymentMethod === 'counter' && o.status === 'pending');
+    const kdsOrders = orders.filter(o => !(o.paymentMethod === 'counter' && o.status === 'pending'));
     if(!orders.length){
       wrap.innerHTML='<div class="empty-state"><p style="color:var(--text-2);font-size:14px">No orders yet.<br>Orders placed through the app will appear here.</p></div>';
       return;
@@ -5121,33 +5128,62 @@
       if(!o.discountPercent)return'';
       return`<br><span style="font-size:11px;color:var(--green);font-weight:600">−${o.discountPercent}% ${esc(o.discountLabel||'Member')}</span>`;
     }
-    const rows=orders.map(o=>{
+    // ── Awaiting Payment panel (kiosk orders not yet paid) ─────────────────
+    // These sit outside the main KDS so the kitchen doesn't start prep
+    // until Square confirms payment. Staff find the matching ticket # in
+    // Square POS Open Tickets, take payment, and the webhook auto-moves
+    // it into the main table below. Mark Paid + Cancel are kept as a
+    // manual fallback in case the webhook is missed.
+    const awaitingPanel = pendingCounter.length === 0 ? '' : `
+      <div style="background:#FFFBEB;border:2px solid #F59E0B;border-radius:12px;padding:14px 16px;margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div style="background:#F59E0B;color:#000;font-size:11px;font-weight:800;padding:3px 10px;border-radius:6px;letter-spacing:.5px">AWAITING PAYMENT IN SQUARE POS · ${pendingCounter.length}</div>
+          <div style="font-size:12px;color:var(--text-2)">Open the matching ticket # in your Square POS Open Tickets to charge. The kitchen will see it once payment is confirmed.</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">
+          ${pendingCounter.map(o => `
+            <div style="background:#fff;border:1px solid #FDE68A;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:6px">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+                <div style="font-size:28px;font-weight:800;color:#0A1628;line-height:1">#${o.ticketNumber||o.id}</div>
+                <div style="font-size:11px;color:var(--text-2);text-align:right">${fmtTime(o.createdAt)}<br><strong style="color:var(--text)">${fmtTotal(o.totalPence)}</strong></div>
+              </div>
+              <div style="font-size:13px;color:var(--text);font-weight:600">${esc(o.customerName||'Guest')} · ${esc(o.tableNote||'—')}</div>
+              <div style="font-size:12px;color:var(--text-2);line-height:1.4">${esc(fmtItems(o.itemsJson))}</div>
+              <div style="display:flex;gap:6px;margin-top:4px">
+                <button class="btn btn-sm" style="flex:1;font-size:11px;padding:6px 10px;background:#16a34a;color:#fff;border:none;border-radius:var(--r);cursor:pointer;font-weight:700" onclick="markKioskPaid(${o.id},${o.ticketNumber||0})">Mark Paid</button>
+                <button class="btn btn-secondary btn-sm" style="font-size:11px;padding:6px 10px" onclick="cancelOrder(${o.id},'${(o.tableNote||'').replace(/'/g,"\\'")}',${o.totalPence})">Cancel</button>
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>`;
+
+    // ── Main KDS table (paid orders only — what the kitchen acts on) ───────
+    const rows=kdsOrders.map(o=>{
       const sc=ORDER_STATUS[o.status]||ORDER_STATUS.pending;
-      // Kiosk badge — bright amber pill + ticket number prominently shown so
-      // staff can match it to the customer holding the receipt at the bar.
+      // Paid kiosk orders keep a small "From kiosk #47" tag so staff at the
+      // pass can match a customer who shows up holding their ticket.
       const isKiosk=o.paymentMethod==='counter';
-      const kioskBadge=isKiosk
-        ? `<div style="display:inline-block;background:#f59e0b;color:#000;font-size:10px;font-weight:800;padding:2px 7px;border-radius:6px;letter-spacing:.5px;margin-bottom:4px">PAY AT COUNTER</div>`
+      const ticketTag=isKiosk&&o.ticketNumber
+        ? `<div style="display:inline-block;background:#E0F2FE;color:#0369A1;font-size:10px;font-weight:700;padding:2px 6px;border-radius:5px;margin-bottom:3px">KIOSK #${o.ticketNumber}</div><br>`
         : '';
-      const ticketCell=isKiosk&&o.ticketNumber
-        ? `<div style="font-size:24px;font-weight:800;color:#0A1628;line-height:1">#${o.ticketNumber}</div><div style="font-size:11px;color:var(--text-2);margin-top:2px">${o.tableNote||'—'}</div>`
-        : `<strong>${o.tableNote||'—'}</strong>`;
-      return`<tr${isKiosk?' style="background:rgba(245,158,11,.06)"':''}>
-        <td style="white-space:nowrap;color:var(--text-2);font-size:12px">${kioskBadge}${kioskBadge?'<br>':''}${fmtTime(o.createdAt)}</td>
-        <td>${ticketCell}</td>
+      return`<tr>
+        <td style="white-space:nowrap;color:var(--text-2);font-size:12px">${ticketTag}${fmtTime(o.createdAt)}</td>
+        <td><strong>${o.tableNote||'—'}</strong></td>
         <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${fmtItems(o.itemsJson)}</td>
         <td style="white-space:nowrap;font-weight:600">${fmtTotal(o.totalPence)}${fmtDiscount(o)}</td>
         <td style="color:var(--text-2);font-size:12px">${o.customerName||'Guest'}</td>
         <td><span class="pill ${sc.cls}">${sc.label}</span></td>
         <td>${fmtActions(o)}</td>
       </tr>`;}).join('');
-    wrap.innerHTML=`
-      <table class="bk-table" style="width:100%">
-        <thead><tr>
-          <th>Time</th><th>Table</th><th>Items</th><th>Total</th><th>Customer</th><th>Status</th><th>Actions / By</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>`;
+    const tableHtml = kdsOrders.length === 0
+      ? '<div class="empty-state"><p style="color:var(--text-2);font-size:14px">Nothing in the kitchen queue right now.</p></div>'
+      : `<table class="bk-table" style="width:100%">
+          <thead><tr>
+            <th>Time</th><th>Table</th><th>Items</th><th>Total</th><th>Customer</th><th>Status</th><th>Actions / By</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    wrap.innerHTML = awaitingPanel + tableHtml;
   }
   // Mark a kiosk (counter-pay) order as paid. Confirms first because this
   // permanently moves the order into the kitchen pipeline.

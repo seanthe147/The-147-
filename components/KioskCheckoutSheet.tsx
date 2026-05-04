@@ -37,6 +37,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
   const [step, setStep] = useState<Step>("cart");
   const [name, setName] = useState("");
   const [tableNumber, setTableNumber] = useState("");
+  const [phone, setPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [confirmation, setConfirmation] = useState<{ ticketNumber: number; appOrderId: number } | null>(null);
 
@@ -44,6 +45,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
     setStep("cart");
     setName("");
     setTableNumber("");
+    setPhone("");
     setSubmitting(false);
     setConfirmation(null);
   }, []);
@@ -71,6 +73,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
     setSubmitting(true);
     try {
       const url = new URL("/api/orders/kiosk-checkout", getApiUrl());
+      const cleanPhone = phone.replace(/[^0-9+]/g, "");
       const payload = {
         items: items.map((i) => ({
           variationId: i.variationId,
@@ -82,6 +85,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
         })),
         customerName: name.trim(),
         tableNumber: tableNumber.trim(),
+        ...(cleanPhone.length >= 10 ? { customerPhone: cleanPhone } : {}),
       };
       const res = await fetch(url.toString(), {
         method: "POST",
@@ -250,6 +254,20 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
                   returnKeyType="done"
                   maxLength={3}
                   testID="kiosk-table"
+                />
+
+                <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Member phone (optional)</Text>
+                <Text style={styles.sectionSub}>Add it to earn loyalty points on this order</Text>
+                <TextInput
+                  value={phone}
+                  onChangeText={(t) => setPhone(t.replace(/[^0-9+\s]/g, ""))}
+                  placeholder="07…"
+                  placeholderTextColor={Colors.light.textSecondary}
+                  style={styles.bigInput}
+                  keyboardType="phone-pad"
+                  returnKeyType="done"
+                  maxLength={16}
+                  testID="kiosk-phone"
                 />
 
                 <View style={styles.callout}>

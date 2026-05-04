@@ -5321,12 +5321,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ── Kiosk Checkout (no Square link, pay-at-counter) ───────────────────────
-  // Public endpoint used by the in-app kiosk mode. Creates an app_order row
-  // with paymentMethod='counter' and allocates a short, daily-recycling
-  // ticket number (1-999) the customer takes to the bar to pay. No Square
-  // order is created — staff use the dashboard's "Mark Paid" action to
-  // flip the status once payment is taken in person.
+  // ── Kiosk Checkout (creates Square Open Ticket, pays at counter) ──────────
+  // Public endpoint used by the in-app kiosk mode. Creates a real Square
+  // Order via the Orders API which lands in the Square POS Open Tickets
+  // screen — staff just open the ticket and tap Charge to take payment.
+  // The order also lives in our app_orders table with paymentMethod='counter'
+  // so the dashboard can show it on the KDS once Square fires the
+  // payment.updated webhook (which atomically flips status pending→paid via
+  // the existing handler around line 4030). Manager Mark Paid action
+  // remains as a manual fallback for cases where the webhook is missed.
   app.post("/api/orders/kiosk-checkout", async (req, res) => {
     const ip = (req.ip || req.socket.remoteAddress || "unknown").toString();
     const rl = checkRateLimit(`kiosk-checkout:${ip}`, 10, 60_000);
@@ -5334,12 +5337,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.setHeader("Retry-After", String(rl.retryAfter));
       return res.status(429).json({ message: "Too many orders, please slow down." });
     }
-    const { items, customerName, tableNumber } = req.body ?? {};
+    const { items, customerName, tableNumber, customerPhone } = req.body ?? {};
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "Cart is empty" });
     }
     const name = typeof customerName === "string" ? customerName.trim() : "";
     const table = typeof tableNumber === "string" ? tableNumber.trim() : "";
+    const phoneRaw = typeof customerPhone === "string" ? customerPhone.trim() : "";
     if (name.length < 2) {
       return res.status(400).json({ message: "Name is required" });
     }
@@ -5353,12 +5357,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(503).json({ message: "Ordering is currently unavailable." });
       }
 
-      // Sum totals server-side from client-supplied prices. The kiosk is a
-      // physical, controlled device on-premises so the client is trusted to
-      // pass the menu prices it just rendered. The dashboard shows the
-      // itemised breakdown and total to staff before they take payment, so
-      // any tampering would be visible at the till.
-      let totalPence = 0;
+      // Build the Square line-items (full modifier objects with prices) AND
+      // a sanitised copy for our local app_orders row in one pass.
+      const squareItems: square.OrderLineItem[] = [];
       const sanitisedItems: any[] = [];
       for (const raw of items) {
         const qty = Math.max(1, Math.min(99, Number(raw?.quantity ?? 1) | 0));
@@ -5366,40 +5367,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const itemName = String(raw?.name ?? "Item").slice(0, 120);
         const variationId = String(raw?.variationId ?? "");
         const itemId = raw?.itemId ? String(raw.itemId) : undefined;
-        const modifiers = Array.isArray(raw?.modifiers) ? raw.modifiers : [];
-        const modPence = modifiers.reduce((s: number, m: any) => s + Math.max(0, Number(m?.price ?? 0) | 0), 0);
-        totalPence += (price + modPence) * qty;
+        const modifiersRaw = Array.isArray(raw?.modifiers) ? raw.modifiers : [];
+        const fullModifiers = modifiersRaw
+          .map((m: any) => ({
+            catalogObjectId: String(m?.catalogObjectId ?? ""),
+            name: String(m?.name ?? ""),
+            price: Math.max(0, Number(m?.price ?? 0) | 0),
+          }))
+          .filter((m: any) => m.catalogObjectId);
+        if (!variationId) {
+          return res.status(400).json({ message: `Item "${itemName}" is missing its catalog id` });
+        }
+        squareItems.push({
+          variationId,
+          itemId,
+          name: itemName,
+          price,
+          quantity: qty,
+          modifiers: fullModifiers,
+        });
         sanitisedItems.push({
           name: itemName,
           quantity: qty,
           price,
           variationId,
           ...(itemId ? { itemId } : {}),
-          ...(modifiers.length
+          ...(fullModifiers.length
             ? {
-                modifiers: modifiers.map((m: any) => String(m?.name ?? "")),
-                modifierIds: modifiers.map((m: any) => String(m?.catalogObjectId ?? "")),
+                modifiers: fullModifiers.map((m: any) => m.name),
+                modifierIds: fullModifiers.map((m: any) => m.catalogObjectId),
               }
             : {}),
         });
       }
 
+      // Optional phone number — passed straight to Square so its loyalty
+      // engine matches the customer and awards points when payment is taken
+      // at the till. Member discounts still flow through the normal logged-in
+      // app checkout (the kiosk is a guest device with no app session).
+      const customer: { name: string; phone?: string } = { name };
+      if (phoneRaw) customer.phone = phoneRaw;
+
       const ticketNumber = await storage.allocateKioskTicketNumber();
       const tableNote = `Table ${table}`;
+
+      // Create the Square Order — this is what makes it appear in the
+      // Square POS Open Tickets screen for staff to charge. Square computes
+      // the authoritative total from its catalog (variation/modifier prices
+      // + any member discount), so we trust its returned totalPence over
+      // any client-supplied number.
+      const { orderId: squareOrderId, totalPence: squareTotalPence } =
+        await square.createSquareOrderForCheckout(
+          squareItems,
+          tableNote,
+          customer,
+          undefined,
+          undefined,
+          false,
+          undefined,
+          ticketNumber,
+        );
+
       const created = await storage.createAppOrder({
+        squareOrderId,
         tableNote,
         customerName: name,
         itemsJson: JSON.stringify(sanitisedItems),
-        totalPence,
+        totalPence: squareTotalPence,
         paymentMethod: "counter",
         ticketNumber,
       });
 
-      console.log(`[KIOSK] Order #${created.id} ticket #${ticketNumber} (${name}, ${tableNote}, £${(totalPence / 100).toFixed(2)})`);
+      console.log(`[KIOSK] Order #${created.id} ticket #${ticketNumber} (${name}, ${tableNote}, £${(squareTotalPence / 100).toFixed(2)}) → Square ${squareOrderId}`);
       res.json({ appOrderId: created.id, ticketNumber });
     } catch (err: any) {
       console.error("[KIOSK] Checkout failed:", err.message);
-      res.status(500).json({ message: err.message || "Could not create order" });
+      const status = err instanceof square.SquareError && err.statusCode >= 400 && err.statusCode < 500
+        ? err.statusCode
+        : 500;
+      res.status(status).json({ message: err.message || "Could not create order" });
     }
   });
 
@@ -5900,6 +5946,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       await storage.updateAppOrderStatus(id, "cancelled");
       await storage.logOrderAction({ orderId: id, staffUsername: actor, action: "cancel", reason: reason || undefined });
+      // Kiosk (counter-pay) orders have a real Square Open Ticket waiting in
+      // the POS. If we don't void it on Square's side, it sits in staff's
+      // Open Tickets list forever. Best-effort — failures are logged but
+      // don't block the local cancel.
+      if (order.paymentMethod === "counter" && order.squareOrderId) {
+        const voided = await square.cancelSquareOrder(order.squareOrderId);
+        if (!voided) console.warn(`[ORDERS] Could not void Square ticket for #${id} (${order.squareOrderId}) — clear it manually in Square POS`);
+      }
       console.log(`[ORDERS] Order #${id} cancelled by ${actor}`);
       res.json({ status: "cancelled" });
     } catch (err: any) {
