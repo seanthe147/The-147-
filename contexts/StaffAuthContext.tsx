@@ -85,6 +85,12 @@ export function StaffAuthProvider({ children }: { children: ReactNode }) {
                 if (data.username) setUsername(data.username);
                 if (data.role) setRole(data.role as StaffRole);
                 if (data.displayName !== undefined) setDisplayName(data.displayName || null);
+                // Sync mustChangePassword from server — covers the case where
+                // an owner reset the account while the user was already signed in.
+                if (typeof data.mustChangePassword === "boolean") {
+                  setMustChangePassword(data.mustChangePassword);
+                  await AsyncStorage.setItem(MUST_CHANGE_KEY, data.mustChangePassword ? "1" : "0");
+                }
               } else if (res.status === 401 || res.status === 403 || res.status === 404) {
                 // Explicit 4xx — token rejected. Clear everything.
                 setStaffToken(null);

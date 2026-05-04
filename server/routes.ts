@@ -1151,6 +1151,20 @@ async function staffAuth(req: Request, res: Response, next: NextFunction) {
       await storage.invalidateStaffSessionsByUserId(user.id).catch(() => undefined);
       return res.status(401).json({ message: "Account is not approved" });
     }
+    // Block sessions that still require a forced password change from reaching
+    // any route other than the three needed to complete the password-change
+    // flow. This enforces the credential-rotation control server-side so that
+    // callers cannot bypass it by skipping the client UI and calling APIs
+    // directly with the bearer token.
+    if (user.mustChangePassword === true) {
+      const allowedPaths = ["/api/staff/set-password", "/api/staff/logout", "/api/staff/verify"];
+      if (!allowedPaths.includes(req.path)) {
+        return res.status(403).json({
+          mustChangePassword: true,
+          message: "You must set a new password before accessing the application.",
+        });
+      }
+    }
     (req as any).staffRole = user.role || "staff";
     (req as any).staffUsername = session.staffUsername;
     (req as any).staffUser = user;
@@ -1623,10 +1637,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/staff/verify", staffAuth, async (req, res) => {
+    const staffUser = (req as any).staffUser;
     res.json({
       authenticated: true,
       role: (req as any).staffRole || "staff",
       username: (req as any).staffUsername || null,
+      mustChangePassword: staffUser ? (staffUser.mustChangePassword === true) : false,
     });
   });
 
