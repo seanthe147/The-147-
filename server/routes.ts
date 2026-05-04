@@ -6231,10 +6231,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!finalLinkValue || !isSafePublicUrl(finalLinkValue)) {
         return res.status(400).json({ message: "Banner URL must start with https:// or http://" });
       }
-    } else if (body.linkType !== undefined) {
-      // Manager is changing linkType away from "url" — clear the stored
-      // value so a stale unsafe value can never be reactivated by another
-      // future flip back to "url".
+    } else {
+      // Whenever the effective final linkType is anything other than "url"
+      // (existing or submitted), never persist a linkValue. This both
+      // clears existing unsafe stored values when the manager changes
+      // link type and rejects any new linkValue submitted alongside a
+      // non-url link type, closing the data-hygiene gap where a dormant
+      // unsafe value could be parked under a non-url linkType.
       (body as { linkValue?: string | null }).linkValue = null;
     }
     const updated = await storage.updateBannerImage(id, body);
