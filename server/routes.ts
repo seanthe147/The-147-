@@ -1642,6 +1642,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       authenticated: true,
       role: (req as any).staffRole || "staff",
       username: (req as any).staffUsername || null,
+      // Returned so the dashboard sidebar greeting ("Good morning, X")
+      // works after a hard reload, where state.displayName isn't carried
+      // over from the prior login response.
+      displayName: staffUser?.displayName || null,
       mustChangePassword: staffUser ? (staffUser.mustChangePassword === true) : false,
     });
   });
