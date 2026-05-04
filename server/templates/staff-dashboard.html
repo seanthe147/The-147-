@@ -2572,6 +2572,26 @@
     if(tok)opts.headers['Authorization']='Bearer '+tok;
     const r=await fetch(url,opts);
     if(r.status===401){clearToken();showLogin();throw new Error('Session expired')}
+    // 403 with `mustChangePassword: true` is the server telling us this
+    // staff member's password was reset (by an owner, or because they were
+    // upgraded from a legacy PIN) and they cannot use the dashboard until
+    // they pick a new one. Route them to the set-password panel rather
+    // than letting the calling render code swallow the error and leave
+    // the page in a half-broken state. Other 403s (managerAuth/ownerAuth
+    // permission denials) are passed through unchanged for the caller.
+    if(r.status===403){
+      try{
+        const j=await r.clone().json();
+        if(j && j.mustChangePassword===true){
+          showSetPassword();
+          throw new Error('Password change required');
+        }
+      }catch(e){
+        if(e && e.message==='Password change required')throw e;
+        // Non-JSON or non-mustChangePassword 403 — fall through and let
+        // the caller handle the response as before.
+      }
+    }
     return r;
   }
 
@@ -2658,6 +2678,18 @@
   }
 
   function showSetPassword(){
+    // Tear down any background pollers — this is reachable either at
+    // login (no polling running yet, no-op) or from a mid-app 403 when
+    // an owner has just reset this user's password (polling is running
+    // and would keep 403'ing in the background if we left it going).
+    try{stopOrdersPolling();}catch(e){}
+    try{stopBookingsPolling();}catch(e){}
+    // Swap to the login screen as a backdrop — when reached from inside
+    // the app, the loginScreen is hidden and the app is visible, so
+    // both flips are needed; on the login path these are already in the
+    // right state and the assignments are harmless.
+    el('loginScreen').style.display='flex';
+    el('app').style.display='none';
     // Hide the regular login form and show the forced-change panel.
     document.querySelector('#loginScreen .login-card:not(#setPasswordPanel)').classList.add('hidden-fields');
     el('setPasswordPanel').classList.remove('hidden-fields');
@@ -2702,12 +2734,30 @@
     el('loginScreen').style.display='none';
     el('app').style.display='block';
     // Verify and get full role info
+    let verified=null;
     try{
       const r=await api('/api/staff/verify');
-      const d=await r.json();
-      state.role=d.role||state.role;
-      state.username=d.username||state.username;
-    }catch(e){}
+      verified=await r.json();
+    }catch(e){
+      // api() already handled 401 (→ showLogin) or 403/mustChangePassword
+      // (→ showSetPassword). Abort the boot rather than rendering the
+      // dashboard on top of whichever screen api() routed to.
+      return;
+    }
+    state.role=verified.role||state.role;
+    state.username=verified.username||state.username;
+    state.displayName=verified.displayName||state.displayName||null;
+    // Mid-app password reset path: an owner may have flipped
+    // mustChangePassword while this staff member was already signed in
+    // (or in another tab). /api/staff/verify is on the staffAuth allow
+    // list so it returns 200 with the flag instead of 403, which means
+    // the api()-level 403 handler above won't fire here. Check the flag
+    // explicitly and route to the set-password panel before any
+    // dashboard data loads (which would all 403 anyway).
+    if(verified.mustChangePassword===true){
+      showSetPassword();
+      return;
+    }
     setupUI();
     const isManagerUser=state.role==='manager'||state.role==='owner';
     // Honour an optional URL hash (e.g. #memberships) so external deep-links
