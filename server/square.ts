@@ -1393,6 +1393,10 @@ async function buildSquareOrderBody(
   const order: any = {
     location_id: locationId,
     line_items: lineItems,
+    // `ticket_name` is the field Square POS uses to surface orders in the
+    // "Open Tickets" list on the till. Without it, the order exists in
+    // Square but staff can't find it. Cap at 30 chars (Square limit).
+    ticket_name: ticketName.slice(0, 30),
     ...(orderDiscounts.length ? { discounts: orderDiscounts } : {}),
     fulfillments: [
       {
