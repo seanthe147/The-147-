@@ -2011,7 +2011,7 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(categorySettings);
   }
 
-  async upsertCategorySettings(settings: { categoryId: string; displayOrder?: number; mergedIntoId?: string | null; parentCategoryId?: string | null; displayName?: string | null; imageUrl?: string | null; updatedBy: string }[]): Promise<void> {
+  async upsertCategorySettings(settings: { categoryId: string; displayOrder?: number; mergedIntoId?: string | null; parentCategoryId?: string | null; displayName?: string | null; imageUrl?: string | null; isKitchen?: boolean; updatedBy: string }[]): Promise<void> {
     for (const s of settings) {
       await db.insert(categorySettings)
         .values({
@@ -2021,6 +2021,7 @@ export class DatabaseStorage implements IStorage {
           parentCategoryId: s.parentCategoryId ?? null,
           displayName: s.displayName ?? null,
           imageUrl: s.imageUrl ?? null,
+          isKitchen: s.isKitchen ?? false,
           updatedBy: s.updatedBy,
           updatedAt: new Date(),
         })
@@ -2031,11 +2032,27 @@ export class DatabaseStorage implements IStorage {
             ...(s.mergedIntoId !== undefined ? { mergedIntoId: s.mergedIntoId } : {}),
             ...(s.parentCategoryId !== undefined ? { parentCategoryId: s.parentCategoryId } : {}),
             ...(s.displayName !== undefined ? { displayName: s.displayName } : {}),
+            ...(s.isKitchen !== undefined ? { isKitchen: s.isKitchen } : {}),
             updatedBy: s.updatedBy,
             updatedAt: new Date(),
           },
         });
     }
+  }
+
+  async setCategoryIsKitchen(categoryId: string, isKitchen: boolean, updatedBy: string): Promise<void> {
+    await db.insert(categorySettings)
+      .values({
+        categoryId,
+        displayOrder: 99,
+        isKitchen,
+        updatedBy,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: categorySettings.categoryId,
+        set: { isKitchen, updatedBy, updatedAt: new Date() },
+      });
   }
 
   async updateCategoryImage(categoryId: string, imageUrl: string | null, updatedBy: string): Promise<void> {

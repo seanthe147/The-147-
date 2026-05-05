@@ -631,16 +631,21 @@ function ItemCard({
   onOpenModifiers,
   highlighted,
   showDietaryTags,
+  kitchenClosed,
 }: {
   item: MenuItem;
   onOpenModifiers: (item: MenuItem) => void;
   highlighted?: boolean;
   /** FEATURE_DIETARY_FILTERS: render dietary badges next to the item name. */
   showDietaryTags?: boolean;
+  /** Item belongs to a kitchen-tagged category and the kitchen is closed
+   *  right now → render greyed out + show "Kitchen closed" badge + block
+   *  taps. Drinks/snacks are unaffected. */
+  kitchenClosed?: boolean;
 }) {
   const { addItem, updateQuantity, getQuantity } = useCart();
   const qty = getQuantity(item.variationId);
-  const soldOut = !!item.soldOut;
+  const soldOut = !!item.soldOut || !!kitchenClosed;
   const cartName = item.variationName ? `${item.name} — ${item.variationName}` : item.name;
   const hasImage = !!item.imageUrl;
   const hasModifiers = !!(item.modifiers && item.modifiers.length > 0);
@@ -688,7 +693,7 @@ function ItemCard({
           )}
           {soldOut && (
             <View style={styles.soldOutBadge}>
-              <Text style={styles.soldOutText}>Unavailable</Text>
+              <Text style={styles.soldOutText}>{kitchenClosed && !item.soldOut ? "Kitchen closed" : "Unavailable"}</Text>
             </View>
           )}
           {hasModifiers && !soldOut && (
@@ -1702,7 +1707,7 @@ export default function OrderScreen() {
   });
 
   const queryClient = useQueryClient();
-  const { data: orderingStatus } = useQuery<{ enabled: boolean; reason?: string; nextOpen?: string; closesAt?: string }>({
+  const { data: orderingStatus } = useQuery<{ enabled: boolean; kitchenOpen?: boolean; reason?: string; kitchenReason?: string; nextOpen?: string; closesAt?: string }>({
     queryKey: ["/api/ordering-status"],
     staleTime: 5 * 1000,
     refetchInterval: 15 * 1000,
@@ -1711,6 +1716,10 @@ export default function OrderScreen() {
   });
 
   const orderingEnabled = orderingStatus?.enabled !== false;
+  // `kitchenOpen` is missing on legacy clients/responses → treat undefined
+  // as open so we never hide food in error. Only when explicitly false do
+  // we grey out kitchen items + show the "drinks only" banner.
+  const kitchenOpen = orderingStatus?.kitchenOpen !== false;
 
   const activeBanners = useMemo(
     () => (banners ?? []).filter((b) => b.active),
@@ -1876,8 +1885,8 @@ export default function OrderScreen() {
   }, [params.hlCatId, params.hlItemId, categories]);
 
   const renderItem = useCallback(({ item }: { item: MenuItem }) => (
-    <ItemCard item={item} onOpenModifiers={handleOpenModifiers} highlighted={item.id === highlightItemId} showDietaryTags={featureFlags.dietaryFilters} />
-  ), [handleOpenModifiers, highlightItemId]);
+    <ItemCard item={item} onOpenModifiers={handleOpenModifiers} highlighted={item.id === highlightItemId} showDietaryTags={featureFlags.dietaryFilters} kitchenClosed={!kitchenOpen && !!activeCategoryData?.isKitchen} />
+  ), [handleOpenModifiers, highlightItemId, featureFlags.dietaryFilters, kitchenOpen, activeCategoryData?.isKitchen]);
 
   const handleSelectCategory = useCallback((id: string) => {
     setSelectedCategory(id);
@@ -2010,7 +2019,7 @@ export default function OrderScreen() {
                       <View style={styles.searchCatLabel}>
                         <Text style={styles.searchCatLabelText}>{categoryName}</Text>
                       </View>
-                      <ItemCard item={item} onOpenModifiers={handleOpenModifiers} showDietaryTags={featureFlags.dietaryFilters} />
+                      <ItemCard item={item} onOpenModifiers={handleOpenModifiers} showDietaryTags={featureFlags.dietaryFilters} kitchenClosed={!kitchenOpen && !!(categories?.find(c => c.id === categoryId)?.isKitchen ?? categories?.find(c => c.subcategories?.some(s => s.id === categoryId))?.isKitchen)} />
                     </View>
                   ))}
                 </View>
@@ -2033,6 +2042,23 @@ export default function OrderScreen() {
                     {orderingStatus?.nextOpen && (
                       <Text style={[styles.orderingClosedSub, { marginTop: 4, fontWeight: "700" as const, color: "#78350f" }]}>
                         Next open: {orderingStatus.nextOpen}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              )}
+
+              {orderingEnabled && !kitchenOpen && (
+                <View style={styles.orderingClosedBanner}>
+                  <Ionicons name="restaurant-outline" size={22} color="#92400e" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.orderingClosedTitle}>Kitchen closed — drinks only</Text>
+                    <Text style={styles.orderingClosedSub}>
+                      {orderingStatus?.kitchenReason ?? "The bar is still open — food items are unavailable until the kitchen reopens."}
+                    </Text>
+                    {orderingStatus?.nextOpen && (
+                      <Text style={[styles.orderingClosedSub, { marginTop: 4, fontWeight: "700" as const, color: "#78350f" }]}>
+                        Kitchen back: {orderingStatus.nextOpen}
                       </Text>
                     )}
                   </View>

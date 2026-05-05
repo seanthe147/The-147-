@@ -54,4 +54,11 @@ export interface MenuCategory {
   imageUrl?: string;
   items: MenuItem[];
   subcategories?: MenuCategory[];
+  /**
+   * True when items in this category are from the kitchen (food). When the
+   * kitchen is closed (outside scheduled hours), the order screen + kiosk
+   * grey these out and the server rejects them at checkout. Bar items
+   * (drinks/snacks) leave this false / undefined so they remain orderable.
+   */
+  isKitchen?: boolean;
 }

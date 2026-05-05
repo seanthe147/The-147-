@@ -1432,6 +1432,42 @@ function verifyStaffCredential(
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // ── One-shot kitchen-category seeder ────────────────────────────────────
+  // Auto-tags obvious food categories (Burgers, Pizzas, Mains, etc.) as
+  // `isKitchen=true` the first time the server boots after this feature
+  // ships, so the venue doesn't have to manually open every category. The
+  // setting key prevents re-running on subsequent boots — staff can edit
+  // tags via PUT /api/staff/menu/categories/:id/kitchen afterwards. Runs
+  // in the background so a slow Square fetch never blocks server startup.
+  void (async () => {
+    try {
+      const already = await storage.getSetting("kitchen_categories_seeded");
+      if (already === "true") return;
+      const categories = await square.getMenuFromSquare();
+      const KITCHEN_NAMES = [
+        "burger","sides","pizza","pasta","mains","starter","pudding","sharer",
+        "light bite","loaded fries","toastie","panini","breakfast","bap",
+        "kids","golden years","food","poker favourite","extras","turkish",
+        "pub classic","easter",
+      ];
+      const isKitchenName = (n: string) => {
+        const lower = n.toLowerCase();
+        return KITCHEN_NAMES.some(k => lower.includes(k));
+      };
+      const tagged: string[] = [];
+      for (const cat of categories) {
+        if (isKitchenName(cat.name)) {
+          await storage.setCategoryIsKitchen(cat.id, true, "system:seed");
+          tagged.push(cat.name);
+        }
+      }
+      await storage.setSetting("kitchen_categories_seeded", "true");
+      console.log(`[KITCHEN SEED] Auto-tagged ${tagged.length} food categories: ${tagged.join(", ")}`);
+    } catch (err: any) {
+      console.error("[KITCHEN SEED] Failed:", err?.message);
+    }
+  })();
+
   app.post("/api/staff/register", async (req, res) => {
     const clientIp = getClientIp(req);
     const rateCheck = checkLoginRateLimit(clientIp);
@@ -4739,8 +4775,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const itemOverrideMap = new Map(itemOverrides.map(o => [o.variationId, o]));
       const catSettingsMap = new Map(catSettingsArr.map(s => [s.categoryId, s]));
 
-      // Expand categories and apply merging + display overrides
-      const mergedMap: Map<string, { id: string; name: string; imageUrl?: string; order: number; items: any[] }> = new Map();
+      // Expand categories and apply merging + display overrides. `isKitchen`
+      // mirrors the staff-tagged flag from category_settings so the order
+      // screen + kiosk can grey-out food items the moment the kitchen
+      // schedule closes (drinks stay live).
+      const mergedMap: Map<string, { id: string; name: string; imageUrl?: string; order: number; isKitchen: boolean; items: any[] }> = new Map();
 
       for (const cat of categories) {
         if (hiddenCategoryIds.has(cat.id)) continue;
@@ -4762,8 +4801,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             name: targetSettings?.displayName ?? targetCat?.name ?? displayName,
             imageUrl: customImg ?? targetCat?.imageUrl ?? cat.imageUrl,
             order: targetSettings?.displayOrder ?? targetCat ? (catSettingsMap.get(targetId)?.displayOrder ?? 99) : displayOrder,
+            isKitchen: !!(targetSettings?.isKitchen ?? settings?.isKitchen),
             items: [],
           });
+        } else if (settings?.isKitchen) {
+          // A category being merged in is kitchen-tagged → propagate to the
+          // group so the merged target inherits the food restriction.
+          mergedMap.get(targetId)!.isKitchen = true;
         }
 
         const availableItems = cat.items
@@ -4803,7 +4847,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Apply parent/child grouping (sub-categories)
-      type Node = { id: string; name: string; imageUrl?: string; order: number; items: any[]; subcategories?: any[] };
+      type Node = { id: string; name: string; imageUrl?: string; order: number; isKitchen: boolean; items: any[]; subcategories?: any[] };
       const nodes: Map<string, Node> = mergedMap as any;
       const childrenByParent: Map<string, Node[]> = new Map();
       const isChild: Set<string> = new Set();
@@ -4877,6 +4921,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: any) {
       console.error("[STAFF MENU] Failed to fetch menu:", err.message);
       res.status(500).json({ message: "Failed to load menu" });
+    }
+  });
+
+  // Tag/untag a category as kitchen (manager/owner only). When set, items
+  // in the category can only be ordered while the kitchen schedule is open.
+  app.put("/api/staff/menu/categories/:categoryId/kitchen", staffAuth, managerAuth, async (req: any, res) => {
+    const { categoryId } = req.params;
+    const { isKitchen } = req.body;
+    if (typeof isKitchen !== "boolean") return res.status(400).json({ message: "isKitchen must be boolean" });
+    try {
+      const updatedBy = req.staffUser?.username ?? "staff";
+      await storage.setCategoryIsKitchen(categoryId, isKitchen, updatedBy);
+      square.invalidateMenuCache();
+      res.json({ ok: true, isKitchen });
+    } catch (err: any) {
+      console.error("[STAFF MENU] Kitchen toggle error:", err.message);
+      res.status(500).json({ message: "Failed to update category" });
     }
   });
 
@@ -5133,7 +5194,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   interface OrderingSchedule { days: number[]; startTime: string; endTime: string; }
   interface OrderingOverride { date: string; closed: boolean; startTime?: string; endTime?: string; note?: string; }
-  interface OrderingStatusResult { enabled: boolean; reason: string; nextOpen?: string; closesAt?: string; manualOverride?: boolean; }
+  // `enabled` = ordering is open at all (drinks/snacks count). It is only
+  // false when staff manually flip the kill switch for the whole venue.
+  // `kitchenOpen` = food items can be ordered right now (inside the kitchen
+  // schedule + not on a closed override). When false, the order screen + kiosk
+  // show "Kitchen closed — drinks only" and grey out food items instead of
+  // taking the whole menu offline. Legacy callers that only read `enabled`
+  // still see the manual kill switch through that field.
+  interface OrderingStatusResult { enabled: boolean; kitchenOpen: boolean; reason: string; kitchenReason?: string; nextOpen?: string; closesAt?: string; manualOverride?: boolean; }
 
   // Wednesday (3), Thursday (4), Friday (5), Saturday (6), Sunday (0).
   // Day-of-week ints follow JS Date.getDay() — Sunday is 0, not 7.
@@ -5176,12 +5244,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const hhmm = london.hhmm;
     const dow = london.dow;
 
-    // 1. Check manual disable override (auto-resets next day)
+    // 1. Manual disable kill switch (auto-resets next day). This is the only
+    // path that flips `enabled` to false — closing the venue completely,
+    // drinks included. Schedule below only controls the kitchen.
     const manualEnabled = await storage.getSetting("ordering_enabled");
     if (manualEnabled === "false") {
       const disabledDate = await storage.getSetting("ordering_disabled_date");
       if (!disabledDate || disabledDate === today) {
-        return { enabled: false, reason: "Online ordering has been temporarily closed by staff.", manualOverride: true };
+        return { enabled: false, kitchenOpen: false, reason: "Online ordering has been temporarily closed by staff.", manualOverride: true };
       }
       // Auto-reset: disabled on a previous day
       await storage.setSetting("ordering_enabled", "true");
@@ -5190,55 +5260,109 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const schedule = await getOrderingSchedule();
     const overrides = await getOrderingOverrides();
 
-    // 2. Check today's override
+    // 2. Compute kitchen status from the schedule + today's override. Drinks
+    // remain orderable around the kitchen window, so we never set `enabled`
+    // to false from here — only `kitchenOpen`.
+    let kitchenOpen = false;
+    let kitchenReason = "";
+    let nextOpen: string | undefined;
+    let closesAt: string | undefined;
+
     const todayOverride = overrides.find(o => o.date === today);
     if (todayOverride) {
       if (todayOverride.closed) {
-        // Explicitly closed today
-        return { enabled: false, reason: `Ordering is closed today${todayOverride.note ? ` (${todayOverride.note})` : ""}.`, nextOpen: scheduleOpenMessage(schedule) };
+        kitchenReason = `Kitchen is closed today${todayOverride.note ? ` (${todayOverride.note})` : ""}.`;
+        nextOpen = scheduleOpenMessage(schedule);
+      } else {
+        const oStart = todayOverride.startTime ?? schedule.startTime;
+        const oEnd = todayOverride.endTime ?? schedule.endTime;
+        if (hhmm >= oStart && hhmm < oEnd) {
+          kitchenOpen = true;
+          kitchenReason = `Kitchen open until ${oEnd}`;
+          closesAt = oEnd;
+        } else if (hhmm < oStart) {
+          kitchenReason = `Kitchen opens today at ${oStart}${todayOverride.note ? ` (${todayOverride.note})` : ""}`;
+          nextOpen = `Today from ${oStart}`;
+        } else {
+          // Past override window — fall through to weekly logic below
+        }
       }
-      // Extra opening today — check hours
-      const oStart = todayOverride.startTime ?? schedule.startTime;
-      const oEnd = todayOverride.endTime ?? schedule.endTime;
-      if (hhmm >= oStart && hhmm < oEnd) {
-        return { enabled: true, reason: `Ordering open until ${oEnd}`, closesAt: oEnd };
-      }
-      if (hhmm < oStart) {
-        return { enabled: false, reason: `Ordering opens today at ${oStart}${todayOverride.note ? ` (${todayOverride.note})` : ""}`, nextOpen: `Today from ${oStart}` };
-      }
-      // Past today's override window — fall through to normal schedule check
     }
 
-    // 3. Check normal weekly schedule
-    const isScheduledDay = schedule.days.includes(dow);
-    if (!isScheduledDay) {
-      // Find next scheduled day
-      let daysAhead = 1;
-      let nextDow = (dow + daysAhead) % 7;
-      while (!schedule.days.includes(nextDow) && daysAhead < 8) { daysAhead++; nextDow = (dow + daysAhead) % 7; }
-      const nextName = daysAhead === 1 ? "Tomorrow" : DAY_NAMES_FULL[nextDow];
-      return { enabled: false, reason: `Food ordering is available ${scheduleOpenMessage(schedule)}.`, nextOpen: `${nextName} from ${schedule.startTime}` };
+    if (!kitchenOpen && !kitchenReason) {
+      const isScheduledDay = schedule.days.includes(dow);
+      if (!isScheduledDay) {
+        let daysAhead = 1;
+        let nextDow = (dow + daysAhead) % 7;
+        while (!schedule.days.includes(nextDow) && daysAhead < 8) { daysAhead++; nextDow = (dow + daysAhead) % 7; }
+        const nextName = daysAhead === 1 ? "Tomorrow" : DAY_NAMES_FULL[nextDow];
+        kitchenReason = `Kitchen serves ${scheduleOpenMessage(schedule)}.`;
+        nextOpen = `${nextName} from ${schedule.startTime}`;
+      } else if (hhmm < schedule.startTime) {
+        kitchenReason = `Kitchen opens at ${schedule.startTime} today.`;
+        nextOpen = `Today from ${schedule.startTime}`;
+      } else if (hhmm >= schedule.endTime) {
+        let daysAhead = 1;
+        let nextDow = (dow + daysAhead) % 7;
+        while (!schedule.days.includes(nextDow) && daysAhead < 8) { daysAhead++; nextDow = (dow + daysAhead) % 7; }
+        const nextName = daysAhead === 1 ? "Tomorrow" : DAY_NAMES_FULL[nextDow];
+        kitchenReason = `Kitchen closed at ${schedule.endTime}. Back ${nextName.toLowerCase()}.`;
+        nextOpen = `${nextName} from ${schedule.startTime}`;
+      } else {
+        kitchenOpen = true;
+        kitchenReason = `Kitchen open until ${schedule.endTime}`;
+        closesAt = schedule.endTime;
+      }
     }
 
-    // It's a scheduled day — check the time window
-    if (hhmm < schedule.startTime) {
-      return { enabled: false, reason: `Food ordering opens at ${schedule.startTime} today.`, nextOpen: `Today from ${schedule.startTime}` };
-    }
-    if (hhmm >= schedule.endTime) {
-      // After closing — find next open slot
-      let daysAhead = 1;
-      let nextDow = (dow + daysAhead) % 7;
-      while (!schedule.days.includes(nextDow) && daysAhead < 8) { daysAhead++; nextDow = (dow + daysAhead) % 7; }
-      const nextName = daysAhead === 1 ? "Tomorrow" : DAY_NAMES_FULL[nextDow];
-      return { enabled: false, reason: `Food ordering closes at ${schedule.endTime}. See you ${nextName.toLowerCase()}!`, nextOpen: `${nextName} from ${schedule.startTime}` };
-    }
+    // `reason` is the customer-facing summary — when the kitchen is shut we
+    // explain that drinks are still available so they don't bounce.
+    const reason = kitchenOpen
+      ? kitchenReason
+      : `${kitchenReason} Drinks and snacks are still available.`;
 
-    return { enabled: true, reason: `Ordering open until ${schedule.endTime}`, closesAt: schedule.endTime };
+    return { enabled: true, kitchenOpen, reason, kitchenReason, nextOpen, closesAt };
   }
 
   async function getOrderingEnabled(): Promise<boolean> {
     const status = await getOrderingStatus();
     return status.enabled;
+  }
+
+  async function getKitchenOpen(): Promise<boolean> {
+    const status = await getOrderingStatus();
+    return status.kitchenOpen;
+  }
+
+  // Build the set of variation IDs that belong to a kitchen-tagged category.
+  // Used by the checkout endpoints to reject food items the moment the
+  // kitchen schedule is closed (so a stale client cart can't sneak food
+  // through). Walks the live Square menu against `category_settings.is_kitchen`
+  // and includes any sub-category that's merged into a kitchen parent.
+  async function getKitchenVariationIds(): Promise<Set<string>> {
+    try {
+      const [categories, settings] = await Promise.all([
+        square.getMenuFromSquare(),
+        storage.getCategorySettings(),
+      ]);
+      const kitchenCatIds = new Set(settings.filter(s => s.isKitchen).map(s => s.categoryId));
+      // Also treat children/merged-into kitchen parents as kitchen.
+      for (const s of settings) {
+        if ((s.parentCategoryId && kitchenCatIds.has(s.parentCategoryId)) ||
+            (s.mergedIntoId && kitchenCatIds.has(s.mergedIntoId))) {
+          kitchenCatIds.add(s.categoryId);
+        }
+      }
+      const out = new Set<string>();
+      for (const cat of categories) {
+        if (!kitchenCatIds.has(cat.id)) continue;
+        for (const item of cat.items) out.add(item.variationId);
+      }
+      return out;
+    } catch (err) {
+      console.error("[KITCHEN] Failed to build kitchen variation set:", (err as any)?.message);
+      return new Set();
+    }
   }
 
   app.get("/api/ordering-status", async (_req, res) => {
@@ -5318,9 +5442,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ message: "Cart is empty" });
     }
     try {
-      const orderingEnabled = await getOrderingEnabled();
-      if (!orderingEnabled) {
+      const status = await getOrderingStatus();
+      if (!status.enabled) {
         return res.status(503).json({ message: "Online ordering is currently unavailable. Please order at the bar." });
+      }
+      // When the kitchen is closed, drinks/snacks are still allowed but any
+      // food item in the cart fails the order — staff can't cook it.
+      if (!status.kitchenOpen) {
+        const kitchenIds = await getKitchenVariationIds();
+        const offending = items.filter((i: any) => kitchenIds.has(String(i?.variationId ?? "")));
+        if (offending.length > 0) {
+          return res.status(503).json({
+            message: `Kitchen is closed — please remove food items from your basket. ${status.kitchenReason ?? ""}`.trim(),
+            kitchenClosed: true,
+            offendingVariationIds: offending.map((i: any) => i.variationId),
+          });
+        }
       }
 
       const { discountPercent, discountLabel, excludeWithDeals } =
@@ -5416,9 +5553,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Validate ordering window — same gate as the online flow.
-      const orderingEnabled = await getOrderingEnabled();
-      if (!orderingEnabled) {
+      const status = await getOrderingStatus();
+      if (!status.enabled) {
         return res.status(503).json({ message: "Ordering is currently unavailable." });
+      }
+      if (!status.kitchenOpen) {
+        const kitchenIds = await getKitchenVariationIds();
+        const offending = items.filter((i: any) => kitchenIds.has(String(i?.variationId ?? "")));
+        if (offending.length > 0) {
+          return res.status(503).json({
+            message: `Kitchen is closed — please remove food items. ${status.kitchenReason ?? ""}`.trim(),
+            kitchenClosed: true,
+            offendingVariationIds: offending.map((i: any) => i.variationId),
+          });
+        }
       }
 
       // Build the Square line-items (full modifier objects with prices) AND
@@ -5748,9 +5896,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(503).json({ message: "In-app payments are not configured." });
     }
     try {
-      const orderingEnabled = await getOrderingEnabled();
-      if (!orderingEnabled) {
+      const status = await getOrderingStatus();
+      if (!status.enabled) {
         return res.status(503).json({ message: "Online ordering is currently unavailable. Please order at the bar." });
+      }
+      if (!status.kitchenOpen) {
+        const kitchenIds = await getKitchenVariationIds();
+        const offending = items.filter((i: any) => kitchenIds.has(String(i?.variationId ?? "")));
+        if (offending.length > 0) {
+          return res.status(503).json({
+            message: `Kitchen is closed — please remove food items. ${status.kitchenReason ?? ""}`.trim(),
+            kitchenClosed: true,
+            offendingVariationIds: offending.map((i: any) => i.variationId),
+          });
+        }
       }
 
       const { discountPercent, discountLabel, excludeWithDeals } =

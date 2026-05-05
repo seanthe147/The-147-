@@ -724,6 +724,13 @@ export const categorySettings = pgTable("category_settings", {
   parentCategoryId: text("parent_category_id"),
   displayName: text("display_name"),
   imageUrl: text("image_url"),
+  // True when items in this category come from the kitchen (food) and
+  // therefore can only be ordered while the kitchen is open. False/null
+  // means bar/drinks/snacks — always orderable inside venue hours. Used
+  // by /api/ordering-status + /api/menu so the customer order screen + kiosk
+  // can show "Kitchen closed — drinks only" and grey out food items
+  // automatically without blocking drink sales outside kitchen hours.
+  isKitchen: boolean("is_kitchen").notNull().default(false),
   updatedBy: text("updated_by").notNull().default("system"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

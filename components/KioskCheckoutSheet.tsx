@@ -101,6 +101,14 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
       });
       const data = await res.json().catch(() => ({} as any));
       if (!res.ok) {
+        // Kitchen closed mid-flight → bounce back to the cart so the user
+        // can drop the offending food items. The order screen behind the
+        // sheet already greys those out via /api/ordering-status.
+        if (data?.kitchenClosed) {
+          Alert.alert("Kitchen closed", data?.message || "Food items aren't available right now. Please remove them from your basket.");
+          setStep("cart");
+          return;
+        }
         throw new Error(data?.message || "Could not send order. Please try again.");
       }
       setConfirmation({ ticketNumber: Number(data.ticketNumber), appOrderId: Number(data.appOrderId) });
