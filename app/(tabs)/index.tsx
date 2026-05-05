@@ -23,6 +23,7 @@ import { getApiUrl } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
+import { useResponsive } from "@/hooks/useResponsive";
 import Colors from "@/constants/colors";
 import { OPENING_HOURS } from "@/lib/data";
 import type { Event, BannerImage, Offer } from "@shared/schema";
@@ -452,6 +453,7 @@ const EventPreview = memo(function EventPreview() {
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const { isAuthenticated } = useCustomerAuth();
@@ -566,7 +568,7 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <ScrollView
         style={styles.container}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingHorizontal: tabletPad }]}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
         removeClippedSubviews={Platform.OS === "android"}

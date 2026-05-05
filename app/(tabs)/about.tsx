@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
+import { useResponsive } from "@/hooks/useResponsive";
 import Colors from "@/constants/colors";
 import { OPENING_HOURS } from "@/lib/data";
 import { getApiUrl } from "@/lib/query-client";
@@ -51,6 +52,7 @@ function FacilityItem({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; l
 
 export default function AboutScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const today = new Date().getDay();
@@ -61,7 +63,7 @@ export default function AboutScreen() {
       style={styles.container}
       contentContainerStyle={[
         styles.scrollContent,
-        { paddingTop: insets.top + webTopInset },
+        { paddingTop: insets.top + webTopInset, paddingHorizontal: tabletPad },
       ]}
       showsVerticalScrollIndicator={false}
     >

@@ -21,6 +21,7 @@ import * as Haptics from "expo-haptics";
 import { useQuery } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 import { getApiUrl } from "@/lib/query-client";
+import { useResponsive } from "@/hooks/useResponsive";
 import type { Event, BannerImage } from "@shared/schema";
 import { isSafePublicUrl } from "@shared/schema";
 
@@ -363,6 +364,7 @@ function WhatsOnTab() {
 
 export default function EventsScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const [activeTab, setActiveTab] = useState<"events" | "whats-on">("events");
@@ -376,7 +378,7 @@ export default function EventsScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + webTopInset },
+          { paddingTop: insets.top + webTopInset, paddingHorizontal: tabletPad },
         ]}
         showsVerticalScrollIndicator={false}
       >

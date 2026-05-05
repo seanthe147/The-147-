@@ -20,6 +20,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
+import { useResponsive } from "@/hooks/useResponsive";
 import Colors from "@/constants/colors";
 import { TABLE_TYPES } from "@/lib/data";
 
@@ -85,6 +86,7 @@ const DEPOSIT_GUEST_THRESHOLD = 7;
 
 export default function BookScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
 
@@ -333,7 +335,7 @@ export default function BookScreen() {
       >
         <ScrollView
           style={styles.scrollView}
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: Platform.OS === "web" ? 50 : tabBarHeight + 20 }]}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: Platform.OS === "web" ? 50 : tabBarHeight + 20, paddingHorizontal: 16 + tabletPad }]}
           keyboardShouldPersistTaps="handled"
         >
           {step === "table" && (

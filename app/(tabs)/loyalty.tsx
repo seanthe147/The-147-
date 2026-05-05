@@ -23,6 +23,7 @@ import Colors from "@/constants/colors";
 import { getApiUrl } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
+import { useResponsive } from "@/hooks/useResponsive";
 
 const SESSION_KEY = "loyalty_session";
 function loyaltyUrl(path: string): string {
@@ -487,6 +488,7 @@ interface LoyaltyMeResponse {
 
 export default function LoyaltyScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const isWeb = Platform.OS === "web";
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const queryClient = useQueryClient();
@@ -770,7 +772,7 @@ export default function LoyaltyScreen() {
         style={styles.container}
         contentContainerStyle={[
           styles.content,
-          { paddingTop: (isWeb ? 67 : insets.top) + 16, paddingBottom: tabBarHeight + 20 },
+          { paddingTop: (isWeb ? 67 : insets.top) + 16, paddingBottom: tabBarHeight + 20, paddingHorizontal: tabletPad },
         ]}
         keyboardShouldPersistTaps="handled"
       >

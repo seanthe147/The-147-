@@ -1661,6 +1661,7 @@ export default function OrderScreen() {
   const params = useLocalSearchParams<{ hlCatId?: string; hlItemId?: string; hlItemName?: string; openCheckout?: string; checkoutStep?: string; prefillEmail?: string }>();
 
   const { isKioskMode } = useKiosk();
+  const { tabletPad } = useResponsive();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   const [cartVisible, setCartVisible] = useState(false);
@@ -1986,7 +1987,7 @@ export default function OrderScreen() {
 
         <ScrollView
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ paddingTop: categoryPageHeaderHeight, paddingBottom: tabBarHeight + cartBarHeight + 16 }}
+          contentContainerStyle={{ paddingTop: categoryPageHeaderHeight, paddingBottom: tabBarHeight + cartBarHeight + 16, paddingHorizontal: tabletPad }}
           showsVerticalScrollIndicator={false}
         >
           {isSearching ? (
@@ -2209,6 +2210,7 @@ export default function OrderScreen() {
           contentContainerStyle={{
             paddingTop: headerHeight + 8,
             paddingBottom: tabBarHeight + cartBarHeight + 16,
+            paddingHorizontal: tabletPad,
           }}
           showsVerticalScrollIndicator={false}
         >
@@ -2225,7 +2227,7 @@ export default function OrderScreen() {
           contentContainerStyle={{
             paddingTop: headerHeight + categoryBarHeight + 8,
             paddingBottom: tabBarHeight + cartBarHeight + 16,
-            paddingHorizontal: 16,
+            paddingHorizontal: 16 + tabletPad,
           }}
           showsVerticalScrollIndicator={false}
           ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
