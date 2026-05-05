@@ -10,10 +10,12 @@ import {
   TextInput,
   Alert,
   Platform,
+  useWindowDimensions,
 } from "react-native";
 import { Image as ExpoImage } from "expo-image";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useKiosk } from "@/contexts/KioskContext";
 import { useCart } from "@/contexts/CartContext";
 import Colors from "@/constants/colors";
@@ -30,6 +32,13 @@ const BANNER_ROTATE_MS = 6000;
 export function KioskAttractOverlay() {
   const { isKioskMode, attractVisible, dismissAttract, disableKioskMode } = useKiosk();
   const { clearCart } = useCart();
+  const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
+  // Tablet ≈ ≥768pt on the short side (iPad mini portrait = 744w / iPad = 810w).
+  // Used to scale up brand text and add a max-width to the CTA so it doesn't
+  // span an entire 1366pt iPad Pro landscape screen.
+  const isTablet = Math.min(width, height) >= 700;
   const [pinModalVisible, setPinModalVisible] = useState(false);
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState<string | null>(null);
@@ -113,23 +122,33 @@ export function KioskAttractOverlay() {
             <View style={[StyleSheet.absoluteFill, { backgroundColor: "#0A1628" }]} />
           )}
           <View style={styles.scrim} />
-          <View style={styles.content} pointerEvents="none">
+          <View
+            style={[
+              styles.content,
+              {
+                paddingTop: Math.max(insets.top, 32) + (isLandscape ? 12 : 48),
+                paddingBottom: Math.max(insets.bottom, 24) + (isLandscape ? 16 : 36),
+                paddingHorizontal: isTablet ? 64 : 32,
+              },
+            ]}
+            pointerEvents="none"
+          >
             <View style={styles.brandWrap}>
-              <Text style={styles.brandSmall}>WELCOME TO</Text>
-              <Text style={styles.brandBig}>THE 147</Text>
-              <Text style={styles.brandTag}>FOOD · DRINKS · SNOOKER</Text>
+              <Text style={[styles.brandSmall, isTablet && { fontSize: 20, letterSpacing: 6 }]}>WELCOME TO</Text>
+              <Text style={[styles.brandBig, isTablet && { fontSize: isLandscape ? 96 : 120, letterSpacing: 8 }]}>THE 147</Text>
+              <Text style={[styles.brandTag, isTablet && { fontSize: 18, letterSpacing: 8 }]}>FOOD · DRINKS · SNOOKER</Text>
             </View>
 
             <Animated.View style={[styles.ctaWrap, { transform: [{ scale: pulse }] }]}>
-              <View style={styles.cta}>
-                <Ionicons name="hand-left" size={36} color={Colors.brand.blue} />
-                <Text style={styles.ctaText}>TAP TO ORDER</Text>
-                <Text style={styles.ctaSub}>Order food & drinks · Pay at the counter</Text>
+              <View style={[styles.cta, isTablet && { paddingHorizontal: 80, paddingVertical: 48, maxWidth: 560 }]}>
+                <Ionicons name="hand-left" size={isTablet ? 48 : 36} color={Colors.brand.blue} />
+                <Text style={[styles.ctaText, isTablet && { fontSize: 48 }]}>TAP TO ORDER</Text>
+                <Text style={[styles.ctaSub, isTablet && { fontSize: 16 }]}>Order food & drinks · Pay at the counter</Text>
               </View>
             </Animated.View>
 
             <View style={styles.footer}>
-              <Text style={styles.footerText}>Tap anywhere to start</Text>
+              <Text style={[styles.footerText, isTablet && { fontSize: 14, letterSpacing: 3 }]}>Tap anywhere to start</Text>
             </View>
           </View>
         </View>
@@ -190,7 +209,7 @@ export function KioskAttractOverlay() {
 const styles = StyleSheet.create({
   bg: { flex: 1, backgroundColor: "#0A1628" },
   scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(10,22,40,0.55)" },
-  content: { flex: 1, justifyContent: "space-between", padding: 32, paddingTop: 80, paddingBottom: 60 },
+  content: { flex: 1, justifyContent: "space-between" },
   brandWrap: { alignItems: "center" },
   brandSmall: { color: "rgba(255,255,255,0.85)", fontSize: 16, letterSpacing: 4, fontWeight: "600" as const },
   brandBig: { color: "#fff", fontSize: 84, letterSpacing: 6, fontWeight: "700" as const, marginTop: 8 },

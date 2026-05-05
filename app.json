@@ -3,7 +3,7 @@
     "name": "The 147",
     "slug": "the-147",
     "version": "2.6.5",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "the147",
     "userInterfaceStyle": "automatic",
@@ -14,7 +14,8 @@
       "backgroundColor": "#0A1628"
     },
     "ios": {
-      "supportsTablet": false,
+      "supportsTablet": true,
+      "requireFullScreen": true,
       "bundleIdentifier": "com.the147bradford.app",
       "buildNumber": "21",
       "entitlements": {

@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -32,6 +33,12 @@ type Step = "cart" | "details" | "confirmation";
 
 export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps) {
   const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
+  // Cap the form width on big screens (iPad landscape can be 1366pt wide).
+  // Constraining to 640pt and centring keeps inputs and buttons in a
+  // comfortable thumb-reach zone instead of stretching ear-to-ear.
+  const contentMaxWidth = Math.min(width, 640);
+  const isTablet = Math.min(width, height) >= 700;
   const { items, updateQuantity, totalPrice, clearCart } = useCart();
   const { resetIdle, showAttract } = useKiosk();
   const [step, setStep] = useState<Step>("cart");
@@ -126,6 +133,10 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
           <View style={[styles.container, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 16 }]}>
+            {/* Cap the form to a comfortable reading width and centre on iPad
+                so it doesn't stretch ear-to-ear in landscape. On phone this
+                is a no-op because contentMaxWidth == screen width. */}
+            <View style={{ flex: 1, width: "100%", maxWidth: contentMaxWidth, alignSelf: "center" }}>
             {step !== "confirmation" && (
               <View style={styles.header}>
                 {step === "details" ? (
@@ -324,6 +335,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
                 </Pressable>
               </View>
             )}
+            </View>
           </View>
         </KeyboardAvoidingView>
       </Pressable>
