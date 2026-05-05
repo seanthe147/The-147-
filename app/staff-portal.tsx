@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -15,9 +15,10 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import { useKiosk } from "@/contexts/KioskContext";
+import { apiRequest } from "@/lib/query-client";
 import Colors from "@/constants/colors";
 import type { StaffNotice } from "@shared/schema";
 
@@ -520,12 +521,208 @@ function KioskEnableModal({ visible, onClose }: { visible: boolean; onClose: () 
   );
 }
 
+// ── Customise Attract Screen Text ────────────────────────────────────────────
+// Edits 5 keys in the generic site_settings table:
+//   kiosk_attract_welcome   (line 1, e.g. "WELCOME TO")
+//   kiosk_attract_brand     (line 2, hero,  e.g. "THE 147")
+//   kiosk_attract_tagline   (line 3, e.g. "FOOD · DRINKS · SNOOKER")
+//   kiosk_attract_cta       (CTA button title, e.g. "TAP TO ORDER")
+//   kiosk_attract_cta_sub   (CTA subtext, e.g. "Order food & drinks · Pay at the counter")
+// Empty values fall back to the hardcoded defaults inside KioskAttractOverlay.
+const ATTRACT_DEFAULTS: Record<string, string> = {
+  kiosk_attract_welcome: "WELCOME TO",
+  kiosk_attract_brand: "THE 147",
+  kiosk_attract_tagline: "FOOD · DRINKS · SNOOKER",
+  kiosk_attract_cta: "TAP TO ORDER",
+  kiosk_attract_cta_sub: "Order food & drinks · Pay at the counter",
+};
+
+function KioskAttractEditModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const { data: settings } = useQuery<Record<string, string>>({
+    queryKey: ["/api/settings"],
+    enabled: visible,
+  });
+
+  const [welcome, setWelcome] = useState("");
+  const [brand, setBrand] = useState("");
+  const [tagline, setTagline] = useState("");
+  const [cta, setCta] = useState("");
+  const [ctaSub, setCtaSub] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Hydrate inputs from server values (or defaults) once the modal opens
+  // and settings are loaded. Re-runs whenever the modal is re-opened.
+  useEffect(() => {
+    if (!visible) return;
+    setWelcome(settings?.kiosk_attract_welcome ?? ATTRACT_DEFAULTS.kiosk_attract_welcome);
+    setBrand(settings?.kiosk_attract_brand ?? ATTRACT_DEFAULTS.kiosk_attract_brand);
+    setTagline(settings?.kiosk_attract_tagline ?? ATTRACT_DEFAULTS.kiosk_attract_tagline);
+    setCta(settings?.kiosk_attract_cta ?? ATTRACT_DEFAULTS.kiosk_attract_cta);
+    setCtaSub(settings?.kiosk_attract_cta_sub ?? ATTRACT_DEFAULTS.kiosk_attract_cta_sub);
+    setError(null);
+  }, [visible, settings]);
+
+  const handleSave = async () => {
+    setError(null);
+    if (!brand.trim()) {
+      setError("Brand line cannot be empty");
+      return;
+    }
+    if (!cta.trim()) {
+      setError("CTA button text cannot be empty");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const updates: Record<string, string> = {
+        kiosk_attract_welcome: welcome.trim(),
+        kiosk_attract_brand: brand.trim(),
+        kiosk_attract_tagline: tagline.trim(),
+        kiosk_attract_cta: cta.trim(),
+        kiosk_attract_cta_sub: ctaSub.trim(),
+      };
+      // PUT each key. Run sequentially — there are only 5 and any failure
+      // mid-flight should surface clearly without partial state surprises
+      // beyond what the user can see in the editor.
+      for (const [key, value] of Object.entries(updates)) {
+        await apiRequest("PUT", `/api/settings/${key}`, { value });
+      }
+      // Invalidate so the live attract overlay (and any other screen reading
+      // /api/settings) picks up the change without a manual reload.
+      await queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
+      onClose();
+    } catch (err: any) {
+      setError(err?.message || "Could not save attract screen text");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleResetDefaults = () => {
+    setWelcome(ATTRACT_DEFAULTS.kiosk_attract_welcome);
+    setBrand(ATTRACT_DEFAULTS.kiosk_attract_brand);
+    setTagline(ATTRACT_DEFAULTS.kiosk_attract_tagline);
+    setCta(ATTRACT_DEFAULTS.kiosk_attract_cta);
+    setCtaSub(ATTRACT_DEFAULTS.kiosk_attract_cta_sub);
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.kioskModalScrim} onPress={onClose}>
+        <Pressable style={[styles.kioskModalCard, { maxWidth: 480 }]} onPress={() => {}}>
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <View style={styles.kioskModalHeader}>
+              <Ionicons name="text" size={22} color={Colors.brand.blue} />
+              <Text style={styles.kioskModalTitle}>Attract Screen Text</Text>
+            </View>
+            <Text style={styles.kioskModalBody}>
+              Customise the wording shown on the kiosk attract screen. Leave a field unchanged to keep it as-is.
+            </Text>
+
+            <Text style={styles.kioskModalLabel}>Top line (small)</Text>
+            <TextInput
+              value={welcome}
+              onChangeText={setWelcome}
+              placeholder="WELCOME TO"
+              placeholderTextColor="#9CA3AF"
+              maxLength={40}
+              autoCapitalize="characters"
+              style={styles.attractInput}
+              testID="attract-edit-welcome"
+            />
+
+            <Text style={styles.kioskModalLabel}>Brand line (huge)</Text>
+            <TextInput
+              value={brand}
+              onChangeText={setBrand}
+              placeholder="THE 147"
+              placeholderTextColor="#9CA3AF"
+              maxLength={20}
+              autoCapitalize="characters"
+              style={styles.attractInput}
+              testID="attract-edit-brand"
+            />
+
+            <Text style={styles.kioskModalLabel}>Tagline (gold)</Text>
+            <TextInput
+              value={tagline}
+              onChangeText={setTagline}
+              placeholder="FOOD · DRINKS · SNOOKER"
+              placeholderTextColor="#9CA3AF"
+              maxLength={60}
+              autoCapitalize="characters"
+              style={styles.attractInput}
+              testID="attract-edit-tagline"
+            />
+
+            <Text style={styles.kioskModalLabel}>CTA button</Text>
+            <TextInput
+              value={cta}
+              onChangeText={setCta}
+              placeholder="TAP TO ORDER"
+              placeholderTextColor="#9CA3AF"
+              maxLength={30}
+              autoCapitalize="characters"
+              style={styles.attractInput}
+              testID="attract-edit-cta"
+            />
+
+            <Text style={styles.kioskModalLabel}>CTA subtext</Text>
+            <TextInput
+              value={ctaSub}
+              onChangeText={setCtaSub}
+              placeholder="Order food & drinks · Pay at the counter"
+              placeholderTextColor="#9CA3AF"
+              maxLength={80}
+              style={styles.attractInput}
+              testID="attract-edit-cta-sub"
+            />
+
+            {error ? <Text style={styles.kioskModalError}>{error}</Text> : null}
+
+            <Pressable
+              onPress={handleResetDefaults}
+              style={({ pressed }) => [{ paddingVertical: 10, alignItems: "center", opacity: pressed ? 0.6 : 1 }]}
+              testID="attract-edit-reset"
+            >
+              <Text style={{ fontFamily: "Montserrat_500Medium", fontSize: 13, color: Colors.light.textSecondary }}>
+                Reset to defaults
+              </Text>
+            </Pressable>
+
+            <View style={styles.kioskModalBtnRow}>
+              <Pressable
+                style={({ pressed }) => [styles.kioskModalBtn, styles.kioskModalBtnGhost, { opacity: pressed ? 0.7 : 1 }]}
+                onPress={onClose}
+                disabled={submitting}
+              >
+                <Text style={styles.kioskModalBtnGhostText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.kioskModalBtn, styles.kioskModalBtnPrimary, { opacity: submitting ? 0.6 : pressed ? 0.85 : 1 }]}
+                onPress={handleSave}
+                disabled={submitting}
+                testID="attract-edit-save"
+              >
+                {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.kioskModalBtnPrimaryText}>Save</Text>}
+              </Pressable>
+            </View>
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { logout, username, displayName, role, isManager, isOwner } = useStaffAuth();
   const { isKioskMode } = useKiosk();
   const [kioskModalVisible, setKioskModalVisible] = useState(false);
+  const [attractEditorVisible, setAttractEditorVisible] = useState(false);
 
   const noticesQuery = useQuery<StaffNotice[]>({
     queryKey: ["/api/staff-notices"],
@@ -837,11 +1034,20 @@ function DashboardScreen() {
                 }}
                 testID="portal-kiosk-mode"
               />
+              <AdminTool
+                icon="text"
+                title="Customise Attract Screen"
+                description="Edit the welcome text, brand line, tagline and CTA shown when the kiosk is idle."
+                color="#7C3AED"
+                onPress={() => setAttractEditorVisible(true)}
+                testID="portal-kiosk-attract-edit"
+              />
             </View>
           </>
         )}
 
         <KioskEnableModal visible={kioskModalVisible} onClose={() => setKioskModalVisible(false)} />
+        <KioskAttractEditModal visible={attractEditorVisible} onClose={() => setAttractEditorVisible(false)} />
 
         <Text style={styles.sectionLabel}>SESSION</Text>
 
@@ -1523,5 +1729,18 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_700Bold",
     fontSize: 15,
     color: "#fff",
+  },
+  // Free-form text input for the attract editor (left-aligned, normal letter
+  // spacing — distinct from the centred PIN-style kioskModalInput above).
+  attractInput: {
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 15,
+    color: Colors.light.text,
+    backgroundColor: "#F9FAFB",
   },
 });

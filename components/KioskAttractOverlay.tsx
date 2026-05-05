@@ -50,6 +50,25 @@ export function KioskAttractOverlay() {
     enabled: isKioskMode,
   });
 
+  // Manager-customisable attract-screen text. Stored in the generic
+  // site_settings key/value table; managers edit it from the staff portal.
+  // We fall back to the original hardcoded copy when a key is empty so a
+  // never-touched DB still renders the same screen as before.
+  const { data: settings } = useQuery<Record<string, string>>({
+    queryKey: ["/api/settings"],
+    staleTime: 60 * 1000,
+    enabled: isKioskMode,
+  });
+  const txt = (key: string, fallback: string) => {
+    const v = settings?.[key];
+    return v && v.trim().length > 0 ? v : fallback;
+  };
+  const welcomeText = txt("kiosk_attract_welcome", "WELCOME TO");
+  const brandText = txt("kiosk_attract_brand", "THE 147");
+  const taglineText = txt("kiosk_attract_tagline", "FOOD · DRINKS · SNOOKER");
+  const ctaText = txt("kiosk_attract_cta", "TAP TO ORDER");
+  const ctaSubText = txt("kiosk_attract_cta_sub", "Order food & drinks · Pay at the counter");
+
   const activeBanners = (banners ?? []).filter((b) => b.active);
   const [bannerIdx, setBannerIdx] = useState(0);
 
@@ -134,16 +153,16 @@ export function KioskAttractOverlay() {
             pointerEvents="none"
           >
             <View style={styles.brandWrap}>
-              <Text style={[styles.brandSmall, isTablet && { fontSize: 20, letterSpacing: 6 }]}>WELCOME TO</Text>
-              <Text style={[styles.brandBig, isTablet && { fontSize: isLandscape ? 96 : 120, letterSpacing: 8 }]}>THE 147</Text>
-              <Text style={[styles.brandTag, isTablet && { fontSize: 18, letterSpacing: 8 }]}>FOOD · DRINKS · SNOOKER</Text>
+              <Text style={[styles.brandSmall, isTablet && { fontSize: 20, letterSpacing: 6 }]}>{welcomeText}</Text>
+              <Text style={[styles.brandBig, isTablet && { fontSize: isLandscape ? 96 : 120, letterSpacing: 8 }]}>{brandText}</Text>
+              <Text style={[styles.brandTag, isTablet && { fontSize: 18, letterSpacing: 8 }]}>{taglineText}</Text>
             </View>
 
             <Animated.View style={[styles.ctaWrap, { transform: [{ scale: pulse }] }]}>
               <View style={[styles.cta, isTablet && { paddingHorizontal: 80, paddingVertical: 48, maxWidth: 560 }]}>
                 <Ionicons name="hand-left" size={isTablet ? 48 : 36} color={Colors.brand.blue} />
-                <Text style={[styles.ctaText, isTablet && { fontSize: 48 }]}>TAP TO ORDER</Text>
-                <Text style={[styles.ctaSub, isTablet && { fontSize: 16 }]}>Order food & drinks · Pay at the counter</Text>
+                <Text style={[styles.ctaText, isTablet && { fontSize: 48 }]}>{ctaText}</Text>
+                <Text style={[styles.ctaSub, isTablet && { fontSize: 16 }]}>{ctaSubText}</Text>
               </View>
             </Animated.View>
 
