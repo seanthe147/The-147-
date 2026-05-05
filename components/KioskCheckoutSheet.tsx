@@ -104,8 +104,13 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
         // Kitchen closed mid-flight → bounce back to the cart so the user
         // can drop the offending food items. The order screen behind the
         // sheet already greys those out via /api/ordering-status.
-        if (data?.kitchenClosed) {
-          Alert.alert("Kitchen closed", data?.message || "Food items aren't available right now. Please remove them from your basket.");
+        if (data?.kitchenClosed || data?.barClosed) {
+          const title = data?.kitchenClosed && data?.barClosed
+            ? "Kitchen & bar closed"
+            : data?.barClosed
+              ? "Bar closed"
+              : "Kitchen closed";
+          Alert.alert(title, data?.message || "Some items aren't available right now. Please remove them from your basket.");
           setStep("cart");
           return;
         }

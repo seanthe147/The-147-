@@ -632,6 +632,7 @@ function ItemCard({
   highlighted,
   showDietaryTags,
   kitchenClosed,
+  barClosed,
 }: {
   item: MenuItem;
   onOpenModifiers: (item: MenuItem) => void;
@@ -642,10 +643,13 @@ function ItemCard({
    *  right now → render greyed out + show "Kitchen closed" badge + block
    *  taps. Drinks/snacks are unaffected. */
   kitchenClosed?: boolean;
+  /** Item belongs to a bar (non-kitchen) category and the bar schedule is
+   *  closed → grey out and show "Bar closed" badge. */
+  barClosed?: boolean;
 }) {
   const { addItem, updateQuantity, getQuantity } = useCart();
   const qty = getQuantity(item.variationId);
-  const soldOut = !!item.soldOut || !!kitchenClosed;
+  const soldOut = !!item.soldOut || !!kitchenClosed || !!barClosed;
   const cartName = item.variationName ? `${item.name} — ${item.variationName}` : item.name;
   const hasImage = !!item.imageUrl;
   const hasModifiers = !!(item.modifiers && item.modifiers.length > 0);
@@ -693,7 +697,7 @@ function ItemCard({
           )}
           {soldOut && (
             <View style={styles.soldOutBadge}>
-              <Text style={styles.soldOutText}>{kitchenClosed && !item.soldOut ? "Kitchen closed" : "Unavailable"}</Text>
+              <Text style={styles.soldOutText}>{!item.soldOut && kitchenClosed ? "Kitchen closed" : !item.soldOut && barClosed ? "Bar closed" : "Unavailable"}</Text>
             </View>
           )}
           {hasModifiers && !soldOut && (
@@ -1707,7 +1711,7 @@ export default function OrderScreen() {
   });
 
   const queryClient = useQueryClient();
-  const { data: orderingStatus } = useQuery<{ enabled: boolean; kitchenOpen?: boolean; reason?: string; kitchenReason?: string; nextOpen?: string; closesAt?: string }>({
+  const { data: orderingStatus } = useQuery<{ enabled: boolean; kitchenOpen?: boolean; barOpen?: boolean; reason?: string; kitchenReason?: string; barReason?: string; nextOpen?: string; barNextOpen?: string; closesAt?: string; barClosesAt?: string }>({
     queryKey: ["/api/ordering-status"],
     staleTime: 5 * 1000,
     refetchInterval: 15 * 1000,
@@ -1720,6 +1724,9 @@ export default function OrderScreen() {
   // as open so we never hide food in error. Only when explicitly false do
   // we grey out kitchen items + show the "drinks only" banner.
   const kitchenOpen = orderingStatus?.kitchenOpen !== false;
+  // Same defensive default for `barOpen` — undefined on legacy responses
+  // means we don't grey drinks out unless the server explicitly says so.
+  const barOpen = orderingStatus?.barOpen !== false;
 
   const activeBanners = useMemo(
     () => (banners ?? []).filter((b) => b.active),
@@ -1885,8 +1892,8 @@ export default function OrderScreen() {
   }, [params.hlCatId, params.hlItemId, categories]);
 
   const renderItem = useCallback(({ item }: { item: MenuItem }) => (
-    <ItemCard item={item} onOpenModifiers={handleOpenModifiers} highlighted={item.id === highlightItemId} showDietaryTags={featureFlags.dietaryFilters} kitchenClosed={!kitchenOpen && !!activeCategoryData?.isKitchen} />
-  ), [handleOpenModifiers, highlightItemId, featureFlags.dietaryFilters, kitchenOpen, activeCategoryData?.isKitchen]);
+    <ItemCard item={item} onOpenModifiers={handleOpenModifiers} highlighted={item.id === highlightItemId} showDietaryTags={featureFlags.dietaryFilters} kitchenClosed={!kitchenOpen && !!activeCategoryData?.isKitchen} barClosed={!barOpen && !activeCategoryData?.isKitchen} />
+  ), [handleOpenModifiers, highlightItemId, featureFlags.dietaryFilters, kitchenOpen, barOpen, activeCategoryData?.isKitchen]);
 
   const handleSelectCategory = useCallback((id: string) => {
     setSelectedCategory(id);
@@ -2019,7 +2026,11 @@ export default function OrderScreen() {
                       <View style={styles.searchCatLabel}>
                         <Text style={styles.searchCatLabelText}>{categoryName}</Text>
                       </View>
-                      <ItemCard item={item} onOpenModifiers={handleOpenModifiers} showDietaryTags={featureFlags.dietaryFilters} kitchenClosed={!kitchenOpen && !!(categories?.find(c => c.id === categoryId)?.isKitchen ?? categories?.find(c => c.subcategories?.some(s => s.id === categoryId))?.isKitchen)} />
+                      {(() => {
+                        const cat = categories?.find(c => c.id === categoryId) ?? categories?.find(c => c.subcategories?.some(s => s.id === categoryId));
+                        const isKitchenCat = !!cat?.isKitchen;
+                        return <ItemCard item={item} onOpenModifiers={handleOpenModifiers} showDietaryTags={featureFlags.dietaryFilters} kitchenClosed={!kitchenOpen && isKitchenCat} barClosed={!barOpen && !isKitchenCat} />;
+                      })()}
                     </View>
                   ))}
                 </View>
@@ -2048,7 +2059,7 @@ export default function OrderScreen() {
                 </View>
               )}
 
-              {orderingEnabled && !kitchenOpen && (
+              {orderingEnabled && !kitchenOpen && barOpen && (
                 <View style={styles.orderingClosedBanner}>
                   <Ionicons name="restaurant-outline" size={22} color="#92400e" />
                   <View style={{ flex: 1 }}>
@@ -2059,6 +2070,40 @@ export default function OrderScreen() {
                     {orderingStatus?.nextOpen && (
                       <Text style={[styles.orderingClosedSub, { marginTop: 4, fontWeight: "700" as const, color: "#78350f" }]}>
                         Kitchen back: {orderingStatus.nextOpen}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              )}
+
+              {orderingEnabled && !barOpen && kitchenOpen && (
+                <View style={styles.orderingClosedBanner}>
+                  <Ionicons name="wine-outline" size={22} color="#92400e" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.orderingClosedTitle}>Bar closed — food only</Text>
+                    <Text style={styles.orderingClosedSub}>
+                      {orderingStatus?.barReason ?? "Drinks are unavailable right now."}
+                    </Text>
+                    {orderingStatus?.barNextOpen && (
+                      <Text style={[styles.orderingClosedSub, { marginTop: 4, fontWeight: "700" as const, color: "#78350f" }]}>
+                        Bar back: {orderingStatus.barNextOpen}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              )}
+
+              {orderingEnabled && !kitchenOpen && !barOpen && (
+                <View style={styles.orderingClosedBanner}>
+                  <Ionicons name="moon-outline" size={22} color="#92400e" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.orderingClosedTitle}>Closed for ordering</Text>
+                    <Text style={styles.orderingClosedSub}>
+                      {orderingStatus?.reason ?? "Both the kitchen and bar are closed right now."}
+                    </Text>
+                    {(orderingStatus?.barNextOpen || orderingStatus?.nextOpen) && (
+                      <Text style={[styles.orderingClosedSub, { marginTop: 4, fontWeight: "700" as const, color: "#78350f" }]}>
+                        Back: {orderingStatus?.barNextOpen ?? orderingStatus?.nextOpen}
                       </Text>
                     )}
                   </View>

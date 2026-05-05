@@ -5201,11 +5201,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // show "Kitchen closed — drinks only" and grey out food items instead of
   // taking the whole menu offline. Legacy callers that only read `enabled`
   // still see the manual kill switch through that field.
-  interface OrderingStatusResult { enabled: boolean; kitchenOpen: boolean; reason: string; kitchenReason?: string; nextOpen?: string; closesAt?: string; manualOverride?: boolean; }
+  interface OrderingStatusResult {
+    enabled: boolean;
+    kitchenOpen: boolean;
+    barOpen: boolean;
+    reason: string;
+    kitchenReason?: string;
+    barReason?: string;
+    nextOpen?: string;        // when the kitchen comes back
+    barNextOpen?: string;     // when the bar comes back
+    closesAt?: string;
+    barClosesAt?: string;
+    manualOverride?: boolean;
+  }
 
   // Wednesday (3), Thursday (4), Friday (5), Saturday (6), Sunday (0).
   // Day-of-week ints follow JS Date.getDay() — Sunday is 0, not 7.
   const DEFAULT_SCHEDULE: OrderingSchedule = { days: [3, 4, 5, 6, 0], startTime: "12:00", endTime: "20:00" };
+  // Bar runs longer than the kitchen — every day, lunch through last orders.
+  // Staff can edit via PUT /api/staff/bar-schedule.
+  const DEFAULT_BAR_SCHEDULE: OrderingSchedule = { days: [0, 1, 2, 3, 4, 5, 6], startTime: "12:00", endTime: "23:00" };
   const DAY_NAMES_FULL = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
   const DAY_NAMES_SHORT = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
@@ -5215,6 +5230,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (raw) return { ...DEFAULT_SCHEDULE, ...JSON.parse(raw) };
     } catch {}
     return DEFAULT_SCHEDULE;
+  }
+
+  async function getBarSchedule(): Promise<OrderingSchedule> {
+    try {
+      const raw = await storage.getSetting("bar_schedule");
+      if (raw) return { ...DEFAULT_BAR_SCHEDULE, ...JSON.parse(raw) };
+    } catch {}
+    return DEFAULT_BAR_SCHEDULE;
+  }
+
+  // Compute open/closed + human reason for a generic schedule (kitchen or bar).
+  // Returns the same shape both consumers need so getOrderingStatus stays flat.
+  function computeScheduleStatus(
+    label: string,                    // "Kitchen" | "Bar"
+    schedule: OrderingSchedule,
+    todayOverride: OrderingOverride | undefined,
+    london: { dateStr: string; hhmm: string; dow: number },
+  ): { open: boolean; reason: string; nextOpen?: string; closesAt?: string } {
+    const { hhmm, dow } = london;
+    let open = false;
+    let reason = "";
+    let nextOpen: string | undefined;
+    let closesAt: string | undefined;
+
+    if (todayOverride) {
+      if (todayOverride.closed) {
+        reason = `${label} is closed today${todayOverride.note ? ` (${todayOverride.note})` : ""}.`;
+        nextOpen = scheduleOpenMessage(schedule);
+        return { open, reason, nextOpen, closesAt };
+      }
+      const oStart = todayOverride.startTime ?? schedule.startTime;
+      const oEnd = todayOverride.endTime ?? schedule.endTime;
+      if (hhmm >= oStart && hhmm < oEnd) {
+        return { open: true, reason: `${label} open until ${oEnd}`, closesAt: oEnd };
+      }
+      if (hhmm < oStart) {
+        return { open: false, reason: `${label} opens today at ${oStart}${todayOverride.note ? ` (${todayOverride.note})` : ""}`, nextOpen: `Today from ${oStart}` };
+      }
+      // past override → fall through to weekly logic
+    }
+
+    const isScheduledDay = schedule.days.includes(dow);
+    if (!isScheduledDay) {
+      let daysAhead = 1;
+      let nextDow = (dow + daysAhead) % 7;
+      while (!schedule.days.includes(nextDow) && daysAhead < 8) { daysAhead++; nextDow = (dow + daysAhead) % 7; }
+      const nextName = daysAhead === 1 ? "Tomorrow" : DAY_NAMES_FULL[nextDow];
+      reason = `${label} serves ${scheduleOpenMessage(schedule)}.`;
+      nextOpen = `${nextName} from ${schedule.startTime}`;
+    } else if (hhmm < schedule.startTime) {
+      reason = `${label} opens at ${schedule.startTime} today.`;
+      nextOpen = `Today from ${schedule.startTime}`;
+    } else if (hhmm >= schedule.endTime) {
+      let daysAhead = 1;
+      let nextDow = (dow + daysAhead) % 7;
+      while (!schedule.days.includes(nextDow) && daysAhead < 8) { daysAhead++; nextDow = (dow + daysAhead) % 7; }
+      const nextName = daysAhead === 1 ? "Tomorrow" : DAY_NAMES_FULL[nextDow];
+      reason = `${label} closed at ${schedule.endTime}. Back ${nextName.toLowerCase()}.`;
+      nextOpen = `${nextName} from ${schedule.startTime}`;
+    } else {
+      open = true;
+      reason = `${label} open until ${schedule.endTime}`;
+      closesAt = schedule.endTime;
+    }
+    return { open, reason, nextOpen, closesAt };
   }
 
   async function getOrderingOverrides(): Promise<OrderingOverride[]> {
@@ -5251,77 +5331,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (manualEnabled === "false") {
       const disabledDate = await storage.getSetting("ordering_disabled_date");
       if (!disabledDate || disabledDate === today) {
-        return { enabled: false, kitchenOpen: false, reason: "Online ordering has been temporarily closed by staff.", manualOverride: true };
+        return { enabled: false, kitchenOpen: false, barOpen: false, reason: "Online ordering has been temporarily closed by staff.", manualOverride: true };
       }
       // Auto-reset: disabled on a previous day
       await storage.setSetting("ordering_enabled", "true");
     }
 
-    const schedule = await getOrderingSchedule();
-    const overrides = await getOrderingOverrides();
-
-    // 2. Compute kitchen status from the schedule + today's override. Drinks
-    // remain orderable around the kitchen window, so we never set `enabled`
-    // to false from here — only `kitchenOpen`.
-    let kitchenOpen = false;
-    let kitchenReason = "";
-    let nextOpen: string | undefined;
-    let closesAt: string | undefined;
-
+    const [schedule, barSchedule, overrides] = await Promise.all([
+      getOrderingSchedule(),
+      getBarSchedule(),
+      getOrderingOverrides(),
+    ]);
     const todayOverride = overrides.find(o => o.date === today);
-    if (todayOverride) {
-      if (todayOverride.closed) {
-        kitchenReason = `Kitchen is closed today${todayOverride.note ? ` (${todayOverride.note})` : ""}.`;
-        nextOpen = scheduleOpenMessage(schedule);
-      } else {
-        const oStart = todayOverride.startTime ?? schedule.startTime;
-        const oEnd = todayOverride.endTime ?? schedule.endTime;
-        if (hhmm >= oStart && hhmm < oEnd) {
-          kitchenOpen = true;
-          kitchenReason = `Kitchen open until ${oEnd}`;
-          closesAt = oEnd;
-        } else if (hhmm < oStart) {
-          kitchenReason = `Kitchen opens today at ${oStart}${todayOverride.note ? ` (${todayOverride.note})` : ""}`;
-          nextOpen = `Today from ${oStart}`;
-        } else {
-          // Past override window — fall through to weekly logic below
-        }
-      }
+
+    // 2. Compute kitchen + bar status independently from their own schedules.
+    // Both share the same date-override list (a "venue closed today" override
+    // shuts both). The schedule alone never flips `enabled` — that's the
+    // venue-wide manual kill switch above.
+    const kitchenStatus = computeScheduleStatus("Kitchen", schedule, todayOverride, { dateStr: today, hhmm, dow });
+    const barStatus = computeScheduleStatus("Bar", barSchedule, todayOverride, { dateStr: today, hhmm, dow });
+
+    // Customer-facing summary. We bias toward whichever side is closed so the
+    // banner explains the user-visible restriction.
+    let reason: string;
+    if (kitchenStatus.open && barStatus.open) {
+      reason = kitchenStatus.reason;
+    } else if (!kitchenStatus.open && !barStatus.open) {
+      reason = `${barStatus.reason} ${kitchenStatus.reason}`.trim();
+    } else if (!kitchenStatus.open) {
+      reason = `${kitchenStatus.reason} Drinks are still available.`;
+    } else {
+      reason = `${barStatus.reason} Food is still available.`;
     }
 
-    if (!kitchenOpen && !kitchenReason) {
-      const isScheduledDay = schedule.days.includes(dow);
-      if (!isScheduledDay) {
-        let daysAhead = 1;
-        let nextDow = (dow + daysAhead) % 7;
-        while (!schedule.days.includes(nextDow) && daysAhead < 8) { daysAhead++; nextDow = (dow + daysAhead) % 7; }
-        const nextName = daysAhead === 1 ? "Tomorrow" : DAY_NAMES_FULL[nextDow];
-        kitchenReason = `Kitchen serves ${scheduleOpenMessage(schedule)}.`;
-        nextOpen = `${nextName} from ${schedule.startTime}`;
-      } else if (hhmm < schedule.startTime) {
-        kitchenReason = `Kitchen opens at ${schedule.startTime} today.`;
-        nextOpen = `Today from ${schedule.startTime}`;
-      } else if (hhmm >= schedule.endTime) {
-        let daysAhead = 1;
-        let nextDow = (dow + daysAhead) % 7;
-        while (!schedule.days.includes(nextDow) && daysAhead < 8) { daysAhead++; nextDow = (dow + daysAhead) % 7; }
-        const nextName = daysAhead === 1 ? "Tomorrow" : DAY_NAMES_FULL[nextDow];
-        kitchenReason = `Kitchen closed at ${schedule.endTime}. Back ${nextName.toLowerCase()}.`;
-        nextOpen = `${nextName} from ${schedule.startTime}`;
-      } else {
-        kitchenOpen = true;
-        kitchenReason = `Kitchen open until ${schedule.endTime}`;
-        closesAt = schedule.endTime;
-      }
-    }
-
-    // `reason` is the customer-facing summary — when the kitchen is shut we
-    // explain that drinks are still available so they don't bounce.
-    const reason = kitchenOpen
-      ? kitchenReason
-      : `${kitchenReason} Drinks and snacks are still available.`;
-
-    return { enabled: true, kitchenOpen, reason, kitchenReason, nextOpen, closesAt };
+    return {
+      enabled: true,
+      kitchenOpen: kitchenStatus.open,
+      barOpen: barStatus.open,
+      reason,
+      kitchenReason: kitchenStatus.reason,
+      barReason: barStatus.reason,
+      nextOpen: kitchenStatus.nextOpen,
+      barNextOpen: barStatus.nextOpen,
+      closesAt: kitchenStatus.closesAt,
+      barClosesAt: barStatus.closesAt,
+    };
   }
 
   async function getOrderingEnabled(): Promise<boolean> {
@@ -5340,6 +5394,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // through). Walks the live Square menu against `category_settings.is_kitchen`
   // and includes any sub-category that's merged into a kitchen parent.
   async function getKitchenVariationIds(): Promise<Set<string>> {
+    return (await getCategorisedVariationIds()).kitchen;
+  }
+
+  // Returns the variation IDs split into kitchen vs bar (non-kitchen). Used by
+  // the checkout endpoints to reject food when kitchen is closed AND drinks
+  // when bar is closed in a single Square fetch.
+  async function getCategorisedVariationIds(): Promise<{ kitchen: Set<string>; bar: Set<string> }> {
+    const out = { kitchen: new Set<string>(), bar: new Set<string>() };
     try {
       const [categories, settings] = await Promise.all([
         square.getMenuFromSquare(),
@@ -5353,16 +5415,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           kitchenCatIds.add(s.categoryId);
         }
       }
-      const out = new Set<string>();
       for (const cat of categories) {
-        if (!kitchenCatIds.has(cat.id)) continue;
-        for (const item of cat.items) out.add(item.variationId);
+        const isKitchenCat = kitchenCatIds.has(cat.id);
+        for (const item of cat.items) {
+          if (isKitchenCat) out.kitchen.add(item.variationId);
+          else out.bar.add(item.variationId);
+        }
       }
-      return out;
     } catch (err) {
-      console.error("[KITCHEN] Failed to build kitchen variation set:", (err as any)?.message);
-      return new Set();
+      console.error("[KITCHEN] Failed to build categorised variation sets:", (err as any)?.message);
     }
+    return out;
   }
 
   app.get("/api/ordering-status", async (_req, res) => {
@@ -5409,6 +5472,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(schedule);
   });
 
+  // ── Bar Schedule ────────────────────────────────────────────────────────────
+  app.get("/api/staff/bar-schedule", staffAuth, async (_req, res) => {
+    res.json(await getBarSchedule());
+  });
+
+  app.put("/api/staff/bar-schedule", staffAuth, async (req: any, res) => {
+    const { days, startTime, endTime } = req.body;
+    if (!Array.isArray(days) || !startTime || !endTime) {
+      return res.status(400).json({ message: "days, startTime and endTime required" });
+    }
+    const schedule: OrderingSchedule = { days, startTime, endTime };
+    await storage.setSetting("bar_schedule", JSON.stringify(schedule));
+    const who = req.staff?.username || req.staff?.name || "staff";
+    console.log(`[ORDERING] Bar schedule updated by ${who}: ${JSON.stringify(schedule)}`);
+    res.json(schedule);
+  });
+
   // ── Ordering Overrides ──────────────────────────────────────────────────────
   app.get("/api/staff/ordering-overrides", staffAuth, async (_req, res) => {
     const overrides = await getOrderingOverrides();
@@ -5446,15 +5526,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!status.enabled) {
         return res.status(503).json({ message: "Online ordering is currently unavailable. Please order at the bar." });
       }
-      // When the kitchen is closed, drinks/snacks are still allowed but any
-      // food item in the cart fails the order — staff can't cook it.
-      if (!status.kitchenOpen) {
-        const kitchenIds = await getKitchenVariationIds();
-        const offending = items.filter((i: any) => kitchenIds.has(String(i?.variationId ?? "")));
+      // When the kitchen is closed, food items are rejected (staff can't
+      // cook). When the bar schedule is closed, drinks are rejected. Both
+      // checks share one Square fetch.
+      if (!status.kitchenOpen || !status.barOpen) {
+        const { kitchen: kitchenIds, bar: barIds } = await getCategorisedVariationIds();
+        const offending: any[] = [];
+        for (const i of items) {
+          const vid = String(i?.variationId ?? "");
+          if (!status.kitchenOpen && kitchenIds.has(vid)) offending.push(i);
+          else if (!status.barOpen && barIds.has(vid)) offending.push(i);
+        }
         if (offending.length > 0) {
+          const parts: string[] = [];
+          if (!status.kitchenOpen) parts.push(`Kitchen is closed${status.kitchenReason ? ` — ${status.kitchenReason}` : ""}`);
+          if (!status.barOpen) parts.push(`Bar is closed${status.barReason ? ` — ${status.barReason}` : ""}`);
           return res.status(503).json({
-            message: `Kitchen is closed — please remove food items from your basket. ${status.kitchenReason ?? ""}`.trim(),
-            kitchenClosed: true,
+            message: `${parts.join(". ")}. Please remove the highlighted items from your basket.`,
+            kitchenClosed: !status.kitchenOpen,
+            barClosed: !status.barOpen,
             offendingVariationIds: offending.map((i: any) => i.variationId),
           });
         }
@@ -5557,13 +5647,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!status.enabled) {
         return res.status(503).json({ message: "Ordering is currently unavailable." });
       }
-      if (!status.kitchenOpen) {
-        const kitchenIds = await getKitchenVariationIds();
-        const offending = items.filter((i: any) => kitchenIds.has(String(i?.variationId ?? "")));
+      if (!status.kitchenOpen || !status.barOpen) {
+        const { kitchen: kitchenIds, bar: barIds } = await getCategorisedVariationIds();
+        const offending: any[] = [];
+        for (const i of items) {
+          const vid = String(i?.variationId ?? "");
+          if (!status.kitchenOpen && kitchenIds.has(vid)) offending.push(i);
+          else if (!status.barOpen && barIds.has(vid)) offending.push(i);
+        }
         if (offending.length > 0) {
+          const parts: string[] = [];
+          if (!status.kitchenOpen) parts.push(`Kitchen is closed${status.kitchenReason ? ` — ${status.kitchenReason}` : ""}`);
+          if (!status.barOpen) parts.push(`Bar is closed${status.barReason ? ` — ${status.barReason}` : ""}`);
           return res.status(503).json({
-            message: `Kitchen is closed — please remove food items. ${status.kitchenReason ?? ""}`.trim(),
-            kitchenClosed: true,
+            message: `${parts.join(". ")}. Please remove the highlighted items.`,
+            kitchenClosed: !status.kitchenOpen,
+            barClosed: !status.barOpen,
             offendingVariationIds: offending.map((i: any) => i.variationId),
           });
         }
@@ -5900,13 +5999,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!status.enabled) {
         return res.status(503).json({ message: "Online ordering is currently unavailable. Please order at the bar." });
       }
-      if (!status.kitchenOpen) {
-        const kitchenIds = await getKitchenVariationIds();
-        const offending = items.filter((i: any) => kitchenIds.has(String(i?.variationId ?? "")));
+      if (!status.kitchenOpen || !status.barOpen) {
+        const { kitchen: kitchenIds, bar: barIds } = await getCategorisedVariationIds();
+        const offending: any[] = [];
+        for (const i of items) {
+          const vid = String(i?.variationId ?? "");
+          if (!status.kitchenOpen && kitchenIds.has(vid)) offending.push(i);
+          else if (!status.barOpen && barIds.has(vid)) offending.push(i);
+        }
         if (offending.length > 0) {
+          const parts: string[] = [];
+          if (!status.kitchenOpen) parts.push(`Kitchen is closed${status.kitchenReason ? ` — ${status.kitchenReason}` : ""}`);
+          if (!status.barOpen) parts.push(`Bar is closed${status.barReason ? ` — ${status.barReason}` : ""}`);
           return res.status(503).json({
-            message: `Kitchen is closed — please remove food items. ${status.kitchenReason ?? ""}`.trim(),
-            kitchenClosed: true,
+            message: `${parts.join(". ")}. Please remove the highlighted items.`,
+            kitchenClosed: !status.kitchenOpen,
+            barClosed: !status.barOpen,
             offendingVariationIds: offending.map((i: any) => i.variationId),
           });
         }
