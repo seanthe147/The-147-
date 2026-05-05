@@ -1514,3 +1514,134 @@ export async function createRefund(opts: {
   });
   return data.refund;
 }
+
+// ── Square Terminal API ──────────────────────────────────────────────────────
+//
+// Square Terminal is Square's standalone payment device. The Terminal API
+// lets us push a payment request to a paired terminal — the device lights
+// up showing the amount and waits for the customer to tap / insert / swipe
+// their card. This means kiosk customers can pay at the counter without
+// staff having to open the ticket in Square POS first.
+//
+// Pairing flow:
+//   1. POST /v2/devices/codes — generates a one-time code (e.g. "ABCDXYZ")
+//   2. Staff types the code on the terminal under
+//      Settings → Sign In → Sign in with code
+//   3. Poll GET /v2/devices/codes/{id} until status === "PAIRED"
+//   4. Save the returned device_id — it can be reused indefinitely
+//
+// Once paired, POST /v2/terminals/checkouts pushes a checkout to the
+// device. Square fires `terminal.checkout.updated` webhooks as the status
+// changes (PENDING → IN_PROGRESS → COMPLETED / CANCELED / FAILED).
+//
+// Docs: https://developer.squareup.com/docs/terminal-api/overview
+
+export async function createTerminalDeviceCode(name: string): Promise<{
+  id: string;
+  code: string;
+  status: string;
+  pairBy: string | null;
+}> {
+  const data = await squareRequest("POST", "/v2/devices/codes", {
+    idempotency_key: `pair-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    device_code: {
+      name: (name || "The 147 Counter").slice(0, 128),
+      product_type: "TERMINAL_API",
+      location_id: getLocationId(),
+    },
+  });
+  const dc = data.device_code || {};
+  return {
+    id: dc.id,
+    code: dc.code,
+    status: dc.status || "UNKNOWN",
+    pairBy: dc.pair_by || null,
+  };
+}
+
+export async function getTerminalDeviceCode(codeId: string): Promise<{
+  id: string;
+  code: string;
+  status: string;
+  deviceId: string | null;
+  name: string | null;
+} | null> {
+  try {
+    const data = await squareRequest("GET", `/v2/devices/codes/${codeId}`);
+    const dc = data.device_code;
+    if (!dc) return null;
+    return {
+      id: dc.id,
+      code: dc.code,
+      status: dc.status || "UNKNOWN",
+      deviceId: dc.device_id || null,
+      name: dc.name || null,
+    };
+  } catch (err) {
+    if (err instanceof SquareError && err.statusCode === 404) return null;
+    throw err;
+  }
+}
+
+// Pushes a checkout to a paired terminal. The customer sees the amount on
+// the device and taps / inserts / swipes their card. Use `referenceId` to
+// link back to your local order (we set it to the app_order id as a string
+// so the webhook handler can find the row).
+export async function createTerminalCheckout(opts: {
+  deviceId: string;
+  amountPence: number;
+  referenceId: string;
+  note: string;
+  idempotencyKey: string;
+}): Promise<{ id: string; status: string }> {
+  const data = await squareRequest("POST", "/v2/terminals/checkouts", {
+    idempotency_key: opts.idempotencyKey,
+    checkout: {
+      amount_money: { amount: opts.amountPence, currency: "GBP" },
+      reference_id: opts.referenceId.slice(0, 40),
+      note: opts.note.slice(0, 500),
+      device_options: {
+        device_id: opts.deviceId,
+        skip_receipt_screen: true,
+        tip_settings: { allow_tipping: false },
+      },
+    },
+  });
+  const c = data.checkout || {};
+  return { id: c.id, status: c.status || "PENDING" };
+}
+
+export async function getTerminalCheckout(checkoutId: string): Promise<{
+  id: string;
+  status: string;
+  referenceId: string | null;
+  paymentIds: string[];
+} | null> {
+  try {
+    const data = await squareRequest("GET", `/v2/terminals/checkouts/${checkoutId}`);
+    const c = data.checkout;
+    if (!c) return null;
+    return {
+      id: c.id,
+      status: c.status || "UNKNOWN",
+      referenceId: c.reference_id || null,
+      paymentIds: c.payment_ids || [],
+    };
+  } catch (err) {
+    if (err instanceof SquareError && err.statusCode === 404) return null;
+    throw err;
+  }
+}
+
+// Cancels a pending / in-progress terminal checkout. Used if staff need to
+// abort a charge (e.g. customer changed their mind). Errors are swallowed
+// because the local DB cancel is the source of truth.
+export async function cancelTerminalCheckout(checkoutId: string): Promise<boolean> {
+  try {
+    await squareRequest("POST", `/v2/terminals/checkouts/${checkoutId}/cancel`, {});
+    return true;
+  } catch (err: any) {
+    console.error(`[SQUARE-TERMINAL] cancelTerminalCheckout(${checkoutId}) failed:`, err?.message || err);
+    return false;
+  }
+}

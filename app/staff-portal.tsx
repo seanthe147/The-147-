@@ -537,6 +537,266 @@ const ATTRACT_DEFAULTS: Record<string, string> = {
   kiosk_attract_cta_sub: "Order food & drinks · Pay at the counter",
 };
 
+// ── Square Terminal pairing & status ──────────────────────────────────────────
+// Manager-only modal that lets staff pair a Square Terminal to the venue,
+// toggle whether kiosk orders are pushed to it, and unpair if they need to
+// move the device. Pairing flow:
+//   1. Tap "Pair a Terminal" → POST /pair-code → server returns a 6-char code.
+//   2. Modal shows the code with instructions (Settings → Sign In → Use a code).
+//   3. Modal polls GET /pair-code/:id every 3s. When status === "PAIRED",
+//      the server has already saved the device_id, so we just refetch status.
+// Disabled by default — toggling Enabled on actually starts pushing orders.
+type TerminalStatus = {
+  paired: boolean;
+  deviceId: string | null;
+  deviceName: string | null;
+  enabled: boolean;
+};
+function SquareTerminalModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const { data: status, refetch } = useQuery<TerminalStatus>({
+    queryKey: ["/api/staff/square-terminal/status"],
+    enabled: visible,
+  });
+
+  const [pairing, setPairing] = useState<{ codeId: string; code: string } | null>(null);
+  const [pairError, setPairError] = useState<string | null>(null);
+  const [pairing_busy, setPairingBusy] = useState(false);
+  const [enableSaving, setEnableSaving] = useState(false);
+  const [unpairBusy, setUnpairBusy] = useState(false);
+
+  // Reset transient state every time the modal opens so the user always
+  // sees the current paired status, not the leftover pairing screen from
+  // a previous session.
+  useEffect(() => {
+    if (!visible) {
+      setPairing(null);
+      setPairError(null);
+    }
+  }, [visible]);
+
+  // Poll for pairing completion while a code is on screen. Server-side the
+  // /pair-code/:id route auto-saves the device_id when status flips to
+  // PAIRED, so all we need to do is refetch our local status query and
+  // close the pairing screen when it appears.
+  useEffect(() => {
+    if (!visible || !pairing) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const res = await apiRequest("GET", `/api/staff/square-terminal/pair-code/${pairing.codeId}`);
+        const data = await res.json();
+        if (cancelled) return;
+        if (data?.status === "PAIRED") {
+          setPairing(null);
+          await queryClient.invalidateQueries({ queryKey: ["/api/staff/square-terminal/status"] });
+        } else if (data?.status === "EXPIRED") {
+          setPairing(null);
+          setPairError("Pairing code expired. Tap 'Pair a Terminal' to try again.");
+        }
+      } catch {
+        // Silent — just keep polling. Network blips shouldn't kill the flow.
+      }
+    };
+    const id = setInterval(tick, 3000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [visible, pairing, queryClient]);
+
+  const startPairing = async () => {
+    setPairError(null);
+    setPairingBusy(true);
+    try {
+      const res = await apiRequest("POST", "/api/staff/square-terminal/pair-code", { name: "The 147 Counter" });
+      const data = await res.json();
+      if (!data?.code || !data?.codeId) throw new Error("Square didn't return a pairing code");
+      setPairing({ codeId: data.codeId, code: data.code });
+    } catch (err: any) {
+      setPairError(err?.message || "Could not start pairing");
+    } finally {
+      setPairingBusy(false);
+    }
+  };
+
+  const cancelPairing = () => {
+    setPairing(null);
+    setPairError(null);
+  };
+
+  const toggleEnabled = async () => {
+    if (!status?.paired) return;
+    setEnableSaving(true);
+    try {
+      await apiRequest("PUT", "/api/staff/square-terminal/enabled", { enabled: !status.enabled });
+      await refetch();
+    } catch (err: any) {
+      Alert.alert("Could not update", err?.message || "Please try again");
+    } finally {
+      setEnableSaving(false);
+    }
+  };
+
+  const handleUnpair = () => {
+    if (!status?.paired) return;
+    Alert.alert(
+      "Unpair this terminal?",
+      "Kiosk orders will no longer be pushed to this terminal. You can pair it again at any time.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Unpair",
+          style: "destructive",
+          onPress: async () => {
+            setUnpairBusy(true);
+            try {
+              await apiRequest("DELETE", "/api/staff/square-terminal/pairing");
+              await refetch();
+            } catch (err: any) {
+              Alert.alert("Could not unpair", err?.message || "Please try again");
+            } finally {
+              setUnpairBusy(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.kioskModalScrim} onPress={onClose}>
+        <Pressable style={[styles.kioskModalCard, { maxWidth: 520 }]} onPress={() => {}}>
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <View style={styles.kioskModalHeader}>
+              <Ionicons name="card" size={22} color={Colors.brand.blue} />
+              <Text style={styles.kioskModalTitle}>Square Terminal</Text>
+            </View>
+
+            {/* PAIRING SCREEN — code on display, polling for completion */}
+            {pairing ? (
+              <>
+                <Text style={styles.kioskModalBody}>
+                  On your Square Terminal device:
+                </Text>
+                <Text style={[styles.kioskModalBody, { marginTop: 4 }]}>
+                  1. Tap{" "}
+                  <Text style={{ fontWeight: "700" }}>Settings</Text>
+                  {" → "}
+                  <Text style={{ fontWeight: "700" }}>Sign In</Text>
+                  {" → "}
+                  <Text style={{ fontWeight: "700" }}>Sign in with a device code</Text>
+                </Text>
+                <Text style={[styles.kioskModalBody, { marginTop: 4 }]}>
+                  2. Enter this code:
+                </Text>
+
+                <View style={styles.terminalCodeBox}>
+                  <Text style={styles.terminalCodeText}>{pairing.code}</Text>
+                </View>
+
+                <View style={styles.terminalWaitingRow}>
+                  <ActivityIndicator size="small" color={Colors.brand.blue} />
+                  <Text style={styles.terminalWaitingText}>
+                    Waiting for terminal… checking every 3 seconds
+                  </Text>
+                </View>
+
+                <Pressable
+                  onPress={cancelPairing}
+                  style={({ pressed }) => [styles.kioskModalBtn, styles.kioskModalBtnGhost, { opacity: pressed ? 0.7 : 1, marginTop: 12 }]}
+                >
+                  <Text style={styles.kioskModalBtnGhostText}>Cancel</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                {/* STATUS — paired or not */}
+                <View style={styles.terminalStatusRow}>
+                  <View style={[styles.terminalStatusDot, { backgroundColor: status?.paired ? Colors.brand.green : "#9CA3AF" }]} />
+                  <Text style={styles.terminalStatusLabel}>
+                    {status?.paired ? `Paired: ${status.deviceName || "Square Terminal"}` : "Not paired"}
+                  </Text>
+                </View>
+
+                {pairError && (
+                  <Text style={[styles.kioskModalError, { marginTop: 8 }]}>{pairError}</Text>
+                )}
+
+                {!status?.paired ? (
+                  <>
+                    <Text style={[styles.kioskModalBody, { marginTop: 12 }]}>
+                      Pair a Square Terminal so kiosk customers can tap their card at the counter — orders will be pushed to the terminal automatically and marked paid the moment payment completes.
+                    </Text>
+                    <Pressable
+                      onPress={startPairing}
+                      disabled={pairing_busy}
+                      style={({ pressed }) => [
+                        styles.kioskModalBtn,
+                        { backgroundColor: Colors.brand.blue, opacity: pressed || pairing_busy ? 0.7 : 1, marginTop: 16 },
+                      ]}
+                    >
+                      {pairing_busy ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Text style={styles.kioskModalBtnPrimaryText}>Pair a Terminal</Text>
+                      )}
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.terminalToggleCard}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.terminalToggleTitle}>Push kiosk orders to terminal</Text>
+                        <Text style={styles.terminalToggleSub}>
+                          {status.enabled
+                            ? "Customers tap card on the counter terminal. The order auto-marks paid."
+                            : "Off — staff still charge each kiosk order in the Square POS app."}
+                        </Text>
+                      </View>
+                      <Pressable
+                        onPress={toggleEnabled}
+                        disabled={enableSaving}
+                        style={({ pressed }) => [
+                          styles.terminalToggleBtn,
+                          { backgroundColor: status.enabled ? Colors.brand.green : "#E5E7EB", opacity: pressed || enableSaving ? 0.7 : 1 },
+                        ]}
+                      >
+                        <View style={[styles.terminalToggleThumb, { alignSelf: status.enabled ? "flex-end" : "flex-start" }]} />
+                      </Pressable>
+                    </View>
+
+                    <Pressable
+                      onPress={handleUnpair}
+                      disabled={unpairBusy}
+                      style={({ pressed }) => [
+                        styles.kioskModalBtn,
+                        styles.kioskModalBtnGhost,
+                        { opacity: pressed || unpairBusy ? 0.7 : 1, marginTop: 16 },
+                      ]}
+                    >
+                      {unpairBusy ? (
+                        <ActivityIndicator color={Colors.brand.red} />
+                      ) : (
+                        <Text style={[styles.kioskModalBtnGhostText, { color: Colors.brand.red }]}>Unpair Terminal</Text>
+                      )}
+                    </Pressable>
+                  </>
+                )}
+
+                <Pressable
+                  onPress={onClose}
+                  style={({ pressed }) => [styles.kioskModalBtn, styles.kioskModalBtnGhost, { opacity: pressed ? 0.7 : 1, marginTop: 8 }]}
+                >
+                  <Text style={styles.kioskModalBtnGhostText}>Close</Text>
+                </Pressable>
+              </>
+            )}
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function KioskAttractEditModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
   const { data: settings } = useQuery<Record<string, string>>({
@@ -724,6 +984,7 @@ function DashboardScreen() {
   const queryClient = useQueryClient();
   const [kioskModalVisible, setKioskModalVisible] = useState(false);
   const [attractEditorVisible, setAttractEditorVisible] = useState(false);
+  const [terminalModalVisible, setTerminalModalVisible] = useState(false);
   const [kioskOrderingSaving, setKioskOrderingSaving] = useState(false);
 
   // Kiosk-ordering on/off — separate from the global ordering toggle, so
@@ -1094,12 +1355,21 @@ function DashboardScreen() {
                 onPress={handleToggleKioskOrdering}
                 testID="portal-kiosk-ordering-toggle"
               />
+              <AdminTool
+                icon="card"
+                title="Square Terminal"
+                description="Pair a Square Terminal so kiosk customers can tap their card at the counter."
+                color={Colors.brand.blue}
+                onPress={() => setTerminalModalVisible(true)}
+                testID="portal-square-terminal"
+              />
             </View>
           </>
         )}
 
         <KioskEnableModal visible={kioskModalVisible} onClose={() => setKioskModalVisible(false)} />
         <KioskAttractEditModal visible={attractEditorVisible} onClose={() => setAttractEditorVisible(false)} />
+        <SquareTerminalModal visible={terminalModalVisible} onClose={() => setTerminalModalVisible(false)} />
 
         <Text style={styles.sectionLabel}>SESSION</Text>
 
@@ -1781,6 +2051,99 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_700Bold",
     fontSize: 15,
     color: "#fff",
+  },
+  // ── Square Terminal modal ──────────────────────────────────────────────────
+  // Styles specific to the Square Terminal pairing/status modal. Kept here
+  // (rather than alongside the existing modal styles) so they're easy to
+  // remove together if the integration is ever pulled.
+  terminalCodeBox: {
+    backgroundColor: "#F3F4F6",
+    borderRadius: 12,
+    paddingVertical: 24,
+    marginTop: 12,
+    alignItems: "center" as const,
+    borderWidth: 2,
+    borderColor: Colors.brand.blue,
+    borderStyle: "dashed" as const,
+  },
+  terminalCodeText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 40,
+    letterSpacing: 8,
+    color: Colors.brand.blue,
+  },
+  terminalWaitingRow: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    gap: 10,
+    marginTop: 14,
+    paddingHorizontal: 4,
+  },
+  terminalWaitingText: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+    flex: 1,
+  },
+  terminalStatusRow: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 10,
+    marginTop: 4,
+  },
+  terminalStatusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  terminalStatusLabel: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: Colors.light.text,
+    flex: 1,
+  },
+  terminalToggleCard: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    gap: 12,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 10,
+    padding: 14,
+    marginTop: 16,
+  },
+  terminalToggleTitle: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: Colors.light.text,
+  },
+  terminalToggleSub: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginTop: 4,
+    lineHeight: 16,
+  },
+  terminalToggleBtn: {
+    width: 48,
+    height: 28,
+    borderRadius: 14,
+    padding: 2,
+    justifyContent: "center" as const,
+  },
+  terminalToggleThumb: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
   },
   // Free-form text input for the attract editor (left-aligned, normal letter
   // spacing — distinct from the centred PIN-style kioskModalInput above).

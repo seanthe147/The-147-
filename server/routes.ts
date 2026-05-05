@@ -3918,6 +3918,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.sendStatus(200);
     }
 
+    // ── terminal.checkout.updated ──────────────────────────────────────────
+    // Fired by Square when a checkout we pushed via POST /v2/terminals/checkouts
+    // changes status (IN_PROGRESS, COMPLETED, CANCELED, FAILED). We use the
+    // reference_id we set at creation (= our app_order id as a string) to
+    // look up the order locally.
+    //
+    // On COMPLETED → mark the order paid (same path as the staff "Mark Paid"
+    // button in the dashboard). The kiosk customer's confirmation screen
+    // picks up the status change on its next poll.
+    //
+    // On CANCELED / FAILED → leave the order in pending. Staff can retry the
+    // charge in Square POS or cancel the order manually. We just log it.
+    if (eventType === "terminal.checkout.updated") {
+      try {
+        const checkout = event?.data?.object?.checkout;
+        if (!checkout) return res.sendStatus(200);
+        const checkoutStatus: string = checkout.status || "";
+        const refId: string = checkout.reference_id || "";
+        const appOrderId = parseInt(refId);
+        if (!appOrderId || isNaN(appOrderId)) {
+          console.log(`[WEBHOOK] terminal.checkout.updated with no parseable reference_id (${refId}) — ignoring`);
+          return res.sendStatus(200);
+        }
+        if (checkoutStatus === "COMPLETED") {
+          const order = await storage.getAppOrder(appOrderId);
+          if (!order) {
+            console.warn(`[WEBHOOK] terminal.checkout.updated COMPLETED for unknown app_order #${appOrderId}`);
+            return res.sendStatus(200);
+          }
+          if (order.status === "paid") return res.sendStatus(200);
+          if (order.paymentMethod !== "counter") {
+            console.warn(`[WEBHOOK] terminal.checkout.updated for app_order #${appOrderId} with paymentMethod=${order.paymentMethod} — ignoring (not a counter-pay order)`);
+            return res.sendStatus(200);
+          }
+          const ok = await storage.markAppOrderPaidAtCounter(appOrderId);
+          if (ok) {
+            console.log(`[WEBHOOK] Order #${appOrderId} marked paid via Square Terminal (checkout ${checkout.id})`);
+            try {
+              await storage.logOrderAction({
+                orderId: appOrderId,
+                staffUsername: "system:square-terminal",
+                action: "mark-paid-terminal",
+              });
+            } catch {}
+          }
+        } else {
+          console.log(`[WEBHOOK] terminal.checkout.updated #${appOrderId}: status=${checkoutStatus}`);
+        }
+      } catch (err) {
+        console.error("[WEBHOOK] terminal.checkout.updated handler error:", err);
+      }
+      return res.sendStatus(200);
+    }
+
     if (eventType !== "payment.updated") return res.sendStatus(200);
     const payment = event?.data?.object?.payment;
     if (!payment) return res.sendStatus(200);
@@ -5448,8 +5502,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ticketNumber,
       });
 
-      console.log(`[KIOSK] Order #${created.id} ticket #${ticketNumber} (${name}, ${tableNote}, £${(squareTotalPence / 100).toFixed(2)}) → Square ${squareOrderId}`);
-      res.json({ appOrderId: created.id, ticketNumber });
+      // Optional: push the checkout to a paired Square Terminal so the
+      // customer can tap their card right at the counter without staff
+      // having to open the ticket in Square POS first. Controlled by the
+      // staff-portal toggle (square_terminal_enabled) and only runs when a
+      // device is paired (square_terminal_device_id). Disabled by default,
+      // so behaviour is unchanged until staff explicitly turn it on.
+      //
+      // Failures here are non-fatal: the order has already been saved and
+      // the Square Open Ticket already exists, so staff can fall back to
+      // charging in Square POS as usual. We surface a boolean to the kiosk
+      // client so it can show "Tap your card on the counter terminal"
+      // instead of "Take this to the counter to pay" when the push lands.
+      let terminalCheckoutPushed = false;
+      try {
+        const enabled = await storage.getSetting("square_terminal_enabled");
+        const deviceId = await storage.getSetting("square_terminal_device_id");
+        if (enabled === "true" && deviceId) {
+          const idemRaw = `kiosk-terminal-${created.id}`;
+          const checkout = await square.createTerminalCheckout({
+            deviceId,
+            amountPence: squareTotalPence,
+            referenceId: String(created.id),
+            note: `Kiosk #${ticketNumber} — ${name}`,
+            idempotencyKey: createHash("sha256").update(idemRaw).digest("hex").slice(0, 45),
+          });
+          terminalCheckoutPushed = true;
+          console.log(`[KIOSK] Order #${created.id} pushed to Square Terminal ${deviceId} (checkout ${checkout.id}, status ${checkout.status})`);
+        }
+      } catch (err: any) {
+        console.warn(`[KIOSK] Order #${created.id} — terminal push failed (falling back to counter pay):`, err?.message || err);
+      }
+
+      console.log(`[KIOSK] Order #${created.id} ticket #${ticketNumber} (${name}, ${tableNote}, £${(squareTotalPence / 100).toFixed(2)}) → Square ${squareOrderId}${terminalCheckoutPushed ? " [terminal]" : ""}`);
+      res.json({ appOrderId: created.id, ticketNumber, terminalCheckoutPushed });
     } catch (err: any) {
       console.error("[KIOSK] Checkout failed:", err.message);
       const status = err instanceof square.SquareError && err.statusCode >= 400 && err.statusCode < 500
@@ -5483,6 +5569,105 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: any) {
       console.error("[KIOSK] Mark-paid failed:", err.message);
       res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ── Staff: Square Terminal pairing & status ───────────────────────────────
+  // Manager-auth endpoints to pair a Square Terminal device, check its
+  // status, and toggle whether kiosk orders are pushed to it. Pairing data
+  // lives in the existing site_settings k/v table — no schema change needed.
+  //
+  // Settings keys used:
+  //   square_terminal_device_id     — Square device id (empty if unpaired)
+  //   square_terminal_device_name   — friendly name shown in admin UI
+  //   square_terminal_enabled       — "true" / "false" (default unset = off)
+  app.post("/api/staff/square-terminal/pair-code", staffAuth, managerAuth, async (req, res) => {
+    try {
+      const name = (req.body?.name as string | undefined) || "The 147 Counter";
+      const code = await square.createTerminalDeviceCode(name);
+      console.log(`[SQUARE-TERMINAL] Pair code generated: ${code.code} (id ${code.id}, name "${name}")`);
+      res.json({
+        codeId: code.id,
+        code: code.code,
+        status: code.status,
+        pairBy: code.pairBy,
+      });
+    } catch (err: any) {
+      console.error("[SQUARE-TERMINAL] Could not create pair code:", err?.message || err);
+      const status = err instanceof square.SquareError && err.statusCode >= 400 && err.statusCode < 500
+        ? err.statusCode
+        : 500;
+      res.status(status).json({ message: err?.message || "Could not create pairing code" });
+    }
+  });
+
+  app.get("/api/staff/square-terminal/pair-code/:codeId", staffAuth, managerAuth, async (req, res) => {
+    const codeId = String(req.params.codeId);
+    try {
+      const dc = await square.getTerminalDeviceCode(codeId);
+      if (!dc) return res.status(404).json({ message: "Pair code not found" });
+      // Auto-save the device id when pairing completes so the client doesn't
+      // need a separate "complete-pairing" call. Caller can poll this until
+      // status === "PAIRED", at which point the device is ready to receive
+      // checkouts (assuming square_terminal_enabled is "true").
+      if (dc.status === "PAIRED" && dc.deviceId) {
+        await storage.setSetting("square_terminal_device_id", dc.deviceId);
+        if (dc.name) await storage.setSetting("square_terminal_device_name", dc.name);
+        console.log(`[SQUARE-TERMINAL] Device paired: ${dc.deviceId} (${dc.name || "unnamed"})`);
+      }
+      res.json({
+        status: dc.status,
+        deviceId: dc.deviceId,
+        name: dc.name,
+      });
+    } catch (err: any) {
+      console.error("[SQUARE-TERMINAL] Could not poll pair code:", err?.message || err);
+      res.status(500).json({ message: err?.message || "Could not check pairing status" });
+    }
+  });
+
+  app.get("/api/staff/square-terminal/status", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      const deviceId = await storage.getSetting("square_terminal_device_id");
+      const deviceName = await storage.getSetting("square_terminal_device_name");
+      const enabled = await storage.getSetting("square_terminal_enabled");
+      res.json({
+        paired: !!deviceId,
+        deviceId: deviceId || null,
+        deviceName: deviceName || null,
+        enabled: enabled === "true",
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Could not read terminal status" });
+    }
+  });
+
+  app.put("/api/staff/square-terminal/enabled", staffAuth, managerAuth, async (req, res) => {
+    const enabled = !!req.body?.enabled;
+    try {
+      if (enabled) {
+        const deviceId = await storage.getSetting("square_terminal_device_id");
+        if (!deviceId) {
+          return res.status(400).json({ message: "Pair a Square Terminal device before enabling" });
+        }
+      }
+      await storage.setSetting("square_terminal_enabled", String(enabled));
+      console.log(`[SQUARE-TERMINAL] Enabled = ${enabled}`);
+      res.json({ enabled });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Could not update setting" });
+    }
+  });
+
+  app.delete("/api/staff/square-terminal/pairing", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      await storage.setSetting("square_terminal_device_id", "");
+      await storage.setSetting("square_terminal_device_name", "");
+      await storage.setSetting("square_terminal_enabled", "false");
+      console.log("[SQUARE-TERMINAL] Pairing cleared");
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Could not clear pairing" });
     }
   });
 
