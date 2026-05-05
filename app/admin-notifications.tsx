@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useResponsive } from "@/hooks/useResponsive";
 import { router } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/query-client";
@@ -21,6 +22,7 @@ import type { PushToken, Notification } from "@shared/schema";
 
 export default function AdminNotificationsScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { isAuthenticated, isManager, isLoading: authLoading } = useStaffAuth();
   const [title, setTitle] = useState("");
@@ -142,7 +144,7 @@ export default function AdminNotificationsScreen() {
         ))}
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={[styles.scrollContent, { marginHorizontal: tabletPad }]}>
         {activeTab === "compose" && (
           <View style={styles.composeSection}>
             <View style={styles.statsRow}>

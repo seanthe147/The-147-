@@ -7,6 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useResponsive } from "@/hooks/useResponsive";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
@@ -78,6 +79,7 @@ type Onboarding = {
 
 export default function AdminStaffDocsScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const webTop = Platform.OS === "web" ? 67 : 0;
   const { staffId, staffName } = useLocalSearchParams<{ staffId: string; staffName: string }>();
   const { isAuthenticated, isManager } = useStaffAuth();
@@ -252,7 +254,7 @@ export default function AdminStaffDocsScreen() {
           {docsLoading ? (
             <View style={styles.centered}><ActivityIndicator color={Colors.brand.blue} /></View>
           ) : (
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 80 }}>
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 80, marginHorizontal: tabletPad }}>
               {docs.length === 0 && (
                 <View style={styles.empty}>
                   <Ionicons name="documents-outline" size={44} color={Colors.light.textSecondary} />
@@ -325,7 +327,7 @@ export default function AdminStaffDocsScreen() {
             <Text style={styles.emptySub}>This staff member hasn't completed their onboarding form</Text>
           </View>
         ) : (
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24, marginHorizontal: tabletPad }}>
             {/* Status banner */}
             <View style={[styles.statusBanner, onboarding.completedAt ? styles.statusComplete : styles.statusPending]}>
               <Ionicons name={onboarding.completedAt ? "checkmark-circle" : "time"} size={16} color={onboarding.completedAt ? "#059669" : "#D97706"} />

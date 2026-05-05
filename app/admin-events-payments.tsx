@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useResponsive } from "@/hooks/useResponsive";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
@@ -55,6 +56,7 @@ function formatDate(iso: string): string {
 
 export default function AdminEventsPaymentsScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { isAuthenticated, isLoading: authLoading, role } = useStaffAuth();
   const [tab, setTab] = useState<TabKey>("tickets");
@@ -112,6 +114,7 @@ export default function AdminEventsPaymentsScreen() {
         paddingTop: insets.top + webTopInset + 12,
         paddingBottom: insets.bottom + 80,
         paddingHorizontal: 16,
+        marginHorizontal: tabletPad,
       }}
     >
       <View style={styles.header}>

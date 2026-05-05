@@ -7,6 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useResponsive } from "@/hooks/useResponsive";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import { getApiUrl, getStaffToken } from "@/lib/query-client";
 import Colors from "@/constants/colors";
@@ -139,6 +140,7 @@ function normaliseTime(t: string): string {
 
 export default function AdminRotaScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const { width: windowWidth } = useWindowDimensions();
   const isNarrow = windowWidth < 700;
   const [narrowDayIdx, setNarrowDayIdx] = useState<number>(() => {
@@ -517,7 +519,7 @@ export default function AdminRotaScreen() {
             <Text style={styles.emptyText}>No completed shifts this week.</Text>
           </View>
         ) : (
-          <ScrollView style={styles.gridOuter} contentContainerStyle={{ paddingBottom: insets.bottom + 24, paddingHorizontal: 16 }}>
+          <ScrollView style={styles.gridOuter} contentContainerStyle={{ paddingBottom: insets.bottom + 24, paddingHorizontal: 16, marginHorizontal: tabletPad }}>
             {weekEntries.map(entry => {
               const isAmended = entry.status === "amended";
               const isActive = !entry.clockedOutAt;
@@ -756,7 +758,7 @@ export default function AdminRotaScreen() {
           </ScrollView>
         </View>
       ) : (
-        <ScrollView style={styles.gridOuter} contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}>
+        <ScrollView style={styles.gridOuter} contentContainerStyle={{ paddingBottom: insets.bottom + 24, marginHorizontal: tabletPad }}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View>
               {/* Column headers */}

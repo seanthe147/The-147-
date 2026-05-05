@@ -17,7 +17,7 @@
       "supportsTablet": true,
       "requireFullScreen": true,
       "bundleIdentifier": "com.the147bradford.app",
-      "buildNumber": "23",
+      "buildNumber": "24",
       "entitlements": {
         "com.apple.developer.in-app-payments": [
           "merchant.com.the147bradford.app"

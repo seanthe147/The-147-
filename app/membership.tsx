@@ -20,6 +20,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import Colors from "@/constants/colors";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
+import { useResponsive } from "@/hooks/useResponsive";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import { getApiUrl, prefetchSquarePaymentSdk } from "@/lib/query-client";
 import { SquarePaymentSheet } from "@/components/SquarePaymentSheet";
@@ -106,6 +107,7 @@ function todayString() {
 
 export default function MembershipScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const { isAuthenticated, isLoading: authLoading, customer } = useCustomerAuth();
   const { firstName } = useCustomerGreeting();
   const { isAuthenticated: isStaffLoggedIn } = useStaffAuth();
@@ -366,7 +368,7 @@ export default function MembershipScreen() {
           style={styles.scroll}
           contentContainerStyle={[
             styles.content,
-            { paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 20) },
+            { paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 20), marginHorizontal: tabletPad },
           ]}
           showsVerticalScrollIndicator={false}
           // Pull-to-refresh on the join flow too: a customer who was just
@@ -681,6 +683,7 @@ function ActiveMembership({
   onRefresh: () => void;
   refreshing: boolean;
 }) {
+  const { tabletPad } = useResponsive();
   const plan = subscription.plan;
   const planColor = plan?.color || Colors.brand.blue;
   const meta = plan ? getPlanMeta(plan.tier) : { name: "card" as const, tagline: "" };
@@ -747,7 +750,7 @@ function ActiveMembership({
       style={styles.scroll}
       contentContainerStyle={[
         styles.content,
-        { paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 20) },
+        { paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 20), marginHorizontal: tabletPad },
       ]}
       showsVerticalScrollIndicator={false}
       // Swipe down to re-sync with Square. Useful right after staff add

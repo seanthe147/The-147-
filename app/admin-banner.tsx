@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useResponsive } from "@/hooks/useResponsive";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
@@ -25,6 +26,7 @@ import { isSafePublicUrl } from "@shared/schema";
 
 export default function AdminBannerScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { isAuthenticated, isLoading: authLoading } = useStaffAuth();
   const [title, setTitle] = useState("");
@@ -304,7 +306,7 @@ export default function AdminBannerScreen() {
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { marginHorizontal: tabletPad }]}
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.section}>

@@ -19,6 +19,7 @@ import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
+import { useResponsive } from "@/hooks/useResponsive";
 import { useCart } from "@/contexts/CartContext";
 import { apiRequest, queryClient, getApiUrl } from "@/lib/query-client";
 import type { SelectedModifier } from "@/types/menu";
@@ -215,6 +216,7 @@ interface AppOrder {
 
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { isAuthenticated, isLoading: authLoading, customer, login, register, logout, updateProfile, deleteAccount, resendVerificationEmail, requestPasswordReset, resendVerificationEmailFor } = useCustomerAuth();
   const { greeting } = useCustomerGreeting();
@@ -293,6 +295,7 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
   prefillEmail?: string;
   initialMode?: AuthMode;
 }) {
+  const { tabletPad } = useResponsive();
   const {
     biometricSupported,
     biometricEnabled,
@@ -336,7 +339,7 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
 
   if (showForgot) {
     return (
-      <ScrollView style={styles.scrollContent} contentContainerStyle={styles.scrollInner} keyboardShouldPersistTaps="handled">
+      <ScrollView style={styles.scrollContent} contentContainerStyle={[styles.scrollInner, { marginHorizontal: tabletPad }]} keyboardShouldPersistTaps="handled">
         <View style={styles.authIcon}>
           <Ionicons name="key-outline" size={70} color={Colors.brand.blue} />
         </View>
@@ -476,7 +479,7 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
 
   if (registerPending) {
     return (
-      <ScrollView style={styles.scrollContent} contentContainerStyle={styles.scrollInner} keyboardShouldPersistTaps="handled">
+      <ScrollView style={styles.scrollContent} contentContainerStyle={[styles.scrollInner, { marginHorizontal: tabletPad }]} keyboardShouldPersistTaps="handled">
         <View style={styles.authIcon}>
           <Ionicons name="mail-outline" size={70} color={Colors.brand.blue} />
         </View>
@@ -495,7 +498,7 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
   }
 
   return (
-    <ScrollView style={styles.scrollContent} contentContainerStyle={styles.scrollInner} keyboardShouldPersistTaps="handled">
+    <ScrollView style={styles.scrollContent} contentContainerStyle={[styles.scrollInner, { marginHorizontal: tabletPad }]} keyboardShouldPersistTaps="handled">
       <View style={styles.authIcon}>
         <Ionicons name="person-circle" size={80} color={Colors.brand.blue} />
       </View>
@@ -671,6 +674,7 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
   deleteAccount: () => Promise<{ success: boolean; error?: string }>;
   resendVerificationEmail: () => Promise<{ success: boolean; error?: string }>;
 }) {
+  const { tabletPad } = useResponsive();
   const {
     biometricSupported,
     biometricEnabled,
@@ -870,7 +874,7 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
     <>
     <ScrollView
       style={styles.scrollContent}
-      contentContainerStyle={styles.scrollInner}
+      contentContainerStyle={[styles.scrollInner, { marginHorizontal: tabletPad }]}
       refreshControl={
         <RefreshControl refreshing={bookingsQuery.isRefetching} onRefresh={() => bookingsQuery.refetch()} />
       }

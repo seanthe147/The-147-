@@ -22,8 +22,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+import { useResponsive } from "@/hooks/useResponsive";
+
 export default function PrivacyPolicyScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { consent, revokeConsent } = useConsent();
 
@@ -59,7 +62,7 @@ export default function PrivacyPolicyScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: Math.max(insets.bottom, 16) + (Platform.OS === "web" ? 34 : 0) },
+          { paddingBottom: Math.max(insets.bottom, 16) + (Platform.OS === "web" ? 34 : 0), marginHorizontal: tabletPad },
         ]}
         showsVerticalScrollIndicator={false}
       >

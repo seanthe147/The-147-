@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useResponsive } from "@/hooks/useResponsive";
 import { router } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/query-client";
@@ -27,6 +28,7 @@ interface LoyaltyConfig {
 
 export default function AdminLoyaltyScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { isAuthenticated, isManager, isLoading: authLoading } = useStaffAuth();
 
@@ -125,7 +127,7 @@ export default function AdminLoyaltyScreen() {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40, marginHorizontal: tabletPad }]}
       >
         {settingsQuery.isLoading ? (
           <ActivityIndicator color={Colors.brand.gold} style={{ marginTop: 40 }} />

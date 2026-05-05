@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useResponsive } from "@/hooks/useResponsive";
 import { router } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/query-client";
@@ -63,6 +64,7 @@ function formatBlockLabel(b: BlockedPeriod): string {
 
 export default function AdminAvailabilityScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { isAuthenticated, isManager, isOwner, isLoading: authLoading } = useStaffAuth();
 
@@ -167,7 +169,7 @@ export default function AdminAvailabilityScreen() {
       style={styles.container}
       contentContainerStyle={[
         styles.content,
-        { paddingTop: insets.top + webTopInset + 16, paddingBottom: insets.bottom + 40 },
+        { paddingTop: insets.top + webTopInset + 16, paddingBottom: insets.bottom + 40, marginHorizontal: tabletPad },
       ]}
       keyboardShouldPersistTaps="handled"
     >

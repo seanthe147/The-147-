@@ -13,6 +13,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useResponsive } from "@/hooks/useResponsive";
 import { router } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/query-client";
@@ -115,6 +116,7 @@ function OfferPreview({ form }: { form: OfferForm }) {
 
 export default function AdminOffersScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { isAuthenticated, isLoading: authLoading } = useStaffAuth();
 
@@ -271,7 +273,7 @@ export default function AdminOffersScreen() {
 
       <ScrollView
         style={styles.content}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { marginHorizontal: tabletPad }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >

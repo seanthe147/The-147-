@@ -7,6 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useResponsive } from "@/hooks/useResponsive";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import { getApiUrl, getStaffToken } from "@/lib/query-client";
 import Colors from "@/constants/colors";
@@ -60,6 +61,7 @@ const EMPTY: FormState = {
 
 export default function StaffOnboardingScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const webTop = Platform.OS === "web" ? 67 : 0;
   const { isAuthenticated } = useStaffAuth();
   const qc = useQueryClient();
@@ -136,7 +138,7 @@ export default function StaffOnboardingScreen() {
         <View style={{ width: 36 }} />
       </View>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 100 }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 100, marginHorizontal: tabletPad }}>
 
         {isCompleted && (
           <View style={styles.completedBanner}>

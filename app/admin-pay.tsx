@@ -7,6 +7,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useResponsive } from "@/hooks/useResponsive";
 import { getApiUrl, getStaffToken } from "@/lib/query-client";
 import Colors from "@/constants/colors";
 
@@ -34,6 +35,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
 
 export default function AdminPayScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const router = useRouter();
   const { staffId, staffName } = useLocalSearchParams<{ staffId: string; staffName: string }>();
   const sid = parseInt(staffId ?? "0", 10);
@@ -126,7 +128,7 @@ export default function AdminPayScreen() {
 
       {/* ── PAY DETAILS TAB ── */}
       {tab === "pay" && (
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        <ScrollView style={styles.scroll} contentContainerStyle={[styles.scrollContent, { marginHorizontal: tabletPad }]} keyboardShouldPersistTaps="handled">
           {payLoading && <ActivityIndicator color={Colors.brand.blue} style={{ marginTop: 40 }} />}
           {!payLoading && (
             <>
@@ -222,7 +224,7 @@ export default function AdminPayScreen() {
 
       {/* ── SSP TAB ── */}
       {tab === "ssp" && (
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <ScrollView style={styles.scroll} contentContainerStyle={[styles.scrollContent, { marginHorizontal: tabletPad }]}>
           {sspLoading && <ActivityIndicator color={Colors.brand.blue} style={{ marginTop: 40 }} />}
           {sspErr && <Text style={styles.errText}>Failed to load SSP data</Text>}
           {sspData && (
@@ -335,7 +337,7 @@ export default function AdminPayScreen() {
 
       {/* ── HOLIDAY PAY TAB ── */}
       {tab === "holiday" && (
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <ScrollView style={styles.scroll} contentContainerStyle={[styles.scrollContent, { marginHorizontal: tabletPad }]}>
           {hpLoading && <ActivityIndicator color={Colors.brand.blue} style={{ marginTop: 40 }} />}
           {hpErr && <Text style={styles.errText}>Failed to load holiday pay data</Text>}
           {hpData && (

@@ -10,6 +10,7 @@ import { clearPendingConfirmation } from "@/lib/pending-order";
 import { getApiUrl } from "@/lib/query-client";
 import { useCart } from "@/contexts/CartContext";
 import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
+import { useResponsive } from "@/hooks/useResponsive";
 import type { SelectedModifier } from "@/types/menu";
 
 interface ReorderResponse {
@@ -64,6 +65,7 @@ const STATUS_TONE: Record<string, { bg: string; fg: string; icon: keyof typeof I
 
 export default function OrderConfirmationScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const params = useLocalSearchParams<{
     appOrderId?: string;
     tableNote?: string;
@@ -212,7 +214,7 @@ export default function OrderConfirmationScreen() {
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={[styles.scroll, { marginHorizontal: tabletPad }]}>
         <View style={styles.iconRing}>
           <Ionicons name="checkmark" size={42} color="#16A34A" />
         </View>

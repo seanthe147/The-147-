@@ -4,6 +4,7 @@ import {
   ActivityIndicator, Alert, Platform, RefreshControl, Linking,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useResponsive } from "@/hooks/useResponsive";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -98,6 +99,7 @@ const GDPR_KEY = "hr_gdpr_accepted_v1";
 // ════════════════════════════════════════════════════════════════════════════
 export default function StaffHRScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const { displayName, role, isAuthenticated, isLoading: authLoading } = useStaffAuth();
   const qc = useQueryClient();
   const [now, setNow] = useState(Date.now());
@@ -320,7 +322,7 @@ export default function StaffHRScreen() {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 32 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 32, marginHorizontal: tabletPad }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.brand.blue} />}
         showsVerticalScrollIndicator={false}
       >

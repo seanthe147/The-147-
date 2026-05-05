@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useResponsive } from "@/hooks/useResponsive";
 import { router } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/query-client";
@@ -89,6 +90,7 @@ function getWeekDays(startDate: Date): Array<{ date: string; dayName: string; da
 
 export default function AdminBookingsScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { isAuthenticated, isManager, username, isLoading: authLoading } = useStaffAuth();
   const [showAddNotice, setShowAddNotice] = useState(false);
@@ -601,7 +603,7 @@ export default function AdminBookingsScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={[styles.scrollContent, { marginHorizontal: tabletPad }]}>
         {bookingsQuery.isLoading ? (
           <ActivityIndicator color={Colors.brand.blue} style={{ marginTop: 40 }} />
         ) : confirmedBookings.length === 0 && cancelledBookings.length === 0 ? (

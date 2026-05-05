@@ -11,6 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { router, Stack } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useResponsive } from "@/hooks/useResponsive";
 import { useQuery } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 
@@ -61,6 +62,7 @@ function fmtRemaining(b: LiveBooking): string {
 
 export default function AdminTablesLiveScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
 
   const { data, isLoading, refetch, isRefetching } = useQuery<{
     now: string;
@@ -99,7 +101,7 @@ export default function AdminTablesLiveScreen() {
               <Text style={styles.emptyText}>No bookings for today.</Text>
             </View>
           }
-          contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24, marginHorizontal: tabletPad }}
           refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
           renderItem={({ item }) => <LiveCard booking={item} />}
           ItemSeparatorComponent={() => <View style={{ height: 10 }} />}

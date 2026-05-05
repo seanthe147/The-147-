@@ -16,6 +16,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useResponsive } from "@/hooks/useResponsive";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/query-client";
 import Colors from "@/constants/colors";
@@ -81,6 +82,7 @@ function fmtTime(iso: string): string {
 
 export default function AdminTabsScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const qc = useQueryClient();
   const params = useLocalSearchParams<{ openTabId?: string }>();
   const [filter, setFilter] = useState<"open" | "closed">("open");
@@ -149,7 +151,7 @@ export default function AdminTabsScreen() {
         <FlatList
           data={tabsList}
           keyExtractor={(t) => String(t.id)}
-          contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24, marginHorizontal: tabletPad }}
           renderItem={({ item }) => <TabCard tab={item} onOpen={() => setOpenTabId(item.id)} />}
           ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
         />

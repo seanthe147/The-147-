@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useResponsive } from "@/hooks/useResponsive";
 import { router } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/query-client";
@@ -21,6 +22,7 @@ import type { StaffNotice } from "@shared/schema";
 
 export default function AdminNoticesScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { isAuthenticated, isManager, isOwner, isLoading: authLoading } = useStaffAuth();
 
@@ -107,7 +109,7 @@ export default function AdminNoticesScreen() {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { marginHorizontal: tabletPad }]}
         keyboardShouldPersistTaps="handled"
       >
         {showForm && (

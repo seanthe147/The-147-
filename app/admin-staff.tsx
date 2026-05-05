@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useResponsive } from "@/hooks/useResponsive";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
@@ -37,6 +38,7 @@ const ROLES = [
 
 export default function AdminStaffScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { isAuthenticated, isLoading: authLoading, username: currentUsername, isManager, isOwner } = useStaffAuth();
 
@@ -237,7 +239,7 @@ export default function AdminStaffScreen() {
         <View style={{ width: 28 }} />
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={[styles.scrollContent, { marginHorizontal: tabletPad }]}>
         <View style={styles.section}>
           <Ionicons name="people" size={32} color="#F59E0B" />
           <Text style={styles.sectionTitle}>Manage Team</Text>

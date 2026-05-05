@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useResponsive } from "@/hooks/useResponsive";
 import { router } from "expo-router";
 import Colors from "@/constants/colors";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
@@ -56,6 +57,7 @@ function formatTimestamp(iso: string): string {
 
 export default function AdminCustomersScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const webBottomInset = Platform.OS === "web" ? 34 : 0;
   const { isAuthenticated, isLoading: authLoading, isManager } = useStaffAuth();
@@ -201,7 +203,7 @@ export default function AdminCustomersScreen() {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + webBottomInset + 24 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + webBottomInset + 24, marginHorizontal: tabletPad }]}
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.sectionLabel}>FIND A CUSTOMER</Text>

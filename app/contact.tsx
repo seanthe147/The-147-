@@ -28,8 +28,11 @@ const SUBJECTS = [
   "Other",
 ];
 
+import { useResponsive } from "@/hooks/useResponsive";
+
 export default function ContactScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { expoPushToken } = useNotifications();
   const [name, setName] = useState("");
@@ -164,7 +167,7 @@ export default function ContactScreen() {
 
         <ScrollView
           style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { marginHorizontal: tabletPad }]}
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.introSection}>
