@@ -721,8 +721,48 @@ function DashboardScreen() {
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { logout, username, displayName, role, isManager, isOwner } = useStaffAuth();
   const { isKioskMode } = useKiosk();
+  const queryClient = useQueryClient();
   const [kioskModalVisible, setKioskModalVisible] = useState(false);
   const [attractEditorVisible, setAttractEditorVisible] = useState(false);
+  const [kioskOrderingSaving, setKioskOrderingSaving] = useState(false);
+
+  // Kiosk-ordering on/off — separate from the global ordering toggle, so
+  // staff can disable the kiosk specifically (tablet being moved, kitchen
+  // short-staffed, etc.) without taking down regular online ordering.
+  const { data: settings } = useQuery<Record<string, string>>({
+    queryKey: ["/api/settings"],
+    enabled: isManager,
+  });
+  const kioskOrderingEnabled = settings?.kiosk_ordering_enabled !== "false";
+
+  const toggleKioskOrdering = async () => {
+    const next = !kioskOrderingEnabled;
+    setKioskOrderingSaving(true);
+    try {
+      await apiRequest("PUT", "/api/settings/kiosk_ordering_enabled", { value: String(next) });
+      await queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
+    } catch (err: any) {
+      Alert.alert("Could not update", err?.message || "Please try again");
+    } finally {
+      setKioskOrderingSaving(false);
+    }
+  };
+
+  const handleToggleKioskOrdering = () => {
+    if (kioskOrderingSaving) return;
+    if (kioskOrderingEnabled) {
+      Alert.alert(
+        "Pause kiosk ordering?",
+        "Customers using the kiosk tablet will see an 'Ordering Paused' message and won't be able to place orders. Regular online ordering is unaffected.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Pause Kiosk", style: "destructive", onPress: toggleKioskOrdering },
+        ],
+      );
+    } else {
+      toggleKioskOrdering();
+    }
+  };
 
   const noticesQuery = useQuery<StaffNotice[]>({
     queryKey: ["/api/staff-notices"],
@@ -1041,6 +1081,18 @@ function DashboardScreen() {
                 color="#7C3AED"
                 onPress={() => setAttractEditorVisible(true)}
                 testID="portal-kiosk-attract-edit"
+              />
+              <AdminTool
+                icon={kioskOrderingEnabled ? "pause-circle" : "play-circle"}
+                title={kioskOrderingEnabled ? "Pause Kiosk Ordering" : "Resume Kiosk Ordering"}
+                description={
+                  kioskOrderingEnabled
+                    ? "Show an 'Ordering Paused' message on the kiosk. Regular online ordering keeps working."
+                    : "Kiosk ordering is currently paused. Tap to re-enable."
+                }
+                color={kioskOrderingEnabled ? "#D97706" : Colors.brand.green}
+                onPress={handleToggleKioskOrdering}
+                testID="portal-kiosk-ordering-toggle"
               />
             </View>
           </>

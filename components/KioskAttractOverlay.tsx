@@ -68,6 +68,10 @@ export function KioskAttractOverlay() {
   const taglineText = txt("kiosk_attract_tagline", "FOOD · DRINKS · SNOOKER");
   const ctaText = txt("kiosk_attract_cta", "TAP TO ORDER");
   const ctaSubText = txt("kiosk_attract_cta_sub", "Order food & drinks · Pay at the counter");
+  // Kiosk-ordering kill switch (separate from the global ordering toggle).
+  // Only an explicit "false" disables it — anything else (missing key,
+  // empty string, "true") keeps the kiosk live so a fresh DB still works.
+  const kioskOrderingEnabled = settings?.kiosk_ordering_enabled !== "false";
 
   const activeBanners = (banners ?? []).filter((b) => b.active);
   const [bannerIdx, setBannerIdx] = useState(0);
@@ -98,6 +102,11 @@ export function KioskAttractOverlay() {
   const banner = activeBanners[bannerIdx];
 
   const handleTap = () => {
+    // Hard block: when kiosk ordering is paused we ignore taps so customers
+    // don't make it past the attract screen and waste time building a cart
+    // they can't submit. The hidden long-press exit corner still works
+    // because it's a separate Pressable layered above this one.
+    if (!kioskOrderingEnabled) return;
     // Clear any leftover cart state from a previous session before
     // entering the menu, so each customer starts fresh.
     clearCart();
@@ -158,16 +167,30 @@ export function KioskAttractOverlay() {
               <Text style={[styles.brandTag, isTablet && { fontSize: 18, letterSpacing: 8 }]}>{taglineText}</Text>
             </View>
 
-            <Animated.View style={[styles.ctaWrap, { transform: [{ scale: pulse }] }]}>
-              <View style={[styles.cta, isTablet && { paddingHorizontal: 80, paddingVertical: 48, maxWidth: 560 }]}>
-                <Ionicons name="hand-left" size={isTablet ? 48 : 36} color={Colors.brand.blue} />
-                <Text style={[styles.ctaText, isTablet && { fontSize: 48 }]}>{ctaText}</Text>
-                <Text style={[styles.ctaSub, isTablet && { fontSize: 16 }]}>{ctaSubText}</Text>
+            {kioskOrderingEnabled ? (
+              <Animated.View style={[styles.ctaWrap, { transform: [{ scale: pulse }] }]}>
+                <View style={[styles.cta, isTablet && { paddingHorizontal: 80, paddingVertical: 48, maxWidth: 560 }]}>
+                  <Ionicons name="hand-left" size={isTablet ? 48 : 36} color={Colors.brand.blue} />
+                  <Text style={[styles.ctaText, isTablet && { fontSize: 48 }]}>{ctaText}</Text>
+                  <Text style={[styles.ctaSub, isTablet && { fontSize: 16 }]}>{ctaSubText}</Text>
+                </View>
+              </Animated.View>
+            ) : (
+              // Paused state — non-pulsing, amber, no "TAP TO ORDER" affordance.
+              // Customers must order at the counter while this is on.
+              <View style={styles.ctaWrap}>
+                <View style={[styles.ctaPaused, isTablet && { paddingHorizontal: 80, paddingVertical: 48, maxWidth: 620 }]}>
+                  <Ionicons name="pause-circle" size={isTablet ? 56 : 40} color="#D97706" />
+                  <Text style={[styles.ctaPausedText, isTablet && { fontSize: 44 }]}>ORDERING PAUSED</Text>
+                  <Text style={[styles.ctaPausedSub, isTablet && { fontSize: 18 }]}>Please order at the counter</Text>
+                </View>
               </View>
-            </Animated.View>
+            )}
 
             <View style={styles.footer}>
-              <Text style={[styles.footerText, isTablet && { fontSize: 14, letterSpacing: 3 }]}>Tap anywhere to start</Text>
+              <Text style={[styles.footerText, isTablet && { fontSize: 14, letterSpacing: 3 }]}>
+                {kioskOrderingEnabled ? "Tap anywhere to start" : "Self-service is temporarily unavailable"}
+              </Text>
             </View>
           </View>
         </View>
@@ -229,6 +252,28 @@ const styles = StyleSheet.create({
   bg: { flex: 1, backgroundColor: "#0A1628" },
   scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(10,22,40,0.55)" },
   content: { flex: 1, justifyContent: "space-between" },
+  ctaPaused: {
+    backgroundColor: "rgba(255,255,255,0.96)",
+    paddingHorizontal: 40,
+    paddingVertical: 28,
+    borderRadius: 24,
+    alignItems: "center" as const,
+    gap: 10,
+    borderWidth: 2,
+    borderColor: "#FCD34D",
+  },
+  ctaPausedText: {
+    color: "#92400E",
+    fontSize: 30,
+    fontWeight: "800" as const,
+    letterSpacing: 2,
+  },
+  ctaPausedSub: {
+    color: "#78350F",
+    fontSize: 15,
+    fontWeight: "500" as const,
+    textAlign: "center" as const,
+  },
   brandWrap: { alignItems: "center" },
   brandSmall: { color: "rgba(255,255,255,0.85)", fontSize: 16, letterSpacing: 4, fontWeight: "600" as const },
   brandBig: { color: "#fff", fontSize: 84, letterSpacing: 6, fontWeight: "700" as const, marginTop: 8 },

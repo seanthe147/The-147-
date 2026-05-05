@@ -5351,6 +5351,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ message: "Table number is required" });
     }
     try {
+      // Kiosk-specific kill switch (independent of the global ordering toggle).
+      // Lets staff disable the customer-facing kiosk without taking down regular
+      // online ordering — useful when the tablet is being moved, the kitchen is
+      // short-staffed, or kiosk orders need to be paused during a rush.
+      // Default is enabled; only an explicit "false" disables it.
+      const kioskEnabled = await storage.getSetting("kiosk_ordering_enabled");
+      if (kioskEnabled === "false") {
+        return res.status(503).json({ message: "Kiosk ordering is currently paused. Please order at the counter." });
+      }
+
       // Validate ordering window — same gate as the online flow.
       const orderingEnabled = await getOrderingEnabled();
       if (!orderingEnabled) {
