@@ -19,6 +19,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import { useKiosk } from "@/contexts/KioskContext";
 import { apiRequest } from "@/lib/query-client";
+import { useResponsive } from "@/hooks/useResponsive";
 import Colors from "@/constants/colors";
 import type { StaffNotice } from "@shared/schema";
 
@@ -406,10 +407,11 @@ interface AdminToolProps {
 }
 
 function AdminTool({ icon, title, description, color, onPress, testID }: AdminToolProps) {
+  const { isTablet } = useResponsive();
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.toolCard, { opacity: pressed ? 0.8 : 1 }]}
+      style={({ pressed }) => [styles.toolCard, isTablet && styles.toolCardTablet, { opacity: pressed ? 0.8 : 1 }]}
       testID={testID}
     >
       <View style={[styles.toolIconWrap, { backgroundColor: color + "15" }]}>
@@ -978,6 +980,7 @@ function KioskAttractEditModal({ visible, onClose }: { visible: boolean; onClose
 
 function DashboardScreen() {
   const insets = useSafeAreaInsets();
+  const { tabletPad, isTablet } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { logout, username, displayName, role, isManager, isOwner } = useStaffAuth();
   const { isKioskMode } = useKiosk();
@@ -1048,7 +1051,7 @@ function DashboardScreen() {
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingHorizontal: 16 + tabletPad }]}
       >
         <View style={styles.welcomeSection}>
           <View style={[styles.welcomeBadge, isOwner ? styles.ownerBadge : isManager ? styles.managerBadge : null]}>
@@ -1109,7 +1112,7 @@ function DashboardScreen() {
 
         <Text style={styles.sectionLabel}>HR & ROTA</Text>
 
-        <View style={styles.toolsList}>
+        <View style={[styles.toolsList, isTablet && styles.toolsListTablet]}>
           <AdminTool
             icon="time"
             title="Time & HR"
@@ -1179,7 +1182,7 @@ function DashboardScreen() {
         {isManager && (
           <>
             <Text style={styles.sectionLabel}>FLOOR</Text>
-            <View style={styles.toolsList}>
+            <View style={[styles.toolsList, isTablet && styles.toolsListTablet]}>
               <AdminTool
                 icon="tv"
                 title="Live Tables"
@@ -1207,7 +1210,7 @@ function DashboardScreen() {
             </View>
 
             <Text style={styles.sectionLabel}>CUSTOMERS</Text>
-            <View style={styles.toolsList}>
+            <View style={[styles.toolsList, isTablet && styles.toolsListTablet]}>
               <AdminTool
                 icon="person-circle"
                 title="Customers"
@@ -1243,7 +1246,7 @@ function DashboardScreen() {
             </View>
 
             <Text style={styles.sectionLabel}>EVENTS & OFFERS</Text>
-            <View style={styles.toolsList}>
+            <View style={[styles.toolsList, isTablet && styles.toolsListTablet]}>
               <AdminTool
                 icon="musical-notes"
                 title="Events"
@@ -1273,7 +1276,7 @@ function DashboardScreen() {
             </View>
 
             <Text style={styles.sectionLabel}>APP CONTENT</Text>
-            <View style={styles.toolsList}>
+            <View style={[styles.toolsList, isTablet && styles.toolsListTablet]}>
               <AdminTool
                 icon="images"
                 title="Banner Images"
@@ -1295,7 +1298,7 @@ function DashboardScreen() {
             {isOwner && (
               <>
                 <Text style={styles.sectionLabel}>OWNER</Text>
-                <View style={styles.toolsList}>
+                <View style={[styles.toolsList, isTablet && styles.toolsListTablet]}>
                   <AdminTool
                     icon="people"
                     title="Staff Accounts"
@@ -1313,7 +1316,7 @@ function DashboardScreen() {
         {isManager && (
           <>
             <Text style={styles.sectionLabel}>KIOSK</Text>
-            <View style={styles.toolsList}>
+            <View style={[styles.toolsList, isTablet && styles.toolsListTablet]}>
               <AdminTool
                 icon={isKioskMode ? "lock-closed" : "tablet-landscape"}
                 title={isKioskMode ? "Kiosk Mode Active" : "Enable Kiosk Mode"}
@@ -1852,6 +1855,10 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 28,
   },
+  toolsListTablet: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
   toolCard: {
     backgroundColor: Colors.light.surface,
     borderRadius: 16,
@@ -1861,6 +1868,10 @@ const styles = StyleSheet.create({
     gap: 14,
     borderWidth: 1,
     borderColor: Colors.light.border,
+  },
+  toolCardTablet: {
+    flexBasis: "48%",
+    flexGrow: 0,
   },
   toolIconWrap: {
     width: 48,

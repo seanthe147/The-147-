@@ -52,7 +52,7 @@ function FacilityItem({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; l
 
 export default function AboutScreen() {
   const insets = useSafeAreaInsets();
-  const { tabletPad } = useResponsive();
+  const { isTablet } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const today = new Date().getDay();
@@ -63,7 +63,7 @@ export default function AboutScreen() {
       style={styles.container}
       contentContainerStyle={[
         styles.scrollContent,
-        { paddingTop: insets.top + webTopInset, paddingHorizontal: tabletPad },
+        { paddingTop: insets.top + webTopInset },
       ]}
       showsVerticalScrollIndicator={false}
     >
@@ -79,7 +79,7 @@ export default function AboutScreen() {
         </View>
       </LinearGradient>
 
-      <View style={styles.body}>
+      <View style={[styles.body, isTablet && { maxWidth: 720, width: "100%", alignSelf: "center" }]}>
         <InfoSection icon="information-circle" title="About The 147">
           <Text style={styles.bodyText}>
             The 147 is more than just a snooker club. We're a modern venue that combines

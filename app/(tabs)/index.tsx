@@ -453,7 +453,7 @@ const EventPreview = memo(function EventPreview() {
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const { tabletPad } = useResponsive();
+  const { isTablet } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const { isAuthenticated } = useCustomerAuth();
@@ -568,7 +568,7 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <ScrollView
         style={styles.container}
-        contentContainerStyle={[styles.scrollContent, { paddingHorizontal: tabletPad }]}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
         removeClippedSubviews={Platform.OS === "android"}
@@ -587,7 +587,7 @@ export default function HomeScreen() {
           {heroContent}
         </View>
 
-        <View style={styles.body}>
+        <View style={[styles.body, isTablet && { maxWidth: 720, width: "100%", alignSelf: "center" }]}>
           {/* FEATURE_PERSONALISED_HOME: personalised cards rendered above
               quick actions. The hook returns an empty array unless the
               flag is on, the customer is signed in, and there's something

@@ -55,6 +55,7 @@ import {
 import type { MenuCategory, MenuItem, ModifierList, SelectedModifier } from "@/types/menu";
 import { DIETARY_TAGS, type DietaryTagCode } from "@/types/menu";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
+import { useResponsive } from "@/hooks/useResponsive";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const BANNER_HEIGHT = 200;

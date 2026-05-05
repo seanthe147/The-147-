@@ -364,7 +364,7 @@ function WhatsOnTab() {
 
 export default function EventsScreen() {
   const insets = useSafeAreaInsets();
-  const { tabletPad } = useResponsive();
+  const { isTablet } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const [activeTab, setActiveTab] = useState<"events" | "whats-on">("events");
@@ -378,7 +378,7 @@ export default function EventsScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + webTopInset, paddingHorizontal: tabletPad },
+          { paddingTop: insets.top + webTopInset },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -433,7 +433,7 @@ export default function EventsScreen() {
           <BannerCarousel images={bannerImages} />
         )}
 
-        <View style={styles.contentSection}>
+        <View style={[styles.contentSection, isTablet && { maxWidth: 720, width: "100%", alignSelf: "center" }]}>
           {activeTab === "events" ? <UpcomingEventsTab /> : <WhatsOnTab />}
         </View>
 
