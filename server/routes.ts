@@ -5192,7 +5192,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return getLondonNow().dateStr;
   }
 
-  interface OrderingSchedule { days: number[]; startTime: string; endTime: string; }
+  // `endTime` (and per-day overrides in `endTimeByDay`) may be "HH:MM" with
+  // hours in 24..28 to express past-midnight closes — e.g. "24:00" = midnight,
+  // "25:00" = 1am next day, "26:30" = 2:30am. The compute helper translates
+  // these into "yesterday's overflow window" so the bar still reads OPEN at
+  // 12:30am on a Sunday when Saturday's schedule said "open until 1am".
+  interface OrderingSchedule {
+    days: number[];
+    startTime: string;
+    endTime: string;
+    endTimeByDay?: Record<string, string>; // key = dow string ("0".."6")
+  }
   interface OrderingOverride { date: string; closed: boolean; startTime?: string; endTime?: string; note?: string; }
   // `enabled` = ordering is open at all (drinks/snacks count). It is only
   // false when staff manually flip the kill switch for the whole venue.
@@ -5218,9 +5228,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Wednesday (3), Thursday (4), Friday (5), Saturday (6), Sunday (0).
   // Day-of-week ints follow JS Date.getDay() — Sunday is 0, not 7.
   const DEFAULT_SCHEDULE: OrderingSchedule = { days: [3, 4, 5, 6, 0], startTime: "12:00", endTime: "20:00" };
-  // Bar runs longer than the kitchen — every day, lunch through last orders.
-  // Staff can edit via PUT /api/staff/bar-schedule.
-  const DEFAULT_BAR_SCHEDULE: OrderingSchedule = { days: [0, 1, 2, 3, 4, 5, 6], startTime: "12:00", endTime: "23:00" };
+  // Bar runs longer than the kitchen — Sun-Thu 10am-12am, Fri-Sat 10am-1am.
+  // Past-midnight closes ("24:00", "25:00") are handled by the overflow logic
+  // in computeScheduleStatus. Staff can edit via PUT /api/staff/bar-schedule.
+  const DEFAULT_BAR_SCHEDULE: OrderingSchedule = {
+    days: [0, 1, 2, 3, 4, 5, 6],
+    startTime: "10:00",
+    endTime: "24:00",
+    endTimeByDay: { "5": "25:00", "6": "25:00" },
+  };
   const DAY_NAMES_FULL = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
   const DAY_NAMES_SHORT = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
@@ -5240,8 +5256,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return DEFAULT_BAR_SCHEDULE;
   }
 
+  // Parse "HH:MM" → minutes since start-of-day. Hours may be 24..28 to express
+  // past-midnight closes (e.g. "25:00" = 1am next day = 1500 minutes).
+  function parseHM(s: string): number {
+    const [h, m] = s.split(":").map(Number);
+    return (h | 0) * 60 + (m | 0);
+  }
+  // Render minutes-from-start-of-day back to "HH:MM" within a single day, so
+  // an end-time stored as "25:00" displays as "01:00" — used as machine
+  // value (closesAt) only.
+  function fmtHM(min: number): string {
+    const wrapped = ((min % 1440) + 1440) % 1440;
+    const h = Math.floor(wrapped / 60);
+    const m = wrapped % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+  // Friendly version for the customer-facing reason text — "midnight", "1am",
+  // "12:30am" rather than "00:00", "01:00", "00:30".
+  function fmtHMFriendly(min: number): string {
+    const wrapped = ((min % 1440) + 1440) % 1440;
+    const h = Math.floor(wrapped / 60);
+    const m = wrapped % 60;
+    if (m === 0 && h === 0) return "midnight";
+    if (m === 0 && h === 12) return "midday";
+    if (m === 0) return h < 12 ? `${h}am` : `${h-12}pm`;
+    return h < 12 ? `${h === 0 ? 12 : h}:${String(m).padStart(2,"0")}am` : `${h === 12 ? 12 : h-12}:${String(m).padStart(2,"0")}pm`;
+  }
+  function effectiveEndTime(schedule: OrderingSchedule, dow: number): string {
+    return schedule.endTimeByDay?.[String(dow)] ?? schedule.endTime;
+  }
+
   // Compute open/closed + human reason for a generic schedule (kitchen or bar).
-  // Returns the same shape both consumers need so getOrderingStatus stays flat.
+  // Handles per-day end times AND past-midnight closes via "yesterday's
+  // overflow window" — so a Saturday "open until 1am" still reads OPEN at
+  // 12:30am on Sunday.
   function computeScheduleStatus(
     label: string,                    // "Kitchen" | "Bar"
     schedule: OrderingSchedule,
@@ -5249,52 +5297,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
     london: { dateStr: string; hhmm: string; dow: number },
   ): { open: boolean; reason: string; nextOpen?: string; closesAt?: string } {
     const { hhmm, dow } = london;
-    let open = false;
-    let reason = "";
-    let nextOpen: string | undefined;
-    let closesAt: string | undefined;
+    const nowMin = parseHM(hhmm);
 
+    // Override path stays simple — overrides don't support past-midnight.
     if (todayOverride) {
       if (todayOverride.closed) {
-        reason = `${label} is closed today${todayOverride.note ? ` (${todayOverride.note})` : ""}.`;
-        nextOpen = scheduleOpenMessage(schedule);
-        return { open, reason, nextOpen, closesAt };
+        return {
+          open: false,
+          reason: `${label} is closed today${todayOverride.note ? ` (${todayOverride.note})` : ""}.`,
+          nextOpen: scheduleOpenMessage(schedule),
+        };
       }
       const oStart = todayOverride.startTime ?? schedule.startTime;
-      const oEnd = todayOverride.endTime ?? schedule.endTime;
-      if (hhmm >= oStart && hhmm < oEnd) {
-        return { open: true, reason: `${label} open until ${oEnd}`, closesAt: oEnd };
+      const oEnd = todayOverride.endTime ?? effectiveEndTime(schedule, dow);
+      const oStartMin = parseHM(oStart);
+      const oEndMin = parseHM(oEnd);
+      if (nowMin >= oStartMin && nowMin < oEndMin) {
+        return { open: true, reason: `${label} open until ${fmtHMFriendly(oEndMin)}`, closesAt: fmtHM(oEndMin) };
       }
-      if (hhmm < oStart) {
+      if (nowMin < oStartMin) {
         return { open: false, reason: `${label} opens today at ${oStart}${todayOverride.note ? ` (${todayOverride.note})` : ""}`, nextOpen: `Today from ${oStart}` };
       }
       // past override → fall through to weekly logic
     }
 
-    const isScheduledDay = schedule.days.includes(dow);
-    if (!isScheduledDay) {
-      let daysAhead = 1;
-      let nextDow = (dow + daysAhead) % 7;
-      while (!schedule.days.includes(nextDow) && daysAhead < 8) { daysAhead++; nextDow = (dow + daysAhead) % 7; }
-      const nextName = daysAhead === 1 ? "Tomorrow" : DAY_NAMES_FULL[nextDow];
-      reason = `${label} serves ${scheduleOpenMessage(schedule)}.`;
-      nextOpen = `${nextName} from ${schedule.startTime}`;
-    } else if (hhmm < schedule.startTime) {
-      reason = `${label} opens at ${schedule.startTime} today.`;
-      nextOpen = `Today from ${schedule.startTime}`;
-    } else if (hhmm >= schedule.endTime) {
-      let daysAhead = 1;
-      let nextDow = (dow + daysAhead) % 7;
-      while (!schedule.days.includes(nextDow) && daysAhead < 8) { daysAhead++; nextDow = (dow + daysAhead) % 7; }
-      const nextName = daysAhead === 1 ? "Tomorrow" : DAY_NAMES_FULL[nextDow];
-      reason = `${label} closed at ${schedule.endTime}. Back ${nextName.toLowerCase()}.`;
-      nextOpen = `${nextName} from ${schedule.startTime}`;
-    } else {
-      open = true;
-      reason = `${label} open until ${schedule.endTime}`;
-      closesAt = schedule.endTime;
+    // 1. Check yesterday's overflow window — e.g. it's 00:30 Sun and Saturday
+    //    closed at 25:00 (1am Sun). Bar still open until 01:00.
+    const yesterdayDow = (dow + 6) % 7;
+    if (schedule.days.includes(yesterdayDow)) {
+      const yEndMin = parseHM(effectiveEndTime(schedule, yesterdayDow));
+      if (yEndMin > 1440) {
+        const overflowEndMin = yEndMin - 1440;
+        if (nowMin < overflowEndMin) {
+          return { open: true, reason: `${label} open until ${fmtHMFriendly(overflowEndMin)}`, closesAt: fmtHM(overflowEndMin) };
+        }
+      }
     }
-    return { open, reason, nextOpen, closesAt };
+
+    // 2. Today's window
+    const isScheduledDay = schedule.days.includes(dow);
+    const startMin = parseHM(schedule.startTime);
+    const endMin = parseHM(effectiveEndTime(schedule, dow));
+
+    if (isScheduledDay && nowMin >= startMin && nowMin < endMin) {
+      return { open: true, reason: `${label} open until ${fmtHMFriendly(endMin)}`, closesAt: fmtHM(endMin) };
+    }
+    if (isScheduledDay && nowMin < startMin) {
+      return { open: false, reason: `${label} opens at ${schedule.startTime} today.`, nextOpen: `Today from ${schedule.startTime}` };
+    }
+
+    // 3. Otherwise — find next scheduled day (today already past, or not a
+    //    scheduled day).
+    let daysAhead = 1;
+    let nextDow = (dow + daysAhead) % 7;
+    while (!schedule.days.includes(nextDow) && daysAhead < 8) { daysAhead++; nextDow = (dow + daysAhead) % 7; }
+    const nextName = daysAhead === 1 ? "Tomorrow" : DAY_NAMES_FULL[nextDow];
+    const reason = isScheduledDay
+      ? `${label} closed at ${fmtHMFriendly(endMin)}. Back ${nextName.toLowerCase()}.`
+      : `${label} serves ${scheduleOpenMessage(schedule)}.`;
+    return { open: false, reason, nextOpen: `${nextName} from ${schedule.startTime}` };
   }
 
   async function getOrderingOverrides(): Promise<OrderingOverride[]> {
@@ -5306,14 +5367,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 
   function scheduleOpenMessage(schedule: OrderingSchedule): string {
-    const dayNames = schedule.days.sort((a,b)=>a-b).map(d => DAY_NAMES_SHORT[d]);
-    const start = schedule.startTime.replace(":","").length===4 ? schedule.startTime : schedule.startTime;
+    // Renders an end-time string like "24:00" as "midnight", "25:00" as "1am",
+    // and normal times in 12-hour with am/pm.
     const fmt = (t: string) => {
-      const [h,m] = t.split(":").map(Number);
-      if (m === 0) return h < 12 ? `${h}am` : h === 12 ? "12pm" : `${h-12}pm`;
+      const [hRaw, mRaw] = t.split(":").map(Number);
+      const h = hRaw % 24;
+      const m = mRaw | 0;
+      if (m === 0 && h === 0) return "midnight";
+      if (m === 0 && h === 12) return "12pm";
+      if (m === 0) return h < 12 ? `${h}am` : `${h-12}pm`;
       return h < 12 ? `${h}:${String(m).padStart(2,"0")}am` : `${h === 12 ? 12 : h-12}:${String(m).padStart(2,"0")}pm`;
     };
-    return `${dayNames.join(", ")} ${fmt(schedule.startTime)}–${fmt(schedule.endTime)}`;
+    // Group days by their effective end time so we can show "Sun-Thu 10am-12am, Fri-Sat 10am-1am".
+    const sortedDays = [...schedule.days].sort((a,b)=>a-b);
+    const groups = new Map<string, number[]>();
+    for (const d of sortedDays) {
+      const end = effectiveEndTime(schedule, d);
+      if (!groups.has(end)) groups.set(end, []);
+      groups.get(end)!.push(d);
+    }
+    const parts: string[] = [];
+    for (const [end, days] of groups) {
+      const dayLabel = days.map(d => DAY_NAMES_SHORT[d]).join(", ");
+      parts.push(`${dayLabel} ${fmt(schedule.startTime)}–${fmt(end)}`);
+    }
+    return parts.join("; ");
   }
 
   async function getOrderingStatus(): Promise<OrderingStatusResult> {
