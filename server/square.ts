@@ -1191,6 +1191,11 @@ async function buildSquareOrderBody(
   excludeWithDeals: boolean | undefined,
   orderNote: string | undefined,
   orderNumber: number | undefined,
+  // When true, the order is built WITHOUT a PICKUP fulfillment so that
+  // Square for Restaurants surfaces it in the "Open Orders" / "Open
+  // Tickets" screen instead of routing it to the "Online Orders → Pickup"
+  // queue. Used by the kiosk flow (customer pays at the counter).
+  asOpenTicket: boolean | undefined,
 ): Promise<{
   order: any;
   prePopulated: Record<string, any> | undefined;
@@ -1398,18 +1403,25 @@ async function buildSquareOrderBody(
     // Square but staff can't find it. Cap at 30 chars (Square limit).
     ticket_name: ticketName.slice(0, 30),
     ...(orderDiscounts.length ? { discounts: orderDiscounts } : {}),
-    fulfillments: [
-      {
-        type: "PICKUP",
-        state: "PROPOSED",
-        pickup_details: {
-          recipient: { display_name: ticketName.slice(0, 60) },
-          schedule_type: "ASAP",
-          is_curbside_pickup: false,
-          note: combinedNote || undefined,
+    // Skip the PICKUP fulfillment for kiosk orders — Square for Restaurants
+    // routes any order with a PICKUP/DELIVERY fulfillment into the "Online
+    // Orders" queue, hiding it from the "Open Orders" screen where staff
+    // actually look. Online checkout-link / web-payment flows still need
+    // the PICKUP fulfillment because the customer is paying remotely.
+    ...(asOpenTicket ? {} : {
+      fulfillments: [
+        {
+          type: "PICKUP",
+          state: "PROPOSED",
+          pickup_details: {
+            recipient: { display_name: ticketName.slice(0, 60) },
+            schedule_type: "ASAP",
+            is_curbside_pickup: false,
+            note: combinedNote || undefined,
+          },
         },
-      },
-    ],
+      ],
+    }),
     ...(combinedNote ? {
       note: combinedNote.slice(0, 500),
       reference_id: (tableNote || "ORDER").replace(/\s+/g, "-").toUpperCase().slice(0, 40),
@@ -1452,10 +1464,11 @@ export async function createSquareOrderForCheckout(
   excludeWithDeals?: boolean,
   orderNote?: string,
   orderNumber?: number,
+  asOpenTicket?: boolean,
 ): Promise<{ orderId: string; totalPence: number; pricedItems: PricedLineItem[] }> {
   const idempotencyKey = `order-create-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   const { order, pricedItems } = await buildSquareOrderBody(
-    items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, orderNumber,
+    items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, orderNumber, asOpenTicket,
   );
   const data = await squareRequest("POST", "/v2/orders", {
     idempotency_key: idempotencyKey,
@@ -1478,7 +1491,7 @@ export async function createOrderCheckoutLink(
 ): Promise<{ url: string; linkId: string; squareOrderId: string; pricedItems: PricedLineItem[]; rawTotalPence: number }> {
   const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   const { order, prePopulated, pricedItems, rawTotalPence } = await buildSquareOrderBody(
-    items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, orderNumber,
+    items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, orderNumber, false,
   );
   const body: any = {
     idempotency_key: idempotencyKey,

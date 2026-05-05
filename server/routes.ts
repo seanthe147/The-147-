@@ -5815,6 +5815,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           false,
           undefined,
           ticketNumber,
+          true, // asOpenTicket — skip PICKUP fulfillment so the order
+                // surfaces in Square for Restaurants' "Open Orders"
+                // screen instead of the Online Orders → Pickup queue.
         );
 
       const created = await storage.createAppOrder({
