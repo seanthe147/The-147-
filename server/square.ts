@@ -1417,6 +1417,13 @@ async function buildSquareOrderBody(
     //     the PICKUP fulfillment so the customer-pays-remotely flow works
     //     unchanged.
     ...(asOpenTicket ? {
+      // Spoof source.name to match what native till orders carry. Square's
+      // POS / Square for Restaurants apps filter the on-device Open Tickets
+      // list by source.name == "Point of Sale" — orders created via our
+      // OAuth app default to source.name = "The 147" and are hidden by the
+      // till's filter even though they're identical in every other field.
+      // OrderSource.name is settable on CreateOrder per Square API docs.
+      source: { name: "Point of Sale" },
       fulfillments: [
         {
           type: "SIMPLE",
