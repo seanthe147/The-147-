@@ -1366,6 +1366,28 @@ function DashboardScreen() {
                 onPress={() => setTerminalModalVisible(true)}
                 testID="portal-square-terminal"
               />
+              {/*
+                Teya Pro placeholder. The kiosk currently pushes payments to
+                Square Terminal via Square's public Terminal Checkouts API.
+                Teya does not offer an equivalent push-to-terminal cloud API
+                outside their EPOS partner programme, so this entry is
+                intentionally informational until Teya Connect / Hospitality
+                API access is granted to the venue. Once we have credentials
+                we'll wire this up the same shape as the Square Terminal
+                tool above (pair → status → enable toggle → kiosk-checkout
+                push → webhook mark-paid).
+              */}
+              <AdminTool
+                icon="card-outline"
+                title="Teya Pro  ·  Coming soon"
+                description="Push kiosk payments to your Teya Pro terminal. Awaiting Teya API access."
+                color={Colors.light.textSecondary}
+                onPress={() => Alert.alert(
+                  "Teya Pro — coming soon",
+                  "We're waiting on API access from Teya before we can push kiosk payments to the Teya Pro terminal automatically.\n\nIn the meantime, kiosk orders can still be paid at the counter using the Teya Pro as normal — staff just enter the amount on the terminal and tap 'Mark Paid' on the dashboard.\n\nTo speed this up, contact Teya support and ask about their Connect / Hospitality integration programme for The 147.",
+                )}
+                testID="portal-teya-terminal"
+              />
             </View>
           </>
         )}
