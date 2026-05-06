@@ -8218,6 +8218,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(200).send(html);
   });
 
+  // Printable A4 cheat sheet for staff: how to find and charge kiosk orders
+  // on the Square till. Public route (no auth) so it can be opened on any
+  // device near the till and printed without a staff login.
+  app.get("/staff/kiosk-cheatsheet", (_req, res) => {
+    const templatePath = path.resolve(process.cwd(), "server", "templates", "kiosk-cheatsheet.html");
+    const html = fs.readFileSync(templatePath, "utf-8");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.status(200).send(html);
+  });
+
   // ── Square membership auto-sync ─────────────────────────────────────────────
   // Called after register/login. Looks up the customer's email in Square, finds
   // any active subscription matching one of our plans, and creates a local record
