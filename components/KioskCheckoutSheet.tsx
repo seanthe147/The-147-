@@ -46,7 +46,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
   const [tableNumber, setTableNumber] = useState("");
   const [phone, setPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [confirmation, setConfirmation] = useState<{ ticketNumber: number; appOrderId: number } | null>(null);
+  const [confirmation, setConfirmation] = useState<{ ticketNumber: number; appOrderId: number; terminalPushed: boolean } | null>(null);
 
   const reset = useCallback(() => {
     setStep("cart");
@@ -116,7 +116,11 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
         }
         throw new Error(data?.message || "Could not send order. Please try again.");
       }
-      setConfirmation({ ticketNumber: Number(data.ticketNumber), appOrderId: Number(data.appOrderId) });
+      setConfirmation({
+        ticketNumber: Number(data.ticketNumber),
+        appOrderId: Number(data.appOrderId),
+        terminalPushed: !!data.terminalCheckoutPushed,
+      });
       setStep("confirmation");
     } catch (err: any) {
       Alert.alert("Order Failed", err?.message || "Could not send order. Please try again.");
@@ -329,11 +333,20 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
                   <Ionicons name="checkmark" size={64} color="#fff" />
                 </View>
                 <Text style={styles.confirmHeading}>Order received</Text>
-                <Text style={styles.confirmSub}>Take this number to the counter to pay</Text>
+                <Text style={styles.confirmSub}>
+                  {confirmation.terminalPushed
+                    ? "Tap, insert or swipe your card on the terminal at the counter"
+                    : "Take this number to the counter to pay"}
+                </Text>
                 <View style={styles.ticketBox}>
                   <Text style={styles.ticketLabel}>YOUR ORDER NUMBER</Text>
                   <Text style={styles.ticketNumber}>{confirmation.ticketNumber}</Text>
                 </View>
+                {confirmation.terminalPushed && (
+                  <Text style={styles.confirmHint}>
+                    Show this number to staff if anything goes wrong with the terminal.
+                  </Text>
+                )}
                 <Text style={styles.confirmFooter}>Closing automatically in a few seconds…</Text>
                 <Pressable
                   style={({ pressed }) => [styles.primaryBtn, { opacity: pressed ? 0.85 : 1, marginTop: 28 }]}
@@ -389,5 +402,6 @@ const styles = StyleSheet.create({
   ticketBox: { marginTop: 28, backgroundColor: "#0A1628", paddingHorizontal: 48, paddingVertical: 24, borderRadius: 20, alignItems: "center" },
   ticketLabel: { color: "rgba(255,255,255,0.7)", fontSize: 11, letterSpacing: 3, fontWeight: "700" as const },
   ticketNumber: { color: "#fff", fontSize: 96, fontWeight: "700" as const, letterSpacing: 2 },
+  confirmHint: { fontSize: 13, color: Colors.light.textSecondary, marginTop: 16, textAlign: "center", paddingHorizontal: 24 },
   confirmFooter: { fontSize: 13, color: Colors.light.textSecondary, marginTop: 24 },
 });
