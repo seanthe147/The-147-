@@ -1403,12 +1403,28 @@ async function buildSquareOrderBody(
     // Square but staff can't find it. Cap at 30 chars (Square limit).
     ticket_name: ticketName.slice(0, 30),
     ...(orderDiscounts.length ? { discounts: orderDiscounts } : {}),
-    // Skip the PICKUP fulfillment for kiosk orders — Square for Restaurants
-    // routes any order with a PICKUP/DELIVERY fulfillment into the "Online
-    // Orders" queue, hiding it from the "Open Orders" screen where staff
-    // actually look. Online checkout-link / web-payment flows still need
-    // the PICKUP fulfillment because the customer is paying remotely.
-    ...(asOpenTicket ? {} : {
+    // Fulfillment selection:
+    //   asOpenTicket = true  (kiosk)  → SIMPLE/PROPOSED fulfillment.
+    //     PICKUP/DELIVERY route the order into Square's "Online Orders"
+    //     queue, hiding it from the till's Open Tickets list. But OMITTING
+    //     fulfillment entirely also hides the order from the till — the
+    //     order lives in Square's data layer (visible via API + Dashboard)
+    //     but Square POS / Square for Restaurants will not render it on
+    //     the device. SIMPLE/PROPOSED is what the till itself attaches to
+    //     a fresh ticket, and is the only shape that makes a kiosk order
+    //     surface in the standard Open Tickets list with no quirks.
+    //   asOpenTicket = false (online checkout-link / web payment) → keep
+    //     the PICKUP fulfillment so the customer-pays-remotely flow works
+    //     unchanged.
+    ...(asOpenTicket ? {
+      fulfillments: [
+        {
+          type: "SIMPLE",
+          state: "PROPOSED",
+          line_item_application: "ALL",
+        },
+      ],
+    } : {
       fulfillments: [
         {
           type: "PICKUP",

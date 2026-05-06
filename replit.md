@@ -49,7 +49,7 @@ I prefer detailed explanations.
 - The staff dashboard's bookings and orders pollers are torn down on logout/401 to prevent continued firing.
 - Silent refreshes in staff dashboard guard against malformed API payloads and date-change races.
 - Square Open Ticket integration: `ticket_name` is canonical for Square POS and capped at 30 characters.
-- Square for Restaurants routes orders with `PICKUP` fulfillment to "Online Orders," which are hidden from "Open Orders" where staff look. Kiosk orders avoid `PICKUP` fulfillment.
+- Square for Restaurants routes orders with `PICKUP` fulfillment to "Online Orders," which are hidden from "Open Orders" where staff look. Kiosk orders use a `SIMPLE`/`PROPOSED` fulfillment instead — omitting fulfillment entirely also hides the order from the till (it lives in Square's data layer / Dashboard but Square POS filters it out of the on-device Open Tickets list). `SIMPLE` is what the till itself attaches to a fresh ticket, and is the only shape that surfaces in Open Tickets with no quirks.
 - `computeScheduleStatus()` checks both today's window and "yesterday's overflow window" for schedules spanning midnight.
 - Teya has NO webhooks — payment status arrives via Server-Sent Events on `GET /poslink/v2/payment-requests/{id}`. The kiosk-checkout route opens the SSE stream in the background; if the server restarts mid-payment the listener is lost (the order stays counter-pay until staff mark it paid). Acceptable for a scaffold; revisit if Teya pushes are heavily used.
 - `active_kiosk_terminal` setting (`square` / `teya` / `none`) selects which vendor receives kiosk pushes. Defaults to `square` so behaviour is unchanged for existing venues.
