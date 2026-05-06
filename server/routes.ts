@@ -1624,19 +1624,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (verifyPassword(credential, staffUser.passwordHash, staffUser.passwordSalt)) {
           authed = true;
         }
-      } else if (staffUser.pinHash && staffUser.pinSalt) {
-        // Legacy account — accept the credential against the stored PIN hash
-        // regardless of format. The hash check itself is the authority; the
-        // earlier digit-only regex was a sanity filter, not a security gate,
-        // and was confusing legitimate users who typed their PIN into the
-        // password field. A wrong guess (numeric or otherwise) still fails
-        // the constant-time hash comparison and returns "Invalid credentials".
+      }
+
+      // PIN fallback. Two cases land here:
+      //   1. Legacy account with no password set yet (the original branch).
+      //   2. Account that has BOTH a password AND a PIN, where the password
+      //      check above failed and the credential looks PIN-shaped (4-8
+      //      digits). This is what happens after an owner uses "Reset PIN"
+      //      on a staff member who also has a password on file: previously
+      //      the new PIN was saved correctly but the login route never
+      //      consulted it, so the staff member was locked out until their
+      //      password was reset too. The constant-time PIN hash comparison
+      //      remains the security boundary; the format gate just stops a
+      //      mistyped long password from being matched against a 4-8 digit
+      //      PIN by accident.
+      if (!authed && staffUser.pinHash && staffUser.pinSalt && /^\d{4,8}$/.test(credential)) {
         if (verifyPin(credential, staffUser.pinHash, staffUser.pinSalt)) {
           authed = true;
-          // Force password setup on next step — they sign in with the legacy
-          // PIN exactly once, then the SetPasswordScreen is shown before any
-          // dashboard access. mustChangePassword is set both in the response
-          // (read by the client immediately) and persisted to the DB so the
+          // Force password setup on next step — they sign in with the
+          // (possibly freshly-reset) PIN exactly once, then the
+          // SetPasswordScreen is shown before any dashboard access.
+          // mustChangePassword is set both in the response (read by the
+          // client immediately) and persisted to the DB so the
           // forced-change survives a token refresh or a different device.
           mustChangePassword = true;
           if (!staffUser.mustChangePassword) {
