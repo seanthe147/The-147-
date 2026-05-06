@@ -323,12 +323,20 @@ async function sendEmailViaSMTP(to: string, subject: string, html: string): Prom
   const port = parseInt(process.env.SMTP_PORT || "587");
   if (!host || !user || !pass) return false;
   try {
+    // Hard 10s ceilings on each phase of the SMTP handshake. Without these,
+    // a flaky upstream (Gmail throttling, DNS hiccup, slow MX, lost ACK)
+    // would make sendMail hang indefinitely, which in turn made the calling
+    // HTTP route never respond — the customer-side symptom was the loyalty
+    // OTP screen spinning forever after they tapped "Send Verification Code".
     const transporter = nodemailer.createTransport({
       host,
       port,
       secure: port === 465,
       auth: { user, pass },
       tls: { rejectUnauthorized: true },
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 15_000,
     });
     // Public-facing "from" address shown in the customer's inbox. Gmail still
     // authenticates as `user` (bookings@the147.co.uk) but the visible sender
@@ -378,7 +386,11 @@ async function sendOtpEmail(email: string, code: string): Promise<boolean> {
   const smtpSent = await sendEmailViaSMTP(email, subject, html);
   if (smtpSent) return true;
 
-  // Resend fallback (requires verified domain for non-owner addresses)
+  // Resend fallback (requires verified domain for non-owner addresses).
+  // Hard 10s ceiling via AbortSignal.timeout — Node's global fetch has no
+  // default timeout, so without this the route would hang forever if Resend
+  // were slow or the upstream socket stalled. Same root cause as the SMTP
+  // timeouts above; both paths must be bounded.
   if (resendKey) {
     const fromEmail = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
     const fromName = process.env.RESEND_FROM_NAME || "The 147";
@@ -387,6 +399,7 @@ async function sendOtpEmail(email: string, code: string): Promise<boolean> {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
         body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: email, subject, html }),
+        signal: AbortSignal.timeout(10_000),
       });
       if (response.ok) {
         console.log(`[LOYALTY OTP] Email sent via Resend to ${maskEmail(email)}`);
