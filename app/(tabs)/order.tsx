@@ -240,7 +240,18 @@ function CategoryGrid({
   categories: MenuCategory[];
   onSelect: (id: string) => void;
 }) {
-  const cardSize = (SCREEN_WIDTH - 16 * 3) / 2;
+  // Multi-column grid sized to the actual content width (not the raw
+  // screen) so iPad gets 3 cols portrait / 4 cols landscape and phone
+  // keeps the original 2-up layout. The parent ScrollView already
+  // applies tabletPad which constrains content to ~1100pt on iPad —
+  // we mirror that calc here so card width matches.
+  const { isTablet, isLandscape, width } = useResponsive(1100);
+  const cols = isTablet ? (isLandscape ? 4 : 3) : 2;
+  const contentWidth = isTablet ? Math.min(width, 1100) : width;
+  const GAP = 12;
+  const PAD = 16;
+  // (cols-1) gaps + 2*PAD horizontal insets eaten by the parent.
+  const cardSize = (contentWidth - PAD * 2 - GAP * (cols - 1)) / cols;
 
   return (
     <View style={gridStyles.grid}>
@@ -1671,7 +1682,12 @@ export default function OrderScreen() {
   const params = useLocalSearchParams<{ hlCatId?: string; hlItemId?: string; hlItemName?: string; openCheckout?: string; checkoutStep?: string; prefillEmail?: string }>();
 
   const { isKioskMode } = useKiosk();
-  const { tabletPad } = useResponsive();
+  // Bump the menu's max content width to 1100pt on iPad so the multi-
+  // column item grid + multi-column category grid have room to breathe.
+  // Phone is unaffected (tabletPad returns 0 below 700pt smallest dim).
+  const { tabletPad, isTablet, isLandscape } = useResponsive(1100);
+  // Items FlatList columns: 1 on phone, 2 on iPad portrait, 3 on landscape.
+  const itemCols = isTablet ? (isLandscape ? 3 : 2) : 1;
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   const [cartVisible, setCartVisible] = useState(false);
@@ -1892,8 +1908,13 @@ export default function OrderScreen() {
   }, [params.hlCatId, params.hlItemId, categories]);
 
   const renderItem = useCallback(({ item }: { item: MenuItem }) => (
-    <ItemCard item={item} onOpenModifiers={handleOpenModifiers} highlighted={item.id === highlightItemId} showDietaryTags={featureFlags.dietaryFilters} kitchenClosed={!kitchenOpen && !!activeCategoryData?.isKitchen} barClosed={!barOpen && !activeCategoryData?.isKitchen} />
-  ), [handleOpenModifiers, highlightItemId, featureFlags.dietaryFilters, kitchenOpen, barOpen, activeCategoryData?.isKitchen]);
+    // On iPad we render in a multi-column grid, so each cell needs flex:1
+    // to share the row width evenly. On phone (itemCols===1) the wrapper
+    // is a no-op and the card renders full-width as before.
+    <View style={itemCols > 1 ? { flex: 1 / itemCols } : undefined}>
+      <ItemCard item={item} onOpenModifiers={handleOpenModifiers} highlighted={item.id === highlightItemId} showDietaryTags={featureFlags.dietaryFilters} kitchenClosed={!kitchenOpen && !!activeCategoryData?.isKitchen} barClosed={!barOpen && !activeCategoryData?.isKitchen} />
+    </View>
+  ), [handleOpenModifiers, highlightItemId, featureFlags.dietaryFilters, kitchenOpen, barOpen, activeCategoryData?.isKitchen, itemCols]);
 
   const handleSelectCategory = useCallback((id: string) => {
     setSelectedCategory(id);
@@ -2293,16 +2314,26 @@ export default function OrderScreen() {
         </ScrollView>
       ) : (
         <FlatList
+          // FlatList requires a key change when numColumns changes, otherwise
+          // it crashes ("Changing numColumns on the fly is not supported").
+          // Re-mounting on rotation/iPad-detection is cheap here — the menu
+          // data is small and already cached.
+          key={`items-${itemCols}`}
           data={activeItems}
           keyExtractor={(item) => item.variationId}
           renderItem={renderItem}
+          numColumns={itemCols}
+          columnWrapperStyle={itemCols > 1 ? { gap: 10, marginBottom: 10 } : undefined}
           contentContainerStyle={{
             paddingTop: headerHeight + categoryBarHeight + 8,
             paddingBottom: tabBarHeight + cartBarHeight + 16,
             paddingHorizontal: 16 + tabletPad,
           }}
           showsVerticalScrollIndicator={false}
-          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+          // Only the single-column layout uses the row separator; the
+          // multi-column layout uses columnWrapperStyle.marginBottom for
+          // vertical spacing instead, otherwise we'd get double-gaps.
+          ItemSeparatorComponent={itemCols > 1 ? undefined : () => <View style={{ height: 10 }} />}
           ListEmptyComponent={
             <View style={styles.centred}>
               <Text style={styles.errorSub}>No items in this category</Text>
