@@ -61,6 +61,7 @@ import {
   categorySettings,
   availabilityRules,
   appOrders,
+  teyaOauthTokens,
   type AppOrder,
   orderAuditLog,
   type OrderAuditEntry,
@@ -1402,6 +1403,61 @@ export class DatabaseStorage implements IStorage {
     const result: Record<string, string> = {};
     for (const row of rows) result[row.key] = row.value;
     return result;
+  }
+
+  // ── Teya OAuth token CRUD ───────────────────────────────────────────────
+  // Singleton row at id = 1. Encryption is handled by the caller (server/teya.ts)
+  // so storage stays a dumb persistence layer and the encryption strategy
+  // can change without touching DB code. Returning the raw row (with the
+  // *_enc fields) is intentional — only `server/teya.ts` knows the key.
+  async getTeyaTokens(): Promise<{
+    accessTokenEnc: string;
+    refreshTokenEnc: string;
+    tokenType: string;
+    scope: string | null;
+    expiresAt: Date;
+  } | null> {
+    const [row] = await db.select().from(teyaOauthTokens).where(eq(teyaOauthTokens.id, 1));
+    if (!row) return null;
+    return {
+      accessTokenEnc: row.accessTokenEnc,
+      refreshTokenEnc: row.refreshTokenEnc,
+      tokenType: row.tokenType,
+      scope: row.scope,
+      expiresAt: row.expiresAt,
+    };
+  }
+
+  async saveTeyaTokens(data: {
+    accessTokenEnc: string;
+    refreshTokenEnc: string;
+    tokenType: string;
+    scope: string | null;
+    expiresAt: Date;
+  }): Promise<void> {
+    await db.insert(teyaOauthTokens).values({
+      id: 1,
+      accessTokenEnc: data.accessTokenEnc,
+      refreshTokenEnc: data.refreshTokenEnc,
+      tokenType: data.tokenType,
+      scope: data.scope,
+      expiresAt: data.expiresAt,
+      updatedAt: new Date(),
+    }).onConflictDoUpdate({
+      target: teyaOauthTokens.id,
+      set: {
+        accessTokenEnc: data.accessTokenEnc,
+        refreshTokenEnc: data.refreshTokenEnc,
+        tokenType: data.tokenType,
+        scope: data.scope,
+        expiresAt: data.expiresAt,
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  async clearTeyaTokens(): Promise<void> {
+    await db.delete(teyaOauthTokens).where(eq(teyaOauthTokens.id, 1));
   }
 
   // ── Marketing pages (custom DB-backed pages) ─────────────────────────────

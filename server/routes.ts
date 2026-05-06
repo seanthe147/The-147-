@@ -13,6 +13,7 @@ import { and as dAnd, eq as dEq, desc as dDesc } from "drizzle-orm";
 import { getServerFeatureFlags } from "./featureFlags";
 import { hashPin, verifyPin, hashPassword, verifyPassword, hashEmail } from "./encryption";
 import * as square from "./square";
+import * as teya from "./teya";
 import { buildReorderPayload, type ReorderMenuItem, type ReorderRawItem } from "./reorder-matching";
 
 // ── Square POS → Live Tables sync helpers ───────────────────────────────────
@@ -5842,28 +5843,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // charging in Square POS as usual. We surface a boolean to the kiosk
       // client so it can show "Tap your card on the counter terminal"
       // instead of "Take this to the counter to pay" when the push lands.
+      // Branch on the staff-selected active terminal (Square or Teya). Defaults
+      // to "square" so behaviour is unchanged for venues that haven't picked
+      // a terminal yet. Failures inside either branch are non-fatal — the
+      // order is already saved as counter-pay, so staff can fall back to
+      // charging it manually on whichever POS they have to hand.
       let terminalCheckoutPushed = false;
+      let terminalProvider: "square" | "teya" | null = null;
       try {
-        const enabled = await storage.getSetting("square_terminal_enabled");
-        const deviceId = await storage.getSetting("square_terminal_device_id");
-        if (enabled === "true" && deviceId) {
-          const idemRaw = `kiosk-terminal-${created.id}`;
-          const checkout = await square.createTerminalCheckout({
-            deviceId,
-            amountPence: squareTotalPence,
-            referenceId: String(created.id),
-            note: `Kiosk #${ticketNumber} — ${name}`,
-            idempotencyKey: createHash("sha256").update(idemRaw).digest("hex").slice(0, 45),
-          });
-          terminalCheckoutPushed = true;
-          console.log(`[KIOSK] Order #${created.id} pushed to Square Terminal ${deviceId} (checkout ${checkout.id}, status ${checkout.status})`);
+        const activeTerminal = (await storage.getSetting("active_kiosk_terminal")) || "square";
+        if (activeTerminal === "teya") {
+          const teyaEnabled = await storage.getSetting("teya_enabled");
+          const teyaStoreId = await storage.getSetting("teya_store_id");
+          const teyaTerminalId = await storage.getSetting("teya_terminal_id");
+          if (teyaEnabled === "true" && teyaStoreId && teyaTerminalId) {
+            const pr = await teya.createPaymentRequest({
+              storeId: teyaStoreId,
+              terminalId: teyaTerminalId,
+              amountPence: squareTotalPence,
+              merchantReference: String(created.id),
+              description: `Kiosk #${ticketNumber} — ${name}`,
+              idempotencyKey: teya.buildIdempotencyKey(`kiosk-teya-${created.id}`),
+            });
+            terminalCheckoutPushed = true;
+            terminalProvider = "teya";
+            console.log(`[KIOSK] Order #${created.id} pushed to Teya terminal ${teyaTerminalId} (request ${pr.id}, status ${pr.status})`);
+            // Background SSE listener — Teya has no webhooks, so we keep an
+            // open connection per-payment and mark the order paid the moment
+            // it reports SUCCESSFUL. We do NOT await this: the kiosk client
+            // needs an immediate response so it can show "Tap your card on
+            // the counter terminal" while the customer pays. The listener
+            // self-closes when Teya emits a final status (or after 5 min).
+            void teya.awaitFinalStatus(pr.id, { timeoutMs: 5 * 60_000 })
+              .then(async (final) => {
+                if (final.status === "SUCCESSFUL") {
+                  const ok = await storage.markAppOrderPaidAtCounter(created.id);
+                  if (ok) {
+                    try { await storage.logOrderAction({ orderId: created.id, staffUsername: "teya-terminal", action: "mark-paid-teya" }); } catch {}
+                    console.log(`[KIOSK] Order #${created.id} auto-marked paid via Teya (request ${pr.id})`);
+                  }
+                } else {
+                  console.warn(`[KIOSK] Order #${created.id} Teya request ${pr.id} ended with status ${final.status}`);
+                }
+              })
+              .catch((err: any) => {
+                console.warn(`[KIOSK] Order #${created.id} Teya SSE listener failed:`, err?.message || err);
+              });
+          }
+        } else {
+          // Default + explicit "square" branch — unchanged behaviour.
+          const enabled = await storage.getSetting("square_terminal_enabled");
+          const deviceId = await storage.getSetting("square_terminal_device_id");
+          if (enabled === "true" && deviceId) {
+            const idemRaw = `kiosk-terminal-${created.id}`;
+            const checkout = await square.createTerminalCheckout({
+              deviceId,
+              amountPence: squareTotalPence,
+              referenceId: String(created.id),
+              note: `Kiosk #${ticketNumber} — ${name}`,
+              idempotencyKey: createHash("sha256").update(idemRaw).digest("hex").slice(0, 45),
+            });
+            terminalCheckoutPushed = true;
+            terminalProvider = "square";
+            console.log(`[KIOSK] Order #${created.id} pushed to Square Terminal ${deviceId} (checkout ${checkout.id}, status ${checkout.status})`);
+          }
         }
       } catch (err: any) {
         console.warn(`[KIOSK] Order #${created.id} — terminal push failed (falling back to counter pay):`, err?.message || err);
       }
 
-      console.log(`[KIOSK] Order #${created.id} ticket #${ticketNumber} (${name}, ${tableNote}, £${(squareTotalPence / 100).toFixed(2)}) → Square ${squareOrderId}${terminalCheckoutPushed ? " [terminal]" : ""}`);
-      res.json({ appOrderId: created.id, ticketNumber, terminalCheckoutPushed });
+      console.log(`[KIOSK] Order #${created.id} ticket #${ticketNumber} (${name}, ${tableNote}, £${(squareTotalPence / 100).toFixed(2)}) → Square ${squareOrderId}${terminalCheckoutPushed ? ` [${terminalProvider}-terminal]` : ""}`);
+      res.json({ appOrderId: created.id, ticketNumber, terminalCheckoutPushed, terminalProvider });
     } catch (err: any) {
       console.error("[KIOSK] Checkout failed:", err.message);
       const status = err instanceof square.SquareError && err.statusCode >= 400 && err.statusCode < 500
@@ -5997,6 +6047,210 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: any) {
       res.status(500).json({ message: err?.message || "Could not clear pairing" });
     }
+  });
+
+  // ── Staff: which terminal vendor to push kiosk orders to ──────────────────
+  // The kiosk-checkout route reads `active_kiosk_terminal` to decide between
+  // Square Terminal and Teya Pro. Single setting keeps the UI simple — staff
+  // pick one vendor at a time. Defaults to "square" when unset so existing
+  // venues see no behaviour change after this change ships.
+  app.get("/api/staff/active-terminal", staffAuth, managerAuth, async (_req, res) => {
+    const value = (await storage.getSetting("active_kiosk_terminal")) || "square";
+    res.json({ provider: value });
+  });
+
+  app.put("/api/staff/active-terminal", staffAuth, managerAuth, async (req, res) => {
+    const provider = String(req.body?.provider || "");
+    if (!["square", "teya", "none"].includes(provider)) {
+      return res.status(400).json({ message: "provider must be 'square', 'teya' or 'none'" });
+    }
+    await storage.setSetting("active_kiosk_terminal", provider);
+    console.log(`[KIOSK] Active terminal vendor set to: ${provider}`);
+    res.json({ provider });
+  });
+
+  // ── Staff: Teya POSLink pairing & status ───────────────────────────────────
+  // Teya is OAuth2 (Authorization Code flow), not a device-pairing-code flow
+  // like Square. The owner walks through Teya's consent screen once; we keep
+  // a refresh token and pick a store + terminal from the merchant's account.
+  //
+  // Settings keys (mirroring the Square block above for symmetry):
+  //   teya_enabled        — "true" / "false" (default unset = off)
+  //   teya_store_id       — Teya store id (empty if unpaired)
+  //   teya_terminal_id    — Teya terminal id (empty if unpaired)
+  //   teya_terminal_name  — friendly name shown in admin UI
+  //
+  // Plus a singleton `teya_oauth_tokens` row managed by server/teya.ts.
+  //
+  // OAuth state (CSRF defence): we sign a short-lived state token with the
+  // session secret rather than storing per-state in the DB. The callback
+  // verifies the signature and timestamp before accepting the code.
+  app.get("/api/staff/teya/status", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      const conn = await teya.getConnectionInfo();
+      const enabled = await storage.getSetting("teya_enabled");
+      const storeId = await storage.getSetting("teya_store_id");
+      const terminalId = await storage.getSetting("teya_terminal_id");
+      const terminalName = await storage.getSetting("teya_terminal_name");
+      res.json({
+        configured: teya.isConfigured(),
+        connected: conn.connected,
+        expiresAt: conn.expiresAt ? conn.expiresAt.toISOString() : null,
+        scope: conn.scope,
+        paired: !!(storeId && terminalId),
+        storeId: storeId || null,
+        terminalId: terminalId || null,
+        terminalName: terminalName || null,
+        enabled: enabled === "true",
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Could not read Teya status" });
+    }
+  });
+
+  // Builds the Teya consent URL and redirects the staff browser to it. We
+  // sign the state with the staff session bearer + a timestamp so the
+  // callback can verify CSRF without DB round-trips.
+  app.get("/api/staff/teya/oauth/start", staffAuth, managerAuth, async (req, res) => {
+    try {
+      if (!teya.isConfigured()) {
+        return res.status(400).json({ message: "Teya is not configured on the server (missing TEYA_CLIENT_ID / TEYA_CLIENT_SECRET)" });
+      }
+      const redirectUri = teya.getRedirectUri(getPublicAppOrigin());
+      const stateNonce = randomBytes(16).toString("hex");
+      const ts = String(Date.now());
+      const sig = createHmac("sha256", process.env.SESSION_SECRET || "dev-only-secret")
+        .update(`teya|${stateNonce}|${ts}`)
+        .digest("hex");
+      const state = `${stateNonce}.${ts}.${sig}`;
+      const url = teya.buildAuthorizationUrl({ redirectUri, state });
+      // Two response shapes — JSON (for in-app fetch) or 302 (for direct link).
+      if (req.query.format === "json") {
+        return res.json({ url, redirectUri });
+      }
+      res.redirect(url);
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Could not start Teya OAuth" });
+    }
+  });
+
+  // Callback hit by Teya after the owner consents. We verify state, exchange
+  // the code, and either return JSON or redirect back into the staff portal.
+  // Browser-flow callers see a friendly HTML page; programmatic callers
+  // (`?format=json`) get raw JSON.
+  app.get("/api/staff/teya/oauth/callback", async (req, res) => {
+    const code = String(req.query.code || "");
+    const state = String(req.query.state || "");
+    const wantJson = req.query.format === "json";
+    const fail = (msg: string, status = 400) => {
+      console.warn(`[TEYA] OAuth callback failed: ${msg}`);
+      if (wantJson) return res.status(status).json({ message: msg });
+      res.status(status).send(`<!doctype html><meta charset="utf-8"><title>Teya — error</title><body style="font-family:system-ui;padding:32px;max-width:520px;margin:auto"><h1>Couldn't connect Teya</h1><p>${msg}</p><p><a href="/staff-portal">Back to staff portal</a></p></body>`);
+    };
+    if (!code || !state) return fail("Missing code or state");
+    const parts = state.split(".");
+    if (parts.length !== 3) return fail("Invalid state token");
+    const [nonce, ts, sig] = parts;
+    const expected = createHmac("sha256", process.env.SESSION_SECRET || "dev-only-secret")
+      .update(`teya|${nonce}|${ts}`)
+      .digest("hex");
+    if (sig.length !== expected.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+      return fail("State signature mismatch — possible CSRF");
+    }
+    if (Date.now() - Number(ts) > 10 * 60_000) {
+      return fail("State expired — please retry from the staff portal");
+    }
+    try {
+      const redirectUri = teya.getRedirectUri(getPublicAppOrigin());
+      const result = await teya.exchangeAuthorizationCode({ code, redirectUri });
+      console.log(`[TEYA] OAuth connected — scope=${result.scope || "(none)"} expires=${result.expiresAt.toISOString()}`);
+      if (wantJson) return res.json({ ok: true, scope: result.scope, expiresAt: result.expiresAt.toISOString() });
+      res.send(`<!doctype html><meta charset="utf-8"><title>Teya connected</title><body style="font-family:system-ui;padding:32px;max-width:520px;margin:auto;text-align:center"><h1>Teya connected</h1><p>You can close this window and return to the staff portal to pick a store and terminal.</p><script>setTimeout(()=>window.close(),2000)</script></body>`);
+    } catch (err: any) {
+      return fail(err?.message || "Token exchange failed", 502);
+    }
+  });
+
+  app.delete("/api/staff/teya/oauth", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      await teya.disconnect();
+      // Also clear the pairing because the IDs only make sense relative
+      // to a connected merchant account.
+      await storage.setSetting("teya_store_id", "");
+      await storage.setSetting("teya_terminal_id", "");
+      await storage.setSetting("teya_terminal_name", "");
+      await storage.setSetting("teya_enabled", "false");
+      console.log("[TEYA] Disconnected and pairing cleared");
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Could not disconnect Teya" });
+    }
+  });
+
+  app.get("/api/staff/teya/stores", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      const stores = await teya.listStores();
+      res.json({ stores });
+    } catch (err: any) {
+      const status = err instanceof teya.TeyaNotAuthorizedError ? 401
+                   : err instanceof teya.TeyaNotConfiguredError ? 400
+                   : err instanceof teya.TeyaError ? err.statusCode
+                   : 500;
+      res.status(status).json({ message: err?.message || "Could not list stores" });
+    }
+  });
+
+  app.get("/api/staff/teya/stores/:storeId/terminals", staffAuth, managerAuth, async (req, res) => {
+    try {
+      const terminals = await teya.listTerminals(String(req.params.storeId));
+      res.json({ terminals });
+    } catch (err: any) {
+      const status = err instanceof teya.TeyaNotAuthorizedError ? 401
+                   : err instanceof teya.TeyaError ? err.statusCode
+                   : 500;
+      res.status(status).json({ message: err?.message || "Could not list terminals" });
+    }
+  });
+
+  app.put("/api/staff/teya/pairing", staffAuth, managerAuth, async (req, res) => {
+    const storeId = String(req.body?.storeId || "");
+    const terminalId = String(req.body?.terminalId || "");
+    const terminalName = String(req.body?.terminalName || "");
+    if (!storeId || !terminalId) {
+      return res.status(400).json({ message: "storeId and terminalId are required" });
+    }
+    await storage.setSetting("teya_store_id", storeId);
+    await storage.setSetting("teya_terminal_id", terminalId);
+    await storage.setSetting("teya_terminal_name", terminalName);
+    console.log(`[TEYA] Paired terminal ${terminalId} (${terminalName || "unnamed"}) in store ${storeId}`);
+    res.json({ ok: true });
+  });
+
+  app.delete("/api/staff/teya/pairing", staffAuth, managerAuth, async (_req, res) => {
+    await storage.setSetting("teya_store_id", "");
+    await storage.setSetting("teya_terminal_id", "");
+    await storage.setSetting("teya_terminal_name", "");
+    await storage.setSetting("teya_enabled", "false");
+    console.log("[TEYA] Pairing cleared");
+    res.json({ ok: true });
+  });
+
+  app.put("/api/staff/teya/enabled", staffAuth, managerAuth, async (req, res) => {
+    const enabled = !!req.body?.enabled;
+    if (enabled) {
+      const storeId = await storage.getSetting("teya_store_id");
+      const terminalId = await storage.getSetting("teya_terminal_id");
+      if (!storeId || !terminalId) {
+        return res.status(400).json({ message: "Pair a Teya terminal before enabling" });
+      }
+      const conn = await teya.getConnectionInfo();
+      if (!conn.connected) {
+        return res.status(400).json({ message: "Connect a Teya account before enabling" });
+      }
+    }
+    await storage.setSetting("teya_enabled", String(enabled));
+    console.log(`[TEYA] Enabled = ${enabled}`);
+    res.json({ enabled });
   });
 
   // ── Public Square Web Payments SDK config ──────────────────────────────────

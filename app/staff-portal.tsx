@@ -11,6 +11,7 @@ import {
   Animated,
   Modal,
   Alert,
+  Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -799,6 +800,469 @@ function SquareTerminalModal({ visible, onClose }: { visible: boolean; onClose: 
   );
 }
 
+// ── Teya Pro terminal pairing & status (OAuth2 + POSLink) ─────────────────────
+// Mirrors SquareTerminalModal's shape but the underlying flow is different:
+//   1. Owner taps "Connect Teya" → opens id.teya.com consent screen in the
+//      system browser. After consent Teya redirects to our /oauth/callback
+//      which stores the access + refresh tokens server-side.
+//   2. Once connected, we fetch /stores then /stores/:id/terminals so the
+//      owner can pick which physical terminal at the venue acts as the
+//      kiosk's counter terminal.
+//   3. Enable toggle starts pushing kiosk orders to that terminal.
+type TeyaStatus = {
+  configured: boolean;
+  connected: boolean;
+  expiresAt: string | null;
+  scope: string | null;
+  paired: boolean;
+  storeId: string | null;
+  terminalId: string | null;
+  terminalName: string | null;
+  enabled: boolean;
+};
+function TeyaTerminalModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const { data: status, refetch } = useQuery<TeyaStatus>({
+    queryKey: ["/api/staff/teya/status"],
+    enabled: visible,
+    refetchInterval: visible ? 5000 : false, // catches the moment the popup callback completes
+  });
+
+  const [stores, setStores] = useState<Array<{ id: string; name: string }> | null>(null);
+  const [terminals, setTerminals] = useState<Array<{ id: string; name: string }> | null>(null);
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
+  const [busy, setBusy] = useState<null | "connect" | "stores" | "terminals" | "pair" | "enabled" | "unpair" | "disconnect">(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!visible) {
+      setErrorMsg(null);
+      setStores(null);
+      setTerminals(null);
+      setSelectedStoreId(null);
+    }
+  }, [visible]);
+
+  // Pre-select the currently-paired store the moment we know it, and load
+  // the terminal list so the owner can see what's wired up at a glance.
+  useEffect(() => {
+    if (visible && status?.connected && status?.storeId && !selectedStoreId) {
+      setSelectedStoreId(status.storeId);
+    }
+  }, [visible, status, selectedStoreId]);
+
+  const startConnect = async () => {
+    setErrorMsg(null);
+    setBusy("connect");
+    try {
+      const res = await apiRequest("GET", "/api/staff/teya/oauth/start?format=json");
+      const data = await res.json();
+      if (!data?.url) throw new Error("Server did not return a Teya consent URL");
+      // Open the system browser. The callback page closes itself; the
+      // 5-second poll on /status picks up the new connection.
+      await Linking.openURL(data.url);
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Could not start Teya connection");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const loadStores = async () => {
+    setErrorMsg(null);
+    setBusy("stores");
+    try {
+      const res = await apiRequest("GET", "/api/staff/teya/stores");
+      const data = await res.json();
+      setStores(data?.stores || []);
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Could not load stores");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const loadTerminals = async (storeId: string) => {
+    setErrorMsg(null);
+    setBusy("terminals");
+    try {
+      setSelectedStoreId(storeId);
+      const res = await apiRequest("GET", `/api/staff/teya/stores/${encodeURIComponent(storeId)}/terminals`);
+      const data = await res.json();
+      setTerminals(data?.terminals || []);
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Could not load terminals");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const pickTerminal = async (terminalId: string, terminalName: string) => {
+    if (!selectedStoreId) return;
+    setBusy("pair");
+    try {
+      await apiRequest("PUT", "/api/staff/teya/pairing", {
+        storeId: selectedStoreId,
+        terminalId,
+        terminalName,
+      });
+      await refetch();
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Could not pair terminal");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const toggleEnabled = async () => {
+    if (!status?.paired) return;
+    setBusy("enabled");
+    try {
+      await apiRequest("PUT", "/api/staff/teya/enabled", { enabled: !status.enabled });
+      await refetch();
+    } catch (err: any) {
+      Alert.alert("Could not update", err?.message || "Please try again");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleUnpair = () => {
+    Alert.alert(
+      "Unpair this terminal?",
+      "Kiosk orders will no longer be pushed to this Teya terminal. You can pair it again at any time.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Unpair",
+          style: "destructive",
+          onPress: async () => {
+            setBusy("unpair");
+            try {
+              await apiRequest("DELETE", "/api/staff/teya/pairing");
+              await refetch();
+              setTerminals(null);
+            } catch (err: any) {
+              Alert.alert("Could not unpair", err?.message || "Please try again");
+            } finally {
+              setBusy(null);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleDisconnect = () => {
+    Alert.alert(
+      "Disconnect Teya account?",
+      "We'll forget the access tokens. The owner will need to authorise again to re-connect.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Disconnect",
+          style: "destructive",
+          onPress: async () => {
+            setBusy("disconnect");
+            try {
+              await apiRequest("DELETE", "/api/staff/teya/oauth");
+              await queryClient.invalidateQueries({ queryKey: ["/api/staff/teya/status"] });
+              setStores(null);
+              setTerminals(null);
+              setSelectedStoreId(null);
+            } catch (err: any) {
+              Alert.alert("Could not disconnect", err?.message || "Please try again");
+            } finally {
+              setBusy(null);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.kioskModalScrim} onPress={onClose}>
+        <Pressable style={[styles.kioskModalCard, { maxWidth: 560 }]} onPress={() => {}}>
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <View style={styles.kioskModalHeader}>
+              <Ionicons name="card" size={22} color={Colors.brand.blue} />
+              <Text style={styles.kioskModalTitle}>Teya Pro Terminal</Text>
+            </View>
+
+            {/* SERVER-SIDE CONFIG MISSING — surface clearly so the owner knows
+                they can't use this until env vars are set. */}
+            {status && !status.configured ? (
+              <View style={{ marginTop: 12 }}>
+                <Text style={styles.kioskModalBody}>
+                  Teya isn't configured on the server yet. Once Teya provides
+                  the venue with a Client ID, Client Secret, and registered
+                  Redirect URI, set them as <Text style={{ fontWeight: "700" }}>TEYA_CLIENT_ID</Text>,{" "}
+                  <Text style={{ fontWeight: "700" }}>TEYA_CLIENT_SECRET</Text>, and (optionally){" "}
+                  <Text style={{ fontWeight: "700" }}>TEYA_REDIRECT_URI</Text>{" "}
+                  in the deployment secrets, redeploy, then reopen this screen.
+                </Text>
+              </View>
+            ) : (
+              <>
+                {/* Connection status */}
+                <View style={styles.terminalStatusRow}>
+                  <View style={[styles.terminalStatusDot, { backgroundColor: status?.connected ? Colors.brand.green : "#9CA3AF" }]} />
+                  <Text style={styles.terminalStatusLabel}>
+                    {status?.connected ? "Teya account connected" : "Not connected"}
+                  </Text>
+                </View>
+
+                {errorMsg && (
+                  <Text style={[styles.kioskModalError, { marginTop: 8 }]}>{errorMsg}</Text>
+                )}
+
+                {!status?.connected ? (
+                  <>
+                    <Text style={[styles.kioskModalBody, { marginTop: 12 }]}>
+                      Connect your Teya merchant account so the kiosk can push card payments straight to the Teya Pro terminal at the counter.
+                    </Text>
+                    <Pressable
+                      onPress={startConnect}
+                      disabled={busy === "connect"}
+                      style={({ pressed }) => [
+                        styles.kioskModalBtn,
+                        { backgroundColor: Colors.brand.blue, opacity: pressed || busy === "connect" ? 0.7 : 1, marginTop: 16 },
+                      ]}
+                    >
+                      {busy === "connect" ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Text style={styles.kioskModalBtnPrimaryText}>Connect Teya account</Text>
+                      )}
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    {/* Already paired — show what's paired + the enable toggle */}
+                    {status.paired && (
+                      <View style={[styles.terminalToggleCard, { marginTop: 12 }]}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.terminalToggleTitle}>Push kiosk orders to terminal</Text>
+                          <Text style={styles.terminalToggleSub}>
+                            {status.enabled
+                              ? `Customers tap card on "${status.terminalName || status.terminalId}". The order auto-marks paid.`
+                              : `Off — paired to "${status.terminalName || status.terminalId}" but not pushing yet.`}
+                          </Text>
+                        </View>
+                        <Pressable
+                          onPress={toggleEnabled}
+                          disabled={busy === "enabled"}
+                          style={({ pressed }) => [
+                            styles.terminalToggleBtn,
+                            { backgroundColor: status.enabled ? Colors.brand.green : "#E5E7EB", opacity: pressed || busy === "enabled" ? 0.7 : 1 },
+                          ]}
+                        >
+                          <View style={[styles.terminalToggleThumb, { alignSelf: status.enabled ? "flex-end" : "flex-start" }]} />
+                        </Pressable>
+                      </View>
+                    )}
+
+                    {/* Pick / change store + terminal */}
+                    <Text style={[styles.kioskModalBody, { marginTop: 16, fontWeight: "700" }]}>
+                      {status.paired ? "Change paired terminal" : "Pick a store and terminal"}
+                    </Text>
+
+                    {!stores && (
+                      <Pressable
+                        onPress={loadStores}
+                        disabled={busy === "stores"}
+                        style={({ pressed }) => [
+                          styles.kioskModalBtn,
+                          { backgroundColor: Colors.brand.blue, opacity: pressed || busy === "stores" ? 0.7 : 1, marginTop: 8 },
+                        ]}
+                      >
+                        {busy === "stores" ? (
+                          <ActivityIndicator color="#fff" />
+                        ) : (
+                          <Text style={styles.kioskModalBtnPrimaryText}>Load stores from Teya</Text>
+                        )}
+                      </Pressable>
+                    )}
+
+                    {stores && stores.length === 0 && (
+                      <Text style={[styles.kioskModalBody, { marginTop: 8 }]}>
+                        No stores returned by Teya. Check the merchant account has at least one store configured.
+                      </Text>
+                    )}
+
+                    {stores && stores.length > 0 && (
+                      <View style={{ marginTop: 8 }}>
+                        {stores.map((s) => (
+                          <Pressable
+                            key={s.id}
+                            onPress={() => loadTerminals(s.id)}
+                            style={({ pressed }) => [
+                              styles.terminalListRow,
+                              {
+                                borderColor: selectedStoreId === s.id ? Colors.brand.blue : "#E5E7EB",
+                                opacity: pressed ? 0.7 : 1,
+                              },
+                            ]}
+                          >
+                            <Ionicons name="business-outline" size={18} color={Colors.brand.blue} />
+                            <Text style={styles.terminalListText}>{s.name}</Text>
+                            {selectedStoreId === s.id && busy === "terminals" && <ActivityIndicator size="small" />}
+                          </Pressable>
+                        ))}
+                      </View>
+                    )}
+
+                    {terminals && (
+                      <View style={{ marginTop: 8 }}>
+                        {terminals.length === 0 ? (
+                          <Text style={[styles.kioskModalBody, { marginTop: 8 }]}>
+                            No terminals in this store.
+                          </Text>
+                        ) : (
+                          terminals.map((t) => {
+                            const isCurrent = status.terminalId === t.id && selectedStoreId === status.storeId;
+                            return (
+                              <Pressable
+                                key={t.id}
+                                onPress={() => pickTerminal(t.id, t.name)}
+                                disabled={busy === "pair"}
+                                style={({ pressed }) => [
+                                  styles.terminalListRow,
+                                  {
+                                    borderColor: isCurrent ? Colors.brand.green : "#E5E7EB",
+                                    backgroundColor: isCurrent ? "#ECFDF5" : "#FFFFFF",
+                                    opacity: pressed || busy === "pair" ? 0.7 : 1,
+                                  },
+                                ]}
+                              >
+                                <Ionicons name="card-outline" size={18} color={isCurrent ? Colors.brand.green : Colors.brand.blue} />
+                                <Text style={styles.terminalListText}>{t.name}</Text>
+                                {isCurrent && (
+                                  <Text style={{ color: Colors.brand.green, fontWeight: "700", fontSize: 12 }}>PAIRED</Text>
+                                )}
+                              </Pressable>
+                            );
+                          })
+                        )}
+                      </View>
+                    )}
+
+                    {/* Maintenance actions */}
+                    <View style={{ flexDirection: "row", gap: 8, marginTop: 16 }}>
+                      {status.paired && (
+                        <Pressable
+                          onPress={handleUnpair}
+                          disabled={busy === "unpair"}
+                          style={({ pressed }) => [
+                            styles.kioskModalBtn,
+                            styles.kioskModalBtnGhost,
+                            { flex: 1, opacity: pressed || busy === "unpair" ? 0.7 : 1 },
+                          ]}
+                        >
+                          {busy === "unpair" ? (
+                            <ActivityIndicator color={Colors.brand.red} />
+                          ) : (
+                            <Text style={[styles.kioskModalBtnGhostText, { color: Colors.brand.red }]}>Unpair</Text>
+                          )}
+                        </Pressable>
+                      )}
+                      <Pressable
+                        onPress={handleDisconnect}
+                        disabled={busy === "disconnect"}
+                        style={({ pressed }) => [
+                          styles.kioskModalBtn,
+                          styles.kioskModalBtnGhost,
+                          { flex: 1, opacity: pressed || busy === "disconnect" ? 0.7 : 1 },
+                        ]}
+                      >
+                        {busy === "disconnect" ? (
+                          <ActivityIndicator color={Colors.brand.red} />
+                        ) : (
+                          <Text style={[styles.kioskModalBtnGhostText, { color: Colors.brand.red }]}>Disconnect</Text>
+                        )}
+                      </Pressable>
+                    </View>
+                  </>
+                )}
+              </>
+            )}
+
+            <Pressable
+              onPress={onClose}
+              style={({ pressed }) => [styles.kioskModalBtn, styles.kioskModalBtnGhost, { opacity: pressed ? 0.7 : 1, marginTop: 12 }]}
+            >
+              <Text style={styles.kioskModalBtnGhostText}>Close</Text>
+            </Pressable>
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ── Active terminal vendor row ────────────────────────────────────────────────
+// Inline segmented control rendered under the two terminal AdminTools so the
+// owner can pick which vendor receives kiosk pushes. Stored in the
+// `active_kiosk_terminal` setting; defaults to "square" so existing venues
+// see no behaviour change after the Teya integration ships.
+function ActiveTerminalRow() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery<{ provider: "square" | "teya" | "none" }>({
+    queryKey: ["/api/staff/active-terminal"],
+  });
+  const provider = data?.provider || "square";
+  const [busy, setBusy] = useState<"square" | "teya" | "none" | null>(null);
+  const set = async (next: "square" | "teya" | "none") => {
+    if (provider === next || busy) return;
+    setBusy(next);
+    try {
+      await apiRequest("PUT", "/api/staff/active-terminal", { provider: next });
+      await queryClient.invalidateQueries({ queryKey: ["/api/staff/active-terminal"] });
+    } catch (err: any) {
+      Alert.alert("Could not update", err?.message || "Please try again");
+    } finally {
+      setBusy(null);
+    }
+  };
+  const Btn = ({ value, label }: { value: "square" | "teya" | "none"; label: string }) => {
+    const active = provider === value;
+    return (
+      <Pressable
+        onPress={() => set(value)}
+        disabled={!!busy}
+        style={({ pressed }) => [
+          styles.activeTerminalBtn,
+          {
+            backgroundColor: active ? Colors.brand.blue : "transparent",
+            opacity: pressed || busy ? 0.7 : 1,
+          },
+        ]}
+      >
+        {busy === value ? (
+          <ActivityIndicator size="small" color={active ? "#fff" : Colors.brand.blue} />
+        ) : (
+          <Text style={[styles.activeTerminalBtnText, { color: active ? "#fff" : Colors.brand.blue }]}>{label}</Text>
+        )}
+      </Pressable>
+    );
+  };
+  return (
+    <View style={styles.activeTerminalCard}>
+      <Text style={styles.activeTerminalTitle}>Active card terminal</Text>
+      <Text style={styles.activeTerminalSub}>
+        Kiosk orders push to whichever vendor you pick here. Each must be paired and enabled in its own panel above for the push to fire.
+      </Text>
+      <View style={styles.activeTerminalRow}>
+        <Btn value="square" label="Square" />
+        <Btn value="teya" label="Teya" />
+        <Btn value="none" label="Off" />
+      </View>
+    </View>
+  );
+}
+
 function KioskAttractEditModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
   const { data: settings } = useQuery<Record<string, string>>({
@@ -988,6 +1452,7 @@ function DashboardScreen() {
   const [kioskModalVisible, setKioskModalVisible] = useState(false);
   const [attractEditorVisible, setAttractEditorVisible] = useState(false);
   const [terminalModalVisible, setTerminalModalVisible] = useState(false);
+  const [teyaModalVisible, setTeyaModalVisible] = useState(false);
   const [kioskOrderingSaving, setKioskOrderingSaving] = useState(false);
 
   // Kiosk-ordering on/off — separate from the global ordering toggle, so
@@ -1366,28 +1831,19 @@ function DashboardScreen() {
                 onPress={() => setTerminalModalVisible(true)}
                 testID="portal-square-terminal"
               />
-              {/*
-                Teya Pro placeholder. The kiosk currently pushes payments to
-                Square Terminal via Square's public Terminal Checkouts API.
-                Teya does not offer an equivalent push-to-terminal cloud API
-                outside their EPOS partner programme, so this entry is
-                intentionally informational until Teya Connect / Hospitality
-                API access is granted to the venue. Once we have credentials
-                we'll wire this up the same shape as the Square Terminal
-                tool above (pair → status → enable toggle → kiosk-checkout
-                push → webhook mark-paid).
-              */}
+              {/* Teya Pro — POSLink (OAuth2 + push-to-terminal + SSE status).
+                  Mirrors the Square Terminal tool above. The user picks
+                  which vendor to use via the "Active card terminal" row
+                  rendered below. */}
               <AdminTool
                 icon="card-outline"
-                title="Teya Pro  ·  Coming soon"
-                description="Push kiosk payments to your Teya Pro terminal. Awaiting Teya API access."
-                color={Colors.light.textSecondary}
-                onPress={() => Alert.alert(
-                  "Teya Pro — coming soon",
-                  "We're waiting on API access from Teya before we can push kiosk payments to the Teya Pro terminal automatically.\n\nIn the meantime, kiosk orders can still be paid at the counter using the Teya Pro as normal — staff just enter the amount on the terminal and tap 'Mark Paid' on the dashboard.\n\nTo speed this up, contact Teya support and ask about their Connect / Hospitality integration programme for The 147.",
-                )}
+                title="Teya Pro Terminal"
+                description="Push kiosk payments to your Teya Pro terminal via POSLink."
+                color={Colors.brand.blue}
+                onPress={() => setTeyaModalVisible(true)}
                 testID="portal-teya-terminal"
               />
+              <ActiveTerminalRow />
             </View>
           </>
         )}
@@ -1395,6 +1851,7 @@ function DashboardScreen() {
         <KioskEnableModal visible={kioskModalVisible} onClose={() => setKioskModalVisible(false)} />
         <KioskAttractEditModal visible={attractEditorVisible} onClose={() => setAttractEditorVisible(false)} />
         <SquareTerminalModal visible={terminalModalVisible} onClose={() => setTerminalModalVisible(false)} />
+        <TeyaTerminalModal visible={teyaModalVisible} onClose={() => setTeyaModalVisible(false)} />
 
         <Text style={styles.sectionLabel}>SESSION</Text>
 
@@ -2177,6 +2634,64 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     shadowOffset: { width: 0, height: 1 },
     elevation: 2,
+  },
+  // Teya store/terminal picker rows
+  terminalListRow: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    gap: 10,
+    borderWidth: 1.5,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 6,
+    backgroundColor: "#FFFFFF",
+  },
+  terminalListText: {
+    flex: 1,
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 14,
+    color: Colors.light.text,
+  },
+  // Active-terminal vendor segmented control (sits under the two terminal
+  // tools so the owner picks which vendor is "live").
+  activeTerminalCard: {
+    marginTop: 12,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  activeTerminalTitle: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: Colors.light.text,
+  },
+  activeTerminalSub: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginTop: 4,
+    lineHeight: 16,
+  },
+  activeTerminalRow: {
+    flexDirection: "row" as const,
+    gap: 8,
+    marginTop: 12,
+  },
+  activeTerminalBtn: {
+    flex: 1,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: Colors.brand.blue,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+  },
+  activeTerminalBtnText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
   },
   // Free-form text input for the attract editor (left-aligned, normal letter
   // spacing — distinct from the centred PIN-style kioskModalInput above).

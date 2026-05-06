@@ -244,6 +244,34 @@ export const siteSettings = pgTable("site_settings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// ── Teya POSLink OAuth tokens (single-row store) ──────────────────────────────
+// Holds the OAuth2 access + refresh tokens granted to The 147 by Teya after
+// the owner walks through https://id.teya.com/oauth/v2/oauth-authorize. We
+// only ever store one row (id = 1) because the venue is one merchant — using
+// a primary-keyed singleton makes upserts trivial and avoids "which row do
+// we use?" ambiguity. Both tokens are stored encrypted at rest via the same
+// AES-GCM helper used for customer PII (server/encryption.ts) so a stolen
+// DB dump cannot replay against Teya.
+//
+// `expiresAt` lets us refresh proactively (60s before expiry) instead of
+// waiting for a 401, which would slow the first kiosk payment of the hour.
+// `scope` is informational — Teya may grant fewer scopes than requested and
+// staff need to see what was actually authorised.
+export const teyaOauthTokens = pgTable("teya_oauth_tokens", {
+  id: integer("id").primaryKey().default(1),
+  accessTokenEnc: text("access_token_enc").notNull(),
+  refreshTokenEnc: text("refresh_token_enc").notNull(),
+  tokenType: text("token_type").notNull().default("Bearer"),
+  scope: text("scope"),
+  // Absolute expiry timestamp (Teya returns expires_in seconds; we add it
+  // to "now" at the moment of the token exchange for monotonic comparison).
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type TeyaOauthTokens = typeof teyaOauthTokens.$inferSelect;
+
 export const marketingPages = pgTable("marketing_pages", {
   slug: text("slug").primaryKey(),
   title: text("title").notNull(),

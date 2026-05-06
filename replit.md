@@ -19,6 +19,8 @@ _Populate as you build_
 - `shared/featureFlags.ts` - Typed feature flag definitions.
 - `server/featureFlags.ts` - Server-side feature flag environment reader.
 - `server/routes.ts` - API route definitions and webhook handlers.
+- `server/square.ts` - Square POS API wrapper (OAuth, terminal, web payments, subscriptions).
+- `server/teya.ts` - Teya POSLink API wrapper (OAuth2 Auth Code, payment requests, SSE status stream, receipt printing).
 - `db/schema.ts` - Database schema definition.
 
 ## Architecture decisions
@@ -49,6 +51,9 @@ I prefer detailed explanations.
 - Square Open Ticket integration: `ticket_name` is canonical for Square POS and capped at 30 characters.
 - Square for Restaurants routes orders with `PICKUP` fulfillment to "Online Orders," which are hidden from "Open Orders" where staff look. Kiosk orders avoid `PICKUP` fulfillment.
 - `computeScheduleStatus()` checks both today's window and "yesterday's overflow window" for schedules spanning midnight.
+- Teya has NO webhooks — payment status arrives via Server-Sent Events on `GET /poslink/v2/payment-requests/{id}`. The kiosk-checkout route opens the SSE stream in the background; if the server restarts mid-payment the listener is lost (the order stays counter-pay until staff mark it paid). Acceptable for a scaffold; revisit if Teya pushes are heavily used.
+- `active_kiosk_terminal` setting (`square` / `teya` / `none`) selects which vendor receives kiosk pushes. Defaults to `square` so behaviour is unchanged for existing venues.
+- Teya OAuth requires `TEYA_CLIENT_ID` + `TEYA_CLIENT_SECRET` env vars. The redirect URI defaults to `<PUBLIC_APP_URL>/api/staff/teya/oauth/callback` and must match what's registered with Teya. Override via `TEYA_REDIRECT_URI` if needed.
 
 ## Pointers
 - [React Native Documentation](https://reactnative.dev/docs)
