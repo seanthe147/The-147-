@@ -147,6 +147,17 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
       });
       const data = await res.json().catch(() => ({} as any));
       if (!res.ok) {
+        // OPTION C: card terminal isn't ready (no terminal configured, or
+        // terminal push didn't land). Tell the customer to go to the
+        // counter and clear their basket so the next person starts fresh.
+        if (data?.terminalUnavailable) {
+          Alert.alert(
+            "Card payment unavailable",
+            data?.message || "We couldn't reach the card terminal. Please order at the counter.",
+            [{ text: "OK", onPress: () => { clearCart(); onClose(); showAttract(); } }],
+          );
+          return;
+        }
         // Kitchen closed mid-flight → bounce back to the cart so the user
         // can drop the offending food items. The order screen behind the
         // sheet already greys those out via /api/ordering-status.
@@ -361,11 +372,11 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
             />
 
             <View style={[styles.callout, { marginTop: 28, padding: 18 }]}>
-              <Ionicons name="cash-outline" size={28} color={Colors.brand.blue} />
+              <Ionicons name="card-outline" size={28} color={Colors.brand.blue} />
               <View style={{ flex: 1 }}>
-                <Text style={[styles.calloutTitle, { fontSize: 16 }]}>Pay at the counter</Text>
+                <Text style={[styles.calloutTitle, { fontSize: 16 }]}>Card payment only</Text>
                 <Text style={[styles.calloutText, { fontSize: 15 }]}>
-                  Take your order number to the bar to pay. We'll then bring your order to your table.
+                  Tap, insert or swipe your card on the terminal at the counter. We'll bring your order to your table once payment goes through.
                 </Text>
               </View>
             </View>
@@ -406,8 +417,8 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
                   <ActivityIndicator color="#fff" />
                 ) : (
                   <>
-                    <Text style={[styles.primaryBtnText, { fontSize: 22 }]}>Send to counter</Text>
-                    <Ionicons name="arrow-forward" size={24} color="#fff" />
+                    <Text style={[styles.primaryBtnText, { fontSize: 22 }]}>Pay by card</Text>
+                    <Ionicons name="card-outline" size={24} color="#fff" />
                   </>
                 )}
               </Pressable>
@@ -463,10 +474,10 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
         />
 
         <View style={styles.callout}>
-          <Ionicons name="cash-outline" size={22} color={Colors.brand.blue} />
+          <Ionicons name="card-outline" size={22} color={Colors.brand.blue} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.calloutTitle}>Pay at the counter</Text>
-            <Text style={styles.calloutText}>Take your order number to the bar to pay. We'll then bring your order to your table.</Text>
+            <Text style={styles.calloutTitle}>Card payment only</Text>
+            <Text style={styles.calloutText}>Tap, insert or swipe your card on the terminal at the counter. We'll bring your order to your table once payment goes through.</Text>
           </View>
         </View>
 
@@ -483,8 +494,8 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
             <ActivityIndicator color="#fff" />
           ) : (
             <>
-              <Text style={styles.primaryBtnText}>Send to counter</Text>
-              <Ionicons name="arrow-forward" size={20} color="#fff" />
+              <Text style={styles.primaryBtnText}>Pay by card</Text>
+              <Ionicons name="card-outline" size={20} color="#fff" />
             </>
           )}
         </Pressable>
@@ -502,19 +513,15 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
         </View>
         <Text style={[styles.confirmHeading, isTablet && { fontSize: 40, marginTop: 28 }]}>Order received</Text>
         <Text style={[styles.confirmSub, isTablet && { fontSize: 22, marginTop: 14, maxWidth: 640 }]}>
-          {confirmation.terminalPushed
-            ? "Tap, insert or swipe your card on the terminal at the counter"
-            : "Take this number to the counter to pay"}
+          Tap, insert or swipe your card on the terminal at the counter
         </Text>
         <View style={[styles.ticketBox, isTablet && styles.ticketBoxTablet]}>
           <Text style={[styles.ticketLabel, isTablet && { fontSize: 14, letterSpacing: 4 }]}>YOUR ORDER NUMBER</Text>
           <Text style={[styles.ticketNumber, isTablet && { fontSize: 220, lineHeight: 240 }]}>{confirmation.ticketNumber}</Text>
         </View>
-        {confirmation.terminalPushed && (
-          <Text style={[styles.confirmHint, isTablet && { fontSize: 16, marginTop: 20 }]}>
-            Show this number to staff if anything goes wrong with the terminal.
-          </Text>
-        )}
+        <Text style={[styles.confirmHint, isTablet && { fontSize: 16, marginTop: 20 }]}>
+          Show this number to staff if anything goes wrong with the terminal.
+        </Text>
         <Text style={[styles.confirmFooter, isTablet && { fontSize: 16 }]}>Closing automatically in a few seconds…</Text>
         <Pressable
           style={({ pressed }) => [

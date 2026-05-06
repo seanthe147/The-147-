@@ -5743,6 +5743,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(503).json({ message: "Kiosk ordering is currently paused. Please order at the counter." });
       }
 
+      // OPTION C: kiosk is card-payment-only. Refuse the order entirely if
+      // no card terminal is configured + enabled, so unpaid kiosk tickets
+      // can NEVER land in the till's Pickup queue (where staff might
+      // mistakenly charge them on the till and skip KDS routing). Customer
+      // is told to order at the counter directly with staff instead.
+      const activeTerminal = (await storage.getSetting("active_kiosk_terminal")) || "square";
+      let terminalReady = false;
+      if (activeTerminal === "teya") {
+        const teyaEnabled = await storage.getSetting("teya_enabled");
+        const teyaStoreId = await storage.getSetting("teya_store_id");
+        const teyaTerminalId = await storage.getSetting("teya_terminal_id");
+        terminalReady = teyaEnabled === "true" && !!teyaStoreId && !!teyaTerminalId;
+      } else if (activeTerminal === "square") {
+        const sqEnabled = await storage.getSetting("square_terminal_enabled");
+        const sqDeviceId = await storage.getSetting("square_terminal_device_id");
+        terminalReady = sqEnabled === "true" && !!sqDeviceId;
+      }
+      if (!terminalReady) {
+        return res.status(503).json({
+          message: "Card payment isn't available on the kiosk right now. Please order at the counter.",
+          terminalUnavailable: true,
+        });
+      }
+
       // Validate ordering window — same gate as the online flow.
       const status = await getOrderingStatus();
       if (!status.enabled) {
@@ -5982,10 +6006,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
       } catch (err: any) {
-        console.warn(`[KIOSK] Order #${created.id} — terminal push failed (falling back to counter pay):`, err?.message || err);
+        console.warn(`[KIOSK] Order #${created.id} — terminal push failed:`, err?.message || err);
       }
 
-      console.log(`[KIOSK] Order #${created.id} ticket #${ticketNumber} (${name}, ${tableNote}, £${(squareTotalPence / 100).toFixed(2)}) → Square ${squareOrderId}${terminalCheckoutPushed ? ` [${terminalProvider}-terminal]` : ""}`);
+      // OPTION C invariant: an unpaid kiosk order must NEVER end up in the
+      // till's Pickup queue. If the terminal push didn't take (no response,
+      // device offline, etc.) we void the Square order and tell the kiosk
+      // to send the customer to the counter. The local app_order is also
+      // marked cancelled so it doesn't sit on the dashboard either.
+      if (!terminalCheckoutPushed) {
+        try { await square.cancelSquareOrder(squareOrderId); } catch {}
+        try { await storage.updateAppOrderStatus(created.id, "cancelled"); } catch {}
+        console.warn(`[KIOSK] Order #${created.id} cancelled — terminal push didn't land (active=${activeTerminal})`);
+        return res.status(503).json({
+          message: "We couldn't reach the card terminal. Please order at the counter.",
+          terminalUnavailable: true,
+        });
+      }
+
+      console.log(`[KIOSK] Order #${created.id} ticket #${ticketNumber} (${name}, ${tableNote}, £${(squareTotalPence / 100).toFixed(2)}) → Square ${squareOrderId} [${terminalProvider}-terminal]`);
       res.json({ appOrderId: created.id, ticketNumber, terminalCheckoutPushed, terminalProvider });
     } catch (err: any) {
       console.error("[KIOSK] Checkout failed:", err.message);

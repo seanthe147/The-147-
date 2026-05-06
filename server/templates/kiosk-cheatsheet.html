@@ -31,9 +31,9 @@
     margin: 22px 0 10px;
     border-radius: 4px;
   }
-  ol { padding-left: 22px; margin: 0 0 14px; }
-  ol li { margin-bottom: 8px; font-size: 14px; }
-  ol li strong { font-weight: 700; }
+  ol, ul { padding-left: 22px; margin: 0 0 14px; }
+  ol li, ul li { margin-bottom: 8px; font-size: 14px; }
+  ol li strong, ul li strong { font-weight: 700; }
   .callout {
     border-left: 4px solid #d97706;
     background: #fef3c7;
@@ -42,14 +42,8 @@
     font-size: 13px;
     border-radius: 0 4px 4px 0;
   }
-  .callout-good {
-    border-left-color: #059669;
-    background: #d1fae5;
-  }
-  .callout-bad {
-    border-left-color: #dc2626;
-    background: #fee2e2;
-  }
+  .callout-good { border-left-color: #059669; background: #d1fae5; }
+  .callout-bad { border-left-color: #dc2626; background: #fee2e2; }
   .key {
     display: inline-block;
     background: #111;
@@ -87,58 +81,54 @@
 <button class="print-btn" onclick="window.print()">Print this page</button>
 
 <h1>Kiosk Orders — Staff Cheat Sheet</h1>
-<p class="subtitle">How to take counter payment for orders placed at the customer kiosk. Pin this near the till.</p>
+<p class="subtitle">How kiosk orders work and what staff need to do. Pin this near the till.</p>
 
-<div class="callout callout-bad">
-  <strong>Important:</strong> Do NOT charge kiosk orders on the Square till. Doing so closes the order without sending it to the bar/kitchen KDS, and the drink/food will never get made. Always use the staff dashboard "Mark Paid" button (steps below).
-</div>
-
-<h2>Step-by-step: taking payment for a kiosk order</h2>
-<ol>
-  <li>Customer arrives at the counter with a kiosk ticket number, e.g. <strong>"Order #42"</strong>, and offers cash or card.</li>
-  <li>On the staff dashboard (<strong>/staff</strong>), open the <strong>Orders &amp; Menu &rarr; Orders</strong> tab. Find the order with the matching ticket number — it'll have a blue <span class="key">KIOSK #42</span> badge and a <span class="key">PAY AT COUNTER</span> tag.</li>
-  <li>Take the payment physically:
-    <ul>
-      <li><strong>Cash</strong> &mdash; count the cash, give change from the till drawer.</li>
-      <li><strong>Card</strong> &mdash; charge it on the card reader as a manual sale (no need to attach to a Square order).</li>
-    </ul>
-  </li>
-  <li>On the dashboard, tap the green <span class="key">Mark Paid</span> button on that order's row.</li>
-  <li>The order automatically fires to the bar/kitchen KDS. The customer is told their order is being prepared.</li>
-</ol>
+<h2>How the kiosk works (the short version)</h2>
+<ul>
+  <li><strong>Card-only.</strong> The kiosk takes card payments at the counter terminal &mdash; no cash, no "pay at counter later".</li>
+  <li>Customer adds items on the kiosk, types their name &amp; table number, and taps <span class="key">Pay by card</span>.</li>
+  <li>The counter terminal lights up. Customer taps, inserts or swipes their card on the terminal.</li>
+  <li>Once payment goes through, the order fires straight to the <strong>bar/kitchen KDS</strong>. Staff don't need to do anything on the till.</li>
+  <li>Customer sees their order number on the kiosk screen and waits at their table for delivery.</li>
+</ul>
 
 <div class="callout callout-good">
-  <strong>That's it.</strong> Mark Paid does two things at once: it records the order as paid in our books, and tells Square to fire the prep ticket to the KDS. No till tap needed.
+  <strong>Normal day, you do nothing.</strong> Kiosk orders pay themselves on the terminal and appear on the KDS automatically. The till just records them like any other card sale.
 </div>
 
-<h2>Why we don't use the till to charge kiosk orders</h2>
-<p style="font-size:13px;color:#444;margin:6px 0 10px">
-  Square treats a kiosk order as an "Online Order / Pickup" ticket. If staff press <span class="key">Charge</span> on the till for one of these, Square assumes it's a walk-in sale and instantly closes the order &mdash; <strong>without</strong> firing it to the KDS. The bar/kitchen never sees the order, and the customer waits forever.
-</p>
-<p style="font-size:13px;color:#444;margin:6px 0 10px">
-  The <span class="key">Mark Paid</span> button on the staff dashboard goes through a different Square flow that keeps the order open until the KDS fires the prep ticket, then closes it cleanly. Both cash and card-at-counter use this same path.
-</p>
+<h2>If a customer says "the card terminal won't work"</h2>
+<ol>
+  <li>Check the terminal is on, has signal, and isn't mid-transaction with another customer.</li>
+  <li>Ask the customer to try a different card if possible.</li>
+  <li>If it still won't go through, the kiosk will show <strong>"Card payment unavailable, please order at the counter"</strong>. The kiosk order is automatically cancelled &mdash; nothing is owed and nothing fires to the KDS.</li>
+  <li>Take their order on the till as you would any other walk-up customer (cash or card on the till).</li>
+</ol>
 
-<h2>Common situations</h2>
-
-<div class="callout">
-  <strong>"I already paid at the kiosk"</strong> &mdash; if the order shows <span class="key">PAID</span> on the dashboard already, no action needed. Just tell the customer their order is being prepared. If it still shows <span class="key">PAY AT COUNTER</span>, the kiosk payment didn't complete &mdash; take the payment now.
+<div class="callout callout-bad">
+  <strong>Important:</strong> If for any reason a kiosk order does appear in the till's Online Orders / Pickup queue (rare &mdash; only happens if the terminal pushed but the customer never tapped a card, or if a previous version of the app left an unpaid order behind), <strong>do NOT charge it on the till</strong>. Doing so closes the order without firing the food/drink to the KDS. Instead, find the order on the staff dashboard (<strong>/staff &rarr; Orders &amp; Menu &rarr; Orders</strong>), take the payment physically, and tap the green <span class="key">Mark Paid</span> button. That fires the prep ticket to the KDS.
 </div>
 
-<div class="callout">
-  <strong>Customer wants to add or remove items after ordering</strong> &mdash; easiest is to mark the existing order paid first (so the original items fire to KDS), then start a fresh sale on the till for the extra items.
-</div>
+<h2>If a customer says "I paid but my food/drink hasn't come"</h2>
+<ol>
+  <li>Open the staff dashboard at <strong>/staff &rarr; Orders &amp; Menu &rarr; Orders</strong>.</li>
+  <li>Find the order by name or kiosk ticket number (the blue <span class="key">KIOSK #42</span> badge).</li>
+  <li>Check its status:
+    <ul>
+      <li><strong>Paid</strong> &mdash; the KDS has the order. Check the bar/kitchen for the holdup.</li>
+      <li><strong>Pay at counter</strong> &mdash; the terminal payment didn't actually complete. Take payment now and tap <span class="key">Mark Paid</span>.</li>
+      <li><strong>Cancelled</strong> &mdash; the order was voided. The customer wasn't charged. Re-take the order on the till.</li>
+    </ul>
+  </li>
+</ol>
 
-<div class="callout">
-  <strong>Customer wants to cancel before paying</strong> &mdash; on the dashboard, open the order and tap <span class="key">Cancel order</span>. The kiosk ticket is voided and nothing fires to KDS.
-</div>
-
-<div class="callout">
-  <strong>Order isn't showing on the dashboard</strong> &mdash; tap the <span class="key">Refresh</span> button on the Orders tab. If it's still missing, the kiosk lost its connection &mdash; ask the customer to retry their order.
-</div>
+<h2>If a customer wants to add or cancel items after ordering</h2>
+<ul>
+  <li><strong>Add items:</strong> their kiosk order is already paid, so just take the new items as a fresh sale on the till.</li>
+  <li><strong>Cancel:</strong> open the order on the staff dashboard and tap <span class="key">Cancel order</span>. If they were already charged, refund through the Square dashboard separately.</li>
+</ul>
 
 <div class="footer">
-  The 147 &mdash; Bradford &mdash; Kiosk Orders Cheat Sheet &middot; Print and pin near the till.
+  The 147 &mdash; Bradford &mdash; Kiosk Orders Cheat Sheet &middot; Card-only kiosk &middot; Pin near the till.
 </div>
 
 </body>
