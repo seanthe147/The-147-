@@ -50,8 +50,6 @@
     border-left-color: #dc2626;
     background: #fee2e2;
   }
-  .row { display: flex; gap: 18px; margin-top: 14px; }
-  .col { flex: 1; }
   .key {
     display: inline-block;
     background: #111;
@@ -89,57 +87,54 @@
 <button class="print-btn" onclick="window.print()">Print this page</button>
 
 <h1>Kiosk Orders — Staff Cheat Sheet</h1>
-<p class="subtitle">How to find, charge, and clear orders placed at the customer kiosk. Pin this near the till.</p>
-
-<h2>Where to find a kiosk order on the till</h2>
-<ol>
-  <li>On the Square for Restaurants till, tap the <span class="key">bag-shaped icon</span> on the left side menu — this is the <strong>Online Orders / Pickup</strong> queue.</li>
-  <li>Kiosk orders show with the customer's name and table number, e.g. <strong>"Sean &middot; Table 235"</strong>, with the amount on the right.</li>
-  <li>Tap the order to open it.</li>
-</ol>
+<p class="subtitle">How to take counter payment for orders placed at the customer kiosk. Pin this near the till.</p>
 
 <div class="callout callout-bad">
-  <strong>Don't look in the dine-in Open Tickets tab.</strong> Kiosk orders never appear there — only in the Pickup queue.
+  <strong>Important:</strong> Do NOT charge kiosk orders on the Square till. Doing so closes the order without sending it to the bar/kitchen KDS, and the drink/food will never get made. Always use the staff dashboard "Mark Paid" button (steps below).
 </div>
 
-<h2>Taking cash payment</h2>
+<h2>Step-by-step: taking payment for a kiosk order</h2>
 <ol>
-  <li>Open the order from the Pickup queue (steps above).</li>
-  <li>Tap <span class="key">Charge</span> (or <span class="key">Review and Pay</span>, depending on till version).</li>
-  <li>Tap <span class="key">Cash</span>.</li>
-  <li>Type in the amount the customer handed you.</li>
-  <li>Tap <span class="key">Confirm</span> — the till will tell you how much change to give back.</li>
-  <li>Choose <span class="key">Print</span> / <span class="key">Email</span> / <span class="key">No receipt</span> per the customer.</li>
+  <li>Customer arrives at the counter with a kiosk ticket number, e.g. <strong>"Order #42"</strong>, and offers cash or card.</li>
+  <li>On the staff dashboard (<strong>/staff</strong>), open the <strong>Orders &amp; Menu &rarr; Orders</strong> tab. Find the order with the matching ticket number — it'll have a blue <span class="key">KIOSK #42</span> badge and a <span class="key">PAY AT COUNTER</span> tag.</li>
+  <li>Take the payment physically:
+    <ul>
+      <li><strong>Cash</strong> &mdash; count the cash, give change from the till drawer.</li>
+      <li><strong>Card</strong> &mdash; charge it on the card reader as a manual sale (no need to attach to a Square order).</li>
+    </ul>
+  </li>
+  <li>On the dashboard, tap the green <span class="key">Mark Paid</span> button on that order's row.</li>
+  <li>The order automatically fires to the bar/kitchen KDS. The customer is told their order is being prepared.</li>
 </ol>
 
 <div class="callout callout-good">
-  Once charged, the order closes automatically and fires to the bar/kitchen <strong>KDS</strong>. You don't need to do anything else.
+  <strong>That's it.</strong> Mark Paid does two things at once: it records the order as paid in our books, and tells Square to fire the prep ticket to the KDS. No till tap needed.
 </div>
 
-<h2>Taking card payment</h2>
-<ol>
-  <li>Open the order from the Pickup queue.</li>
-  <li>Tap <span class="key">Charge</span>.</li>
-  <li>Insert, tap, or swipe the card on the reader as you would for any other order.</li>
-  <li>Receipt prompt &mdash; same as cash.</li>
-</ol>
+<h2>Why we don't use the till to charge kiosk orders</h2>
+<p style="font-size:13px;color:#444;margin:6px 0 10px">
+  Square treats a kiosk order as an "Online Order / Pickup" ticket. If staff press <span class="key">Charge</span> on the till for one of these, Square assumes it's a walk-in sale and instantly closes the order &mdash; <strong>without</strong> firing it to the KDS. The bar/kitchen never sees the order, and the customer waits forever.
+</p>
+<p style="font-size:13px;color:#444;margin:6px 0 10px">
+  The <span class="key">Mark Paid</span> button on the staff dashboard goes through a different Square flow that keeps the order open until the KDS fires the prep ticket, then closes it cleanly. Both cash and card-at-counter use this same path.
+</p>
 
 <h2>Common situations</h2>
 
 <div class="callout">
-  <strong>"I already paid at the kiosk"</strong> &mdash; if the order is still in the Pickup queue, the kiosk payment didn't complete. Take payment again at the till. Square only charges once per tender, so there's no risk of double-charging.
+  <strong>"I already paid at the kiosk"</strong> &mdash; if the order shows <span class="key">PAID</span> on the dashboard already, no action needed. Just tell the customer their order is being prepared. If it still shows <span class="key">PAY AT COUNTER</span>, the kiosk payment didn't complete &mdash; take the payment now.
 </div>
 
 <div class="callout">
-  <strong>Customer wants to add or remove items</strong> &mdash; open the order, tap <span class="key">Edit</span> at the top, make the changes, then charge as normal. Square recalculates the total automatically.
+  <strong>Customer wants to add or remove items after ordering</strong> &mdash; easiest is to mark the existing order paid first (so the original items fire to KDS), then start a fresh sale on the till for the extra items.
 </div>
 
 <div class="callout">
-  <strong>Customer wants to cancel</strong> &mdash; open the order, tap the <span class="key">&middot;&middot;&middot;</span> menu, choose <span class="key">Void</span>. Confirm the reason. The order closes without payment.
+  <strong>Customer wants to cancel before paying</strong> &mdash; on the dashboard, open the order and tap <span class="key">Cancel order</span>. The kiosk ticket is voided and nothing fires to KDS.
 </div>
 
 <div class="callout">
-  <strong>I can't find the order</strong> &mdash; ask the customer for their ticket number, then check the staff web dashboard at <strong>/staff</strong>. Every kiosk order shows there too with a "PAY AT COUNTER" badge. If it's there but not in the till's Pickup queue, the till may need a force-quit and reopen.
+  <strong>Order isn't showing on the dashboard</strong> &mdash; tap the <span class="key">Refresh</span> button on the Orders tab. If it's still missing, the kiosk lost its connection &mdash; ask the customer to retry their order.
 </div>
 
 <div class="footer">
