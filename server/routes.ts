@@ -5868,6 +5868,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             terminalCheckoutPushed = true;
             terminalProvider = "teya";
             console.log(`[KIOSK] Order #${created.id} pushed to Teya terminal ${teyaTerminalId} (request ${pr.id}, status ${pr.status})`);
+            // Surface the attempt in the Teya panel's "Recent payments" list
+            // for at-a-glance staff troubleshooting.
+            teya.recordPaymentStarted({
+              requestId: pr.id,
+              appOrderId: created.id,
+              ticketNumber,
+              amountPence: squareTotalPence,
+            });
             // Background SSE listener — Teya has no webhooks, so we keep an
             // open connection per-payment and mark the order paid the moment
             // it reports SUCCESSFUL. We do NOT await this: the kiosk client
@@ -5876,11 +5884,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // self-closes when Teya emits a final status (or after 5 min).
             void teya.awaitFinalStatus(pr.id, { timeoutMs: 5 * 60_000 })
               .then(async (final) => {
+                teya.recordPaymentFinished(pr.id, final.status);
                 if (final.status === "SUCCESSFUL") {
                   const ok = await storage.markAppOrderPaidAtCounter(created.id);
                   if (ok) {
                     try { await storage.logOrderAction({ orderId: created.id, staffUsername: "teya-terminal", action: "mark-paid-teya" }); } catch {}
                     console.log(`[KIOSK] Order #${created.id} auto-marked paid via Teya (request ${pr.id})`);
+                  }
+                  // Optional customer receipt — only fires if the owner has
+                  // toggled "Print receipt on success" in the Teya panel.
+                  // Non-fatal: a failed print is logged inside printReceipt
+                  // and never affects the order state.
+                  try {
+                    if ((await storage.getSetting("teya_print_receipt")) === "true") {
+                      void teya.printReceipt({
+                        storeId: teyaStoreId,
+                        terminalId: teyaTerminalId,
+                        title: `The 147 — Ticket #${ticketNumber}`,
+                        lines: [
+                          `Order #${created.id}`,
+                          `Name: ${name}`,
+                          `Total: £${(squareTotalPence / 100).toFixed(2)}`,
+                          ``,
+                          `Thanks — please collect at the counter.`,
+                        ],
+                        idempotencyKey: teya.buildIdempotencyKey(`kiosk-receipt-${created.id}`),
+                      });
+                    }
+                  } catch (err: any) {
+                    console.warn(`[KIOSK] Order #${created.id} receipt print attempt failed (non-fatal):`, err?.message || err);
                   }
                 } else {
                   console.warn(`[KIOSK] Order #${created.id} Teya request ${pr.id} ended with status ${final.status}`);
@@ -6092,6 +6124,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const storeId = await storage.getSetting("teya_store_id");
       const terminalId = await storage.getSetting("teya_terminal_id");
       const terminalName = await storage.getSetting("teya_terminal_name");
+      const printReceipt = await storage.getSetting("teya_print_receipt");
       res.json({
         configured: teya.isConfigured(),
         connected: conn.connected,
@@ -6102,6 +6135,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         terminalId: terminalId || null,
         terminalName: terminalName || null,
         enabled: enabled === "true",
+        printReceipt: printReceipt === "true",
       });
     } catch (err: any) {
       res.status(500).json({ message: err?.message || "Could not read Teya status" });
@@ -6251,6 +6285,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
     await storage.setSetting("teya_enabled", String(enabled));
     console.log(`[TEYA] Enabled = ${enabled}`);
     res.json({ enabled });
+  });
+
+  // Auto-print a customer receipt on the Teya Pro built-in printer the
+  // moment a kiosk payment lands as SUCCESSFUL. Off by default.
+  app.put("/api/staff/teya/print-receipt", staffAuth, managerAuth, async (req, res) => {
+    const enabled = !!req.body?.enabled;
+    await storage.setSetting("teya_print_receipt", String(enabled));
+    console.log(`[TEYA] Print receipt on success = ${enabled}`);
+    res.json({ enabled });
+  });
+
+  // ── Diagnostics ────────────────────────────────────────────────────────────
+  // Lightweight "is this thing working?" pings the staff panel can fire
+  // without running a real customer payment. We deliberately use the
+  // /connection-info endpoint (a cheap GET that exercises the OAuth token).
+  app.get("/api/staff/teya/test-connection", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      if (!teya.isConfigured()) {
+        return res.status(400).json({ ok: false, message: "Teya is not configured on the server" });
+      }
+      const conn = await teya.getConnectionInfo();
+      if (!conn.connected) {
+        return res.status(400).json({ ok: false, message: "Connect a Teya account first" });
+      }
+      // Cheap live ping — listing stores exercises the OAuth token.
+      const stores = await teya.listStores();
+      res.json({ ok: true, storeCount: stores.length, expiresAt: conn.expiresAt?.toISOString() || null });
+    } catch (err: any) {
+      const status = err instanceof teya.TeyaNotAuthorizedError ? 401
+                   : err instanceof teya.TeyaError ? err.statusCode
+                   : 500;
+      res.status(status).json({ ok: false, message: err?.message || "Test failed" });
+    }
+  });
+
+  // Recent kiosk → Teya attempts (in-memory ring buffer, lost on restart).
+  app.get("/api/staff/teya/recent-payments", staffAuth, managerAuth, async (_req, res) => {
+    res.json({ payments: teya.listRecentPayments() });
+  });
+
+  // Health probe for whichever vendor is currently active. Used by the
+  // small status dot in the staff portal's Active Terminal row so owners
+  // can see at a glance whether the chosen terminal is reachable right now.
+  app.get("/api/staff/active-terminal/health", staffAuth, managerAuth, async (_req, res) => {
+    const provider = ((await storage.getSetting("active_kiosk_terminal")) || "square") as "square" | "teya" | "none";
+    if (provider === "none") {
+      return res.json({ provider, healthy: true, reason: "Off — kiosk orders go straight to counter pay." });
+    }
+    if (provider === "teya") {
+      try {
+        if (!teya.isConfigured()) return res.json({ provider, healthy: false, reason: "TEYA_CLIENT_ID / TEYA_CLIENT_SECRET not set" });
+        const conn = await teya.getConnectionInfo();
+        if (!conn.connected) return res.json({ provider, healthy: false, reason: "Teya account not connected" });
+        const enabled = (await storage.getSetting("teya_enabled")) === "true";
+        const storeId = await storage.getSetting("teya_store_id");
+        const terminalId = await storage.getSetting("teya_terminal_id");
+        if (!enabled || !storeId || !terminalId) return res.json({ provider, healthy: false, reason: "Connected but not paired/enabled" });
+        // Cheap reachability ping — exercises the live OAuth token.
+        await teya.listStores();
+        return res.json({ provider, healthy: true, reason: "Teya reachable and paired" });
+      } catch (err: any) {
+        return res.json({ provider, healthy: false, reason: err?.message || "Teya unreachable" });
+      }
+    }
+    // square branch
+    try {
+      const enabled = (await storage.getSetting("square_terminal_enabled")) === "true";
+      const deviceId = await storage.getSetting("square_terminal_device_id");
+      if (!enabled || !deviceId) return res.json({ provider, healthy: false, reason: "Square Terminal not paired/enabled" });
+      return res.json({ provider, healthy: true, reason: "Square Terminal paired and enabled" });
+    } catch (err: any) {
+      return res.json({ provider, healthy: false, reason: err?.message || "Square Terminal check failed" });
+    }
   });
 
   // ── Public Square Web Payments SDK config ──────────────────────────────────

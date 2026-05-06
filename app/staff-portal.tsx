@@ -819,6 +819,16 @@ type TeyaStatus = {
   terminalId: string | null;
   terminalName: string | null;
   enabled: boolean;
+  printReceipt: boolean;
+};
+type TeyaRecentPayment = {
+  requestId: string;
+  appOrderId: number | null;
+  ticketNumber: number | null;
+  amountPence: number;
+  status: "PENDING" | "SUCCESSFUL" | "FAILED" | "CANCELLED" | "EXPIRED" | string;
+  startedAt: string;
+  finishedAt: string | null;
 };
 function TeyaTerminalModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -831,8 +841,18 @@ function TeyaTerminalModal({ visible, onClose }: { visible: boolean; onClose: ()
   const [stores, setStores] = useState<Array<{ id: string; name: string }> | null>(null);
   const [terminals, setTerminals] = useState<Array<{ id: string; name: string }> | null>(null);
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
-  const [busy, setBusy] = useState<null | "connect" | "stores" | "terminals" | "pair" | "enabled" | "unpair" | "disconnect">(null);
+  const [busy, setBusy] = useState<null | "connect" | "stores" | "terminals" | "pair" | "enabled" | "unpair" | "disconnect" | "test" | "printReceipt">(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  // Recent payments — only fetched when connected. Polls every 5s while
+  // the modal is open so SSE-driven status changes show up in near-real-time.
+  const { data: recentData } = useQuery<{ payments: TeyaRecentPayment[] }>({
+    queryKey: ["/api/staff/teya/recent-payments"],
+    enabled: visible && !!status?.connected,
+    refetchInterval: visible && status?.connected ? 5000 : false,
+  });
+  const recent = recentData?.payments || [];
 
   useEffect(() => {
     if (!visible) {
@@ -909,6 +929,33 @@ function TeyaTerminalModal({ visible, onClose }: { visible: boolean; onClose: ()
       await refetch();
     } catch (err: any) {
       setErrorMsg(err?.message || "Could not pair terminal");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const togglePrintReceipt = async () => {
+    if (!status?.paired) return;
+    setBusy("printReceipt");
+    try {
+      await apiRequest("PUT", "/api/staff/teya/print-receipt", { enabled: !status.printReceipt });
+      await refetch();
+    } catch (err: any) {
+      Alert.alert("Could not update", err?.message || "Please try again");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const runTestConnection = async () => {
+    setTestResult(null);
+    setBusy("test");
+    try {
+      const res = await apiRequest("GET", "/api/staff/teya/test-connection");
+      const data = await res.json();
+      setTestResult({ ok: !!data?.ok, message: data?.ok ? `OK — ${data.storeCount ?? 0} store(s) reachable` : (data?.message || "Test failed") });
+    } catch (err: any) {
+      setTestResult({ ok: false, message: err?.message || "Test failed" });
     } finally {
       setBusy(null);
     }
@@ -1064,6 +1111,32 @@ function TeyaTerminalModal({ visible, onClose }: { visible: boolean; onClose: ()
                       </View>
                     )}
 
+                    {/* Print receipt on success — optional courtesy receipt
+                        printed on the Teya Pro's built-in printer. Off by
+                        default. Failures here never affect order state. */}
+                    {status.paired && (
+                      <View style={[styles.terminalToggleCard, { marginTop: 8 }]}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.terminalToggleTitle}>Print receipt on success</Text>
+                          <Text style={styles.terminalToggleSub}>
+                            {status.printReceipt
+                              ? "Auto-prints a customer ticket on the Teya Pro printer when payment lands."
+                              : "Off — no auto receipt. Customer just sees the on-screen ticket number."}
+                          </Text>
+                        </View>
+                        <Pressable
+                          onPress={togglePrintReceipt}
+                          disabled={busy === "printReceipt"}
+                          style={({ pressed }) => [
+                            styles.terminalToggleBtn,
+                            { backgroundColor: status.printReceipt ? Colors.brand.green : "#E5E7EB", opacity: pressed || busy === "printReceipt" ? 0.7 : 1 },
+                          ]}
+                        >
+                          <View style={[styles.terminalToggleThumb, { alignSelf: status.printReceipt ? "flex-end" : "flex-start" }]} />
+                        </Pressable>
+                      </View>
+                    )}
+
                     {/* Pick / change store + terminal */}
                     <Text style={[styles.kioskModalBody, { marginTop: 16, fontWeight: "700" }]}>
                       {status.paired ? "Change paired terminal" : "Pick a store and terminal"}
@@ -1149,6 +1222,57 @@ function TeyaTerminalModal({ visible, onClose }: { visible: boolean; onClose: ()
                       </View>
                     )}
 
+                    {/* Diagnostics — test the live OAuth token and see the
+                        last few kiosk → Teya attempts at a glance. Lost on
+                        server restart but plenty for day-to-day troubleshooting. */}
+                    <Text style={[styles.kioskModalBody, { marginTop: 20, fontWeight: "700" }]}>Diagnostics</Text>
+                    <Pressable
+                      onPress={runTestConnection}
+                      disabled={busy === "test"}
+                      style={({ pressed }) => [
+                        styles.kioskModalBtn,
+                        styles.kioskModalBtnGhost,
+                        { marginTop: 8, opacity: pressed || busy === "test" ? 0.7 : 1 },
+                      ]}
+                    >
+                      {busy === "test" ? (
+                        <ActivityIndicator color={Colors.brand.blue} />
+                      ) : (
+                        <Text style={styles.kioskModalBtnGhostText}>Test connection</Text>
+                      )}
+                    </Pressable>
+                    {testResult && (
+                      <Text style={[styles.kioskModalBody, { marginTop: 6, color: testResult.ok ? Colors.brand.green : Colors.brand.red }]}>
+                        {testResult.ok ? "✓ " : "✗ "}{testResult.message}
+                      </Text>
+                    )}
+
+                    {recent.length > 0 && (
+                      <View style={{ marginTop: 14 }}>
+                        <Text style={[styles.kioskModalBody, { fontWeight: "700", marginBottom: 6 }]}>Recent payments</Text>
+                        {recent.slice(0, 6).map((p) => {
+                          const colour =
+                            p.status === "SUCCESSFUL" ? Colors.brand.green :
+                            p.status === "PENDING" ? "#9CA3AF" :
+                            Colors.brand.red;
+                          const time = new Date(p.startedAt).toLocaleTimeString();
+                          return (
+                            <View key={p.requestId} style={styles.terminalListRow}>
+                              <View style={[styles.terminalStatusDot, { backgroundColor: colour }]} />
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.terminalListText}>
+                                  {p.ticketNumber ? `Ticket #${p.ticketNumber}` : `Order #${p.appOrderId ?? "?"}`} · £{(p.amountPence / 100).toFixed(2)}
+                                </Text>
+                                <Text style={{ fontFamily: "Montserrat_500Medium", fontSize: 11, color: Colors.light.textSecondary }}>
+                                  {time} · {p.status}
+                                </Text>
+                              </View>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+
                     {/* Maintenance actions */}
                     <View style={{ flexDirection: "row", gap: 8, marginTop: 16 }}>
                       {status.paired && (
@@ -1212,6 +1336,13 @@ function ActiveTerminalRow() {
   const { data } = useQuery<{ provider: "square" | "teya" | "none" }>({
     queryKey: ["/api/staff/active-terminal"],
   });
+  // Health probe — small dot/label so the owner knows whether the chosen
+  // vendor is actually reachable right now (paired, OAuth still valid, etc).
+  // Polled every 30s; cheap server-side.
+  const { data: health } = useQuery<{ provider: string; healthy: boolean; reason: string }>({
+    queryKey: ["/api/staff/active-terminal/health"],
+    refetchInterval: 30_000,
+  });
   const provider = data?.provider || "square";
   const [busy, setBusy] = useState<"square" | "teya" | "none" | null>(null);
   const set = async (next: "square" | "teya" | "none") => {
@@ -1250,9 +1381,20 @@ function ActiveTerminalRow() {
   };
   return (
     <View style={styles.activeTerminalCard}>
-      <Text style={styles.activeTerminalTitle}>Active card terminal</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <Text style={[styles.activeTerminalTitle, { flex: 1 }]}>Active card terminal</Text>
+        {health && (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <View style={[styles.terminalStatusDot, { backgroundColor: health.healthy ? Colors.brand.green : "#EF4444" }]} />
+            <Text style={{ fontFamily: "Montserrat_600SemiBold", fontSize: 11, color: health.healthy ? Colors.brand.green : "#EF4444" }}>
+              {health.healthy ? "REACHABLE" : "UNREACHABLE"}
+            </Text>
+          </View>
+        )}
+      </View>
       <Text style={styles.activeTerminalSub}>
         Kiosk orders push to whichever vendor you pick here. Each must be paired and enabled in its own panel above for the push to fire.
+        {health && !health.healthy ? `\n\n${health.reason}` : ""}
       </Text>
       <View style={styles.activeTerminalRow}>
         <Btn value="square" label="Square" />

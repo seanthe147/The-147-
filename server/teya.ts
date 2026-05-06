@@ -478,6 +478,44 @@ export async function awaitFinalStatus(
   }
 }
 
+// ── Recent payments ring buffer ──────────────────────────────────────────────
+// Teya doesn't expose a "list recent payment-requests" endpoint, so we keep
+// a small in-memory log of the last 20 attempts (recorded by routes.ts when
+// the SSE listener resolves). Lost on restart — that's fine, this exists
+// purely for staff troubleshooting in the Teya panel.
+export type TeyaRecentPayment = {
+  requestId: string;
+  appOrderId: number | null;
+  ticketNumber: number | null;
+  amountPence: number;
+  status: TeyaTerminalStatus | "PENDING";
+  startedAt: string;
+  finishedAt: string | null;
+};
+const RECENT_LIMIT = 20;
+const recentPayments: TeyaRecentPayment[] = [];
+export function recordPaymentStarted(p: { requestId: string; appOrderId: number | null; ticketNumber: number | null; amountPence: number }) {
+  recentPayments.unshift({
+    requestId: p.requestId,
+    appOrderId: p.appOrderId,
+    ticketNumber: p.ticketNumber,
+    amountPence: p.amountPence,
+    status: "PENDING",
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+  });
+  while (recentPayments.length > RECENT_LIMIT) recentPayments.pop();
+}
+export function recordPaymentFinished(requestId: string, status: TeyaTerminalStatus) {
+  const row = recentPayments.find((r) => r.requestId === requestId);
+  if (!row) return;
+  row.status = status;
+  row.finishedAt = new Date().toISOString();
+}
+export function listRecentPayments(): TeyaRecentPayment[] {
+  return recentPayments.slice();
+}
+
 // ── Receipt printing (Teya Pro built-in printer) ─────────────────────────────
 // Spec: POST /poslink/v1/receipt-requests with either a multipart image or
 // a JSON document. We use the JSON form for kiosk tickets (faster + no
