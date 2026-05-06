@@ -5838,9 +5838,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           false,
           undefined,
           ticketNumber,
-          true, // asOpenTicket — skip PICKUP fulfillment so the order
-                // surfaces in Square for Restaurants' "Open Orders"
-                // screen instead of the Online Orders → Pickup queue.
+          true, // asOpenTicket — kept for API stability. Both branches now
+                // use PICKUP fulfillment + spoofed "Point of Sale" source
+                // because Square's till filters API-created orders out of
+                // the dine-in Open Tickets list regardless of source spoof
+                // (the filter keys on the immutable OAuth application_id).
+                // PICKUP is the one fulfillment type the till app's
+                // "Online Orders / Pickup" queue actually shows for
+                // outside-app orders, so that's where staff find unpaid
+                // kiosk tickets to take counter payment on.
         );
 
       const created = await storage.createAppOrder({
@@ -5912,6 +5918,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   if (ok) {
                     try { await storage.logOrderAction({ orderId: created.id, staffUsername: "teya-terminal", action: "mark-paid-teya" }); } catch {}
                     console.log(`[KIOSK] Order #${created.id} auto-marked paid via Teya (request ${pr.id})`);
+                  }
+                  // Push a CASH tender to the Square Order so it leaves
+                  // the till's Pickup queue and routes to the KDS. Non-
+                  // fatal — the local order is already marked paid; if
+                  // Square refuses (e.g. already tendered) we just log.
+                  try {
+                    await square.payOrderWithCashTender(
+                      squareOrderId,
+                      squareTotalPence,
+                      `kiosk-cash-tender-${created.id}-teya`,
+                    );
+                  } catch (err: any) {
+                    console.warn(`[KIOSK] Order #${created.id} — Square CASH tender push failed (non-fatal):`, err?.message || err);
                   }
                   // Optional customer receipt — only fires if the owner has
                   // toggled "Print receipt on success" in the Teya panel.
@@ -5996,6 +6015,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         await storage.logOrderAction({ orderId: id, staffUsername: actor, action: "mark-paid-counter" });
       } catch {}
+      // Push a CASH tender to the Square Order so it leaves the till's
+      // Pickup queue and flows to the KDS, exactly as it would if staff
+      // had taken payment on the till directly. Non-fatal: the local
+      // order is already paid; we log Square errors and move on.
+      if (order.squareOrderId) {
+        try {
+          await square.payOrderWithCashTender(
+            order.squareOrderId,
+            order.totalPence,
+            `kiosk-cash-tender-${id}-staff-${actor}`,
+          );
+        } catch (err: any) {
+          console.warn(`[KIOSK] Order #${id} — Square CASH tender push failed (non-fatal):`, err?.message || err);
+        }
+      }
       console.log(`[KIOSK] Order #${id} marked paid at counter by ${actor}`);
       res.json({ status: "paid" });
     } catch (err: any) {

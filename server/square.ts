@@ -1416,34 +1416,36 @@ async function buildSquareOrderBody(
     //   asOpenTicket = false (online checkout-link / web payment) → keep
     //     the PICKUP fulfillment so the customer-pays-remotely flow works
     //     unchanged.
-    ...(asOpenTicket ? {
-      // Spoof source.name to match what native till orders carry. Square's
-      // POS / Square for Restaurants apps filter the on-device Open Tickets
-      // list by source.name == "Point of Sale" — orders created via our
-      // OAuth app default to source.name = "The 147" and are hidden by the
-      // till's filter even though they're identical in every other field.
-      // OrderSource.name is settable on CreateOrder per Square API docs.
-      source: { name: "Point of Sale" },
-      fulfillments: [
-        {
-          type: "SIMPLE",
-          state: "PROPOSED",
+    // Spoof source.name to "Point of Sale". OrderSource.name is settable on
+    // CreateOrder per Square API docs (we verified Square accepts it).
+    // Square POS / Square for Restaurants store the OAuth application_id as
+    // immutable internal metadata and use that — NOT source.name — to
+    // filter the on-device dine-in Open Tickets list. So this spoof alone
+    // doesn't make orders appear in the dine-in tab. What it DOES help with
+    // is keeping the source label consistent across kiosk + till orders in
+    // reporting / Dashboard, and avoiding any UI that surfaces source.name
+    // as a "made by an outside app" label.
+    source: { name: "Point of Sale" },
+    // Fulfillment: PICKUP/PROPOSED for both kiosk + online checkout-link.
+    // PICKUP routes the order into Square for Restaurants' "Online Orders /
+    // Pickup" queue on the till — that's the ONE on-device tab that shows
+    // orders from outside apps. Staff open the ticket from there to take
+    // counter payment for unpaid orders. For kiosk orders that the kiosk
+    // has already taken payment for (Teya / Square Terminal), the
+    // kiosk-checkout route attaches a CASH tender after the fact, which
+    // moves the order onto the KDS.
+    fulfillments: [
+      {
+        type: "PICKUP",
+        state: "PROPOSED",
+        pickup_details: {
+          recipient: { display_name: ticketName.slice(0, 60) },
+          schedule_type: "ASAP",
+          is_curbside_pickup: false,
+          note: combinedNote || undefined,
         },
-      ],
-    } : {
-      fulfillments: [
-        {
-          type: "PICKUP",
-          state: "PROPOSED",
-          pickup_details: {
-            recipient: { display_name: ticketName.slice(0, 60) },
-            schedule_type: "ASAP",
-            is_curbside_pickup: false,
-            note: combinedNote || undefined,
-          },
-        },
-      ],
-    }),
+      },
+    ],
     ...(combinedNote ? {
       note: combinedNote.slice(0, 500),
       reference_id: (tableNote || "ORDER").replace(/\s+/g, "-").toUpperCase().slice(0, 40),
@@ -1477,6 +1479,51 @@ async function buildSquareOrderBody(
 // Create a standalone Square Order (no hosted checkout) so we can charge it
 // in-app via the Web Payments SDK. Returns the Square order id and computed
 // total in pence (Square evaluates discounts server-side).
+// Mark a Square Order as paid by attaching a CASH tender. Used by the
+// kiosk flow when payment has been collected outside Square (Teya
+// terminal, Square Terminal handled by Square's own webhook flow, or a
+// staff "Mark Paid" action for cash). Once the tender is attached,
+// Square treats the order as a completed sale: it leaves the till's
+// Pickup queue and is routed to the KDS based on item categories.
+//
+// Idempotent on the supplied key — safe to retry. Logs but does not
+// throw on conflict (the order may already have a tender if a previous
+// attempt succeeded), so callers can fire-and-forget.
+export async function payOrderWithCashTender(
+  orderId: string,
+  amountPence: number,
+  idempotencyKey: string,
+): Promise<{ paymentId?: string; alreadyPaid?: boolean }> {
+  const locationId = getLocationId();
+  if (amountPence <= 0) {
+    console.warn(`[SQUARE] payOrderWithCashTender: zero/negative amount for order ${orderId}, skipping`);
+    return { alreadyPaid: true };
+  }
+  try {
+    const data = await squareRequest("POST", "/v2/payments", {
+      idempotency_key: idempotencyKey,
+      source_id: "CASH",
+      amount_money: { amount: amountPence, currency: "GBP" },
+      cash_details: { buyer_supplied_money: { amount: amountPence, currency: "GBP" } },
+      order_id: orderId,
+      location_id: locationId,
+    });
+    const paymentId = data.payment?.id as string | undefined;
+    console.log(`[SQUARE] CASH tender attached to order ${orderId} → payment ${paymentId ?? "(none)"} status ${data.payment?.status ?? "?"}`);
+    return { paymentId };
+  } catch (err: any) {
+    // Square returns 4xx with "Order has already been paid" / similar
+    // when a tender already covers the total. Treat as success.
+    const msg = err?.message || "";
+    if (err instanceof SquareError && err.statusCode >= 400 && err.statusCode < 500 &&
+        /already.*(paid|tender)|tender.*total/i.test(msg)) {
+      console.log(`[SQUARE] Order ${orderId} already paid — CASH tender skipped (${msg})`);
+      return { alreadyPaid: true };
+    }
+    throw err;
+  }
+}
+
 export async function createSquareOrderForCheckout(
   items: OrderLineItem[],
   tableNote?: string,
