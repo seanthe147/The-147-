@@ -1421,7 +1421,6 @@ async function buildSquareOrderBody(
         {
           type: "SIMPLE",
           state: "PROPOSED",
-          line_item_application: "ALL",
         },
       ],
     } : {
