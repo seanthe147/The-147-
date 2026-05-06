@@ -2,7 +2,7 @@
   "expo": {
     "name": "The 147",
     "slug": "the-147",
-    "version": "2.6.5",
+    "version": "2.6.6",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "the147",
@@ -17,7 +17,7 @@
       "supportsTablet": true,
       "requireFullScreen": true,
       "bundleIdentifier": "com.the147bradford.app",
-      "buildNumber": "25",
+      "buildNumber": "1",
       "entitlements": {
         "com.apple.developer.in-app-payments": [
           "merchant.com.the147bradford.app"
