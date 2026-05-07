@@ -29,10 +29,10 @@ import { createHash } from "node:crypto";
 const ID_BASE = "https://id.teya.com";
 const API_BASE = "https://api.teya.com";
 
-// Default scopes we request on the consent screen. Real list may need
-// trimming once Teya documents fine-grained scopes — for now we request
-// what the spec implies POSLink endpoints need. Override via env if needed.
-const DEFAULT_SCOPES = (process.env.TEYA_SCOPES || "openid offline_access poslink:read poslink:write").split(/\s+/).filter(Boolean);
+// Scopes requested on the consent screen. Per Teya's documented OAuth
+// flow this is the single scope `poslink`; override via TEYA_SCOPES env
+// only if Teya later issues fine-grained scope strings to your account.
+const DEFAULT_SCOPES = (process.env.TEYA_SCOPES || "poslink").split(/\s+/).filter(Boolean);
 
 export class TeyaError extends Error {
   constructor(message: string, public statusCode: number, public body?: any) {
@@ -93,7 +93,7 @@ export function buildAuthorizationUrl(opts: { redirectUri: string; state: string
     scope: DEFAULT_SCOPES.join(" "),
     state: opts.state,
   });
-  return `${ID_BASE}/oauth/v2/oauth-authorize?${params.toString()}`;
+  return `${ID_BASE}/oauth2/authorize?${params.toString()}`;
 }
 
 // Exchanges the one-time `code` from the callback for an access + refresh
@@ -108,12 +108,14 @@ export async function exchangeAuthorizationCode(opts: {
     grant_type: "authorization_code",
     code: opts.code,
     redirect_uri: opts.redirectUri,
-    client_id: getClientId(),
-    client_secret: getClientSecret(),
   });
-  const res = await fetch(`${ID_BASE}/oauth/v2/oauth-token`, {
+  const basic = Buffer.from(`${getClientId()}:${getClientSecret()}`).toString("base64");
+  const res = await fetch(`${ID_BASE}/oauth2/token`, {
     method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      authorization: `Basic ${basic}`,
+    },
     body,
   });
   const json: any = await res.json().catch(() => ({}));
@@ -131,12 +133,14 @@ async function refreshAccessToken(refreshTokenPlain: string): Promise<{ scope: s
   const body = new URLSearchParams({
     grant_type: "refresh_token",
     refresh_token: refreshTokenPlain,
-    client_id: getClientId(),
-    client_secret: getClientSecret(),
   });
-  const res = await fetch(`${ID_BASE}/oauth/v2/oauth-token`, {
+  const basic = Buffer.from(`${getClientId()}:${getClientSecret()}`).toString("base64");
+  const res = await fetch(`${ID_BASE}/oauth2/token`, {
     method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      authorization: `Basic ${basic}`,
+    },
     body,
   });
   const json: any = await res.json().catch(() => ({}));
