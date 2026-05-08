@@ -5852,6 +5852,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // the authoritative total from its catalog (variation/modifier prices
       // + any member discount), so we trust its returned totalPence over
       // any client-supplied number.
+      // Square promotional discounts ("deals") auto-apply on the kiosk by
+      // default; the owner can flip this off per surface from the staff
+      // portal (e.g. to keep the kiosk full-price during a busy event
+      // without disabling the deal in Square itself).
+      const kioskDealsEnabled = (await storage.getSetting("square_deals_kiosk_enabled")) !== "false";
       const { orderId: squareOrderId, totalPence: squareTotalPence } =
         await square.createSquareOrderForCheckout(
           squareItems,
@@ -5871,6 +5876,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 // "Online Orders / Pickup" queue actually shows for
                 // outside-app orders, so that's where staff find unpaid
                 // kiosk tickets to take counter payment on.
+          kioskDealsEnabled,
         );
 
       const created = await storage.createAppOrder({
@@ -6391,6 +6397,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ enabled });
   });
 
+  // ── Square promotional discounts ("deals") on/off per surface ──────────────
+  // Owner toggle: when "false", Square pricing-rule discounts (e.g.
+  // "Hawkstone Weekend") are NOT auto-applied to matching cart items at
+  // checkout for that surface. Member discounts are unaffected. Defaults
+  // to enabled so existing venues see no behaviour change.
+  app.get("/api/staff/square-deals/settings", staffAuth, managerAuth, async (_req, res) => {
+    const order = (await storage.getSetting("square_deals_order_enabled")) !== "false";
+    const kiosk = (await storage.getSetting("square_deals_kiosk_enabled")) !== "false";
+    res.json({ order, kiosk });
+  });
+
+  app.put("/api/staff/square-deals/settings", staffAuth, managerAuth, async (req, res) => {
+    const updates: Record<string, boolean> = {};
+    if (typeof req.body?.order === "boolean") {
+      await storage.setSetting("square_deals_order_enabled", String(req.body.order));
+      updates.order = req.body.order;
+    }
+    if (typeof req.body?.kiosk === "boolean") {
+      await storage.setSetting("square_deals_kiosk_enabled", String(req.body.kiosk));
+      updates.kiosk = req.body.kiosk;
+    }
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: "Provide at least one of: order, kiosk" });
+    }
+    console.log(`[SQUARE DEALS] Toggles updated: ${JSON.stringify(updates)}`);
+    const order = (await storage.getSetting("square_deals_order_enabled")) !== "false";
+    const kiosk = (await storage.getSetting("square_deals_kiosk_enabled")) !== "false";
+    res.json({ order, kiosk });
+  });
+
   // ── Diagnostics ────────────────────────────────────────────────────────────
   // Lightweight "is this thing working?" pings the staff panel can fire
   // without running a real customer payment. We deliberately use the
@@ -6564,8 +6600,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // on the Square KDS ticket when the customer hasn't given a name or
       // table. Same id is then used for the app_orders row below.
       const reservedOrderId = await storage.reserveAppOrderId();
+      // Square promotional discounts ("deals") auto-apply on the Order tab
+      // by default; the owner can turn them off from the staff portal
+      // without touching the Square dashboard.
+      const orderDealsEnabled = (await storage.getSetting("square_deals_order_enabled")) !== "false";
       const { orderId, totalPence, pricedItems } = await square.createSquareOrderForCheckout(
         items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, reservedOrderId,
+        false, orderDealsEnabled,
       );
 
       // Generate a per-order confirmation token. The client stores this

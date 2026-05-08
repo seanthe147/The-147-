@@ -12,6 +12,7 @@ import {
   Modal,
   Alert,
   Linking,
+  Switch,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -1405,6 +1406,82 @@ function ActiveTerminalRow() {
   );
 }
 
+// ── Square promotional discounts on/off per surface ─────────────────────────
+// Two switches the owner can flick to stop Square pricing rules ("deals"
+// like "Hawkstone Weekend") from auto-applying at checkout. Order tab and
+// Kiosk are independent so the venue can, for example, keep the deal
+// active in-app but disable it on the kiosk during a busy event. Member
+// discounts are unaffected — this only governs Square's Discounts catalog.
+function SquareDealsRow() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery<{ order: boolean; kiosk: boolean }>({
+    queryKey: ["/api/staff/square-deals/settings"],
+  });
+  const [busy, setBusy] = useState<"order" | "kiosk" | null>(null);
+  const set = async (which: "order" | "kiosk", next: boolean) => {
+    if (busy) return;
+    setBusy(which);
+    try {
+      await apiRequest("PUT", "/api/staff/square-deals/settings", { [which]: next });
+      await queryClient.invalidateQueries({ queryKey: ["/api/staff/square-deals/settings"] });
+    } catch (err: any) {
+      Alert.alert("Could not update", err?.message || "Please try again");
+    } finally {
+      setBusy(null);
+    }
+  };
+  const orderOn = data?.order ?? true;
+  const kioskOn = data?.kiosk ?? true;
+  return (
+    <View style={styles.activeTerminalCard}>
+      <Text style={styles.activeTerminalTitle}>Square offers (deals)</Text>
+      <Text style={styles.activeTerminalSub}>
+        Turn Square pricing-rule discounts (like "Hawkstone Weekend") on or off per surface. Member discounts are unaffected.
+      </Text>
+      <View style={{ marginTop: 12, gap: 10 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={{ fontFamily: "Montserrat_600SemiBold", fontSize: 14, color: Colors.light.text }}>Order tab</Text>
+            <Text style={{ fontFamily: "Montserrat_400Regular", fontSize: 12, color: Colors.light.textSecondary, marginTop: 2 }}>
+              In-app customer ordering
+            </Text>
+          </View>
+          {busy === "order" ? (
+            <ActivityIndicator size="small" color={Colors.brand.blue} />
+          ) : (
+            <Switch
+              value={orderOn}
+              onValueChange={(v) => set("order", v)}
+              trackColor={{ false: "#D1D5DB", true: Colors.brand.green }}
+              thumbColor="#fff"
+              testID="square-deals-order-switch"
+            />
+          )}
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={{ fontFamily: "Montserrat_600SemiBold", fontSize: 14, color: Colors.light.text }}>Kiosk</Text>
+            <Text style={{ fontFamily: "Montserrat_400Regular", fontSize: 12, color: Colors.light.textSecondary, marginTop: 2 }}>
+              On-table self-service
+            </Text>
+          </View>
+          {busy === "kiosk" ? (
+            <ActivityIndicator size="small" color={Colors.brand.blue} />
+          ) : (
+            <Switch
+              value={kioskOn}
+              onValueChange={(v) => set("kiosk", v)}
+              trackColor={{ false: "#D1D5DB", true: Colors.brand.green }}
+              thumbColor="#fff"
+              testID="square-deals-kiosk-switch"
+            />
+          )}
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function KioskAttractEditModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
   const { data: settings } = useQuery<Record<string, string>>({
@@ -1986,6 +2063,7 @@ function DashboardScreen() {
                 testID="portal-teya-terminal"
               />
               <ActiveTerminalRow />
+              <SquareDealsRow />
             </View>
           </>
         )}

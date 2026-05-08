@@ -1196,6 +1196,12 @@ async function buildSquareOrderBody(
   // Tickets" screen instead of routing it to the "Online Orders → Pickup"
   // queue. Used by the kiosk flow (customer pays at the counter).
   asOpenTicket: boolean | undefined,
+  // When false, Square pricing rules / discounts ("deals") are NOT
+  // auto-applied to matching cart items. Member discounts still apply
+  // either way — this flag only governs the venue-wide promotional
+  // discounts that come from Square's Discounts catalog. Defaults to
+  // true to preserve existing behaviour for callers that don't pass it.
+  applyDeals: boolean | undefined = true,
 ): Promise<{
   order: any;
   prePopulated: Record<string, any> | undefined;
@@ -1311,11 +1317,17 @@ async function buildSquareOrderBody(
   }
 
   // activeDeals was fetched above in parallel with the catalog lookup.
+  // When applyDeals === false (staff has disabled Square offers for this
+  // surface) we leave the map empty so no deal discounts are stamped on
+  // line items. We still fetched the deals because cancelling that work
+  // mid-Promise.all would complicate the catalog-fetch parallelism.
   const dealByVariationId = new Map<string, Deal>();
-  for (const deal of activeDeals) {
-    if (!deal.applicableVariationIds) continue;
-    for (const vid of deal.applicableVariationIds) {
-      if (!dealByVariationId.has(vid)) dealByVariationId.set(vid, deal);
+  if (applyDeals) {
+    for (const deal of activeDeals) {
+      if (!deal.applicableVariationIds) continue;
+      for (const vid of deal.applicableVariationIds) {
+        if (!dealByVariationId.has(vid)) dealByVariationId.set(vid, deal);
+      }
     }
   }
   const matchedDeals = items
@@ -1534,10 +1546,11 @@ export async function createSquareOrderForCheckout(
   orderNote?: string,
   orderNumber?: number,
   asOpenTicket?: boolean,
+  applyDeals: boolean = true,
 ): Promise<{ orderId: string; totalPence: number; pricedItems: PricedLineItem[] }> {
   const idempotencyKey = `order-create-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   const { order, pricedItems } = await buildSquareOrderBody(
-    items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, orderNumber, asOpenTicket,
+    items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, orderNumber, asOpenTicket, applyDeals,
   );
   const data = await squareRequest("POST", "/v2/orders", {
     idempotency_key: idempotencyKey,
@@ -1557,10 +1570,11 @@ export async function createOrderCheckoutLink(
   excludeWithDeals?: boolean,
   orderNote?: string,
   orderNumber?: number,
+  applyDeals: boolean = true,
 ): Promise<{ url: string; linkId: string; squareOrderId: string; pricedItems: PricedLineItem[]; rawTotalPence: number }> {
   const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   const { order, prePopulated, pricedItems, rawTotalPence } = await buildSquareOrderBody(
-    items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, orderNumber, false,
+    items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, orderNumber, false, applyDeals,
   );
   const body: any = {
     idempotency_key: idempotencyKey,
