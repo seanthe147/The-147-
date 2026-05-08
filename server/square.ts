@@ -1422,6 +1422,16 @@ async function buildSquareOrderBody(
     // "Open Tickets" list on the till. Without it, the order exists in
     // Square but staff can't find it. Cap at 30 chars (Square limit).
     ticket_name: ticketName.slice(0, 30),
+    // Disable Square's automatic pricing-rule discount engine. Square
+    // creates an auto-apply Pricing Rule for every dashboard "Discount"
+    // (e.g. "The Weekend of Hawkstone"), which would normally subtract
+    // the deal a SECOND time on top of the LINE_ITEM discount we stamp
+    // ourselves below — so the customer was getting £2.80 off twice and
+    // landing at £0.20 instead of £3.00. We own deal application here so
+    // that the staff-portal Order/Kiosk toggles can turn deals off
+    // per-channel without touching the Square dashboard. Taxes are also
+    // disabled to keep behaviour deterministic.
+    pricing_options: { auto_apply_discounts: false, auto_apply_taxes: false },
     ...(orderDiscounts.length ? { discounts: orderDiscounts } : {}),
     // Fulfillment selection:
     //   asOpenTicket = true  (kiosk)  → SIMPLE/PROPOSED fulfillment.
