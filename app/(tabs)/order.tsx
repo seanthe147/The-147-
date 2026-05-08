@@ -911,8 +911,57 @@ function CartSheet({
     (memberSub.plan?.foodDrinkDiscount ?? 0) > 0;
   const discountPercent = isValidMember ? memberSub!.plan!.foodDrinkDiscount : 0;
   const discountLabel = discountPercent > 0 ? `${memberSub!.plan!.name} Member Discount` : "";
-  const discountAmountPence = discountPercent > 0 ? Math.round(totalPrice * discountPercent / 100) : 0;
-  const finalPrice = totalPrice - discountAmountPence;
+
+  // Live Square promotional discounts (e.g. "Weekend of Hawkstone") that
+  // will actually be applied to this cart at checkout. We hit /api/deals
+  // with ?surface=order so the result already respects the staff-portal
+  // "Square offers — Order tab" toggle: when off, the array is empty and
+  // no preview is shown. The default fetcher uses the queryKey as the
+  // URL path, which works for query-string keys too.
+  const { data: applicableDeals } = useQuery<Array<{
+    id: string;
+    name: string;
+    discountType: "FIXED_AMOUNT" | "FIXED_PERCENTAGE";
+    amountPence?: number;
+    percentage?: string;
+    applicableVariationIds?: string[];
+  }>>({
+    queryKey: ["/api/deals?surface=order"],
+    staleTime: 60_000,
+  });
+  // Build a map of variationId/itemId -> deal so per-line lookup is O(1).
+  // Mirrors the server-side dealByVariationId logic in buildSquareOrderBody
+  // so the cart preview reflects exactly what Square will compute.
+  const dealLookup = (() => {
+    const m = new Map<string, typeof applicableDeals extends (infer U)[] | undefined ? U : never>();
+    for (const d of applicableDeals || []) {
+      for (const id of d.applicableVariationIds || []) {
+        if (!m.has(id)) m.set(id, d as any);
+      }
+    }
+    return m;
+  })();
+  // Sum up deal savings line by line. FIXED_AMOUNT subtracts (amount × qty),
+  // FIXED_PERCENTAGE takes a slice off the line's base price (excludes
+  // modifier add-ons to match Square pricing-rule scope).
+  const dealsAmountPence = items.reduce((sum, i) => {
+    const deal = dealLookup.get(i.variationId) ?? (i.itemId ? dealLookup.get(i.itemId) : undefined);
+    if (!deal) return sum;
+    if (deal.discountType === "FIXED_AMOUNT" && typeof deal.amountPence === "number") {
+      return sum + deal.amountPence * i.quantity;
+    }
+    if (deal.discountType === "FIXED_PERCENTAGE" && deal.percentage) {
+      const pct = parseFloat(deal.percentage);
+      if (!Number.isNaN(pct) && pct > 0) {
+        return sum + Math.round((i.price * i.quantity * pct) / 100);
+      }
+    }
+    return sum;
+  }, 0);
+
+  const subtotalAfterDeals = Math.max(0, totalPrice - dealsAmountPence);
+  const discountAmountPence = discountPercent > 0 ? Math.round(subtotalAfterDeals * discountPercent / 100) : 0;
+  const finalPrice = Math.max(0, subtotalAfterDeals - discountAmountPence);
 
   const effectiveCustomer = customer
     ? { name: customer.name, email: customer.email, phone: customer.phone ?? undefined }
@@ -1260,14 +1309,28 @@ function CartSheet({
     onClose();
   };
 
-  const TotalSummary = () => (
-    <View style={styles.cartTotal}>
-      {discountPercent > 0 ? (
-        <>
+  const TotalSummary = () => {
+    const hasDeals = dealsAmountPence > 0;
+    const hasMember = discountPercent > 0;
+    const showSubtotal = hasDeals || hasMember;
+    return (
+      <View style={styles.cartTotal}>
+        {showSubtotal ? (
           <View style={styles.cartTotalRow}>
             <Text style={styles.cartTotalLabel}>Subtotal</Text>
             <Text style={[styles.cartTotalPrice, { color: Colors.light.textSecondary, fontSize: 15, fontWeight: "500" as const }]}>{formatPrice(totalPrice)}</Text>
           </View>
+        ) : null}
+        {hasDeals ? (
+          <View style={[styles.cartTotalRow, styles.discountRow]}>
+            <View style={{ flexDirection: "row" as const, alignItems: "center" as const, gap: 6 }}>
+              <Ionicons name="pricetag-outline" size={14} color="#166534" />
+              <Text style={styles.discountLabel}>Square offers</Text>
+            </View>
+            <Text style={styles.discountAmount}>−{formatPrice(dealsAmountPence)}</Text>
+          </View>
+        ) : null}
+        {hasMember ? (
           <View style={[styles.cartTotalRow, styles.discountRow]}>
             <View style={{ flexDirection: "row" as const, alignItems: "center" as const, gap: 6 }}>
               <Ionicons name="diamond-outline" size={14} color="#166534" />
@@ -1275,27 +1338,22 @@ function CartSheet({
             </View>
             <Text style={styles.discountAmount}>−{formatPrice(discountAmountPence)}</Text>
           </View>
-          <View style={styles.cartTotalRow}>
-            <Text style={styles.cartTotalLabel}>Total</Text>
-            <Text style={styles.cartTotalPrice}>{formatPrice(finalPrice)}</Text>
-          </View>
-        </>
-      ) : (
+        ) : null}
         <View style={styles.cartTotalRow}>
           <Text style={styles.cartTotalLabel}>Total</Text>
-          <Text style={styles.cartTotalPrice}>{formatPrice(totalPrice)}</Text>
+          <Text style={styles.cartTotalPrice}>{formatPrice(showSubtotal ? finalPrice : totalPrice)}</Text>
         </View>
-      )}
-      <View style={styles.discountNoteRow}>
-        <Ionicons name="information-circle-outline" size={13} color={Colors.light.textSecondary} />
-        <Text style={styles.discountNoteText}>
-          {customer
-            ? "Any member discount is applied automatically at checkout."
-            : "Sign in before checkout to receive your member discount."}
-        </Text>
+        <View style={styles.discountNoteRow}>
+          <Ionicons name="information-circle-outline" size={13} color={Colors.light.textSecondary} />
+          <Text style={styles.discountNoteText}>
+            {customer
+              ? "Any member discount is applied automatically at checkout."
+              : "Sign in before checkout to receive your member discount."}
+          </Text>
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <>

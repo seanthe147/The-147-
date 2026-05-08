@@ -1333,6 +1333,14 @@ async function buildSquareOrderBody(
   const matchedDeals = items
     .filter((i) => dealByVariationId.has(i.variationId) || (i.itemId && dealByVariationId.has(i.itemId)))
     .map((i) => (dealByVariationId.get(i.variationId) ?? dealByVariationId.get(i.itemId!))!.name);
+  // Diagnostic: leaves a trail in production logs whenever a Square deal
+  // is stamped onto a real order. Helps confirm the deal-application path
+  // is firing without having to reproduce locally.
+  if (matchedDeals.length > 0) {
+    console.log(`[SQUARE DEALS] Applied to order: ${matchedDeals.join(", ")}`);
+  } else if (applyDeals && activeDeals.length > 0) {
+    console.log(`[SQUARE DEALS] No matching deals for cart of ${items.length} item(s); ${activeDeals.length} active deal(s) in catalog.`);
+  }
 
   const hasMemberDiscount = typeof discountPercent === "number" && discountPercent > 0;
   const dealsInCart = matchedDeals.length > 0;

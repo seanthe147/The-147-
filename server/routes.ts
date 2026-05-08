@@ -4693,8 +4693,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   }
 
-  app.get("/api/deals", async (_req, res) => {
+  app.get("/api/deals", async (req, res) => {
     try {
+      // Optional surface filter: when ?surface=order or ?surface=kiosk is
+      // passed, the response is filtered through the matching staff-portal
+      // toggle. The cart screen uses this so it only previews deals that
+      // will actually be applied at checkout. No surface (default) returns
+      // every visible deal — used by the home-screen marketing list.
+      const surface = String(req.query.surface || "").toLowerCase();
+      if (surface === "order") {
+        const enabled = (await storage.getSetting("square_deals_order_enabled")) !== "false";
+        if (!enabled) return res.json([]);
+      } else if (surface === "kiosk") {
+        const enabled = (await storage.getSetting("square_deals_kiosk_enabled")) !== "false";
+        if (!enabled) return res.json([]);
+      }
       const [deals, prefs] = await Promise.all([
         square.getSquareDeals(),
         storage.getDealPreferences().catch(() => []),
@@ -5657,8 +5670,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // ticket can show "Collection #N" when there's no customer name and no
       // table — kitchen still has something to call out.
       const reservedOrderId = await storage.reserveAppOrderId();
+      // Honour the staff-portal "Square offers — Order tab" toggle on this
+      // hosted-checkout fallback path too, otherwise turning offers off in
+      // the dashboard would still apply them when the in-app sheet bails
+      // out to the hosted page.
+      const orderDealsEnabledHosted = (await storage.getSetting("square_deals_order_enabled")) !== "false";
       const { url, linkId, squareOrderId, pricedItems, rawTotalPence } = await square.createOrderCheckoutLink(
-        items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, reservedOrderId,
+        items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, reservedOrderId, orderDealsEnabledHosted,
       );
       const discountedTotal = discountPercent
         ? Math.round(rawTotalPence * (1 - discountPercent / 100))
