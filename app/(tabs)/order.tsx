@@ -886,7 +886,7 @@ function CartSheet({
     status: string;
     cancelledAt: string | null;
     currentPeriodEnd: string | null;
-    plan: { name: string; foodDrinkDiscount: number; active: boolean } | null;
+    plan: { name: string; foodDrinkDiscount: number; active: boolean; excludeWithDeals?: boolean } | null;
   } | null>({
     queryKey: ["/api/membership/my-subscription"],
     queryFn: async () => {
@@ -941,26 +941,41 @@ function CartSheet({
     }
     return m;
   })();
-  // Sum up deal savings line by line. FIXED_AMOUNT subtracts (amount × qty),
-  // FIXED_PERCENTAGE takes a slice off the line's base price (excludes
-  // modifier add-ons to match Square pricing-rule scope).
-  const dealsAmountPence = items.reduce((sum, i) => {
+  // Walk the cart once and split each line into "deal applies" vs "no deal".
+  // We need both the total deal saving AND the non-deal subtotal so the
+  // member-discount preview can mirror the server's `excludeWithDeals`
+  // behaviour: when the plan excludes stacking, the % is calculated on
+  // non-deal lines only — exactly how `buildSquareOrderBody` stamps it
+  // (LINE_ITEM scope, applied only to lines without an `applied_discounts`
+  // entry for the deal).
+  let dealsAmountPence = 0;
+  let nonDealSubtotalPence = 0;
+  for (const i of items) {
+    const lineSubtotal = i.price * i.quantity;
     const deal = dealLookup.get(i.variationId) ?? (i.itemId ? dealLookup.get(i.itemId) : undefined);
-    if (!deal) return sum;
-    if (deal.discountType === "FIXED_AMOUNT" && typeof deal.amountPence === "number") {
-      return sum + deal.amountPence * i.quantity;
+    if (!deal) {
+      nonDealSubtotalPence += lineSubtotal;
+      continue;
     }
-    if (deal.discountType === "FIXED_PERCENTAGE" && deal.percentage) {
+    if (deal.discountType === "FIXED_AMOUNT" && typeof deal.amountPence === "number") {
+      dealsAmountPence += deal.amountPence * i.quantity;
+    } else if (deal.discountType === "FIXED_PERCENTAGE" && deal.percentage) {
       const pct = parseFloat(deal.percentage);
       if (!Number.isNaN(pct) && pct > 0) {
-        return sum + Math.round((i.price * i.quantity * pct) / 100);
+        dealsAmountPence += Math.round((lineSubtotal * pct) / 100);
       }
     }
-    return sum;
-  }, 0);
+  }
 
+  const excludeWithDeals = !!memberSub?.plan?.excludeWithDeals;
   const subtotalAfterDeals = Math.max(0, totalPrice - dealsAmountPence);
-  const discountAmountPence = discountPercent > 0 ? Math.round(subtotalAfterDeals * discountPercent / 100) : 0;
+  // If the member's plan excludes stacking AND there are deals in the
+  // cart, the % only applies to non-deal items. Otherwise apply to the
+  // discounted subtotal so the % comes off the full eligible amount.
+  const memberDiscountBase = excludeWithDeals && dealsAmountPence > 0
+    ? nonDealSubtotalPence
+    : subtotalAfterDeals;
+  const discountAmountPence = discountPercent > 0 ? Math.round(memberDiscountBase * discountPercent / 100) : 0;
   const finalPrice = Math.max(0, subtotalAfterDeals - discountAmountPence);
 
   const effectiveCustomer = customer
