@@ -2121,7 +2121,8 @@ export default function OrderScreen() {
                         <Text style={styles.searchCatLabelText}>{categoryName}</Text>
                       </View>
                       {(() => {
-                        const cat = categories?.find(c => c.id === categoryId) ?? categories?.find(c => c.subcategories?.some(s => s.id === categoryId));
+                        const cat = categories?.find(c => c.name === categoryName)
+                          ?? categories?.find(c => c.subcategories?.some(s => s.name === categoryName));
                         const isKitchenCat = !!cat?.isKitchen;
                         return <ItemCard item={item} onOpenModifiers={handleOpenModifiers} showDietaryTags={featureFlags.dietaryFilters} kitchenClosed={!kitchenOpen && isKitchenCat} barClosed={!barOpen && !isKitchenCat} />;
                       })()}
