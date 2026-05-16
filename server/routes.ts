@@ -4693,6 +4693,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   }
 
+  app.get("/api/world-cup/next-match", async (_req, res) => {
+    try {
+      const { getNextWorldCupMatch } = await import("./worldCup");
+      const data = await getNextWorldCupMatch();
+      res.json(data);
+    } catch (err: any) {
+      console.error("/api/world-cup/next-match error:", err.message);
+      res.status(500).json({ message: "Unable to load match" });
+    }
+  });
+
   app.get("/api/deals", async (req, res) => {
     try {
       // Optional surface filter: when ?surface=order or ?surface=kiosk is

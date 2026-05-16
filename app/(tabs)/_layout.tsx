@@ -6,6 +6,7 @@ import React, { useEffect } from "react";
 import Colors from "@/constants/colors";
 import { useTabBar } from "@/contexts/TabBarContext";
 import { useKiosk } from "@/contexts/KioskContext";
+import { NextMatchBar } from "@/components/NextMatchBar";
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -33,6 +34,7 @@ export default function TabLayout() {
       style={{ flex: 1 }}
       onTouchStart={isKioskMode ? () => resetIdle() : undefined}
     >
+      <NextMatchBar />
       <Tabs
         screenOptions={{
           headerShown: false,
