@@ -1999,65 +1999,23 @@ function DashboardScreen() {
 
         {isManager && (
           <>
-            <Text style={styles.sectionLabel}>KIOSK</Text>
+            {/* Kiosk feature has been disabled. The terminal-pairing tools
+                below remain because they are also used for in-person card
+                payments outside the kiosk flow. */}
+            <Text style={styles.sectionLabel}>TERMINALS & PAYMENTS</Text>
             <View style={[styles.toolsList, isTablet && styles.toolsListTablet]}>
-              <AdminTool
-                icon={isKioskMode ? "lock-closed" : "tablet-landscape"}
-                title={isKioskMode ? "Kiosk Mode Active" : "Enable Kiosk Mode"}
-                description={
-                  isKioskMode
-                    ? "Long-press the bottom-right corner of the attract screen for 3 seconds to exit"
-                    : "Lock this device to ordering only. Customers send orders to the counter to pay."
-                }
-                color={isKioskMode ? Colors.brand.green : "#0EA5E9"}
-                onPress={() => {
-                  if (isKioskMode) {
-                    Alert.alert(
-                      "Already in Kiosk Mode",
-                      "Long-press the bottom-right corner of the attract screen for 3 seconds, then enter the PIN to exit.",
-                    );
-                    return;
-                  }
-                  setKioskModalVisible(true);
-                }}
-                testID="portal-kiosk-mode"
-              />
-              <AdminTool
-                icon="text"
-                title="Customise Attract Screen"
-                description="Edit the welcome text, brand line, tagline and CTA shown when the kiosk is idle."
-                color="#7C3AED"
-                onPress={() => setAttractEditorVisible(true)}
-                testID="portal-kiosk-attract-edit"
-              />
-              <AdminTool
-                icon={kioskOrderingEnabled ? "pause-circle" : "play-circle"}
-                title={kioskOrderingEnabled ? "Pause Kiosk Ordering" : "Resume Kiosk Ordering"}
-                description={
-                  kioskOrderingEnabled
-                    ? "Show an 'Ordering Paused' message on the kiosk. Regular online ordering keeps working."
-                    : "Kiosk ordering is currently paused. Tap to re-enable."
-                }
-                color={kioskOrderingEnabled ? "#D97706" : Colors.brand.green}
-                onPress={handleToggleKioskOrdering}
-                testID="portal-kiosk-ordering-toggle"
-              />
               <AdminTool
                 icon="card"
                 title="Square Terminal"
-                description="Pair a Square Terminal so kiosk customers can tap their card at the counter."
+                description="Pair a Square Terminal for in-person card payments."
                 color={Colors.brand.blue}
                 onPress={() => setTerminalModalVisible(true)}
                 testID="portal-square-terminal"
               />
-              {/* Teya Pro — POSLink (OAuth2 + push-to-terminal + SSE status).
-                  Mirrors the Square Terminal tool above. The user picks
-                  which vendor to use via the "Active card terminal" row
-                  rendered below. */}
               <AdminTool
                 icon="card-outline"
                 title="Teya Pro Terminal"
-                description="Push kiosk payments to your Teya Pro terminal via POSLink."
+                description="Push payments to your Teya Pro terminal via POSLink."
                 color={Colors.brand.blue}
                 onPress={() => setTeyaModalVisible(true)}
                 testID="portal-teya-terminal"
