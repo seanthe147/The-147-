@@ -89,3 +89,33 @@ id = "mBSZHIfUzJEO7bCPU9y7a"
 uri = "file://research/square-api-opportunities.md"
 type = "text"
 title = "Square API Opportunities for The 147 — Research Report"
+
+[[outputs]]
+id = "lc2pIabXFm1BKBZLkEwQE"
+uri = "file://exports/appstore-ipad/1-home.png"
+type = "image"
+title = "1 — Home"
+
+[[outputs]]
+id = "FEaQ42vBlT-9W_Wr_rwmR"
+uri = "file://exports/appstore-ipad/2-order.png"
+type = "image"
+title = "2 — Order"
+
+[[outputs]]
+id = "M0fHj81z8to-LWu4N1MBv"
+uri = "file://exports/appstore-ipad/3-book.png"
+type = "image"
+title = "3 — Book a Table"
+
+[[outputs]]
+id = "e8XCsFKGcXtzu8Vkjo-Tn"
+uri = "file://exports/appstore-ipad/4-events.png"
+type = "image"
+title = "4 — Events"
+
+[[outputs]]
+id = "SeuvP7QAoooFet-gRf_NF"
+uri = "file://exports/appstore-ipad/5-loyalty.png"
+type = "image"
+title = "5 — Loyalty"
