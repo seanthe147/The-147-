@@ -25,7 +25,7 @@ function isSafePublicUrl(value) {
   }
   return parsed.protocol === "https:" || parsed.protocol === "http:";
 }
-var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, tabs, tabItems, tableSessions, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, marketingPages, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, dealPreferences, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, passwordResetAuditLog, membershipAuditLog, bookingAuditLog, staffActionLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffDocuments, insertStaffDocumentSchema, staffOnboarding, insertStaffOnboardingSchema, staffPushTokens, paymentLog, insertPaymentLogSchema;
+var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, tabs, tabItems, tableSessions, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, teyaOauthTokens, marketingPages, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, dealPreferences, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, passwordResetAuditLog, membershipAuditLog, bookingAuditLog, staffActionLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffDocuments, insertStaffDocumentSchema, staffOnboarding, insertStaffOnboardingSchema, staffPushTokens, paymentLog, insertPaymentLogSchema;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
@@ -223,6 +223,18 @@ var init_schema = __esm({
     siteSettings = pgTable("site_settings", {
       key: text("key").primaryKey(),
       value: text("value").notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    });
+    teyaOauthTokens = pgTable("teya_oauth_tokens", {
+      id: integer("id").primaryKey().default(1),
+      accessTokenEnc: text("access_token_enc").notNull(),
+      refreshTokenEnc: text("refresh_token_enc").notNull(),
+      tokenType: text("token_type").notNull().default("Bearer"),
+      scope: text("scope"),
+      // Absolute expiry timestamp (Teya returns expires_in seconds; we add it
+      // to "now" at the moment of the token exchange for monotonic comparison).
+      expiresAt: timestamp("expires_at").notNull(),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
     marketingPages = pgTable("marketing_pages", {
@@ -459,6 +471,16 @@ var init_schema = __esm({
       // token associated with the customer's email — a customer may have the
       // app on multiple devices and only the one that ordered should buzz.
       pushToken: text("push_token"),
+      // How the order will be / was paid:
+      //   "online"  → Square Web Payments / hosted checkout (default)
+      //   "counter" → Kiosk mode — customer takes a numbered ticket to the
+      //               counter and pays staff in person. Staff use the
+      //               dashboard's "Mark Paid" action to flip the status.
+      paymentMethod: text("payment_method").notNull().default("online"),
+      // Short human-readable ticket number (1-999) shown on the kiosk
+      // confirmation screen and on the staff dashboard. Resets per day.
+      // Null for online orders.
+      ticketNumber: integer("ticket_number"),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     orderAuditLog = pgTable("order_audit_log", {
@@ -558,6 +580,13 @@ var init_schema = __esm({
       parentCategoryId: text("parent_category_id"),
       displayName: text("display_name"),
       imageUrl: text("image_url"),
+      // True when items in this category come from the kitchen (food) and
+      // therefore can only be ordered while the kitchen is open. False/null
+      // means bar/drinks/snacks — always orderable inside venue hours. Used
+      // by /api/ordering-status + /api/menu so the customer order screen + kiosk
+      // can show "Kitchen closed — drinks only" and grey out food items
+      // automatically without blocking drink sales outside kitchen hours.
+      isKitchen: boolean("is_kitchen").notNull().default(false),
       updatedBy: text("updated_by").notNull().default("system"),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
@@ -1790,6 +1819,46 @@ var init_storage = __esm({
         for (const row of rows) result[row.key] = row.value;
         return result;
       }
+      // ── Teya OAuth token CRUD ───────────────────────────────────────────────
+      // Singleton row at id = 1. Encryption is handled by the caller (server/teya.ts)
+      // so storage stays a dumb persistence layer and the encryption strategy
+      // can change without touching DB code. Returning the raw row (with the
+      // *_enc fields) is intentional — only `server/teya.ts` knows the key.
+      async getTeyaTokens() {
+        const [row] = await db.select().from(teyaOauthTokens).where(eq(teyaOauthTokens.id, 1));
+        if (!row) return null;
+        return {
+          accessTokenEnc: row.accessTokenEnc,
+          refreshTokenEnc: row.refreshTokenEnc,
+          tokenType: row.tokenType,
+          scope: row.scope,
+          expiresAt: row.expiresAt
+        };
+      }
+      async saveTeyaTokens(data) {
+        await db.insert(teyaOauthTokens).values({
+          id: 1,
+          accessTokenEnc: data.accessTokenEnc,
+          refreshTokenEnc: data.refreshTokenEnc,
+          tokenType: data.tokenType,
+          scope: data.scope,
+          expiresAt: data.expiresAt,
+          updatedAt: /* @__PURE__ */ new Date()
+        }).onConflictDoUpdate({
+          target: teyaOauthTokens.id,
+          set: {
+            accessTokenEnc: data.accessTokenEnc,
+            refreshTokenEnc: data.refreshTokenEnc,
+            tokenType: data.tokenType,
+            scope: data.scope,
+            expiresAt: data.expiresAt,
+            updatedAt: /* @__PURE__ */ new Date()
+          }
+        });
+      }
+      async clearTeyaTokens() {
+        await db.delete(teyaOauthTokens).where(eq(teyaOauthTokens.id, 1));
+      }
       // ── Marketing pages (custom DB-backed pages) ─────────────────────────────
       async listMarketingPages() {
         return db.select().from(marketingPages).orderBy(marketingPages.sortOrder, marketingPages.slug);
@@ -2267,6 +2336,7 @@ var init_storage = __esm({
             parentCategoryId: s.parentCategoryId ?? null,
             displayName: s.displayName ?? null,
             imageUrl: s.imageUrl ?? null,
+            isKitchen: s.isKitchen ?? false,
             updatedBy: s.updatedBy,
             updatedAt: /* @__PURE__ */ new Date()
           }).onConflictDoUpdate({
@@ -2276,11 +2346,24 @@ var init_storage = __esm({
               ...s.mergedIntoId !== void 0 ? { mergedIntoId: s.mergedIntoId } : {},
               ...s.parentCategoryId !== void 0 ? { parentCategoryId: s.parentCategoryId } : {},
               ...s.displayName !== void 0 ? { displayName: s.displayName } : {},
+              ...s.isKitchen !== void 0 ? { isKitchen: s.isKitchen } : {},
               updatedBy: s.updatedBy,
               updatedAt: /* @__PURE__ */ new Date()
             }
           });
         }
+      }
+      async setCategoryIsKitchen(categoryId, isKitchen, updatedBy) {
+        await db.insert(categorySettings).values({
+          categoryId,
+          displayOrder: 99,
+          isKitchen,
+          updatedBy,
+          updatedAt: /* @__PURE__ */ new Date()
+        }).onConflictDoUpdate({
+          target: categorySettings.categoryId,
+          set: { isKitchen, updatedBy, updatedAt: /* @__PURE__ */ new Date() }
+        });
       }
       async updateCategoryImage(categoryId, imageUrl, updatedBy) {
         await db.insert(categorySettings).values({
@@ -2336,9 +2419,43 @@ var init_storage = __esm({
           discountLabel: data.discountLabel ?? null,
           status: "pending",
           confirmationToken: data.confirmationToken ?? null,
-          pushToken: data.pushToken ?? null
+          pushToken: data.pushToken ?? null,
+          paymentMethod: data.paymentMethod ?? "online",
+          ticketNumber: data.ticketNumber ?? null
         }).returning({ id: appOrders.id });
         return { id: rows[0].id };
+      }
+      // Allocate the next kiosk ticket number (1..999) for today. Counts how
+      // many counter-pay orders were created today and returns count+1, capped
+      // at 999 (rolls over to 1 for safety so the printed number always fits
+      // 3 digits and is easy for the customer to remember at the counter).
+      // Race-tolerant: two simultaneous kiosk orders may receive the same
+      // ticket number — that's acceptable because the staff dashboard also
+      // shows the underlying app_orders.id for tie-breaking.
+      async allocateKioskTicketNumber() {
+        const startOfDay = /* @__PURE__ */ new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+        const rows = await db.execute(sql2`
+      SELECT COUNT(*)::int AS c
+      FROM ${appOrders}
+      WHERE ${appOrders.paymentMethod} = 'counter'
+        AND ${appOrders.createdAt} >= ${startOfDay.toISOString()}
+    `);
+        const count = Number(rows.rows?.[0]?.c ?? rows[0]?.c ?? 0);
+        const next = count + 1;
+        return next > 999 ? (next - 1) % 999 + 1 : next;
+      }
+      // Atomically mark a counter-pay order as paid. Returns true only on the
+      // first successful pending→paid transition for a 'counter' order. This
+      // protects against two staff members tapping "Mark Paid" at the same
+      // time and from accidentally flipping non-counter orders.
+      async markAppOrderPaidAtCounter(id) {
+        const result = await db.update(appOrders).set({ status: "paid" }).where(and(
+          eq(appOrders.id, id),
+          eq(appOrders.status, "pending"),
+          eq(appOrders.paymentMethod, "counter")
+        ));
+        return (result.rowCount ?? 0) > 0;
       }
       async getRecentAppOrders(limit = 100) {
         const rows = await db.select().from(appOrders).orderBy(desc(appOrders.createdAt)).limit(limit);
@@ -2920,7 +3037,9 @@ __export(square_exports, {
   accumulateLoyaltyPoints: () => accumulateLoyaltyPoints,
   addCustomerToGroup: () => addCustomerToGroup,
   adjustLoyaltyPoints: () => adjustLoyaltyPoints,
+  cancelSquareOrder: () => cancelSquareOrder,
   cancelSquareSubscription: () => cancelSquareSubscription,
+  cancelTerminalCheckout: () => cancelTerminalCheckout,
   chargeSavedCard: () => chargeSavedCard,
   createCardPayment: () => createCardPayment,
   createCatalogSubscriptionPlan: () => createCatalogSubscriptionPlan,
@@ -2933,6 +3052,8 @@ __export(square_exports, {
   createSquareOrderForCheckout: () => createSquareOrderForCheckout,
   createSquareSubscription: () => createSquareSubscription,
   createSubscriptionCheckoutLink: () => createSubscriptionCheckoutLink,
+  createTerminalCheckout: () => createTerminalCheckout,
+  createTerminalDeviceCode: () => createTerminalDeviceCode,
   deleteLoyaltyReward: () => deleteLoyaltyReward,
   disableSquareCard: () => disableSquareCard,
   findSquareCustomerByEmail: () => findSquareCustomerByEmail,
@@ -2949,6 +3070,8 @@ __export(square_exports, {
   getSquareDeals: () => getSquareDeals,
   getSquareOrder: () => getSquareOrder,
   getSquareSubscription: () => getSquareSubscription,
+  getTerminalCheckout: () => getTerminalCheckout,
+  getTerminalDeviceCode: () => getTerminalDeviceCode,
   invalidateMenuCache: () => invalidateMenuCache,
   isConfigured: () => isConfigured,
   isWebPaymentsConfigured: () => isWebPaymentsConfigured,
@@ -2958,6 +3081,7 @@ __export(square_exports, {
   listSquareSubscriptionsForCustomer: () => listSquareSubscriptionsForCustomer,
   membershipGroupName: () => membershipGroupName,
   pauseSquareSubscription: () => pauseSquareSubscription,
+  payOrderWithCashTender: () => payOrderWithCashTender,
   redeemLoyaltyReward: () => redeemLoyaltyReward,
   removeCustomerFromGroup: () => removeCustomerFromGroup,
   resumeSquareSubscription: () => resumeSquareSubscription,
@@ -3110,6 +3234,20 @@ async function getOrder(orderId) {
   } catch (err) {
     if (err instanceof SquareError && err.statusCode === 404) return null;
     throw err;
+  }
+}
+async function cancelSquareOrder(orderId) {
+  try {
+    const order = await getOrder(orderId);
+    if (!order) return false;
+    if (order.state === "CANCELED" || order.state === "COMPLETED") return true;
+    await squareRequest("PUT", `/v2/orders/${orderId}`, {
+      order: { version: order.version, state: "CANCELED", location_id: order.location_id }
+    });
+    return true;
+  } catch (err) {
+    console.error(`[SQUARE] cancelSquareOrder(${orderId}) failed:`, err?.message || err);
+    return false;
   }
 }
 async function getPayment(paymentId) {
@@ -3722,7 +3860,7 @@ function normalizeUkPhone(phone) {
   if (digits.startsWith("7") && digits.length === 10) return "+44" + digits;
   return void 0;
 }
-async function buildSquareOrderBody(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, orderNumber) {
+async function buildSquareOrderBody(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, orderNumber, asOpenTicket, applyDeals = true) {
   const locationId = getLocationId();
   let prePopulated;
   if (customer?.email || customer?.name || customer?.phone) {
@@ -3808,13 +3946,20 @@ async function buildSquareOrderBody(items, tableNote, customer, discountPercent,
     }
   }
   const dealByVariationId = /* @__PURE__ */ new Map();
-  for (const deal of activeDeals) {
-    if (!deal.applicableVariationIds) continue;
-    for (const vid of deal.applicableVariationIds) {
-      if (!dealByVariationId.has(vid)) dealByVariationId.set(vid, deal);
+  if (applyDeals) {
+    for (const deal of activeDeals) {
+      if (!deal.applicableVariationIds) continue;
+      for (const vid of deal.applicableVariationIds) {
+        if (!dealByVariationId.has(vid)) dealByVariationId.set(vid, deal);
+      }
     }
   }
   const matchedDeals = items.filter((i) => dealByVariationId.has(i.variationId) || i.itemId && dealByVariationId.has(i.itemId)).map((i) => (dealByVariationId.get(i.variationId) ?? dealByVariationId.get(i.itemId)).name);
+  if (matchedDeals.length > 0) {
+    console.log(`[SQUARE DEALS] Applied to order: ${matchedDeals.join(", ")}`);
+  } else if (applyDeals && activeDeals.length > 0) {
+    console.log(`[SQUARE DEALS] No matching deals for cart of ${items.length} item(s); ${activeDeals.length} active deal(s) in catalog.`);
+  }
   const hasMemberDiscount = typeof discountPercent === "number" && discountPercent > 0;
   const dealsInCart = matchedDeals.length > 0;
   const itemLevelMemberDiscount = hasMemberDiscount && excludeWithDeals && dealsInCart;
@@ -3884,7 +4029,52 @@ async function buildSquareOrderBody(items, tableNote, customer, discountPercent,
   const order = {
     location_id: locationId,
     line_items: lineItems,
+    // `ticket_name` is the field Square POS uses to surface orders in the
+    // "Open Tickets" list on the till. Without it, the order exists in
+    // Square but staff can't find it. Cap at 30 chars (Square limit).
+    ticket_name: ticketName.slice(0, 30),
+    // Disable Square's automatic pricing-rule discount engine. Square
+    // creates an auto-apply Pricing Rule for every dashboard "Discount"
+    // (e.g. "The Weekend of Hawkstone"), which would normally subtract
+    // the deal a SECOND time on top of the LINE_ITEM discount we stamp
+    // ourselves below — so the customer was getting £2.80 off twice and
+    // landing at £0.20 instead of £3.00. We own deal application here so
+    // that the staff-portal Order/Kiosk toggles can turn deals off
+    // per-channel without touching the Square dashboard. Taxes are also
+    // disabled to keep behaviour deterministic.
+    pricing_options: { auto_apply_discounts: false, auto_apply_taxes: false },
     ...orderDiscounts.length ? { discounts: orderDiscounts } : {},
+    // Fulfillment selection:
+    //   asOpenTicket = true  (kiosk)  → SIMPLE/PROPOSED fulfillment.
+    //     PICKUP/DELIVERY route the order into Square's "Online Orders"
+    //     queue, hiding it from the till's Open Tickets list. But OMITTING
+    //     fulfillment entirely also hides the order from the till — the
+    //     order lives in Square's data layer (visible via API + Dashboard)
+    //     but Square POS / Square for Restaurants will not render it on
+    //     the device. SIMPLE/PROPOSED is what the till itself attaches to
+    //     a fresh ticket, and is the only shape that makes a kiosk order
+    //     surface in the standard Open Tickets list with no quirks.
+    //   asOpenTicket = false (online checkout-link / web payment) → keep
+    //     the PICKUP fulfillment so the customer-pays-remotely flow works
+    //     unchanged.
+    // Spoof source.name to "Point of Sale". OrderSource.name is settable on
+    // CreateOrder per Square API docs (we verified Square accepts it).
+    // Square POS / Square for Restaurants store the OAuth application_id as
+    // immutable internal metadata and use that — NOT source.name — to
+    // filter the on-device dine-in Open Tickets list. So this spoof alone
+    // doesn't make orders appear in the dine-in tab. What it DOES help with
+    // is keeping the source label consistent across kiosk + till orders in
+    // reporting / Dashboard, and avoiding any UI that surfaces source.name
+    // as a "made by an outside app" label.
+    source: { name: "Point of Sale" },
+    // Fulfillment: PICKUP/PROPOSED for both kiosk + online checkout-link.
+    // PICKUP routes the order into Square for Restaurants' "Online Orders /
+    // Pickup" queue on the till — that's the ONE on-device tab that shows
+    // orders from outside apps. Staff open the ticket from there to take
+    // counter payment for unpaid orders. For kiosk orders that the kiosk
+    // has already taken payment for (Teya / Square Terminal), the
+    // kiosk-checkout route attaches a CASH tender after the fact, which
+    // moves the order onto the KDS.
     fulfillments: [
       {
         type: "PICKUP",
@@ -3924,7 +4114,34 @@ async function buildSquareOrderBody(items, tableNote, customer, discountPercent,
   }, 0);
   return { order, prePopulated, pricedItems, rawTotalPence };
 }
-async function createSquareOrderForCheckout(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, orderNumber) {
+async function payOrderWithCashTender(orderId, amountPence, idempotencyKey) {
+  const locationId = getLocationId();
+  if (amountPence <= 0) {
+    console.warn(`[SQUARE] payOrderWithCashTender: zero/negative amount for order ${orderId}, skipping`);
+    return { alreadyPaid: true };
+  }
+  try {
+    const data = await squareRequest("POST", "/v2/payments", {
+      idempotency_key: idempotencyKey,
+      source_id: "CASH",
+      amount_money: { amount: amountPence, currency: "GBP" },
+      cash_details: { buyer_supplied_money: { amount: amountPence, currency: "GBP" } },
+      order_id: orderId,
+      location_id: locationId
+    });
+    const paymentId = data.payment?.id;
+    console.log(`[SQUARE] CASH tender attached to order ${orderId} \u2192 payment ${paymentId ?? "(none)"} status ${data.payment?.status ?? "?"}`);
+    return { paymentId };
+  } catch (err) {
+    const msg = err?.message || "";
+    if (err instanceof SquareError && err.statusCode >= 400 && err.statusCode < 500 && /already.*(paid|tender)|tender.*total/i.test(msg)) {
+      console.log(`[SQUARE] Order ${orderId} already paid \u2014 CASH tender skipped (${msg})`);
+      return { alreadyPaid: true };
+    }
+    throw err;
+  }
+}
+async function createSquareOrderForCheckout(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, orderNumber, asOpenTicket, applyDeals = true) {
   const idempotencyKey = `order-create-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   const { order, pricedItems } = await buildSquareOrderBody(
     items,
@@ -3934,7 +4151,9 @@ async function createSquareOrderForCheckout(items, tableNote, customer, discount
     discountLabel,
     excludeWithDeals,
     orderNote,
-    orderNumber
+    orderNumber,
+    asOpenTicket,
+    applyDeals
   );
   const data = await squareRequest("POST", "/v2/orders", {
     idempotency_key: idempotencyKey,
@@ -3944,7 +4163,7 @@ async function createSquareOrderForCheckout(items, tableNote, customer, discount
   const totalPence = Number(data.order.total_money?.amount ?? data.order.net_amounts?.total_money?.amount ?? 0);
   return { orderId: data.order.id, totalPence, pricedItems };
 }
-async function createOrderCheckoutLink(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, orderNumber) {
+async function createOrderCheckoutLink(items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, orderNumber, applyDeals = true) {
   const idempotencyKey = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   const { order, prePopulated, pricedItems, rawTotalPence } = await buildSquareOrderBody(
     items,
@@ -3954,7 +4173,9 @@ async function createOrderCheckoutLink(items, tableNote, customer, discountPerce
     discountLabel,
     excludeWithDeals,
     orderNote,
-    orderNumber
+    orderNumber,
+    false,
+    applyDeals
   );
   const body = {
     idempotency_key: idempotencyKey,
@@ -3985,6 +4206,82 @@ async function createRefund(opts) {
     reason: opts.reason
   });
   return data.refund;
+}
+async function createTerminalDeviceCode(name) {
+  const data = await squareRequest("POST", "/v2/devices/codes", {
+    idempotency_key: `pair-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    device_code: {
+      name: (name || "The 147 Counter").slice(0, 128),
+      product_type: "TERMINAL_API",
+      location_id: getLocationId()
+    }
+  });
+  const dc = data.device_code || {};
+  return {
+    id: dc.id,
+    code: dc.code,
+    status: dc.status || "UNKNOWN",
+    pairBy: dc.pair_by || null
+  };
+}
+async function getTerminalDeviceCode(codeId) {
+  try {
+    const data = await squareRequest("GET", `/v2/devices/codes/${codeId}`);
+    const dc = data.device_code;
+    if (!dc) return null;
+    return {
+      id: dc.id,
+      code: dc.code,
+      status: dc.status || "UNKNOWN",
+      deviceId: dc.device_id || null,
+      name: dc.name || null
+    };
+  } catch (err) {
+    if (err instanceof SquareError && err.statusCode === 404) return null;
+    throw err;
+  }
+}
+async function createTerminalCheckout(opts) {
+  const data = await squareRequest("POST", "/v2/terminals/checkouts", {
+    idempotency_key: opts.idempotencyKey,
+    checkout: {
+      amount_money: { amount: opts.amountPence, currency: "GBP" },
+      reference_id: opts.referenceId.slice(0, 40),
+      note: opts.note.slice(0, 500),
+      device_options: {
+        device_id: opts.deviceId,
+        skip_receipt_screen: true,
+        tip_settings: { allow_tipping: false }
+      }
+    }
+  });
+  const c = data.checkout || {};
+  return { id: c.id, status: c.status || "PENDING" };
+}
+async function getTerminalCheckout(checkoutId) {
+  try {
+    const data = await squareRequest("GET", `/v2/terminals/checkouts/${checkoutId}`);
+    const c = data.checkout;
+    if (!c) return null;
+    return {
+      id: c.id,
+      status: c.status || "UNKNOWN",
+      referenceId: c.reference_id || null,
+      paymentIds: c.payment_ids || []
+    };
+  } catch (err) {
+    if (err instanceof SquareError && err.statusCode === 404) return null;
+    throw err;
+  }
+}
+async function cancelTerminalCheckout(checkoutId) {
+  try {
+    await squareRequest("POST", `/v2/terminals/checkouts/${checkoutId}/cancel`, {});
+    return true;
+  } catch (err) {
+    console.error(`[SQUARE-TERMINAL] cancelTerminalCheckout(${checkoutId}) failed:`, err?.message || err);
+    return false;
+  }
 }
 var SQUARE_BASE_URL, SquareError, PARENT_CATEGORY_IDS, SKIP_ITEMS, CATEGORY_ORDER, DEAL_EXCLUDE_PATTERNS, dealsCache, menuCache;
 var init_square = __esm({
@@ -4950,6 +5247,307 @@ var init_push = __esm({
   }
 });
 
+// server/worldCup.ts
+var worldCup_exports = {};
+__export(worldCup_exports, {
+  getNextEnglandMatches: () => getNextEnglandMatches,
+  getNextWorldCupMatch: () => getNextWorldCupMatch
+});
+function emptyMatch() {
+  return {
+    status: "none",
+    matchId: null,
+    homeName: "",
+    homeShort: "",
+    homeLogo: null,
+    homeScore: null,
+    awayName: "",
+    awayShort: "",
+    awayLogo: null,
+    awayScore: null,
+    kickoffIso: null,
+    minute: null,
+    stage: null,
+    source: "none"
+  };
+}
+function yyyymmdd(d) {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}${m}${day}`;
+}
+async function fetchEspn() {
+  const now = /* @__PURE__ */ new Date();
+  const start = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1e3);
+  const end = new Date(now.getTime() + 75 * 24 * 60 * 60 * 1e3);
+  const url = `${ESPN_SCOREBOARD}?dates=${yyyymmdd(start)}-${yyyymmdd(end)}&limit=100`;
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error(`ESPN ${res.status}`);
+  const json = await res.json();
+  const events2 = Array.isArray(json?.events) ? json.events : [];
+  if (!events2.length) return emptyMatch();
+  const normalised = events2.map((ev) => {
+    const comp = ev?.competitions?.[0];
+    const competitors = comp?.competitors ?? [];
+    const home = competitors.find((c) => c?.homeAway === "home") ?? competitors[0];
+    const away = competitors.find((c) => c?.homeAway === "away") ?? competitors[1];
+    const state = ev?.status?.type?.state ?? "pre";
+    const detail = ev?.status?.type?.shortDetail ?? "";
+    return {
+      id: String(ev?.id ?? ""),
+      kickoffIso: ev?.date ?? null,
+      kickoffMs: ev?.date ? Date.parse(ev.date) : 0,
+      state,
+      detail,
+      stage: ev?.season?.slug || comp?.notes?.[0]?.headline || null,
+      home: {
+        name: home?.team?.displayName ?? "",
+        short: home?.team?.shortDisplayName ?? home?.team?.abbreviation ?? "",
+        logo: home?.team?.logo ?? null,
+        score: home?.score != null ? Number(home.score) : null
+      },
+      away: {
+        name: away?.team?.displayName ?? "",
+        short: away?.team?.shortDisplayName ?? away?.team?.abbreviation ?? "",
+        logo: away?.team?.logo ?? null,
+        score: away?.score != null ? Number(away.score) : null
+      }
+    };
+  });
+  const live = normalised.filter((m) => m.state === "in");
+  const upcoming = normalised.filter((m) => m.state === "pre").sort((a, b) => a.kickoffMs - b.kickoffMs);
+  const finished = normalised.filter((m) => m.state === "post").sort((a, b) => b.kickoffMs - a.kickoffMs);
+  const chosen = live[0] ?? upcoming[0] ?? finished[0];
+  if (!chosen) return emptyMatch();
+  const status = chosen.state === "in" ? "live" : chosen.state === "pre" ? "upcoming" : "finished";
+  return {
+    status,
+    matchId: chosen.id,
+    homeName: chosen.home.name,
+    homeShort: chosen.home.short,
+    homeLogo: chosen.home.logo,
+    homeScore: chosen.home.score,
+    awayName: chosen.away.name,
+    awayShort: chosen.away.short,
+    awayLogo: chosen.away.logo,
+    awayScore: chosen.away.score,
+    kickoffIso: chosen.kickoffIso,
+    minute: status === "live" ? chosen.detail : null,
+    stage: chosen.stage,
+    source: "espn"
+  };
+}
+function sportsDbStatus(raw, homeScore, awayScore, kickoffMs) {
+  const s = (raw ?? "").toLowerCase();
+  if (s.includes("match finished") || s.includes("full time") || s === "ft") return "finished";
+  if (s.includes("not started") || s === "ns") return "upcoming";
+  if (homeScore != null && awayScore != null && kickoffMs && kickoffMs < Date.now()) return "live";
+  return kickoffMs > Date.now() ? "upcoming" : "finished";
+}
+function parseSportsDbEvent(ev) {
+  const date = ev?.dateEvent;
+  const time = ev?.strTime || "00:00:00";
+  if (!date) return null;
+  const iso = `${date}T${time.length === 5 ? `${time}:00` : time}Z`;
+  const kickoffMs = Date.parse(iso);
+  if (!kickoffMs) return null;
+  const homeScore = ev?.intHomeScore != null && ev.intHomeScore !== "" ? Number(ev.intHomeScore) : null;
+  const awayScore = ev?.intAwayScore != null && ev.intAwayScore !== "" ? Number(ev.intAwayScore) : null;
+  const status = sportsDbStatus(ev?.strStatus, homeScore, awayScore, kickoffMs);
+  return {
+    kickoffMs,
+    data: {
+      status,
+      matchId: String(ev?.idEvent ?? ""),
+      homeName: ev?.strHomeTeam ?? "",
+      homeShort: ev?.strHomeTeam ?? "",
+      homeLogo: ev?.strHomeTeamBadge ?? null,
+      homeScore,
+      awayName: ev?.strAwayTeam ?? "",
+      awayShort: ev?.strAwayTeam ?? "",
+      awayLogo: ev?.strAwayTeamBadge ?? null,
+      awayScore,
+      kickoffIso: iso,
+      minute: null,
+      // free tier has no live minute
+      stage: ev?.strSeason ?? null,
+      source: "thesportsdb"
+    }
+  };
+}
+async function fetchSportsDb() {
+  let events2 = [];
+  try {
+    const res = await fetch(SPORTSDB_SEASON, { headers: { Accept: "application/json" } });
+    if (res.ok) {
+      const json = await res.json();
+      events2 = Array.isArray(json?.events) ? json.events : [];
+    }
+  } catch {
+  }
+  if (!events2.length) {
+    try {
+      const res = await fetch(SPORTSDB_NEXT, { headers: { Accept: "application/json" } });
+      if (res.ok) {
+        const json = await res.json();
+        events2 = Array.isArray(json?.events) ? json.events : [];
+      }
+    } catch {
+    }
+  }
+  if (!events2.length) return emptyMatch();
+  const parsed = events2.map(parseSportsDbEvent).filter((x) => !!x);
+  const live = parsed.filter((p) => p.data.status === "live");
+  const upcoming = parsed.filter((p) => p.data.status === "upcoming").sort((a, b) => a.kickoffMs - b.kickoffMs);
+  const finished = parsed.filter((p) => p.data.status === "finished").sort((a, b) => b.kickoffMs - a.kickoffMs);
+  const chosen = live[0] ?? upcoming[0] ?? finished[0];
+  return chosen ? chosen.data : emptyMatch();
+}
+async function getNextWorldCupMatch() {
+  const now = Date.now();
+  if (cache && now - cache.at < cache.ttl) return cache.data;
+  let data = emptyMatch();
+  let espnError = null;
+  try {
+    data = await fetchEspn();
+  } catch (err) {
+    espnError = err?.message ?? String(err);
+    console.error("[WORLD_CUP] ESPN fetch error:", espnError);
+  }
+  if (data.status === "none") {
+    try {
+      const fallback = await fetchSportsDb();
+      if (fallback.status !== "none") {
+        data = fallback;
+        if (espnError) console.log("[WORLD_CUP] Falling back to TheSportsDB (ESPN unavailable)");
+      }
+    } catch (err) {
+      console.error("[WORLD_CUP] TheSportsDB fetch error:", err?.message ?? err);
+    }
+  }
+  if (data.status === "none" && cache) return cache.data;
+  const ttl = data.status === "live" ? 3e4 : 5 * 6e4;
+  cache = { at: now, ttl, data };
+  return data;
+}
+function isEnglandName(name) {
+  if (!name) return false;
+  const s = name.trim().toLowerCase();
+  return s === "england" || s === "england national football team";
+}
+async function fetchEspnEnglandList(limit) {
+  const now = /* @__PURE__ */ new Date();
+  const start = new Date(now.getTime() - 1 * 24 * 60 * 60 * 1e3);
+  const end = new Date(now.getTime() + 200 * 24 * 60 * 60 * 1e3);
+  const url = `${ESPN_SCOREBOARD}?dates=${yyyymmdd(start)}-${yyyymmdd(end)}&limit=200`;
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error(`ESPN ${res.status}`);
+  const json = await res.json();
+  const events2 = Array.isArray(json?.events) ? json.events : [];
+  if (!events2.length) return [];
+  const out = [];
+  for (const ev of events2) {
+    const comp = ev?.competitions?.[0];
+    const competitors = comp?.competitors ?? [];
+    const home = competitors.find((c) => c?.homeAway === "home") ?? competitors[0];
+    const away = competitors.find((c) => c?.homeAway === "away") ?? competitors[1];
+    const homeName = home?.team?.displayName ?? "";
+    const awayName = away?.team?.displayName ?? "";
+    if (!isEnglandName(homeName) && !isEnglandName(awayName)) continue;
+    const state = ev?.status?.type?.state ?? "pre";
+    if (state === "post") continue;
+    const kickoffIso = ev?.date ?? null;
+    const kickoffMs = kickoffIso ? Date.parse(kickoffIso) : 0;
+    const status = state === "in" ? "live" : "upcoming";
+    out.push({
+      kickoffMs,
+      data: {
+        status,
+        matchId: String(ev?.id ?? ""),
+        homeName,
+        homeShort: home?.team?.shortDisplayName ?? home?.team?.abbreviation ?? "",
+        homeLogo: home?.team?.logo ?? null,
+        homeScore: home?.score != null ? Number(home.score) : null,
+        awayName,
+        awayShort: away?.team?.shortDisplayName ?? away?.team?.abbreviation ?? "",
+        awayLogo: away?.team?.logo ?? null,
+        awayScore: away?.score != null ? Number(away.score) : null,
+        kickoffIso,
+        minute: status === "live" ? ev?.status?.type?.shortDetail ?? null : null,
+        stage: ev?.season?.slug || comp?.notes?.[0]?.headline || null,
+        source: "espn"
+      }
+    });
+  }
+  return out.sort((a, b) => a.kickoffMs - b.kickoffMs).slice(0, limit).map((x) => x.data);
+}
+async function fetchSportsDbEnglandList(limit) {
+  let events2 = [];
+  try {
+    const res = await fetch(SPORTSDB_SEASON, { headers: { Accept: "application/json" } });
+    if (res.ok) {
+      const json = await res.json();
+      events2 = Array.isArray(json?.events) ? json.events : [];
+    }
+  } catch {
+  }
+  if (!events2.length) {
+    try {
+      const res = await fetch(SPORTSDB_NEXT, { headers: { Accept: "application/json" } });
+      if (res.ok) {
+        const json = await res.json();
+        events2 = Array.isArray(json?.events) ? json.events : [];
+      }
+    } catch {
+    }
+  }
+  if (!events2.length) return [];
+  const parsed = events2.map(parseSportsDbEvent).filter((x) => !!x).filter((x) => isEnglandName(x.data.homeName) || isEnglandName(x.data.awayName)).filter((x) => x.data.status !== "finished");
+  return parsed.sort((a, b) => a.kickoffMs - b.kickoffMs).slice(0, limit).map((x) => x.data);
+}
+async function getNextEnglandMatches(limit = 2) {
+  const now = Date.now();
+  if (englandCache && now - englandCache.at < englandCache.ttl && englandCache.data.length >= limit) {
+    return englandCache.data.slice(0, limit);
+  }
+  let data = [];
+  let espnError = null;
+  try {
+    data = await fetchEspnEnglandList(limit);
+  } catch (err) {
+    espnError = err?.message ?? String(err);
+    console.error("[WORLD_CUP] ESPN England fetch error:", espnError);
+  }
+  if (data.length === 0) {
+    try {
+      const fallback = await fetchSportsDbEnglandList(limit);
+      if (fallback.length) {
+        data = fallback;
+        if (espnError) console.log("[WORLD_CUP] England fallback to TheSportsDB");
+      }
+    } catch (err) {
+      console.error("[WORLD_CUP] TheSportsDB England fetch error:", err?.message ?? err);
+    }
+  }
+  if (data.length === 0 && englandCache) return englandCache.data.slice(0, limit);
+  const anyLive = data.some((d) => d.status === "live");
+  const ttl = anyLive ? 3e4 : 10 * 6e4;
+  englandCache = { at: now, ttl, data };
+  return data;
+}
+var cache, englandCache, ESPN_SCOREBOARD, SPORTSDB_SEASON, SPORTSDB_NEXT;
+var init_worldCup = __esm({
+  "server/worldCup.ts"() {
+    "use strict";
+    cache = null;
+    englandCache = null;
+    ESPN_SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard";
+    SPORTSDB_SEASON = "https://www.thesportsdb.com/api/v1/json/3/eventsseason.php?id=4429&s=2026";
+    SPORTSDB_NEXT = "https://www.thesportsdb.com/api/v1/json/3/eventsnextleague.php?id=4429";
+  }
+});
+
 // shared/membership-benefits.ts
 var membership_benefits_exports = {};
 __export(membership_benefits_exports, {
@@ -5005,7 +5603,7 @@ import compression from "compression";
 init_storage();
 init_schema();
 import { createServer } from "node:http";
-import { randomBytes as randomBytes3, timingSafeEqual, createHash as createHash2, createHmac } from "node:crypto";
+import { randomBytes as randomBytes3, timingSafeEqual, createHash as createHash3, createHmac } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import multer from "multer";
@@ -5046,6 +5644,355 @@ function getServerFeatureFlags() {
 // server/routes.ts
 init_encryption();
 init_square();
+
+// server/teya.ts
+init_storage();
+init_encryption();
+import { createHash as createHash2 } from "node:crypto";
+var ID_BASE = "https://id.teya.com";
+var API_BASE = "https://api.teya.com";
+var DEFAULT_SCOPES = (process.env.TEYA_SCOPES || "poslink").split(/\s+/).filter(Boolean);
+var TeyaError = class extends Error {
+  constructor(message, statusCode, body) {
+    super(message);
+    this.statusCode = statusCode;
+    this.body = body;
+    this.name = "TeyaError";
+  }
+};
+var TeyaNotConfiguredError = class extends Error {
+  constructor() {
+    super("Teya is not configured \u2014 set TEYA_CLIENT_ID + TEYA_CLIENT_SECRET");
+    this.name = "TeyaNotConfiguredError";
+  }
+};
+var TeyaNotAuthorizedError = class extends Error {
+  constructor() {
+    super("Teya account is not connected \u2014 owner must authorise via the staff portal");
+    this.name = "TeyaNotAuthorizedError";
+  }
+};
+function isConfigured2() {
+  return !!(process.env.TEYA_CLIENT_ID && process.env.TEYA_CLIENT_SECRET);
+}
+function getClientId() {
+  const v = process.env.TEYA_CLIENT_ID;
+  if (!v) throw new TeyaNotConfiguredError();
+  return v;
+}
+function getClientSecret() {
+  const v = process.env.TEYA_CLIENT_SECRET;
+  if (!v) throw new TeyaNotConfiguredError();
+  return v;
+}
+function getRedirectUri(publicOrigin) {
+  const explicit = process.env.TEYA_REDIRECT_URI?.trim();
+  if (explicit) return explicit;
+  return `${publicOrigin.replace(/\/+$/, "")}/api/staff/teya/oauth/callback`;
+}
+function buildAuthorizationUrl(opts) {
+  const params = new URLSearchParams({
+    client_id: getClientId(),
+    redirect_uri: opts.redirectUri,
+    response_type: "code",
+    scope: DEFAULT_SCOPES.join(" "),
+    state: opts.state
+  });
+  return `${ID_BASE}/oauth2/authorize?${params.toString()}`;
+}
+async function exchangeAuthorizationCode(opts) {
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    code: opts.code,
+    redirect_uri: opts.redirectUri
+  });
+  const basic = Buffer.from(`${getClientId()}:${getClientSecret()}`).toString("base64");
+  const res = await fetch(`${ID_BASE}/oauth2/token`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      authorization: `Basic ${basic}`
+    },
+    body
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new TeyaError(json?.error_description || json?.error || "Token exchange failed", res.status, json);
+  }
+  return persistTokenResponse(json);
+}
+async function refreshAccessToken(refreshTokenPlain) {
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refreshTokenPlain
+  });
+  const basic = Buffer.from(`${getClientId()}:${getClientSecret()}`).toString("base64");
+  const res = await fetch(`${ID_BASE}/oauth2/token`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      authorization: `Basic ${basic}`
+    },
+    body
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    if (res.status === 400 || res.status === 401) throw new TeyaNotAuthorizedError();
+    throw new TeyaError(json?.error_description || json?.error || "Token refresh failed", res.status, json);
+  }
+  return persistTokenResponse(json);
+}
+async function persistTokenResponse(json) {
+  const accessToken = json?.access_token;
+  const refreshToken = json?.refresh_token;
+  const expiresIn = Number(json?.expires_in ?? 3600);
+  const tokenType = json?.token_type || "Bearer";
+  const scope = json?.scope || null;
+  if (!accessToken || !refreshToken) {
+    throw new TeyaError("Token response missing access_token or refresh_token", 502, json);
+  }
+  const expiresAt = new Date(Date.now() + expiresIn * 1e3);
+  await storage.saveTeyaTokens({
+    accessTokenEnc: encrypt(accessToken),
+    refreshTokenEnc: encrypt(refreshToken),
+    tokenType,
+    scope,
+    expiresAt
+  });
+  return { scope, expiresAt };
+}
+async function getAccessToken() {
+  if (!isConfigured2()) throw new TeyaNotConfiguredError();
+  const row = await storage.getTeyaTokens();
+  if (!row) throw new TeyaNotAuthorizedError();
+  const safetyMs = 6e4;
+  if (row.expiresAt.getTime() - Date.now() < safetyMs) {
+    const refreshPlain = decrypt(row.refreshTokenEnc);
+    await refreshAccessToken(refreshPlain);
+    const refreshed = await storage.getTeyaTokens();
+    if (!refreshed) throw new TeyaNotAuthorizedError();
+    return decrypt(refreshed.accessTokenEnc);
+  }
+  return decrypt(row.accessTokenEnc);
+}
+async function disconnect() {
+  await storage.clearTeyaTokens();
+}
+async function getConnectionInfo() {
+  const row = await storage.getTeyaTokens();
+  if (!row) return { connected: false, expiresAt: null, scope: null };
+  return { connected: true, expiresAt: row.expiresAt, scope: row.scope ?? null };
+}
+async function teyaRequest(method, path4, opts = {}) {
+  const url = new URL(path4.startsWith("http") ? path4 : `${API_BASE}${path4}`);
+  if (opts.query) {
+    for (const [k, v] of Object.entries(opts.query)) {
+      if (v !== void 0 && v !== null && v !== "") url.searchParams.set(k, v);
+    }
+  }
+  const send = async (token2) => {
+    const headers = {
+      authorization: `Bearer ${token2}`,
+      accept: "application/json"
+    };
+    let body;
+    if (opts.body !== void 0) {
+      headers["content-type"] = "application/json";
+      body = JSON.stringify(opts.body);
+    }
+    if (opts.idempotencyKey) headers["idempotency-key"] = opts.idempotencyKey;
+    return fetch(url, { method, headers, body });
+  };
+  let token = await getAccessToken();
+  let res = await send(token);
+  if (res.status === 401) {
+    const row = await storage.getTeyaTokens();
+    if (!row) throw new TeyaNotAuthorizedError();
+    await refreshAccessToken(decrypt(row.refreshTokenEnc));
+    token = await getAccessToken();
+    res = await send(token);
+  }
+  if (res.status === 204) return null;
+  const text2 = await res.text();
+  const json = text2 ? safeJson(text2) : null;
+  if (!res.ok) {
+    throw new TeyaError(json?.message || json?.error || res.statusText || "Teya request failed", res.status, json);
+  }
+  return json;
+}
+function safeJson(text2) {
+  try {
+    return JSON.parse(text2);
+  } catch {
+    return { raw: text2 };
+  }
+}
+function buildIdempotencyKey(seed) {
+  return createHash2("sha256").update(seed).digest("hex");
+}
+async function listStores() {
+  const data = await teyaRequest("GET", "/poslink/v1/stores");
+  const items = data?.stores || data?.items || data || [];
+  return items.map((s) => ({
+    id: String(s.id ?? s.store_id ?? ""),
+    name: String(s.name ?? s.display_name ?? s.id ?? "Unnamed store")
+  })).filter((s) => s.id);
+}
+async function listTerminals(storeId) {
+  const data = await teyaRequest("GET", `/poslink/v1/stores/${encodeURIComponent(storeId)}/terminals`);
+  const items = data?.terminals || data?.items || data || [];
+  return items.map((t) => ({
+    id: String(t.id ?? t.terminal_id ?? ""),
+    name: String(t.name ?? t.display_name ?? t.id ?? "Unnamed terminal"),
+    status: t.status ?? void 0
+  })).filter((t) => t.id);
+}
+async function createPaymentRequest(opts) {
+  const data = await teyaRequest("POST", "/poslink/v2/payment-requests", {
+    idempotencyKey: opts.idempotencyKey,
+    body: {
+      store_id: opts.storeId,
+      terminal_id: opts.terminalId,
+      amount: { value: opts.amountPence, currency: "GBP" },
+      merchant_reference: opts.merchantReference.slice(0, 64),
+      description: (opts.description || "").slice(0, 200),
+      // Spec hints at intent flags; we default to a straightforward sale.
+      intent: "SALE"
+    }
+  });
+  return {
+    id: String(data?.id ?? data?.payment_request_id ?? ""),
+    status: String(data?.status ?? "NEW")
+  };
+}
+async function streamPaymentStatus(id, onEvent, opts = {}) {
+  const token = await getAccessToken();
+  const url = `${API_BASE}/poslink/v2/payment-requests/${encodeURIComponent(id)}`;
+  const res = await fetch(url, {
+    headers: {
+      authorization: `Bearer ${token}`,
+      accept: "text/event-stream"
+    },
+    signal: opts.signal
+  });
+  if (!res.ok || !res.body) {
+    const text2 = await res.text().catch(() => "");
+    throw new TeyaError(`SSE stream failed: ${res.status} ${text2}`, res.status, text2);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const flushFrame = async (raw) => {
+    let event = "message";
+    const dataLines = [];
+    for (const line of raw.split("\n")) {
+      if (!line || line.startsWith(":")) continue;
+      const idx = line.indexOf(":");
+      const field = idx === -1 ? line : line.slice(0, idx);
+      const value = idx === -1 ? "" : line.slice(idx + 1).replace(/^ /, "");
+      if (field === "event") event = value;
+      else if (field === "data") dataLines.push(value);
+    }
+    if (!dataLines.length) return;
+    const dataStr = dataLines.join("\n");
+    let parsed = dataStr;
+    try {
+      parsed = JSON.parse(dataStr);
+    } catch {
+    }
+    await onEvent({ event, data: parsed });
+  };
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        if (buffer.trim()) await flushFrame(buffer);
+        return;
+      }
+      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      let sepIdx;
+      while ((sepIdx = buffer.indexOf("\n\n")) !== -1) {
+        const frame = buffer.slice(0, sepIdx);
+        buffer = buffer.slice(sepIdx + 2);
+        if (frame.trim()) await flushFrame(frame);
+      }
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+    }
+  }
+}
+async function awaitFinalStatus(id, opts = {}) {
+  const ac = new AbortController();
+  const timeoutMs = opts.timeoutMs ?? 5 * 6e4;
+  const t = setTimeout(() => ac.abort(), timeoutMs);
+  let lastRaw = null;
+  try {
+    return await new Promise((resolve4, reject) => {
+      streamPaymentStatus(id, (ev) => {
+        const status = ev.data?.status || "";
+        lastRaw = ev.data;
+        if (status === "IN_PROGRESS" || status === "NEW") {
+          opts.onProgress?.(status, ev.data);
+          return;
+        }
+        if (status === "SUCCESSFUL" || status === "FAILED" || status === "CANCELLED" || status === "EXPIRED") {
+          ac.abort();
+          resolve4({ status, raw: ev.data });
+        }
+      }, { signal: ac.signal }).catch((err) => {
+        if (ac.signal.aborted && lastRaw?.status) return;
+        reject(err);
+      });
+    });
+  } finally {
+    clearTimeout(t);
+  }
+}
+var RECENT_LIMIT = 20;
+var recentPayments = [];
+function recordPaymentStarted(p) {
+  recentPayments.unshift({
+    requestId: p.requestId,
+    appOrderId: p.appOrderId,
+    ticketNumber: p.ticketNumber,
+    amountPence: p.amountPence,
+    status: "PENDING",
+    startedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    finishedAt: null
+  });
+  while (recentPayments.length > RECENT_LIMIT) recentPayments.pop();
+}
+function recordPaymentFinished(requestId, status) {
+  const row = recentPayments.find((r) => r.requestId === requestId);
+  if (!row) return;
+  row.status = status;
+  row.finishedAt = (/* @__PURE__ */ new Date()).toISOString();
+}
+function listRecentPayments() {
+  return recentPayments.slice();
+}
+async function printReceipt(opts) {
+  try {
+    await teyaRequest("POST", "/poslink/v1/receipt-requests", {
+      idempotencyKey: opts.idempotencyKey,
+      body: {
+        store_id: opts.storeId,
+        terminal_id: opts.terminalId,
+        document: {
+          title: opts.title.slice(0, 60),
+          lines: opts.lines.slice(0, 60).map((l) => String(l).slice(0, 80))
+        }
+      }
+    });
+    return true;
+  } catch (err) {
+    console.warn(`[TEYA] printReceipt failed (non-fatal):`, err?.message || err);
+    return false;
+  }
+}
 
 // server/reorder-matching.ts
 var norm = (s) => (s ?? "").trim().toLowerCase();
@@ -5641,7 +6588,10 @@ async function sendEmailViaSMTP(to, subject, html) {
       port,
       secure: port === 465,
       auth: { user, pass },
-      tls: { rejectUnauthorized: true }
+      tls: { rejectUnauthorized: true },
+      connectionTimeout: 1e4,
+      greetingTimeout: 1e4,
+      socketTimeout: 15e3
     });
     const publicFrom = process.env.PUBLIC_FROM_EMAIL || user;
     await transporter.sendMail({ from: `"The 147" <${publicFrom}>`, to, subject, html, replyTo: publicFrom });
@@ -5683,7 +6633,8 @@ async function sendOtpEmail(email, code) {
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
-        body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: email, subject, html })
+        body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: email, subject, html }),
+        signal: AbortSignal.timeout(1e4)
       });
       if (response.ok) {
         console.log(`[LOYALTY OTP] Email sent via Resend to ${maskEmail(email)}`);
@@ -6570,6 +7521,52 @@ function verifyStaffCredential(credential, user) {
   return false;
 }
 async function registerRoutes(app2) {
+  void (async () => {
+    try {
+      const already = await storage.getSetting("kitchen_categories_seeded");
+      if (already === "true") return;
+      const categories = await getMenuFromSquare();
+      const KITCHEN_NAMES = [
+        "burger",
+        "sides",
+        "pizza",
+        "pasta",
+        "mains",
+        "starter",
+        "pudding",
+        "sharer",
+        "light bite",
+        "loaded fries",
+        "toastie",
+        "panini",
+        "breakfast",
+        "bap",
+        "kids",
+        "golden years",
+        "food",
+        "poker favourite",
+        "extras",
+        "turkish",
+        "pub classic",
+        "easter"
+      ];
+      const isKitchenName = (n) => {
+        const lower = n.toLowerCase();
+        return KITCHEN_NAMES.some((k) => lower.includes(k));
+      };
+      const tagged = [];
+      for (const cat of categories) {
+        if (isKitchenName(cat.name)) {
+          await storage.setCategoryIsKitchen(cat.id, true, "system:seed");
+          tagged.push(cat.name);
+        }
+      }
+      await storage.setSetting("kitchen_categories_seeded", "true");
+      console.log(`[KITCHEN SEED] Auto-tagged ${tagged.length} food categories: ${tagged.join(", ")}`);
+    } catch (err) {
+      console.error("[KITCHEN SEED] Failed:", err?.message);
+    }
+  })();
   app2.post("/api/staff/register", async (req, res) => {
     const clientIp = getClientIp(req);
     const rateCheck = checkLoginRateLimit(clientIp);
@@ -6683,7 +7680,8 @@ async function registerRoutes(app2) {
         if (verifyPassword(credential, staffUser.passwordHash, staffUser.passwordSalt)) {
           authed = true;
         }
-      } else if (staffUser.pinHash && staffUser.pinSalt) {
+      }
+      if (!authed && staffUser.pinHash && staffUser.pinSalt && /^\d{4,8}$/.test(credential)) {
         if (verifyPin(credential, staffUser.pinHash, staffUser.pinSalt)) {
           authed = true;
           mustChangePassword = true;
@@ -6723,6 +7721,10 @@ async function registerRoutes(app2) {
       authenticated: true,
       role: req.staffRole || "staff",
       username: req.staffUsername || null,
+      // Returned so the dashboard sidebar greeting ("Good morning, X")
+      // works after a hard reload, where state.displayName isn't carried
+      // over from the prior login response.
+      displayName: staffUser?.displayName || null,
       mustChangePassword: staffUser ? staffUser.mustChangePassword === true : false
     });
   });
@@ -7097,7 +8099,7 @@ async function registerRoutes(app2) {
         });
       }
       const tokenRaw = randomBytes3(32).toString("hex");
-      const tokenHash = createHash2("sha256").update(tokenRaw).digest("hex");
+      const tokenHash = createHash3("sha256").update(tokenRaw).digest("hex");
       const expiresAt = new Date(Date.now() + 60 * 60 * 1e3);
       await storage.setPasswordResetToken(customer.id, tokenHash, expiresAt);
       const sent = await sendPasswordResetEmail({ name: customer.name, email: customer.email, tokenRaw });
@@ -7492,7 +8494,7 @@ async function registerRoutes(app2) {
     });
     try {
       const idemRaw = `${log2.id}|${sid}`;
-      const idempotencyKey = createHash2("sha256").update(idemRaw).digest("hex").slice(0, 45);
+      const idempotencyKey = createHash3("sha256").update(idemRaw).digest("hex").slice(0, 45);
       const payment = await createCardPayment({
         sourceId: sid,
         amountPence: Math.round(amt),
@@ -7567,7 +8569,7 @@ async function registerRoutes(app2) {
       const stripe = getStripeClient();
       const idemBucket = Math.floor(Date.now() / 6e4);
       const idemRaw = `${staffUsername || "system"}|${Math.round(amt)}|${desc2}|${idemBucket}`;
-      const idempotencyKey = createHash2("sha256").update(idemRaw).digest("hex");
+      const idempotencyKey = createHash3("sha256").update(idemRaw).digest("hex");
       const intent = await stripe.paymentIntents.create({
         amount: Math.round(amt),
         currency: "gbp",
@@ -8586,6 +9588,48 @@ async function registerRoutes(app2) {
       }
       return res.sendStatus(200);
     }
+    if (eventType === "terminal.checkout.updated") {
+      try {
+        const checkout = event?.data?.object?.checkout;
+        if (!checkout) return res.sendStatus(200);
+        const checkoutStatus = checkout.status || "";
+        const refId = checkout.reference_id || "";
+        const appOrderId = parseInt(refId);
+        if (!appOrderId || isNaN(appOrderId)) {
+          console.log(`[WEBHOOK] terminal.checkout.updated with no parseable reference_id (${refId}) \u2014 ignoring`);
+          return res.sendStatus(200);
+        }
+        if (checkoutStatus === "COMPLETED") {
+          const order = await storage.getAppOrder(appOrderId);
+          if (!order) {
+            console.warn(`[WEBHOOK] terminal.checkout.updated COMPLETED for unknown app_order #${appOrderId}`);
+            return res.sendStatus(200);
+          }
+          if (order.status === "paid") return res.sendStatus(200);
+          if (order.paymentMethod !== "counter") {
+            console.warn(`[WEBHOOK] terminal.checkout.updated for app_order #${appOrderId} with paymentMethod=${order.paymentMethod} \u2014 ignoring (not a counter-pay order)`);
+            return res.sendStatus(200);
+          }
+          const ok = await storage.markAppOrderPaidAtCounter(appOrderId);
+          if (ok) {
+            console.log(`[WEBHOOK] Order #${appOrderId} marked paid via Square Terminal (checkout ${checkout.id})`);
+            try {
+              await storage.logOrderAction({
+                orderId: appOrderId,
+                staffUsername: "system:square-terminal",
+                action: "mark-paid-terminal"
+              });
+            } catch {
+            }
+          }
+        } else {
+          console.log(`[WEBHOOK] terminal.checkout.updated #${appOrderId}: status=${checkoutStatus}`);
+        }
+      } catch (err) {
+        console.error("[WEBHOOK] terminal.checkout.updated handler error:", err);
+      }
+      return res.sendStatus(200);
+    }
     if (eventType !== "payment.updated") return res.sendStatus(200);
     const payment = event?.data?.object?.payment;
     if (!payment) return res.sendStatus(200);
@@ -9151,8 +10195,38 @@ async function registerRoutes(app2) {
       return true;
     });
   }
-  app2.get("/api/deals", async (_req, res) => {
+  app2.get("/api/world-cup/next-match", async (_req, res) => {
     try {
+      const { getNextWorldCupMatch: getNextWorldCupMatch2 } = await Promise.resolve().then(() => (init_worldCup(), worldCup_exports));
+      const data = await getNextWorldCupMatch2();
+      res.json(data);
+    } catch (err) {
+      console.error("/api/world-cup/next-match error:", err.message);
+      res.status(500).json({ message: "Unable to load match" });
+    }
+  });
+  app2.get("/api/world-cup/england-next", async (req, res) => {
+    try {
+      const limitRaw = Number(req.query.limit);
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 && limitRaw <= 10 ? Math.floor(limitRaw) : 2;
+      const { getNextEnglandMatches: getNextEnglandMatches2 } = await Promise.resolve().then(() => (init_worldCup(), worldCup_exports));
+      const matches = await getNextEnglandMatches2(limit);
+      res.json({ matches });
+    } catch (err) {
+      console.error("/api/world-cup/england-next error:", err.message);
+      res.status(500).json({ message: "Unable to load England matches" });
+    }
+  });
+  app2.get("/api/deals", async (req, res) => {
+    try {
+      const surface = String(req.query.surface || "").toLowerCase();
+      if (surface === "order") {
+        const enabled = await storage.getSetting("square_deals_order_enabled") !== "false";
+        if (!enabled) return res.json([]);
+      } else if (surface === "kiosk") {
+        const enabled = await storage.getSetting("square_deals_kiosk_enabled") !== "false";
+        if (!enabled) return res.json([]);
+      }
       const [deals, prefs] = await Promise.all([
         getSquareDeals(),
         storage.getDealPreferences().catch(() => [])
@@ -9253,8 +10327,11 @@ async function registerRoutes(app2) {
             name: targetSettings?.displayName ?? targetCat?.name ?? displayName,
             imageUrl: customImg ?? targetCat?.imageUrl ?? cat.imageUrl,
             order: targetSettings?.displayOrder ?? targetCat ? catSettingsMap.get(targetId)?.displayOrder ?? 99 : displayOrder,
+            isKitchen: !!(targetSettings?.isKitchen ?? settings?.isKitchen),
             items: []
           });
+        } else if (settings?.isKitchen) {
+          mergedMap.get(targetId).isKitchen = true;
         }
         const availableItems = cat.items.filter((item) => {
           const override = itemOverrideMap.get(item.variationId);
@@ -9338,6 +10415,20 @@ async function registerRoutes(app2) {
     } catch (err) {
       console.error("[STAFF MENU] Failed to fetch menu:", err.message);
       res.status(500).json({ message: "Failed to load menu" });
+    }
+  });
+  app2.put("/api/staff/menu/categories/:categoryId/kitchen", staffAuth, managerAuth, async (req, res) => {
+    const { categoryId } = req.params;
+    const { isKitchen } = req.body;
+    if (typeof isKitchen !== "boolean") return res.status(400).json({ message: "isKitchen must be boolean" });
+    try {
+      const updatedBy = req.staffUser?.username ?? "staff";
+      await storage.setCategoryIsKitchen(categoryId, isKitchen, updatedBy);
+      invalidateMenuCache();
+      res.json({ ok: true, isKitchen });
+    } catch (err) {
+      console.error("[STAFF MENU] Kitchen toggle error:", err.message);
+      res.status(500).json({ message: "Failed to update category" });
     }
   });
   app2.put("/api/staff/menu/categories/:categoryId", staffAuth, managerAuth, async (req, res) => {
@@ -9555,6 +10646,12 @@ async function registerRoutes(app2) {
     return getLondonNow().dateStr;
   }
   const DEFAULT_SCHEDULE = { days: [3, 4, 5, 6, 0], startTime: "12:00", endTime: "20:00" };
+  const DEFAULT_BAR_SCHEDULE = {
+    days: [0, 1, 2, 3, 4, 5, 6],
+    startTime: "10:00",
+    endTime: "24:00",
+    endTimeByDay: { "5": "25:00", "6": "25:00" }
+  };
   const DAY_NAMES_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const DAY_NAMES_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   async function getOrderingSchedule() {
@@ -9565,6 +10662,87 @@ async function registerRoutes(app2) {
     }
     return DEFAULT_SCHEDULE;
   }
+  async function getBarSchedule() {
+    try {
+      const raw = await storage.getSetting("bar_schedule");
+      if (raw) return { ...DEFAULT_BAR_SCHEDULE, ...JSON.parse(raw) };
+    } catch {
+    }
+    return DEFAULT_BAR_SCHEDULE;
+  }
+  function parseHM(s) {
+    const [h, m] = s.split(":").map(Number);
+    return (h | 0) * 60 + (m | 0);
+  }
+  function fmtHM(min) {
+    const wrapped = (min % 1440 + 1440) % 1440;
+    const h = Math.floor(wrapped / 60);
+    const m = wrapped % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+  function fmtHMFriendly(min) {
+    const wrapped = (min % 1440 + 1440) % 1440;
+    const h = Math.floor(wrapped / 60);
+    const m = wrapped % 60;
+    if (m === 0 && h === 0) return "midnight";
+    if (m === 0 && h === 12) return "midday";
+    if (m === 0) return h < 12 ? `${h}am` : `${h - 12}pm`;
+    return h < 12 ? `${h === 0 ? 12 : h}:${String(m).padStart(2, "0")}am` : `${h === 12 ? 12 : h - 12}:${String(m).padStart(2, "0")}pm`;
+  }
+  function effectiveEndTime(schedule, dow) {
+    return schedule.endTimeByDay?.[String(dow)] ?? schedule.endTime;
+  }
+  function computeScheduleStatus(label, schedule, todayOverride, london) {
+    const { hhmm, dow } = london;
+    const nowMin = parseHM(hhmm);
+    if (todayOverride) {
+      if (todayOverride.closed) {
+        return {
+          open: false,
+          reason: `${label} is closed today${todayOverride.note ? ` (${todayOverride.note})` : ""}.`,
+          nextOpen: scheduleOpenMessage(schedule)
+        };
+      }
+      const oStart = todayOverride.startTime ?? schedule.startTime;
+      const oEnd = todayOverride.endTime ?? effectiveEndTime(schedule, dow);
+      const oStartMin = parseHM(oStart);
+      const oEndMin = parseHM(oEnd);
+      if (nowMin >= oStartMin && nowMin < oEndMin) {
+        return { open: true, reason: `${label} open until ${fmtHMFriendly(oEndMin)}`, closesAt: fmtHM(oEndMin) };
+      }
+      if (nowMin < oStartMin) {
+        return { open: false, reason: `${label} opens today at ${oStart}${todayOverride.note ? ` (${todayOverride.note})` : ""}`, nextOpen: `Today from ${oStart}` };
+      }
+    }
+    const yesterdayDow = (dow + 6) % 7;
+    if (schedule.days.includes(yesterdayDow)) {
+      const yEndMin = parseHM(effectiveEndTime(schedule, yesterdayDow));
+      if (yEndMin > 1440) {
+        const overflowEndMin = yEndMin - 1440;
+        if (nowMin < overflowEndMin) {
+          return { open: true, reason: `${label} open until ${fmtHMFriendly(overflowEndMin)}`, closesAt: fmtHM(overflowEndMin) };
+        }
+      }
+    }
+    const isScheduledDay = schedule.days.includes(dow);
+    const startMin = parseHM(schedule.startTime);
+    const endMin = parseHM(effectiveEndTime(schedule, dow));
+    if (isScheduledDay && nowMin >= startMin && nowMin < endMin) {
+      return { open: true, reason: `${label} open until ${fmtHMFriendly(endMin)}`, closesAt: fmtHM(endMin) };
+    }
+    if (isScheduledDay && nowMin < startMin) {
+      return { open: false, reason: `${label} opens at ${schedule.startTime} today.`, nextOpen: `Today from ${schedule.startTime}` };
+    }
+    let daysAhead = 1;
+    let nextDow = (dow + daysAhead) % 7;
+    while (!schedule.days.includes(nextDow) && daysAhead < 8) {
+      daysAhead++;
+      nextDow = (dow + daysAhead) % 7;
+    }
+    const nextName = daysAhead === 1 ? "Tomorrow" : DAY_NAMES_FULL[nextDow];
+    const reason = isScheduledDay ? `${label} closed at ${fmtHMFriendly(endMin)}. Back ${nextName.toLowerCase()}.` : `${label} serves ${scheduleOpenMessage(schedule)}.`;
+    return { open: false, reason, nextOpen: `${nextName} from ${schedule.startTime}` };
+  }
   async function getOrderingOverrides() {
     try {
       const raw = await storage.getSetting("ordering_overrides");
@@ -9574,14 +10752,28 @@ async function registerRoutes(app2) {
     return [];
   }
   function scheduleOpenMessage(schedule) {
-    const dayNames = schedule.days.sort((a, b) => a - b).map((d) => DAY_NAMES_SHORT[d]);
-    const start = schedule.startTime.replace(":", "").length === 4 ? schedule.startTime : schedule.startTime;
     const fmt = (t) => {
-      const [h, m] = t.split(":").map(Number);
-      if (m === 0) return h < 12 ? `${h}am` : h === 12 ? "12pm" : `${h - 12}pm`;
+      const [hRaw, mRaw] = t.split(":").map(Number);
+      const h = hRaw % 24;
+      const m = mRaw | 0;
+      if (m === 0 && h === 0) return "midnight";
+      if (m === 0 && h === 12) return "12pm";
+      if (m === 0) return h < 12 ? `${h}am` : `${h - 12}pm`;
       return h < 12 ? `${h}:${String(m).padStart(2, "0")}am` : `${h === 12 ? 12 : h - 12}:${String(m).padStart(2, "0")}pm`;
     };
-    return `${dayNames.join(", ")} ${fmt(schedule.startTime)}\u2013${fmt(schedule.endTime)}`;
+    const sortedDays = [...schedule.days].sort((a, b) => a - b);
+    const groups = /* @__PURE__ */ new Map();
+    for (const d of sortedDays) {
+      const end = effectiveEndTime(schedule, d);
+      if (!groups.has(end)) groups.set(end, []);
+      groups.get(end).push(d);
+    }
+    const parts = [];
+    for (const [end, days] of groups) {
+      const dayLabel = days.map((d) => DAY_NAMES_SHORT[d]).join(", ");
+      parts.push(`${dayLabel} ${fmt(schedule.startTime)}\u2013${fmt(end)}`);
+    }
+    return parts.join("; ");
   }
   async function getOrderingStatus() {
     const london = getLondonNow();
@@ -9592,55 +10784,76 @@ async function registerRoutes(app2) {
     if (manualEnabled === "false") {
       const disabledDate = await storage.getSetting("ordering_disabled_date");
       if (!disabledDate || disabledDate === today) {
-        return { enabled: false, reason: "Online ordering has been temporarily closed by staff.", manualOverride: true };
+        return { enabled: false, kitchenOpen: false, barOpen: false, reason: "Online ordering has been temporarily closed by staff.", manualOverride: true };
       }
       await storage.setSetting("ordering_enabled", "true");
     }
-    const schedule = await getOrderingSchedule();
-    const overrides = await getOrderingOverrides();
+    const [schedule, barSchedule, overrides] = await Promise.all([
+      getOrderingSchedule(),
+      getBarSchedule(),
+      getOrderingOverrides()
+    ]);
     const todayOverride = overrides.find((o) => o.date === today);
-    if (todayOverride) {
-      if (todayOverride.closed) {
-        return { enabled: false, reason: `Ordering is closed today${todayOverride.note ? ` (${todayOverride.note})` : ""}.`, nextOpen: scheduleOpenMessage(schedule) };
-      }
-      const oStart = todayOverride.startTime ?? schedule.startTime;
-      const oEnd = todayOverride.endTime ?? schedule.endTime;
-      if (hhmm >= oStart && hhmm < oEnd) {
-        return { enabled: true, reason: `Ordering open until ${oEnd}`, closesAt: oEnd };
-      }
-      if (hhmm < oStart) {
-        return { enabled: false, reason: `Ordering opens today at ${oStart}${todayOverride.note ? ` (${todayOverride.note})` : ""}`, nextOpen: `Today from ${oStart}` };
-      }
+    const kitchenStatus = computeScheduleStatus("Kitchen", schedule, todayOverride, { dateStr: today, hhmm, dow });
+    const barStatus = computeScheduleStatus("Bar", barSchedule, todayOverride, { dateStr: today, hhmm, dow });
+    let reason;
+    if (kitchenStatus.open && barStatus.open) {
+      reason = kitchenStatus.reason;
+    } else if (!kitchenStatus.open && !barStatus.open) {
+      reason = `${barStatus.reason} ${kitchenStatus.reason}`.trim();
+    } else if (!kitchenStatus.open) {
+      reason = `${kitchenStatus.reason} Drinks are still available.`;
+    } else {
+      reason = `${barStatus.reason} Food is still available.`;
     }
-    const isScheduledDay = schedule.days.includes(dow);
-    if (!isScheduledDay) {
-      let daysAhead = 1;
-      let nextDow = (dow + daysAhead) % 7;
-      while (!schedule.days.includes(nextDow) && daysAhead < 8) {
-        daysAhead++;
-        nextDow = (dow + daysAhead) % 7;
-      }
-      const nextName = daysAhead === 1 ? "Tomorrow" : DAY_NAMES_FULL[nextDow];
-      return { enabled: false, reason: `Food ordering is available ${scheduleOpenMessage(schedule)}.`, nextOpen: `${nextName} from ${schedule.startTime}` };
-    }
-    if (hhmm < schedule.startTime) {
-      return { enabled: false, reason: `Food ordering opens at ${schedule.startTime} today.`, nextOpen: `Today from ${schedule.startTime}` };
-    }
-    if (hhmm >= schedule.endTime) {
-      let daysAhead = 1;
-      let nextDow = (dow + daysAhead) % 7;
-      while (!schedule.days.includes(nextDow) && daysAhead < 8) {
-        daysAhead++;
-        nextDow = (dow + daysAhead) % 7;
-      }
-      const nextName = daysAhead === 1 ? "Tomorrow" : DAY_NAMES_FULL[nextDow];
-      return { enabled: false, reason: `Food ordering closes at ${schedule.endTime}. See you ${nextName.toLowerCase()}!`, nextOpen: `${nextName} from ${schedule.startTime}` };
-    }
-    return { enabled: true, reason: `Ordering open until ${schedule.endTime}`, closesAt: schedule.endTime };
+    return {
+      enabled: true,
+      kitchenOpen: kitchenStatus.open,
+      barOpen: barStatus.open,
+      reason,
+      kitchenReason: kitchenStatus.reason,
+      barReason: barStatus.reason,
+      nextOpen: kitchenStatus.nextOpen,
+      barNextOpen: barStatus.nextOpen,
+      closesAt: kitchenStatus.closesAt,
+      barClosesAt: barStatus.closesAt
+    };
   }
   async function getOrderingEnabled() {
     const status = await getOrderingStatus();
     return status.enabled;
+  }
+  async function getKitchenOpen() {
+    const status = await getOrderingStatus();
+    return status.kitchenOpen;
+  }
+  async function getKitchenVariationIds() {
+    return (await getCategorisedVariationIds()).kitchen;
+  }
+  async function getCategorisedVariationIds() {
+    const out = { kitchen: /* @__PURE__ */ new Set(), bar: /* @__PURE__ */ new Set() };
+    try {
+      const [categories, settings] = await Promise.all([
+        getMenuFromSquare(),
+        storage.getCategorySettings()
+      ]);
+      const kitchenCatIds = new Set(settings.filter((s) => s.isKitchen).map((s) => s.categoryId));
+      for (const s of settings) {
+        if (s.parentCategoryId && kitchenCatIds.has(s.parentCategoryId) || s.mergedIntoId && kitchenCatIds.has(s.mergedIntoId)) {
+          kitchenCatIds.add(s.categoryId);
+        }
+      }
+      for (const cat of categories) {
+        const isKitchenCat = kitchenCatIds.has(cat.id);
+        for (const item of cat.items) {
+          if (isKitchenCat) out.kitchen.add(item.variationId);
+          else out.bar.add(item.variationId);
+        }
+      }
+    } catch (err) {
+      console.error("[KITCHEN] Failed to build categorised variation sets:", err?.message);
+    }
+    return out;
   }
   app2.get("/api/ordering-status", async (_req, res) => {
     try {
@@ -9681,6 +10894,20 @@ async function registerRoutes(app2) {
     console.log(`[ORDERING] Schedule updated by ${who}: ${JSON.stringify(schedule)}`);
     res.json(schedule);
   });
+  app2.get("/api/staff/bar-schedule", staffAuth, async (_req, res) => {
+    res.json(await getBarSchedule());
+  });
+  app2.put("/api/staff/bar-schedule", staffAuth, async (req, res) => {
+    const { days, startTime, endTime } = req.body;
+    if (!Array.isArray(days) || !startTime || !endTime) {
+      return res.status(400).json({ message: "days, startTime and endTime required" });
+    }
+    const schedule = { days, startTime, endTime };
+    await storage.setSetting("bar_schedule", JSON.stringify(schedule));
+    const who = req.staff?.username || req.staff?.name || "staff";
+    console.log(`[ORDERING] Bar schedule updated by ${who}: ${JSON.stringify(schedule)}`);
+    res.json(schedule);
+  });
   app2.get("/api/staff/ordering-overrides", staffAuth, async (_req, res) => {
     const overrides = await getOrderingOverrides();
     res.json(overrides);
@@ -9710,12 +10937,33 @@ async function registerRoutes(app2) {
       return res.status(400).json({ message: "Cart is empty" });
     }
     try {
-      const orderingEnabled = await getOrderingEnabled();
-      if (!orderingEnabled) {
+      const status = await getOrderingStatus();
+      if (!status.enabled) {
         return res.status(503).json({ message: "Online ordering is currently unavailable. Please order at the bar." });
+      }
+      if (!status.kitchenOpen || !status.barOpen) {
+        const { kitchen: kitchenIds, bar: barIds } = await getCategorisedVariationIds();
+        const offending = [];
+        for (const i of items) {
+          const vid = String(i?.variationId ?? "");
+          if (!status.kitchenOpen && kitchenIds.has(vid)) offending.push(i);
+          else if (!status.barOpen && barIds.has(vid)) offending.push(i);
+        }
+        if (offending.length > 0) {
+          const parts = [];
+          if (!status.kitchenOpen) parts.push(`Kitchen is closed${status.kitchenReason ? ` \u2014 ${status.kitchenReason}` : ""}`);
+          if (!status.barOpen) parts.push(`Bar is closed${status.barReason ? ` \u2014 ${status.barReason}` : ""}`);
+          return res.status(503).json({
+            message: `${parts.join(". ")}. Please remove the highlighted items from your basket.`,
+            kitchenClosed: !status.kitchenOpen,
+            barClosed: !status.barOpen,
+            offendingVariationIds: offending.map((i) => i.variationId)
+          });
+        }
       }
       const { discountPercent, discountLabel, excludeWithDeals } = await resolveMemberDiscountImpl(req, customer, syncSquareMembershipForCustomer);
       const reservedOrderId = await storage.reserveAppOrderId();
+      const orderDealsEnabledHosted = await storage.getSetting("square_deals_order_enabled") !== "false";
       const { url, linkId, squareOrderId, pricedItems, rawTotalPence } = await createOrderCheckoutLink(
         items,
         tableNote,
@@ -9724,7 +10972,8 @@ async function registerRoutes(app2) {
         discountLabel,
         excludeWithDeals,
         orderNote,
-        reservedOrderId
+        reservedOrderId,
+        orderDealsEnabledHosted
       );
       const discountedTotal = discountPercent ? Math.round(rawTotalPence * (1 - discountPercent / 100)) : rawTotalPence;
       storage.createAppOrder({
@@ -9757,6 +11006,608 @@ async function registerRoutes(app2) {
       console.error("[ORDER] Checkout failed:", err.message);
       const status = err instanceof SquareError && err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 500;
       res.status(status).json({ message: err.message });
+    }
+  });
+  app2.post("/api/orders/kiosk-checkout", async (req, res) => {
+    const ip = (req.ip || req.socket.remoteAddress || "unknown").toString();
+    const rl = checkRateLimit(`kiosk-checkout:${ip}`, 10, 6e4);
+    if (!rl.allowed) {
+      res.setHeader("Retry-After", String(rl.retryAfter));
+      return res.status(429).json({ message: "Too many orders, please slow down." });
+    }
+    const { items, customerName, tableNumber, customerPhone } = req.body ?? {};
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: "Cart is empty" });
+    }
+    const name = typeof customerName === "string" ? customerName.trim() : "";
+    const table = typeof tableNumber === "string" ? tableNumber.trim() : "";
+    const phoneRaw = typeof customerPhone === "string" ? customerPhone.trim() : "";
+    if (name.length < 2) {
+      return res.status(400).json({ message: "Name is required" });
+    }
+    if (!/^\d{1,3}$/.test(table)) {
+      return res.status(400).json({ message: "Table number is required" });
+    }
+    try {
+      const kioskEnabled = await storage.getSetting("kiosk_ordering_enabled");
+      if (kioskEnabled === "false") {
+        return res.status(503).json({ message: "Kiosk ordering is currently paused. Please order at the counter." });
+      }
+      const activeTerminal = await storage.getSetting("active_kiosk_terminal") || "square";
+      let terminalReady = false;
+      if (activeTerminal === "teya") {
+        const teyaEnabled = await storage.getSetting("teya_enabled");
+        const teyaStoreId = await storage.getSetting("teya_store_id");
+        const teyaTerminalId = await storage.getSetting("teya_terminal_id");
+        terminalReady = teyaEnabled === "true" && !!teyaStoreId && !!teyaTerminalId;
+      } else if (activeTerminal === "square") {
+        const sqEnabled = await storage.getSetting("square_terminal_enabled");
+        const sqDeviceId = await storage.getSetting("square_terminal_device_id");
+        terminalReady = sqEnabled === "true" && !!sqDeviceId;
+      }
+      if (!terminalReady) {
+        return res.status(503).json({
+          message: "Card payment isn't available on the kiosk right now. Please order at the counter.",
+          terminalUnavailable: true
+        });
+      }
+      const status = await getOrderingStatus();
+      if (!status.enabled) {
+        return res.status(503).json({ message: "Ordering is currently unavailable." });
+      }
+      if (!status.kitchenOpen || !status.barOpen) {
+        const { kitchen: kitchenIds, bar: barIds } = await getCategorisedVariationIds();
+        const offending = [];
+        for (const i of items) {
+          const vid = String(i?.variationId ?? "");
+          if (!status.kitchenOpen && kitchenIds.has(vid)) offending.push(i);
+          else if (!status.barOpen && barIds.has(vid)) offending.push(i);
+        }
+        if (offending.length > 0) {
+          const parts = [];
+          if (!status.kitchenOpen) parts.push(`Kitchen is closed${status.kitchenReason ? ` \u2014 ${status.kitchenReason}` : ""}`);
+          if (!status.barOpen) parts.push(`Bar is closed${status.barReason ? ` \u2014 ${status.barReason}` : ""}`);
+          return res.status(503).json({
+            message: `${parts.join(". ")}. Please remove the highlighted items.`,
+            kitchenClosed: !status.kitchenOpen,
+            barClosed: !status.barOpen,
+            offendingVariationIds: offending.map((i) => i.variationId)
+          });
+        }
+      }
+      const squareItems = [];
+      const sanitisedItems = [];
+      for (const raw of items) {
+        const qty = Math.max(1, Math.min(99, Number(raw?.quantity ?? 1) | 0));
+        const price = Math.max(0, Number(raw?.price ?? 0) | 0);
+        const itemName = String(raw?.name ?? "Item").slice(0, 120);
+        const variationId = String(raw?.variationId ?? "");
+        const itemId = raw?.itemId ? String(raw.itemId) : void 0;
+        const modifiersRaw = Array.isArray(raw?.modifiers) ? raw.modifiers : [];
+        const fullModifiers = modifiersRaw.map((m) => ({
+          catalogObjectId: String(m?.catalogObjectId ?? ""),
+          name: String(m?.name ?? ""),
+          price: Math.max(0, Number(m?.price ?? 0) | 0)
+        })).filter((m) => m.catalogObjectId);
+        if (!variationId) {
+          return res.status(400).json({ message: `Item "${itemName}" is missing its catalog id` });
+        }
+        squareItems.push({
+          variationId,
+          itemId,
+          name: itemName,
+          price,
+          quantity: qty,
+          modifiers: fullModifiers
+        });
+        sanitisedItems.push({
+          name: itemName,
+          quantity: qty,
+          price,
+          variationId,
+          ...itemId ? { itemId } : {},
+          ...fullModifiers.length ? {
+            modifiers: fullModifiers.map((m) => m.name),
+            modifierIds: fullModifiers.map((m) => m.catalogObjectId)
+          } : {}
+        });
+      }
+      const customer = { name };
+      if (phoneRaw) customer.phone = phoneRaw;
+      const ticketNumber = await storage.allocateKioskTicketNumber();
+      const tableNote = `Table ${table}`;
+      const kioskDealsEnabled = await storage.getSetting("square_deals_kiosk_enabled") !== "false";
+      const { orderId: squareOrderId, totalPence: squareTotalPence } = await createSquareOrderForCheckout(
+        squareItems,
+        tableNote,
+        customer,
+        void 0,
+        void 0,
+        false,
+        void 0,
+        ticketNumber,
+        true,
+        // asOpenTicket — kept for API stability. Both branches now
+        // use PICKUP fulfillment + spoofed "Point of Sale" source
+        // because Square's till filters API-created orders out of
+        // the dine-in Open Tickets list regardless of source spoof
+        // (the filter keys on the immutable OAuth application_id).
+        // PICKUP is the one fulfillment type the till app's
+        // "Online Orders / Pickup" queue actually shows for
+        // outside-app orders, so that's where staff find unpaid
+        // kiosk tickets to take counter payment on.
+        kioskDealsEnabled
+      );
+      const created = await storage.createAppOrder({
+        squareOrderId,
+        tableNote,
+        customerName: name,
+        itemsJson: JSON.stringify(sanitisedItems),
+        totalPence: squareTotalPence,
+        paymentMethod: "counter",
+        ticketNumber
+      });
+      let terminalCheckoutPushed = false;
+      let terminalProvider = null;
+      try {
+        const activeTerminal2 = await storage.getSetting("active_kiosk_terminal") || "square";
+        if (activeTerminal2 === "teya") {
+          const teyaEnabled = await storage.getSetting("teya_enabled");
+          const teyaStoreId = await storage.getSetting("teya_store_id");
+          const teyaTerminalId = await storage.getSetting("teya_terminal_id");
+          if (teyaEnabled === "true" && teyaStoreId && teyaTerminalId) {
+            const pr = await createPaymentRequest({
+              storeId: teyaStoreId,
+              terminalId: teyaTerminalId,
+              amountPence: squareTotalPence,
+              merchantReference: String(created.id),
+              description: `Kiosk #${ticketNumber} \u2014 ${name}`,
+              idempotencyKey: buildIdempotencyKey(`kiosk-teya-${created.id}`)
+            });
+            terminalCheckoutPushed = true;
+            terminalProvider = "teya";
+            console.log(`[KIOSK] Order #${created.id} pushed to Teya terminal ${teyaTerminalId} (request ${pr.id}, status ${pr.status})`);
+            recordPaymentStarted({
+              requestId: pr.id,
+              appOrderId: created.id,
+              ticketNumber,
+              amountPence: squareTotalPence
+            });
+            void awaitFinalStatus(pr.id, { timeoutMs: 5 * 6e4 }).then(async (final) => {
+              recordPaymentFinished(pr.id, final.status);
+              if (final.status === "SUCCESSFUL") {
+                const ok = await storage.markAppOrderPaidAtCounter(created.id);
+                if (ok) {
+                  try {
+                    await storage.logOrderAction({ orderId: created.id, staffUsername: "teya-terminal", action: "mark-paid-teya" });
+                  } catch {
+                  }
+                  console.log(`[KIOSK] Order #${created.id} auto-marked paid via Teya (request ${pr.id})`);
+                }
+                try {
+                  await payOrderWithCashTender(
+                    squareOrderId,
+                    squareTotalPence,
+                    `kiosk-cash-tender-${created.id}-teya`
+                  );
+                } catch (err) {
+                  console.warn(`[KIOSK] Order #${created.id} \u2014 Square CASH tender push failed (non-fatal):`, err?.message || err);
+                }
+                try {
+                  if (await storage.getSetting("teya_print_receipt") === "true") {
+                    void printReceipt({
+                      storeId: teyaStoreId,
+                      terminalId: teyaTerminalId,
+                      title: `The 147 \u2014 Ticket #${ticketNumber}`,
+                      lines: [
+                        `Order #${created.id}`,
+                        `Name: ${name}`,
+                        `Total: \xA3${(squareTotalPence / 100).toFixed(2)}`,
+                        ``,
+                        `Thanks \u2014 please collect at the counter.`
+                      ],
+                      idempotencyKey: buildIdempotencyKey(`kiosk-receipt-${created.id}`)
+                    });
+                  }
+                } catch (err) {
+                  console.warn(`[KIOSK] Order #${created.id} receipt print attempt failed (non-fatal):`, err?.message || err);
+                }
+              } else {
+                console.warn(`[KIOSK] Order #${created.id} Teya request ${pr.id} ended with status ${final.status}`);
+              }
+            }).catch((err) => {
+              console.warn(`[KIOSK] Order #${created.id} Teya SSE listener failed:`, err?.message || err);
+            });
+          }
+        } else {
+          const enabled = await storage.getSetting("square_terminal_enabled");
+          const deviceId = await storage.getSetting("square_terminal_device_id");
+          if (enabled === "true" && deviceId) {
+            const idemRaw = `kiosk-terminal-${created.id}`;
+            const checkout = await createTerminalCheckout({
+              deviceId,
+              amountPence: squareTotalPence,
+              referenceId: String(created.id),
+              note: `Kiosk #${ticketNumber} \u2014 ${name}`,
+              idempotencyKey: createHash3("sha256").update(idemRaw).digest("hex").slice(0, 45)
+            });
+            terminalCheckoutPushed = true;
+            terminalProvider = "square";
+            console.log(`[KIOSK] Order #${created.id} pushed to Square Terminal ${deviceId} (checkout ${checkout.id}, status ${checkout.status})`);
+          }
+        }
+      } catch (err) {
+        console.warn(`[KIOSK] Order #${created.id} \u2014 terminal push failed:`, err?.message || err);
+      }
+      if (!terminalCheckoutPushed) {
+        try {
+          await cancelSquareOrder(squareOrderId);
+        } catch {
+        }
+        try {
+          await storage.updateAppOrderStatus(created.id, "cancelled");
+        } catch {
+        }
+        console.warn(`[KIOSK] Order #${created.id} cancelled \u2014 terminal push didn't land (active=${activeTerminal})`);
+        return res.status(503).json({
+          message: "We couldn't reach the card terminal. Please order at the counter.",
+          terminalUnavailable: true
+        });
+      }
+      console.log(`[KIOSK] Order #${created.id} ticket #${ticketNumber} (${name}, ${tableNote}, \xA3${(squareTotalPence / 100).toFixed(2)}) \u2192 Square ${squareOrderId} [${terminalProvider}-terminal]`);
+      res.json({ appOrderId: created.id, ticketNumber, terminalCheckoutPushed, terminalProvider });
+    } catch (err) {
+      console.error("[KIOSK] Checkout failed:", err.message);
+      const status = err instanceof SquareError && err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 500;
+      res.status(status).json({ message: err.message || "Could not create order" });
+    }
+  });
+  app2.post("/api/staff/orders/:id/mark-paid", staffAuth, async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid order ID" });
+    try {
+      const order = await storage.getAppOrder(id);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      if (order.paymentMethod !== "counter") {
+        return res.status(400).json({ message: "Only counter-pay orders can be marked paid here" });
+      }
+      if (order.status !== "pending") {
+        return res.status(400).json({ message: `Order is already ${order.status}` });
+      }
+      const ok = await storage.markAppOrderPaidAtCounter(id);
+      if (!ok) return res.status(409).json({ message: "Order could not be updated (was it already paid?)" });
+      const actor = req.staffUsername || "admin";
+      try {
+        await storage.logOrderAction({ orderId: id, staffUsername: actor, action: "mark-paid-counter" });
+      } catch {
+      }
+      if (order.squareOrderId) {
+        try {
+          await payOrderWithCashTender(
+            order.squareOrderId,
+            order.totalPence,
+            `kiosk-cash-tender-${id}-staff-${actor}`
+          );
+        } catch (err) {
+          console.warn(`[KIOSK] Order #${id} \u2014 Square CASH tender push failed (non-fatal):`, err?.message || err);
+        }
+      }
+      console.log(`[KIOSK] Order #${id} marked paid at counter by ${actor}`);
+      res.json({ status: "paid" });
+    } catch (err) {
+      console.error("[KIOSK] Mark-paid failed:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app2.post("/api/staff/square-terminal/pair-code", staffAuth, managerAuth, async (req, res) => {
+    try {
+      const name = req.body?.name || "The 147 Counter";
+      const code = await createTerminalDeviceCode(name);
+      console.log(`[SQUARE-TERMINAL] Pair code generated: ${code.code} (id ${code.id}, name "${name}")`);
+      res.json({
+        codeId: code.id,
+        code: code.code,
+        status: code.status,
+        pairBy: code.pairBy
+      });
+    } catch (err) {
+      console.error("[SQUARE-TERMINAL] Could not create pair code:", err?.message || err);
+      const status = err instanceof SquareError && err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 500;
+      res.status(status).json({ message: err?.message || "Could not create pairing code" });
+    }
+  });
+  app2.get("/api/staff/square-terminal/pair-code/:codeId", staffAuth, managerAuth, async (req, res) => {
+    const codeId = String(req.params.codeId);
+    try {
+      const dc = await getTerminalDeviceCode(codeId);
+      if (!dc) return res.status(404).json({ message: "Pair code not found" });
+      if (dc.status === "PAIRED" && dc.deviceId) {
+        await storage.setSetting("square_terminal_device_id", dc.deviceId);
+        if (dc.name) await storage.setSetting("square_terminal_device_name", dc.name);
+        console.log(`[SQUARE-TERMINAL] Device paired: ${dc.deviceId} (${dc.name || "unnamed"})`);
+      }
+      res.json({
+        status: dc.status,
+        deviceId: dc.deviceId,
+        name: dc.name
+      });
+    } catch (err) {
+      console.error("[SQUARE-TERMINAL] Could not poll pair code:", err?.message || err);
+      res.status(500).json({ message: err?.message || "Could not check pairing status" });
+    }
+  });
+  app2.get("/api/staff/square-terminal/status", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      const deviceId = await storage.getSetting("square_terminal_device_id");
+      const deviceName = await storage.getSetting("square_terminal_device_name");
+      const enabled = await storage.getSetting("square_terminal_enabled");
+      res.json({
+        paired: !!deviceId,
+        deviceId: deviceId || null,
+        deviceName: deviceName || null,
+        enabled: enabled === "true"
+      });
+    } catch (err) {
+      res.status(500).json({ message: err?.message || "Could not read terminal status" });
+    }
+  });
+  app2.put("/api/staff/square-terminal/enabled", staffAuth, managerAuth, async (req, res) => {
+    const enabled = !!req.body?.enabled;
+    try {
+      if (enabled) {
+        const deviceId = await storage.getSetting("square_terminal_device_id");
+        if (!deviceId) {
+          return res.status(400).json({ message: "Pair a Square Terminal device before enabling" });
+        }
+      }
+      await storage.setSetting("square_terminal_enabled", String(enabled));
+      console.log(`[SQUARE-TERMINAL] Enabled = ${enabled}`);
+      res.json({ enabled });
+    } catch (err) {
+      res.status(500).json({ message: err?.message || "Could not update setting" });
+    }
+  });
+  app2.delete("/api/staff/square-terminal/pairing", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      await storage.setSetting("square_terminal_device_id", "");
+      await storage.setSetting("square_terminal_device_name", "");
+      await storage.setSetting("square_terminal_enabled", "false");
+      console.log("[SQUARE-TERMINAL] Pairing cleared");
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ message: err?.message || "Could not clear pairing" });
+    }
+  });
+  app2.get("/api/staff/active-terminal", staffAuth, managerAuth, async (_req, res) => {
+    const value = await storage.getSetting("active_kiosk_terminal") || "square";
+    res.json({ provider: value });
+  });
+  app2.put("/api/staff/active-terminal", staffAuth, managerAuth, async (req, res) => {
+    const provider = String(req.body?.provider || "");
+    if (!["square", "teya", "none"].includes(provider)) {
+      return res.status(400).json({ message: "provider must be 'square', 'teya' or 'none'" });
+    }
+    await storage.setSetting("active_kiosk_terminal", provider);
+    console.log(`[KIOSK] Active terminal vendor set to: ${provider}`);
+    res.json({ provider });
+  });
+  app2.get("/api/staff/teya/status", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      const conn = await getConnectionInfo();
+      const enabled = await storage.getSetting("teya_enabled");
+      const storeId = await storage.getSetting("teya_store_id");
+      const terminalId = await storage.getSetting("teya_terminal_id");
+      const terminalName = await storage.getSetting("teya_terminal_name");
+      const printReceipt2 = await storage.getSetting("teya_print_receipt");
+      res.json({
+        configured: isConfigured2(),
+        connected: conn.connected,
+        expiresAt: conn.expiresAt ? conn.expiresAt.toISOString() : null,
+        scope: conn.scope,
+        paired: !!(storeId && terminalId),
+        storeId: storeId || null,
+        terminalId: terminalId || null,
+        terminalName: terminalName || null,
+        enabled: enabled === "true",
+        printReceipt: printReceipt2 === "true"
+      });
+    } catch (err) {
+      res.status(500).json({ message: err?.message || "Could not read Teya status" });
+    }
+  });
+  app2.get("/api/staff/teya/oauth/start", staffAuth, managerAuth, async (req, res) => {
+    try {
+      if (!isConfigured2()) {
+        return res.status(400).json({ message: "Teya is not configured on the server (missing TEYA_CLIENT_ID / TEYA_CLIENT_SECRET)" });
+      }
+      const redirectUri = getRedirectUri(getPublicAppOrigin());
+      const stateNonce = randomBytes3(16).toString("hex");
+      const ts = String(Date.now());
+      const sig = createHmac("sha256", process.env.SESSION_SECRET || "dev-only-secret").update(`teya|${stateNonce}|${ts}`).digest("hex");
+      const state = `${stateNonce}.${ts}.${sig}`;
+      const url = buildAuthorizationUrl({ redirectUri, state });
+      if (req.query.format === "json") {
+        return res.json({ url, redirectUri });
+      }
+      res.redirect(url);
+    } catch (err) {
+      res.status(500).json({ message: err?.message || "Could not start Teya OAuth" });
+    }
+  });
+  app2.get("/api/staff/teya/oauth/callback", async (req, res) => {
+    const code = String(req.query.code || "");
+    const state = String(req.query.state || "");
+    const wantJson = req.query.format === "json";
+    const fail = (msg, status = 400) => {
+      console.warn(`[TEYA] OAuth callback failed: ${msg}`);
+      if (wantJson) return res.status(status).json({ message: msg });
+      res.status(status).send(`<!doctype html><meta charset="utf-8"><title>Teya \u2014 error</title><body style="font-family:system-ui;padding:32px;max-width:520px;margin:auto"><h1>Couldn't connect Teya</h1><p>${msg}</p><p><a href="/staff-portal">Back to staff portal</a></p></body>`);
+    };
+    if (!code || !state) return fail("Missing code or state");
+    const parts = state.split(".");
+    if (parts.length !== 3) return fail("Invalid state token");
+    const [nonce, ts, sig] = parts;
+    const expected = createHmac("sha256", process.env.SESSION_SECRET || "dev-only-secret").update(`teya|${nonce}|${ts}`).digest("hex");
+    if (sig.length !== expected.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+      return fail("State signature mismatch \u2014 possible CSRF");
+    }
+    if (Date.now() - Number(ts) > 10 * 6e4) {
+      return fail("State expired \u2014 please retry from the staff portal");
+    }
+    try {
+      const redirectUri = getRedirectUri(getPublicAppOrigin());
+      const result = await exchangeAuthorizationCode({ code, redirectUri });
+      console.log(`[TEYA] OAuth connected \u2014 scope=${result.scope || "(none)"} expires=${result.expiresAt.toISOString()}`);
+      if (wantJson) return res.json({ ok: true, scope: result.scope, expiresAt: result.expiresAt.toISOString() });
+      res.send(`<!doctype html><meta charset="utf-8"><title>Teya connected</title><body style="font-family:system-ui;padding:32px;max-width:520px;margin:auto;text-align:center"><h1>Teya connected</h1><p>You can close this window and return to the staff portal to pick a store and terminal.</p><script>setTimeout(()=>window.close(),2000)</script></body>`);
+    } catch (err) {
+      return fail(err?.message || "Token exchange failed", 502);
+    }
+  });
+  app2.delete("/api/staff/teya/oauth", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      await disconnect();
+      await storage.setSetting("teya_store_id", "");
+      await storage.setSetting("teya_terminal_id", "");
+      await storage.setSetting("teya_terminal_name", "");
+      await storage.setSetting("teya_enabled", "false");
+      console.log("[TEYA] Disconnected and pairing cleared");
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ message: err?.message || "Could not disconnect Teya" });
+    }
+  });
+  app2.get("/api/staff/teya/stores", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      const stores = await listStores();
+      res.json({ stores });
+    } catch (err) {
+      const status = err instanceof TeyaNotAuthorizedError ? 401 : err instanceof TeyaNotConfiguredError ? 400 : err instanceof TeyaError ? err.statusCode : 500;
+      res.status(status).json({ message: err?.message || "Could not list stores" });
+    }
+  });
+  app2.get("/api/staff/teya/stores/:storeId/terminals", staffAuth, managerAuth, async (req, res) => {
+    try {
+      const terminals = await listTerminals(String(req.params.storeId));
+      res.json({ terminals });
+    } catch (err) {
+      const status = err instanceof TeyaNotAuthorizedError ? 401 : err instanceof TeyaError ? err.statusCode : 500;
+      res.status(status).json({ message: err?.message || "Could not list terminals" });
+    }
+  });
+  app2.put("/api/staff/teya/pairing", staffAuth, managerAuth, async (req, res) => {
+    const storeId = String(req.body?.storeId || "");
+    const terminalId = String(req.body?.terminalId || "");
+    const terminalName = String(req.body?.terminalName || "");
+    if (!storeId || !terminalId) {
+      return res.status(400).json({ message: "storeId and terminalId are required" });
+    }
+    await storage.setSetting("teya_store_id", storeId);
+    await storage.setSetting("teya_terminal_id", terminalId);
+    await storage.setSetting("teya_terminal_name", terminalName);
+    console.log(`[TEYA] Paired terminal ${terminalId} (${terminalName || "unnamed"}) in store ${storeId}`);
+    res.json({ ok: true });
+  });
+  app2.delete("/api/staff/teya/pairing", staffAuth, managerAuth, async (_req, res) => {
+    await storage.setSetting("teya_store_id", "");
+    await storage.setSetting("teya_terminal_id", "");
+    await storage.setSetting("teya_terminal_name", "");
+    await storage.setSetting("teya_enabled", "false");
+    console.log("[TEYA] Pairing cleared");
+    res.json({ ok: true });
+  });
+  app2.put("/api/staff/teya/enabled", staffAuth, managerAuth, async (req, res) => {
+    const enabled = !!req.body?.enabled;
+    if (enabled) {
+      const storeId = await storage.getSetting("teya_store_id");
+      const terminalId = await storage.getSetting("teya_terminal_id");
+      if (!storeId || !terminalId) {
+        return res.status(400).json({ message: "Pair a Teya terminal before enabling" });
+      }
+      const conn = await getConnectionInfo();
+      if (!conn.connected) {
+        return res.status(400).json({ message: "Connect a Teya account before enabling" });
+      }
+    }
+    await storage.setSetting("teya_enabled", String(enabled));
+    console.log(`[TEYA] Enabled = ${enabled}`);
+    res.json({ enabled });
+  });
+  app2.put("/api/staff/teya/print-receipt", staffAuth, managerAuth, async (req, res) => {
+    const enabled = !!req.body?.enabled;
+    await storage.setSetting("teya_print_receipt", String(enabled));
+    console.log(`[TEYA] Print receipt on success = ${enabled}`);
+    res.json({ enabled });
+  });
+  app2.get("/api/staff/square-deals/settings", staffAuth, managerAuth, async (_req, res) => {
+    const order = await storage.getSetting("square_deals_order_enabled") !== "false";
+    const kiosk = await storage.getSetting("square_deals_kiosk_enabled") !== "false";
+    res.json({ order, kiosk });
+  });
+  app2.put("/api/staff/square-deals/settings", staffAuth, managerAuth, async (req, res) => {
+    const updates = {};
+    if (typeof req.body?.order === "boolean") {
+      await storage.setSetting("square_deals_order_enabled", String(req.body.order));
+      updates.order = req.body.order;
+    }
+    if (typeof req.body?.kiosk === "boolean") {
+      await storage.setSetting("square_deals_kiosk_enabled", String(req.body.kiosk));
+      updates.kiosk = req.body.kiosk;
+    }
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: "Provide at least one of: order, kiosk" });
+    }
+    console.log(`[SQUARE DEALS] Toggles updated: ${JSON.stringify(updates)}`);
+    const order = await storage.getSetting("square_deals_order_enabled") !== "false";
+    const kiosk = await storage.getSetting("square_deals_kiosk_enabled") !== "false";
+    res.json({ order, kiosk });
+  });
+  app2.get("/api/staff/teya/test-connection", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      if (!isConfigured2()) {
+        return res.status(400).json({ ok: false, message: "Teya is not configured on the server" });
+      }
+      const conn = await getConnectionInfo();
+      if (!conn.connected) {
+        return res.status(400).json({ ok: false, message: "Connect a Teya account first" });
+      }
+      const stores = await listStores();
+      res.json({ ok: true, storeCount: stores.length, expiresAt: conn.expiresAt?.toISOString() || null });
+    } catch (err) {
+      const status = err instanceof TeyaNotAuthorizedError ? 401 : err instanceof TeyaError ? err.statusCode : 500;
+      res.status(status).json({ ok: false, message: err?.message || "Test failed" });
+    }
+  });
+  app2.get("/api/staff/teya/recent-payments", staffAuth, managerAuth, async (_req, res) => {
+    res.json({ payments: listRecentPayments() });
+  });
+  app2.get("/api/staff/active-terminal/health", staffAuth, managerAuth, async (_req, res) => {
+    const provider = await storage.getSetting("active_kiosk_terminal") || "square";
+    if (provider === "none") {
+      return res.json({ provider, healthy: true, reason: "Off \u2014 kiosk orders go straight to counter pay." });
+    }
+    if (provider === "teya") {
+      try {
+        if (!isConfigured2()) return res.json({ provider, healthy: false, reason: "TEYA_CLIENT_ID / TEYA_CLIENT_SECRET not set" });
+        const conn = await getConnectionInfo();
+        if (!conn.connected) return res.json({ provider, healthy: false, reason: "Teya account not connected" });
+        const enabled = await storage.getSetting("teya_enabled") === "true";
+        const storeId = await storage.getSetting("teya_store_id");
+        const terminalId = await storage.getSetting("teya_terminal_id");
+        if (!enabled || !storeId || !terminalId) return res.json({ provider, healthy: false, reason: "Connected but not paired/enabled" });
+        await listStores();
+        return res.json({ provider, healthy: true, reason: "Teya reachable and paired" });
+      } catch (err) {
+        return res.json({ provider, healthy: false, reason: err?.message || "Teya unreachable" });
+      }
+    }
+    try {
+      const enabled = await storage.getSetting("square_terminal_enabled") === "true";
+      const deviceId = await storage.getSetting("square_terminal_device_id");
+      if (!enabled || !deviceId) return res.json({ provider, healthy: false, reason: "Square Terminal not paired/enabled" });
+      return res.json({ provider, healthy: true, reason: "Square Terminal paired and enabled" });
+    } catch (err) {
+      return res.json({ provider, healthy: false, reason: err?.message || "Square Terminal check failed" });
     }
   });
   app2.get("/api/public/square-config", (_req, res) => {
@@ -9815,12 +11666,33 @@ async function registerRoutes(app2) {
       return res.status(503).json({ message: "In-app payments are not configured." });
     }
     try {
-      const orderingEnabled = await getOrderingEnabled();
-      if (!orderingEnabled) {
+      const status = await getOrderingStatus();
+      if (!status.enabled) {
         return res.status(503).json({ message: "Online ordering is currently unavailable. Please order at the bar." });
+      }
+      if (!status.kitchenOpen || !status.barOpen) {
+        const { kitchen: kitchenIds, bar: barIds } = await getCategorisedVariationIds();
+        const offending = [];
+        for (const i of items) {
+          const vid = String(i?.variationId ?? "");
+          if (!status.kitchenOpen && kitchenIds.has(vid)) offending.push(i);
+          else if (!status.barOpen && barIds.has(vid)) offending.push(i);
+        }
+        if (offending.length > 0) {
+          const parts = [];
+          if (!status.kitchenOpen) parts.push(`Kitchen is closed${status.kitchenReason ? ` \u2014 ${status.kitchenReason}` : ""}`);
+          if (!status.barOpen) parts.push(`Bar is closed${status.barReason ? ` \u2014 ${status.barReason}` : ""}`);
+          return res.status(503).json({
+            message: `${parts.join(". ")}. Please remove the highlighted items.`,
+            kitchenClosed: !status.kitchenOpen,
+            barClosed: !status.barOpen,
+            offendingVariationIds: offending.map((i) => i.variationId)
+          });
+        }
       }
       const { discountPercent, discountLabel, excludeWithDeals } = await resolveMemberDiscountImpl(req, customer, syncSquareMembershipForCustomer);
       const reservedOrderId = await storage.reserveAppOrderId();
+      const orderDealsEnabled = await storage.getSetting("square_deals_order_enabled") !== "false";
       const { orderId, totalPence, pricedItems } = await createSquareOrderForCheckout(
         items,
         tableNote,
@@ -9829,7 +11701,9 @@ async function registerRoutes(app2) {
         discountLabel,
         excludeWithDeals,
         orderNote,
-        reservedOrderId
+        reservedOrderId,
+        false,
+        orderDealsEnabled
       );
       const confirmationToken = randomBytes3(24).toString("hex");
       const appOrder = await storage.createAppOrder({
@@ -9891,7 +11765,7 @@ async function registerRoutes(app2) {
         return res.status(400).json({ message: "Order is missing Square reference" });
       }
       const idemRaw = `app-order-${appOrderId}|${sourceId}`;
-      const idempotencyKey = createHash2("sha256").update(idemRaw).digest("hex").slice(0, 45);
+      const idempotencyKey = createHash3("sha256").update(idemRaw).digest("hex").slice(0, 45);
       const payment = await createCardPayment({
         sourceId: sourceId.trim(),
         amountPence: order.totalPence,
@@ -10146,6 +12020,10 @@ async function registerRoutes(app2) {
       }
       await storage.updateAppOrderStatus(id, "cancelled");
       await storage.logOrderAction({ orderId: id, staffUsername: actor, action: "cancel", reason: reason || void 0 });
+      if (order.paymentMethod === "counter" && order.squareOrderId) {
+        const voided = await cancelSquareOrder(order.squareOrderId);
+        if (!voided) console.warn(`[ORDERS] Could not void Square ticket for #${id} (${order.squareOrderId}) \u2014 clear it manually in Square POS`);
+      }
       console.log(`[ORDERS] Order #${id} cancelled by ${actor}`);
       res.json({ status: "cancelled" });
     } catch (err) {
@@ -10480,7 +12358,7 @@ async function registerRoutes(app2) {
       if (!finalLinkValue || !isSafePublicUrl(finalLinkValue)) {
         return res.status(400).json({ message: "Banner URL must start with https:// or http://" });
       }
-    } else if (body.linkType !== void 0) {
+    } else {
       body.linkValue = null;
     }
     const updated = await storage.updateBannerImage(id, body);
@@ -11214,6 +13092,13 @@ async function registerRoutes(app2) {
     res.setHeader("Pragma", "no-cache");
     res.status(200).send(html);
   });
+  app2.get("/staff/kiosk-cheatsheet", (_req, res) => {
+    const templatePath = path.resolve(process.cwd(), "server", "templates", "kiosk-cheatsheet.html");
+    const html = fs.readFileSync(templatePath, "utf-8");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.status(200).send(html);
+  });
   async function syncSquareMembershipForCustomer(customerId, email) {
     try {
       if (!isConfigured()) return;
@@ -11409,7 +13294,7 @@ async function registerRoutes(app2) {
       const { hash, salt } = hashPin(password);
       const passwordHash = `${salt}:${hash}`;
       const verifyTokenRaw = randomBytes3(32).toString("hex");
-      const verifyTokenHash = createHash2("sha256").update(verifyTokenRaw).digest("hex");
+      const verifyTokenHash = createHash3("sha256").update(verifyTokenRaw).digest("hex");
       const verifyExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1e3);
       const customer = await storage.createCustomer(email, name.trim(), phone?.trim() || null, passwordHash, {
         emailVerifyTokenHash: verifyTokenHash,
@@ -11497,7 +13382,7 @@ async function registerRoutes(app2) {
       return res.status(429).json({ message: `Please wait ${retryAfter}s before requesting another email.` });
     }
     const verifyTokenRaw = randomBytes3(32).toString("hex");
-    const verifyTokenHash = createHash2("sha256").update(verifyTokenRaw).digest("hex");
+    const verifyTokenHash = createHash3("sha256").update(verifyTokenRaw).digest("hex");
     const verifyExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1e3);
     await storage.setEmailVerificationToken(customerId, verifyTokenHash, verifyExpiresAt);
     sendVerificationEmail({ name: customer.name, email: customer.email, tokenRaw: verifyTokenRaw });
@@ -11509,7 +13394,7 @@ async function registerRoutes(app2) {
     if (!tokenRaw) {
       return res.status(400).send(renderVerifyResultPage("error", "Missing verification token. Please use the link from your email."));
     }
-    const tokenHash = createHash2("sha256").update(tokenRaw).digest("hex");
+    const tokenHash = createHash3("sha256").update(tokenRaw).digest("hex");
     const customer = await storage.getCustomerByVerifyTokenHash(tokenHash);
     if (!customer) {
       return res.status(400).send(renderVerifyResultPage("error", "This link is invalid or has already been used. If you've already verified, you're all set."));
@@ -11536,7 +13421,7 @@ async function registerRoutes(app2) {
         const lastSent = customer.emailVerifyLastSentAt;
         if (!lastSent || Date.now() - lastSent.getTime() >= 6e4) {
           const verifyTokenRaw = randomBytes3(32).toString("hex");
-          const verifyTokenHash = createHash2("sha256").update(verifyTokenRaw).digest("hex");
+          const verifyTokenHash = createHash3("sha256").update(verifyTokenRaw).digest("hex");
           const verifyExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1e3);
           await storage.setEmailVerificationToken(customer.id, verifyTokenHash, verifyExpiresAt);
           sendVerificationEmail({ name: customer.name, email: customer.email, tokenRaw: verifyTokenRaw });
@@ -11569,7 +13454,7 @@ async function registerRoutes(app2) {
         const lastSent2 = customer.emailVerifyLastSentAt;
         if (!lastSent2 || Date.now() - lastSent2.getTime() >= 6e4) {
           const verifyTokenRaw = randomBytes3(32).toString("hex");
-          const verifyTokenHash = createHash2("sha256").update(verifyTokenRaw).digest("hex");
+          const verifyTokenHash = createHash3("sha256").update(verifyTokenRaw).digest("hex");
           const verifyExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1e3);
           await storage.setEmailVerificationToken(customer.id, verifyTokenHash, verifyExpiresAt);
           sendVerificationEmail({ name: customer.name, email: customer.email, tokenRaw: verifyTokenRaw });
@@ -11581,7 +13466,7 @@ async function registerRoutes(app2) {
         return res.json({ success: true });
       }
       const tokenRaw = randomBytes3(32).toString("hex");
-      const tokenHash = createHash2("sha256").update(tokenRaw).digest("hex");
+      const tokenHash = createHash3("sha256").update(tokenRaw).digest("hex");
       const expiresAt = new Date(Date.now() + 60 * 60 * 1e3);
       await storage.setPasswordResetToken(customer.id, tokenHash, expiresAt);
       sendPasswordResetEmail({ name: customer.name, email: customer.email, tokenRaw });
@@ -11605,7 +13490,7 @@ async function registerRoutes(app2) {
       return res.status(400).json({ message: "Password must be at least 6 characters" });
     }
     try {
-      const tokenHash = createHash2("sha256").update(token).digest("hex");
+      const tokenHash = createHash3("sha256").update(token).digest("hex");
       const customer = await storage.getCustomerByPasswordResetTokenHash(tokenHash);
       if (!customer) {
         return res.status(400).json({ message: "This reset link is invalid or has already been used." });
@@ -11635,7 +13520,7 @@ async function registerRoutes(app2) {
     if (!tokenRaw) {
       return res.status(400).send(renderResetPasswordPage({ token: "", error: "Missing reset token. Please use the link from your email." }));
     }
-    const tokenHash = createHash2("sha256").update(tokenRaw).digest("hex");
+    const tokenHash = createHash3("sha256").update(tokenRaw).digest("hex");
     const customer = await storage.getCustomerByPasswordResetTokenHash(tokenHash);
     if (!customer) {
       return res.status(400).send(renderResetPasswordPage({ token: "", error: "This reset link is invalid or has already been used." }));
@@ -11782,7 +13667,7 @@ async function registerRoutes(app2) {
         return res.status(400).json({ message: "Order is missing Square reference" });
       }
       const idemRaw = `app-order-${appOrderId}|saved-${customer.squareCardId}`;
-      const idempotencyKey = createHash2("sha256").update(idemRaw).digest("hex").slice(0, 45);
+      const idempotencyKey = createHash3("sha256").update(idemRaw).digest("hex").slice(0, 45);
       const payment = await chargeSavedCard({
         squareCustomerId: customer.squareCustomerId,
         squareCardId: customer.squareCardId,
@@ -15213,6 +17098,37 @@ function configureExpoAndLanding(app2) {
   }
   app2.use("/assets", express.static(path3.resolve(process.cwd(), "assets")));
   app2.use("/uploads", express.static(path3.resolve(process.cwd(), "uploads")));
+  app2.get("/robots.txt", (req, res) => {
+    const origin = process.env.PUBLIC_APP_URL?.replace(/\/+$/, "") || `${req.protocol}://${req.get("host")}`;
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.status(200).send(
+      `User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /staff-portal
+Disallow: /staff-hr
+Disallow: /admin-
+
+Sitemap: ${origin}/sitemap.xml
+`
+    );
+  });
+  app2.get("/sitemap.xml", (req, res) => {
+    const origin = process.env.PUBLIC_APP_URL?.replace(/\/+$/, "") || `${req.protocol}://${req.get("host")}`;
+    const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    const urls = ["/", "/membership", "/privacy-policy", "/terms-of-service", "/contact"];
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+` + urls.map(
+      (p) => `  <url><loc>${origin}${p}</loc><lastmod>${today}</lastmod><changefreq>weekly</changefreq></url>`
+    ).join("\n") + `
+</urlset>
+`;
+    res.setHeader("Content-Type", "application/xml; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.status(200).send(body);
+  });
   app2.use(
     "/.well-known",
     express.static(path3.resolve(process.cwd(), "server", "well-known"), {
