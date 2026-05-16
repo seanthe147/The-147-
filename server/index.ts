@@ -421,6 +421,41 @@ function configureExpoAndLanding(app: express.Application) {
 
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
   app.use("/uploads", express.static(path.resolve(process.cwd(), "uploads")));
+
+  // SEO: robots.txt — allow all crawlers, point to sitemap.
+  app.get("/robots.txt", (req: Request, res: Response) => {
+    const origin =
+      process.env.PUBLIC_APP_URL?.replace(/\/+$/, "") ||
+      `${req.protocol}://${req.get("host")}`;
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.status(200).send(
+      `User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /staff-portal\nDisallow: /staff-hr\nDisallow: /admin-\n\nSitemap: ${origin}/sitemap.xml\n`,
+    );
+  });
+
+  // SEO: minimal sitemap covering the public marketing surfaces.
+  app.get("/sitemap.xml", (req: Request, res: Response) => {
+    const origin =
+      process.env.PUBLIC_APP_URL?.replace(/\/+$/, "") ||
+      `${req.protocol}://${req.get("host")}`;
+    const today = new Date().toISOString().slice(0, 10);
+    const urls = ["/", "/membership", "/privacy-policy", "/terms-of-service", "/contact"];
+    const body =
+      `<?xml version="1.0" encoding="UTF-8"?>\n` +
+      `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+      urls
+        .map(
+          (p) =>
+            `  <url><loc>${origin}${p}</loc><lastmod>${today}</lastmod><changefreq>weekly</changefreq></url>`,
+        )
+        .join("\n") +
+      `\n</urlset>\n`;
+    res.setHeader("Content-Type", "application/xml; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.status(200).send(body);
+  });
+
   // Serve Apple Pay / Google Pay domain-association files for Square wallet
   // domain verification. Place files in server/well-known/ — they'll be
   // reachable at https://<domain>/.well-known/<filename>
