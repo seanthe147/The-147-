@@ -126,7 +126,7 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "versionCode": 112
+      "versionCode": 113
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
@@ -149,7 +149,15 @@
         }
       ],
       "expo-secure-store",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 23
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
