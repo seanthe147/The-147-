@@ -145,35 +145,30 @@ const WorldCupCard = memo(function WorldCupCard() {
       ) : (
         matches.map((m, i) => {
           const isLive = m.status === "live";
+          const homeShort = (m.homeShort || m.homeName || "").toUpperCase().slice(0, 3);
+          const awayShort = (m.awayShort || m.awayName || "").toUpperCase().slice(0, 3);
           return (
             <View
               key={m.matchId ?? `${m.kickoffIso ?? i}`}
               style={[styles.wcRow, i === matches.length - 1 && { borderBottomWidth: 0 }]}
             >
-              <View style={styles.wcTeamsCol}>
-                <View style={styles.wcTeamRow}>
-                  {m.homeLogo ? (
-                    <ExpoImage source={{ uri: m.homeLogo }} style={styles.wcLogo} contentFit="contain" />
-                  ) : (
-                    <View style={styles.wcLogoFallback} />
-                  )}
-                  <Text style={styles.wcTeamName} numberOfLines={1}>{m.homeName || m.homeShort}</Text>
-                  {isLive && m.homeScore != null ? (
-                    <Text style={styles.wcScore}>{m.homeScore}</Text>
-                  ) : null}
-                </View>
-                <View style={styles.wcTeamRow}>
-                  {m.awayLogo ? (
-                    <ExpoImage source={{ uri: m.awayLogo }} style={styles.wcLogo} contentFit="contain" />
-                  ) : (
-                    <View style={styles.wcLogoFallback} />
-                  )}
-                  <Text style={styles.wcTeamName} numberOfLines={1}>{m.awayName || m.awayShort}</Text>
-                  {isLive && m.awayScore != null ? (
-                    <Text style={styles.wcScore}>{m.awayScore}</Text>
-                  ) : null}
-                </View>
-              </View>
+              {m.homeLogo ? (
+                <ExpoImage source={{ uri: m.homeLogo }} style={styles.wcLogo} contentFit="contain" />
+              ) : (
+                <View style={styles.wcLogoFallback} />
+              )}
+              <Text style={styles.wcTeamName} numberOfLines={1}>
+                {homeShort}
+                {isLive && m.homeScore != null ? ` ${m.homeScore}` : ""}
+                <Text style={styles.wcVs}> vs </Text>
+                {awayShort}
+                {isLive && m.awayScore != null ? ` ${m.awayScore}` : ""}
+              </Text>
+              {m.awayLogo ? (
+                <ExpoImage source={{ uri: m.awayLogo }} style={styles.wcLogo} contentFit="contain" />
+              ) : (
+                <View style={styles.wcLogoFallback} />
+              )}
               <View style={styles.wcMetaCol}>
                 {isLive ? (
                   <View style={styles.wcLivePill}>
@@ -181,7 +176,7 @@ const WorldCupCard = memo(function WorldCupCard() {
                     <Text style={styles.wcLiveText}>{m.minute || "LIVE"}</Text>
                   </View>
                 ) : (
-                  <Text style={styles.wcDateText} numberOfLines={2}>{formatMatchDate(m.kickoffIso)}</Text>
+                  <Text style={styles.wcDateText} numberOfLines={1}>{formatMatchDate(m.kickoffIso)}</Text>
                 )}
               </View>
             </View>
@@ -789,11 +784,11 @@ const styles = StyleSheet.create({
   },
   heroBanner: {
     width: "100%",
-    minHeight: 320,
+    minHeight: 280,
   },
   heroContent: {
     paddingHorizontal: 22,
-    paddingBottom: 24,
+    paddingBottom: 20,
     flex: 1,
     justifyContent: "space-between",
   },
@@ -801,7 +796,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 6,
+    marginBottom: 0,
   },
   heroTopRight: {
     flexDirection: "row",
@@ -863,14 +858,14 @@ const styles = StyleSheet.create({
   },
   heroCenter: {
     alignItems: "center",
-    marginVertical: 8,
+    marginVertical: 2,
   },
   heroGreeting: {
     fontFamily: "Montserrat_500Medium",
     fontSize: 14,
     color: "rgba(255,255,255,0.85)",
     letterSpacing: 0.3,
-    marginBottom: 6,
+    marginBottom: 2,
     textShadowColor: "rgba(0,0,0,0.3)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
@@ -981,7 +976,7 @@ const styles = StyleSheet.create({
   wcHeader: {
     backgroundColor: Colors.brand.blue,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 7,
   },
   wcTitleRow: {
     flexDirection: "row",
@@ -1013,36 +1008,34 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 12,
+    paddingVertical: 9,
+    gap: 8,
     borderBottomWidth: 1,
     borderBottomColor: "#F1F3F6",
   },
-  wcTeamsCol: {
-    flex: 1,
-    gap: 6,
-  },
-  wcTeamRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
   wcLogo: {
-    width: 20,
-    height: 20,
+    width: 18,
+    height: 18,
     resizeMode: "contain",
   },
   wcLogoFallback: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     backgroundColor: "#E5E7EB",
   },
   wcTeamName: {
     flex: 1,
-    fontFamily: "Montserrat_600SemiBold",
+    fontFamily: "Montserrat_700Bold",
     fontSize: 13,
     color: Colors.light.text,
+    letterSpacing: 0.3,
+  },
+  wcVs: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 11,
+    color: Colors.light.textSecondary,
+    letterSpacing: 0,
   },
   wcScore: {
     fontFamily: "Montserrat_700Bold",
