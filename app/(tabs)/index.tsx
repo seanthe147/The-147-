@@ -789,11 +789,11 @@ const styles = StyleSheet.create({
   },
   heroBanner: {
     width: "100%",
-    minHeight: 360,
+    minHeight: 320,
   },
   heroContent: {
     paddingHorizontal: 22,
-    paddingBottom: 28,
+    paddingBottom: 24,
     flex: 1,
     justifyContent: "space-between",
   },
@@ -801,7 +801,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 6,
   },
   heroTopRight: {
     flexDirection: "row",
@@ -863,7 +863,7 @@ const styles = StyleSheet.create({
   },
   heroCenter: {
     alignItems: "center",
-    marginVertical: 20,
+    marginVertical: 8,
   },
   heroGreeting: {
     fontFamily: "Montserrat_500Medium",
