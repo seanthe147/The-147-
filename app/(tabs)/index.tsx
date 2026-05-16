@@ -86,6 +86,112 @@ const HomePointsPill = memo(function HomePointsPill() {
   );
 });
 
+// Home-screen "WORLD CUP 2026" card — replaces the old Book a Table /
+// Events & Tickets quick-pills. Lists the next 2 England fixtures from the
+// /api/world-cup/england-next endpoint. Quietly hides itself if the API
+// returns no matches (so the home screen never shows an empty box).
+type EnglandMatch = {
+  status: "live" | "upcoming" | "finished" | "none";
+  matchId: string | null;
+  homeName: string;
+  homeShort: string;
+  homeLogo: string | null;
+  homeScore: number | null;
+  awayName: string;
+  awayShort: string;
+  awayLogo: string | null;
+  awayScore: number | null;
+  kickoffIso: string | null;
+  minute: string | null;
+  stage: string | null;
+};
+
+function formatMatchDate(iso: string | null): string {
+  if (!iso) return "TBC";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "TBC";
+  const now = new Date();
+  const sameDay =
+    d.getDate() === now.getDate() &&
+    d.getMonth() === now.getMonth() &&
+    d.getFullYear() === now.getFullYear();
+  const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" });
+  if (sameDay) return `Today ${time}`;
+  const day = d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Europe/London" });
+  return `${day} ${time}`;
+}
+
+const WorldCupCard = memo(function WorldCupCard() {
+  const { data, isLoading } = useQuery<{ matches: EnglandMatch[] }>({
+    queryKey: ["/api/world-cup/england-next"],
+    staleTime: 5 * 60_000,
+  });
+  const matches = data?.matches ?? [];
+  if (!isLoading && matches.length === 0) return null;
+
+  return (
+    <View style={styles.wcCard}>
+      <View style={styles.wcHeader}>
+        <View style={styles.wcTitleRow}>
+          <Ionicons name="football" size={16} color="#FFFFFF" />
+          <Text style={styles.wcTitle}>WORLD CUP 2026</Text>
+        </View>
+        <Text style={styles.wcSubtitle}>Next England matches</Text>
+      </View>
+      {isLoading && matches.length === 0 ? (
+        <View style={styles.wcLoadingRow}>
+          <Text style={styles.wcLoadingText}>Loading fixtures…</Text>
+        </View>
+      ) : (
+        matches.map((m, i) => {
+          const isLive = m.status === "live";
+          return (
+            <View
+              key={m.matchId ?? `${m.kickoffIso ?? i}`}
+              style={[styles.wcRow, i === matches.length - 1 && { borderBottomWidth: 0 }]}
+            >
+              <View style={styles.wcTeamsCol}>
+                <View style={styles.wcTeamRow}>
+                  {m.homeLogo ? (
+                    <ExpoImage source={{ uri: m.homeLogo }} style={styles.wcLogo} contentFit="contain" />
+                  ) : (
+                    <View style={styles.wcLogoFallback} />
+                  )}
+                  <Text style={styles.wcTeamName} numberOfLines={1}>{m.homeName || m.homeShort}</Text>
+                  {isLive && m.homeScore != null ? (
+                    <Text style={styles.wcScore}>{m.homeScore}</Text>
+                  ) : null}
+                </View>
+                <View style={styles.wcTeamRow}>
+                  {m.awayLogo ? (
+                    <ExpoImage source={{ uri: m.awayLogo }} style={styles.wcLogo} contentFit="contain" />
+                  ) : (
+                    <View style={styles.wcLogoFallback} />
+                  )}
+                  <Text style={styles.wcTeamName} numberOfLines={1}>{m.awayName || m.awayShort}</Text>
+                  {isLive && m.awayScore != null ? (
+                    <Text style={styles.wcScore}>{m.awayScore}</Text>
+                  ) : null}
+                </View>
+              </View>
+              <View style={styles.wcMetaCol}>
+                {isLive ? (
+                  <View style={styles.wcLivePill}>
+                    <View style={styles.wcLiveDot} />
+                    <Text style={styles.wcLiveText}>{m.minute || "LIVE"}</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.wcDateText} numberOfLines={2}>{formatMatchDate(m.kickoffIso)}</Text>
+                )}
+              </View>
+            </View>
+          );
+        })
+      )}
+    </View>
+  );
+});
+
 const QuickActionPill = memo(function QuickActionPill({
   icon,
   label,
@@ -607,16 +713,7 @@ export default function HomeScreen() {
           <PersonalisedHomeCards />
 
           <View style={styles.quickNav}>
-            <QuickActionPill
-              icon="calendar-outline"
-              label="Book a Table"
-              onPress={goToBook}
-            />
-            <QuickActionPill
-              icon="ticket-outline"
-              label="Events & Tickets"
-              onPress={goToEvents}
-            />
+            <WorldCupCard />
             <QuickActionPill
               icon="restaurant-outline"
               label="Food & Drinks Menu"
@@ -872,6 +969,118 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 14,
     color: Colors.light.text,
+  },
+  wcCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#EEF0F3",
+    overflow: "hidden",
+    marginBottom: 6,
+  },
+  wcHeader: {
+    backgroundColor: Colors.brand.blue,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  wcTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  wcTitle: {
+    color: "#FFFFFF",
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 13,
+    letterSpacing: 1.2,
+  },
+  wcSubtitle: {
+    color: "rgba(255,255,255,0.85)",
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 11,
+    marginTop: 2,
+  },
+  wcLoadingRow: {
+    paddingHorizontal: 14,
+    paddingVertical: 18,
+    alignItems: "center",
+  },
+  wcLoadingText: {
+    color: Colors.light.textSecondary,
+    fontSize: 12,
+  },
+  wcRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F3F6",
+  },
+  wcTeamsCol: {
+    flex: 1,
+    gap: 6,
+  },
+  wcTeamRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  wcLogo: {
+    width: 20,
+    height: 20,
+    resizeMode: "contain",
+  },
+  wcLogoFallback: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#E5E7EB",
+  },
+  wcTeamName: {
+    flex: 1,
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: Colors.light.text,
+  },
+  wcScore: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 14,
+    color: Colors.light.text,
+    minWidth: 18,
+    textAlign: "right",
+  },
+  wcMetaCol: {
+    minWidth: 90,
+    alignItems: "flex-end",
+  },
+  wcDateText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
+    color: Colors.brand.blue,
+    textAlign: "right",
+  },
+  wcLivePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "#FEE2E2",
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  wcLiveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#EF4444",
+  },
+  wcLiveText: {
+    color: "#B91C1C",
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 10,
+    letterSpacing: 0.4,
   },
   sectionHeader: {
     flexDirection: "row",

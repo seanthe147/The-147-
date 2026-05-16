@@ -27,6 +27,7 @@ type CachedMatch = {
 };
 
 let cache: { at: number; ttl: number; data: CachedMatch } | null = null;
+let englandCache: { at: number; ttl: number; data: CachedMatch[] } | null = null;
 
 const ESPN_SCOREBOARD =
   "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard";
@@ -235,5 +236,132 @@ export async function getNextWorldCupMatch(): Promise<CachedMatch> {
 
   const ttl = data.status === "live" ? 30_000 : 5 * 60_000;
   cache = { at: now, ttl, data };
+  return data;
+}
+
+// ── England-specific fixtures ───────────────────────────────────────────────
+//
+// Returns the next `limit` upcoming or live England matches (defaults to 2).
+// Used by the home screen's "WORLD CUP 2026" card. Falls back to TheSportsDB
+// if ESPN is unavailable, just like the single-match endpoint.
+
+function isEnglandName(name: string | null | undefined): boolean {
+  if (!name) return false;
+  const s = name.trim().toLowerCase();
+  return s === "england" || s === "england national football team";
+}
+
+async function fetchEspnEnglandList(limit: number): Promise<CachedMatch[]> {
+  const now = new Date();
+  const start = new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000);
+  // ESPN's scoreboard endpoint rejects windows larger than ~200 days with a
+  // 400. 200 days easily covers the entire World Cup group + knockout stage
+  // from any point during the tournament, which is all this card needs.
+  const end = new Date(now.getTime() + 200 * 24 * 60 * 60 * 1000);
+  const url = `${ESPN_SCOREBOARD}?dates=${yyyymmdd(start)}-${yyyymmdd(end)}&limit=200`;
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error(`ESPN ${res.status}`);
+  const json = await res.json();
+  const events: any[] = Array.isArray(json?.events) ? json.events : [];
+  if (!events.length) return [];
+
+  const out: { kickoffMs: number; data: CachedMatch }[] = [];
+  for (const ev of events) {
+    const comp = ev?.competitions?.[0];
+    const competitors = comp?.competitors ?? [];
+    const home = competitors.find((c: any) => c?.homeAway === "home") ?? competitors[0];
+    const away = competitors.find((c: any) => c?.homeAway === "away") ?? competitors[1];
+    const homeName: string = home?.team?.displayName ?? "";
+    const awayName: string = away?.team?.displayName ?? "";
+    if (!isEnglandName(homeName) && !isEnglandName(awayName)) continue;
+    const state: string = ev?.status?.type?.state ?? "pre";
+    if (state === "post") continue; // only upcoming/live
+    const kickoffIso: string | null = ev?.date ?? null;
+    const kickoffMs = kickoffIso ? Date.parse(kickoffIso) : 0;
+    const status: CachedMatch["status"] = state === "in" ? "live" : "upcoming";
+    out.push({
+      kickoffMs,
+      data: {
+        status,
+        matchId: String(ev?.id ?? ""),
+        homeName,
+        homeShort: home?.team?.shortDisplayName ?? home?.team?.abbreviation ?? "",
+        homeLogo: home?.team?.logo ?? null,
+        homeScore: home?.score != null ? Number(home.score) : null,
+        awayName,
+        awayShort: away?.team?.shortDisplayName ?? away?.team?.abbreviation ?? "",
+        awayLogo: away?.team?.logo ?? null,
+        awayScore: away?.score != null ? Number(away.score) : null,
+        kickoffIso,
+        minute: status === "live" ? (ev?.status?.type?.shortDetail ?? null) : null,
+        stage: ev?.season?.slug || comp?.notes?.[0]?.headline || null,
+        source: "espn",
+      },
+    });
+  }
+  return out.sort((a, b) => a.kickoffMs - b.kickoffMs).slice(0, limit).map((x) => x.data);
+}
+
+async function fetchSportsDbEnglandList(limit: number): Promise<CachedMatch[]> {
+  let events: any[] = [];
+  try {
+    const res = await fetch(SPORTSDB_SEASON, { headers: { Accept: "application/json" } });
+    if (res.ok) {
+      const json = await res.json();
+      events = Array.isArray(json?.events) ? json.events : [];
+    }
+  } catch {}
+  if (!events.length) {
+    try {
+      const res = await fetch(SPORTSDB_NEXT, { headers: { Accept: "application/json" } });
+      if (res.ok) {
+        const json = await res.json();
+        events = Array.isArray(json?.events) ? json.events : [];
+      }
+    } catch {}
+  }
+  if (!events.length) return [];
+
+  const parsed = events
+    .map(parseSportsDbEvent)
+    .filter((x): x is { kickoffMs: number; data: CachedMatch } => !!x)
+    .filter((x) => isEnglandName(x.data.homeName) || isEnglandName(x.data.awayName))
+    .filter((x) => x.data.status !== "finished");
+
+  return parsed.sort((a, b) => a.kickoffMs - b.kickoffMs).slice(0, limit).map((x) => x.data);
+}
+
+export async function getNextEnglandMatches(limit = 2): Promise<CachedMatch[]> {
+  const now = Date.now();
+  if (englandCache && now - englandCache.at < englandCache.ttl && englandCache.data.length >= limit) {
+    return englandCache.data.slice(0, limit);
+  }
+
+  let data: CachedMatch[] = [];
+  let espnError: string | null = null;
+  try {
+    data = await fetchEspnEnglandList(limit);
+  } catch (err: any) {
+    espnError = err?.message ?? String(err);
+    console.error("[WORLD_CUP] ESPN England fetch error:", espnError);
+  }
+
+  if (data.length === 0) {
+    try {
+      const fallback = await fetchSportsDbEnglandList(limit);
+      if (fallback.length) {
+        data = fallback;
+        if (espnError) console.log("[WORLD_CUP] England fallback to TheSportsDB");
+      }
+    } catch (err: any) {
+      console.error("[WORLD_CUP] TheSportsDB England fetch error:", err?.message ?? err);
+    }
+  }
+
+  if (data.length === 0 && englandCache) return englandCache.data.slice(0, limit);
+
+  const anyLive = data.some((d) => d.status === "live");
+  const ttl = anyLive ? 30_000 : 10 * 60_000;
+  englandCache = { at: now, ttl, data };
   return data;
 }

@@ -4704,6 +4704,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Next N England fixtures for the home-screen "WORLD CUP 2026" card.
+  // Defaults to 2. Caches internally for 10 minutes (30s if any are live).
+  app.get("/api/world-cup/england-next", async (req, res) => {
+    try {
+      const limitRaw = Number(req.query.limit);
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 && limitRaw <= 10 ? Math.floor(limitRaw) : 2;
+      const { getNextEnglandMatches } = await import("./worldCup");
+      const matches = await getNextEnglandMatches(limit);
+      res.json({ matches });
+    } catch (err: any) {
+      console.error("/api/world-cup/england-next error:", err.message);
+      res.status(500).json({ message: "Unable to load England matches" });
+    }
+  });
+
   app.get("/api/deals", async (req, res) => {
     try {
       // Optional surface filter: when ?surface=order or ?surface=kiosk is
