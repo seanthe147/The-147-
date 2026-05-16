@@ -467,6 +467,16 @@ export default function HomeScreen() {
     queryKey: ["/api/settings"],
   });
 
+  // Mirror the NextMatchBar visibility so we don't double-count the
+  // status-bar inset on the hero. The bar consumes insets.top itself;
+  // when it's rendered, the hero must start at 0 — otherwise you get a
+  // visible navy gap roughly the height of the notch.
+  const { data: nextMatch } = useQuery<{ status: string }>({
+    queryKey: ["/api/world-cup/next-match"],
+    staleTime: 25_000,
+  });
+  const matchBarVisible = !!nextMatch && nextMatch.status !== "none";
+
   const bannerImageUrl = settings?.banner_image;
   const todayHours = useMemo(() => getOpeningHoursToday(), []);
 
@@ -487,8 +497,9 @@ export default function HomeScreen() {
     />
   );
 
+  const heroTopPad = (matchBarVisible ? 10 : insets.top + 10) + webTopInset;
   const heroContent = (
-    <View style={[styles.heroContent, { paddingTop: insets.top + 10 + webTopInset }]}>
+    <View style={[styles.heroContent, { paddingTop: heroTopPad }]}>
       <View style={styles.heroTopBar}>
         <ExpoImage source={logoImage} style={styles.logoImage} contentFit="contain" cachePolicy="memory" />
         <View style={styles.heroTopRight}>
