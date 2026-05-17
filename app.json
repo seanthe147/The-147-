@@ -126,7 +126,7 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "versionCode": 114
+      "versionCode": 115
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
