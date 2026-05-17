@@ -428,36 +428,50 @@ export async function runStartupMigrations() {
          AND (square_customer_group_id IS NULL OR square_customer_group_id = '');
     `);
 
-    // Self-healing VIP restore (was Task #May-17, now permanent):
-    // The VIP plan keeps getting flipped to active=false somehow (twice in
-    // 2026 — May and again pre-May-17). When VIP is inactive, the per-login
-    // Square sync silently skips it, breaking the 10% discount for every VIP
-    // (Jon Turner, Jackie Holden, etc.). The previous one-shot guard
-    // (vip_restore_2026_05_done) only ran once and could not catch a second
-    // regression — which is exactly what happened. This block now runs on
-    // every boot and is idempotent: it only touches a row when VIP is found
-    // inactive, so it's a no-op once the plan is correct, and it
-    // self-recovers if it ever goes inactive again. Staff CANNOT permanently
-    // disable VIP via the admin UI — by design, since VIP is invitation-only
-    // via the Square customer group and must always be active to apply the
-    // discount.
-    const vipFix = await client.query(`
+    // Self-healing invitation-only-plan restore (was VIP-only Task #May-17,
+    // now extended to cover Staff and any future invitation-only plan):
+    //
+    // Both the VIP plan and the Staff plan are "invitation-only" — they
+    // never appear in app self-signup (hide_from_signup=TRUE) and are
+    // granted exclusively by adding the customer to the matching Square
+    // customer group in the Square dashboard. The discount only applies if
+    // the plan is `active=TRUE`; if the plan flips to inactive, the
+    // per-login Square sync silently skips it and every VIP / Staff member
+    // loses their discount with no visible error.
+    //
+    // This happened to VIP twice in 2026 (May, then again pre-May-17) and to
+    // Staff at least once. The previous one-shot migration only fired once
+    // and could not recover from a second regression. This block now runs on
+    // every boot and is idempotent: it only touches rows where the
+    // invariant is violated (an invitation-only group-mapped plan that is
+    // inactive OR no longer hidden from signup), so it's a no-op once the
+    // data is correct, and it self-recovers if anything flips the bits back.
+    //
+    // The rule: a plan that is invitation-only (hide_from_signup=TRUE) AND
+    // tied to a Square customer group MUST be active, because otherwise it
+    // can never fulfil its purpose. Staff cannot permanently disable these
+    // plans via the admin UI — by design.
+    const invitePlanFix = await client.query(`
       UPDATE membership_plans
          SET active = TRUE, hide_from_signup = TRUE
-       WHERE tier = 'vip'
-         AND square_customer_group_id = '575ce1a2-a598-4f09-82ba-90a7b88e9da1'
+       WHERE tier IN ('vip', 'staff')
+         AND square_customer_group_id IS NOT NULL
+         AND square_customer_group_id <> ''
          AND (active = FALSE OR hide_from_signup = FALSE)
-       RETURNING id, name;
+       RETURNING id, name, tier;
     `);
-    if ((vipFix.rowCount ?? 0) > 0) {
-      // Plan was inactive — reset the backfill flag so the boot-time backfill
-      // re-runs and links any existing VIP-group members on this boot.
+    if ((invitePlanFix.rowCount ?? 0) > 0) {
+      // A plan was healed — reset the backfill flag so the boot-time backfill
+      // re-runs and re-links any existing group members on this boot. This is
+      // safe to do for either VIP or Staff because the backfill walks every
+      // group-mapped active plan and reconciles by Square group membership.
       await client.query(`
         INSERT INTO site_settings (key, value, updated_at)
           VALUES ('vip_group_backfill_v1_done', 'no', NOW())
           ON CONFLICT (key) DO UPDATE SET value = 'no', updated_at = NOW();
       `);
-      console.log(`[MIGRATION] VIP plan re-enabled (${vipFix.rowCount} row); backfill flag reset — boot backfill will run in ~30s`);
+      const names = (invitePlanFix.rows || []).map((r: any) => `${r.name} (${r.tier})`).join(", ");
+      console.log(`[MIGRATION] Invitation-only plans re-enabled: ${names}; backfill flag reset — boot backfill will run in ~30s`);
     }
 
     // One-shot: prevent duplicate active/pending memberships per customer
