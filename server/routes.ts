@@ -3382,16 +3382,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
     {
       const u = (req as any).staffUser;
-      if (u) {
-        void storage.logBookingAction({
-          bookingId: booking.id,
-          action: "created",
-          staffUsername: u.username,
-          staffId: u.id ?? null,
-          toValue: { customerName: booking.customerName, date: booking.date, startTime: booking.startTime, tableType: booking.tableType, tableNumber: booking.tableNumber, status: booking.status, depositRequired: requiresDeposit },
-          note: requiresDeposit ? "Created by staff (deposit pending)" : "Created by staff",
-        });
-      }
+      void storage.logBookingAction({
+        bookingId: booking.id,
+        action: "created",
+        staffUsername: u?.username || `customer:${booking.customerEmail}`,
+        staffId: u?.id ?? null,
+        toValue: { customerName: booking.customerName, date: booking.date, startTime: booking.startTime, tableType: booking.tableType, tableNumber: booking.tableNumber, status: booking.status, depositRequired: requiresDeposit },
+        note: u
+          ? (requiresDeposit ? "Created by staff (deposit pending)" : "Created by staff")
+          : (requiresDeposit ? `Created by customer via ${req.headers["x-app-platform"] || "web"} (deposit pending)` : `Created by customer via ${req.headers["x-app-platform"] || "web"}`),
+      });
     }
 
     if (requiresDeposit) {
@@ -4669,6 +4669,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({ message: "Invalid email format" });
+    }
+    // Snapshot booking rows BEFORE the wipe so each deletion is auditable.
+    const doomedBookings = await storage.getBookingsByEmail(email);
+    const u = (req as any).staffUser;
+    for (const b of doomedBookings) {
+      void storage.logBookingAction({
+        bookingId: b.id,
+        action: "deleted",
+        staffUsername: u?.username || "system:gdpr-erase",
+        staffId: u?.id ?? null,
+        fromValue: { customerName: b.customerName, customerEmail: b.customerEmail, date: b.date, startTime: b.startTime, tableType: b.tableType, tableNumber: b.tableNumber, status: b.status },
+        note: `GDPR Article 17 erasure (staff-triggered) for ${email}`,
+      });
     }
     const [bookingsDeleted, pushTokensDeleted, ordersDeleted, messagesDeleted] = await Promise.all([
       storage.deleteBookingsByEmail(email),
@@ -9231,6 +9244,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/customers/me", customerAuth, async (req, res) => {
     const customerId = (req as any).customerId;
     const email = (req as any).customerEmail;
+    // Snapshot booking rows BEFORE the wipe so each deletion is auditable.
+    const doomedBookings = await storage.getBookingsByEmail(email);
+    for (const b of doomedBookings) {
+      void storage.logBookingAction({
+        bookingId: b.id,
+        action: "deleted",
+        staffUsername: `customer:${email}`,
+        staffId: null,
+        fromValue: { customerName: b.customerName, customerEmail: b.customerEmail, date: b.date, startTime: b.startTime, tableType: b.tableType, tableNumber: b.tableNumber, status: b.status },
+        note: "Deleted by customer self-erasure (account deletion)",
+      });
+    }
     const [bookingsDeleted, pushTokensDeleted, ordersDeleted, messagesDeleted] = await Promise.all([
       storage.deleteBookingsByEmail(email),
       storage.deletePushTokensByEmail(email),
@@ -11349,6 +11374,18 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     pendingDeletionTokens.delete(tokenRaw);
     const { email } = entry;
 
+    // Snapshot booking rows BEFORE the wipe so each deletion is auditable.
+    const doomedBookings = await storage.getBookingsByEmail(email);
+    for (const b of doomedBookings) {
+      void storage.logBookingAction({
+        bookingId: b.id,
+        action: "deleted",
+        staffUsername: `customer:${email}`,
+        staffId: null,
+        fromValue: { customerName: b.customerName, customerEmail: b.customerEmail, date: b.date, startTime: b.startTime, tableType: b.tableType, tableNumber: b.tableNumber, status: b.status },
+        note: "Deleted via emailed self-service erasure link (GDPR Article 17)",
+      });
+    }
     // Perform full erasure of all personal data categories
     await Promise.all([
       storage.deleteBookingsByEmail(email),
