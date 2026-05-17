@@ -428,6 +428,44 @@ export async function runStartupMigrations() {
          AND (square_customer_group_id IS NULL OR square_customer_group_id = '');
     `);
 
+    // One-shot fix (Task #May-17 — VIP discount restoration):
+    // At some point after the initial VIP migration above, the VIP plan was
+    // disabled (active=false), which caused the per-login Square sync to skip
+    // it entirely — Jon Turner, Jackie Holden and other VIP-group members
+    // stopped receiving their member discount. Re-enable it, hide it from
+    // app self-signup (VIP is invitation-only via the Square customer group),
+    // and reset the VIP backfill flag so the boot-time backfill re-runs and
+    // links any existing VIP-group members on next boot.
+    // Guarded by site_settings flag so subsequent boots are no-ops and staff
+    // can later disable the plan via the admin UI without it bouncing back.
+    const vipRestoreFlag = await client.query(
+      `SELECT value FROM site_settings WHERE key = 'vip_restore_2026_05_done'`
+    );
+    if (vipRestoreFlag.rowCount === 0) {
+      const updated = await client.query(`
+        UPDATE membership_plans
+           SET active = TRUE, hide_from_signup = TRUE
+         WHERE tier = 'vip'
+           AND square_customer_group_id = '575ce1a2-a598-4f09-82ba-90a7b88e9da1'
+         RETURNING id, name, active, hide_from_signup;
+      `);
+      if ((updated.rowCount ?? 0) > 0) {
+        await client.query(`
+          INSERT INTO site_settings (key, value, updated_at)
+            VALUES ('vip_group_backfill_v1_done', 'no', NOW())
+            ON CONFLICT (key) DO UPDATE SET value = 'no', updated_at = NOW();
+        `);
+        await client.query(`
+          INSERT INTO site_settings (key, value, updated_at)
+            VALUES ('vip_restore_2026_05_done', 'yes', NOW())
+            ON CONFLICT (key) DO UPDATE SET value = 'yes', updated_at = NOW();
+        `);
+        console.log(`[MIGRATION] VIP plan re-enabled + hidden from signup (${updated.rowCount} row); backfill flag reset — boot backfill will run in ~30s`);
+      } else {
+        console.warn("[MIGRATION] VIP restore SKIPPED — no row matched (tier='vip' + expected group ID). Flag NOT set; will retry on next boot.");
+      }
+    }
+
     // Attendance trust columns + concurrency guard (Task #104).
     // db:push handles these in normal deploys; the IF NOT EXISTS clauses make
     // this safe to run on every boot as belt-and-suspenders for environments

@@ -1912,6 +1912,37 @@ function DashboardScreen() {
                 testID="portal-memberships"
               />
               <AdminTool
+                icon="sync"
+                title="Sync Memberships"
+                description="Pull latest VIP/Square members into the app"
+                color={Colors.brand.green}
+                onPress={() => {
+                  Alert.alert(
+                    "Sync all memberships?",
+                    "This checks every app customer against Square and links anyone in a Square customer group (e.g. VIP). Safe to run anytime.",
+                    [
+                      { text: "Cancel", style: "cancel" },
+                      {
+                        text: "Sync now",
+                        onPress: async () => {
+                          try {
+                            const res = await apiRequest("POST", "/api/staff/membership/sync-all", {});
+                            const data = await res.json();
+                            Alert.alert(
+                              "Sync complete",
+                              `${data.linked ?? 0} of ${data.total ?? 0} customers are now linked to a membership.`
+                            );
+                          } catch (e: any) {
+                            Alert.alert("Sync failed", e?.message || "Please try again.");
+                          }
+                        },
+                      },
+                    ]
+                  );
+                }}
+                testID="portal-sync-memberships"
+              />
+              <AdminTool
                 icon="notifications"
                 title="Push Notifications"
                 description="Send notifications to app users"

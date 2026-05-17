@@ -8430,11 +8430,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // ── 2. Check Square customer groups ────────────────────────────────────
-      // Same staff-only guard as subPlans above. The VIP plan is gated
-      // behind a Square customer group, so this is the primary attack
-      // vector if the guard is missing — anyone added to that group in
-      // Square would be auto-elevated on next app sign-in.
-      const groupPlans = allPlans.filter(p => p.active && !p.hideFromSignup && (p as any).squareCustomerGroupId);
+      // Square customer groups can ONLY be managed from the Square dashboard
+      // by authenticated staff — customers cannot self-add. So unlike the
+      // subscription path above (which a customer could create themselves),
+      // group membership IS treated as an authoritative staff grant, and
+      // hideFromSignup plans (e.g. VIP) are allowed through this path. This
+      // is how the venue wants VIP to work: invitation-only via Square group,
+      // no self-signup, automatic discount on next app sign-in.
+      const groupPlans = allPlans.filter(p => p.active && (p as any).squareCustomerGroupId);
       if (groupPlans.length) {
         const customerGroupIds = await square.getCustomerGroupIds(sqCustomer.id).catch(() => [] as string[]);
         const groupMatch = groupPlans.find(p => customerGroupIds.includes((p as any).squareCustomerGroupId));
@@ -8508,7 +8511,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.warn("[VIP BACKFILL] Skipped (non-fatal):", err?.message);
       }
     })();
-  }, 5000);
+  }, 30000); // 30s — must run AFTER runStartupMigrations() in server/index.ts (which can reset the backfill flag). Migrations comfortably finish well within this window.
 
   app.post("/api/customers/register", async (req, res) => {
     const clientIp = getClientIp(req);
