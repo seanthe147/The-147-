@@ -8089,16 +8089,23 @@
       }else{
         html+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
           '<thead><tr style="text-align:left;border-bottom:1px solid var(--border);color:var(--text-2);font-size:11px;text-transform:uppercase;letter-spacing:.5px">'+
-            '<th style="padding:8px 6px">Name</th><th style="padding:8px 6px">Email</th><th style="padding:8px 6px">Phone</th><th style="padding:8px 6px">Added to Square</th>'+
+            '<th style="padding:8px 6px">Name</th><th style="padding:8px 6px">Email</th><th style="padding:8px 6px">Phone</th><th style="padding:8px 6px">Added to Square</th><th style="padding:8px 6px;text-align:right">Action</th>'+
           '</tr></thead><tbody>';
         g.gap.forEach(m=>{
           const when=m.addedToSquare?new Date(m.addedToSquare).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'\u2014';
           const emailHtml=m.email?'<a href="mailto:'+esc(m.email)+'?subject='+encodeURIComponent('Your VIP membership at The 147')+'&body='+encodeURIComponent('Hi '+(m.name.split(' ')[0]||'')+',\n\nYou\'re set up as a VIP at The 147. To activate your 10% food & drink discount, please install the venue app and register using this email address:\n\n'+m.email+'\n\nOnce registered, your VIP status will link automatically.\n\nThanks,\nThe 147 team')+'" style="color:var(--blue);text-decoration:none">'+esc(m.email)+'</a>':'<span style="color:var(--text-3,#9CA3AF)">no email on Square</span>';
+          const isOwnerNow=(state&&state.role==='owner');
+          const actionHtml=!m.email
+            ? '<span style="font-size:11px;color:var(--text-3,#9CA3AF)">add email in Square first</span>'
+            : isOwnerNow
+              ? '<button class="btn btn-primary btn-sm" style="background:#10B981;border-color:#10B981" onclick="window.provisionFromSquare(\''+esc(m.email).replace(/\\'/g,"\\'")+'\',\''+esc(m.name).replace(/\\'/g,"\\'")+'\',this)">Create App Account</button>'
+            : '<span style="font-size:11px;color:var(--text-3,#9CA3AF)">owner-only</span>';
           html+='<tr style="border-bottom:1px solid var(--border)">'+
             '<td style="padding:10px 6px;font-weight:600;color:var(--text)">'+esc(m.name)+'</td>'+
             '<td style="padding:10px 6px">'+emailHtml+'</td>'+
             '<td style="padding:10px 6px;font-size:12px;color:var(--text-2)">'+esc(m.phone||'\u2014')+'</td>'+
             '<td style="padding:10px 6px;font-size:12px;color:var(--text-2)">'+when+'</td>'+
+            '<td style="padding:10px 6px;text-align:right;white-space:nowrap">'+actionHtml+'</td>'+
           '</tr>';
         });
         html+='</tbody></table></div>';
@@ -8109,6 +8116,41 @@
     panel.innerHTML=html;
   }
   window.refreshOnboardingGap=loadOnboardingGap;
+
+  /* ── Provision app account from Square (owner-only) ── */
+  window.provisionFromSquare=async function(email,name,btn){
+    if(!email)return;
+    if(!confirm('Create an app account for '+name+' ('+email+')?\n\nThe customer will receive a "set your password" email and their Square membership will be linked automatically.\n\nThis is for customers who exist in Square but have never registered in the app — no historical bookings are restored.'))return;
+    const orig=btn?btn.innerHTML:'';
+    if(btn){btn.disabled=true;btn.innerHTML='Creating…';}
+    try{
+      const r=await api('/api/staff/customers/provision-from-square',{method:'POST',body:JSON.stringify({email})});
+      const data=await r.json();
+      if(!r.ok){
+        if(data.code==='ACCOUNT_EXISTS'){
+          alert(data.message||'Account already exists for that email.');
+        }else{
+          alert(data.message||'Could not create account.');
+        }
+        if(btn){btn.disabled=false;btn.innerHTML=orig;}
+        return;
+      }
+      let msg=data.message||('Account created for '+name+'.');
+      if(data.manualResetLink){
+        msg+='\n\nManual set-password link (copy & send to the customer):\n'+data.manualResetLink;
+        prompt('Account created — email send failed. Copy this link and send it to '+name+' manually:',data.manualResetLink);
+      }else{
+        alert(msg);
+      }
+      toast('Account created for '+name,'success');
+      loadOnboardingGap();
+      try{loadMemberships();}catch(_){ }
+    }catch(e){
+      alert('Request failed: '+(e&&e.message?e.message:'unknown error'));
+      if(btn){btn.disabled=false;btn.innerHTML=orig;}
+    }
+  };
+
   window.leftoverRefundCancel=async function(id){
     const it=leftoverOneTimeCache.find(x=>x.subscriptionId===id);
     if(!it||!it.oneTimePaymentId){toast('Re-run the audit first.','error');return;}

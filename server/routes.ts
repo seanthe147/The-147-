@@ -10517,6 +10517,106 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Owner-only: Provision an app account for an existing Square customer ────
+  // Looks up a Square customer by email, creates a matching app account
+  // (email-verified, since the owner is vouching), triggers a Square membership
+  // sync so any active customer-group membership is attached immediately, and
+  // emails the customer a password-reset link so they can set their own password
+  // and sign in. NOT a restoration of historical bookings — only a forward-fix
+  // for customers who exist in Square but have never registered in the app.
+  app.post("/api/staff/customers/provision-from-square", staffAuth, async (req, res) => {
+    if ((req as any).staffUser?.role !== "owner") {
+      return res.status(403).json({ message: "Owner access required" });
+    }
+    const actorUsername: string = (req as any).staffUser?.username || "system";
+    const rawEmail = String(req.body?.email || "").trim().toLowerCase();
+    if (!rawEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(rawEmail)) {
+      return res.status(400).json({ message: "A valid email address is required" });
+    }
+
+    try {
+      if (!square.isConfigured()) {
+        return res.status(503).json({ message: "Square is not configured" });
+      }
+
+      const existing = await storage.getCustomerByEmail(rawEmail);
+      if (existing) {
+        return res.status(409).json({
+          code: "ACCOUNT_EXISTS",
+          message: `${existing.name} (${existing.email}) already has an app account. No changes made.`,
+          customer: { id: existing.id, name: existing.name, email: existing.email },
+        });
+      }
+
+      const sqCustomer = await square.findSquareCustomerByEmail(rawEmail).catch(() => null);
+      if (!sqCustomer) {
+        return res.status(404).json({
+          code: "SQUARE_NOT_FOUND",
+          message: `No Square customer found with email ${rawEmail}. Check the email exactly matches what's on file in Square.`,
+        });
+      }
+
+      const sqEmail = String(sqCustomer.email_address || "").trim().toLowerCase();
+      if (sqEmail && sqEmail !== rawEmail) {
+        return res.status(404).json({
+          code: "SQUARE_EMAIL_MISMATCH",
+          message: `Square's nearest match was ${sqEmail}, not ${rawEmail}. Use the exact email on file in Square.`,
+        });
+      }
+
+      const givenName = String(sqCustomer.given_name || "").trim();
+      const familyName = String(sqCustomer.family_name || "").trim();
+      const fullName = [givenName, familyName].filter(Boolean).join(" ") || rawEmail.split("@")[0];
+      const phone = String(sqCustomer.phone_number || "").trim() || null;
+
+      const throwawayPassword = randomBytes(32).toString("hex");
+      const passwordHash = await hashPassword(throwawayPassword);
+
+      const newCustomer = await storage.createCustomer(rawEmail, fullName, phone, passwordHash);
+      await storage.markEmailVerified(newCustomer.id);
+
+      try {
+        await syncSquareMembershipForCustomer(newCustomer.id, rawEmail);
+      } catch (e: any) {
+        console.warn("[PROVISION] Membership sync failed (non-fatal):", e?.message);
+      }
+
+      const tokenRaw = randomBytes(32).toString("hex");
+      const tokenHash = createHash("sha256").update(tokenRaw).digest("hex");
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      await storage.setPasswordResetToken(newCustomer.id, tokenHash, expiresAt);
+      const emailSent = await sendPasswordResetEmail({ name: fullName, email: rawEmail, tokenRaw });
+
+      const sub = await storage.getMembershipSubscriptionByCustomer(newCustomer.id);
+      const planName = sub ? ((sub as any).plan?.name ?? `plan #${sub.planId}`) : null;
+      const membershipMsg = planName
+        ? `Linked to ${planName}.`
+        : "No matching Square membership group found — account created without a membership tier.";
+
+      console.log(`[PROVISION] Owner '${actorUsername}' provisioned app account for ${rawEmail} (customer #${newCustomer.id}) from Square customer ${sqCustomer.id} — ${membershipMsg}`);
+
+      return res.json({
+        success: true,
+        customer: {
+          id: newCustomer.id,
+          name: newCustomer.name,
+          email: newCustomer.email,
+          phone: newCustomer.phone,
+        },
+        squareCustomerId: sqCustomer.id,
+        membership: planName,
+        emailSent,
+        manualResetLink: emailSent
+          ? null
+          : `${getPublicAppOrigin()}/reset-password?token=${encodeURIComponent(tokenRaw)}`,
+        message: `Account created for ${fullName} (${rawEmail}). ${membershipMsg} ${emailSent ? "A set-password email has been sent to the customer." : "WARNING: the set-password email could not be sent — use the manual link below to share with the customer directly."}`,
+      });
+    } catch (err: any) {
+      console.error("[PROVISION] error:", err?.message);
+      return res.status(500).json({ message: "Provisioning failed: " + (err?.message || "unknown error") });
+    }
+  });
+
   // Bulk sync — runs syncSquareMembershipForCustomer for every app customer
   app.post("/api/staff/membership/sync-all", staffAuth, managerAuth, async (req, res) => {
     if (!square.isConfigured()) return res.status(503).json({ message: "Square is not configured" });
