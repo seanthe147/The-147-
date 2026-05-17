@@ -1151,32 +1151,23 @@ async function runStartupMigrations() {
        WHERE tier = 'vip'
          AND (square_customer_group_id IS NULL OR square_customer_group_id = '');
     `);
-    const vipRestoreFlag = await client.query(
-      `SELECT value FROM site_settings WHERE key = 'vip_restore_2026_05_done'`
-    );
-    if (vipRestoreFlag.rowCount === 0) {
-      const updated = await client.query(`
-        UPDATE membership_plans
-           SET active = TRUE, hide_from_signup = TRUE
-         WHERE tier = 'vip'
-           AND square_customer_group_id = '575ce1a2-a598-4f09-82ba-90a7b88e9da1'
-         RETURNING id, name, active, hide_from_signup;
+    const invitePlanFix = await client.query(`
+      UPDATE membership_plans
+         SET active = TRUE, hide_from_signup = TRUE
+       WHERE tier IN ('vip', 'staff')
+         AND square_customer_group_id IS NOT NULL
+         AND square_customer_group_id <> ''
+         AND (active = FALSE OR hide_from_signup = FALSE)
+       RETURNING id, name, tier;
+    `);
+    if ((invitePlanFix.rowCount ?? 0) > 0) {
+      await client.query(`
+        INSERT INTO site_settings (key, value, updated_at)
+          VALUES ('vip_group_backfill_v1_done', 'no', NOW())
+          ON CONFLICT (key) DO UPDATE SET value = 'no', updated_at = NOW();
       `);
-      if ((updated.rowCount ?? 0) > 0) {
-        await client.query(`
-          INSERT INTO site_settings (key, value, updated_at)
-            VALUES ('vip_group_backfill_v1_done', 'no', NOW())
-            ON CONFLICT (key) DO UPDATE SET value = 'no', updated_at = NOW();
-        `);
-        await client.query(`
-          INSERT INTO site_settings (key, value, updated_at)
-            VALUES ('vip_restore_2026_05_done', 'yes', NOW())
-            ON CONFLICT (key) DO UPDATE SET value = 'yes', updated_at = NOW();
-        `);
-        console.log(`[MIGRATION] VIP plan re-enabled + hidden from signup (${updated.rowCount} row); backfill flag reset \u2014 boot backfill will run in ~30s`);
-      } else {
-        console.warn("[MIGRATION] VIP restore SKIPPED \u2014 no row matched (tier='vip' + expected group ID). Flag NOT set; will retry on next boot.");
-      }
+      const names = (invitePlanFix.rows || []).map((r) => `${r.name} (${r.tier})`).join(", ");
+      console.log(`[MIGRATION] Invitation-only plans re-enabled: ${names}; backfill flag reset \u2014 boot backfill will run in ~30s`);
     }
     const dedupeFlag = await client.query(
       `SELECT value FROM site_settings WHERE key = 'membership_dedupe_v1_done'`
@@ -14812,6 +14803,56 @@ Phone: ${phone}` : ""}`,
     const subs = await storage.getMembershipSubscriptions();
     res.json(subs);
   });
+  app2.get("/api/staff/membership/onboarding-gap", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      if (!isConfigured()) {
+        return res.status(503).json({ message: "Square is not configured" });
+      }
+      const allPlans = await storage.getMembershipPlans();
+      const groupPlans = allPlans.filter((p) => p.active && p.squareCustomerGroupId);
+      if (groupPlans.length === 0) {
+        return res.json({ groups: [], totalGap: 0, message: "No active membership plans are mapped to a Square customer group." });
+      }
+      const groups = [];
+      let totalGap = 0;
+      for (const plan of groupPlans) {
+        const groupId = plan.squareCustomerGroupId;
+        const sqMembers = await listCustomersInGroup(groupId).catch(() => []);
+        const gapList = [];
+        let linkedCount = 0;
+        for (const sq of sqMembers) {
+          const email = (sq.email_address || "").trim().toLowerCase();
+          const appCustomer = email ? await storage.getCustomerByEmail(email).catch(() => void 0) : void 0;
+          if (appCustomer) {
+            linkedCount++;
+            continue;
+          }
+          const fullName = [sq.given_name, sq.family_name].filter(Boolean).join(" ").trim() || "(no name on Square)";
+          gapList.push({
+            squareCustomerId: sq.id,
+            name: fullName,
+            email: sq.email_address || null,
+            phone: sq.phone_number || null,
+            addedToSquare: sq.created_at || null
+          });
+        }
+        gapList.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+        totalGap += gapList.length;
+        groups.push({
+          planId: plan.id,
+          planName: plan.name,
+          squareGroupId: groupId,
+          squareTotal: sqMembers.length,
+          linkedCount,
+          gap: gapList
+        });
+      }
+      res.json({ groups, totalGap });
+    } catch (err) {
+      console.warn("[MEMBERSHIP] Onboarding gap report failed:", err?.message);
+      res.status(500).json({ message: "Failed to build onboarding gap report: " + (err?.message || "unknown error") });
+    }
+  });
   app2.post("/api/staff/membership/square-sync", staffAuth, managerAuth, async (req, res) => {
     const { email } = req.body ?? {};
     if (!email) return res.status(400).json({ message: "Email is required" });
@@ -14861,6 +14902,82 @@ Phone: ${phone}` : ""}`,
     } catch (err) {
       console.error("[MEMBERSHIP] Manual Square sync error:", err.message);
       return res.status(500).json({ message: "Sync failed: " + err.message });
+    }
+  });
+  app2.post("/api/staff/customers/provision-from-square", staffAuth, async (req, res) => {
+    if (req.staffUser?.role !== "owner") {
+      return res.status(403).json({ message: "Owner access required" });
+    }
+    const actorUsername = req.staffUser?.username || "system";
+    const rawEmail = String(req.body?.email || "").trim().toLowerCase();
+    if (!rawEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(rawEmail)) {
+      return res.status(400).json({ message: "A valid email address is required" });
+    }
+    try {
+      if (!isConfigured()) {
+        return res.status(503).json({ message: "Square is not configured" });
+      }
+      const existing = await storage.getCustomerByEmail(rawEmail);
+      if (existing) {
+        return res.status(409).json({
+          code: "ACCOUNT_EXISTS",
+          message: `${existing.name} (${existing.email}) already has an app account. No changes made.`,
+          customer: { id: existing.id, name: existing.name, email: existing.email }
+        });
+      }
+      const sqCustomer = await findSquareCustomerByEmail(rawEmail).catch(() => null);
+      if (!sqCustomer) {
+        return res.status(404).json({
+          code: "SQUARE_NOT_FOUND",
+          message: `No Square customer found with email ${rawEmail}. Check the email exactly matches what's on file in Square.`
+        });
+      }
+      const sqEmail = String(sqCustomer.email_address || "").trim().toLowerCase();
+      if (sqEmail && sqEmail !== rawEmail) {
+        return res.status(404).json({
+          code: "SQUARE_EMAIL_MISMATCH",
+          message: `Square's nearest match was ${sqEmail}, not ${rawEmail}. Use the exact email on file in Square.`
+        });
+      }
+      const givenName = String(sqCustomer.given_name || "").trim();
+      const familyName = String(sqCustomer.family_name || "").trim();
+      const fullName = [givenName, familyName].filter(Boolean).join(" ") || rawEmail.split("@")[0];
+      const phone = String(sqCustomer.phone_number || "").trim() || null;
+      const throwawayPassword = randomBytes3(32).toString("hex");
+      const passwordHash = await hashPassword(throwawayPassword);
+      const newCustomer = await storage.createCustomer(rawEmail, fullName, phone, passwordHash);
+      await storage.markEmailVerified(newCustomer.id);
+      try {
+        await syncSquareMembershipForCustomer(newCustomer.id, rawEmail);
+      } catch (e) {
+        console.warn("[PROVISION] Membership sync failed (non-fatal):", e?.message);
+      }
+      const tokenRaw = randomBytes3(32).toString("hex");
+      const tokenHash = createHash3("sha256").update(tokenRaw).digest("hex");
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1e3);
+      await storage.setPasswordResetToken(newCustomer.id, tokenHash, expiresAt);
+      const emailSent = await sendPasswordResetEmail({ name: fullName, email: rawEmail, tokenRaw });
+      const sub = await storage.getMembershipSubscriptionByCustomer(newCustomer.id);
+      const planName = sub ? sub.plan?.name ?? `plan #${sub.planId}` : null;
+      const membershipMsg = planName ? `Linked to ${planName}.` : "No matching Square membership group found \u2014 account created without a membership tier.";
+      console.log(`[PROVISION] Owner '${actorUsername}' provisioned app account for ${rawEmail} (customer #${newCustomer.id}) from Square customer ${sqCustomer.id} \u2014 ${membershipMsg}`);
+      return res.json({
+        success: true,
+        customer: {
+          id: newCustomer.id,
+          name: newCustomer.name,
+          email: newCustomer.email,
+          phone: newCustomer.phone
+        },
+        squareCustomerId: sqCustomer.id,
+        membership: planName,
+        emailSent,
+        manualResetLink: emailSent ? null : `${getPublicAppOrigin()}/reset-password?token=${encodeURIComponent(tokenRaw)}`,
+        message: `Account created for ${fullName} (${rawEmail}). ${membershipMsg} ${emailSent ? "A set-password email has been sent to the customer." : "WARNING: the set-password email could not be sent \u2014 use the manual link below to share with the customer directly."}`
+      });
+    } catch (err) {
+      console.error("[PROVISION] error:", err?.message);
+      return res.status(500).json({ message: "Provisioning failed: " + (err?.message || "unknown error") });
     }
   });
   app2.post("/api/staff/membership/sync-all", staffAuth, managerAuth, async (req, res) => {
