@@ -330,9 +330,10 @@ var init_schema = __esm({
       showOnHome: boolean("show_on_home").notNull().default(true),
       showOnOrder: boolean("show_on_order").notNull().default(true),
       showOnEvents: boolean("show_on_events").notNull().default(true),
-      createdAt: timestamp("created_at").defaultNow().notNull()
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
-    insertBannerImageSchema = createInsertSchema(bannerImages).omit({ id: true, createdAt: true }).superRefine((data, ctx) => {
+    insertBannerImageSchema = createInsertSchema(bannerImages).omit({ id: true, createdAt: true, updatedAt: true }).superRefine((data, ctx) => {
       if (data.linkType === "url" && data.linkValue != null && !isSafePublicUrl(data.linkValue)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -1154,7 +1155,7 @@ async function runStartupMigrations() {
     const invitePlanFix = await client.query(`
       UPDATE membership_plans
          SET active = TRUE, hide_from_signup = TRUE
-       WHERE tier IN ('vip', 'staff')
+       WHERE tier IN ('vip', 'staff', 'staff_internal')
          AND square_customer_group_id IS NOT NULL
          AND square_customer_group_id <> ''
          AND (active = FALSE OR hide_from_signup = FALSE)
@@ -1960,7 +1961,7 @@ var init_storage = __esm({
         return row;
       }
       async updateBannerImage(id, data) {
-        const [row] = await db.update(bannerImages).set(data).where(eq(bannerImages.id, id)).returning();
+        const [row] = await db.update(bannerImages).set({ ...data, updatedAt: /* @__PURE__ */ new Date() }).where(eq(bannerImages.id, id)).returning();
         return row;
       }
       async deleteBannerImage(id) {
@@ -12400,8 +12401,12 @@ async function registerRoutes(app2) {
     if (value === void 0 || value === null) {
       return res.status(400).json({ message: "Value is required" });
     }
-    await storage.setSetting(req.params.key, String(value));
-    res.json({ key: req.params.key, value: String(value) });
+    const key = req.params.key;
+    await storage.setSetting(key, String(value));
+    if (key === "banner_image") {
+      await storage.setSetting("banner_image_updated_at", String(Date.now()));
+    }
+    res.json({ key, value: String(value) });
   });
   app2.get("/api/banner-images", async (req, res) => {
     const page = typeof req.query.page === "string" ? req.query.page : void 0;
