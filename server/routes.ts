@@ -7024,7 +7024,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Staff: cancel an app order (PIN-authorised) ──────────────────────────────
-  app.post("/api/staff/orders/:id/cancel", staffAuth, async (req, res) => {
+  app.post("/api/staff/orders/:id/cancel", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(String(req.params.id));
     if (isNaN(id)) return res.status(400).json({ message: "Invalid order ID" });
     const { pin, reason } = req.body;
@@ -7250,7 +7250,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Staff: refund a paid app order (PIN-authorised) ───────────────────────────
-  app.post("/api/staff/orders/:id/refund", staffAuth, async (req, res) => {
+  app.post("/api/staff/orders/:id/refund", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(String(req.params.id));
     if (isNaN(id)) return res.status(400).json({ message: "Invalid order ID" });
     const { pin, reason } = req.body;
