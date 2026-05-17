@@ -853,6 +853,15 @@ function scheduleDepositAutoCancel() {
       for (const booking of expired) {
         try {
           await store.updateBookingStatus(booking.id, "cancelled");
+          void store.logBookingAction({
+            bookingId: booking.id,
+            action: "status_changed",
+            staffUsername: "system:deposit-auto-cancel",
+            staffId: null,
+            fromValue: { status: booking.status },
+            toValue: { status: "cancelled" },
+            note: "Auto-cancelled — deposit not received within 1 hour",
+          });
           log(`[DepositAutoCancel] Cancelled booking #${booking.id} — deposit not received within 1 hour`);
 
           // Send cancellation email to customer

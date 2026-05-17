@@ -4671,7 +4671,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ message: "Invalid email format" });
     }
     // Snapshot booking rows BEFORE the wipe so each deletion is auditable.
+    // PII (name/email/phone) is INTENTIONALLY EXCLUDED from the audit row —
+    // storing it here would defeat the GDPR Article 17 erasure we are about
+    // to perform. We keep only operational fields plus an email hash so the
+    // controller can correlate audit entries to a subject access request
+    // without retaining recoverable personal data.
     const doomedBookings = await storage.getBookingsByEmail(email);
+    const emailHashForAudit = hashEmail(email);
     const u = (req as any).staffUser;
     for (const b of doomedBookings) {
       void storage.logBookingAction({
@@ -4679,8 +4685,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         action: "deleted",
         staffUsername: u?.username || "system:gdpr-erase",
         staffId: u?.id ?? null,
-        fromValue: { customerName: b.customerName, customerEmail: b.customerEmail, date: b.date, startTime: b.startTime, tableType: b.tableType, tableNumber: b.tableNumber, status: b.status },
-        note: `GDPR Article 17 erasure (staff-triggered) for ${email}`,
+        fromValue: { date: b.date, startTime: b.startTime, duration: b.duration, tableType: b.tableType, tableNumber: b.tableNumber, status: b.status },
+        note: `GDPR Article 17 erasure (staff-triggered) — subject emailHash=${emailHashForAudit.slice(0, 16)}…`,
       });
     }
     const [bookingsDeleted, pushTokensDeleted, ordersDeleted, messagesDeleted] = await Promise.all([
@@ -9245,14 +9251,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const customerId = (req as any).customerId;
     const email = (req as any).customerEmail;
     // Snapshot booking rows BEFORE the wipe so each deletion is auditable.
+    // PII is intentionally omitted from the audit row to honour GDPR Art. 17.
     const doomedBookings = await storage.getBookingsByEmail(email);
+    const emailHashForAudit = hashEmail(email);
     for (const b of doomedBookings) {
       void storage.logBookingAction({
         bookingId: b.id,
         action: "deleted",
-        staffUsername: `customer:${email}`,
+        staffUsername: `customer:hash:${emailHashForAudit.slice(0, 16)}`,
         staffId: null,
-        fromValue: { customerName: b.customerName, customerEmail: b.customerEmail, date: b.date, startTime: b.startTime, tableType: b.tableType, tableNumber: b.tableNumber, status: b.status },
+        fromValue: { date: b.date, startTime: b.startTime, duration: b.duration, tableType: b.tableType, tableNumber: b.tableNumber, status: b.status },
         note: "Deleted by customer self-erasure (account deletion)",
       });
     }
@@ -11375,14 +11383,16 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     const { email } = entry;
 
     // Snapshot booking rows BEFORE the wipe so each deletion is auditable.
+    // PII is intentionally omitted from the audit row to honour GDPR Art. 17.
     const doomedBookings = await storage.getBookingsByEmail(email);
+    const emailHashForAudit = hashEmail(email);
     for (const b of doomedBookings) {
       void storage.logBookingAction({
         bookingId: b.id,
         action: "deleted",
-        staffUsername: `customer:${email}`,
+        staffUsername: `customer:hash:${emailHashForAudit.slice(0, 16)}`,
         staffId: null,
-        fromValue: { customerName: b.customerName, customerEmail: b.customerEmail, date: b.date, startTime: b.startTime, tableType: b.tableType, tableNumber: b.tableNumber, status: b.status },
+        fromValue: { date: b.date, startTime: b.startTime, duration: b.duration, tableType: b.tableType, tableNumber: b.tableNumber, status: b.status },
         note: "Deleted via emailed self-service erasure link (GDPR Article 17)",
       });
     }
