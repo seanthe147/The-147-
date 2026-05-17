@@ -12103,7 +12103,7 @@ async function registerRoutes(app2) {
       res.status(500).json({ message: err.message });
     }
   });
-  app2.post("/api/staff/orders/:id/cancel", staffAuth, async (req, res) => {
+  app2.post("/api/staff/orders/:id/cancel", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(String(req.params.id));
     if (isNaN(id)) return res.status(400).json({ message: "Invalid order ID" });
     const { pin, reason } = req.body;
@@ -12267,7 +12267,7 @@ async function registerRoutes(app2) {
       res.status(500).json({ message: err.message });
     }
   });
-  app2.post("/api/staff/orders/:id/refund", staffAuth, async (req, res) => {
+  app2.post("/api/staff/orders/:id/refund", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(String(req.params.id));
     if (isNaN(id)) return res.status(400).json({ message: "Invalid order ID" });
     const { pin, reason } = req.body;
