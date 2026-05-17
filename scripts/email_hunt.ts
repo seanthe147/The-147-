@@ -2,7 +2,7 @@ import { hashEmail, decrypt } from '../server/encryption';
 import pg from 'pg';
 
 (async () => {
-  const targets = ['john.bond@yorkshirewater.co.uk'];
+  const targets = ['wukkar@gmail.com'];
   const c = new pg.Client({ connectionString: process.env.DATABASE_URL });
   await c.connect();
 
