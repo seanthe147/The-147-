@@ -454,7 +454,7 @@ export async function runStartupMigrations() {
     const invitePlanFix = await client.query(`
       UPDATE membership_plans
          SET active = TRUE, hide_from_signup = TRUE
-       WHERE tier IN ('vip', 'staff')
+       WHERE tier IN ('vip', 'staff', 'staff_internal')
          AND square_customer_group_id IS NOT NULL
          AND square_customer_group_id <> ''
          AND (active = FALSE OR hide_from_signup = FALSE)
