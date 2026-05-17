@@ -76,3 +76,4 @@ Staff approvals, password resets, order actions, HR events, and payment handling
 - **Membership entitlements must track verified billing state**, not just successful subscription creation or browser return flows. New memberships should remain pending until a verified provider event confirms the first payment.
 - **`mustChangePassword` must be enforced server-side** for all staff sessions and reauthentication paths. Client-only gating is insufficient because bearer tokens can call authenticated APIs directly.
 - **Manager-controlled outbound/public URLs must be scheme-validated** before storage or rendering. Only safe navigation schemes such as `https:` should be accepted for public banner/content links.
+- **Refunds, cancel-and-refund flows, and other direct payment reversals must not be exposed to plain `staff` roles.** Financially destructive order actions should require manager/owner authorization in addition to staff authentication.
