@@ -9175,16 +9175,14 @@ async function registerRoutes(app2) {
     });
     {
       const u = req.staffUser;
-      if (u) {
-        void storage.logBookingAction({
-          bookingId: booking.id,
-          action: "created",
-          staffUsername: u.username,
-          staffId: u.id ?? null,
-          toValue: { customerName: booking.customerName, date: booking.date, startTime: booking.startTime, tableType: booking.tableType, tableNumber: booking.tableNumber, status: booking.status, depositRequired: requiresDeposit },
-          note: requiresDeposit ? "Created by staff (deposit pending)" : "Created by staff"
-        });
-      }
+      void storage.logBookingAction({
+        bookingId: booking.id,
+        action: "created",
+        staffUsername: u?.username || `customer:${booking.customerEmail}`,
+        staffId: u?.id ?? null,
+        toValue: { customerName: booking.customerName, date: booking.date, startTime: booking.startTime, tableType: booking.tableType, tableNumber: booking.tableNumber, status: booking.status, depositRequired: requiresDeposit },
+        note: u ? requiresDeposit ? "Created by staff (deposit pending)" : "Created by staff" : requiresDeposit ? `Created by customer via ${req.headers["x-app-platform"] || "web"} (deposit pending)` : `Created by customer via ${req.headers["x-app-platform"] || "web"}`
+      });
     }
     if (requiresDeposit) {
       const staticDepositUrl = process.env.SQUARE_DEPOSIT_LINK_URL;
@@ -10262,6 +10260,19 @@ async function registerRoutes(app2) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({ message: "Invalid email format" });
+    }
+    const doomedBookings = await storage.getBookingsByEmail(email);
+    const emailHashForAudit = hashEmail(email);
+    const u = req.staffUser;
+    for (const b of doomedBookings) {
+      void storage.logBookingAction({
+        bookingId: b.id,
+        action: "deleted",
+        staffUsername: u?.username || "system:gdpr-erase",
+        staffId: u?.id ?? null,
+        fromValue: { date: b.date, startTime: b.startTime, duration: b.duration, tableType: b.tableType, tableNumber: b.tableNumber, status: b.status },
+        note: `GDPR Article 17 erasure (staff-triggered) \u2014 subject emailHash=${emailHashForAudit.slice(0, 16)}\u2026`
+      });
     }
     const [bookingsDeleted, pushTokensDeleted, ordersDeleted, messagesDeleted] = await Promise.all([
       storage.deleteBookingsByEmail(email),
@@ -13906,6 +13917,18 @@ async function registerRoutes(app2) {
   app2.delete("/api/customers/me", customerAuth, async (req, res) => {
     const customerId = req.customerId;
     const email = req.customerEmail;
+    const doomedBookings = await storage.getBookingsByEmail(email);
+    const emailHashForAudit = hashEmail(email);
+    for (const b of doomedBookings) {
+      void storage.logBookingAction({
+        bookingId: b.id,
+        action: "deleted",
+        staffUsername: `customer:hash:${emailHashForAudit.slice(0, 16)}`,
+        staffId: null,
+        fromValue: { date: b.date, startTime: b.startTime, duration: b.duration, tableType: b.tableType, tableNumber: b.tableNumber, status: b.status },
+        note: "Deleted by customer self-erasure (account deletion)"
+      });
+    }
     const [bookingsDeleted, pushTokensDeleted, ordersDeleted, messagesDeleted] = await Promise.all([
       storage.deleteBookingsByEmail(email),
       storage.deletePushTokensByEmail(email),
@@ -15589,6 +15612,18 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     }
     pendingDeletionTokens.delete(tokenRaw);
     const { email } = entry;
+    const doomedBookings = await storage.getBookingsByEmail(email);
+    const emailHashForAudit = hashEmail(email);
+    for (const b of doomedBookings) {
+      void storage.logBookingAction({
+        bookingId: b.id,
+        action: "deleted",
+        staffUsername: `customer:hash:${emailHashForAudit.slice(0, 16)}`,
+        staffId: null,
+        fromValue: { date: b.date, startTime: b.startTime, duration: b.duration, tableType: b.tableType, tableNumber: b.tableNumber, status: b.status },
+        note: "Deleted via emailed self-service erasure link (GDPR Article 17)"
+      });
+    }
     await Promise.all([
       storage.deleteBookingsByEmail(email),
       storage.deletePushTokensByEmail(email),
@@ -17559,6 +17594,15 @@ function scheduleDepositAutoCancel() {
       for (const booking of expired) {
         try {
           await store.updateBookingStatus(booking.id, "cancelled");
+          void store.logBookingAction({
+            bookingId: booking.id,
+            action: "status_changed",
+            staffUsername: "system:deposit-auto-cancel",
+            staffId: null,
+            fromValue: { status: booking.status },
+            toValue: { status: "cancelled" },
+            note: "Auto-cancelled \u2014 deposit not received within 1 hour"
+          });
           log(`[DepositAutoCancel] Cancelled booking #${booking.id} \u2014 deposit not received within 1 hour`);
           const smtpHost = process.env.SMTP_HOST;
           const smtpUser = process.env.SMTP_USER;
