@@ -1972,7 +1972,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (q.length < 2) return res.json([]);
     try {
       const results = await storage.searchCustomers(q, 6);
-      res.json(results);
+      // Enrich each result with the customer's active/pending membership so
+      // the admin Customers screen can show a tier badge (the absence of one
+      // is exactly how the VIP discount outage went unnoticed for weeks).
+      // Note: storage.getMembershipSubscriptionByCustomer only returns rows
+      // where status='active' AND the plan is currently active in the staff
+      // portal. Pending/pending_start subs (still mid-payment) will not show
+      // a badge here — they appear once the first payment confirms.
+      const enriched = await Promise.all(results.map(async (c) => {
+        if (!c.id) return { ...c, membership: null };
+        try {
+          const sub = await storage.getMembershipSubscriptionByCustomer(c.id);
+          if (!sub || !sub.plan) return { ...c, membership: null };
+          return {
+            ...c,
+            membership: {
+              planName: sub.plan.name,
+              tier: sub.plan.tier,
+              color: sub.plan.color,
+              status: sub.status,
+              foodDrinkDiscount: sub.plan.foodDrinkDiscount,
+            },
+          };
+        } catch {
+          return { ...c, membership: null };
+        }
+      }));
+      res.json(enriched);
     } catch (err) {
       console.error("[customer-search] error:", err);
       res.json([]);
@@ -10212,11 +10238,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     // Capture old values before updating so we can detect changes
     const oldPlan = await storage.getMembershipPlan(id);
+    if (!oldPlan) return res.status(404).json({ message: "Plan not found" });
 
     const updateBody = { ...req.body };
     if ("color" in updateBody) {
       updateBody.color = isValidCssColor(updateBody.color) ? updateBody.color : "#0047AB";
     }
+
+    // Guard: refuse to disable a plan that still has active/pending members
+    // unless the caller explicitly confirms. Silently disabling a plan breaks
+    // every benefit the sync relies on (the VIP discount outage in 2026-05
+    // was caused by exactly this footgun). The 'confirmDisable' flag forces
+    // any UI client to surface a warning before flipping `active=false`.
+    const isDisabling = updateBody.active === false && oldPlan.active === true;
+    if (isDisabling && !req.body.confirmDisable) {
+      const activeCount = await storage.countActiveSubscriptionsForPlan(id);
+      if (activeCount > 0) {
+        return res.status(409).json({
+          message: `${activeCount} customer${activeCount === 1 ? " is" : "s are"} on the "${oldPlan.name}" plan. Disabling it will silently stop their discounts and benefits without notifying them. Resubmit with confirmDisable=true if you really intend to do this.`,
+          requiresConfirmation: true,
+          activeSubscriberCount: activeCount,
+          planName: oldPlan.name,
+        });
+      }
+    }
+    // Don't persist the confirmation flag — it's not a column.
+    delete updateBody.confirmDisable;
+
     let plan = await storage.updateMembershipPlan(id, updateBody);
     if (!plan) return res.status(404).json({ message: "Plan not found" });
 

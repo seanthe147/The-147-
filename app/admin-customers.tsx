@@ -18,7 +18,21 @@ import Colors from "@/constants/colors";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 
-type CustomerResult = { id?: number; name: string; phone: string; email: string };
+type MembershipBadge = {
+  planName: string;
+  tier: string;
+  color: string | null;
+  status: string;
+  foodDrinkDiscount: number;
+};
+
+type CustomerResult = {
+  id?: number;
+  name: string;
+  phone: string;
+  email: string;
+  membership?: MembershipBadge | null;
+};
 
 type ResetAuditEntry = {
   id: number;
@@ -243,6 +257,23 @@ export default function AdminCustomersScreen() {
               {!c.id ? (
                 <Text style={styles.noAccountBadge}>No customer account</Text>
               ) : null}
+              {c.membership ? (
+                <View style={styles.badgeRow}>
+                  <Text
+                    style={[
+                      styles.membershipBadge,
+                      { backgroundColor: c.membership.color || Colors.brand.blue },
+                    ]}
+                    testID={`membership-badge-${c.id}`}
+                  >
+                    {c.membership.planName.toUpperCase()}
+                    {c.membership.status !== "active" ? ` · ${c.membership.status.toUpperCase()}` : ""}
+                    {c.membership.foodDrinkDiscount > 0 ? ` · ${c.membership.foodDrinkDiscount}%` : ""}
+                  </Text>
+                </View>
+              ) : c.id ? (
+                <Text style={styles.noMembershipBadge}>No membership</Text>
+              ) : null}
             </View>
             <Pressable
               onPress={() => handleResetPress(c)}
@@ -391,6 +422,24 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 4,
     overflow: "hidden",
+  },
+  badgeRow: { marginTop: 6, flexDirection: "row" },
+  membershipBadge: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#fff",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    overflow: "hidden",
+    letterSpacing: 0.3,
+  },
+  noMembershipBadge: {
+    marginTop: 6,
+    fontSize: 11,
+    color: Colors.light.textSecondary,
+    alignSelf: "flex-start",
+    fontStyle: "italic",
   },
   resetBtn: {
     flexDirection: "row",

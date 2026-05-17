@@ -466,6 +466,58 @@ export async function runStartupMigrations() {
       }
     }
 
+    // One-shot: prevent duplicate active/pending memberships per customer
+    // (Task #May-17). The Square sync does read-then-insert without a DB
+    // constraint, so a race between the per-login sync, the boot backfill,
+    // and the new "Sync Memberships" staff button can theoretically create
+    // two "active" rows for the same customer. Add a partial unique index
+    // so the second insert fails fast at the DB layer; createMembershipSub-
+    // scription catches the unique-violation and returns the existing row.
+    // Before the index can be created we must dedupe any pre-existing
+    // duplicates — when more than one active/pending row exists for the
+    // same customer, the NEWEST 'active' wins and the older rows (usually
+    // a stale 'pending' from an abandoned payment attempt) are flipped to
+    // 'superseded' with a staff note explaining what happened.
+    const dedupeFlag = await client.query(
+      `SELECT value FROM site_settings WHERE key = 'membership_dedupe_v1_done'`
+    );
+    if (dedupeFlag.rowCount === 0) {
+      const deduped = await client.query(`
+        WITH ranked AS (
+          SELECT id, customer_id, status,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY customer_id
+                   ORDER BY (status = 'active') DESC, created_at DESC
+                 ) AS rn
+            FROM membership_subscriptions
+           WHERE status IN ('active','pending','pending_start')
+        )
+        UPDATE membership_subscriptions ms
+           SET status = 'superseded',
+               cancelled_at = NOW(),
+               staff_notes = COALESCE(staff_notes || ' | ', '') ||
+                             'Auto-superseded ' || NOW()::date ||
+                             ' — newer active membership exists for the same customer'
+          FROM ranked
+         WHERE ms.id = ranked.id AND ranked.rn > 1
+         RETURNING ms.id, ms.customer_id;
+      `);
+      if ((deduped.rowCount ?? 0) > 0) {
+        console.log(`[MIGRATION] Deduped ${deduped.rowCount} stale active/pending membership row(s)`);
+      }
+      await client.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS membership_subscriptions_one_active_per_customer
+          ON membership_subscriptions (customer_id)
+          WHERE status IN ('active','pending','pending_start');
+      `);
+      await client.query(`
+        INSERT INTO site_settings (key, value, updated_at)
+          VALUES ('membership_dedupe_v1_done', 'yes', NOW())
+          ON CONFLICT (key) DO UPDATE SET value = 'yes', updated_at = NOW();
+      `);
+      console.log("[MIGRATION] Partial unique index on membership_subscriptions(customer_id) created — duplicate active rows now impossible");
+    }
+
     // Attendance trust columns + concurrency guard (Task #104).
     // db:push handles these in normal deploys; the IF NOT EXISTS clauses make
     // this safe to run on every boot as belt-and-suspenders for environments
@@ -1996,13 +2048,61 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createMembershipSubscription(data: InsertMembershipSubscription): Promise<MembershipSubscription> {
-    const [sub] = await db.insert(membershipSubscriptions).values(data).returning();
-    return sub;
+    try {
+      const [sub] = await db.insert(membershipSubscriptions).values(data).returning();
+      return sub;
+    } catch (err: any) {
+      // 23505 = unique_violation. The partial unique index
+      // `membership_subscriptions_one_active_per_customer` guarantees only one
+      // active/pending/pending_start row per customer. If a concurrent sync
+      // (e.g. login + boot backfill firing simultaneously) raced us to the
+      // insert, return the row that won instead of throwing — the caller's
+      // intent (this customer has an active membership) is already satisfied.
+      if (err?.code === "23505" && data.status && ["active", "pending", "pending_start"].includes(data.status)) {
+        // CRITICAL: must filter by planId too. Two different plans could
+        // race to create active rows for the same customer (e.g. legacy
+        // Platinum sync racing against a brand-new VIP group-match insert);
+        // returning the wrong-plan row would cause every later update —
+        // Square IDs, staff notes, billing dates — to attach to the wrong
+        // subscription. If no row matches our exact (customer, plan), the
+        // unique violation was caused by a DIFFERENT plan winning the race
+        // and we must re-throw so the caller knows their intended insert
+        // did not happen.
+        const [existing] = await db.select().from(membershipSubscriptions)
+          .where(and(
+            eq(membershipSubscriptions.customerId, data.customerId),
+            eq(membershipSubscriptions.planId, data.planId),
+            inArray(membershipSubscriptions.status, ["active", "pending", "pending_start"]),
+          ))
+          .orderBy(desc(membershipSubscriptions.createdAt))
+          .limit(1);
+        if (existing) {
+          console.log(`[MEMBERSHIP] Duplicate-insert race avoided for customer ${data.customerId} plan ${data.planId} — returning existing sub ${existing.id}`);
+          return existing;
+        }
+        console.warn(`[MEMBERSHIP] Unique violation for customer ${data.customerId} but no matching (customer, plan ${data.planId}) row — a different plan won the race; re-throwing so caller can decide.`);
+      }
+      throw err;
+    }
   }
 
   async updateMembershipSubscription(id: number, data: Partial<InsertMembershipSubscription>): Promise<MembershipSubscription | undefined> {
     const [sub] = await db.update(membershipSubscriptions).set(data).where(eq(membershipSubscriptions.id, id)).returning();
     return sub;
+  }
+
+  // Counts customers currently relying on a plan (active or in the middle of
+  // signing up). Used by the PUT /api/staff/membership/plans/:id guard to
+  // warn managers before they silently break those customers' benefits by
+  // toggling the plan inactive.
+  async countActiveSubscriptionsForPlan(planId: number): Promise<number> {
+    const rows = await db.select({ id: membershipSubscriptions.id })
+      .from(membershipSubscriptions)
+      .where(and(
+        eq(membershipSubscriptions.planId, planId),
+        inArray(membershipSubscriptions.status, ["active", "pending", "pending_start"]),
+      ));
+    return rows.length;
   }
 
   // Pending memberships that need a payment reminder email.
