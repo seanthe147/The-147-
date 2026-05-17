@@ -1151,6 +1151,72 @@ async function runStartupMigrations() {
        WHERE tier = 'vip'
          AND (square_customer_group_id IS NULL OR square_customer_group_id = '');
     `);
+    const vipRestoreFlag = await client.query(
+      `SELECT value FROM site_settings WHERE key = 'vip_restore_2026_05_done'`
+    );
+    if (vipRestoreFlag.rowCount === 0) {
+      const updated = await client.query(`
+        UPDATE membership_plans
+           SET active = TRUE, hide_from_signup = TRUE
+         WHERE tier = 'vip'
+           AND square_customer_group_id = '575ce1a2-a598-4f09-82ba-90a7b88e9da1'
+         RETURNING id, name, active, hide_from_signup;
+      `);
+      if ((updated.rowCount ?? 0) > 0) {
+        await client.query(`
+          INSERT INTO site_settings (key, value, updated_at)
+            VALUES ('vip_group_backfill_v1_done', 'no', NOW())
+            ON CONFLICT (key) DO UPDATE SET value = 'no', updated_at = NOW();
+        `);
+        await client.query(`
+          INSERT INTO site_settings (key, value, updated_at)
+            VALUES ('vip_restore_2026_05_done', 'yes', NOW())
+            ON CONFLICT (key) DO UPDATE SET value = 'yes', updated_at = NOW();
+        `);
+        console.log(`[MIGRATION] VIP plan re-enabled + hidden from signup (${updated.rowCount} row); backfill flag reset \u2014 boot backfill will run in ~30s`);
+      } else {
+        console.warn("[MIGRATION] VIP restore SKIPPED \u2014 no row matched (tier='vip' + expected group ID). Flag NOT set; will retry on next boot.");
+      }
+    }
+    const dedupeFlag = await client.query(
+      `SELECT value FROM site_settings WHERE key = 'membership_dedupe_v1_done'`
+    );
+    if (dedupeFlag.rowCount === 0) {
+      const deduped = await client.query(`
+        WITH ranked AS (
+          SELECT id, customer_id, status,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY customer_id
+                   ORDER BY (status = 'active') DESC, created_at DESC
+                 ) AS rn
+            FROM membership_subscriptions
+           WHERE status IN ('active','pending','pending_start')
+        )
+        UPDATE membership_subscriptions ms
+           SET status = 'superseded',
+               cancelled_at = NOW(),
+               staff_notes = COALESCE(staff_notes || ' | ', '') ||
+                             'Auto-superseded ' || NOW()::date ||
+                             ' \u2014 newer active membership exists for the same customer'
+          FROM ranked
+         WHERE ms.id = ranked.id AND ranked.rn > 1
+         RETURNING ms.id, ms.customer_id;
+      `);
+      if ((deduped.rowCount ?? 0) > 0) {
+        console.log(`[MIGRATION] Deduped ${deduped.rowCount} stale active/pending membership row(s)`);
+      }
+      await client.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS membership_subscriptions_one_active_per_customer
+          ON membership_subscriptions (customer_id)
+          WHERE status IN ('active','pending','pending_start');
+      `);
+      await client.query(`
+        INSERT INTO site_settings (key, value, updated_at)
+          VALUES ('membership_dedupe_v1_done', 'yes', NOW())
+          ON CONFLICT (key) DO UPDATE SET value = 'yes', updated_at = NOW();
+      `);
+      console.log("[MIGRATION] Partial unique index on membership_subscriptions(customer_id) created \u2014 duplicate active rows now impossible");
+    }
     await client.query(`
       ALTER TABLE staff_time_entries
         ADD COLUMN IF NOT EXISTS geofence_enforced BOOLEAN NOT NULL DEFAULT FALSE,
@@ -2241,12 +2307,39 @@ var init_storage = __esm({
         return sub;
       }
       async createMembershipSubscription(data) {
-        const [sub] = await db.insert(membershipSubscriptions).values(data).returning();
-        return sub;
+        try {
+          const [sub] = await db.insert(membershipSubscriptions).values(data).returning();
+          return sub;
+        } catch (err) {
+          if (err?.code === "23505" && data.status && ["active", "pending", "pending_start"].includes(data.status)) {
+            const [existing] = await db.select().from(membershipSubscriptions).where(and(
+              eq(membershipSubscriptions.customerId, data.customerId),
+              eq(membershipSubscriptions.planId, data.planId),
+              inArray(membershipSubscriptions.status, ["active", "pending", "pending_start"])
+            )).orderBy(desc(membershipSubscriptions.createdAt)).limit(1);
+            if (existing) {
+              console.log(`[MEMBERSHIP] Duplicate-insert race avoided for customer ${data.customerId} plan ${data.planId} \u2014 returning existing sub ${existing.id}`);
+              return existing;
+            }
+            console.warn(`[MEMBERSHIP] Unique violation for customer ${data.customerId} but no matching (customer, plan ${data.planId}) row \u2014 a different plan won the race; re-throwing so caller can decide.`);
+          }
+          throw err;
+        }
       }
       async updateMembershipSubscription(id, data) {
         const [sub] = await db.update(membershipSubscriptions).set(data).where(eq(membershipSubscriptions.id, id)).returning();
         return sub;
+      }
+      // Counts customers currently relying on a plan (active or in the middle of
+      // signing up). Used by the PUT /api/staff/membership/plans/:id guard to
+      // warn managers before they silently break those customers' benefits by
+      // toggling the plan inactive.
+      async countActiveSubscriptionsForPlan(planId) {
+        const rows = await db.select({ id: membershipSubscriptions.id }).from(membershipSubscriptions).where(and(
+          eq(membershipSubscriptions.planId, planId),
+          inArray(membershipSubscriptions.status, ["active", "pending", "pending_start"])
+        ));
+        return rows.length;
       }
       // Pending memberships that need a payment reminder email.
       // Returns subs that have been pending >= remindAfterHours and have not yet had a reminder sent.
@@ -7915,7 +8008,26 @@ async function registerRoutes(app2) {
     if (q.length < 2) return res.json([]);
     try {
       const results = await storage.searchCustomers(q, 6);
-      res.json(results);
+      const enriched = await Promise.all(results.map(async (c) => {
+        if (!c.id) return { ...c, membership: null };
+        try {
+          const sub = await storage.getMembershipSubscriptionByCustomer(c.id);
+          if (!sub || !sub.plan) return { ...c, membership: null };
+          return {
+            ...c,
+            membership: {
+              planName: sub.plan.name,
+              tier: sub.plan.tier,
+              color: sub.plan.color,
+              status: sub.status,
+              foodDrinkDiscount: sub.plan.foodDrinkDiscount
+            }
+          };
+        } catch {
+          return { ...c, membership: null };
+        }
+      }));
+      res.json(enriched);
     } catch (err) {
       console.error("[customer-search] error:", err);
       res.json([]);
@@ -13156,7 +13268,7 @@ async function registerRoutes(app2) {
         console.log(`[MEMBERSHIP] Auto-synced Square subscription ${matchedSub.id} \u2192 customer #${customerId} (${email})`);
         return;
       }
-      const groupPlans = allPlans.filter((p) => p.active && !p.hideFromSignup && p.squareCustomerGroupId);
+      const groupPlans = allPlans.filter((p) => p.active && p.squareCustomerGroupId);
       if (groupPlans.length) {
         const customerGroupIds = await getCustomerGroupIds(sqCustomer.id).catch(() => []);
         const groupMatch = groupPlans.find((p) => customerGroupIds.includes(p.squareCustomerGroupId));
@@ -13231,7 +13343,7 @@ async function registerRoutes(app2) {
         console.warn("[VIP BACKFILL] Skipped (non-fatal):", err?.message);
       }
     })();
-  }, 5e3);
+  }, 3e4);
   app2.post("/api/customers/register", async (req, res) => {
     const clientIp = getClientIp(req);
     const rateCheck = checkCustomerRateLimit(clientIp);
@@ -14587,10 +14699,24 @@ Phone: ${phone}` : ""}`,
   app2.put("/api/staff/membership/plans/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id);
     const oldPlan = await storage.getMembershipPlan(id);
+    if (!oldPlan) return res.status(404).json({ message: "Plan not found" });
     const updateBody = { ...req.body };
     if ("color" in updateBody) {
       updateBody.color = isValidCssColor(updateBody.color) ? updateBody.color : "#0047AB";
     }
+    const isDisabling = updateBody.active === false && oldPlan.active === true;
+    if (isDisabling && !req.body.confirmDisable) {
+      const activeCount = await storage.countActiveSubscriptionsForPlan(id);
+      if (activeCount > 0) {
+        return res.status(409).json({
+          message: `${activeCount} customer${activeCount === 1 ? " is" : "s are"} on the "${oldPlan.name}" plan. Disabling it will silently stop their discounts and benefits without notifying them. Resubmit with confirmDisable=true if you really intend to do this.`,
+          requiresConfirmation: true,
+          activeSubscriberCount: activeCount,
+          planName: oldPlan.name
+        });
+      }
+    }
+    delete updateBody.confirmDisable;
     let plan = await storage.updateMembershipPlan(id, updateBody);
     if (!plan) return res.status(404).json({ message: "Plan not found" });
     let squareSynced = false;
