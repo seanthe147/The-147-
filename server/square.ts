@@ -520,8 +520,8 @@ export async function getCustomerGroupIds(customerId: string): Promise<string[]>
  * only want to (re-)sync customers actually affected by the new mapping,
  * not every app account.
  */
-export async function listCustomersInGroup(groupId: string): Promise<Array<{ id: string; email_address?: string }>> {
-  const out: Array<{ id: string; email_address?: string }> = [];
+export async function listCustomersInGroup(groupId: string): Promise<Array<{ id: string; email_address?: string; given_name?: string; family_name?: string; phone_number?: string; created_at?: string }>> {
+  const out: Array<{ id: string; email_address?: string; given_name?: string; family_name?: string; phone_number?: string; created_at?: string }> = [];
   let cursor: string | undefined;
   // Cap pagination defensively — the VIP group is expected to hold a handful
   // of people, not thousands.
@@ -532,7 +532,7 @@ export async function listCustomersInGroup(groupId: string): Promise<Array<{ id:
     };
     if (cursor) body.cursor = cursor;
     const data = await squareRequest("POST", "/v2/customers/search", body);
-    const batch = (data.customers as Array<{ id: string; email_address?: string }>) || [];
+    const batch = (data.customers as Array<{ id: string; email_address?: string; given_name?: string; family_name?: string; phone_number?: string; created_at?: string }>) || [];
     out.push(...batch);
     cursor = data.cursor;
     if (!cursor) break;

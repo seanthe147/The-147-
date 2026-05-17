@@ -10382,6 +10382,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(subs);
   });
 
+  // VIP onboarding gap report — shows which Square VIP-group members do NOT
+  // yet have an app account, so staff know who to chase. Manager-only because
+  // it exposes the full Square VIP customer list.
+  app.get("/api/staff/membership/onboarding-gap", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      if (!square.isConfigured()) {
+        return res.status(503).json({ message: "Square is not configured" });
+      }
+      const allPlans = await storage.getMembershipPlans();
+      const groupPlans = allPlans.filter(p => p.active && (p as any).squareCustomerGroupId);
+      if (groupPlans.length === 0) {
+        return res.json({ groups: [], totalGap: 0, message: "No active membership plans are mapped to a Square customer group." });
+      }
+
+      const groups: Array<{
+        planId: number;
+        planName: string;
+        squareGroupId: string;
+        squareTotal: number;
+        linkedCount: number;
+        gap: Array<{ squareCustomerId: string; name: string; email: string | null; phone: string | null; addedToSquare: string | null }>;
+      }> = [];
+      let totalGap = 0;
+
+      for (const plan of groupPlans) {
+        const groupId = (plan as any).squareCustomerGroupId as string;
+        const sqMembers = await square.listCustomersInGroup(groupId).catch(() => []);
+        const gapList: typeof groups[number]["gap"] = [];
+        let linkedCount = 0;
+        for (const sq of sqMembers) {
+          const email = (sq.email_address || "").trim().toLowerCase();
+          const appCustomer = email ? await storage.getCustomerByEmail(email).catch(() => undefined) : undefined;
+          if (appCustomer) {
+            linkedCount++;
+            continue;
+          }
+          const fullName = [sq.given_name, sq.family_name].filter(Boolean).join(" ").trim() || "(no name on Square)";
+          gapList.push({
+            squareCustomerId: sq.id,
+            name: fullName,
+            email: sq.email_address || null,
+            phone: sq.phone_number || null,
+            addedToSquare: sq.created_at || null,
+          });
+        }
+        gapList.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+        totalGap += gapList.length;
+        groups.push({
+          planId: plan.id,
+          planName: plan.name,
+          squareGroupId: groupId,
+          squareTotal: sqMembers.length,
+          linkedCount,
+          gap: gapList,
+        });
+      }
+
+      res.json({ groups, totalGap });
+    } catch (err: any) {
+      console.warn("[MEMBERSHIP] Onboarding gap report failed:", err?.message);
+      res.status(500).json({ message: "Failed to build onboarding gap report: " + (err?.message || "unknown error") });
+    }
+  });
+
   // Manual Square membership sync — manager-only because it exposes / mutates
   // membership records across the entire customer base.
   app.post("/api/staff/membership/square-sync", staffAuth, managerAuth, async (req, res) => {

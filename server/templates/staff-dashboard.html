@@ -6863,7 +6863,7 @@
       membershipsData={plans,subs};
       renderMemberships(stats,plans,subs);
       if(state.role==='owner')loadWixMigration();
-      if(state.role==='manager'||state.role==='owner')loadLeftoverOneTime();
+      if(state.role==='manager'||state.role==='owner'){loadLeftoverOneTime();loadOnboardingGap();}
     }catch(e){
       if(e.message!=='Session expired')el('membershipsContent').innerHTML='<div class="empty-state"><div class="empty-title">Failed to load memberships</div></div>';
     }
@@ -6999,6 +6999,9 @@
 
     // Leftover one-time fallback audit panel (manager-only).
     html+=`<div id="leftoverOneTimePanel" style="margin-bottom:24px"></div>`;
+
+    // VIP onboarding gap panel — Square VIPs without an app account (manager-only).
+    html+=`<div id="onboardingGapPanel" style="margin-bottom:24px"></div>`;
 
     if(isManager){
       const allHaveSquareIds=plans.length>0&&plans.every(p=>p.squarePlanVariationId);
@@ -8034,6 +8037,78 @@
     panel.innerHTML=html;
   }
   window.refreshLeftoverOneTime=loadLeftoverOneTime;
+
+  /* ── VIP Onboarding Gap report ── */
+  async function loadOnboardingGap(){
+    const panel=el('onboardingGapPanel');if(!panel)return;
+    panel.innerHTML='<div style="font-size:12px;color:var(--text-2);padding:8px 0">Checking Square VIP groups for members without app accounts…</div>';
+    try{
+      const r=await api('/api/staff/membership/onboarding-gap');
+      const data=await r.json();
+      renderOnboardingGap(data);
+    }catch(e){
+      if(e.message==='Session expired')return;
+      panel.innerHTML='<div style="font-size:12px;color:var(--text-2);padding:8px 0">Could not run VIP onboarding gap report ('+esc(e.message||'error')+').</div>';
+    }
+  }
+  function renderOnboardingGap(data){
+    const panel=el('onboardingGapPanel');if(!panel)return;
+    const groups=data.groups||[];
+    const totalGap=data.totalGap||0;
+    if(!groups.length){
+      panel.innerHTML='<div class="settings-section" style="margin:0;border-left:4px solid var(--text-3,#9CA3AF);padding:12px 16px;font-size:12px;color:var(--text-2)">'+esc(data.message||'No Square customer groups are mapped to membership plans.')+'</div>';
+      return;
+    }
+    const totalLinked=groups.reduce((s,g)=>s+g.linkedCount,0);
+    const totalSquare=groups.reduce((s,g)=>s+g.squareTotal,0);
+    const allOnboarded=totalGap===0&&totalSquare>0;
+    const headerColor=allOnboarded?'#10B981':(totalGap>0?'#F59E0B':'#9CA3AF');
+    let html='<div class="settings-section" style="margin:0;border-left:4px solid '+headerColor+'">'+
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">'+
+        '<div>'+
+          '<div class="settings-title" style="margin-bottom:2px;display:flex;align-items:center;gap:8px">'+
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="'+headerColor+'" stroke-width="2.5"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>'+
+            'VIP Onboarding Gap'+
+            (totalGap>0?' <span class="pill pill-amber" style="margin-left:4px">'+totalGap+' to chase</span>':' <span class="pill pill-green" style="margin-left:4px">All onboarded</span>')+
+          '</div>'+
+          '<div class="settings-desc" style="margin:0;max-width:640px">VIPs only appear in this app\u2019s Memberships list once they\u2019ve registered an account using the same email they have in Square. Below are the people in your Square VIP customer group who haven\u2019t signed up yet \u2014 send them an invite to install the app.</div>'+
+        '</div>'+
+        '<button class="btn btn-secondary btn-sm" onclick="window.refreshOnboardingGap()">Re-check Square</button>'+
+      '</div>';
+    groups.forEach(g=>{
+      const pct=g.squareTotal>0?Math.round((g.linkedCount/g.squareTotal)*100):0;
+      html+='<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">'+
+          '<div style="font-weight:700;color:var(--text);font-size:14px">'+esc(g.planName)+'</div>'+
+          '<div style="font-size:12px;color:var(--text-2)">'+g.linkedCount+' of '+g.squareTotal+' linked ('+pct+'%) \u2022 '+g.gap.length+' to chase</div>'+
+        '</div>';
+      if(g.squareTotal===0){
+        html+='<div style="font-size:12px;color:var(--text-2);padding:6px 0">No customers in this Square group yet.</div>';
+      }else if(g.gap.length===0){
+        html+='<div style="font-size:12px;color:#10B981;padding:6px 0">All Square members for this plan already have app accounts.</div>';
+      }else{
+        html+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
+          '<thead><tr style="text-align:left;border-bottom:1px solid var(--border);color:var(--text-2);font-size:11px;text-transform:uppercase;letter-spacing:.5px">'+
+            '<th style="padding:8px 6px">Name</th><th style="padding:8px 6px">Email</th><th style="padding:8px 6px">Phone</th><th style="padding:8px 6px">Added to Square</th>'+
+          '</tr></thead><tbody>';
+        g.gap.forEach(m=>{
+          const when=m.addedToSquare?new Date(m.addedToSquare).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'\u2014';
+          const emailHtml=m.email?'<a href="mailto:'+esc(m.email)+'?subject='+encodeURIComponent('Your VIP membership at The 147')+'&body='+encodeURIComponent('Hi '+(m.name.split(' ')[0]||'')+',\n\nYou\'re set up as a VIP at The 147. To activate your 10% food & drink discount, please install the venue app and register using this email address:\n\n'+m.email+'\n\nOnce registered, your VIP status will link automatically.\n\nThanks,\nThe 147 team')+'" style="color:var(--blue);text-decoration:none">'+esc(m.email)+'</a>':'<span style="color:var(--text-3,#9CA3AF)">no email on Square</span>';
+          html+='<tr style="border-bottom:1px solid var(--border)">'+
+            '<td style="padding:10px 6px;font-weight:600;color:var(--text)">'+esc(m.name)+'</td>'+
+            '<td style="padding:10px 6px">'+emailHtml+'</td>'+
+            '<td style="padding:10px 6px;font-size:12px;color:var(--text-2)">'+esc(m.phone||'\u2014')+'</td>'+
+            '<td style="padding:10px 6px;font-size:12px;color:var(--text-2)">'+when+'</td>'+
+          '</tr>';
+        });
+        html+='</tbody></table></div>';
+      }
+      html+='</div>';
+    });
+    html+='</div>';
+    panel.innerHTML=html;
+  }
+  window.refreshOnboardingGap=loadOnboardingGap;
   window.leftoverRefundCancel=async function(id){
     const it=leftoverOneTimeCache.find(x=>x.subscriptionId===id);
     if(!it||!it.oneTimePaymentId){toast('Re-run the audit first.','error');return;}
