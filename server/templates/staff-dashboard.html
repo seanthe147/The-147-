@@ -250,6 +250,12 @@
 
     /* ── Empty / loading ── */
     .empty-state{text-align:center;padding:80px 20px}
+    .empty-jump{margin-top:28px;padding-top:24px;border-top:1px solid var(--border)}
+    .empty-jump-label{font-size:12px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-2);margin-bottom:12px;font-weight:600}
+    .empty-jump-row{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+    .jump-pill{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:background 0.15s,border-color 0.15s}
+    .jump-pill:hover{background:var(--surface-2);border-color:var(--accent)}
+    .jump-pill-count{background:var(--accent);color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;min-width:18px;text-align:center}
     .empty-icon{font-size:52px;opacity:.2;margin-bottom:14px}
     .empty-title{font-size:17px;font-weight:700;color:var(--text);margin-bottom:6px}
     .empty-desc{font-size:13px;color:var(--text-2)}
@@ -2542,7 +2548,7 @@
 (function(){
   'use strict';
   const TOKEN_KEY='staffToken147';
-  let state={role:'staff',username:null,displayName:null,currentDate:todayStr(),bookings:[],msgFilter:'all',tableFilter:'all',searchQ:''};
+  let state={role:'staff',username:null,displayName:null,currentDate:todayStr(),bookings:[],upcomingDates:[],upcomingFetchedAt:0,msgFilter:'all',tableFilter:'all',searchQ:''};
   let editingId=null,currentMsgId=null;
 
   /* ── Helpers ── */
@@ -2964,7 +2970,7 @@
     const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',website:'Website',banners:'App Banners',offers:'Offers',deals:'Current Deals',payments:'Events & Payments',hr:'HR & Attendance',gdpr:'GDPR & Compliance',auditlog:'Audit Log'};
     el('topbarTitle').textContent=titles[page]||'';
     el('topbarSub').textContent='';
-    if(page==='bookings'){el('topbarActions').style.display='';switchBookingsTab('bookings');loadBookings();loadDashboardNotices();startBookingsPolling();}
+    if(page==='bookings'){el('topbarActions').style.display='';switchBookingsTab('bookings');loadBookings();loadUpcomingDates();loadDashboardNotices();startBookingsPolling();}
     else{el('topbarActions').style.display='none';stopBookingsPolling();}
     // Always stop orders polling on navigation; switchMenuTab('orders')
     // below will restart it when we land on the Orders sub-tab.
@@ -3150,6 +3156,40 @@
   };
 
   /* ── Bookings ── */
+  // Cache of upcoming dates that actually have non-cancelled bookings, used to
+  // turn the "No bookings for this date" dead-end into a one-click jump to the
+  // next date that has any. Refreshed at most every 2 minutes — cheap because
+  // /api/bookings (no date) returns ~50 rows for this venue.
+  async function loadUpcomingDates(force){
+    const age=Date.now()-state.upcomingFetchedAt;
+    if(!force && state.upcomingDates.length && age<120000) return;
+    try{
+      const r=await api('/api/bookings');
+      if(!r.ok)return;
+      const all=await r.json();
+      if(!Array.isArray(all))return;
+      const today=todayStr();
+      const byDate=new Map();
+      for(const b of all){
+        if(!b||!b.date)continue;
+        if(b.status==='cancelled')continue;
+        if(b.date<today)continue;
+        byDate.set(b.date,(byDate.get(b.date)||0)+1);
+      }
+      const sorted=[...byDate.entries()].sort((a,b)=>a[0].localeCompare(b[0])).slice(0,5).map(([date,count])=>({date,count}));
+      state.upcomingDates=sorted;
+      state.upcomingFetchedAt=Date.now();
+      // Re-render if we're currently looking at an empty date so the pills show
+      if(!state.bookings.length)renderBookings();
+    }catch(e){/* silent */}
+  }
+
+  window.jumpToBookingDate=function(d){
+    state.currentDate=d;
+    updateDateUI();
+    loadBookings();
+  };
+
   async function loadBookings(){
     // Same date-capture guard as silentRefreshBookings — if staff click
     // the date arrows while the initial fetch is still in flight, the
@@ -3187,7 +3227,18 @@
     el('statPending').textContent=all.filter(b=>b.status==='pending'||(!b.status||b.status==='pending')).length;
 
     if(!list.length){
-      el('bookingsContent').innerHTML='<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">'+(q||tf!=='all'?'No matching bookings':'No bookings for this date')+'</div><div class="empty-desc">'+(q||tf!=='all'?'Try a different search or filter':'Use the "New Booking" button to add one')+'</div></div>';
+      const filtered=q||tf!=='all';
+      let jumpHtml='';
+      if(!filtered && state.upcomingDates.length){
+        const pills=state.upcomingDates.filter(u=>u.date!==state.currentDate).slice(0,4).map(u=>{
+          const label=formatDateLabel(u.date).replace(/^(\w+),\s*/,'');
+          return '<button class="jump-pill" onclick="jumpToBookingDate(\''+esc(u.date)+'\')">'+esc(label)+' <span class="jump-pill-count">'+u.count+'</span></button>';
+        }).join('');
+        if(pills)jumpHtml='<div class="empty-jump"><div class="empty-jump-label">Jump to a date with bookings:</div><div class="empty-jump-row">'+pills+'</div></div>';
+      }
+      el('bookingsContent').innerHTML='<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">'+(filtered?'No matching bookings':'No bookings for this date')+'</div><div class="empty-desc">'+(filtered?'Try a different search or filter':'Use the "New Booking" button to add one')+'</div>'+jumpHtml+'</div>';
+      // Lazy-load the upcoming-dates cache if we haven't yet
+      if(!filtered && !state.upcomingDates.length && !state.upcomingFetchedAt)loadUpcomingDates();
       return;
     }
 
