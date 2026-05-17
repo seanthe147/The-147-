@@ -381,6 +381,7 @@ export const bannerImages = pgTable("banner_images", {
   showOnOrder: boolean("show_on_order").notNull().default(true),
   showOnEvents: boolean("show_on_events").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 // Banner `linkValue` is rendered into web `Linking.openURL()` calls on the
@@ -407,7 +408,7 @@ export function isSafePublicUrl(value: unknown): value is string {
 }
 
 export const insertBannerImageSchema = createInsertSchema(bannerImages)
-  .omit({ id: true, createdAt: true })
+  .omit({ id: true, createdAt: true, updatedAt: true })
   .superRefine((data, ctx) => {
     if (data.linkType === "url" && data.linkValue != null && !isSafePublicUrl(data.linkValue)) {
       ctx.addIssue({

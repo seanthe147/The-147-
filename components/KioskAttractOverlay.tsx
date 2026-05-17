@@ -25,6 +25,7 @@ interface BannerImage {
   imageUrl: string;
   title?: string | null;
   active: boolean;
+  updatedAt?: string | Date | null;
 }
 
 const BANNER_ROTATE_MS = 6000;
@@ -141,9 +142,12 @@ export function KioskAttractOverlay() {
         <View style={styles.bg}>
           {banner ? (
             <ExpoImage
-              source={{ uri: banner.imageUrl }}
+              source={{ uri: banner.updatedAt && !banner.imageUrl.startsWith("data:")
+                ? `${banner.imageUrl}${banner.imageUrl.includes("?") ? "&" : "?"}v=${banner.updatedAt instanceof Date ? banner.updatedAt.getTime() : banner.updatedAt}`
+                : banner.imageUrl }}
               style={StyleSheet.absoluteFill}
               contentFit="cover"
+              cachePolicy="disk"
               transition={400}
             />
           ) : (

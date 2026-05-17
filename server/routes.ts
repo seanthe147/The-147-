@@ -7424,8 +7424,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (value === undefined || value === null) {
       return res.status(400).json({ message: "Value is required" });
     }
-    await storage.setSetting(req.params.key as string, String(value));
-    res.json({ key: req.params.key, value: String(value) });
+    const key = req.params.key as string;
+    await storage.setSetting(key, String(value));
+    // When the hero banner image is replaced, stamp an updated_at timestamp so
+    // the app can append it as a cache-busting query parameter and force
+    // expo-image to treat the replacement as a fresh resource.
+    if (key === "banner_image") {
+      await storage.setSetting("banner_image_updated_at", String(Date.now()));
+    }
+    res.json({ key, value: String(value) });
   });
 
   app.get("/api/banner-images", async (req, res) => {

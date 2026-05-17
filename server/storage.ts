@@ -1621,7 +1621,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateBannerImage(id: number, data: Partial<InsertBannerImage>): Promise<BannerImage | undefined> {
-    const [row] = await db.update(bannerImages).set(data).where(eq(bannerImages.id, id)).returning();
+    const [row] = await db.update(bannerImages).set({ ...data, updatedAt: new Date() }).where(eq(bannerImages.id, id)).returning();
     return row;
   }
 

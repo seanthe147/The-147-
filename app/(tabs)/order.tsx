@@ -121,6 +121,14 @@ interface BannerImage {
   imageUrl: string;
   title?: string | null;
   active: boolean;
+  updatedAt?: string | Date | null;
+}
+
+function withBannerCacheBuster(url: string, ts: string | number | Date | null | undefined): string {
+  if (!ts || url.startsWith("data:")) return url;
+  const v = ts instanceof Date ? ts.getTime() : ts;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}v=${v}`;
 }
 
 function BannerCarousel({ banners }: { banners: BannerImage[] }) {
@@ -169,11 +177,11 @@ function BannerCarousel({ banners }: { banners: BannerImage[] }) {
         {banners.map((banner) => (
           <View key={banner.id} style={bannerStyles.slide}>
             <ExpoImage
-              source={{ uri: banner.imageUrl }}
+              source={{ uri: withBannerCacheBuster(banner.imageUrl, banner.updatedAt) }}
               style={bannerStyles.image}
               contentFit="cover"
               transition={150}
-              cachePolicy="memory-disk"
+              cachePolicy="disk"
             />
             {!!banner.title && (
               <View style={bannerStyles.titleOverlay}>

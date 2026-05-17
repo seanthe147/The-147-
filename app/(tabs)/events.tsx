@@ -36,6 +36,14 @@ function resolveImageUrl(path: string): string {
   return new URL(path, base).toString();
 }
 
+function withCacheBuster(url: string, ts: string | number | Date | null | undefined): string {
+  const resolved = resolveImageUrl(url);
+  if (!ts || resolved.startsWith("data:")) return resolved;
+  const v = ts instanceof Date ? ts.getTime() : ts;
+  const sep = resolved.includes("?") ? "&" : "?";
+  return `${resolved}${sep}v=${v}`;
+}
+
 const BannerCarousel = memo(function BannerCarousel({ images }: { images: BannerImage[] }) {
   const scrollRef = useRef<ScrollView>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -103,11 +111,11 @@ const BannerCarousel = memo(function BannerCarousel({ images }: { images: Banner
               onPress={hasLink ? handleBannerPress : undefined}
             >
               <ExpoImage
-                source={{ uri: resolveImageUrl(item.imageUrl) }}
+                source={{ uri: withCacheBuster(item.imageUrl, item.updatedAt) }}
                 style={styles.bannerImage}
                 contentFit="cover"
                 transition={250}
-                cachePolicy="memory-disk"
+                cachePolicy="disk"
               />
               {item.title ? (
                 <LinearGradient

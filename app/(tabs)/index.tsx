@@ -39,6 +39,16 @@ function resolveImageUrl(path: string): string {
   return new URL(path, base).toString();
 }
 
+// Appends a ?v=<timestamp> cache-busting parameter to HTTP/HTTPS/path URLs so
+// that expo-image treats a replaced image as a new resource. data: URIs are
+// returned unchanged — their content IS the cache key, so no busting needed.
+function withCacheBuster(url: string, ts: string | number | null | undefined): string {
+  const resolved = resolveImageUrl(url);
+  if (!ts || resolved.startsWith("data:")) return resolved;
+  const sep = resolved.includes("?") ? "&" : "?";
+  return `${resolved}${sep}v=${ts}`;
+}
+
 interface LoyaltyMeSnapshot {
   linked: boolean;
   account?: { balance: number } | null;
@@ -289,11 +299,11 @@ const BannerCarousel = memo(function BannerCarousel({ images }: { images: Banner
               onPress={hasLink ? handleBannerPress : undefined}
             >
               <ExpoImage
-                source={{ uri: resolveImageUrl(item.imageUrl) }}
+                source={{ uri: withCacheBuster(item.imageUrl, item.updatedAt ? new Date(item.updatedAt).getTime() : undefined) }}
                 style={styles.bannerImage}
                 contentFit="cover"
                 transition={250}
-                cachePolicy="memory-disk"
+                cachePolicy="disk"
               />
               {item.title ? (
                 <LinearGradient
@@ -688,11 +698,11 @@ export default function HomeScreen() {
         <View style={styles.heroBanner}>
           {bannerImageUrl ? (
             <ExpoImage
-              source={{ uri: resolveImageUrl(bannerImageUrl) }}
+              source={{ uri: withCacheBuster(bannerImageUrl, settings?.banner_image_updated_at) }}
               style={StyleSheet.absoluteFillObject}
               contentFit="cover"
               transition={300}
-              cachePolicy="memory-disk"
+              cachePolicy="disk"
             />
           ) : null}
           {heroOverlay}
