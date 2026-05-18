@@ -4801,6 +4801,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Restore a single table from a backup snapshot (owner-only, destructive).
+  // Body: { filename: string, table: string }
+  // Clears the live table and replaces it with the snapshot rows — always
+  // runs inside a transaction so partial writes are impossible.
+  app.post("/api/staff/backup/restore", staffAuth, ownerAuth, async (req, res) => {
+    const { filename, table } = req.body ?? {};
+    if (!filename || !table) {
+      return res.status(400).json({ ok: false, message: "filename and table are required" });
+    }
+    try {
+      const { restoreTableFromBackup } = await import("./backup");
+      const { restoredRows } = await restoreTableFromBackup(String(filename), String(table));
+      // Log the restore action for the audit trail
+      const staffId = (req as any).staffUser?.id ?? null;
+      try {
+        const { storage: store } = await import("./storage");
+        await (store as any).logStaffAction?.({
+          staffUserId: staffId,
+          action: "backup_restore",
+          details: `Restored table '${table}' from ${filename} (${restoredRows} rows)`,
+        });
+      } catch { /* audit logging must never break restore */ }
+      console.log(`[Backup] Restore: table=${table} file=${filename} rows=${restoredRows} by staff#${staffId}`);
+      res.json({ ok: true, restoredRows });
+    } catch (err: any) {
+      console.error("/api/staff/backup/restore error:", err.message);
+      res.status(500).json({ ok: false, message: err.message ?? "Restore failed" });
+    }
+  });
+
   // Download a specific backup file as a JSON attachment.
   app.get("/api/staff/backup/download/:filename", staffAuth, ownerAuth, async (req, res) => {
     try {

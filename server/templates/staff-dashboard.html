@@ -1747,8 +1747,17 @@
             <div class="settings-title">Data Backup</div>
             <div class="settings-desc">
               A snapshot of all bookings, orders, memberships, and customer accounts is saved automatically every night.
-              Download any backup to keep a safe copy on your own computer.
-              The last 14 daily backups are kept — older ones are removed automatically.
+              The last <strong>5 daily backups</strong> are kept — when a 6th is created the oldest is removed automatically.
+              Backups are stored as separate files completely independent of the live database, so deleting or changing data in the app has no effect on them.
+            </div>
+            <div style="margin:12px 0 16px;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;font-size:13px;color:var(--text-2)">
+              <strong style="color:var(--text)">To restore data:</strong>
+              Click <em>Restore</em> next to any backup below, choose which table to recover, and confirm.
+              The live data for that table is replaced with the snapshot — any changes made after that backup was taken will be lost.
+              <br><br>
+              <strong style="color:var(--text)">Offline copies:</strong>
+              Use the <em>Download</em> link to save a file to your phone, USB drive, or Google Drive.
+              If you ever need to recover from a downloaded file, share it with your developer — they can restore from it directly.
             </div>
             <div id="backupStatus" style="margin-bottom:16px"></div>
             <div id="backupList"></div>
@@ -1778,6 +1787,39 @@
         </div>
       </div>
     </main>
+  </div>
+</div>
+
+<!-- RESTORE BACKUP MODAL -->
+<div class="overlay" id="restoreModal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-hd">
+      <div class="modal-hd-title">Restore Data from Backup</div>
+      <button class="modal-close" onclick="closeOverlay('restoreModal')">&times;</button>
+    </div>
+    <div class="modal-bd">
+      <div style="padding:10px 14px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;font-size:13px;color:#92400e;margin-bottom:16px">
+        <strong>Warning — this will overwrite live data.</strong>
+        The selected table will be replaced with the rows from the backup.
+        Any bookings, orders, or memberships created after this backup was taken will be lost.
+      </div>
+      <div style="font-size:13px;color:var(--text-2);margin-bottom:14px">
+        Backup taken: <strong id="restoreModalDate" style="color:var(--text)"></strong>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Which data do you want to restore?</label>
+        <select class="form-input" id="restoreTableSelect"></select>
+      </div>
+      <div style="font-size:12px;color:var(--text-2);margin-top:8px">
+        Only the selected table is affected — everything else stays as it is.
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn" id="restoreConfirmBtn"
+        style="background:#dc2626;color:#fff;border:none"
+        onclick="confirmRestore()">Yes, Restore This Data</button>
+      <button class="btn btn-secondary" onclick="closeOverlay('restoreModal')">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -3218,6 +3260,10 @@
   }
 
   /* ── Data Backup Panel (owner-only, Settings tab) ── */
+  // Track which backup/table is selected for restore
+  let _restoreFilename='';
+  let _restoreTable='';
+
   async function loadBackupPanel(){
     if(state.role!=='owner')return;
     const section=el('backupSection');
@@ -3232,15 +3278,18 @@
       if(!r.ok){statusEl.innerHTML='<span style="color:var(--red);font-size:13px">Could not load backup list.</span>';return;}
       const {backups}=await r.json();
       if(!backups||!backups.length){
-        statusEl.innerHTML='<span style="font-size:13px;color:var(--text-2)">No backups yet — the first one will run automatically within 2 minutes of the server starting.</span>';
+        statusEl.innerHTML='<span style="font-size:13px;color:var(--text-2)">No backups yet — the first one runs automatically 2 hours after the server starts.</span>';
         return;
       }
       const latest=backups[0];
       const latestDate=new Date(latest.createdAt).toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
       const totalRows=Object.values(latest.rowCounts||{}).reduce((a,b)=>a+(b||0),0);
       statusEl.innerHTML=`<div style="padding:10px 14px;background:var(--green-light,#f0fdf4);border:1px solid var(--green,#22c55e);border-radius:10px;font-size:13px;color:var(--text)">
-        <strong style="color:var(--green)">Latest backup:</strong> ${esc(latestDate)} &mdash; ${totalRows.toLocaleString()} rows across ${Object.keys(latest.rowCounts||{}).length} tables
+        <strong style="color:var(--green)">Latest backup:</strong> ${esc(latestDate)} &mdash; ${totalRows.toLocaleString()} rows, ${backups.length} of 5 slots used
       </div>`;
+
+      const TABLE_LABELS={'membership_plans':'Membership Plans','membership_subscriptions':'Memberships','bookings':'Bookings','app_orders':'Orders','customers':'Customers'};
+
       listEl.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:4px">
         <thead><tr style="border-bottom:2px solid var(--border)">
           <th style="text-align:left;padding:6px 8px;color:var(--text-2);font-weight:600">Date &amp; Time</th>
@@ -3252,15 +3301,20 @@
           const d=new Date(b.createdAt).toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
           const rows=Object.values(b.rowCounts||{}).reduce((a,v)=>a+(v||0),0);
           const rowBg=i%2===0?'var(--surface)':'transparent';
+          const tableOpts=Object.entries(b.rowCounts||{}).map(([t,n])=>`<option value="${esc(t)}">${esc(TABLE_LABELS[t]||t)} (${n} rows)</option>`).join('');
           return`<tr style="border-bottom:1px solid var(--border);background:${rowBg}">
             <td style="padding:8px 8px;color:var(--text)">${esc(d)}${i===0?'<span style="margin-left:6px;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;background:var(--green-light,#f0fdf4);color:var(--green)">Latest</span>':''}</td>
             <td style="padding:8px 8px;text-align:right;color:var(--text-2)">${b.sizeKb} KB</td>
             <td style="padding:8px 8px;text-align:right;color:var(--text-2)">${rows.toLocaleString()}</td>
-            <td style="padding:8px 8px;text-align:right">
+            <td style="padding:8px 8px;text-align:right;white-space:nowrap;display:flex;gap:6px;justify-content:flex-end">
               <a href="/api/staff/backup/download/${esc(b.filename)}" download="${esc(b.filename)}"
-                style="font-size:12px;font-weight:600;color:var(--blue);text-decoration:none;padding:4px 10px;border:1px solid var(--blue);border-radius:6px;white-space:nowrap">
+                style="font-size:12px;font-weight:600;color:var(--blue);text-decoration:none;padding:4px 10px;border:1px solid var(--blue);border-radius:6px">
                 Download
               </a>
+              <button onclick="openRestoreModal('${esc(b.filename)}',${JSON.stringify(b.rowCounts||{})})"
+                style="font-size:12px;font-weight:600;color:var(--amber,#f59e0b);background:transparent;border:1px solid var(--amber,#f59e0b);border-radius:6px;padding:4px 10px;cursor:pointer">
+                Restore
+              </button>
             </td>
           </tr>`;
         }).join('')}</tbody>
@@ -3268,6 +3322,43 @@
     }catch(e){
       if(e.message==='Session expired')return;
       statusEl.innerHTML='<span style="color:var(--red);font-size:13px">Unable to load backup list.</span>';
+    }
+  }
+
+  function openRestoreModal(filename,rowCounts){
+    _restoreFilename=filename;
+    _restoreTable='';
+    const TABLE_LABELS={'membership_plans':'Membership Plans','membership_subscriptions':'Memberships','bookings':'Bookings','app_orders':'Orders','customers':'Customers'};
+    const sel=el('restoreTableSelect');
+    sel.innerHTML=Object.entries(rowCounts).map(([t,n])=>`<option value="${esc(t)}">${esc(TABLE_LABELS[t]||t)} — ${n} rows in backup</option>`).join('');
+    sel.value=sel.options[0]?.value||'';
+    _restoreTable=sel.value;
+    sel.onchange=()=>{_restoreTable=sel.value;};
+    const ts=filename.replace('backup_','').replace('.json','').replace(/T(\d{2})-(\d{2})-(\d{2})$/,'T$1:$2:$3');
+    const d=new Date(ts).toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    el('restoreModalDate').textContent=d;
+    openOverlay('restoreModal');
+  }
+
+  async function confirmRestore(){
+    if(!_restoreFilename||!_restoreTable)return;
+    const btn=el('restoreConfirmBtn');
+    btn.disabled=true;
+    btn.textContent='Restoring…';
+    try{
+      const r=await api('/api/staff/backup/restore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:_restoreFilename,table:_restoreTable})});
+      const data=await r.json();
+      if(r.ok&&data.ok){
+        closeOverlay('restoreModal');
+        toast(`Restored ${data.restoredRows.toLocaleString()} rows successfully`,'success');
+      }else{
+        toast(data.message||'Restore failed','error');
+      }
+    }catch(e){
+      toast('Restore failed','error');
+    }finally{
+      btn.disabled=false;
+      btn.textContent='Yes, Restore This Data';
     }
   }
 

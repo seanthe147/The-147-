@@ -12,7 +12,7 @@ import * as path from "path";
 import { Pool } from "pg";
 
 const BACKUP_DIR = path.resolve(process.cwd(), "backups");
-const MAX_BACKUPS = 14; // two weeks of nightly runs
+const MAX_BACKUPS = 5; // five daily backups — oldest is replaced when a 6th arrives
 
 // The five tables that matter most.  Order controls JSON key order only.
 const CRITICAL_TABLES = [
@@ -139,4 +139,64 @@ export function resolveBackupFile(filename: string): string | null {
   const filepath = path.join(BACKUP_DIR, filename);
   if (!fs.existsSync(filepath)) return null;
   return filepath;
+}
+
+// Restore a single table from a backup file.
+// Uses TRUNCATE + INSERT so the live table matches the snapshot exactly.
+// The caller (route handler) is responsible for owner-auth and audit logging.
+export async function restoreTableFromBackup(
+  filename: string,
+  tableName: string,
+): Promise<{ restoredRows: number }> {
+  // Whitelist — only the five tables we back up can be restored this way.
+  const allowed = new Set(CRITICAL_TABLES as readonly string[]);
+  if (!allowed.has(tableName)) {
+    throw new Error(`Table "${tableName}" is not in the allowed restore list.`);
+  }
+
+  const filepath = resolveBackupFile(filename);
+  if (!filepath) throw new Error("Backup file not found.");
+
+  const raw = fs.readFileSync(filepath, "utf-8");
+  const parsed = JSON.parse(raw);
+  const rows: Record<string, unknown>[] = Array.isArray(parsed?.data?.[tableName])
+    ? parsed.data[tableName]
+    : [];
+
+  if (!rows.length) return { restoredRows: 0 };
+
+  const pool = makePool();
+  try {
+    // Build parameterised bulk INSERT from the first row's column set.
+    const cols = Object.keys(rows[0]);
+    if (!cols.length) return { restoredRows: 0 };
+
+    await pool.query("BEGIN");
+    // Clear the table first so deleted records from the backup period are
+    // also restored, not just updated.
+    await pool.query(`TRUNCATE TABLE ${tableName} RESTART IDENTITY CASCADE`);
+
+    // Insert in batches of 500 to avoid hitting parameter limits.
+    const BATCH = 500;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const batch = rows.slice(i, i + BATCH);
+      const colList = cols.map((c) => `"${c}"`).join(", ");
+      const valuePlaceholders = batch
+        .map((_, ri) => `(${cols.map((_, ci) => `$${ri * cols.length + ci + 1}`).join(", ")})`)
+        .join(", ");
+      const flatValues = batch.flatMap((row) => cols.map((c) => row[c] ?? null));
+      await pool.query(
+        `INSERT INTO ${tableName} (${colList}) VALUES ${valuePlaceholders}`,
+        flatValues,
+      );
+    }
+
+    await pool.query("COMMIT");
+    return { restoredRows: rows.length };
+  } catch (err) {
+    await pool.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    await pool.end().catch(() => {});
+  }
 }
