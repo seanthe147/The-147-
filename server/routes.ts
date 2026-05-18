@@ -4778,6 +4778,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Data backup (owner-only) ──────────────────────────────────────────────
+  // List available backup snapshots.
+  app.get("/api/staff/backup/list", staffAuth, ownerAuth, async (_req, res) => {
+    try {
+      const { listBackups } = await import("./backup");
+      res.json({ backups: listBackups() });
+    } catch (err: any) {
+      res.status(500).json({ message: "Unable to list backups" });
+    }
+  });
+
+  // Trigger an immediate backup snapshot.
+  app.post("/api/staff/backup/trigger", staffAuth, ownerAuth, async (_req, res) => {
+    try {
+      const { runBackup } = await import("./backup");
+      const result = await runBackup();
+      res.json({ ok: true, ...result });
+    } catch (err: any) {
+      console.error("/api/staff/backup/trigger error:", err.message);
+      res.status(500).json({ ok: false, message: err.message ?? "Backup failed" });
+    }
+  });
+
+  // Download a specific backup file as a JSON attachment.
+  app.get("/api/staff/backup/download/:filename", staffAuth, ownerAuth, async (req, res) => {
+    try {
+      const { resolveBackupFile } = await import("./backup");
+      const filepath = resolveBackupFile(req.params.filename);
+      if (!filepath) return res.status(404).json({ message: "Backup not found" });
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader("Content-Disposition", `attachment; filename="${req.params.filename}"`);
+      res.sendFile(filepath);
+    } catch (err: any) {
+      res.status(500).json({ message: "Download failed" });
+    }
+  });
+
   app.get("/api/deals", async (req, res) => {
     try {
       // Optional surface filter: when ?surface=order or ?surface=kiosk is

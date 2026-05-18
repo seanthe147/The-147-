@@ -749,6 +749,25 @@ function scheduleBirthdayWeekPushes() {
 // Without this, staff could turn double-points on for a Saturday event and
 // it would silently stay on indefinitely. Runs every 30 minutes — enough
 // resolution to catch any timezone drift around midnight.
+function scheduleNightlyBackup() {
+  async function runNightly() {
+    try {
+      const { runBackup } = await import("./backup");
+      const { filename, rowCounts } = await runBackup();
+      const summary = Object.entries(rowCounts)
+        .map(([t, n]) => `${t}:${n}`)
+        .join(", ");
+      log(`[Backup] Nightly snapshot complete — ${filename} (${summary})`);
+    } catch (err: any) {
+      console.error("[Backup] Nightly snapshot failed:", err?.message ?? err);
+    }
+  }
+  // First run 2 minutes after startup so the server is fully warmed up.
+  // Then every 24 hours thereafter.
+  setTimeout(runNightly, 2 * 60 * 1000);
+  setInterval(runNightly, 24 * 60 * 60 * 1000);
+}
+
 function scheduleDoublePointsDailyReset() {
   // Track the London-local date we last performed the reset check, so each
   // calendar day only triggers one clear. The very first check on startup
@@ -1280,6 +1299,7 @@ function scheduleRetentionCleanup() {
   scheduleBirthdayWeekPushes();
   // Auto-clear the doublePointsToday flag overnight so it never lingers past midnight
   scheduleDoublePointsDailyReset();
+  scheduleNightlyBackup();
 })().catch((err) => {
   console.error("FATAL SERVER ERROR:", err);
   process.exit(1);
