@@ -598,6 +598,9 @@
 
     <!-- Main -->
     <main class="main">
+      <!-- Persistent sports fixtures strip — visible on every page for all staff -->
+      <div id="fixturesBar" style="display:none;padding:10px 20px 10px;border-bottom:1px solid var(--border)"></div>
+
       <div class="topbar">
         <button class="hamburger-btn" id="hamburgerBtn" onclick="toggleSidebar()" aria-label="Menu">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
@@ -641,8 +644,6 @@
         <div id="bookingsTabPanelBookings">
           <div class="page-body" style="padding-top:0">
             <div id="dashboardNotices" style="display:none;margin-bottom:16px"></div>
-            <!-- Upcoming sports fixtures bar -->
-            <div id="fixturesBar" style="margin-bottom:12px"></div>
             <div class="summary-row" id="summaryRow">
               <div class="stat-card"><div class="stat-label">Total Today</div><div class="stat-value" id="statTotal">—</div><div class="stat-sub">bookings</div></div>
               <div class="stat-card"><div class="stat-label">Confirmed</div><div class="stat-value" id="statConfirmed" style="color:var(--green)">—</div><div class="stat-sub">active</div></div>
@@ -2846,6 +2847,10 @@
     }catch(e){}
     navigateTo(initialPage);
     loadMessages();
+    // Load the fixtures bar and start polling immediately on login so it
+    // is visible on every page, not just Bookings.
+    loadFixturesBar();
+    startFixturesPolling();
     // Show any active login pop-ups after a short delay
     setTimeout(checkLoginPopups, 600);
   }
@@ -2908,6 +2913,8 @@
   }
 
   async function doLogout(){
+    stopBookingsPolling();
+    stopFixturesPolling();
     try{await api('/api/staff/logout',{method:'POST'})}catch(e){}
     clearToken();showLogin();
   }
@@ -3039,8 +3046,8 @@
     const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',website:'Website',banners:'App Banners',offers:'Offers',deals:'Current Deals',payments:'Events & Payments',hr:'HR & Attendance',gdpr:'GDPR & Compliance',auditlog:'Audit Log'};
     el('topbarTitle').textContent=titles[page]||'';
     el('topbarSub').textContent='';
-    if(page==='bookings'){el('topbarActions').style.display='';switchBookingsTab('bookings');loadBookings();loadUpcomingDates();loadDashboardNotices();loadFixturesBar();startBookingsPolling();startFixturesPolling();}
-    else{el('topbarActions').style.display='none';stopBookingsPolling();stopFixturesPolling();}
+    if(page==='bookings'){el('topbarActions').style.display='';switchBookingsTab('bookings');loadBookings();loadUpcomingDates();loadDashboardNotices();startBookingsPolling();}
+    else{el('topbarActions').style.display='none';stopBookingsPolling();}
     // Always stop orders polling on navigation; switchMenuTab('orders')
     // below will restart it when we land on the Orders sub-tab.
     if(page!=='menu')stopOrdersPolling();
