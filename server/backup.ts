@@ -11,8 +11,10 @@ import * as fs from "fs";
 import * as path from "path";
 import { Pool } from "pg";
 
-const BACKUP_DIR = path.resolve(process.cwd(), "backups");
-const MAX_BACKUPS = 14; // two weeks of nightly runs
+// Stored outside the project workspace so backups are never mixed with
+// source code and are not affected by deploys, file resets, or git operations.
+const BACKUP_DIR = path.resolve("/home/runner/the147_backups");
+const MAX_BACKUPS = 5; // keep the 5 most recent; oldest is overwritten on the 6th run
 
 // The five tables that matter most.  Order controls JSON key order only.
 const CRITICAL_TABLES = [
