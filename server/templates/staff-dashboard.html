@@ -668,6 +668,8 @@
                 <button class="filter-pill" data-type="dining">Dining</button>
               </div>
             </div>
+            <!-- Upcoming sports fixtures bar -->
+            <div id="fixturesBar" style="margin-bottom:12px"></div>
             <div class="live-bar">
               <div class="live-dot"></div>
               <span class="live-label">Live</span>
@@ -2970,7 +2972,7 @@
     const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',website:'Website',banners:'App Banners',offers:'Offers',deals:'Current Deals',payments:'Events & Payments',hr:'HR & Attendance',gdpr:'GDPR & Compliance',auditlog:'Audit Log'};
     el('topbarTitle').textContent=titles[page]||'';
     el('topbarSub').textContent='';
-    if(page==='bookings'){el('topbarActions').style.display='';switchBookingsTab('bookings');loadBookings();loadUpcomingDates();loadDashboardNotices();startBookingsPolling();}
+    if(page==='bookings'){el('topbarActions').style.display='';switchBookingsTab('bookings');loadBookings();loadUpcomingDates();loadDashboardNotices();loadFixturesBar();startBookingsPolling();}
     else{el('topbarActions').style.display='none';stopBookingsPolling();}
     // Always stop orders polling on navigation; switchMenuTab('orders')
     // below will restart it when we land on the Orders sub-tab.
@@ -3113,6 +3115,81 @@
     return`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2.5" style="flex-shrink:0;margin-top:1px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
   }
   function popupColourLabel(c){return c==='red'?'Urgent':c==='green'?'Info':'General';}
+
+  /* ── Upcoming Sports Fixtures Bar ── */
+  const CHANNEL_COLOURS={
+    'Sky Sports':'#0072CE','TNT Sports':'#FF6600','Sky Sports / TNT Sports':'#0072CE',
+    'BBC':'#D4161C','ITV':'#2E3192','DAZN':'#00E060','Amazon Prime':'#00A8E0','Channel 4':'#8C00FF',
+  };
+  function channelColour(ch){return CHANNEL_COLOURS[ch]||'var(--text-3,#9CA3AF)';}
+
+  async function loadFixturesBar(){
+    const bar=el('fixturesBar');if(!bar)return;
+    try{
+      const r=await api('/api/staff/fixtures/upcoming');
+      if(!r.ok){bar.style.display='none';return;}
+      const data=await r.json();
+      const fixtures=data.fixtures||[];
+      if(!fixtures.length){bar.style.display='none';return;}
+      bar.style.display='';
+
+      const cards=fixtures.map(f=>{
+        const isRL=f.sport==='rugby-league';
+        const sportIcon=isRL
+          ?'<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><ellipse cx="12" cy="12" rx="10" ry="6" fill="none" stroke="currentColor" stroke-width="2"/><line x1="2" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="1.5"/><line x1="12" y1="6" x2="12" y2="18" stroke="currentColor" stroke-width="1.5"/></svg>'
+          :'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>';
+
+        // Kickoff time formatted as local time (venue is UK so just show clock)
+        const ko=new Date(f.kickoffIso);
+        const dayLabel=ko.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+        const timeLabel=ko.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+
+        // Score (if live)
+        const isLive=f.status==='live';
+        const scoreHtml=isLive&&f.homeScore!=null
+          ?`<span style="font-size:13px;font-weight:800;color:#F59E0B;margin:0 4px">${f.homeScore}–${f.awayScore}</span>`
+          :'';
+
+        const ch=f.channel||'';
+        const chColour=channelColour(ch);
+        const chBadge=ch
+          ?`<span style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:5px;background:${chColour}22;color:${chColour};border:1px solid ${chColour}44;white-space:nowrap">${esc(ch)}</span>`
+          :'';
+
+        const livePip=isLive
+          ?'<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#EF4444;margin-right:4px;flex-shrink:0;animation:pulse 1.4s infinite"></span>'
+          :'';
+
+        return`<div style="flex:1;min-width:200px;max-width:340px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 14px;display:flex;flex-direction:column;gap:5px">
+          <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-2);font-weight:600">
+            ${sportIcon}
+            <span>${esc(f.leagueName)}</span>
+            ${livePip}${isLive?'<span style="font-size:10px;color:#EF4444;font-weight:700">LIVE</span>':''}
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+            ${f.homeLogo?`<img src="${esc(f.homeLogo)}" width="16" height="16" style="border-radius:2px;object-fit:contain" onerror="this.style.display='none'">`:''}
+            <span style="font-size:13px;font-weight:700;color:var(--text)">${esc(f.homeTeam)}</span>
+            ${scoreHtml}
+            <span style="font-size:12px;color:var(--text-2)">vs</span>
+            ${f.awayLogo?`<img src="${esc(f.awayLogo)}" width="16" height="16" style="border-radius:2px;object-fit:contain" onerror="this.style.display='none'">`:''}
+            <span style="font-size:13px;font-weight:700;color:var(--text)">${esc(f.awayTeam)}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span style="font-size:11px;color:var(--text-2)">${esc(dayLabel)} · ${esc(timeLabel)}</span>
+            ${chBadge}
+          </div>
+        </div>`;
+      }).join('');
+
+      bar.innerHTML=`<div style="margin-bottom:4px">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.6px;color:var(--text-3,#9CA3AF);text-transform:uppercase">Next 48 hours</span>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">${cards}</div>`;
+    }catch(e){
+      if(e.message==='Session expired')return;
+      bar.style.display='none';
+    }
+  }
 
   /* ── Dashboard Notices Banner ── */
   async function loadDashboardNotices(){

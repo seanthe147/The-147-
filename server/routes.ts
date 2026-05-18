@@ -4764,6 +4764,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Staff-only: upcoming sports fixtures for the bookings page bar.
+  // Returns up to 3 fixtures from PL, Championship, and Super League RL
+  // kicking off within the next 48 hours, sorted by kickoff time.
+  app.get("/api/staff/fixtures/upcoming", staffAuth, async (_req, res) => {
+    try {
+      const { getUpcomingFixtures } = await import("./sports-fixtures");
+      const fixtures = await getUpcomingFixtures(3);
+      res.json({ fixtures });
+    } catch (err: any) {
+      console.error("/api/staff/fixtures/upcoming error:", err.message);
+      res.status(500).json({ fixtures: [], message: "Unable to load fixtures" });
+    }
+  });
+
   app.get("/api/deals", async (req, res) => {
     try {
       // Optional surface filter: when ?surface=order or ?surface=kiosk is
