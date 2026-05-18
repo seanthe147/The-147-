@@ -24,6 +24,27 @@ import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import type { BannerImage } from "@shared/schema";
 import { isSafePublicUrl } from "@shared/schema";
 
+function formatRelativeDate(dateInput: string | Date | null | undefined): string {
+  if (!dateInput) return "Unknown";
+  const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  if (isNaN(date.getTime())) return "Unknown";
+  const now = Date.now();
+  const diffMs = now - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 30) return `${diffDays} days ago`;
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths === 1) return "1 month ago";
+  if (diffMonths < 12) return `${diffMonths} months ago`;
+  const diffYears = Math.floor(diffMonths / 12);
+  return diffYears === 1 ? "1 year ago" : `${diffYears} years ago`;
+}
+
 export default function AdminBannerScreen() {
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
@@ -469,6 +490,9 @@ export default function AdminBannerScreen() {
                       </View>
                     ) : null}
                   </View>
+                  <Text style={styles.cardUpdatedAt}>
+                    Last updated: {formatRelativeDate(img.updatedAt)}
+                  </Text>
                 </View>
                 <View style={styles.cardActions}>
                   <View style={styles.reorderButtons}>
@@ -801,6 +825,12 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_500Medium",
     fontSize: 10,
     color: Colors.light.textSecondary,
+  },
+  cardUpdatedAt: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 10,
+    color: Colors.light.textSecondary,
+    marginTop: 2,
   },
   cardActions: {
     flexDirection: "row",
