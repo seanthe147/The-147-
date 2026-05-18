@@ -846,6 +846,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(bookings.date), desc(bookings.startTime))
       .limit(SCAN_LIMIT);
     const needle = trimmed.toLowerCase();
+    const needleWords = needle.split(/\s+/).filter((w) => w.length > 0);
     const needleDigits = trimmed.replace(/\D/g, "");
     for (const raw of recent) {
       if (out.length >= limit) break;
@@ -859,8 +860,10 @@ export class DatabaseStorage implements IStorage {
       const email = (dec.customerEmail || "").toLowerCase();
       const phone = (dec.customerPhone || "").toLowerCase();
       const phoneDigits = phone.replace(/\D/g, "");
+      // Name: all words must appear somewhere (handles "James Kenell" finding "James Robert Kenell")
+      const nameHit = needleWords.every((w) => name.includes(w));
       const hit =
-        name.includes(needle) ||
+        nameHit ||
         email.includes(needle) ||
         phone.includes(needle) ||
         (needleDigits.length >= 3 && phoneDigits.includes(needleDigits));
@@ -1390,6 +1393,9 @@ export class DatabaseStorage implements IStorage {
     if (!query || query.trim().length < 2) return [];
     const q = query.trim().toLowerCase();
     const qClean = q.replace(/\s/g, "");
+    // Split into individual words so "james kenell" matches "James Robert Kenell"
+    // even when the words aren't adjacent (middle names, different orderings, etc.).
+    const words = q.split(/\s+/).filter((w) => w.length > 0);
     // Search the customers table directly so accounts without bookings are included.
     // Data is encrypted at rest, so we decrypt and filter in-memory.
     const allCustomers = await db.select().from(customers).orderBy(customers.id);
@@ -1407,11 +1413,15 @@ export class DatabaseStorage implements IStorage {
         const nameLower = name.toLowerCase();
         const phoneLower = phone.toLowerCase().replace(/\s/g, "");
         const emailMatch = emailLower.includes(q);
-        const nameMatch = nameLower.includes(q);
+        // All words must appear somewhere in the name (any order, not necessarily adjacent)
+        const nameMatch = words.every((w) => nameLower.includes(w));
         const phoneMatch = qClean.length > 0 && phoneLower.includes(qClean);
         if (nameMatch || phoneMatch || emailMatch) {
           seen.add(emailLower);
-          const score = (nameLower.startsWith(q) ? 2 : 0) + (phoneMatch ? 1 : 0);
+          const score =
+            (nameLower.startsWith(words[0]) ? 2 : 0) +
+            (phoneMatch ? 1 : 0) +
+            (words.length > 1 && nameMatch ? 1 : 0); // bonus for multi-word hits
           matches.push({ id: dec.id, name, phone, email, score });
         }
       } catch { continue; }
