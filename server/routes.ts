@@ -1971,19 +1971,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const q = String(req.query.q || "").trim();
     if (q.length < 2) return res.json([]);
     try {
-      const results = await storage.searchCustomers(q, 6);
-      // Enrich each result with the customer's active/pending membership so
-      // the admin Customers screen can show a tier badge (the absence of one
-      // is exactly how the VIP discount outage went unnoticed for weeks).
-      // Note: storage.getMembershipSubscriptionByCustomer only returns rows
-      // where status='active' AND the plan is currently active in the staff
-      // portal. Pending/pending_start subs (still mid-payment) will not show
-      // a badge here — they appear once the first payment confirms.
-      const enriched = await Promise.all(results.map(async (c) => {
-        if (!c.id) return { ...c, membership: null };
+      // Search registered customer accounts first.
+      const [accountResults, bookingResults] = await Promise.all([
+        storage.searchCustomers(q, 6),
+        storage.searchBookings(q, 20),   // cast a wide net — we dedup below
+      ]);
+
+      // Enrich customer accounts with membership badges.
+      const enriched = await Promise.all(accountResults.map(async (c) => {
+        if (!c.id) return { ...c, membership: null, fromBooking: false };
         try {
           const sub = await storage.getMembershipSubscriptionByCustomer(c.id);
-          if (!sub || !sub.plan) return { ...c, membership: null };
+          if (!sub || !sub.plan) return { ...c, membership: null, fromBooking: false };
           return {
             ...c,
             membership: {
@@ -1993,12 +1992,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
               status: sub.status,
               foodDrinkDiscount: sub.plan.foodDrinkDiscount,
             },
+            fromBooking: false,
           };
         } catch {
-          return { ...c, membership: null };
+          return { ...c, membership: null, fromBooking: false };
         }
       }));
-      res.json(enriched);
+
+      // Build a set of emails already covered by customer accounts so we do
+      // not show duplicates.
+      const seenEmails = new Set(
+        enriched.map((c) => (c.email || "").toLowerCase()).filter(Boolean),
+      );
+
+      // Pull unique (name, email, phone) tuples from bookings for people who
+      // have booked as guests and don't have a customer account yet.
+      const bookingGuests: Array<{ id?: number; name: string; email: string; phone: string; membership: null; fromBooking: true }> = [];
+      const seenBookingEmails = new Set<string>();
+      for (const b of bookingResults) {
+        const email = (b.customerEmail || "").toLowerCase();
+        const name  = b.customerName  || "";
+        if (!name && !email) continue;
+        if (email && seenEmails.has(email)) continue;       // already in customer accounts
+        if (email && seenBookingEmails.has(email)) continue; // dedup within bookings
+        if (email) seenBookingEmails.add(email);
+        bookingGuests.push({
+          name,
+          email: b.customerEmail || "",
+          phone: b.customerPhone || "",
+          membership: null,
+          fromBooking: true,
+        });
+        if (bookingGuests.length >= 6) break;
+      }
+
+      // Customer accounts come first; guest bookings fill any remaining slots.
+      const combined = [...enriched, ...bookingGuests].slice(0, 8);
+      res.json(combined);
     } catch (err) {
       console.error("[customer-search] error:", err);
       res.json([]);

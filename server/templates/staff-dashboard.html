@@ -3800,10 +3800,13 @@
       let html='';
       for(let i=0;i<results.length;i++){
         const r=results[i];
+        const guestBadge=r.fromBooking
+          ?'<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;background:var(--amber-light,#fef3c7);color:#92400e;border:1px solid #fcd34d;margin-left:5px;vertical-align:middle">Guest</span>'
+          :'';
         html+=`<div class="customer-result" data-idx="${i}">
           <div class="customer-result-icon">${esc(initials(r.name))}</div>
           <div class="customer-result-info">
-            <div class="customer-result-name">${highlight(r.name,q)}</div>
+            <div class="customer-result-name">${highlight(r.name,q)}${guestBadge}</div>
             <div class="customer-result-sub">${highlight(r.email,q)} · ${highlight(r.phone,q)}</div>
           </div>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2.5" style="flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg>
