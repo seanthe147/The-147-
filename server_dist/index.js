@@ -3819,6 +3819,7 @@ async function getMenuFromSquare() {
   });
   const catNames = {};
   const catImageIds = {};
+  const catUpdatedAt = {};
   if (subcatIds.size > 0) {
     const catData = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
       object_ids: Array.from(subcatIds)
@@ -3827,6 +3828,9 @@ async function getMenuFromSquare() {
       catNames[o.id] = o.category_data?.name || "Other";
       if (o.category_data?.image_ids?.[0]) {
         catImageIds[o.id] = o.category_data.image_ids[0];
+      }
+      if (o.updated_at) {
+        catUpdatedAt[o.id] = o.updated_at;
       }
     });
   }
@@ -3896,11 +3900,13 @@ async function getMenuFromSquare() {
       categoryMap[subcatId] = {
         name: catNames[subcatId] || "Other",
         imageUrl: catImgId ? imageUrlMap[catImgId] : void 0,
+        updatedAt: catUpdatedAt[subcatId],
         items: []
       };
     }
     const itemImgId = itemImageIds[item.id];
     const itemImageUrl = itemImgId ? imageUrlMap[itemImgId] : void 0;
+    const itemUpdatedAt = item.updated_at ?? void 0;
     const hasMultiple = variations.length > 1;
     const isGenericName = (n) => ["regular", "standard", ""].includes(n.toLowerCase());
     const hasMeaningfulVariations = hasMultiple && variations.some((v) => !isGenericName(v.item_variation_data?.name || ""));
@@ -3917,14 +3923,16 @@ async function getMenuFromSquare() {
         description: item.item_data.description || "",
         price: variation.item_variation_data?.price_money?.amount || 0,
         imageUrl: itemImageUrl,
+        ...itemUpdatedAt ? { updatedAt: itemUpdatedAt } : {},
         ...itemModifiers.length > 0 ? { modifiers: itemModifiers } : {}
       });
     });
   });
-  const result = Object.entries(categoryMap).map(([id, { name, imageUrl, items: its }]) => ({
+  const result = Object.entries(categoryMap).map(([id, { name, imageUrl, updatedAt, items: its }]) => ({
     id,
     name,
     imageUrl,
+    ...updatedAt ? { updatedAt } : {},
     items: its.sort((a, b) => a.name.localeCompare(b.name))
   })).sort((a, b) => {
     const oa = CATEGORY_ORDER[a.name] ?? 99;
@@ -10441,6 +10449,7 @@ async function registerRoutes(app2) {
             id: targetId,
             name: targetSettings?.displayName ?? targetCat?.name ?? displayName,
             imageUrl: customImg ?? targetCat?.imageUrl ?? cat.imageUrl,
+            updatedAt: targetCat?.updatedAt ?? cat.updatedAt,
             order: targetSettings?.displayOrder ?? targetCat ? catSettingsMap.get(targetId)?.displayOrder ?? 99 : displayOrder,
             isKitchen: !!(targetSettings?.isKitchen ?? settings?.isKitchen),
             items: []
@@ -10465,6 +10474,7 @@ async function registerRoutes(app2) {
             description: item.description,
             price: item.price,
             imageUrl: item.imageUrl,
+            ...item.updatedAt ? { updatedAt: item.updatedAt } : {},
             ...item.modifiers && item.modifiers.length > 0 ? { modifiers: item.modifiers } : {},
             ...dietaryTags.length > 0 ? { dietaryTags } : {}
           };
