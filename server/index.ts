@@ -762,9 +762,10 @@ function scheduleNightlyBackup() {
       console.error("[Backup] Nightly snapshot failed:", err?.message ?? err);
     }
   }
-  // First run 2 minutes after startup so the server is fully warmed up.
+  // First run 2 hours after startup — gives the server time to fully settle
+  // after a restart or code deploy before writing a snapshot.
   // Then every 24 hours thereafter.
-  setTimeout(runNightly, 2 * 60 * 1000);
+  setTimeout(runNightly, 2 * 60 * 60 * 1000);
   setInterval(runNightly, 24 * 60 * 60 * 1000);
 }
 
