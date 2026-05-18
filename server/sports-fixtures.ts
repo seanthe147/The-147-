@@ -1,14 +1,15 @@
 // Upcoming sports fixtures for the staff dashboard bar.
 //
-// Fetches from TheSportsDB (free, unauthenticated) for three leagues that
-// a UK sports venue would typically show: Premier League, Championship, and
-// Super League Rugby League. Results are filtered to the next 48 hours, sorted
-// by kickoff time, and capped at 3.
+// Fetches from TheSportsDB (free, unauthenticated) for leagues relevant to a
+// UK sports venue: Premier League, Championship, FA Cup, Champions League,
+// Europa League, England internationals, Super League Rugby League, and the
+// Rugby League Challenge Cup. Results are filtered to the next 48 hours,
+// sorted by kickoff time, and capped at 3.
 //
 // Channel info comes from strTVStation in the API response when available;
 // falls back to a league-based default based on current UK broadcast deals.
 //
-// Cache: 10 minutes (fixtures don't change often, and we fan out 3 requests).
+// Cache: 5 minutes (short enough that a finished game drops off within one poll).
 
 export type Fixture = {
   id: string;
@@ -28,9 +29,18 @@ export type Fixture = {
 
 // TheSportsDB league IDs
 const LEAGUES: { id: number; name: string; sport: Fixture["sport"]; defaultChannel: string }[] = [
-  { id: 4328, name: "Premier League",  sport: "football",     defaultChannel: "Sky Sports / TNT Sports" },
-  { id: 4329, name: "Championship",    sport: "football",     defaultChannel: "Sky Sports" },
-  { id: 4325, name: "Super League",    sport: "rugby-league", defaultChannel: "Sky Sports" },
+  // Football — domestic
+  { id: 4328, name: "Premier League",   sport: "football",     defaultChannel: "Sky Sports / TNT Sports" },
+  { id: 4329, name: "Championship",     sport: "football",     defaultChannel: "Sky Sports" },
+  { id: 4392, name: "FA Cup",           sport: "football",     defaultChannel: "BBC / ITV" },
+  // Football — European
+  { id: 4480, name: "Champions League", sport: "football",     defaultChannel: "TNT Sports" },
+  { id: 4481, name: "Europa League",    sport: "football",     defaultChannel: "TNT Sports" },
+  // Football — international
+  { id: 4429, name: "England",          sport: "football",     defaultChannel: "ITV / Channel 4" },
+  // Rugby League
+  { id: 4325, name: "Super League",     sport: "rugby-league", defaultChannel: "Sky Sports" },
+  { id: 4330, name: "Challenge Cup",    sport: "rugby-league", defaultChannel: "BBC" },
 ];
 
 const SPORTSDB_BASE = "https://www.thesportsdb.com/api/v1/json/3";
