@@ -27,20 +27,24 @@ export type Fixture = {
   awayScore: number | null;
 };
 
-// TheSportsDB league IDs
-const LEAGUES: { id: number; name: string; sport: Fixture["sport"]; defaultChannel: string }[] = [
+// TheSportsDB league IDs.
+// Set `enabled: false` to hide a competition from the bar without deleting it.
+// To add TNT Sports when you subscribe, flip Champions League and Europa League
+// to `enabled: true` and change Premier League defaultChannel back to
+// "Sky Sports / TNT Sports".
+const LEAGUES: { id: number; name: string; sport: Fixture["sport"]; defaultChannel: string; enabled: boolean }[] = [
   // Football — domestic
-  { id: 4328, name: "Premier League",   sport: "football",     defaultChannel: "Sky Sports / TNT Sports" },
-  { id: 4329, name: "Championship",     sport: "football",     defaultChannel: "Sky Sports" },
-  { id: 4392, name: "FA Cup",           sport: "football",     defaultChannel: "BBC / ITV" },
-  // Football — European
-  { id: 4480, name: "Champions League", sport: "football",     defaultChannel: "TNT Sports" },
-  { id: 4481, name: "Europa League",    sport: "football",     defaultChannel: "TNT Sports" },
+  { id: 4328, name: "Premier League",   sport: "football",     defaultChannel: "Sky Sports",      enabled: true  },
+  { id: 4329, name: "Championship",     sport: "football",     defaultChannel: "Sky Sports",      enabled: true  },
+  { id: 4392, name: "FA Cup",           sport: "football",     defaultChannel: "BBC / ITV",       enabled: true  },
+  // Football — European (TNT Sports only — enable when subscribed)
+  { id: 4480, name: "Champions League", sport: "football",     defaultChannel: "TNT Sports",      enabled: false },
+  { id: 4481, name: "Europa League",    sport: "football",     defaultChannel: "TNT Sports",      enabled: false },
   // Football — international
-  { id: 4429, name: "England",          sport: "football",     defaultChannel: "ITV / Channel 4" },
+  { id: 4429, name: "England",          sport: "football",     defaultChannel: "ITV / Channel 4", enabled: true  },
   // Rugby League
-  { id: 4325, name: "Super League",     sport: "rugby-league", defaultChannel: "Sky Sports" },
-  { id: 4330, name: "Challenge Cup",    sport: "rugby-league", defaultChannel: "BBC" },
+  { id: 4325, name: "Super League",     sport: "rugby-league", defaultChannel: "Sky Sports",      enabled: true  },
+  { id: 4330, name: "Challenge Cup",    sport: "rugby-league", defaultChannel: "BBC",             enabled: true  },
 ];
 
 const SPORTSDB_BASE = "https://www.thesportsdb.com/api/v1/json/3";
@@ -146,10 +150,10 @@ export async function getUpcomingFixtures(limit = 3): Promise<Fixture[]> {
     return cache.data.slice(0, limit);
   }
 
-  // Fan out all league requests in parallel; individual failures are swallowed
-  // so one unavailable league doesn't blank the whole bar.
+  // Fan out all enabled league requests in parallel; individual failures are
+  // swallowed so one unavailable league doesn't blank the whole bar.
   const results = await Promise.allSettled(
-    LEAGUES.map((l) => fetchLeagueFixtures(l.id, l.name, l.sport, l.defaultChannel)),
+    LEAGUES.filter((l) => l.enabled).map((l) => fetchLeagueFixtures(l.id, l.name, l.sport, l.defaultChannel)),
   );
 
   const all: Fixture[] = [];
