@@ -58,7 +58,8 @@ import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import { useResponsive } from "@/hooks/useResponsive";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const BANNER_HEIGHT = 200;
+// Ratio matches the recommended 1500×650 upload size (2.308:1).
+const BANNER_HEIGHT = Math.round(SCREEN_WIDTH / 2.3);
 
 const FOOD_CATEGORIES = new Set([
   "Starters", "Sharers", "Pub Classic Mains", "Burgers", "Turkish Mains",

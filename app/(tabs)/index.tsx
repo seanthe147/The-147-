@@ -225,7 +225,10 @@ const QuickActionPill = memo(function QuickActionPill({
 });
 
 const BANNER_WIDTH = SCREEN_WIDTH - 40;
-const BANNER_HEIGHT = 180;
+// Ratio matches the recommended 1500×650 upload size (2.308:1).
+// Using a ratio instead of a fixed pixel height means the banner never
+// crops left/right edges when the image aspect ratio matches the slot.
+const BANNER_HEIGHT = Math.round(BANNER_WIDTH / 2.3);
 const AUTO_SCROLL_INTERVAL = 5000;
 
 const BannerCarousel = memo(function BannerCarousel({ images }: { images: BannerImage[] }) {

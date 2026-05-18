@@ -27,7 +27,8 @@ import { isSafePublicUrl } from "@shared/schema";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const BANNER_WIDTH = SCREEN_WIDTH - 40;
-const BANNER_HEIGHT = 180;
+// Ratio matches the recommended 1500×650 upload size (2.308:1).
+const BANNER_HEIGHT = Math.round(BANNER_WIDTH / 2.3);
 const AUTO_SCROLL_INTERVAL = 5000;
 
 function resolveImageUrl(path: string): string {

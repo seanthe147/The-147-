@@ -334,7 +334,9 @@ export default function AdminBannerScreen() {
           <Ionicons name="images" size={32} color={Colors.brand.blue} />
           <Text style={styles.sectionTitle}>Home Screen Banners</Text>
           <Text style={styles.sectionDesc}>
-            Upload images that will display as a scrollable banner on the home screen. Use landscape images for best results.
+            Upload images that display as a scrollable banner on the home, events, and order screens. For best results use{" "}
+          <Text style={{ fontWeight: "700", color: Colors.brand.blue }}>1500 × 650 px</Text>
+          {" "}(landscape, 2.3:1 ratio) — the banner slot is sized to match so nothing gets cropped.
           </Text>
         </View>
 
