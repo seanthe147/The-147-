@@ -283,7 +283,7 @@ function CategoryGrid({
               return hasImage ? (
                 <>
                   <ExpoImage
-                    source={{ uri: withBannerCacheBuster(cat.imageUrl ?? "", undefined) }}
+                    source={{ uri: withBannerCacheBuster(cat.imageUrl ?? "", cat.updatedAt) }}
                     style={gridStyles.cardBgImage}
                     contentFit="cover"
                     transition={150}
@@ -699,7 +699,7 @@ function ItemCard({
       )}
       {hasImage && (
         <ExpoImage
-          source={{ uri: withBannerCacheBuster(item.imageUrl ?? "", undefined) }}
+          source={{ uri: withBannerCacheBuster(item.imageUrl ?? "", item.updatedAt) }}
           style={styles.itemImage}
           contentFit="cover"
           transition={150}

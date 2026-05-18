@@ -4886,7 +4886,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // mirrors the staff-tagged flag from category_settings so the order
       // screen + kiosk can grey-out food items the moment the kitchen
       // schedule closes (drinks stay live).
-      const mergedMap: Map<string, { id: string; name: string; imageUrl?: string; order: number; isKitchen: boolean; items: any[] }> = new Map();
+      const mergedMap: Map<string, { id: string; name: string; imageUrl?: string; updatedAt?: string; order: number; isKitchen: boolean; items: any[] }> = new Map();
 
       for (const cat of categories) {
         if (hiddenCategoryIds.has(cat.id)) continue;
@@ -4907,6 +4907,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             id: targetId,
             name: targetSettings?.displayName ?? targetCat?.name ?? displayName,
             imageUrl: customImg ?? targetCat?.imageUrl ?? cat.imageUrl,
+            updatedAt: targetCat?.updatedAt ?? cat.updatedAt,
             order: targetSettings?.displayOrder ?? targetCat ? (catSettingsMap.get(targetId)?.displayOrder ?? 99) : displayOrder,
             isKitchen: !!(targetSettings?.isKitchen ?? settings?.isKitchen),
             items: [],
@@ -4944,6 +4945,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               description: item.description,
               price: item.price,
               imageUrl: item.imageUrl,
+              ...(item.updatedAt ? { updatedAt: item.updatedAt } : {}),
               ...(item.modifiers && item.modifiers.length > 0 ? { modifiers: item.modifiers } : {}),
               ...(dietaryTags.length > 0 ? { dietaryTags } : {}),
             };
@@ -4954,7 +4956,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Apply parent/child grouping (sub-categories)
-      type Node = { id: string; name: string; imageUrl?: string; order: number; isKitchen: boolean; items: any[]; subcategories?: any[] };
+      type Node = { id: string; name: string; imageUrl?: string; updatedAt?: string; order: number; isKitchen: boolean; items: any[]; subcategories?: any[] };
       const nodes: Map<string, Node> = mergedMap as any;
       const childrenByParent: Map<string, Node[]> = new Map();
       const isChild: Set<string> = new Set();

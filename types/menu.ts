@@ -28,6 +28,7 @@ export interface MenuItem {
   price: number;
   soldOut?: boolean;
   imageUrl?: string;
+  updatedAt?: string;
   modifiers?: ModifierList[];
   // FEATURE_DIETARY_FILTERS: comma-separated tag codes from the menu
   // override table — e.g. ["V", "GF"]. Always present in the API response
@@ -52,6 +53,7 @@ export interface MenuCategory {
   id: string;
   name: string;
   imageUrl?: string;
+  updatedAt?: string;
   items: MenuItem[];
   subcategories?: MenuCategory[];
   /**

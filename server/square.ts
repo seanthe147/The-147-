@@ -954,6 +954,7 @@ export interface MenuItem {
   description: string;
   price: number;
   imageUrl?: string;
+  updatedAt?: string;
   modifiers?: ModifierList[];
 }
 
@@ -961,6 +962,7 @@ export interface MenuCategory {
   id: string;
   name: string;
   imageUrl?: string;
+  updatedAt?: string;
   items: MenuItem[];
 }
 
@@ -995,6 +997,7 @@ export async function getMenuFromSquare(): Promise<MenuCategory[]> {
 
   const catNames: Record<string, string> = {};
   const catImageIds: Record<string, string> = {};
+  const catUpdatedAt: Record<string, string> = {};
   if (subcatIds.size > 0) {
     const catData = await squareRequest("POST", "/v2/catalog/batch-retrieve", {
       object_ids: Array.from(subcatIds),
@@ -1003,6 +1006,9 @@ export async function getMenuFromSquare(): Promise<MenuCategory[]> {
       catNames[o.id] = o.category_data?.name || "Other";
       if (o.category_data?.image_ids?.[0]) {
         catImageIds[o.id] = o.category_data.image_ids[0];
+      }
+      if (o.updated_at) {
+        catUpdatedAt[o.id] = o.updated_at;
       }
     });
   }
@@ -1067,7 +1073,7 @@ export async function getMenuFromSquare(): Promise<MenuCategory[]> {
     }
   }
 
-  const categoryMap: Record<string, { name: string; imageUrl?: string; items: MenuItem[] }> = {};
+  const categoryMap: Record<string, { name: string; imageUrl?: string; updatedAt?: string; items: MenuItem[] }> = {};
   items.forEach((item) => {
     const subcatId = (item.item_data?.categories || []).find(
       (c: any) => !PARENT_CATEGORY_IDS.has(c.id)
@@ -1081,12 +1087,14 @@ export async function getMenuFromSquare(): Promise<MenuCategory[]> {
       categoryMap[subcatId] = {
         name: catNames[subcatId] || "Other",
         imageUrl: catImgId ? imageUrlMap[catImgId] : undefined,
+        updatedAt: catUpdatedAt[subcatId],
         items: [],
       };
     }
 
     const itemImgId = itemImageIds[item.id];
     const itemImageUrl = itemImgId ? imageUrlMap[itemImgId] : undefined;
+    const itemUpdatedAt: string | undefined = item.updated_at ?? undefined;
 
     const hasMultiple = variations.length > 1;
     const isGenericName = (n: string) => ["regular", "standard", ""].includes(n.toLowerCase());
@@ -1114,16 +1122,18 @@ export async function getMenuFromSquare(): Promise<MenuCategory[]> {
         description: item.item_data.description || "",
         price: variation.item_variation_data?.price_money?.amount || 0,
         imageUrl: itemImageUrl,
+        ...(itemUpdatedAt ? { updatedAt: itemUpdatedAt } : {}),
         ...(itemModifiers.length > 0 ? { modifiers: itemModifiers } : {}),
       });
     });
   });
 
   const result = Object.entries(categoryMap)
-    .map(([id, { name, imageUrl, items: its }]) => ({
+    .map(([id, { name, imageUrl, updatedAt, items: its }]) => ({
       id,
       name,
       imageUrl,
+      ...(updatedAt ? { updatedAt } : {}),
       items: its.sort((a, b) => a.name.localeCompare(b.name)),
     }))
     .sort((a, b) => {
