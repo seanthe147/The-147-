@@ -2927,7 +2927,7 @@
   });
 
   let bookingsPollInterval=null;
-  let fixturesPollInterval=null;
+  let fixturesPollTimeout=null;
 
   function startBookingsPolling(){
     if(bookingsPollInterval)return;
@@ -2943,14 +2943,42 @@
     if(bookingsPollInterval){clearInterval(bookingsPollInterval);bookingsPollInterval=null;}
   }
   function startFixturesPolling(){
-    if(fixturesPollInterval)return;
-    // Refresh every 5 minutes — matches the server-side cache TTL so each
-    // poll gets fresh data. When a game finishes, the next poll drops it
-    // from the bar and surfaces the following upcoming fixture.
-    fixturesPollInterval=setInterval(()=>loadFixturesBar(),5*60*1000);
+    // Scheduling is now handled by scheduleFixturesRefresh() after each load,
+    // so this is a no-op kept for call-site compatibility.
   }
   function stopFixturesPolling(){
-    if(fixturesPollInterval){clearInterval(fixturesPollInterval);fixturesPollInterval=null;}
+    if(fixturesPollTimeout){clearTimeout(fixturesPollTimeout);fixturesPollTimeout=null;}
+  }
+  function scheduleFixturesRefresh(fixtures){
+    // Cancel any previously scheduled refresh before setting a new one.
+    if(fixturesPollTimeout){clearTimeout(fixturesPollTimeout);fixturesPollTimeout=null;}
+
+    const now=Date.now();
+    // Find the soonest kickoff among the displayed fixtures that is still in
+    // the future.  The server only returns games where kickoff > now, so every
+    // entry qualifies, but we guard against clock skew just in case.
+    let soonestKickoff=Infinity;
+    if(fixtures&&fixtures.length){
+      for(const f of fixtures){
+        const ms=f.kickoffMs||new Date(f.kickoffIso).getTime();
+        if(ms>now&&ms<soonestKickoff) soonestKickoff=ms;
+      }
+    }
+
+    let delay;
+    if(soonestKickoff<Infinity){
+      // Refresh 90 seconds after the earliest kickoff — that is the moment
+      // that game drops off the "upcoming" list and the next one should
+      // surface.  No earlier refresh is needed because the data won't change
+      // before then.
+      delay=(soonestKickoff-now)+(90*1000);
+    }else{
+      // No fixtures with a known future kickoff — check again in 4 hours in
+      // case new fixtures are published to TheSportsDB.
+      delay=4*60*60*1000;
+    }
+
+    fixturesPollTimeout=setTimeout(()=>{fixturesPollTimeout=null;loadFixturesBar();},delay);
   }
 
   // Live polling for the Orders sub-tab. Kitchen status changes (paid →
@@ -3278,9 +3306,17 @@
         <span style="font-size:10px;font-weight:700;letter-spacing:.6px;color:var(--text-3,#9CA3AF);text-transform:uppercase">Coming up</span>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">${cards}</div>`;
+
+      // Schedule the next refresh for just after the soonest kickoff — no
+      // earlier refresh is ever needed because the data only changes when a
+      // game kicks off and drops off the upcoming list.
+      scheduleFixturesRefresh(fixtures);
     }catch(e){
       if(e.message==='Session expired')return;
       bar.style.display='none';
+      // On error, retry in 30 minutes so a transient network blip doesn't
+      // leave the bar permanently empty.
+      scheduleFixturesRefresh([]);
     }
   }
 
