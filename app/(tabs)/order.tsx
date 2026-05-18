@@ -283,11 +283,11 @@ function CategoryGrid({
               return hasImage ? (
                 <>
                   <ExpoImage
-                    source={{ uri: cat.imageUrl }}
+                    source={{ uri: withBannerCacheBuster(cat.imageUrl ?? "", undefined) }}
                     style={gridStyles.cardBgImage}
                     contentFit="cover"
                     transition={150}
-                    cachePolicy="memory-disk"
+                    cachePolicy="disk"
                   />
                   <View style={gridStyles.cardImageOverlay} />
                   <View style={gridStyles.cardImageContent}>
@@ -699,11 +699,11 @@ function ItemCard({
       )}
       {hasImage && (
         <ExpoImage
-          source={{ uri: item.imageUrl }}
+          source={{ uri: withBannerCacheBuster(item.imageUrl ?? "", undefined) }}
           style={styles.itemImage}
           contentFit="cover"
           transition={150}
-          cachePolicy="memory-disk"
+          cachePolicy="disk"
         />
       )}
       <View style={[styles.itemInfo, hasImage && styles.itemInfoWithImage]}>
