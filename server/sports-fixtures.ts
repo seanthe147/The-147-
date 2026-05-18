@@ -34,7 +34,7 @@ const LEAGUES: { id: number; name: string; sport: Fixture["sport"]; defaultChann
 ];
 
 const SPORTSDB_BASE = "https://www.thesportsdb.com/api/v1/json/3";
-const CACHE_TTL = 10 * 60_000; // 10 minutes
+const CACHE_TTL = 5 * 60_000; // 5 minutes — short enough that a finished game drops off the bar within one poll cycle
 
 let cache: { at: number; data: Fixture[] } | null = null;
 

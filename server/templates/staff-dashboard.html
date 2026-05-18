@@ -2864,6 +2864,7 @@
   });
 
   let bookingsPollInterval=null;
+  let fixturesPollInterval=null;
 
   function startBookingsPolling(){
     if(bookingsPollInterval)return;
@@ -2877,6 +2878,16 @@
 
   function stopBookingsPolling(){
     if(bookingsPollInterval){clearInterval(bookingsPollInterval);bookingsPollInterval=null;}
+  }
+  function startFixturesPolling(){
+    if(fixturesPollInterval)return;
+    // Refresh every 5 minutes — matches the server-side cache TTL so each
+    // poll gets fresh data. When a game finishes, the next poll drops it
+    // from the bar and surfaces the following upcoming fixture.
+    fixturesPollInterval=setInterval(()=>loadFixturesBar(),5*60*1000);
+  }
+  function stopFixturesPolling(){
+    if(fixturesPollInterval){clearInterval(fixturesPollInterval);fixturesPollInterval=null;}
   }
 
   // Live polling for the Orders sub-tab. Kitchen status changes (paid →
@@ -2972,8 +2983,8 @@
     const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',website:'Website',banners:'App Banners',offers:'Offers',deals:'Current Deals',payments:'Events & Payments',hr:'HR & Attendance',gdpr:'GDPR & Compliance',auditlog:'Audit Log'};
     el('topbarTitle').textContent=titles[page]||'';
     el('topbarSub').textContent='';
-    if(page==='bookings'){el('topbarActions').style.display='';switchBookingsTab('bookings');loadBookings();loadUpcomingDates();loadDashboardNotices();loadFixturesBar();startBookingsPolling();}
-    else{el('topbarActions').style.display='none';stopBookingsPolling();}
+    if(page==='bookings'){el('topbarActions').style.display='';switchBookingsTab('bookings');loadBookings();loadUpcomingDates();loadDashboardNotices();loadFixturesBar();startBookingsPolling();startFixturesPolling();}
+    else{el('topbarActions').style.display='none';stopBookingsPolling();stopFixturesPolling();}
     // Always stop orders polling on navigation; switchMenuTab('orders')
     // below will restart it when we land on the Orders sub-tab.
     if(page!=='menu')stopOrdersPolling();
