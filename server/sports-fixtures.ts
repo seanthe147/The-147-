@@ -99,7 +99,6 @@ async function fetchLeagueFixtures(
   const events: any[] = Array.isArray(json?.events) ? json.events : [];
 
   const now = Date.now();
-  const cutoff = now + 48 * 60 * 60 * 1000; // 48 hours from now
 
   const fixtures: Fixture[] = [];
   for (const ev of events) {
@@ -113,8 +112,9 @@ async function fetchLeagueFixtures(
     const kickoffMs = Date.parse(iso);
     if (!kickoffMs || isNaN(kickoffMs)) continue;
 
-    // Only include games in the next 48 hours (and not already finished)
-    if (kickoffMs < now || kickoffMs > cutoff) continue;
+    // Skip games already in the past — no upper cutoff so the bar always
+    // has content even when the next game is days away.
+    if (kickoffMs < now) continue;
 
     const homeScore =
       ev?.intHomeScore != null && ev.intHomeScore !== "" ? Number(ev.intHomeScore) : null;
