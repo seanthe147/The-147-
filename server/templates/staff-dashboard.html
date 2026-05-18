@@ -641,6 +641,8 @@
         <div id="bookingsTabPanelBookings">
           <div class="page-body" style="padding-top:0">
             <div id="dashboardNotices" style="display:none;margin-bottom:16px"></div>
+            <!-- Upcoming sports fixtures bar -->
+            <div id="fixturesBar" style="margin-bottom:12px"></div>
             <div class="summary-row" id="summaryRow">
               <div class="stat-card"><div class="stat-label">Total Today</div><div class="stat-value" id="statTotal">—</div><div class="stat-sub">bookings</div></div>
               <div class="stat-card"><div class="stat-label">Confirmed</div><div class="stat-value" id="statConfirmed" style="color:var(--green)">—</div><div class="stat-sub">active</div></div>
@@ -668,8 +670,6 @@
                 <button class="filter-pill" data-type="dining">Dining</button>
               </div>
             </div>
-            <!-- Upcoming sports fixtures bar -->
-            <div id="fixturesBar" style="margin-bottom:12px"></div>
             <div class="live-bar">
               <div class="live-dot"></div>
               <span class="live-label">Live</span>
@@ -3187,7 +3187,21 @@
   /* ── Upcoming Sports Fixtures Bar ── */
   const CHANNEL_COLOURS={
     'Sky Sports':'#0072CE','TNT Sports':'#FF6600','Sky Sports / TNT Sports':'#0072CE',
-    'BBC':'#D4161C','ITV':'#2E3192','DAZN':'#00E060','Amazon Prime':'#00A8E0','Channel 4':'#8C00FF',
+    'BBC':'#D4161C','BBC / ITV':'#D4161C','ITV':'#2E3192','ITV / Channel 4':'#2E3192',
+    'DAZN':'#00E060','Amazon Prime':'#00A8E0','Channel 4':'#8C00FF',
+  };
+  // Google S2 favicons give small, reliable broadcaster logos at no cost
+  const CHANNEL_LOGOS={
+    'Sky Sports':'https://www.google.com/s2/favicons?domain=skysports.com&sz=32',
+    'Sky Sports / TNT Sports':'https://www.google.com/s2/favicons?domain=skysports.com&sz=32',
+    'TNT Sports':'https://www.google.com/s2/favicons?domain=tntsports.co.uk&sz=32',
+    'BBC':'https://www.google.com/s2/favicons?domain=bbc.co.uk&sz=32',
+    'BBC / ITV':'https://www.google.com/s2/favicons?domain=bbc.co.uk&sz=32',
+    'ITV':'https://www.google.com/s2/favicons?domain=itv.com&sz=32',
+    'ITV / Channel 4':'https://www.google.com/s2/favicons?domain=itv.com&sz=32',
+    'Channel 4':'https://www.google.com/s2/favicons?domain=channel4.com&sz=32',
+    'DAZN':'https://www.google.com/s2/favicons?domain=dazn.com&sz=32',
+    'Amazon Prime':'https://www.google.com/s2/favicons?domain=primevideo.com&sz=32',
   };
   function channelColour(ch){return CHANNEL_COLOURS[ch]||'var(--text-3,#9CA3AF)';}
 
@@ -3220,8 +3234,12 @@
 
         const ch=f.channel||'';
         const chColour=channelColour(ch);
+        const chLogo=CHANNEL_LOGOS[ch]||'';
+        const chLogoImg=chLogo
+          ?`<img src="${chLogo}" width="14" height="14" style="border-radius:2px;object-fit:contain;vertical-align:middle;margin-right:3px" onerror="this.style.display='none'">`
+          :'';
         const chBadge=ch
-          ?`<span style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:5px;background:${chColour}22;color:${chColour};border:1px solid ${chColour}44;white-space:nowrap">${esc(ch)}</span>`
+          ?`<span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 6px;border-radius:5px;background:${chColour}22;color:${chColour};border:1px solid ${chColour}44;white-space:nowrap">${chLogoImg}${esc(ch)}</span>`
           :'';
 
         const livePip=isLive

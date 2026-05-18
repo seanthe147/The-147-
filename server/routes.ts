@@ -4770,7 +4770,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/staff/fixtures/upcoming", staffAuth, async (_req, res) => {
     try {
       const { getUpcomingFixtures } = await import("./sports-fixtures");
-      const fixtures = await getUpcomingFixtures(3);
+      const fixtures = await getUpcomingFixtures(5);
       res.json({ fixtures });
     } catch (err: any) {
       console.error("/api/staff/fixtures/upcoming error:", err.message);
