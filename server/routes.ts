@@ -8349,6 +8349,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(await loadLoyaltyConfig());
   });
 
+  // ── Staff: loyalty account backfill ──
+  // Owner-only. Iterates every app customer who has a phone number but no
+  // Square loyalty account linked, searches Square for a matching loyalty
+  // account, and links it. Safe to run multiple times — customers who are
+  // already linked are skipped entirely. Returns a summary of how many
+  // were linked, skipped, and failed.
+  app.post("/api/staff/loyalty/backfill", staffAuth, managerAuth, async (_req, res) => {
+    if (!square.isConfigured()) {
+      return res.status(503).json({ message: "Square is not configured — loyalty backfill unavailable." });
+    }
+    const customers = await storage.getAllCustomers();
+    const unlinked = customers.filter(
+      (c) => c.phone && c.phone.trim().length >= 10 && !c.squareLoyaltyAccountId
+    );
+
+    let linked = 0;
+    let alreadyLinked = 0;
+    let noSquareAccount = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    // Already-linked count for reporting
+    alreadyLinked = customers.length - unlinked.length;
+
+    for (const customer of unlinked) {
+      try {
+        const phoneCleaned = customer.phone!.replace(/\s/g, "");
+        const account = await square.searchLoyaltyAccount(phoneCleaned);
+        if (account?.id) {
+          await storage.setSquareLoyaltyAccountId(customer.id, account.id);
+          linked++;
+          console.log(`[LOYALTY BACKFILL] Linked customer ${customer.id} → Square account ${account.id}`);
+        } else {
+          noSquareAccount++;
+        }
+      } catch (err: any) {
+        failed++;
+        errors.push(`Customer ${customer.id}: ${err.message}`);
+        console.error(`[LOYALTY BACKFILL] Error for customer ${customer.id}:`, err.message);
+      }
+    }
+
+    res.json({
+      total: customers.length,
+      alreadyLinked,
+      linked,
+      noSquareAccount,
+      failed,
+      errors: errors.slice(0, 5),
+      message: linked > 0
+        ? `Linked ${linked} customer${linked === 1 ? "" : "s"} to their Square loyalty account.`
+        : noSquareAccount > 0
+          ? `No new links found — ${noSquareAccount} customer${noSquareAccount === 1 ? "" : "s"} with a phone number have no Square loyalty account yet (they may not have enrolled at the till).`
+          : `All customers with phone numbers are already linked.`,
+    });
+  });
+
   app.post("/api/loyalty/me/enroll", customerAuth, async (req, res) => {
     if (!square.isConfigured()) {
       return res.status(503).json({ message: "Loyalty program not configured" });

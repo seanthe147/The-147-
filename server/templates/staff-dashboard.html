@@ -6863,7 +6863,7 @@
       membershipsData={plans,subs};
       renderMemberships(stats,plans,subs);
       if(state.role==='owner')loadWixMigration();
-      if(state.role==='manager'||state.role==='owner'){loadLeftoverOneTime();loadOnboardingGap();}
+      if(state.role==='manager'||state.role==='owner'){loadLeftoverOneTime();loadOnboardingGap();loadLoyaltyBackfill();}
     }catch(e){
       if(e.message!=='Session expired')el('membershipsContent').innerHTML='<div class="empty-state"><div class="empty-title">Failed to load memberships</div></div>';
     }
@@ -7002,6 +7002,9 @@
 
     // VIP onboarding gap panel — Square VIPs without an app account (manager-only).
     html+=`<div id="onboardingGapPanel" style="margin-bottom:24px"></div>`;
+
+    // Loyalty backfill panel — link existing app accounts to their Square loyalty points.
+    html+=`<div id="loyaltyBackfillPanel" style="margin-bottom:24px"></div>`;
 
     if(isManager){
       const allHaveSquareIds=plans.length>0&&plans.every(p=>p.squarePlanVariationId);
@@ -8148,6 +8151,54 @@
     }catch(e){
       alert('Request failed: '+(e&&e.message?e.message:'unknown error'));
       if(btn){btn.disabled=false;btn.innerHTML=orig;}
+    }
+  };
+
+  /* ── Loyalty account backfill panel ── */
+  async function loadLoyaltyBackfill(){
+    const panel=el('loyaltyBackfillPanel');if(!panel)return;
+    panel.innerHTML=`<div class="settings-section" style="margin:0;border-left:4px solid var(--blue)">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div>
+          <div class="settings-title" style="margin-bottom:2px;display:flex;align-items:center;gap:8px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Link Loyalty Points
+          </div>
+          <div class="settings-desc" style="margin:0;max-width:640px">Automatically links each app account (that has a phone number saved) to their existing Square loyalty points. Safe to run any time — already-linked accounts are skipped. Run this once now to connect anyone who signed up before the auto-link was in place.</div>
+        </div>
+        <button id="loyaltyBackfillBtn" class="btn btn-secondary btn-sm" style="flex-shrink:0;border-color:var(--blue);color:var(--blue)" onclick="window.runLoyaltyBackfill()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Link Loyalty Accounts
+        </button>
+      </div>
+      <div id="loyaltyBackfillResult" style="margin-top:0"></div>
+    </div>`;
+  }
+  window.runLoyaltyBackfill=async function(){
+    const btn=el('loyaltyBackfillBtn');
+    const result=el('loyaltyBackfillResult');
+    if(btn){btn.disabled=true;btn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Linking…';}
+    if(result){result.style.marginTop='12px';result.innerHTML='<div style="font-size:12px;color:var(--text-2)">Searching Square for loyalty accounts…</div>';}
+    try{
+      const r=await api('/api/staff/loyalty/backfill',{method:'POST'});
+      const data=await r.json();
+      if(!r.ok)throw new Error(data.message||'Request failed');
+      const color=data.linked>0?'#10B981':data.failed>0?'#EF4444':'var(--text-2)';
+      const rows=[
+        data.linked>0?`<span style="color:#10B981;font-weight:700">${data.linked} newly linked</span>`:'',
+        data.alreadyLinked>0?`${data.alreadyLinked} already linked`:'',
+        data.noSquareAccount>0?`${data.noSquareAccount} not yet enrolled in Square loyalty`:'',
+        data.failed>0?`<span style="color:#EF4444">${data.failed} failed</span>`:'',
+      ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+      result.innerHTML=`<div style="padding:10px 0 4px;border-top:1px solid var(--border);margin-top:10px">
+        <div style="font-size:13px;font-weight:600;color:${color};margin-bottom:4px">${esc(data.message)}</div>
+        ${rows?`<div style="font-size:11px;color:var(--text-2)">${rows}</div>`:''}
+        ${data.errors&&data.errors.length?`<div style="font-size:11px;color:#EF4444;margin-top:4px">${data.errors.map(e=>esc(e)).join('<br>')}</div>`:''}
+      </div>`;
+      if(btn){btn.disabled=false;btn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Run Again';}
+    }catch(e){
+      if(result)result.innerHTML='<div style="font-size:12px;color:#EF4444;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">'+esc(e.message||'Request failed')+'</div>';
+      if(btn){btn.disabled=false;btn.innerHTML='Link Loyalty Accounts';}
     }
   };
 
