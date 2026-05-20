@@ -574,7 +574,7 @@ export default function RewardsScreen() {
 
           {meQuery.data.events && meQuery.data.events.length > 0 && (
             <ActivityFeed
-              events={meQuery.data.events}
+              events={meQuery.data.events.slice(0, 5)}
               program={meQuery.data.program ?? null}
             />
           )}
