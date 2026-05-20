@@ -24,6 +24,7 @@ import { getApiUrl } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
 import { useResponsive } from "@/hooks/useResponsive";
+import { ScratchCardGame } from "@/components/ScratchCardGame";
 
 const SESSION_KEY = "loyalty_session";
 function loyaltyUrl(path: string): string {
@@ -954,6 +955,9 @@ export default function LoyaltyScreen() {
                   <Text style={styles.statLabel}>Member Since</Text>
                 </View>
               </View>
+
+              {/* ── Daily scratch card game ─────────────────────────── */}
+              <ScratchCardGame />
 
               {meQuery.data.rewards && meQuery.data.rewards.length > 0 && (
                 <ActiveRewardsSection
