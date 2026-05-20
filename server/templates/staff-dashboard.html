@@ -548,6 +548,10 @@
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l2-2 4 4L20 3l1 1L9 16l-6-4z"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7"/></svg>
           Current Deals
         </div>
+        <div class="nav-item hidden" data-page="loyaltygame" id="navLoyaltyGame">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          Loyalty Game
+        </div>
 
         <div class="nav-section hidden" id="navSectionContent" style="margin-top:8px">App Content</div>
         <div class="nav-item hidden" data-page="banners" id="navBanners">
@@ -1076,6 +1080,17 @@
         </div>
       </div>
 
+
+      <!-- LOYALTY GAME PAGE -->
+      <div class="page" id="pageLoyaltygame">
+        <div class="page-body">
+          <div id="gameSection">
+            <div id="gameSectionBody">
+              <span style="font-size:13px;color:var(--text-2)">Loading…</span>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- OFFERS PAGE -->
       <div class="page" id="pageOffers">
@@ -1766,21 +1781,6 @@
               <button class="btn btn-secondary" id="backupTriggerBtn" onclick="triggerBackup()">Save a Backup Now</button>
             </div>
           </div>
-          <!-- Loyalty Game controls — manager + owner only ─────────────────────
-               loadGamePanel() injects config (enable toggle, time window) and
-               prize table into this section on every Settings navigation. -->
-          <div class="settings-section" id="gameSection" style="display:none">
-            <div class="settings-title">Loyalty Game</div>
-            <div class="settings-desc">
-              When enabled, signed-in customers can play a once-per-day spin to win prizes from the list below.
-              The game is only available during the time window you set.
-              Prizes are issued automatically via Square Loyalty — no staff action needed.
-            </div>
-            <div id="gameSectionBody">
-              <span style="font-size:13px;color:var(--text-2)">Loading…</span>
-            </div>
-          </div>
-
           <div class="settings-section">
             <div class="settings-title">Change Your PIN</div>
             <div class="settings-desc">Update the PIN you use to sign in to the staff portal. Your new PIN must be 4–8 digits.</div>
@@ -2912,7 +2912,7 @@
     // — like the weekly leftover-membership audit email — can open straight
     // onto the right tab. Falls back to Bookings for everyone (floor staff
     // included — they need the calendar for daily shift work).
-    const tabNavIds={bookings:'navBookings',messages:'navMessages',comms:'navComms',staff:'navStaff',memberships:'navMemberships',menu:'navMenu',website:'navWebsite',banners:'navBanners',offers:'navOffers',deals:'navDeals',payments:'navPayments',hr:'navHR',gdpr:'navGDPR',auditlog:'navAuditLog',settings:'navSettings'};
+    const tabNavIds={bookings:'navBookings',messages:'navMessages',comms:'navComms',staff:'navStaff',memberships:'navMemberships',menu:'navMenu',website:'navWebsite',banners:'navBanners',offers:'navOffers',deals:'navDeals',loyaltygame:'navLoyaltyGame',payments:'navPayments',hr:'navHR',gdpr:'navGDPR',auditlog:'navAuditLog',settings:'navSettings'};
     let initialPage='bookings';
     try{
       const hash=(window.location.hash||'').replace(/^#/,'').toLowerCase();
@@ -2972,6 +2972,7 @@
     el('navBanners').classList.toggle('hidden',!isManager);
     el('navOffers').classList.toggle('hidden',!isManager);
     el('navDeals').classList.toggle('hidden',!isManager);
+    el('navLoyaltyGame').classList.toggle('hidden',!isManager);
     // Payment endpoints (Stripe + Square charge/intent/finalize) are manager-only
     // server-side, so hide the nav entry for non-managers to avoid a confusing 403.
     el('navPayments').classList.toggle('hidden',!isManager);
@@ -3148,7 +3149,7 @@
     }
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page'+cap(page)));
-    const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',website:'Website',banners:'App Banners',offers:'Offers',deals:'Current Deals',payments:'Events & Payments',hr:'HR & Attendance',gdpr:'GDPR & Compliance',auditlog:'Audit Log'};
+    const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',website:'Website',banners:'App Banners',offers:'Offers',deals:'Current Deals',loyaltygame:'Loyalty Game',payments:'Events & Payments',hr:'HR & Attendance',gdpr:'GDPR & Compliance',auditlog:'Audit Log'};
     el('topbarTitle').textContent=titles[page]||'';
     el('topbarSub').textContent='';
     if(page==='bookings'){el('topbarActions').style.display='';switchBookingsTab('bookings');loadBookings();loadUpcomingDates();loadDashboardNotices();startBookingsPolling();}
@@ -3161,7 +3162,7 @@
     if(page==='staff')loadStaff();
     if(page==='memberships')loadMemberships();
     if(page==='settings'&&state.role==='owner')loadBackupPanel();
-    if(page==='settings'&&(state.role==='manager'||state.role==='owner'))loadGamePanel();
+    if(page==='loyaltygame')loadGamePanel();
     if(page==='menu'){switchMenuTab('orders');loadOrders();loadOrderingSchedule();}
     if(page==='banners')loadBanners();
     if(page==='website')loadWebsiteEditor();

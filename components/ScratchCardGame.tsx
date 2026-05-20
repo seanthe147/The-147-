@@ -1,13 +1,11 @@
 /**
- * ScratchCardGame
- * 
- * A daily scratch card mini-game tied to the server game system.
- * 
- * States: idle → scratching → [won | no_prize | already_played | error]
+ * ScratchCardGame — v2
  *
- * The API is fired on first touch so the server rolls the prize while the
- * customer is still scratching. The card auto-completes when 40 % of cells
- * are uncovered or the finger is lifted, whichever comes first.
+ * Uses react-native-svg with an SVG Mask to create genuine finger-scratch
+ * feel: a metallic silver overlay has circular holes cut out wherever the
+ * finger has moved, revealing the prize underneath.  No square grid cells.
+ *
+ * States: idle → scratching → [won | no_prize | already_played | error]
  */
 
 import React, { useRef, useState, useCallback, useEffect } from "react";
@@ -19,7 +17,16 @@ import {
   Animated,
   ActivityIndicator,
   Platform,
+  LayoutChangeEvent,
 } from "react-native";
+import Svg, {
+  Defs,
+  Mask,
+  Rect,
+  Circle,
+  LinearGradient as SvgLinearGradient,
+  Stop,
+} from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -28,12 +35,23 @@ import Colors from "@/constants/colors";
 import { getApiUrl } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 
-// ── Grid constants ────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 
-const COLS = 8;
-const ROWS = 5;
-const TOTAL = COLS * ROWS;
-const REVEAL_THRESHOLD = 0.40;
+/** Radius of the scratch "brush" in logical pixels */
+const BRUSH_RADIUS = 22;
+
+/**
+ * Fraction of the card surface that must be scratched before the overlay
+ * fully fades out and the prize is revealed.
+ */
+const REVEAL_THRESHOLD = 0.38;
+
+/**
+ * Coarse coverage grid — used only to estimate what percentage of the card
+ * has been scratched, so we know when to trigger the full reveal.
+ */
+const GRID_COLS = 30;
+const GRID_ROWS = 18;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -51,6 +69,11 @@ interface GameResult {
   playId: number;
 }
 
+interface ScratchPoint {
+  x: number;
+  y: number;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmtTime(t: string): string {
@@ -60,7 +83,7 @@ function fmtTime(t: string): string {
   return m === 0 ? `${hr}${suffix}` : `${hr}:${String(m).padStart(2, "0")}${suffix}`;
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── Prize reveal content ───────────────────────────────────────────────────────
 
 function PrizeContent({ result, error }: { result: GameResult | null; error: string | null }) {
   if (error) {
@@ -112,6 +135,69 @@ function PrizeContent({ result, error }: { result: GameResult | null; error: str
   );
 }
 
+// ── Scratch overlay (SVG) ─────────────────────────────────────────────────────
+
+/**
+ * Renders the metallic silver scratch surface as an SVG with a Mask.
+ * Black circles punched into the mask correspond to places the finger
+ * has touched — those areas become transparent, revealing the prize below.
+ */
+function ScratchOverlay({
+  points,
+  cardW,
+  cardH,
+  overlayOpacity,
+}: {
+  points: ScratchPoint[];
+  cardW: number;
+  cardH: number;
+  overlayOpacity: Animated.Value;
+}) {
+  if (cardW === 0 || cardH === 0) return null;
+
+  return (
+    <Animated.View
+      style={[StyleSheet.absoluteFill, { opacity: overlayOpacity }]}
+      pointerEvents="none"
+    >
+      <Svg width={cardW} height={cardH} style={StyleSheet.absoluteFill}>
+        <Defs>
+          {/* Silver metallic gradient */}
+          <SvgLinearGradient id="silverGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <Stop offset="0%"   stopColor="#CACACA" stopOpacity="1" />
+            <Stop offset="25%"  stopColor="#EEEEEE" stopOpacity="1" />
+            <Stop offset="50%"  stopColor="#AFAFAF" stopOpacity="1" />
+            <Stop offset="75%"  stopColor="#DCDCDC" stopOpacity="1" />
+            <Stop offset="100%" stopColor="#BEBEBE" stopOpacity="1" />
+          </SvgLinearGradient>
+
+          {/*
+            Scratch mask:
+            - White rect  = silver overlay is VISIBLE
+            - Black circles at each scratch point = those areas are TRANSPARENT
+          */}
+          <Mask id="scratchMask" x="0" y="0" width={cardW} height={cardH}>
+            <Rect x="0" y="0" width={cardW} height={cardH} fill="white" />
+            {points.map((pt, i) => (
+              <Circle key={i} cx={pt.x} cy={pt.y} r={BRUSH_RADIUS} fill="black" />
+            ))}
+          </Mask>
+        </Defs>
+
+        {/* Silver surface with scratch holes cut out via the mask */}
+        <Rect
+          x="0"
+          y="0"
+          width={cardW}
+          height={cardH}
+          fill="url(#silverGrad)"
+          mask="url(#scratchMask)"
+        />
+      </Svg>
+    </Animated.View>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ScratchCardGame() {
@@ -128,65 +214,65 @@ export function ScratchCardGame() {
     enabled: !!customer,
   });
 
-  // ── Card state ──────────────────────────────────────────────────────────────
+  // ── Card dimensions (from onLayout) ─────────────────────────────────────
+  const [cardW, setCardW] = useState(0);
+  const [cardH, setCardH] = useState(0);
+  const cardSizeRef = useRef({ w: 0, h: 0 });
+
+  const onCardLayout = useCallback((e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setCardW(width);
+    setCardH(height);
+    cardSizeRef.current = { w: width, h: height };
+  }, []);
+
+  // ── Scratch state ────────────────────────────────────────────────────────
   const [scratchStarted, setScratchStarted] = useState(false);
-  const [overlayGone, setOverlayGone] = useState(false);
-  const [result, setResult]             = useState<GameResult | null>(null);
-  const [gameError, setGameError]       = useState<string | null>(null);
-  const [localPlayed, setLocalPlayed]   = useState(false);
+  const [overlayGone, setOverlayGone]       = useState(false);
+  const [result, setResult]                 = useState<GameResult | null>(null);
+  const [gameError, setGameError]           = useState<string | null>(null);
+  const [localPlayed, setLocalPlayed]       = useState(false);
+  const [scratchPoints, setScratchPoints]   = useState<ScratchPoint[]>([]);
 
-  // Cell tracking — avoid stale-closure issues by using refs as the source of truth
-  const [revealedCells, setRevealedCells] = useState<Set<number>>(new Set());
-  const revealedRef     = useRef<Set<number>>(new Set());
-  const thresholdRef    = useRef(false);
-  const apiCalledRef    = useRef(false);
+  // Refs — always-fresh values accessible inside PanResponder callbacks
+  const scratchPointsRef = useRef<ScratchPoint[]>([]);
+  const coveredCells     = useRef(new Set<number>());
+  const thresholdRef     = useRef(false);
+  const apiCalledRef     = useRef(false);
+  const cardViewRef      = useRef<View>(null);
+  const cardPosRef       = useRef<{ x: number; y: number } | null>(null);
+  const overlayAnim      = useRef(new Animated.Value(1)).current;
 
-  // Scratch area absolute position (filled on first measure)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const scratchViewRef  = useRef<any>(null);
-  const measureRef      = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
-
-  // Overlay opacity — animates from 1 → 0 on full reveal
-  const overlayAnim     = useRef(new Animated.Value(1)).current;
-
-  // ── Derived ─────────────────────────────────────────────────────────────────
+  // ── Derived ──────────────────────────────────────────────────────────────
   const alreadyPlayed = localPlayed || (myPlays?.playedToday ?? false);
   const gameActive    = !!(config?.enabled && config?.withinWindow);
   const loading       = cfgLoading || playsLoading;
 
-  // ── Reset when a new day arrives (alreadyPlayed flips to false) ──────────────
+  // ── Reset when a new day arrives ─────────────────────────────────────────
   useEffect(() => {
     if (!localPlayed && !(myPlays?.playedToday)) {
-      revealedRef.current = new Set();
+      scratchPointsRef.current = [];
+      coveredCells.current.clear();
       thresholdRef.current = false;
       apiCalledRef.current = false;
-      setRevealedCells(new Set());
+      setScratchPoints([]);
       setScratchStarted(false);
       setOverlayGone(false);
       setResult(null);
       setGameError(null);
       overlayAnim.setValue(1);
+      cardPosRef.current = null;
     }
   }, [myPlays?.playedToday, localPlayed]);
 
-  // ── Stable refs for pan-handler callbacks ────────────────────────────────────
-
-  const resultRef      = useRef<GameResult | null>(null);
-  const gameErrorRef   = useRef<string | null>(null);
-
-  // ── Fully reveal the overlay (fade out) ──────────────────────────────────────
+  // ── Full reveal — fade out silver overlay ────────────────────────────────
   const triggerReveal = useCallback(() => {
     if (thresholdRef.current) return;
     thresholdRef.current = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
-    // Fill remaining cells instantly
-    const full = new Set<number>();
-    for (let i = 0; i < TOTAL; i++) full.add(i);
-    revealedRef.current = full;
-    setRevealedCells(full);
     Animated.timing(overlayAnim, {
       toValue: 0,
-      duration: 380,
+      duration: 400,
       useNativeDriver: true,
     }).start(() => setOverlayGone(true));
   }, [overlayAnim]);
@@ -194,7 +280,7 @@ export function ScratchCardGame() {
   const triggerRevealRef = useRef(triggerReveal);
   triggerRevealRef.current = triggerReveal;
 
-  // ── Call the game API ────────────────────────────────────────────────────────
+  // ── API call ─────────────────────────────────────────────────────────────
   const callApi = useCallback(async () => {
     if (apiCalledRef.current) return;
     apiCalledRef.current = true;
@@ -214,30 +300,23 @@ export function ScratchCardGame() {
         } else {
           const msg = data.message || "Something went wrong. Please try again.";
           setGameError(msg);
-          gameErrorRef.current = msg;
         }
         triggerRevealRef.current();
         return;
       }
       const r = data as GameResult;
       setResult(r);
-      resultRef.current = r;
       qc.invalidateQueries({ queryKey: ["/api/game/my-prizes"] });
       if (r.pointsAwarded) {
         qc.invalidateQueries({ queryKey: ["/api/loyalty/me"] });
-        // Bump home-screen points pill too
-        qc.invalidateQueries({ queryKey: ["/api/loyalty/me"] });
       }
       if (thresholdRef.current) {
-        // Already revealed while waiting — just ensure haptic
         Haptics.notificationAsync(
           r.won ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning
         ).catch(() => {});
       }
     } catch {
-      const msg = "Network error — please try again.";
-      setGameError(msg);
-      gameErrorRef.current = msg;
+      setGameError("Network error — please try again.");
       triggerRevealRef.current();
     }
   }, [getCustomerToken, qc]);
@@ -245,69 +324,97 @@ export function ScratchCardGame() {
   const callApiRef = useRef(callApi);
   callApiRef.current = callApi;
 
-  // ── Cell hit-test ────────────────────────────────────────────────────────────
+  // ── Handle each touch point ───────────────────────────────────────────────
   const handlePoint = useCallback((pageX: number, pageY: number) => {
-    const m = measureRef.current;
-    if (!m) return;
-    const rx = pageX - m.x;
-    const ry = pageY - m.y;
-    if (rx < 0 || ry < 0 || rx > m.w || ry > m.h) return;
-    const col = Math.floor((rx / m.w) * COLS);
-    const row = Math.floor((ry / m.h) * ROWS);
-    if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
-    const idx = row * COLS + col;
-    if (revealedRef.current.has(idx)) return;
-    const next = new Set(revealedRef.current).add(idx);
-    revealedRef.current = next;
-    setRevealedCells(new Set(next));
-    if (next.size % 3 === 0) {
+    // Ensure we have the card's absolute screen position
+    if (!cardPosRef.current) return;
+
+    const { w, h } = cardSizeRef.current;
+    const { x: ox, y: oy } = cardPosRef.current;
+    const lx = pageX - ox;
+    const ly = pageY - oy;
+
+    // Skip if well outside the card
+    if (lx < -BRUSH_RADIUS || ly < -BRUSH_RADIUS || lx > w + BRUSH_RADIUS || ly > h + BRUSH_RADIUS) return;
+
+    // Skip if too close to the previous point (avoids redundant SVG circles)
+    const pts = scratchPointsRef.current;
+    const last = pts[pts.length - 1];
+    if (last) {
+      const dx = lx - last.x;
+      const dy = ly - last.y;
+      if (dx * dx + dy * dy < 36) return; // less than 6 px apart
+    }
+
+    if (pts.length % 4 === 0) {
       Haptics.selectionAsync().catch(() => {});
     }
-    if (!thresholdRef.current && next.size / TOTAL >= REVEAL_THRESHOLD) {
-      triggerRevealRef.current();
+
+    const next = [...pts, { x: lx, y: ly }];
+    scratchPointsRef.current = next;
+    setScratchPoints(next);
+
+    // Coverage tracking via a coarse grid
+    if (!thresholdRef.current && w > 0 && h > 0) {
+      const cellW = w / GRID_COLS;
+      const cellH = h / GRID_ROWS;
+      const bw = BRUSH_RADIUS / cellW;
+      const bh = BRUSH_RADIUS / cellH;
+      const cc = lx / cellW;
+      const cr = ly / cellH;
+      const c0 = Math.max(0, Math.floor(cc - bw));
+      const c1 = Math.min(GRID_COLS - 1, Math.ceil(cc + bw));
+      const r0 = Math.max(0, Math.floor(cr - bh));
+      const r1 = Math.min(GRID_ROWS - 1, Math.ceil(cr + bh));
+      for (let r = r0; r <= r1; r++) {
+        for (let c = c0; c <= c1; c++) {
+          coveredCells.current.add(r * GRID_COLS + c);
+        }
+      }
+      if (coveredCells.current.size / (GRID_COLS * GRID_ROWS) >= REVEAL_THRESHOLD) {
+        triggerRevealRef.current();
+      }
     }
   }, []);
 
   const handlePointRef = useRef(handlePoint);
   handlePointRef.current = handlePoint;
 
-  // ── PanResponder ─────────────────────────────────────────────────────────────
+  // ── PanResponder ─────────────────────────────────────────────────────────
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder:  () => true,
       onPanResponderGrant: (evt) => {
+        // Measure the card's screen position on the very first touch
+        cardViewRef.current?.measure((_x, _y, _w, _h, px, py) => {
+          cardPosRef.current = { x: px, y: py };
+          // Process the touch now that we have a position
+          handlePointRef.current(evt.nativeEvent.pageX, evt.nativeEvent.pageY);
+        });
         if (!apiCalledRef.current) {
           setScratchStarted(true);
-          // Measure scratch area absolute position
-          scratchViewRef.current?.measure((_x: number, _y: number, w: number, h: number, px: number, py: number) => {
-            measureRef.current = { x: px, y: py, w, h };
-          });
           callApiRef.current();
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
         }
-        handlePointRef.current(evt.nativeEvent.pageX, evt.nativeEvent.pageY);
       },
       onPanResponderMove: (evt) => {
         handlePointRef.current(evt.nativeEvent.pageX, evt.nativeEvent.pageY);
       },
       onPanResponderRelease: () => {
-        // If user lifts finger before hitting threshold, wait 600 ms for API
-        // then auto-reveal
+        // Give the API up to 600 ms; auto-reveal if threshold not yet hit
         setTimeout(() => {
-          if (!thresholdRef.current) {
-            triggerRevealRef.current();
-          }
+          if (!thresholdRef.current) triggerRevealRef.current();
         }, 600);
       },
     })
   ).current;
 
-  // ── Guard renders ─────────────────────────────────────────────────────────────
-  if (loading) return null;
+  // ── Guard renders ─────────────────────────────────────────────────────────
+  if (loading)          return null;
   if (!config?.enabled) return null;
 
-  // ── Already played today ──────────────────────────────────────────────────────
+  // ── Already played today ──────────────────────────────────────────────────
   if (alreadyPlayed) {
     return (
       <View style={styles.wrapper}>
@@ -316,19 +423,19 @@ export function ScratchCardGame() {
             colors={[Colors.brand.dark, Colors.brand.navy]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={styles.playedContainer}
+            style={styles.stateContainer}
           >
             <Text style={styles.eyebrow}>DAILY LUCKY BREAK</Text>
-            <Text style={styles.playedEmoji}>🎱</Text>
-            <Text style={styles.playedTitle}>You've played today!</Text>
-            <Text style={styles.playedSub}>Come back tomorrow for another go.</Text>
+            <Text style={styles.stateEmoji}>🎱</Text>
+            <Text style={styles.stateTitle}>You've played today!</Text>
+            <Text style={styles.stateSub}>Come back tomorrow for another go.</Text>
           </LinearGradient>
         </View>
       </View>
     );
   }
 
-  // ── Game not currently available (outside schedule) ───────────────────────────
+  // ── Outside schedule window ───────────────────────────────────────────────
   if (!gameActive) {
     return (
       <View style={styles.wrapper}>
@@ -337,12 +444,12 @@ export function ScratchCardGame() {
             colors={[Colors.brand.dark, Colors.brand.navy]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={styles.playedContainer}
+            style={styles.stateContainer}
           >
             <Text style={styles.eyebrow}>DAILY LUCKY BREAK</Text>
             <Ionicons name="time-outline" size={32} color={Colors.brand.gold} style={{ marginBottom: 8 }} />
-            <Text style={styles.playedTitle}>Not available yet</Text>
-            <Text style={styles.playedSub}>
+            <Text style={styles.stateTitle}>Not available yet</Text>
+            <Text style={styles.stateSub}>
               Back at{" "}
               <Text style={{ color: Colors.brand.gold, fontFamily: "Montserrat_700Bold" }}>
                 {fmtTime(config?.windowStart || "00:00")}
@@ -355,10 +462,10 @@ export function ScratchCardGame() {
     );
   }
 
-  // ── Main scratch card ─────────────────────────────────────────────────────────
+  // ── Active scratch card ───────────────────────────────────────────────────
   return (
     <View style={styles.wrapper}>
-      {/* Card header */}
+      {/* Badge + subtitle row */}
       <View style={styles.headerRow}>
         <LinearGradient
           colors={[Colors.brand.gold, "#B8860B"]}
@@ -369,56 +476,37 @@ export function ScratchCardGame() {
           <Ionicons name="sparkles" size={13} color="#FFF" />
           <Text style={styles.headerBadgeText}>DAILY LUCKY BREAK</Text>
         </LinearGradient>
-        <Text style={styles.headerSub}>Free • 1 per day</Text>
+        <Text style={styles.headerSub}>Free · 1 per day</Text>
       </View>
 
       {/* Card body */}
-      <View style={styles.cardFrame}>
-        {/* Prize area — always rendered underneath */}
-        <View style={styles.prizeArea}>
+      <View
+        ref={cardViewRef}
+        style={styles.cardFrame}
+        onLayout={onCardLayout}
+        {...(!overlayGone ? panResponder.panHandlers : {})}
+      >
+        {/* Prize area — always rendered beneath the scratch surface */}
+        <View style={StyleSheet.absoluteFill}>
           <PrizeContent result={result} error={gameError} />
         </View>
 
-        {/* Scratch overlay — fades out on reveal */}
+        {/* SVG metallic scratch overlay */}
         {!overlayGone && (
-          <Animated.View
-            style={[styles.overlayContainer, { opacity: overlayAnim }]}
-            ref={scratchViewRef}
-            onLayout={() => {
-              scratchViewRef.current?.measure((_x: number, _y: number, w: number, h: number, px: number, py: number) => {
-                measureRef.current = { x: px, y: py, w, h };
-              });
-            }}
-            {...panResponder.panHandlers}
-          >
-            {/* Silver scratch grid cells */}
-            <View style={styles.grid} pointerEvents="none">
-              {Array.from({ length: ROWS }, (_, row) =>
-                Array.from({ length: COLS }, (_, col) => {
-                  const idx = row * COLS + col;
-                  const scratched = revealedCells.has(idx);
-                  return (
-                    <View
-                      key={idx}
-                      style={[
-                        styles.cell,
-                        { width: `${100 / COLS}%`, height: `${100 / ROWS}%` },
-                        scratched && styles.cellScratched,
-                      ]}
-                    />
-                  );
-                })
-              )}
-            </View>
+          <ScratchOverlay
+            points={scratchPoints}
+            cardW={cardW}
+            cardH={cardH}
+            overlayOpacity={overlayAnim}
+          />
+        )}
 
-            {/* Prompt shown before scratching starts */}
-            {!scratchStarted && (
-              <View style={styles.scratchPrompt} pointerEvents="none">
-                <Ionicons name="finger-print" size={28} color={Colors.brand.gold} />
-                <Text style={styles.scratchPromptText}>Scratch here</Text>
-              </View>
-            )}
-          </Animated.View>
+        {/* "Scratch here" prompt — only before the first touch */}
+        {!overlayGone && !scratchStarted && (
+          <View style={styles.scratchPrompt} pointerEvents="none">
+            <Ionicons name="finger-print" size={30} color={Colors.brand.gold} />
+            <Text style={styles.scratchPromptText}>Scratch here</Text>
+          </View>
         )}
       </View>
 
@@ -452,61 +540,22 @@ const prize = StyleSheet.create({
     textAlign: "center",
     marginTop: 6,
   },
-  missEmoji: {
-    fontSize: 36,
-    lineHeight: 44,
-  },
-  missTitle: {
-    fontFamily: "Montserrat_700Bold",
-    fontSize: 18,
-    color: Colors.brand.gold,
-    textAlign: "center",
-  },
-  missSub: {
-    fontFamily: "Montserrat_400Regular",
-    fontSize: 13,
-    color: "rgba(255,255,255,0.6)",
-    textAlign: "center",
-    lineHeight: 18,
-  },
+  missEmoji: { fontSize: 36, lineHeight: 44 },
+  missTitle: { fontFamily: "Montserrat_700Bold", fontSize: 18, color: Colors.brand.gold, textAlign: "center" },
+  missSub:   { fontFamily: "Montserrat_400Regular", fontSize: 13, color: "rgba(255,255,255,0.6)", textAlign: "center", lineHeight: 18 },
   winBadge: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
+    width: 60, height: 60, borderRadius: 30,
+    alignItems: "center", justifyContent: "center", marginBottom: 4,
   },
-  winTitle: {
-    fontFamily: "Montserrat_700Bold",
-    fontSize: 20,
-    color: Colors.brand.gold,
-    textAlign: "center",
-  },
-  winDesc: {
-    fontFamily: "Montserrat_400Regular",
-    fontSize: 13,
-    color: "rgba(255,255,255,0.75)",
-    textAlign: "center",
-    lineHeight: 18,
-  },
+  winTitle:   { fontFamily: "Montserrat_700Bold", fontSize: 20, color: Colors.brand.gold, textAlign: "center" },
+  winDesc:    { fontFamily: "Montserrat_400Regular", fontSize: 13, color: "rgba(255,255,255,0.75)", textAlign: "center", lineHeight: 18 },
   pointsPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "rgba(212,168,67,0.18)",
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    marginTop: 4,
-    borderWidth: 1,
-    borderColor: "rgba(212,168,67,0.35)",
+    flexDirection: "row", alignItems: "center", gap: 5,
+    backgroundColor: "rgba(212,168,67,0.18)", borderRadius: 20,
+    paddingHorizontal: 12, paddingVertical: 5, marginTop: 4,
+    borderWidth: 1, borderColor: "rgba(212,168,67,0.35)",
   },
-  pointsText: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 13,
-    color: Colors.brand.gold,
-  },
+  pointsText: { fontFamily: "Montserrat_600SemiBold", fontSize: 13, color: Colors.brand.gold },
 });
 
 // ── Main styles ───────────────────────────────────────────────────────────────
@@ -549,7 +598,6 @@ const styles = StyleSheet.create({
     borderColor: Colors.brand.gold,
     height: 180,
     backgroundColor: Colors.brand.dark,
-    // Elevation for Android
     ...Platform.select({
       android: { elevation: 6 },
       default: {
@@ -559,27 +607,6 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
       },
     }),
-  },
-  prizeArea: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  overlayContainer: {
-    ...StyleSheet.absoluteFillObject,
-    overflow: "hidden",
-  },
-  grid: {
-    ...StyleSheet.absoluteFillObject,
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-  cell: {
-    backgroundColor: "#9E9E9E",
-    borderWidth: 0.5,
-    borderColor: "#BDBDBD",
-  },
-  cellScratched: {
-    backgroundColor: "transparent",
-    borderColor: "transparent",
   },
   scratchPrompt: {
     ...StyleSheet.absoluteFillObject,
@@ -593,8 +620,7 @@ const styles = StyleSheet.create({
     color: Colors.brand.gold,
     letterSpacing: 0.5,
   },
-  // Played / unavailable states share this container
-  playedContainer: {
+  stateContainer: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -608,17 +634,14 @@ const styles = StyleSheet.create({
     color: Colors.brand.gold,
     marginBottom: 4,
   },
-  playedEmoji: {
-    fontSize: 36,
-    lineHeight: 44,
-  },
-  playedTitle: {
+  stateEmoji: { fontSize: 36, lineHeight: 44 },
+  stateTitle: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 17,
     color: "#FFF",
     textAlign: "center",
   },
-  playedSub: {
+  stateSub: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 13,
     color: "rgba(255,255,255,0.6)",
