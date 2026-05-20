@@ -27,6 +27,7 @@ import Colors from "@/constants/colors";
 import { TABLE_TYPES } from "@/lib/data";
 import { fetch } from "expo/fetch";
 import { hasPromptedForBiometric, markBiometricPrompted } from "@/lib/biometric";
+import { useNotifications } from "@/contexts/NotificationContext";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
 const BOOKING_HOURS = [
@@ -686,6 +687,22 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
   } = useCustomerAuth();
   const [biometricBusy, setBiometricBusy] = useState(false);
 
+  const { permissionStatus, registerForPushNotifications } = useNotifications();
+  const [notifBusy, setNotifBusy] = useState(false);
+  const handleNotificationToggle = useCallback(async () => {
+    if (permissionStatus === "granted" || notifBusy) return;
+    if (permissionStatus === "denied") {
+      Linking.openSettings();
+      return;
+    }
+    setNotifBusy(true);
+    try { await registerForPushNotifications(); } finally { setNotifBusy(false); }
+  }, [permissionStatus, notifBusy, registerForPushNotifications]);
+  const showNotifRow = Platform.OS !== "web"
+    && permissionStatus !== "expo_go_unsupported"
+    && permissionStatus !== "web_unsupported"
+    && permissionStatus !== "simulator";
+
   const handleToggleBiometric = async () => {
     if (biometricBusy) return;
     setBiometricBusy(true);
@@ -977,6 +994,36 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
           <Text style={[styles.actionButtonText, { color: Colors.brand.red }]}>Sign Out</Text>
         </Pressable>
       </View>
+
+      {showNotifRow && (
+        <Pressable
+          onPress={handleNotificationToggle}
+          disabled={notifBusy || permissionStatus === "granted"}
+          style={({ pressed }) => [styles.biometricSettingRow, { opacity: pressed || notifBusy ? 0.7 : 1 }]}
+          testID="notification-toggle"
+        >
+          <Ionicons
+            name={permissionStatus === "granted" ? "notifications" : "notifications-outline"}
+            size={22}
+            color={Colors.brand.blue}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.biometricSettingTitle}>Push Notifications</Text>
+            <Text style={styles.biometricSettingSub}>
+              {permissionStatus === "granted"
+                ? "On — you'll get updates about bookings and offers."
+                : permissionStatus === "denied"
+                ? "Off — tap to open Settings and enable."
+                : notifBusy
+                ? "Requesting permission…"
+                : "Off — tap to enable notifications."}
+            </Text>
+          </View>
+          <View style={[styles.biometricSwitch, permissionStatus === "granted" && styles.biometricSwitchOn]}>
+            <View style={[styles.biometricSwitchThumb, permissionStatus === "granted" && styles.biometricSwitchThumbOn]} />
+          </View>
+        </Pressable>
+      )}
 
       {biometricSupported ? (
         <Pressable
