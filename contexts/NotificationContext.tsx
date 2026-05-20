@@ -70,6 +70,15 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       return null;
     }
 
+    // Expo Go registers tokens under a Replit-private experience ID that has
+    // no APNs credentials — they can never be delivered from the production
+    // server and will cause 100% of those notifications to fail with
+    // InvalidCredentials. Skip registration entirely in Expo Go.
+    if (Constants.appOwnership === "expo") {
+      setPermissionStatus("expo_go_unsupported");
+      return null;
+    }
+
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
 

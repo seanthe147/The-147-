@@ -3115,7 +3115,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           } else {
             failureCount++;
             console.error(`[Push] Failed for token ${token}: ${result.message} (${result.details?.error})`);
-            if (result.details?.error === "DeviceNotRegistered" && token) {
+            // DeviceNotRegistered = app uninstalled; InvalidCredentials here
+            // means the token belongs to a dev/Expo-Go experience that has no
+            // APNs credentials on the production server — both are undeliverable
+            // and should be pruned so future sends don't waste quota on them.
+            if ((result.details?.error === "DeviceNotRegistered" || result.details?.error === "InvalidCredentials") && token) {
               deadTokens.push(token);
             }
           }
