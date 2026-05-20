@@ -24,7 +24,6 @@ import { getApiUrl } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
 import { useResponsive } from "@/hooks/useResponsive";
-import { ScratchCardGame } from "@/components/ScratchCardGame";
 
 const SESSION_KEY = "loyalty_session";
 function loyaltyUrl(path: string): string {
@@ -905,12 +904,6 @@ export default function LoyaltyScreen() {
           ) : meQuery.data.account ? (
             <>
               {firstName ? (
-                // Personal intro above the gold points pill so the
-                // balance feels like "yours" rather than a generic
-                // dashboard number. We deliberately don't repeat the
-                // first name here — the header subtitle already
-                // greeted them by name a few px above, and saying it
-                // twice in one screen feels name-heavy.
                 <Text style={styles.personalIntro}>
                   Here's where you stand
                 </Text>
@@ -924,93 +917,22 @@ export default function LoyaltyScreen() {
                 rewardTiers={meQuery.data.program?.reward_tiers ?? []}
                 terminology={meQuery.data.program?.terminology}
               />
-
-              {meQuery.data.promo?.doublePointsToday && (
-                <View style={styles.doublePointsBanner} testID="double-points-banner">
-                  <Ionicons name="flash" size={18} color="#92400E" />
-                  <Text style={styles.doublePointsText}>Double points today on all visits!</Text>
-                </View>
-              )}
-
-              {meQuery.data.birthday && (
-                <BirthdayBanner
-                  birthday={meQuery.data.birthday}
-                  terminology={meQuery.data.program?.terminology}
-                />
-              )}
-
-              <View style={styles.statsRow}>
-                <View style={styles.statCard}>
-                  <Ionicons name="trophy-outline" size={20} color={Colors.brand.gold} />
-                  <Text style={styles.statValue}>{meQuery.data.account.lifetime_points}</Text>
-                  <Text style={styles.statLabel}>
-                    Lifetime {meQuery.data.program?.terminology?.other || "Points"}
-                  </Text>
-                </View>
-                <View style={styles.statCard}>
-                  <Ionicons name="calendar-outline" size={20} color={Colors.brand.blue} />
-                  <Text style={styles.statValue}>
-                    {new Date(meQuery.data.account.enrolled_at).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
-                  </Text>
-                  <Text style={styles.statLabel}>Member Since</Text>
-                </View>
-              </View>
-
-              {/* ── Daily scratch card game ─────────────────────────── */}
-              <ScratchCardGame />
-
-              {meQuery.data.rewards && meQuery.data.rewards.length > 0 && (
-                <ActiveRewardsSection
-                  rewards={meQuery.data.rewards}
-                  program={meQuery.data.program ?? null}
-                />
-              )}
-
-              {meQuery.data.program?.reward_tiers && meQuery.data.program.reward_tiers.length > 0 && (
-                <View style={styles.rewardsSection}>
-                  <View style={styles.sectionTitleRow}>
-                    <Ionicons name="ribbon" size={18} color={Colors.brand.gold} />
-                    <Text style={styles.sectionTitle}>All Reward Tiers</Text>
-                  </View>
-                  {meQuery.data.program.reward_tiers
-                    .slice()
-                    .sort((a, b) => a.points - b.points)
-                    .map((tier) => (
-                      <RewardTierCard
-                        key={tier.id}
-                        tier={tier}
-                        balance={meQuery.data!.account!.balance}
-                        terminology={meQuery.data!.program?.terminology}
-                      />
-                    ))}
-                </View>
-              )}
-
-              {meQuery.data.events && meQuery.data.events.length > 0 && (
-                <ActivityFeed
-                  events={meQuery.data.events}
-                  program={meQuery.data.program ?? null}
-                />
-              )}
-
-              <View style={styles.actionRow}>
-                <Pressable
-                  onPress={() => meQuery.refetch()}
-                  disabled={meQuery.isFetching}
-                  style={({ pressed }) => [styles.refreshButton, { opacity: pressed ? 0.85 : 1 }]}
-                >
-                  <Ionicons name="refresh" size={18} color={Colors.brand.blue} />
-                  <Text style={styles.refreshButtonText}>
-                    {meQuery.isFetching ? "Refreshing…" : "Refresh"}
-                  </Text>
-                </Pressable>
-              </View>
-
+              <Pressable
+                onPress={() => router.push("/(tabs)/rewards")}
+                style={({ pressed }) => [
+                  styles.enrollButton,
+                  { marginHorizontal: 20, marginTop: 12, opacity: pressed ? 0.85 : 1 },
+                ]}
+              >
+                <Ionicons name="gift" size={18} color="#FFF" />
+                <Text style={styles.buttonText}>Rewards & Scratch Card</Text>
+                <Ionicons name="chevron-forward" size={16} color="#FFF" />
+              </Pressable>
               <View style={styles.infoCard}>
                 <View style={styles.infoRow}>
                   <Ionicons name="information-circle-outline" size={18} color={Colors.light.textSecondary} />
                   <Text style={styles.infoText}>
-                    Points are earned automatically when you pay at The 147. Show this screen at the till to redeem rewards.
+                    Points are earned automatically when you pay at The 147. Visit the Rewards tab to scratch today's card and check your prizes.
                   </Text>
                 </View>
               </View>

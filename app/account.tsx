@@ -963,7 +963,7 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
 
       <View style={styles.actionRow}>
         <Pressable
-          onPress={() => { router.back(); setTimeout(() => router.push("/(tabs)/book"), 100); }}
+          onPress={() => router.push("/booking")}
           style={({ pressed }) => [styles.actionButton, { opacity: pressed ? 0.8 : 1 }]}
         >
           <Ionicons name="calendar" size={20} color="#FFFFFF" />

@@ -594,7 +594,7 @@ export default function HomeScreen() {
   const bannerImageUrl = settings?.banner_image;
   const todayHours = useMemo(() => getOpeningHoursToday(), []);
 
-  const goToBook = useCallback(() => router.push("/(tabs)/book"), []);
+  const goToBook = useCallback(() => router.push("/booking"), []);
   const goToEvents = useCallback(() => router.push("/(tabs)/events"), []);
   const goToOrder = useCallback(() => router.push("/(tabs)/order"), []);
   const goToContact = useCallback(() => router.push("/contact"), []);
@@ -662,7 +662,7 @@ export default function HomeScreen() {
         <Pressable
           onPress={() => {
             if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            router.push("/(tabs)/book");
+            router.push("/booking");
           }}
           style={({ pressed }) => [
             styles.primaryCta,

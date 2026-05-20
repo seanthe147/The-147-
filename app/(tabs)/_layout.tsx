@@ -78,10 +78,14 @@ export default function TabLayout() {
         />
         <Tabs.Screen
           name="book"
+          options={{ href: null }}
+        />
+        <Tabs.Screen
+          name="rewards"
           options={{
-            title: "Book",
+            title: "Rewards",
             tabBarIcon: ({ color, size }) => (
-              <Ionicons name="calendar" size={size} color={color} />
+              <Ionicons name="gift" size={size} color={color} />
             ),
             href: isKioskMode ? null : undefined,
           }}
