@@ -993,3 +993,40 @@ export const paymentLog = pgTable("payment_log", {
 export type PaymentLog = typeof paymentLog.$inferSelect;
 export const insertPaymentLogSchema = createInsertSchema(paymentLog).omit({ id: true, createdAt: true });
 export type InsertPaymentLog = z.infer<typeof insertPaymentLogSchema>;
+
+// ── Loyalty Game prize definitions ────────────────────────────────────────────
+// Each row defines one prize tier. The game rolls a weighted random result at
+// play time and issues the matching prize via Square Loyalty or as a points
+// adjustment. 'none' type = "better luck next time" — no Square action needed.
+export const gamePrizes = pgTable("game_prizes", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),                // e.g. "Free Soft Drink"
+  description: text("description"),            // shown to customer on win screen
+  prizeType: text("prize_type").notNull(),     // 'none' | 'loyalty_points' | 'reward_tier'
+  value: integer("value"),                     // points to award (prizeType='loyalty_points')
+  rewardTierId: text("reward_tier_id"),        // Square reward tier ID (prizeType='reward_tier')
+  weightPercent: integer("weight_percent").notNull().default(10), // probability weight (relative)
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type GamePrize = typeof gamePrizes.$inferSelect;
+
+// ── Loyalty Game play history ─────────────────────────────────────────────────
+// One row per play. Used to enforce the once-per-calendar-day limit and to
+// show staff a winners list. customerId is a FK to customers.id in intent but
+// not declared as a hard FK so a deleted customer doesn't orphan the log.
+export const gamePlays = pgTable("game_plays", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull(),
+  prizeId: integer("prize_id"),               // null → prize type 'none' (no win)
+  squareRewardId: text("square_reward_id"),   // Square reward ID if reward_tier prize issued
+  pointsAwarded: integer("points_awarded"),   // set when prizeType='loyalty_points'
+  playedAt: timestamp("played_at").defaultNow().notNull(),
+  // London calendar date (YYYY-MM-DD) for fast daily-limit queries without
+  // timezone conversion in SQL.
+  londonDate: text("london_date").notNull(),
+});
+
+export type GamePlay = typeof gamePlays.$inferSelect;

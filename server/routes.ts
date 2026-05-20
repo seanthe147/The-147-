@@ -8735,6 +8735,282 @@ export async function registerRoutes(app: Express): Promise<Server> {
     })();
   }, 30000); // 30s — must run AFTER runStartupMigrations() in server/index.ts (which can reset the backfill flag). Migrations comfortably finish well within this window.
 
+  // ── Square auto-enrollment on new customer signup ───────────────────────────
+  // Called non-blocking after the local account is created.
+  // • Existing Square customer (matched by email) → linked; NOT added to the
+  //   "The 147 Loyalty" group (they are already known to Square).
+  // • Brand-new customer → Square customer created + added to "The 147 Loyalty"
+  //   customer group so staff can identify app sign-ups in Square Dashboard.
+  // • Both paths: if the customer supplied a phone and has no loyalty account,
+  //   one is created so the till can look them up immediately.
+  async function enrollNewCustomerInSquare(customer: {
+    id: number; email: string; name: string; phone: string | null; squareCustomerId: string | null;
+  }) {
+    try {
+      if (!square.isConfigured()) return;
+      if (customer.squareCustomerId) return; // already enrolled
+
+      const existing = await square.findSquareCustomerByEmail(customer.email).catch(() => null);
+      let sqCustomerId: string;
+
+      if (existing) {
+        sqCustomerId = existing.id;
+        console.log(`[Enroll] customer #${customer.id} linked to existing Square customer ${sqCustomerId}`);
+      } else {
+        const sqCustomer = await square.createSquareCustomer(
+          customer.name, customer.email, customer.phone ?? undefined
+        );
+        sqCustomerId = sqCustomer.id;
+        const groupId = await square.getOrCreateCustomerGroup("The 147 Loyalty").catch(() => null);
+        if (groupId) await square.addCustomerToGroup(sqCustomerId, groupId).catch(() => {});
+        console.log(`[Enroll] Created Square customer ${sqCustomerId} for app customer #${customer.id}`);
+      }
+
+      await storage.setSquareCustomerId(customer.id, sqCustomerId);
+
+      // Enrol in loyalty programme if they provided a phone number
+      if (customer.phone) {
+        try {
+          let loyaltyAccount = await square.searchLoyaltyAccount(customer.phone).catch(() => null);
+          if (!loyaltyAccount) {
+            const program = await square.getLoyaltyProgram().catch(() => null);
+            if (program?.id) {
+              loyaltyAccount = await square.createLoyaltyAccount(customer.phone, program.id).catch(() => null);
+            }
+          }
+          if (loyaltyAccount?.id) {
+            await storage.setSquareLoyaltyAccountId(customer.id, loyaltyAccount.id);
+            console.log(`[Enroll] Loyalty account ${loyaltyAccount.id} linked for customer #${customer.id}`);
+          }
+        } catch (e: any) {
+          console.warn(`[Enroll] Loyalty enrollment failed for customer #${customer.id}:`, e.message);
+        }
+      }
+    } catch (e: any) {
+      console.warn(`[Enroll] Square enrollment failed for customer #${customer.id}:`, e.message);
+    }
+  }
+
+  // ── Game helpers ─────────────────────────────────────────────────────────────
+
+  function rollGamePrize(prizes: import("@shared/schema").GamePrize[]): import("@shared/schema").GamePrize | null {
+    const active = prizes.filter(p => p.active);
+    if (!active.length) return null;
+    const total = active.reduce((s, p) => s + (p.weightPercent ?? 0), 0);
+    if (total <= 0) return active[0];
+    let rand = Math.random() * total;
+    for (const p of active) { rand -= p.weightPercent ?? 0; if (rand <= 0) return p; }
+    return active[active.length - 1];
+  }
+
+  function getGameLondonDate(): string {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(new Date());
+    const g = (t: string) => parts.find(p => p.type === t)?.value ?? "";
+    return `${g("year")}-${g("month")}-${g("day")}`;
+  }
+
+  function isWithinGameWindow(start: string, end: string): boolean {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hour12: false,
+    }).formatToParts(new Date());
+    const g = (t: string) => parseInt(parts.find(p => p.type === t)?.value ?? "0", 10);
+    const now = g("hour") * 60 + g("minute");
+    const [sh, sm] = start.split(":").map(Number);
+    const [eh, em] = end.split(":").map(Number);
+    return now >= sh * 60 + sm && now < eh * 60 + em;
+  }
+
+  // ── Customer game endpoints ───────────────────────────────────────────────────
+
+  // Public config — lets the app know whether to show the game button at all.
+  app.get("/api/game/config", async (_req, res) => {
+    try {
+      const [enabled, windowStart, windowEnd] = await Promise.all([
+        storage.getSetting("game_enabled"),
+        storage.getSetting("game_window_start"),
+        storage.getSetting("game_window_end"),
+      ]);
+      const start = windowStart ?? "00:00";
+      const end   = windowEnd   ?? "23:59";
+      res.json({
+        enabled: enabled === "true",
+        windowStart: start,
+        windowEnd: end,
+        withinWindow: enabled === "true" && isWithinGameWindow(start, end),
+      });
+    } catch {
+      res.json({ enabled: false, withinWindow: false });
+    }
+  });
+
+  // Play the game — requires a signed-in customer.
+  app.post("/api/game/play", customerAuth, async (req: Request & { customerId?: number }, res) => {
+    const customerId = req.customerId!;
+    try {
+      const [enabled, windowStart, windowEnd] = await Promise.all([
+        storage.getSetting("game_enabled"),
+        storage.getSetting("game_window_start"),
+        storage.getSetting("game_window_end"),
+      ]);
+
+      if (enabled !== "true") {
+        return res.status(403).json({ message: "The game is not available right now." });
+      }
+
+      const start = windowStart ?? "00:00";
+      const end   = windowEnd   ?? "23:59";
+      if (!isWithinGameWindow(start, end)) {
+        return res.status(403).json({ message: `The game is only available between ${start} and ${end}.` });
+      }
+
+      const londonDate = getGameLondonDate();
+      const todaysPlays = await storage.getGamePlaysToday(customerId, londonDate);
+      if (todaysPlays.length > 0) {
+        return res.status(429).json({ message: "You have already played today — come back tomorrow!", alreadyPlayed: true });
+      }
+
+      const prizes = await storage.getActiveGamePrizes();
+      const prize = rollGamePrize(prizes);
+
+      let squareRewardId: string | null = null;
+      let pointsAwarded: number | null = null;
+
+      if (prize && prize.prizeType !== "none") {
+        const customer = await storage.getCustomerById(customerId);
+        if (prize.prizeType === "loyalty_points" && prize.value && customer?.squareLoyaltyAccountId) {
+          try {
+            await square.adjustLoyaltyPoints(
+              customer.squareLoyaltyAccountId,
+              prize.value,
+              "Game prize",
+              `game-prize-${customerId}-${Date.now()}`,
+            );
+            pointsAwarded = prize.value;
+          } catch (e: any) {
+            console.warn("[Game] Points award failed:", e.message);
+          }
+        }
+        if (prize.prizeType === "reward_tier" && prize.rewardTierId && customer?.squareLoyaltyAccountId) {
+          try {
+            const reward = await square.redeemLoyaltyReward(
+              customer.squareLoyaltyAccountId,
+              prize.rewardTierId,
+              `game-reward-${customerId}-${Date.now()}`,
+            );
+            squareRewardId = reward?.id ?? null;
+          } catch (e: any) {
+            console.warn("[Game] Reward issue failed:", e.message);
+          }
+        }
+      }
+
+      const play = await storage.createGamePlay({
+        customerId,
+        prizeId: prize?.id ?? null,
+        squareRewardId,
+        pointsAwarded,
+        londonDate,
+      });
+
+      res.json({
+        won: prize?.prizeType !== "none" && !!prize,
+        prize: prize ? { name: prize.name, description: prize.description, prizeType: prize.prizeType } : null,
+        pointsAwarded,
+        playId: play.id,
+      });
+    } catch (err: any) {
+      console.error("[Game] Play error:", err.message);
+      res.status(500).json({ message: "Something went wrong — please try again." });
+    }
+  });
+
+  // Customer's own play history — shows their recent wins.
+  app.get("/api/game/my-prizes", customerAuth, async (req: Request & { customerId?: number }, res) => {
+    const customerId = req.customerId!;
+    try {
+      const plays = await storage.getGamePlaysToday(customerId, getGameLondonDate());
+      res.json({ playedToday: plays.length > 0, plays });
+    } catch {
+      res.json({ playedToday: false, plays: [] });
+    }
+  });
+
+  // ── Staff game management endpoints ─────────────────────────────────────────
+
+  app.get("/api/staff/game/config", staffAuth, async (_req, res) => {
+    try {
+      const [enabled, windowStart, windowEnd] = await Promise.all([
+        storage.getSetting("game_enabled"),
+        storage.getSetting("game_window_start"),
+        storage.getSetting("game_window_end"),
+      ]);
+      const prizes = await storage.getAllGamePrizes();
+      res.json({
+        enabled: enabled === "true",
+        windowStart: windowStart ?? "00:00",
+        windowEnd: windowEnd ?? "23:59",
+        prizes,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/staff/game/config", staffAuth, managerAuth, async (req, res) => {
+    const { enabled, windowStart, windowEnd } = req.body ?? {};
+    try {
+      await Promise.all([
+        storage.setSetting("game_enabled", enabled ? "true" : "false"),
+        windowStart != null && storage.setSetting("game_window_start", String(windowStart)),
+        windowEnd   != null && storage.setSetting("game_window_end",   String(windowEnd)),
+      ]);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/staff/game/prizes", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      res.json(await storage.getAllGamePrizes());
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/staff/game/prizes", staffAuth, managerAuth, async (req, res) => {
+    const { name, description, prizeType, value, rewardTierId, weightPercent, active } = req.body ?? {};
+    if (!name || !prizeType) return res.status(400).json({ message: "name and prizeType are required" });
+    try {
+      const prize = await storage.upsertGamePrize({ name, description, prizeType, value, rewardTierId, weightPercent: weightPercent ?? 10, active: active !== false });
+      res.json(prize);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put("/api/staff/game/prizes/:id", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id as string, 10);
+    if (!id) return res.status(400).json({ message: "Invalid id" });
+    const { name, description, prizeType, value, rewardTierId, weightPercent, active } = req.body ?? {};
+    try {
+      const prize = await storage.upsertGamePrize({ id, name, description, prizeType, value, rewardTierId, weightPercent, active });
+      res.json(prize);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/staff/game/winners", staffAuth, async (_req, res) => {
+    try {
+      res.json(await storage.getRecentGameWinners(100));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/customers/register", async (req, res) => {
     const clientIp = getClientIp(req);
     const rateCheck = checkCustomerRateLimit(clientIp);
@@ -8829,6 +9105,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       sendVerificationEmail({ name: customer.name, email: customer.email, tokenRaw: verifyTokenRaw });
       // Non-blocking: auto-link any existing Square membership for this email
       syncSquareMembershipForCustomer(customer.id, customer.email);
+      // Non-blocking: create/link Square customer profile, add to "The 147
+      // Loyalty" group (new accounts only), and enrol in loyalty programme.
+      enrollNewCustomerInSquare({
+        id: customer.id,
+        email: customer.email,
+        name: customer.name,
+        phone: customer.phone,
+        squareCustomerId: customer.squareCustomerId ?? null,
+      });
     } catch (err: any) {
       console.error("Customer register error:", err.message);
       res.status(500).json({ message: "Registration failed" });

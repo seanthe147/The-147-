@@ -1766,6 +1766,21 @@
               <button class="btn btn-secondary" id="backupTriggerBtn" onclick="triggerBackup()">Save a Backup Now</button>
             </div>
           </div>
+          <!-- Loyalty Game controls — manager + owner only ─────────────────────
+               loadGamePanel() injects config (enable toggle, time window) and
+               prize table into this section on every Settings navigation. -->
+          <div class="settings-section" id="gameSection" style="display:none">
+            <div class="settings-title">Loyalty Game</div>
+            <div class="settings-desc">
+              When enabled, signed-in customers can play a once-per-day spin to win prizes from the list below.
+              The game is only available during the time window you set.
+              Prizes are issued automatically via Square Loyalty — no staff action needed.
+            </div>
+            <div id="gameSectionBody">
+              <span style="font-size:13px;color:var(--text-2)">Loading…</span>
+            </div>
+          </div>
+
           <div class="settings-section">
             <div class="settings-title">Change Your PIN</div>
             <div class="settings-desc">Update the PIN you use to sign in to the staff portal. Your new PIN must be 4–8 digits.</div>
@@ -1820,6 +1835,68 @@
         style="background:#dc2626;color:#fff;border:none"
         onclick="confirmRestore()">Yes, Restore This Data</button>
       <button class="btn btn-secondary" onclick="closeOverlay('restoreModal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOYALTY GAME PRIZE MODAL -->
+<div class="overlay" id="gamePrizeModal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-hd">
+      <div class="modal-hd-title" id="gamePrizeModalTitle">Add Prize</div>
+      <button class="modal-close" onclick="closeOverlay('gamePrizeModal')">&times;</button>
+    </div>
+    <div class="modal-bd">
+      <input type="hidden" id="gamePrizeId">
+      <div class="form-group">
+        <label class="form-label">Prize name <span style="color:var(--red)">*</span></label>
+        <input class="form-input" type="text" id="gamePrizeName" placeholder="e.g. Free Soft Drink">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description shown to customer</label>
+        <input class="form-input" type="text" id="gamePrizeDesc" placeholder="e.g. Show this screen at the bar to claim!">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Prize type <span style="color:var(--red)">*</span></label>
+        <select class="form-input" id="gamePrizeType" onchange="updateGamePrizeTypeFields()">
+          <option value="none">No prize (better luck next time)</option>
+          <option value="loyalty_points">Loyalty Points</option>
+          <option value="reward_tier">Reward Voucher (Square reward tier)</option>
+        </select>
+      </div>
+      <div id="gamePrizeValueRow" style="display:none">
+        <div class="form-group">
+          <label class="form-label">Points to award</label>
+          <input class="form-input" type="number" id="gamePrizeValue" min="1" placeholder="e.g. 50" style="max-width:120px">
+        </div>
+      </div>
+      <div id="gamePrizeRewardTierRow" style="display:none">
+        <div class="form-group">
+          <label class="form-label">Square Reward Tier ID</label>
+          <input class="form-input" type="text" id="gamePrizeRewardTierId" placeholder="Paste the tier ID from Square Dashboard">
+          <p style="font-size:12px;color:var(--text-2);margin:4px 0 0">
+            Find this in Square Dashboard → Loyalty → Rewards programme → reward tier.
+          </p>
+        </div>
+      </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div class="form-group" style="flex:1;min-width:100px">
+          <label class="form-label">Weight</label>
+          <input class="form-input" type="number" id="gamePrizeWeight" min="1" max="999" placeholder="10" style="max-width:100px">
+          <p style="font-size:12px;color:var(--text-2);margin:4px 0 0">Higher = more likely relative to other prizes.</p>
+        </div>
+        <div class="form-group" style="flex:1;min-width:100px">
+          <label class="form-label">Active</label>
+          <label style="display:flex;align-items:center;gap:8px;margin-top:8px;cursor:pointer;font-size:13px">
+            <input type="checkbox" id="gamePrizeActive" checked style="width:16px;height:16px;accent-color:var(--blue)">
+            Include in draw
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn btn-secondary" onclick="closeOverlay('gamePrizeModal')">Cancel</button>
+      <button class="btn btn-primary" id="gamePrizeSaveBtn" onclick="saveGamePrize()">Save Prize</button>
     </div>
   </div>
 </div>
@@ -3084,6 +3161,7 @@
     if(page==='staff')loadStaff();
     if(page==='memberships')loadMemberships();
     if(page==='settings'&&state.role==='owner')loadBackupPanel();
+    if(page==='settings'&&(state.role==='manager'||state.role==='owner'))loadGamePanel();
     if(page==='menu'){switchMenuTab('orders');loadOrders();loadOrderingSchedule();}
     if(page==='banners')loadBanners();
     if(page==='website')loadWebsiteEditor();
@@ -3443,6 +3521,206 @@
       btn.disabled=false;
       btn.textContent='Save a Backup Now';
     }
+  }
+
+  // ── Loyalty Game panel ──────────────────────────────────────────────────────
+  async function loadGamePanel(){
+    const section=el('gameSection');
+    const body=el('gameSectionBody');
+    if(!section||!body)return;
+    section.style.display='';
+    body.innerHTML='<span style="font-size:13px;color:var(--text-2)">Loading…</span>';
+    try{
+      const r=await api('/api/staff/game/config');
+      if(!r.ok){body.innerHTML='<span style="color:var(--red);font-size:13px">Could not load game settings.</span>';return;}
+      const cfg=await r.json();
+      renderGamePanel(cfg);
+    }catch(e){
+      if(e.message==='Session expired')return;
+      body.innerHTML='<span style="color:var(--red);font-size:13px">Unable to load game settings.</span>';
+    }
+  }
+
+  function renderGamePanel(cfg){
+    const body=el('gameSectionBody');
+    if(!body)return;
+    const prizes=cfg.prizes||[];
+
+    // Total weight for probability display
+    const totalWeight=prizes.filter(p=>p.active).reduce((s,p)=>s+(p.weightPercent||0),0);
+    const pct=(p)=>totalWeight>0?Math.round((p.weightPercent/totalWeight)*100)+'%':'—';
+
+    const PRIZE_TYPE_LABEL={'none':'No prize','loyalty_points':'Loyalty Points','reward_tier':'Reward Voucher'};
+
+    body.innerHTML=`
+      <!-- Enable / time window ─────────────────────────────────────────── -->
+      <div style="margin-bottom:20px">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:600;color:var(--text)">
+          <input type="checkbox" id="gameEnabled" ${cfg.enabled?'checked':''} style="width:18px;height:18px;accent-color:var(--blue)">
+          Game enabled
+        </label>
+        <p style="font-size:13px;color:var(--text-2);margin:6px 0 0 28px">
+          When ticked, the game button appears in the app for signed-in customers.
+          Untick to hide it completely — e.g. while setting up prizes.
+        </p>
+      </div>
+
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px">
+        <div class="form-group" style="margin:0;flex:1;min-width:130px">
+          <label class="form-label">Available from</label>
+          <input class="form-input" type="time" id="gameWindowStart" value="${esc(cfg.windowStart||'00:00')}" style="max-width:140px">
+        </div>
+        <div class="form-group" style="margin:0;flex:1;min-width:130px">
+          <label class="form-label">Available until</label>
+          <input class="form-input" type="time" id="gameWindowEnd" value="${esc(cfg.windowEnd||'23:59')}" style="max-width:140px">
+        </div>
+      </div>
+
+      <button class="btn btn-primary" id="gameSaveBtn" onclick="saveGameConfig()" style="margin-bottom:28px">Save Settings</button>
+
+      <!-- Prize table ──────────────────────────────────────────────────── -->
+      <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px">Prize Table</div>
+      <p style="font-size:13px;color:var(--text-2);margin:0 0 12px">
+        Each prize has a <strong>weight</strong> that controls how likely it is relative to the others.
+        Higher weight = more likely. The percentages shown are the approximate real-world chances.
+        Click a prize row to edit it.
+      </p>
+      ${prizes.length===0?'<p style="font-size:13px;color:var(--text-2)">No prizes yet.</p>':`
+        <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border)">
+              <th style="text-align:left;padding:6px 8px;color:var(--text-2);font-weight:600">Name</th>
+              <th style="text-align:left;padding:6px 8px;color:var(--text-2);font-weight:600">Type</th>
+              <th style="text-align:right;padding:6px 8px;color:var(--text-2);font-weight:600">Weight</th>
+              <th style="text-align:right;padding:6px 8px;color:var(--text-2);font-weight:600">Chance</th>
+              <th style="text-align:center;padding:6px 8px;color:var(--text-2);font-weight:600">Active</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${prizes.map((p,i)=>`
+              <tr onclick="openGamePrizeModal(${JSON.stringify(p).replace(/"/g,'&quot;')})"
+                  style="border-bottom:1px solid var(--border);cursor:pointer;background:${i%2===0?'var(--surface)':'transparent'}"
+                  onmouseover="this.style.background='var(--hover,#f1f5f9)'" onmouseout="this.style.background='${i%2===0?'var(--surface)':'transparent'}'">
+                <td style="padding:8px 8px;color:var(--text);font-weight:500">${esc(p.name)}</td>
+                <td style="padding:8px 8px;color:var(--text-2)">${esc(PRIZE_TYPE_LABEL[p.prizeType]||p.prizeType)}</td>
+                <td style="padding:8px 8px;text-align:right;color:var(--text-2)">${p.weightPercent}</td>
+                <td style="padding:8px 8px;text-align:right;color:var(--text-2)">${p.active?pct(p):'—'}</td>
+                <td style="padding:8px 8px;text-align:center">
+                  <span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;background:${p.active?'var(--green-light,#f0fdf4)':'var(--surface)'};color:${p.active?'var(--green)':'var(--text-2)'}">
+                    ${p.active?'Yes':'No'}
+                  </span>
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`}
+      <button class="btn btn-secondary" onclick="openGamePrizeModal(null)" style="margin-bottom:24px">+ Add Prize</button>
+
+      <!-- Recent winners ────────────────────────────────────────────────── -->
+      <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px">Recent Winners</div>
+      <div id="gameWinnersBody"><span style="font-size:13px;color:var(--text-2)">Loading…</span></div>
+    `;
+    loadGameWinners();
+  }
+
+  async function saveGameConfig(){
+    const btn=el('gameSaveBtn');
+    if(!btn||btn.disabled)return;
+    btn.disabled=true;
+    btn.textContent='Saving…';
+    try{
+      const enabled=el('gameEnabled')?.checked||false;
+      const windowStart=el('gameWindowStart')?.value||'00:00';
+      const windowEnd=el('gameWindowEnd')?.value||'23:59';
+      const r=await api('/api/staff/game/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled,windowStart,windowEnd})});
+      if(r.ok){toast('Game settings saved','success');}
+      else{const d=await r.json().catch(()=>({}));toast(d.message||'Save failed','error');}
+    }catch(e){toast('Save failed','error');}
+    finally{btn.disabled=false;btn.textContent='Save Settings';}
+  }
+
+  async function loadGameWinners(){
+    const div=el('gameWinnersBody');
+    if(!div)return;
+    try{
+      const r=await api('/api/staff/game/winners');
+      if(!r.ok){div.innerHTML='<span style="font-size:13px;color:var(--red)">Could not load winners.</span>';return;}
+      const winners=await r.json();
+      if(!winners||!winners.length){
+        div.innerHTML='<p style="font-size:13px;color:var(--text-2)">No winners yet.</p>';
+        return;
+      }
+      div.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px">
+        <thead><tr style="border-bottom:2px solid var(--border)">
+          <th style="text-align:left;padding:6px 8px;color:var(--text-2);font-weight:600">Customer</th>
+          <th style="text-align:left;padding:6px 8px;color:var(--text-2);font-weight:600">Prize</th>
+          <th style="text-align:right;padding:6px 8px;color:var(--text-2);font-weight:600">When</th>
+        </tr></thead>
+        <tbody>${winners.map((w,i)=>{
+          const d=new Date(w.playedAt).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+          return`<tr style="border-bottom:1px solid var(--border);background:${i%2===0?'var(--surface)':'transparent'}">
+            <td style="padding:8px 8px;color:var(--text)">${esc(w.customerName||'Unknown')}</td>
+            <td style="padding:8px 8px;color:var(--text-2)">${esc(w.prize?.name||'—')}</td>
+            <td style="padding:8px 8px;text-align:right;color:var(--text-2)">${esc(d)}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>`;
+    }catch(e){
+      if(e.message==='Session expired')return;
+      div.innerHTML='<span style="font-size:13px;color:var(--red)">Unable to load winners.</span>';
+    }
+  }
+
+  // Prize add / edit modal helpers
+  function openGamePrizeModal(prize){
+    const isNew=!prize;
+    el('gamePrizeModalTitle').textContent=isNew?'Add Prize':'Edit Prize';
+    el('gamePrizeName').value=prize?.name||'';
+    el('gamePrizeDesc').value=prize?.description||'';
+    el('gamePrizeType').value=prize?.prizeType||'none';
+    el('gamePrizeValue').value=prize?.value??'';
+    el('gamePrizeRewardTierId').value=prize?.rewardTierId||'';
+    el('gamePrizeWeight').value=prize?.weightPercent??10;
+    el('gamePrizeActive').checked=prize==null?true:!!prize.active;
+    el('gamePrizeId').value=prize?.id||'';
+    updateGamePrizeTypeFields();
+    openOverlay('gamePrizeModal');
+  }
+
+  function updateGamePrizeTypeFields(){
+    const type=el('gamePrizeType')?.value;
+    el('gamePrizeValueRow').style.display=type==='loyalty_points'?'':'none';
+    el('gamePrizeRewardTierRow').style.display=type==='reward_tier'?'':'none';
+  }
+
+  async function saveGamePrize(){
+    const btn=el('gamePrizeSaveBtn');
+    if(!btn||btn.disabled)return;
+    btn.disabled=true;btn.textContent='Saving…';
+    try{
+      const id=parseInt(el('gamePrizeId')?.value||'0')||null;
+      const payload={
+        name:el('gamePrizeName')?.value?.trim()||'',
+        description:el('gamePrizeDesc')?.value?.trim()||null,
+        prizeType:el('gamePrizeType')?.value||'none',
+        value:el('gamePrizeValue')?.value?parseInt(el('gamePrizeValue').value)||null:null,
+        rewardTierId:el('gamePrizeRewardTierId')?.value?.trim()||null,
+        weightPercent:parseInt(el('gamePrizeWeight')?.value||'10')||10,
+        active:el('gamePrizeActive')?.checked||false,
+      };
+      if(!payload.name){toast('Prize name is required','error');return;}
+      const url=id?`/api/staff/game/prizes/${id}`:'/api/staff/game/prizes';
+      const method=id?'PUT':'POST';
+      const r=await api(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      if(r.ok){
+        closeOverlay('gamePrizeModal');
+        toast(id?'Prize updated':'Prize added','success');
+        await loadGamePanel();
+      }else{
+        const d=await r.json().catch(()=>({}));
+        toast(d.message||'Save failed','error');
+      }
+    }catch(e){toast('Save failed','error');}
+    finally{btn.disabled=false;btn.textContent='Save Prize';}
   }
 
   /* ── Dashboard Notices Banner ── */

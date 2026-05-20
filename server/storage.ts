@@ -94,6 +94,10 @@ import {
   paymentLog,
   type PaymentLog,
   type InsertPaymentLog,
+  gamePrizes,
+  type GamePrize,
+  gamePlays,
+  type GamePlay,
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
 
@@ -548,6 +552,50 @@ export async function runStartupMigrations() {
     await client.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS staff_time_entries_active_uniq
         ON staff_time_entries (staff_id) WHERE status = 'active';
+    `);
+
+    // ── Loyalty Game tables ─────────────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS game_prizes (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        prize_type TEXT NOT NULL,
+        value INTEGER,
+        reward_tier_id TEXT,
+        weight_percent INTEGER NOT NULL DEFAULT 10,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+        updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+      );
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS game_plays (
+        id SERIAL PRIMARY KEY,
+        customer_id INTEGER NOT NULL,
+        prize_id INTEGER,
+        square_reward_id TEXT,
+        points_awarded INTEGER,
+        played_at TIMESTAMP DEFAULT NOW() NOT NULL,
+        london_date TEXT NOT NULL
+      );
+    `);
+    // Seed default prize tiers if the table was just created and is empty.
+    // Staff can edit weights/descriptions from the portal — these are just sensible starting values.
+    await client.query(`
+      INSERT INTO game_prizes (name, description, prize_type, weight_percent, active)
+        SELECT 'Better Luck Next Time', 'Thanks for playing — try again tomorrow!', 'none', 60, true
+        WHERE NOT EXISTS (SELECT 1 FROM game_prizes LIMIT 1);
+    `);
+    await client.query(`
+      INSERT INTO game_prizes (name, description, prize_type, value, weight_percent, active)
+        SELECT '50 Loyalty Points', 'You won 50 loyalty points — they have been added to your account!', 'loyalty_points', 50, 30, true
+        WHERE NOT EXISTS (SELECT 1 FROM game_prizes WHERE prize_type = 'loyalty_points' LIMIT 1);
+    `);
+    await client.query(`
+      INSERT INTO game_prizes (name, description, prize_type, weight_percent, active)
+        SELECT 'Free Soft Drink', 'You won a free soft drink — show this screen at the bar to claim it!', 'reward_tier', 10, true
+        WHERE NOT EXISTS (SELECT 1 FROM game_prizes WHERE name = 'Free Soft Drink' LIMIT 1);
     `);
 
     console.log("[DB] Startup migrations applied");
@@ -3188,6 +3236,77 @@ export class DatabaseStorage implements IStorage {
    * lookup mirrors getCustomerOrders so legacy + encrypted records both
    * resolve. Returns null if the customer has never placed a paid order.
    */
+  // ── Square Customer ID ───────────────────────────────────────────────────────
+  // Persists the Square customer ID returned after auto-enrollment on signup.
+  async setSquareCustomerId(id: number, squareCustomerId: string): Promise<void> {
+    await db.update(customers).set({ squareCustomerId }).where(eq(customers.id, id));
+  }
+
+  // ── Loyalty Game ─────────────────────────────────────────────────────────────
+
+  async getActiveGamePrizes(): Promise<GamePrize[]> {
+    return db.select().from(gamePrizes).where(eq(gamePrizes.active, true)).orderBy(gamePrizes.id);
+  }
+
+  async getAllGamePrizes(): Promise<GamePrize[]> {
+    return db.select().from(gamePrizes).orderBy(gamePrizes.id);
+  }
+
+  async upsertGamePrize(data: {
+    id?: number;
+    name: string;
+    description?: string | null;
+    prizeType: string;
+    value?: number | null;
+    rewardTierId?: string | null;
+    weightPercent: number;
+    active: boolean;
+  }): Promise<GamePrize> {
+    const now = new Date();
+    if (data.id) {
+      const { id: _id, ...rest } = data;
+      const [updated] = await db.update(gamePrizes).set({ ...rest, updatedAt: now }).where(eq(gamePrizes.id, data.id)).returning();
+      return updated;
+    }
+    const [created] = await db.insert(gamePrizes).values({ ...data, createdAt: now, updatedAt: now }).returning();
+    return created;
+  }
+
+  async getGamePlaysToday(customerId: number, londonDate: string): Promise<GamePlay[]> {
+    return db.select().from(gamePlays).where(
+      and(eq(gamePlays.customerId, customerId), eq(gamePlays.londonDate, londonDate))
+    );
+  }
+
+  async createGamePlay(data: {
+    customerId: number;
+    prizeId: number | null;
+    squareRewardId?: string | null;
+    pointsAwarded?: number | null;
+    londonDate: string;
+  }): Promise<GamePlay> {
+    const [play] = await db.insert(gamePlays).values({ ...data, playedAt: new Date() }).returning();
+    return play;
+  }
+
+  async getRecentGameWinners(limit = 50): Promise<Array<GamePlay & { prize: GamePrize | null; customerName: string | null }>> {
+    const plays = await db.select().from(gamePlays)
+      .where(isNotNull(gamePlays.prizeId))
+      .orderBy(desc(gamePlays.playedAt))
+      .limit(limit);
+    return Promise.all(plays.map(async (play) => {
+      const [prize] = play.prizeId
+        ? await db.select().from(gamePrizes).where(eq(gamePrizes.id, play.prizeId))
+        : [];
+      const [cust] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, play.customerId));
+      return {
+        ...play,
+        prize: prize ?? null,
+        customerName: cust ? decrypt(cust.name) : null,
+      };
+    }));
+  }
+
   async getLastPaidAppOrderForCustomer(email: string): Promise<AppOrder | null> {
     const PAID_STATUSES = ["paid", "preparing", "ready", "delivered", "collected", "completed"];
     const emailHash = hashEmail(email);
