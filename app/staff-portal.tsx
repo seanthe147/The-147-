@@ -1958,6 +1958,14 @@ function DashboardScreen() {
                 onPress={() => router.push("/admin-loyalty")}
                 testID="portal-loyalty-settings"
               />
+              <AdminTool
+                icon="sparkles"
+                title="Scratch Card Game"
+                description="Prizes, weights, schedule and recent winners"
+                color="#10B981"
+                onPress={() => router.push("/admin-game")}
+                testID="portal-scratch-card-game"
+              />
             </View>
 
             <Text style={styles.sectionLabel}>EVENTS & OFFERS</Text>
