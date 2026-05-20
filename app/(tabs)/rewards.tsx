@@ -499,6 +499,8 @@ export default function RewardsScreen() {
             <Text style={styles.personalIntro}>Here's where you stand, {firstName}</Text>
           ) : null}
 
+          <ScratchCardGame />
+
           <PointsDisplay
             balance={meQuery.data.account.balance}
             terminology={meQuery.data.program?.terminology}
@@ -542,8 +544,6 @@ export default function RewardsScreen() {
               <Text style={styles.statLabel}>Member Since</Text>
             </View>
           </View>
-
-          <ScratchCardGame />
 
           {meQuery.data.rewards && meQuery.data.rewards.length > 0 && (
             <ActiveRewardsSection

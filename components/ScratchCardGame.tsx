@@ -418,6 +418,10 @@ export function ScratchCardGame() {
   if (alreadyPlayed) {
     return (
       <View style={styles.wrapper}>
+        <View style={styles.wrapperLabel}>
+          <Ionicons name="star" size={13} color={Colors.brand.gold} />
+          <Text style={styles.wrapperLabelText}>TODAY'S LUCKY BREAK</Text>
+        </View>
         <View style={styles.cardFrame}>
           <LinearGradient
             colors={[Colors.brand.dark, Colors.brand.navy]}
@@ -439,6 +443,10 @@ export function ScratchCardGame() {
   if (!gameActive) {
     return (
       <View style={styles.wrapper}>
+        <View style={styles.wrapperLabel}>
+          <Ionicons name="star" size={13} color={Colors.brand.gold} />
+          <Text style={styles.wrapperLabelText}>TODAY'S LUCKY BREAK</Text>
+        </View>
         <View style={styles.cardFrame}>
           <LinearGradient
             colors={[Colors.brand.dark, Colors.brand.navy]}
@@ -465,6 +473,10 @@ export function ScratchCardGame() {
   // ── Active scratch card ───────────────────────────────────────────────────
   return (
     <View style={styles.wrapper}>
+      <View style={styles.wrapperLabel}>
+        <Ionicons name="star" size={13} color={Colors.brand.gold} />
+        <Text style={styles.wrapperLabelText}>TODAY'S LUCKY BREAK</Text>
+      </View>
       {/* Badge + subtitle row */}
       <View style={styles.headerRow}>
         <LinearGradient
@@ -562,9 +574,35 @@ const prize = StyleSheet.create({
 
 const styles = StyleSheet.create({
   wrapper: {
-    marginHorizontal: 20,
-    marginTop: 16,
-    marginBottom: 4,
+    marginHorizontal: 16,
+    marginTop: 20,
+    marginBottom: 8,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: Colors.brand.gold,
+    backgroundColor: "rgba(212,168,67,0.07)",
+    padding: 12,
+    ...Platform.select({
+      android: { elevation: 12 },
+      default: {
+        shadowColor: Colors.brand.gold,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.45,
+        shadowRadius: 22,
+      },
+    }),
+  },
+  wrapperLabel: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
+  },
+  wrapperLabelText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 11,
+    color: Colors.brand.gold,
+    letterSpacing: 1.5,
   },
   headerRow: {
     flexDirection: "row",
@@ -592,21 +630,10 @@ const styles = StyleSheet.create({
     color: Colors.light.textSecondary,
   },
   cardFrame: {
-    borderRadius: 16,
+    borderRadius: 14,
     overflow: "hidden",
-    borderWidth: 1.5,
-    borderColor: Colors.brand.gold,
-    height: 180,
+    height: 210,
     backgroundColor: Colors.brand.dark,
-    ...Platform.select({
-      android: { elevation: 6 },
-      default: {
-        shadowColor: Colors.brand.gold,
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.25,
-        shadowRadius: 8,
-      },
-    }),
   },
   scratchPrompt: {
     ...StyleSheet.absoluteFillObject,
