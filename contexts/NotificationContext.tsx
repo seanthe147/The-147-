@@ -104,9 +104,15 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
     let token: string | null = null;
     try {
-      // Use EAS projectId from app config if available, otherwise let Expo infer it
-      const projectId = Constants.expoConfig?.extra?.eas?.projectId as string | undefined;
-      const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+      // Hardcode the EAS project ID so the token is always scoped to the
+      // production EAS project (@the-147/the-147), regardless of build type.
+      // Reading from Constants.expoConfig?.extra?.eas?.projectId is unreliable
+      // in TestFlight / Expo Launch builds and causes tokens to fall back to
+      // the Replit-private experience, which has no APNs credentials and
+      // results in 100% delivery failure with InvalidCredentials.
+      const tokenData = await Notifications.getExpoPushTokenAsync({
+        projectId: "3f31dfb1-b149-43ca-ab9a-91b6d7cb230a",
+      });
       token = tokenData.data;
       setExpoPushToken(token);
       console.log("[Push] Got token:", token?.slice(0, 30) + "...");
