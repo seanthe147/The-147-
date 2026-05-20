@@ -8811,15 +8811,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return `${g("year")}-${g("month")}-${g("day")}`;
   }
 
-  function isWithinGameWindow(start: string, end: string): boolean {
-    const parts = new Intl.DateTimeFormat("en-GB", {
+  // Returns true when the current London date/time is within the full game
+  // schedule: time window, allowed days of the week, and optional date range.
+  // scheduleDays: "" = every day, or ISO comma-list e.g. "1,2,3,4,5" (Mon–Fri).
+  // scheduleFrom / scheduleTo: "" = no bound, or "YYYY-MM-DD".
+  function isGameScheduleActive(
+    windowStart: string, windowEnd: string,
+    scheduleDays: string, scheduleFrom: string, scheduleTo: string,
+  ): boolean {
+    const now = new Date();
+
+    // ── Time window ────────────────────────────────────────────────────────
+    const timeParts = new Intl.DateTimeFormat("en-GB", {
       timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hour12: false,
-    }).formatToParts(new Date());
-    const g = (t: string) => parseInt(parts.find(p => p.type === t)?.value ?? "0", 10);
-    const now = g("hour") * 60 + g("minute");
-    const [sh, sm] = start.split(":").map(Number);
-    const [eh, em] = end.split(":").map(Number);
-    return now >= sh * 60 + sm && now < eh * 60 + em;
+    }).formatToParts(now);
+    const gt = (t: string) => parseInt(timeParts.find(p => p.type === t)?.value ?? "0", 10);
+    const currentMins = gt("hour") * 60 + gt("minute");
+    const [sh, sm] = windowStart.split(":").map(Number);
+    const [eh, em] = windowEnd.split(":").map(Number);
+    if (currentMins < sh * 60 + sm || currentMins >= eh * 60 + em) return false;
+
+    // ── Day of week ────────────────────────────────────────────────────────
+    // Derive ISO weekday (1=Mon … 7=Sun) from the London calendar date so
+    // we stay in the right timezone even during BST transitions.
+    const londonDate = getGameLondonDate(); // "YYYY-MM-DD"
+    if (scheduleDays && scheduleDays.trim()) {
+      const [ly, lm, ld] = londonDate.split("-").map(Number);
+      const dt = new Date(Date.UTC(ly, lm - 1, ld, 12, 0, 0)); // noon UTC avoids DST edge
+      const jsDay = dt.getUTCDay(); // 0=Sun … 6=Sat
+      const isoDay = jsDay === 0 ? 7 : jsDay; // 1=Mon … 7=Sun
+      const allowed = scheduleDays.split(",").map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+      if (allowed.length > 0 && !allowed.includes(isoDay)) return false;
+    }
+
+    // ── Date range ─────────────────────────────────────────────────────────
+    if (scheduleFrom && scheduleFrom.trim() && londonDate < scheduleFrom.trim()) return false;
+    if (scheduleTo   && scheduleTo.trim()   && londonDate > scheduleTo.trim())   return false;
+
+    return true;
   }
 
   // ── Customer game endpoints ───────────────────────────────────────────────────
@@ -8827,18 +8856,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public config — lets the app know whether to show the game button at all.
   app.get("/api/game/config", async (_req, res) => {
     try {
-      const [enabled, windowStart, windowEnd] = await Promise.all([
+      const [enabled, windowStart, windowEnd, scheduleDays, scheduleFrom, scheduleTo] = await Promise.all([
         storage.getSetting("game_enabled"),
         storage.getSetting("game_window_start"),
         storage.getSetting("game_window_end"),
+        storage.getSetting("game_schedule_days"),
+        storage.getSetting("game_schedule_from"),
+        storage.getSetting("game_schedule_to"),
       ]);
       const start = windowStart ?? "00:00";
       const end   = windowEnd   ?? "23:59";
+      const days  = scheduleDays ?? "";
+      const from  = scheduleFrom ?? "";
+      const to    = scheduleTo   ?? "";
       res.json({
         enabled: enabled === "true",
         windowStart: start,
         windowEnd: end,
-        withinWindow: enabled === "true" && isWithinGameWindow(start, end),
+        scheduleDays: days,
+        scheduleFrom: from,
+        scheduleTo: to,
+        withinWindow: enabled === "true" && isGameScheduleActive(start, end, days, from, to),
       });
     } catch {
       res.json({ enabled: false, withinWindow: false });
@@ -8849,10 +8887,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/game/play", customerAuth, async (req: Request & { customerId?: number }, res) => {
     const customerId = req.customerId!;
     try {
-      const [enabled, windowStart, windowEnd] = await Promise.all([
+      const [enabled, windowStart, windowEnd, scheduleDays, scheduleFrom, scheduleTo] = await Promise.all([
         storage.getSetting("game_enabled"),
         storage.getSetting("game_window_start"),
         storage.getSetting("game_window_end"),
+        storage.getSetting("game_schedule_days"),
+        storage.getSetting("game_schedule_from"),
+        storage.getSetting("game_schedule_to"),
       ]);
 
       if (enabled !== "true") {
@@ -8861,8 +8902,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const start = windowStart ?? "00:00";
       const end   = windowEnd   ?? "23:59";
-      if (!isWithinGameWindow(start, end)) {
-        return res.status(403).json({ message: `The game is only available between ${start} and ${end}.` });
+      const days  = scheduleDays ?? "";
+      const from  = scheduleFrom ?? "";
+      const to    = scheduleTo   ?? "";
+      if (!isGameScheduleActive(start, end, days, from, to)) {
+        return res.status(403).json({ message: `The game is not available right now — check the app for when it's next on.` });
       }
 
       const londonDate = getGameLondonDate();
@@ -8941,16 +8985,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/staff/game/config", staffAuth, async (_req, res) => {
     try {
-      const [enabled, windowStart, windowEnd] = await Promise.all([
+      const [enabled, windowStart, windowEnd, scheduleDays, scheduleFrom, scheduleTo] = await Promise.all([
         storage.getSetting("game_enabled"),
         storage.getSetting("game_window_start"),
         storage.getSetting("game_window_end"),
+        storage.getSetting("game_schedule_days"),
+        storage.getSetting("game_schedule_from"),
+        storage.getSetting("game_schedule_to"),
       ]);
       const prizes = await storage.getAllGamePrizes();
       res.json({
         enabled: enabled === "true",
         windowStart: windowStart ?? "00:00",
         windowEnd: windowEnd ?? "23:59",
+        scheduleDays: scheduleDays ?? "",
+        scheduleFrom: scheduleFrom ?? "",
+        scheduleTo: scheduleTo ?? "",
         prizes,
       });
     } catch (err: any) {
@@ -8959,12 +9009,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/staff/game/config", staffAuth, managerAuth, async (req, res) => {
-    const { enabled, windowStart, windowEnd } = req.body ?? {};
+    const { enabled, windowStart, windowEnd, scheduleDays, scheduleFrom, scheduleTo } = req.body ?? {};
     try {
       await Promise.all([
-        storage.setSetting("game_enabled", enabled ? "true" : "false"),
-        windowStart != null && storage.setSetting("game_window_start", String(windowStart)),
-        windowEnd   != null && storage.setSetting("game_window_end",   String(windowEnd)),
+        storage.setSetting("game_enabled",       enabled ? "true" : "false"),
+        windowStart    != null && storage.setSetting("game_window_start",    String(windowStart)),
+        windowEnd      != null && storage.setSetting("game_window_end",      String(windowEnd)),
+        // scheduleDays can be an empty string (= every day), so we save even empty values
+        scheduleDays   != null && storage.setSetting("game_schedule_days",   String(scheduleDays)),
+        scheduleFrom   != null && storage.setSetting("game_schedule_from",   String(scheduleFrom)),
+        scheduleTo     != null && storage.setSetting("game_schedule_to",     String(scheduleTo)),
       ]);
       res.json({ ok: true });
     } catch (err: any) {

@@ -3552,8 +3552,16 @@
 
     const PRIZE_TYPE_LABEL={'none':'No prize','loyalty_points':'Loyalty Points','reward_tier':'Reward Voucher'};
 
+    // Parse saved days (e.g. "1,6,7") into a Set for checkbox rendering
+    const savedDays=new Set((cfg.scheduleDays||'').split(',').map(d=>d.trim()).filter(Boolean).map(Number));
+
+    const DAYS=[
+      {iso:1,label:'Mon'},{iso:2,label:'Tue'},{iso:3,label:'Wed'},
+      {iso:4,label:'Thu'},{iso:5,label:'Fri'},{iso:6,label:'Sat'},{iso:7,label:'Sun'},
+    ];
+
     body.innerHTML=`
-      <!-- Enable / time window ─────────────────────────────────────────── -->
+      <!-- Enable ───────────────────────────────────────────────────────── -->
       <div style="margin-bottom:20px">
         <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:600;color:var(--text)">
           <input type="checkbox" id="gameEnabled" ${cfg.enabled?'checked':''} style="width:18px;height:18px;accent-color:var(--blue)">
@@ -3565,14 +3573,43 @@
         </p>
       </div>
 
+      <!-- Time window ──────────────────────────────────────────────────── -->
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Daily time window</div>
+      <p style="font-size:13px;color:var(--text-2);margin:0 0 10px">The game is only available to customers during these hours (London time).</p>
       <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px">
         <div class="form-group" style="margin:0;flex:1;min-width:130px">
-          <label class="form-label">Available from</label>
+          <label class="form-label">From</label>
           <input class="form-input" type="time" id="gameWindowStart" value="${esc(cfg.windowStart||'00:00')}" style="max-width:140px">
         </div>
         <div class="form-group" style="margin:0;flex:1;min-width:130px">
-          <label class="form-label">Available until</label>
+          <label class="form-label">Until</label>
           <input class="form-input" type="time" id="gameWindowEnd" value="${esc(cfg.windowEnd||'23:59')}" style="max-width:140px">
+        </div>
+      </div>
+
+      <!-- Days of the week ─────────────────────────────────────────────── -->
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Days available</div>
+      <p style="font-size:13px;color:var(--text-2);margin:0 0 10px">Tick the days the game should run. Leave all unticked to run every day.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">
+        ${DAYS.map(d=>`
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;font-weight:500;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);user-select:none">
+            <input type="checkbox" class="gameDayChk" data-iso="${d.iso}" ${savedDays.has(d.iso)?'checked':''}
+              style="width:15px;height:15px;accent-color:var(--blue)">
+            ${d.label}
+          </label>`).join('')}
+      </div>
+
+      <!-- Date range ───────────────────────────────────────────────────── -->
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Date range <span style="font-weight:400;color:var(--text-2)">(optional)</span></div>
+      <p style="font-size:13px;color:var(--text-2);margin:0 0 10px">Limit the game to a specific period — e.g. a promotion. Leave both blank to run indefinitely.</p>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:24px">
+        <div class="form-group" style="margin:0;flex:1;min-width:150px">
+          <label class="form-label">Start date</label>
+          <input class="form-input" type="date" id="gameScheduleFrom" value="${esc(cfg.scheduleFrom||'')}" style="max-width:170px">
+        </div>
+        <div class="form-group" style="margin:0;flex:1;min-width:150px">
+          <label class="form-label">End date</label>
+          <input class="form-input" type="date" id="gameScheduleTo" value="${esc(cfg.scheduleTo||'')}" style="max-width:170px">
         </div>
       </div>
 
@@ -3631,7 +3668,16 @@
       const enabled=el('gameEnabled')?.checked||false;
       const windowStart=el('gameWindowStart')?.value||'00:00';
       const windowEnd=el('gameWindowEnd')?.value||'23:59';
-      const r=await api('/api/staff/game/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled,windowStart,windowEnd})});
+      // Collect checked days as ISO comma-list (e.g. "1,6,7")
+      const checkedDays=[...document.querySelectorAll('.gameDayChk:checked')]
+        .map(c=>c.dataset.iso).filter(Boolean).join(',');
+      const scheduleFrom=el('gameScheduleFrom')?.value||'';
+      const scheduleTo=el('gameScheduleTo')?.value||'';
+      const r=await api('/api/staff/game/config',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({enabled,windowStart,windowEnd,scheduleDays:checkedDays,scheduleFrom,scheduleTo}),
+      });
       if(r.ok){toast('Game settings saved','success');}
       else{const d=await r.json().catch(()=>({}));toast(d.message||'Save failed','error');}
     }catch(e){toast('Save failed','error');}
