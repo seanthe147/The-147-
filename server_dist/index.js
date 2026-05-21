@@ -25,7 +25,7 @@ function isSafePublicUrl(value) {
   }
   return parsed.protocol === "https:" || parsed.protocol === "http:";
 }
-var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, tabs, tabItems, tableSessions, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, teyaOauthTokens, marketingPages, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, dealPreferences, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, passwordResetAuditLog, membershipAuditLog, bookingAuditLog, staffActionLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffDocuments, insertStaffDocumentSchema, staffOnboarding, insertStaffOnboardingSchema, staffPushTokens, paymentLog, insertPaymentLogSchema;
+var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, tabs, tabItems, tableSessions, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, teyaOauthTokens, marketingPages, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, dealPreferences, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, passwordResetAuditLog, membershipAuditLog, bookingAuditLog, staffActionLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffDocuments, insertStaffDocumentSchema, staffOnboarding, insertStaffOnboardingSchema, staffPushTokens, paymentLog, insertPaymentLogSchema, gamePrizes, gamePlays;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
@@ -796,6 +796,38 @@ var init_schema = __esm({
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     insertPaymentLogSchema = createInsertSchema(paymentLog).omit({ id: true, createdAt: true });
+    gamePrizes = pgTable("game_prizes", {
+      id: serial("id").primaryKey(),
+      name: text("name").notNull(),
+      // e.g. "Free Soft Drink"
+      description: text("description"),
+      // shown to customer on win screen
+      prizeType: text("prize_type").notNull(),
+      // 'none' | 'loyalty_points' | 'reward_tier'
+      value: integer("value"),
+      // points to award (prizeType='loyalty_points')
+      rewardTierId: text("reward_tier_id"),
+      // Square reward tier ID (prizeType='reward_tier')
+      weightPercent: integer("weight_percent").notNull().default(10),
+      // probability weight (relative)
+      active: boolean("active").notNull().default(true),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    });
+    gamePlays = pgTable("game_plays", {
+      id: serial("id").primaryKey(),
+      customerId: integer("customer_id").notNull(),
+      prizeId: integer("prize_id"),
+      // null → prize type 'none' (no win)
+      squareRewardId: text("square_reward_id"),
+      // Square reward ID if reward_tier prize issued
+      pointsAwarded: integer("points_awarded"),
+      // set when prizeType='loyalty_points'
+      playedAt: timestamp("played_at").defaultNow().notNull(),
+      // London calendar date (YYYY-MM-DD) for fast daily-limit queries without
+      // timezone conversion in SQL.
+      londonDate: text("london_date").notNull()
+    });
   }
 });
 
@@ -1224,6 +1256,46 @@ async function runStartupMigrations() {
       CREATE UNIQUE INDEX IF NOT EXISTS staff_time_entries_active_uniq
         ON staff_time_entries (staff_id) WHERE status = 'active';
     `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS game_prizes (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        prize_type TEXT NOT NULL,
+        value INTEGER,
+        reward_tier_id TEXT,
+        weight_percent INTEGER NOT NULL DEFAULT 10,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+        updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+      );
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS game_plays (
+        id SERIAL PRIMARY KEY,
+        customer_id INTEGER NOT NULL,
+        prize_id INTEGER,
+        square_reward_id TEXT,
+        points_awarded INTEGER,
+        played_at TIMESTAMP DEFAULT NOW() NOT NULL,
+        london_date TEXT NOT NULL
+      );
+    `);
+    await client.query(`
+      INSERT INTO game_prizes (name, description, prize_type, weight_percent, active)
+        SELECT 'Better Luck Next Time', 'Thanks for playing \u2014 try again tomorrow!', 'none', 60, true
+        WHERE NOT EXISTS (SELECT 1 FROM game_prizes LIMIT 1);
+    `);
+    await client.query(`
+      INSERT INTO game_prizes (name, description, prize_type, value, weight_percent, active)
+        SELECT '50 Loyalty Points', 'You won 50 loyalty points \u2014 they have been added to your account!', 'loyalty_points', 50, 30, true
+        WHERE NOT EXISTS (SELECT 1 FROM game_prizes WHERE prize_type = 'loyalty_points' LIMIT 1);
+    `);
+    await client.query(`
+      INSERT INTO game_prizes (name, description, prize_type, weight_percent, active)
+        SELECT 'Free Soft Drink', 'You won a free soft drink \u2014 show this screen at the bar to claim it!', 'reward_tier', 10, true
+        WHERE NOT EXISTS (SELECT 1 FROM game_prizes WHERE name = 'Free Soft Drink' LIMIT 1);
+    `);
     console.log("[DB] Startup migrations applied");
   } catch (err) {
     console.error("[DB] Startup migration failed (non-fatal):", err.message);
@@ -1380,6 +1452,7 @@ var init_storage = __esm({
         const SCAN_LIMIT = 500;
         const recent = await db.select().from(bookings).orderBy(desc(bookings.date), desc(bookings.startTime)).limit(SCAN_LIMIT);
         const needle = trimmed.toLowerCase();
+        const needleWords = needle.split(/\s+/).filter((w) => w.length > 0);
         const needleDigits = trimmed.replace(/\D/g, "");
         for (const raw of recent) {
           if (out.length >= limit) break;
@@ -1393,7 +1466,8 @@ var init_storage = __esm({
           const email = (dec.customerEmail || "").toLowerCase();
           const phone = (dec.customerPhone || "").toLowerCase();
           const phoneDigits = phone.replace(/\D/g, "");
-          const hit = name.includes(needle) || email.includes(needle) || phone.includes(needle) || needleDigits.length >= 3 && phoneDigits.includes(needleDigits);
+          const nameHit = needleWords.every((w) => name.includes(w));
+          const hit = nameHit || email.includes(needle) || phone.includes(needle) || needleDigits.length >= 3 && phoneDigits.includes(needleDigits);
           if (hit) push(dec);
         }
         return out;
@@ -1783,6 +1857,7 @@ var init_storage = __esm({
         if (!query || query.trim().length < 2) return [];
         const q = query.trim().toLowerCase();
         const qClean = q.replace(/\s/g, "");
+        const words = q.split(/\s+/).filter((w) => w.length > 0);
         const allCustomers = await db.select().from(customers).orderBy(customers.id);
         const seen = /* @__PURE__ */ new Set();
         const matches = [];
@@ -1798,11 +1873,11 @@ var init_storage = __esm({
             const nameLower = name.toLowerCase();
             const phoneLower = phone.toLowerCase().replace(/\s/g, "");
             const emailMatch = emailLower.includes(q);
-            const nameMatch = nameLower.includes(q);
+            const nameMatch = words.every((w) => nameLower.includes(w));
             const phoneMatch = qClean.length > 0 && phoneLower.includes(qClean);
             if (nameMatch || phoneMatch || emailMatch) {
               seen.add(emailLower);
-              const score = (nameLower.startsWith(q) ? 2 : 0) + (phoneMatch ? 1 : 0);
+              const score = (nameLower.startsWith(words[0]) ? 2 : 0) + (phoneMatch ? 1 : 0) + (words.length > 1 && nameMatch ? 1 : 0);
               matches.push({ id: dec.id, name, phone, email, score });
             }
           } catch {
@@ -3096,6 +3171,49 @@ var init_storage = __esm({
        * lookup mirrors getCustomerOrders so legacy + encrypted records both
        * resolve. Returns null if the customer has never placed a paid order.
        */
+      // ── Square Customer ID ───────────────────────────────────────────────────────
+      // Persists the Square customer ID returned after auto-enrollment on signup.
+      async setSquareCustomerId(id, squareCustomerId) {
+        await db.update(customers).set({ squareCustomerId }).where(eq(customers.id, id));
+      }
+      // ── Loyalty Game ─────────────────────────────────────────────────────────────
+      async getActiveGamePrizes() {
+        return db.select().from(gamePrizes).where(eq(gamePrizes.active, true)).orderBy(gamePrizes.id);
+      }
+      async getAllGamePrizes() {
+        return db.select().from(gamePrizes).orderBy(gamePrizes.id);
+      }
+      async upsertGamePrize(data) {
+        const now = /* @__PURE__ */ new Date();
+        if (data.id) {
+          const { id: _id, ...rest } = data;
+          const [updated] = await db.update(gamePrizes).set({ ...rest, updatedAt: now }).where(eq(gamePrizes.id, data.id)).returning();
+          return updated;
+        }
+        const [created] = await db.insert(gamePrizes).values({ ...data, createdAt: now, updatedAt: now }).returning();
+        return created;
+      }
+      async getGamePlaysToday(customerId, londonDate) {
+        return db.select().from(gamePlays).where(
+          and(eq(gamePlays.customerId, customerId), eq(gamePlays.londonDate, londonDate))
+        );
+      }
+      async createGamePlay(data) {
+        const [play] = await db.insert(gamePlays).values({ ...data, playedAt: /* @__PURE__ */ new Date() }).returning();
+        return play;
+      }
+      async getRecentGameWinners(limit = 50) {
+        const plays = await db.select().from(gamePlays).where(isNotNull(gamePlays.prizeId)).orderBy(desc(gamePlays.playedAt)).limit(limit);
+        return Promise.all(plays.map(async (play) => {
+          const [prize] = play.prizeId ? await db.select().from(gamePrizes).where(eq(gamePrizes.id, play.prizeId)) : [];
+          const [cust] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, play.customerId));
+          return {
+            ...play,
+            prize: prize ?? null,
+            customerName: cust ? decrypt(cust.name) : null
+          };
+        }));
+      }
       async getLastPaidAppOrderForCustomer(email) {
         const PAID_STATUSES = ["paid", "preparing", "ready", "delivered", "collected", "completed"];
         const emailHash = hashEmail(email);
@@ -3192,8 +3310,8 @@ function getHeaders() {
     "Square-Version": "2024-01-18"
   };
 }
-async function squareRequest(method, path4, body) {
-  const url = `${SQUARE_BASE_URL}${path4}`;
+async function squareRequest(method, path5, body) {
+  const url = `${SQUARE_BASE_URL}${path5}`;
   const options = { method, headers: getHeaders() };
   if (body) options.body = JSON.stringify(body);
   const response = await fetch(url, options);
@@ -5641,6 +5759,276 @@ var init_worldCup = __esm({
   }
 });
 
+// server/sports-fixtures.ts
+var sports_fixtures_exports = {};
+__export(sports_fixtures_exports, {
+  getUpcomingFixtures: () => getUpcomingFixtures,
+  invalidateFixturesCache: () => invalidateFixturesCache
+});
+function sportsDbStatus2(raw, homeScore, awayScore, kickoffMs) {
+  const s = (raw ?? "").toLowerCase();
+  if (s.includes("match finished") || s.includes("full time") || s === "ft") return "finished";
+  if (s.includes("not started") || s === "ns" || !s) {
+    return kickoffMs > Date.now() ? "upcoming" : "finished";
+  }
+  if (homeScore != null && awayScore != null && kickoffMs < Date.now()) return "live";
+  return kickoffMs > Date.now() ? "upcoming" : "finished";
+}
+function normaliseChannel(raw, defaultChannel) {
+  if (!raw || raw.trim() === "") return defaultChannel;
+  const s = raw.trim();
+  if (/sky\s*sport/i.test(s)) return "Sky Sports";
+  if (/tnt\s*sport|bt\s*sport/i.test(s)) return "TNT Sports";
+  if (/bbc/i.test(s)) return "BBC";
+  if (/itv/i.test(s)) return "ITV";
+  if (/dazn/i.test(s)) return "DAZN";
+  if (/amazon/i.test(s)) return "Amazon Prime";
+  if (/channel\s*4/i.test(s)) return "Channel 4";
+  return s.length <= 30 ? s : defaultChannel;
+}
+async function fetchLeagueFixtures(leagueId, name, sport, defaultChannel) {
+  const url = `${SPORTSDB_BASE}/eventsnextleague.php?id=${leagueId}`;
+  const res = await fetch(url, {
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(8e3)
+  });
+  if (!res.ok) throw new Error(`TheSportsDB ${leagueId}: HTTP ${res.status}`);
+  const json = await res.json();
+  const events2 = Array.isArray(json?.events) ? json.events : [];
+  const now = Date.now();
+  const fixtures = [];
+  for (const ev of events2) {
+    const date = ev?.dateEvent ?? null;
+    const time = ev?.strTime || "00:00:00";
+    if (!date) continue;
+    const timeStr = time.length === 5 ? `${time}:00` : time;
+    const iso = `${date}T${timeStr}Z`;
+    const kickoffMs = Date.parse(iso);
+    if (!kickoffMs || isNaN(kickoffMs)) continue;
+    if (kickoffMs < now) continue;
+    const homeScore = ev?.intHomeScore != null && ev.intHomeScore !== "" ? Number(ev.intHomeScore) : null;
+    const awayScore = ev?.intAwayScore != null && ev.intAwayScore !== "" ? Number(ev.intAwayScore) : null;
+    const status = sportsDbStatus2(ev?.strStatus, homeScore, awayScore, kickoffMs);
+    if (status === "finished") continue;
+    fixtures.push({
+      id: String(ev?.idEvent ?? `${leagueId}-${kickoffMs}`),
+      sport,
+      leagueName: name,
+      homeTeam: ev?.strHomeTeam ?? "Home",
+      awayTeam: ev?.strAwayTeam ?? "Away",
+      homeLogo: ev?.strHomeTeamBadge ?? null,
+      awayLogo: ev?.strAwayTeamBadge ?? null,
+      kickoffIso: iso,
+      kickoffMs,
+      status,
+      channel: normaliseChannel(ev?.strTVStation, defaultChannel),
+      homeScore,
+      awayScore
+    });
+  }
+  return fixtures;
+}
+async function getUpcomingFixtures(limit = 3) {
+  const now = Date.now();
+  if (cache2 && now - cache2.at < CACHE_TTL) {
+    return cache2.data.slice(0, limit);
+  }
+  const results = await Promise.allSettled(
+    LEAGUES.filter((l) => l.enabled).map((l) => fetchLeagueFixtures(l.id, l.name, l.sport, l.defaultChannel))
+  );
+  const all = [];
+  for (const r of results) {
+    if (r.status === "fulfilled") all.push(...r.value);
+    else console.warn("[FIXTURES] League fetch failed:", r.reason?.message ?? r.reason);
+  }
+  const seen = /* @__PURE__ */ new Set();
+  const sorted = all.filter((f) => {
+    if (seen.has(f.id)) return false;
+    seen.add(f.id);
+    return true;
+  }).sort((a, b) => a.kickoffMs - b.kickoffMs);
+  cache2 = { at: now, data: sorted };
+  return sorted.slice(0, limit);
+}
+function invalidateFixturesCache() {
+  cache2 = null;
+}
+var LEAGUES, SPORTSDB_BASE, CACHE_TTL, cache2;
+var init_sports_fixtures = __esm({
+  "server/sports-fixtures.ts"() {
+    "use strict";
+    LEAGUES = [
+      // Football — domestic
+      { id: 4328, name: "Premier League", sport: "football", defaultChannel: "Sky Sports", enabled: true },
+      { id: 4329, name: "Championship", sport: "football", defaultChannel: "Sky Sports", enabled: true },
+      { id: 4392, name: "FA Cup", sport: "football", defaultChannel: "BBC / ITV", enabled: true },
+      // Football — European (TNT Sports only — enable when subscribed)
+      { id: 4480, name: "Champions League", sport: "football", defaultChannel: "TNT Sports", enabled: false },
+      { id: 4481, name: "Europa League", sport: "football", defaultChannel: "TNT Sports", enabled: false },
+      // Football — international
+      { id: 4429, name: "England", sport: "football", defaultChannel: "ITV / Channel 4", enabled: true },
+      // Rugby League
+      { id: 4325, name: "Super League", sport: "rugby-league", defaultChannel: "Sky Sports", enabled: true },
+      { id: 4330, name: "Challenge Cup", sport: "rugby-league", defaultChannel: "BBC", enabled: true }
+    ];
+    SPORTSDB_BASE = "https://www.thesportsdb.com/api/v1/json/3";
+    CACHE_TTL = 5 * 6e4;
+    cache2 = null;
+  }
+});
+
+// server/backup.ts
+var backup_exports = {};
+__export(backup_exports, {
+  listBackups: () => listBackups,
+  resolveBackupFile: () => resolveBackupFile,
+  restoreTableFromBackup: () => restoreTableFromBackup,
+  runBackup: () => runBackup
+});
+import * as fs from "fs";
+import * as path from "path";
+import { Pool as Pool2 } from "pg";
+function ensureDir() {
+  if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
+}
+function makePool() {
+  const raw = process.env.DATABASE_URL;
+  const url = raw.startsWith("postgresql+neon://") ? raw.replace("postgresql+neon://", "postgresql://") : raw;
+  return new Pool2({ connectionString: url, max: 2 });
+}
+function pruneOld() {
+  try {
+    const files = fs.readdirSync(BACKUP_DIR).filter((f) => f.startsWith("backup_") && f.endsWith(".json")).sort().reverse();
+    for (const f of files.slice(MAX_BACKUPS)) {
+      try {
+        fs.unlinkSync(path.join(BACKUP_DIR, f));
+      } catch {
+      }
+    }
+  } catch {
+  }
+}
+async function runBackup() {
+  ensureDir();
+  const pool2 = makePool();
+  const now = /* @__PURE__ */ new Date();
+  const ts = now.toISOString().replace(/:/g, "-").replace(/\..+/, "");
+  const filename = `backup_${ts}.json`;
+  const filepath = path.join(BACKUP_DIR, filename);
+  const snapshot = {};
+  const rowCounts = {};
+  try {
+    for (const table of CRITICAL_TABLES) {
+      try {
+        const result = await pool2.query(`SELECT * FROM ${table} ORDER BY id`);
+        snapshot[table] = result.rows;
+        rowCounts[table] = result.rows.length;
+      } catch (err) {
+        console.error(`[Backup] Failed to dump table ${table}:`, err.message);
+        snapshot[table] = [];
+        rowCounts[table] = 0;
+      }
+    }
+  } finally {
+    await pool2.end().catch(() => {
+    });
+  }
+  const payload = {
+    exportedAt: now.toISOString(),
+    tables: CRITICAL_TABLES,
+    rowCounts,
+    data: snapshot
+  };
+  fs.writeFileSync(filepath, JSON.stringify(payload), "utf-8");
+  pruneOld();
+  return { filename, rowCounts };
+}
+function listBackups() {
+  ensureDir();
+  try {
+    return fs.readdirSync(BACKUP_DIR).filter((f) => f.startsWith("backup_") && f.endsWith(".json")).sort().reverse().map((filename) => {
+      const filepath = path.join(BACKUP_DIR, filename);
+      const stat = fs.statSync(filepath);
+      const rawTs = filename.replace("backup_", "").replace(".json", "").replace(/T(\d{2})-(\d{2})-(\d{2})$/, "T$1:$2:$3");
+      let rowCounts = {};
+      try {
+        const raw = fs.readFileSync(filepath, "utf-8");
+        const parsed = JSON.parse(raw);
+        rowCounts = parsed.rowCounts ?? {};
+      } catch {
+      }
+      return {
+        filename,
+        createdAt: rawTs,
+        sizeKb: Math.round(stat.size / 1024),
+        rowCounts
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+function resolveBackupFile(filename) {
+  if (!/^backup_[\dT\-]+\.json$/.test(filename)) return null;
+  const filepath = path.join(BACKUP_DIR, filename);
+  if (!fs.existsSync(filepath)) return null;
+  return filepath;
+}
+async function restoreTableFromBackup(filename, tableName) {
+  const allowed = new Set(CRITICAL_TABLES);
+  if (!allowed.has(tableName)) {
+    throw new Error(`Table "${tableName}" is not in the allowed restore list.`);
+  }
+  const filepath = resolveBackupFile(filename);
+  if (!filepath) throw new Error("Backup file not found.");
+  const raw = fs.readFileSync(filepath, "utf-8");
+  const parsed = JSON.parse(raw);
+  const rows = Array.isArray(parsed?.data?.[tableName]) ? parsed.data[tableName] : [];
+  if (!rows.length) return { restoredRows: 0 };
+  const pool2 = makePool();
+  try {
+    const cols = Object.keys(rows[0]);
+    if (!cols.length) return { restoredRows: 0 };
+    await pool2.query("BEGIN");
+    await pool2.query(`TRUNCATE TABLE ${tableName} RESTART IDENTITY CASCADE`);
+    const BATCH = 500;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const batch = rows.slice(i, i + BATCH);
+      const colList = cols.map((c) => `"${c}"`).join(", ");
+      const valuePlaceholders = batch.map((_, ri) => `(${cols.map((_2, ci) => `$${ri * cols.length + ci + 1}`).join(", ")})`).join(", ");
+      const flatValues = batch.flatMap((row) => cols.map((c) => row[c] ?? null));
+      await pool2.query(
+        `INSERT INTO ${tableName} (${colList}) VALUES ${valuePlaceholders}`,
+        flatValues
+      );
+    }
+    await pool2.query("COMMIT");
+    return { restoredRows: rows.length };
+  } catch (err) {
+    await pool2.query("ROLLBACK").catch(() => {
+    });
+    throw err;
+  } finally {
+    await pool2.end().catch(() => {
+    });
+  }
+}
+var BACKUP_DIR, MAX_BACKUPS, CRITICAL_TABLES;
+var init_backup = __esm({
+  "server/backup.ts"() {
+    "use strict";
+    BACKUP_DIR = path.resolve(process.cwd(), "backups");
+    MAX_BACKUPS = 5;
+    CRITICAL_TABLES = [
+      "membership_plans",
+      "membership_subscriptions",
+      "bookings",
+      "app_orders",
+      "customers"
+    ];
+  }
+});
+
 // shared/membership-benefits.ts
 var membership_benefits_exports = {};
 __export(membership_benefits_exports, {
@@ -5697,8 +6085,8 @@ init_storage();
 init_schema();
 import { createServer } from "node:http";
 import { randomBytes as randomBytes3, timingSafeEqual, createHash as createHash3, createHmac } from "node:crypto";
-import * as fs from "node:fs";
-import * as path from "node:path";
+import * as fs2 from "node:fs";
+import * as path2 from "node:path";
 import multer from "multer";
 import sharp from "sharp";
 import nodemailer from "nodemailer";
@@ -5876,8 +6264,8 @@ async function getConnectionInfo() {
   if (!row) return { connected: false, expiresAt: null, scope: null };
   return { connected: true, expiresAt: row.expiresAt, scope: row.scope ?? null };
 }
-async function teyaRequest(method, path4, opts = {}) {
-  const url = new URL(path4.startsWith("http") ? path4 : `${API_BASE}${path4}`);
+async function teyaRequest(method, path5, opts = {}) {
+  const url = new URL(path5.startsWith("http") ? path5 : `${API_BASE}${path5}`);
   if (opts.query) {
     for (const [k, v] of Object.entries(opts.query)) {
       if (v !== void 0 && v !== null && v !== "") url.searchParams.set(k, v);
@@ -6023,7 +6411,7 @@ async function awaitFinalStatus(id, opts = {}) {
   const t = setTimeout(() => ac.abort(), timeoutMs);
   let lastRaw = null;
   try {
-    return await new Promise((resolve4, reject) => {
+    return await new Promise((resolve5, reject) => {
       streamPaymentStatus(id, (ev) => {
         const status = ev.data?.status || "";
         lastRaw = ev.data;
@@ -6033,7 +6421,7 @@ async function awaitFinalStatus(id, opts = {}) {
         }
         if (status === "SUCCESSFUL" || status === "FAILED" || status === "CANCELLED" || status === "EXPIRED") {
           ac.abort();
-          resolve4({ status, raw: ev.data });
+          resolve5({ status, raw: ev.data });
         }
       }, { signal: ac.signal }).catch((err) => {
         if (ac.signal.aborted && lastRaw?.status) return;
@@ -6524,9 +6912,9 @@ function mapTsEvent(e) {
     source: "ticketsource"
   };
 }
-var uploadsDir = path.resolve(process.cwd(), "uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+var uploadsDir = path2.resolve(process.cwd(), "uploads");
+if (!fs2.existsSync(uploadsDir)) {
+  fs2.mkdirSync(uploadsDir, { recursive: true });
 }
 var upload = multer({
   storage: multer.memoryStorage(),
@@ -8007,12 +8395,16 @@ async function registerRoutes(app2) {
     const q = String(req.query.q || "").trim();
     if (q.length < 2) return res.json([]);
     try {
-      const results = await storage.searchCustomers(q, 6);
-      const enriched = await Promise.all(results.map(async (c) => {
-        if (!c.id) return { ...c, membership: null };
+      const [accountResults, bookingResults] = await Promise.all([
+        storage.searchCustomers(q, 6),
+        storage.searchBookings(q, 20)
+        // cast a wide net — we dedup below
+      ]);
+      const enriched = await Promise.all(accountResults.map(async (c) => {
+        if (!c.id) return { ...c, membership: null, fromBooking: false };
         try {
           const sub = await storage.getMembershipSubscriptionByCustomer(c.id);
-          if (!sub || !sub.plan) return { ...c, membership: null };
+          if (!sub || !sub.plan) return { ...c, membership: null, fromBooking: false };
           return {
             ...c,
             membership: {
@@ -8021,13 +8413,36 @@ async function registerRoutes(app2) {
               color: sub.plan.color,
               status: sub.status,
               foodDrinkDiscount: sub.plan.foodDrinkDiscount
-            }
+            },
+            fromBooking: false
           };
         } catch {
-          return { ...c, membership: null };
+          return { ...c, membership: null, fromBooking: false };
         }
       }));
-      res.json(enriched);
+      const seenEmails = new Set(
+        enriched.map((c) => (c.email || "").toLowerCase()).filter(Boolean)
+      );
+      const bookingGuests = [];
+      const seenBookingEmails = /* @__PURE__ */ new Set();
+      for (const b of bookingResults) {
+        const email = (b.customerEmail || "").toLowerCase();
+        const name = b.customerName || "";
+        if (!name && !email) continue;
+        if (email && seenEmails.has(email)) continue;
+        if (email && seenBookingEmails.has(email)) continue;
+        if (email) seenBookingEmails.add(email);
+        bookingGuests.push({
+          name,
+          email: b.customerEmail || "",
+          phone: b.customerPhone || "",
+          membership: null,
+          fromBooking: true
+        });
+        if (bookingGuests.length >= 6) break;
+      }
+      const combined = [...enriched, ...bookingGuests].slice(0, 8);
+      res.json(combined);
     } catch (err) {
       console.error("[customer-search] error:", err);
       res.json([]);
@@ -8921,7 +9336,7 @@ async function registerRoutes(app2) {
           } else {
             failureCount++;
             console.error(`[Push] Failed for token ${token}: ${result.message} (${result.details?.error})`);
-            if (result.details?.error === "DeviceNotRegistered" && token) {
+            if ((result.details?.error === "DeviceNotRegistered" || result.details?.error === "InvalidCredentials") && token) {
               deadTokens.push(token);
             }
           }
@@ -10338,6 +10753,71 @@ async function registerRoutes(app2) {
     } catch (err) {
       console.error("/api/world-cup/england-next error:", err.message);
       res.status(500).json({ message: "Unable to load England matches" });
+    }
+  });
+  app2.get("/api/staff/fixtures/upcoming", staffAuth, async (_req, res) => {
+    try {
+      const { getUpcomingFixtures: getUpcomingFixtures2 } = await Promise.resolve().then(() => (init_sports_fixtures(), sports_fixtures_exports));
+      const fixtures = await getUpcomingFixtures2(5);
+      res.json({ fixtures });
+    } catch (err) {
+      console.error("/api/staff/fixtures/upcoming error:", err.message);
+      res.status(500).json({ fixtures: [], message: "Unable to load fixtures" });
+    }
+  });
+  app2.get("/api/staff/backup/list", staffAuth, ownerAuth, async (_req, res) => {
+    try {
+      const { listBackups: listBackups2 } = await Promise.resolve().then(() => (init_backup(), backup_exports));
+      res.json({ backups: listBackups2() });
+    } catch (err) {
+      res.status(500).json({ message: "Unable to list backups" });
+    }
+  });
+  app2.post("/api/staff/backup/trigger", staffAuth, ownerAuth, async (_req, res) => {
+    try {
+      const { runBackup: runBackup2 } = await Promise.resolve().then(() => (init_backup(), backup_exports));
+      const result = await runBackup2();
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("/api/staff/backup/trigger error:", err.message);
+      res.status(500).json({ ok: false, message: err.message ?? "Backup failed" });
+    }
+  });
+  app2.post("/api/staff/backup/restore", staffAuth, ownerAuth, async (req, res) => {
+    const { filename, table } = req.body ?? {};
+    if (!filename || !table) {
+      return res.status(400).json({ ok: false, message: "filename and table are required" });
+    }
+    try {
+      const { restoreTableFromBackup: restoreTableFromBackup2 } = await Promise.resolve().then(() => (init_backup(), backup_exports));
+      const { restoredRows } = await restoreTableFromBackup2(String(filename), String(table));
+      const staffId = req.staffUser?.id ?? null;
+      try {
+        const { storage: store } = await Promise.resolve().then(() => (init_storage(), storage_exports));
+        await store.logStaffAction?.({
+          staffUserId: staffId,
+          action: "backup_restore",
+          details: `Restored table '${table}' from ${filename} (${restoredRows} rows)`
+        });
+      } catch {
+      }
+      console.log(`[Backup] Restore: table=${table} file=${filename} rows=${restoredRows} by staff#${staffId}`);
+      res.json({ ok: true, restoredRows });
+    } catch (err) {
+      console.error("/api/staff/backup/restore error:", err.message);
+      res.status(500).json({ ok: false, message: err.message ?? "Restore failed" });
+    }
+  });
+  app2.get("/api/staff/backup/download/:filename", staffAuth, ownerAuth, async (req, res) => {
+    try {
+      const { resolveBackupFile: resolveBackupFile2 } = await Promise.resolve().then(() => (init_backup(), backup_exports));
+      const filepath = resolveBackupFile2(String(req.params.filename));
+      if (!filepath) return res.status(404).json({ message: "Backup not found" });
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader("Content-Disposition", `attachment; filename="${req.params.filename}"`);
+      res.sendFile(filepath);
+    } catch (err) {
+      res.status(500).json({ message: "Download failed" });
     }
   });
   app2.get("/api/deals", async (req, res) => {
@@ -13180,6 +13660,47 @@ async function registerRoutes(app2) {
     }
     res.json(await loadLoyaltyConfig());
   });
+  app2.post("/api/staff/loyalty/backfill", staffAuth, managerAuth, async (_req, res) => {
+    if (!isConfigured()) {
+      return res.status(503).json({ message: "Square is not configured \u2014 loyalty backfill unavailable." });
+    }
+    const customers2 = await storage.getAllCustomers();
+    const unlinked = customers2.filter(
+      (c) => c.phone && c.phone.trim().length >= 10 && !c.squareLoyaltyAccountId
+    );
+    let linked = 0;
+    let alreadyLinked = 0;
+    let noSquareAccount = 0;
+    let failed = 0;
+    const errors = [];
+    alreadyLinked = customers2.length - unlinked.length;
+    for (const customer of unlinked) {
+      try {
+        const phoneCleaned = customer.phone.replace(/\s/g, "");
+        const account = await searchLoyaltyAccount(phoneCleaned);
+        if (account?.id) {
+          await storage.setSquareLoyaltyAccountId(customer.id, account.id);
+          linked++;
+          console.log(`[LOYALTY BACKFILL] Linked customer ${customer.id} \u2192 Square account ${account.id}`);
+        } else {
+          noSquareAccount++;
+        }
+      } catch (err) {
+        failed++;
+        errors.push(`Customer ${customer.id}: ${err.message}`);
+        console.error(`[LOYALTY BACKFILL] Error for customer ${customer.id}:`, err.message);
+      }
+    }
+    res.json({
+      total: customers2.length,
+      alreadyLinked,
+      linked,
+      noSquareAccount,
+      failed,
+      errors: errors.slice(0, 5),
+      message: linked > 0 ? `Linked ${linked} customer${linked === 1 ? "" : "s"} to their Square loyalty account.` : noSquareAccount > 0 ? `No new links found \u2014 ${noSquareAccount} customer${noSquareAccount === 1 ? "" : "s"} with a phone number have no Square loyalty account yet (they may not have enrolled at the till).` : `All customers with phone numbers are already linked.`
+    });
+  });
   app2.post("/api/loyalty/me/enroll", customerAuth, async (req, res) => {
     if (!isConfigured()) {
       return res.status(503).json({ message: "Loyalty program not configured" });
@@ -13214,16 +13735,16 @@ async function registerRoutes(app2) {
     }
   });
   app2.get("/staff", (_req, res) => {
-    const templatePath = path.resolve(process.cwd(), "server", "templates", "staff-dashboard.html");
-    const html = fs.readFileSync(templatePath, "utf-8");
+    const templatePath = path2.resolve(process.cwd(), "server", "templates", "staff-dashboard.html");
+    const html = fs2.readFileSync(templatePath, "utf-8");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     res.setHeader("Pragma", "no-cache");
     res.status(200).send(html);
   });
   app2.get("/staff/kiosk-cheatsheet", (_req, res) => {
-    const templatePath = path.resolve(process.cwd(), "server", "templates", "kiosk-cheatsheet.html");
-    const html = fs.readFileSync(templatePath, "utf-8");
+    const templatePath = path2.resolve(process.cwd(), "server", "templates", "kiosk-cheatsheet.html");
+    const html = fs2.readFileSync(templatePath, "utf-8");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "public, max-age=300");
     res.status(200).send(html);
@@ -13361,6 +13882,287 @@ async function registerRoutes(app2) {
       }
     })();
   }, 3e4);
+  async function enrollNewCustomerInSquare(customer) {
+    try {
+      if (!isConfigured()) return;
+      if (customer.squareCustomerId) return;
+      const existing = await findSquareCustomerByEmail(customer.email).catch(() => null);
+      let sqCustomerId;
+      if (existing) {
+        sqCustomerId = existing.id;
+        console.log(`[Enroll] customer #${customer.id} linked to existing Square customer ${sqCustomerId}`);
+      } else {
+        const sqCustomer = await createSquareCustomer(
+          customer.name,
+          customer.email,
+          customer.phone ?? void 0
+        );
+        sqCustomerId = sqCustomer.id;
+        const groupId = await getOrCreateCustomerGroup("The 147 Loyalty").catch(() => null);
+        if (groupId) await addCustomerToGroup(sqCustomerId, groupId).catch(() => {
+        });
+        console.log(`[Enroll] Created Square customer ${sqCustomerId} for app customer #${customer.id}`);
+      }
+      await storage.setSquareCustomerId(customer.id, sqCustomerId);
+      if (customer.phone) {
+        try {
+          let loyaltyAccount = await searchLoyaltyAccount(customer.phone).catch(() => null);
+          if (!loyaltyAccount) {
+            const program = await getLoyaltyProgram().catch(() => null);
+            if (program?.id) {
+              loyaltyAccount = await createLoyaltyAccount(customer.phone, program.id).catch(() => null);
+            }
+          }
+          if (loyaltyAccount?.id) {
+            await storage.setSquareLoyaltyAccountId(customer.id, loyaltyAccount.id);
+            console.log(`[Enroll] Loyalty account ${loyaltyAccount.id} linked for customer #${customer.id}`);
+          }
+        } catch (e) {
+          console.warn(`[Enroll] Loyalty enrollment failed for customer #${customer.id}:`, e.message);
+        }
+      }
+    } catch (e) {
+      console.warn(`[Enroll] Square enrollment failed for customer #${customer.id}:`, e.message);
+    }
+  }
+  function rollGamePrize(prizes) {
+    const active = prizes.filter((p) => p.active);
+    if (!active.length) return null;
+    const total = active.reduce((s, p) => s + (p.weightPercent ?? 0), 0);
+    if (total <= 0) return active[0];
+    let rand = Math.random() * total;
+    for (const p of active) {
+      rand -= p.weightPercent ?? 0;
+      if (rand <= 0) return p;
+    }
+    return active[active.length - 1];
+  }
+  function getGameLondonDate() {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/London",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(/* @__PURE__ */ new Date());
+    const g = (t) => parts.find((p) => p.type === t)?.value ?? "";
+    return `${g("year")}-${g("month")}-${g("day")}`;
+  }
+  function isGameScheduleActive(windowStart, windowEnd, scheduleDays, scheduleFrom, scheduleTo) {
+    const now = /* @__PURE__ */ new Date();
+    const timeParts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/London",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).formatToParts(now);
+    const gt2 = (t) => parseInt(timeParts.find((p) => p.type === t)?.value ?? "0", 10);
+    const currentMins = gt2("hour") * 60 + gt2("minute");
+    const [sh, sm] = windowStart.split(":").map(Number);
+    const [eh, em] = windowEnd.split(":").map(Number);
+    if (currentMins < sh * 60 + sm || currentMins >= eh * 60 + em) return false;
+    const londonDate = getGameLondonDate();
+    if (scheduleDays && scheduleDays.trim()) {
+      const [ly, lm, ld] = londonDate.split("-").map(Number);
+      const dt = new Date(Date.UTC(ly, lm - 1, ld, 12, 0, 0));
+      const jsDay = dt.getUTCDay();
+      const isoDay = jsDay === 0 ? 7 : jsDay;
+      const allowed = scheduleDays.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n));
+      if (allowed.length > 0 && !allowed.includes(isoDay)) return false;
+    }
+    if (scheduleFrom && scheduleFrom.trim() && londonDate < scheduleFrom.trim()) return false;
+    if (scheduleTo && scheduleTo.trim() && londonDate > scheduleTo.trim()) return false;
+    return true;
+  }
+  app2.get("/api/game/config", async (_req, res) => {
+    try {
+      const [enabled, windowStart, windowEnd, scheduleDays, scheduleFrom, scheduleTo] = await Promise.all([
+        storage.getSetting("game_enabled"),
+        storage.getSetting("game_window_start"),
+        storage.getSetting("game_window_end"),
+        storage.getSetting("game_schedule_days"),
+        storage.getSetting("game_schedule_from"),
+        storage.getSetting("game_schedule_to")
+      ]);
+      const start = windowStart ?? "00:00";
+      const end = windowEnd ?? "23:59";
+      const days = scheduleDays ?? "";
+      const from = scheduleFrom ?? "";
+      const to = scheduleTo ?? "";
+      res.json({
+        enabled: enabled === "true",
+        windowStart: start,
+        windowEnd: end,
+        scheduleDays: days,
+        scheduleFrom: from,
+        scheduleTo: to,
+        withinWindow: enabled === "true" && isGameScheduleActive(start, end, days, from, to)
+      });
+    } catch {
+      res.json({ enabled: false, withinWindow: false });
+    }
+  });
+  app2.post("/api/game/play", customerAuth, async (req, res) => {
+    const customerId = req.customerId;
+    try {
+      const [enabled, windowStart, windowEnd, scheduleDays, scheduleFrom, scheduleTo] = await Promise.all([
+        storage.getSetting("game_enabled"),
+        storage.getSetting("game_window_start"),
+        storage.getSetting("game_window_end"),
+        storage.getSetting("game_schedule_days"),
+        storage.getSetting("game_schedule_from"),
+        storage.getSetting("game_schedule_to")
+      ]);
+      if (enabled !== "true") {
+        return res.status(403).json({ message: "The game is not available right now." });
+      }
+      const start = windowStart ?? "00:00";
+      const end = windowEnd ?? "23:59";
+      const days = scheduleDays ?? "";
+      const from = scheduleFrom ?? "";
+      const to = scheduleTo ?? "";
+      if (!isGameScheduleActive(start, end, days, from, to)) {
+        return res.status(403).json({ message: `The game is not available right now \u2014 check the app for when it's next on.` });
+      }
+      const londonDate = getGameLondonDate();
+      const todaysPlays = await storage.getGamePlaysToday(customerId, londonDate);
+      if (todaysPlays.length > 0) {
+        return res.status(429).json({ message: "You have already played today \u2014 come back tomorrow!", alreadyPlayed: true });
+      }
+      const prizes = await storage.getActiveGamePrizes();
+      const prize = rollGamePrize(prizes);
+      let squareRewardId = null;
+      let pointsAwarded = null;
+      if (prize && prize.prizeType !== "none") {
+        const customer = await storage.getCustomerById(customerId);
+        if (prize.prizeType === "loyalty_points" && prize.value && customer?.squareLoyaltyAccountId) {
+          try {
+            await adjustLoyaltyPoints(
+              customer.squareLoyaltyAccountId,
+              prize.value,
+              "Game prize",
+              `game-prize-${customerId}-${Date.now()}`
+            );
+            pointsAwarded = prize.value;
+          } catch (e) {
+            console.warn("[Game] Points award failed:", e.message);
+          }
+        }
+        if (prize.prizeType === "reward_tier" && prize.rewardTierId && customer?.squareLoyaltyAccountId) {
+          try {
+            const reward = await redeemLoyaltyReward(
+              customer.squareLoyaltyAccountId,
+              prize.rewardTierId,
+              `game-reward-${customerId}-${Date.now()}`
+            );
+            squareRewardId = reward?.id ?? null;
+          } catch (e) {
+            console.warn("[Game] Reward issue failed:", e.message);
+          }
+        }
+      }
+      const play = await storage.createGamePlay({
+        customerId,
+        prizeId: prize?.id ?? null,
+        squareRewardId,
+        pointsAwarded,
+        londonDate
+      });
+      res.json({
+        won: prize?.prizeType !== "none" && !!prize,
+        prize: prize ? { name: prize.name, description: prize.description, prizeType: prize.prizeType } : null,
+        pointsAwarded,
+        playId: play.id
+      });
+    } catch (err) {
+      console.error("[Game] Play error:", err.message);
+      res.status(500).json({ message: "Something went wrong \u2014 please try again." });
+    }
+  });
+  app2.get("/api/game/my-prizes", customerAuth, async (req, res) => {
+    const customerId = req.customerId;
+    try {
+      const plays = await storage.getGamePlaysToday(customerId, getGameLondonDate());
+      res.json({ playedToday: plays.length > 0, plays });
+    } catch {
+      res.json({ playedToday: false, plays: [] });
+    }
+  });
+  app2.get("/api/staff/game/config", staffAuth, async (_req, res) => {
+    try {
+      const [enabled, windowStart, windowEnd, scheduleDays, scheduleFrom, scheduleTo] = await Promise.all([
+        storage.getSetting("game_enabled"),
+        storage.getSetting("game_window_start"),
+        storage.getSetting("game_window_end"),
+        storage.getSetting("game_schedule_days"),
+        storage.getSetting("game_schedule_from"),
+        storage.getSetting("game_schedule_to")
+      ]);
+      const prizes = await storage.getAllGamePrizes();
+      res.json({
+        enabled: enabled === "true",
+        windowStart: windowStart ?? "00:00",
+        windowEnd: windowEnd ?? "23:59",
+        scheduleDays: scheduleDays ?? "",
+        scheduleFrom: scheduleFrom ?? "",
+        scheduleTo: scheduleTo ?? "",
+        prizes
+      });
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app2.post("/api/staff/game/config", staffAuth, managerAuth, async (req, res) => {
+    const { enabled, windowStart, windowEnd, scheduleDays, scheduleFrom, scheduleTo } = req.body ?? {};
+    try {
+      await Promise.all([
+        storage.setSetting("game_enabled", enabled ? "true" : "false"),
+        windowStart != null && storage.setSetting("game_window_start", String(windowStart)),
+        windowEnd != null && storage.setSetting("game_window_end", String(windowEnd)),
+        // scheduleDays can be an empty string (= every day), so we save even empty values
+        scheduleDays != null && storage.setSetting("game_schedule_days", String(scheduleDays)),
+        scheduleFrom != null && storage.setSetting("game_schedule_from", String(scheduleFrom)),
+        scheduleTo != null && storage.setSetting("game_schedule_to", String(scheduleTo))
+      ]);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app2.get("/api/staff/game/prizes", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      res.json(await storage.getAllGamePrizes());
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app2.post("/api/staff/game/prizes", staffAuth, managerAuth, async (req, res) => {
+    const { name, description, prizeType, value, rewardTierId, weightPercent, active } = req.body ?? {};
+    if (!name || !prizeType) return res.status(400).json({ message: "name and prizeType are required" });
+    try {
+      const prize = await storage.upsertGamePrize({ name, description, prizeType, value, rewardTierId, weightPercent: weightPercent ?? 10, active: active !== false });
+      res.json(prize);
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app2.put("/api/staff/game/prizes/:id", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ message: "Invalid id" });
+    const { name, description, prizeType, value, rewardTierId, weightPercent, active } = req.body ?? {};
+    try {
+      const prize = await storage.upsertGamePrize({ id, name, description, prizeType, value, rewardTierId, weightPercent, active });
+      res.json(prize);
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app2.get("/api/staff/game/winners", staffAuth, async (_req, res) => {
+    try {
+      res.json(await storage.getRecentGameWinners(100));
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  });
   app2.post("/api/customers/register", async (req, res) => {
     const clientIp = getClientIp(req);
     const rateCheck = checkCustomerRateLimit(clientIp);
@@ -13433,6 +14235,13 @@ async function registerRoutes(app2) {
       res.status(200).json({ success: true });
       sendVerificationEmail({ name: customer.name, email: customer.email, tokenRaw: verifyTokenRaw });
       syncSquareMembershipForCustomer(customer.id, customer.email);
+      enrollNewCustomerInSquare({
+        id: customer.id,
+        email: customer.email,
+        name: customer.name,
+        phone: customer.phone,
+        squareCustomerId: customer.squareCustomerId ?? null
+      });
     } catch (err) {
       console.error("Customer register error:", err.message);
       res.status(500).json({ message: "Registration failed" });
@@ -14097,10 +14906,10 @@ async function registerRoutes(app2) {
     res.setHeader("Expires", "0");
   };
   const serveMembershipPage = (_req, res) => {
-    const pagePath = path.resolve(process.cwd(), "server", "templates", "membership-page.html");
+    const pagePath = path2.resolve(process.cwd(), "server", "templates", "membership-page.html");
     membershipPageHeaders(res);
     try {
-      const html = fs.readFileSync(pagePath, "utf-8");
+      const html = fs2.readFileSync(pagePath, "utf-8");
       res.send(html);
     } catch {
       res.status(500).send("Page unavailable");
@@ -14127,7 +14936,7 @@ Phone: ${phone}` : ""}`,
     res.json({ ok: true });
   });
   app2.get("/widget/booking", (_req, res) => {
-    const widgetPath = path.resolve(process.cwd(), "server", "templates", "booking-widget.html");
+    const widgetPath = path2.resolve(process.cwd(), "server", "templates", "booking-widget.html");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("X-Frame-Options", "ALLOWALL");
     res.setHeader("Content-Security-Policy", "frame-ancestors *");
@@ -14136,7 +14945,7 @@ Phone: ${phone}` : ""}`,
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
     try {
-      const html = fs.readFileSync(widgetPath, "utf-8");
+      const html = fs2.readFileSync(widgetPath, "utf-8");
       res.send(html);
     } catch (err) {
       res.status(500).send("Widget unavailable");
@@ -14960,7 +15769,7 @@ Phone: ${phone}` : ""}`,
       const phone = String(sqCustomer.phone_number || "").trim() || null;
       const throwawayPassword = randomBytes3(32).toString("hex");
       const passwordHash = await hashPassword(throwawayPassword);
-      const newCustomer = await storage.createCustomer(rawEmail, fullName, phone, passwordHash);
+      const newCustomer = await storage.createCustomer(rawEmail, fullName, phone, passwordHash.hash);
       await storage.markEmailVerified(newCustomer.id);
       try {
         await syncSquareMembershipForCustomer(newCustomer.id, rawEmail);
@@ -15573,11 +16382,11 @@ ${auditNote}` : auditNote;
     res.json(updated);
   });
   app2.get("/delete-account", (_req, res) => {
-    const pagePath = path.resolve(process.cwd(), "server", "templates", "delete-account.html");
+    const pagePath = path2.resolve(process.cwd(), "server", "templates", "delete-account.html");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "no-store");
     try {
-      const html = fs.readFileSync(pagePath, "utf-8");
+      const html = fs2.readFileSync(pagePath, "utf-8");
       res.send(html);
     } catch (err) {
       res.status(500).send("Page unavailable");
@@ -16817,19 +17626,19 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
 
 // server/index.ts
 init_storage();
-import * as fs3 from "fs";
-import * as path3 from "path";
+import * as fs4 from "fs";
+import * as path4 from "path";
 import nodemailer2 from "nodemailer";
 import * as http from "http";
 
 // server/build-info.ts
-import * as fs2 from "fs";
-import * as path2 from "path";
+import * as fs3 from "fs";
+import * as path3 from "path";
 import * as crypto from "crypto";
-var STATIC_DIR = path2.resolve(process.cwd(), "static-build");
-var INDEX_HTML = path2.join(STATIC_DIR, "index.html");
-var BUILD_INFO_FILE = path2.join(STATIC_DIR, "build-info.json");
-var SERVER_DIST_INDEX = path2.resolve(process.cwd(), "server_dist", "index.js");
+var STATIC_DIR = path3.resolve(process.cwd(), "static-build");
+var INDEX_HTML = path3.join(STATIC_DIR, "index.html");
+var BUILD_INFO_FILE = path3.join(STATIC_DIR, "build-info.json");
+var SERVER_DIST_INDEX = path3.resolve(process.cwd(), "server_dist", "index.js");
 var FRESHNESS_TOLERANCE_MS = 5 * 60 * 1e3;
 var cached = null;
 var freshnessFailureMsg = null;
@@ -16845,7 +17654,7 @@ function fingerprintCanonical(html) {
 }
 function safeMtimeMs(p) {
   try {
-    return fs2.statSync(p).mtimeMs;
+    return fs3.statSync(p).mtimeMs;
   } catch {
     return null;
   }
@@ -16870,12 +17679,12 @@ function checkFreshness() {
 }
 function ensureBuildInfo() {
   freshnessFailureMsg = null;
-  if (!fs2.existsSync(INDEX_HTML)) {
+  if (!fs3.existsSync(INDEX_HTML)) {
     freshnessFailureMsg = `static-build/index.html is missing \u2014 the web export did not produce any output for this deploy. The site cannot serve the freshly-built bundle.`;
     cached = null;
     return null;
   }
-  const html = fs2.readFileSync(INDEX_HTML, "utf-8");
+  const html = fs3.readFileSync(INDEX_HTML, "utf-8");
   const { indexHash, entryScript } = fingerprintCanonical(html);
   if (!entryScript) {
     freshnessFailureMsg = `static-build/index.html does not contain an Expo entry script \u2014 the web export looks broken or incomplete.`;
@@ -16901,9 +17710,9 @@ function ensureBuildInfo() {
     freshness: freshness.state
   };
   let needsWrite = true;
-  if (fs2.existsSync(BUILD_INFO_FILE)) {
+  if (fs3.existsSync(BUILD_INFO_FILE)) {
     try {
-      const existing = JSON.parse(fs2.readFileSync(BUILD_INFO_FILE, "utf-8"));
+      const existing = JSON.parse(fs3.readFileSync(BUILD_INFO_FILE, "utf-8"));
       if (existing.buildId === buildInfo.buildId && existing.freshness === buildInfo.freshness) {
         needsWrite = false;
       }
@@ -16911,7 +17720,7 @@ function ensureBuildInfo() {
     }
   }
   if (needsWrite) {
-    fs2.writeFileSync(BUILD_INFO_FILE, JSON.stringify(buildInfo, null, 2) + "\n");
+    fs3.writeFileSync(BUILD_INFO_FILE, JSON.stringify(buildInfo, null, 2) + "\n");
   }
   const metaTag = `<meta name="build-id" content="${buildInfo.buildId}" data-built-at="${buildInfo.builtAt}" />`;
   const stripped = html.replace(META_TAG_RE, "");
@@ -16920,10 +17729,10 @@ function ensureBuildInfo() {
   if (nextHtml !== html) {
     try {
       const origMtime = freshness.exportedAt != null ? new Date(freshness.exportedAt) : null;
-      fs2.writeFileSync(INDEX_HTML, nextHtml);
+      fs3.writeFileSync(INDEX_HTML, nextHtml);
       if (origMtime) {
         try {
-          fs2.utimesSync(INDEX_HTML, origMtime, origMtime);
+          fs3.utimesSync(INDEX_HTML, origMtime, origMtime);
         } catch {
         }
       }
@@ -17233,7 +18042,7 @@ function setupBodyParsing(app2) {
 function setupRequestLogging(app2) {
   app2.use((req, res, next) => {
     const start = Date.now();
-    const path4 = req.path;
+    const path5 = req.path;
     let capturedJsonResponse = void 0;
     const originalResJson = res.json;
     res.json = function(bodyJson, ...args) {
@@ -17241,9 +18050,9 @@ function setupRequestLogging(app2) {
       return originalResJson.apply(res, [bodyJson, ...args]);
     };
     res.on("finish", () => {
-      if (!path4.startsWith("/api")) return;
+      if (!path5.startsWith("/api")) return;
       const duration = Date.now() - start;
-      let logLine = `${req.method} ${path4} ${res.statusCode} in ${duration}ms`;
+      let logLine = `${req.method} ${path5} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse && res.statusCode >= 400) {
         const safe = redactSensitive(capturedJsonResponse);
         const snippet = JSON.stringify(safe);
@@ -17256,8 +18065,8 @@ function setupRequestLogging(app2) {
 }
 function getAppName() {
   try {
-    const appJsonPath = path3.resolve(process.cwd(), "app.json");
-    const appJsonContent = fs3.readFileSync(appJsonPath, "utf-8");
+    const appJsonPath = path4.resolve(process.cwd(), "app.json");
+    const appJsonContent = fs4.readFileSync(appJsonPath, "utf-8");
     const appJson = JSON.parse(appJsonContent);
     return appJson.expo?.name || "App Landing Page";
   } catch {
@@ -17265,16 +18074,16 @@ function getAppName() {
   }
 }
 function serveExpoManifest(platform, res, req) {
-  const manifestPath = path3.resolve(
+  const manifestPath = path4.resolve(
     process.cwd(),
     "static-build",
     platform,
     "manifest.json"
   );
-  if (!fs3.existsSync(manifestPath)) {
+  if (!fs4.existsSync(manifestPath)) {
     return res.status(404).json({ error: `Manifest not found for platform: ${platform}` });
   }
-  let manifestStr = fs3.readFileSync(manifestPath, "utf-8");
+  let manifestStr = fs4.readFileSync(manifestPath, "utf-8");
   try {
     const manifest = JSON.parse(manifestStr);
     const builtUrl = manifest?.launchAsset?.url;
@@ -17315,13 +18124,13 @@ function serveLandingPage({
   res.status(200).send(html);
 }
 function configureExpoAndLanding(app2) {
-  const templatePath = path3.resolve(
+  const templatePath = path4.resolve(
     process.cwd(),
     "server",
     "templates",
     "landing-page.html"
   );
-  const landingPageTemplate = fs3.readFileSync(templatePath, "utf-8");
+  const landingPageTemplate = fs4.readFileSync(templatePath, "utf-8");
   const appName = getAppName();
   log("Serving static Expo files with dynamic manifest routing");
   app2.use((req, res, next) => {
@@ -17389,8 +18198,8 @@ function configureExpoAndLanding(app2) {
       req.pipe(proxyReq, { end: true });
     });
   }
-  app2.use("/assets", express.static(path3.resolve(process.cwd(), "assets")));
-  app2.use("/uploads", express.static(path3.resolve(process.cwd(), "uploads")));
+  app2.use("/assets", express.static(path4.resolve(process.cwd(), "assets")));
+  app2.use("/uploads", express.static(path4.resolve(process.cwd(), "uploads")));
   app2.get("/robots.txt", (req, res) => {
     const origin = process.env.PUBLIC_APP_URL?.replace(/\/+$/, "") || `${req.protocol}://${req.get("host")}`;
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
@@ -17424,7 +18233,7 @@ Sitemap: ${origin}/sitemap.xml
   });
   app2.use(
     "/.well-known",
-    express.static(path3.resolve(process.cwd(), "server", "well-known"), {
+    express.static(path4.resolve(process.cwd(), "server", "well-known"), {
       // Apple's verification fetcher refuses anything that isn't served as
       // plain text with the exact filename it requested.
       setHeaders: (res) => {
@@ -17434,12 +18243,12 @@ Sitemap: ${origin}/sitemap.xml
       dotfiles: "allow"
     })
   );
-  app2.use(express.static(path3.resolve(process.cwd(), "static-build")));
+  app2.use(express.static(path4.resolve(process.cwd(), "static-build")));
   app2.get("/preview-home", (_req, res) => {
     try {
-      const p = path3.resolve(process.cwd(), "server", "templates", "home-mockup.html");
+      const p = path4.resolve(process.cwd(), "server", "templates", "home-mockup.html");
       res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.send(fs3.readFileSync(p, "utf-8"));
+      res.send(fs4.readFileSync(p, "utf-8"));
     } catch {
       res.status(500).send("Mockup unavailable");
     }
@@ -17462,20 +18271,20 @@ Sitemap: ${origin}/sitemap.xml
   };
   app2.get("/test-site/styles.css", (_req, res) => {
     try {
-      const p = path3.resolve(process.cwd(), "server", "templates", "test-site", "styles.css");
+      const p = path4.resolve(process.cwd(), "server", "templates", "test-site", "styles.css");
       res.setHeader("Content-Type", "text/css; charset=utf-8");
       res.setHeader("Cache-Control", "public, max-age=300");
-      res.send(fs3.readFileSync(p, "utf-8"));
+      res.send(fs4.readFileSync(p, "utf-8"));
     } catch {
       res.status(404).end();
     }
   });
   app2.get("/test-site/embed.js", (_req, res) => {
     try {
-      const p = path3.resolve(process.cwd(), "server", "templates", "test-site", "embed.js");
+      const p = path4.resolve(process.cwd(), "server", "templates", "test-site", "embed.js");
       res.setHeader("Content-Type", "application/javascript; charset=utf-8");
       res.setHeader("Cache-Control", "public, max-age=300");
-      res.send(fs3.readFileSync(p, "utf-8"));
+      res.send(fs4.readFileSync(p, "utf-8"));
     } catch {
       res.status(404).end();
     }
@@ -17486,8 +18295,8 @@ Sitemap: ${origin}/sitemap.xml
     try {
       const { applyWebContentOverrides: applyWebContentOverrides2, renderCustomPage: renderCustomPage2 } = await Promise.resolve().then(() => (init_web_content(), web_content_exports));
       if (file) {
-        const p = path3.resolve(process.cwd(), "server", "templates", "test-site", file);
-        const raw = fs3.readFileSync(p, "utf-8");
+        const p = path4.resolve(process.cwd(), "server", "templates", "test-site", file);
+        const raw = fs4.readFileSync(p, "utf-8");
         const overrideSlug = slug || "home";
         const finalHtml = await applyWebContentOverrides2(overrideSlug, raw);
         res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -17563,7 +18372,7 @@ Sitemap: ${origin}/sitemap.xml
       req.pipe(proxyReq, { end: true });
     });
   } else {
-    const indexPath = path3.resolve(process.cwd(), "static-build", "index.html");
+    const indexPath = path4.resolve(process.cwd(), "static-build", "index.html");
     app2.use((req, res, next) => {
       if (res.headersSent) return next();
       if (req.path.startsWith("/api")) return next();
@@ -17581,7 +18390,7 @@ Sitemap: ${origin}/sitemap.xml
         "/reset-password"
       ]);
       if (serverPages.has(req.path)) return next();
-      if (fs3.existsSync(indexPath)) {
+      if (fs4.existsSync(indexPath)) {
         res.sendFile(indexPath);
       } else {
         next();
@@ -17639,6 +18448,20 @@ function scheduleBirthdayWeekPushes() {
     runBirthdayPushes();
     setInterval(runBirthdayPushes, 24 * 60 * 60 * 1e3);
   }, msUntilNextLondonMidnight());
+}
+function scheduleNightlyBackup() {
+  async function runNightly() {
+    try {
+      const { runBackup: runBackup2 } = await Promise.resolve().then(() => (init_backup(), backup_exports));
+      const { filename, rowCounts } = await runBackup2();
+      const summary = Object.entries(rowCounts).map(([t, n]) => `${t}:${n}`).join(", ");
+      log(`[Backup] Nightly snapshot complete \u2014 ${filename} (${summary})`);
+    } catch (err) {
+      console.error("[Backup] Nightly snapshot failed:", err?.message ?? err);
+    }
+  }
+  setTimeout(runNightly, 2 * 60 * 60 * 1e3);
+  setInterval(runNightly, 24 * 60 * 60 * 1e3);
 }
 function scheduleDoublePointsDailyReset() {
   let lastCheckedDate = null;
@@ -17958,8 +18781,8 @@ function scheduleRetentionCleanup() {
       const base64 = ascKeyContent.replace(/-----BEGIN PRIVATE KEY-----/g, "").replace(/-----END PRIVATE KEY-----/g, "").replace(/\s+/g, "");
       const lines = base64.match(/.{1,64}/g) || [];
       const pem = "-----BEGIN PRIVATE KEY-----\n" + lines.join("\n") + "\n-----END PRIVATE KEY-----\n";
-      fs3.mkdirSync(path3.dirname(keyPath), { recursive: true });
-      fs3.writeFileSync(keyPath, pem, { mode: 384 });
+      fs4.mkdirSync(path4.dirname(keyPath), { recursive: true });
+      fs4.writeFileSync(keyPath, pem, { mode: 384 });
       log(`\u2713 ASC .p8 key written to ${keyPath}`);
     } catch (e) {
       console.warn("\u26A0 Could not write ASC .p8 key:", e);
@@ -17970,29 +18793,29 @@ function scheduleRetentionCleanup() {
   app.use(compression());
   setupBodyParsing(app);
   setupRequestLogging(app);
-  const widgetHtmlPath = path3.resolve(process.cwd(), "server", "templates", "booking-widget.html");
+  const widgetHtmlPath = path4.resolve(process.cwd(), "server", "templates", "booking-widget.html");
   app.get("/widget/booking", (_req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("X-Frame-Options", "ALLOWALL");
     res.setHeader("Content-Security-Policy", "frame-ancestors *");
     res.setHeader("Cache-Control", "no-store");
-    const html = fs3.readFileSync(widgetHtmlPath, "utf-8");
+    const html = fs4.readFileSync(widgetHtmlPath, "utf-8");
     res.status(200).send(html);
   });
-  const privacyPolicyHtmlPath = path3.resolve(process.cwd(), "server", "templates", "privacy-policy.html");
-  const privacyPolicyHtml = fs3.readFileSync(privacyPolicyHtmlPath, "utf-8");
+  const privacyPolicyHtmlPath = path4.resolve(process.cwd(), "server", "templates", "privacy-policy.html");
+  const privacyPolicyHtml = fs4.readFileSync(privacyPolicyHtmlPath, "utf-8");
   app.get("/privacy-policy", (_req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.status(200).send(privacyPolicyHtml);
   });
-  const termsHtmlPath = path3.resolve(process.cwd(), "server", "templates", "terms-of-service.html");
-  const termsHtml = fs3.readFileSync(termsHtmlPath, "utf-8");
+  const termsHtmlPath = path4.resolve(process.cwd(), "server", "templates", "terms-of-service.html");
+  const termsHtml = fs4.readFileSync(termsHtmlPath, "utf-8");
   app.get("/terms", (_req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.status(200).send(termsHtml);
   });
-  const staffPrivacyHtmlPath = path3.resolve(process.cwd(), "server", "templates", "staff-privacy-notice.html");
-  const staffPrivacyHtml = fs3.readFileSync(staffPrivacyHtmlPath, "utf-8");
+  const staffPrivacyHtmlPath = path4.resolve(process.cwd(), "server", "templates", "staff-privacy-notice.html");
+  const staffPrivacyHtml = fs4.readFileSync(staffPrivacyHtmlPath, "utf-8");
   app.get("/staff-privacy-notice", (_req, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.status(200).send(staffPrivacyHtml);
@@ -18021,10 +18844,10 @@ function scheduleRetentionCleanup() {
     }
   }
   const port = parseInt(process.env.PORT || "5000", 10);
-  await new Promise((resolve4) => {
+  await new Promise((resolve5) => {
     server.listen(port, "0.0.0.0", () => {
       log(`express server serving on port ${port}`);
-      resolve4();
+      resolve5();
     });
   });
   if (process.env.NODE_ENV === "production") {
@@ -18078,6 +18901,7 @@ function scheduleRetentionCleanup() {
   scheduleMembershipPaymentReminders();
   scheduleBirthdayWeekPushes();
   scheduleDoublePointsDailyReset();
+  scheduleNightlyBackup();
 })().catch((err) => {
   console.error("FATAL SERVER ERROR:", err);
   process.exit(1);
