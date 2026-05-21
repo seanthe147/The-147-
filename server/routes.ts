@@ -355,7 +355,7 @@ async function sendEmailViaSMTP(to: string, subject: string, html: string): Prom
 // Send the Wix → Square migration email to a single member.
 // Returns success/message; updates migrationEmailedAt on success.
 async function sendMigrationEmail(subId: number, req: Request): Promise<{ success: boolean; message?: string }> {
-  const { buildMigrationEmail, makeMigrationToken } = await import("./wix-migration");
+  const { buildMigrationEmail, makeMigrationToken } = await import("./wix-migration.js");
   const subs = await storage.getMembershipSubscriptions();
   const sub = subs.find(s => s.id === subId);
   if (!sub || !sub.customer || !sub.plan) return { success: false, message: "Member not found" };
@@ -2333,7 +2333,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // substituted into the HTML at render time. Defaults remain in the templates.
   app.get("/api/staff/web-content", staffAuth, ownerAuth, async (_req, res) => {
     try {
-      const { getEditorPayload } = await import("./web-content");
+      const { getEditorPayload } = await import("./web-content.js");
       res.json(await getEditorPayload());
     } catch (err) {
       console.error("Failed to load web content:", err);
@@ -2343,7 +2343,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/staff/web-content", staffAuth, ownerAuth, async (req, res) => {
     try {
-      const { saveOverride } = await import("./web-content");
+      const { saveOverride } = await import("./web-content.js");
       const { page, block, value } = req.body || {};
       if (typeof page !== "string" || typeof block !== "string") {
         return res.status(400).json({ message: "page and block are required" });
@@ -2426,7 +2426,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const safeSlug = validateSlug(slug);
       const existing = await storage.getMarketingPage(safeSlug);
       if (existing) return res.status(400).json({ message: "A page with that slug already exists" });
-      const { isSafeImageUrl } = await import("./web-content");
+      const { isSafeImageUrl } = await import("./web-content.js");
       if (heroBg && !isSafeImageUrl(heroBg)) {
         return res.status(400).json({ message: "Unsafe hero background URL" });
       }
@@ -2456,7 +2456,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existing = await storage.getMarketingPage(slug);
       if (!existing) return res.status(404).json({ message: "Page not found" });
       const { title, heroEyebrow, heroTitle, heroSub, heroBg, bodyHtml, metaTitle, metaDescription, sortOrder, hidden } = req.body || {};
-      const { isSafeImageUrl } = await import("./web-content");
+      const { isSafeImageUrl } = await import("./web-content.js");
       if (typeof heroBg === "string" && heroBg && !isSafeImageUrl(heroBg)) {
         return res.status(400).json({ message: "Unsafe hero background URL" });
       }
@@ -2496,7 +2496,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // a one-tap "save your card" link so they can re-enter card details on Square.
   app.post("/api/staff/wix-migration/preview", staffAuth, ownerAuth, async (req, res) => {
     try {
-      const { parseCsv } = await import("./wix-migration");
+      const { parseCsv } = await import("./wix-migration.js");
       const { csv } = req.body || {};
       if (typeof csv !== "string" || !csv.trim()) return res.status(400).json({ message: "Paste your CSV first" });
       const rows = parseCsv(csv);
@@ -2509,7 +2509,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/staff/wix-migration/import", staffAuth, ownerAuth, async (req, res) => {
     try {
-      const { parseCsv, importWixMembers } = await import("./wix-migration");
+      const { parseCsv, importWixMembers } = await import("./wix-migration.js");
       const { csv, defaultPlanId, planMap } = req.body || {};
       if (typeof csv !== "string" || !csv.trim()) return res.status(400).json({ message: "CSV is required" });
       if (!defaultPlanId) return res.status(400).json({ message: "Pick a default plan" });
@@ -3917,7 +3917,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.sendStatus(200);
         }
 
-        const { sendPushToCustomerEmail } = await import("./push");
+        const { sendPushToCustomerEmail } = await import("./push.js");
         await sendPushToCustomerEmail(customer.email, title, body, {
           type: "loyalty_balance_changed",
           accountId,
@@ -4774,7 +4774,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/world-cup/next-match", async (_req, res) => {
     try {
-      const { getNextWorldCupMatch } = await import("./worldCup");
+      const { getNextWorldCupMatch } = await import("./worldCup.js");
       const data = await getNextWorldCupMatch();
       res.json(data);
     } catch (err: any) {
@@ -4789,7 +4789,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const limitRaw = Number(req.query.limit);
       const limit = Number.isFinite(limitRaw) && limitRaw > 0 && limitRaw <= 10 ? Math.floor(limitRaw) : 2;
-      const { getNextEnglandMatches } = await import("./worldCup");
+      const { getNextEnglandMatches } = await import("./worldCup.js");
       const matches = await getNextEnglandMatches(limit);
       res.json({ matches });
     } catch (err: any) {
@@ -4803,7 +4803,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // kicking off within the next 48 hours, sorted by kickoff time.
   app.get("/api/staff/fixtures/upcoming", staffAuth, async (_req, res) => {
     try {
-      const { getUpcomingFixtures } = await import("./sports-fixtures");
+      const { getUpcomingFixtures } = await import("./sports-fixtures.js");
       const fixtures = await getUpcomingFixtures(5);
       res.json({ fixtures });
     } catch (err: any) {
@@ -4816,7 +4816,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // List available backup snapshots.
   app.get("/api/staff/backup/list", staffAuth, ownerAuth, async (_req, res) => {
     try {
-      const { listBackups } = await import("./backup");
+      const { listBackups } = await import("./backup.js");
       res.json({ backups: listBackups() });
     } catch (err: any) {
       res.status(500).json({ message: "Unable to list backups" });
@@ -4826,7 +4826,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Trigger an immediate backup snapshot.
   app.post("/api/staff/backup/trigger", staffAuth, ownerAuth, async (_req, res) => {
     try {
-      const { runBackup } = await import("./backup");
+      const { runBackup } = await import("./backup.js");
       const result = await runBackup();
       res.json({ ok: true, ...result });
     } catch (err: any) {
@@ -4845,12 +4845,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ ok: false, message: "filename and table are required" });
     }
     try {
-      const { restoreTableFromBackup } = await import("./backup");
+      const { restoreTableFromBackup } = await import("./backup.js");
       const { restoredRows } = await restoreTableFromBackup(String(filename), String(table));
       // Log the restore action for the audit trail
       const staffId = (req as any).staffUser?.id ?? null;
       try {
-        const { storage: store } = await import("./storage");
+        const { storage: store } = await import("./storage.js");
         await (store as any).logStaffAction?.({
           staffUserId: staffId,
           action: "backup_restore",
@@ -4868,7 +4868,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Download a specific backup file as a JSON attachment.
   app.get("/api/staff/backup/download/:filename", staffAuth, ownerAuth, async (req, res) => {
     try {
-      const { resolveBackupFile } = await import("./backup");
+      const { resolveBackupFile } = await import("./backup.js");
       const filepath = resolveBackupFile(String(req.params.filename));
       if (!filepath) return res.status(404).json({ message: "Backup not found" });
       res.setHeader("Content-Type", "application/json");
@@ -8439,7 +8439,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.setSetting("loyalty.doublePointsLastBroadcastDate", today);
         (async () => {
           try {
-            const { sendPushToTokens } = await import("./push");
+            const { sendPushToTokens } = await import("./push.js");
             const enrolled = await storage.getCustomersWithLoyaltyAccount();
             const tokenLists = await Promise.all(
               enrolled.map((c) => storage.getPushTokensByEmail(c.email).catch(() => [])),
@@ -10054,7 +10054,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Membership — public plan listing ────────────────────────────────────────
   app.get("/api/membership/plans", async (_req, res) => {
-    const { getPlanBenefits, getPlanBenefitTexts } = await import("@shared/membership-benefits");
+    const { getPlanBenefits, getPlanBenefitTexts } = await import("@shared/membership-benefits.js");
     const plans = await storage.getMembershipPlans(true);
     // Internal-only plans (Staff, VIP, comped tiers) stay active so the
     // discount logic still recognises them, but must not appear on the
@@ -10732,7 +10732,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/staff/membership/plans", staffAuth, async (_req, res) => {
-    const { getPlanBenefitTexts } = await import("@shared/membership-benefits");
+    const { getPlanBenefitTexts } = await import("@shared/membership-benefits.js");
     const plans = await storage.getMembershipPlans();
     // Attach the canonical benefits list so the staff dashboard renders the
     // same wording as the customer app and marketing page.

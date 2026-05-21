@@ -538,7 +538,7 @@ function configureExpoAndLanding(app: express.Application) {
     const slug = String(req.params.page ?? "").toLowerCase();
     const file = TEST_SITE_PAGES[slug];
     try {
-      const { applyWebContentOverrides, renderCustomPage } = await import("./web-content");
+      const { applyWebContentOverrides, renderCustomPage } = await import("./web-content.js");
       if (file) {
         const p = path.resolve(process.cwd(), "server", "templates", "test-site", file);
         const raw = fs.readFileSync(p, "utf-8");
@@ -547,7 +547,7 @@ function configureExpoAndLanding(app: express.Application) {
         res.setHeader("Content-Type", "text/html; charset=utf-8");
         return res.send(finalHtml);
       }
-      const { storage } = await import("./storage");
+      const { storage } = await import("./storage.js");
       const customPage = await storage.getMarketingPage(slug);
       if (customPage && !customPage.hidden) {
         const shell = renderCustomPage(customPage);
@@ -565,8 +565,8 @@ function configureExpoAndLanding(app: express.Application) {
   // Members click this from the migration email to set up their card on Square.
   app.get("/migrate/:token", async (req: Request, res: Response) => {
     try {
-      const { storage } = await import("./storage");
-      const { renderMigrationLandingPage, renderMigrationErrorPage } = await import("./wix-migration");
+      const { storage } = await import("./storage.js");
+      const { renderMigrationLandingPage, renderMigrationErrorPage } = await import("./wix-migration.js");
       const subs = await storage.getMembershipSubscriptions();
       const sub = subs.find(s => s.migrationToken === req.params.token);
       res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -699,8 +699,8 @@ function setupErrorHandler(app: express.Application) {
 function scheduleBirthdayWeekPushes() {
   async function runBirthdayPushes() {
     try {
-      const { storage: store } = await import("./storage");
-      const { sendPushToCustomerEmail } = await import("./push");
+      const { storage: store } = await import("./storage.js");
+      const { sendPushToCustomerEmail } = await import("./push.js");
       const { year, monthDay } = getLondonYearAndMonthDay();
 
       const due = await store.getCustomersInBirthdayWindow(year, monthDay);
@@ -752,7 +752,7 @@ function scheduleBirthdayWeekPushes() {
 function scheduleNightlyBackup() {
   async function runNightly() {
     try {
-      const { runBackup } = await import("./backup");
+      const { runBackup } = await import("./backup.js");
       const { filename, rowCounts } = await runBackup();
       const summary = Object.entries(rowCounts)
         .map(([t, n]) => `${t}:${n}`)
@@ -780,7 +780,7 @@ function scheduleDoublePointsDailyReset() {
     try {
       const today = getLondonDateString();
       if (today === lastCheckedDate) return;
-      const { storage: store } = await import("./storage");
+      const { storage: store } = await import("./storage.js");
       const current = await store.getSetting("loyalty.doublePointsToday");
       if (current === "true") {
         const lastBroadcast = await store.getSetting("loyalty.doublePointsLastBroadcastDate");
@@ -806,7 +806,7 @@ function scheduleDoublePointsDailyReset() {
 function scheduleBookingReminders() {
   async function runReminders() {
     try {
-      const { storage: store } = await import("./storage");
+      const { storage: store } = await import("./storage.js");
       // Find bookings starting in 55–65 minutes that haven't had a reminder sent yet
       const due = await store.getBookingsDueReminder(55, 65);
       if (!due.length) return;
@@ -846,7 +846,7 @@ function scheduleBookingReminders() {
 
 async function bootstrapOwner() {
   try {
-    const { storage: store } = await import("./storage");
+    const { storage: store } = await import("./storage.js");
     const allUsers = await store.getAllStaffUsers();
     const hasOwner = allUsers.some(u => u.role === "owner");
     if (!hasOwner) {
@@ -867,7 +867,7 @@ async function bootstrapOwner() {
 function scheduleDepositAutoCancel() {
   async function runAutoCancel() {
     try {
-      const { storage: store } = await import("./storage");
+      const { storage: store } = await import("./storage.js");
       const expired = await store.getExpiredPendingDeposits(60);
       if (!expired.length) return;
       for (const booking of expired) {
@@ -938,7 +938,7 @@ function scheduleDepositAutoCancel() {
 function scheduleOrderExpiry() {
   async function runExpiry() {
     try {
-      const { storage: store } = await import("./storage");
+      const { storage: store } = await import("./storage.js");
       const expired = await store.expireStaleOrders(30);
       if (expired > 0) {
         log(`[Orders] Expired ${expired} abandoned pending order(s) (no payment after 30 min)`);
@@ -974,7 +974,7 @@ function scheduleMembershipPaymentReminders() {
 
   async function runReminders() {
     try {
-      const { storage: store } = await import("./storage");
+      const { storage: store } = await import("./storage.js");
       const due = await store.getPendingMembershipsNeedingReminder(REMIND_AFTER_HOURS);
       if (!due.length) return;
       const mail = buildTransport();
@@ -1025,7 +1025,7 @@ function scheduleMembershipPaymentReminders() {
 
   async function runAutoCancel() {
     try {
-      const { storage: store } = await import("./storage");
+      const { storage: store } = await import("./storage.js");
       const stale = await store.getPendingMembershipsToAutoCancel(CANCEL_AFTER_HOURS);
       if (!stale.length) return;
       const mail = buildTransport();
@@ -1088,7 +1088,7 @@ function scheduleRetentionCleanup() {
   // This ensures the 12-month anonymisation policy and session cleanup run automatically
   async function runCleanup() {
     try {
-      const { storage: store } = await import("./storage");
+      const { storage: store } = await import("./storage.js");
       const anonymized = await store.anonymizeOldBookings(365);
       const hrAnonymized = await store.anonymizeOldHRRecords();
       const sessionsCleared = await store.cleanupExpiredSessions();
@@ -1258,8 +1258,8 @@ function scheduleRetentionCleanup() {
   // Auto-create Square subscription plans for any paid membership plan missing one.
   // This makes membership purchases bill recurringly instead of as one-off payments.
   try {
-    const square = await import("./square");
-    const { storage: storeForPlans } = await import("./storage");
+    const square = await import("./square.js");
+    const { storage: storeForPlans } = await import("./storage.js");
     if (square.isConfigured()) {
       const plans = await storeForPlans.getMembershipPlans();
       for (const plan of plans) {
@@ -1282,7 +1282,7 @@ function scheduleRetentionCleanup() {
     console.error("[SQUARE BOOT SYNC] Skipped due to error:", err?.message ?? err);
   }
   // Encrypt any existing plaintext PII in customers, contact messages, push tokens, and orders
-  const { storage: storeForMigration } = await import("./storage");
+  const { storage: storeForMigration } = await import("./storage.js");
   await storeForMigration.migrateEncryptExistingPII();
   // Promote seanclowe/seanlowe to owner if no owner account exists (one-time bootstrap)
   await bootstrapOwner();

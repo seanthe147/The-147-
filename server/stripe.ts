@@ -1,13 +1,13 @@
-import Stripe from "stripe";
+import Stripe = require("stripe");
 
-let cachedClient: Stripe | null = null;
+let cachedClient: Stripe.Stripe | null = null;
 let cachedKey: string | null = null;
 
 export function isStripeConfigured(): boolean {
   return !!(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PUBLISHABLE_KEY);
 }
 
-export function getStripeClient(): Stripe {
+export function getStripeClient(): Stripe.Stripe {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) {
     throw new Error("Stripe is not configured. Set STRIPE_SECRET_KEY.");
