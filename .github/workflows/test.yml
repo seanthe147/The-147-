@@ -7,6 +7,26 @@ on:
       - main
 
 jobs:
+  typecheck:
+    name: TypeScript type check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit
+
   unit-tests:
     name: Unit tests (no server required)
     runs-on: ubuntu-latest
