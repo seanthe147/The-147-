@@ -396,6 +396,8 @@ export default function RewardsScreen() {
     refetchOnWindowFocus: true,
   });
 
+  const [scratchActive, setScratchActive] = useState(false);
+
   return (
     <ScrollView
       style={styles.container}
@@ -404,6 +406,7 @@ export default function RewardsScreen() {
         { paddingTop: (isWeb ? 67 : insets.top) + 16, paddingBottom: tabBarHeight + 20, paddingHorizontal: tabletPad },
       ]}
       keyboardShouldPersistTaps="handled"
+      scrollEnabled={!scratchActive}
     >
       <LinearGradient
         colors={[Colors.brand.dark, "#2D1800"]}
@@ -499,7 +502,10 @@ export default function RewardsScreen() {
             <Text style={styles.personalIntro}>Here's where you stand, {firstName}</Text>
           ) : null}
 
-          <ScratchCardGame />
+          <ScratchCardGame
+            onScratchStart={() => setScratchActive(true)}
+            onScratchEnd={() => setScratchActive(false)}
+          />
 
           <PointsDisplay
             balance={meQuery.data.account.balance}

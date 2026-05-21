@@ -200,7 +200,13 @@ function ScratchOverlay({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function ScratchCardGame() {
+export function ScratchCardGame({
+  onScratchStart,
+  onScratchEnd,
+}: {
+  onScratchStart?: () => void;
+  onScratchEnd?: () => void;
+} = {}) {
   const { customer, getCustomerToken } = useCustomerAuth();
   const qc = useQueryClient();
 
@@ -279,6 +285,12 @@ export function ScratchCardGame() {
 
   const triggerRevealRef = useRef(triggerReveal);
   triggerRevealRef.current = triggerReveal;
+
+  // Keep scratch-lock callbacks fresh inside the PanResponder closure
+  const onScratchStartRef = useRef(onScratchStart ?? (() => {}));
+  onScratchStartRef.current = onScratchStart ?? (() => {});
+  const onScratchEndRef = useRef(onScratchEnd ?? (() => {}));
+  onScratchEndRef.current = onScratchEnd ?? (() => {});
 
   // ── API call ─────────────────────────────────────────────────────────────
   const callApi = useCallback(async () => {
@@ -383,9 +395,14 @@ export function ScratchCardGame() {
   // ── PanResponder ─────────────────────────────────────────────────────────
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder:  () => true,
+      // Claim the touch immediately so the parent ScrollView never gets it
+      onStartShouldSetPanResponder:         () => true,
+      onMoveShouldSetPanResponder:          () => true,
+      onStartShouldSetPanResponderCapture:  () => true,
+      onMoveShouldSetPanResponderCapture:   () => true,
       onPanResponderGrant: (evt) => {
+        // Tell the parent ScrollView to freeze while the user scratches
+        onScratchStartRef.current();
         // Measure the card's screen position on the very first touch
         cardViewRef.current?.measure((_x, _y, _w, _h, px, py) => {
           cardPosRef.current = { x: px, y: py };
@@ -402,10 +419,16 @@ export function ScratchCardGame() {
         handlePointRef.current(evt.nativeEvent.pageX, evt.nativeEvent.pageY);
       },
       onPanResponderRelease: () => {
+        // Re-enable scroll as soon as the finger lifts
+        onScratchEndRef.current();
         // Give the API up to 600 ms; auto-reveal if threshold not yet hit
         setTimeout(() => {
           if (!thresholdRef.current) triggerRevealRef.current();
         }, 600);
+      },
+      onPanResponderTerminate: () => {
+        // iOS can steal the responder (e.g. system gesture); re-enable scroll
+        onScratchEndRef.current();
       },
     })
   ).current;
