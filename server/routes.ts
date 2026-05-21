@@ -4869,7 +4869,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/staff/backup/download/:filename", staffAuth, ownerAuth, async (req, res) => {
     try {
       const { resolveBackupFile } = await import("./backup");
-      const filepath = resolveBackupFile(req.params.filename);
+      const filepath = resolveBackupFile(String(req.params.filename));
       if (!filepath) return res.status(404).json({ message: "Backup not found" });
       res.setHeader("Content-Type", "application/json");
       res.setHeader("Content-Disposition", `attachment; filename="${req.params.filename}"`);
@@ -11092,7 +11092,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const throwawayPassword = randomBytes(32).toString("hex");
       const passwordHash = await hashPassword(throwawayPassword);
 
-      const newCustomer = await storage.createCustomer(rawEmail, fullName, phone, passwordHash);
+      const newCustomer = await storage.createCustomer(rawEmail, fullName, phone, passwordHash.hash);
       await storage.markEmailVerified(newCustomer.id);
 
       try {
