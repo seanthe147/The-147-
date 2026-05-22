@@ -1,4 +1,4 @@
-import React, { useContext } from "react";
+import React, { useContext, useRef } from "react";
 import {
   StyleSheet,
   Text,
@@ -396,8 +396,11 @@ export default function RewardsScreen() {
     refetchOnWindowFocus: true,
   });
 
+  const scrollViewRef = useRef<ScrollView>(null);
+
   return (
     <ScrollView
+      ref={scrollViewRef}
       style={styles.container}
       contentContainerStyle={[
         styles.content,
@@ -499,7 +502,10 @@ export default function RewardsScreen() {
             <Text style={styles.personalIntro}>Here's where you stand, {firstName}</Text>
           ) : null}
 
-          <ScratchCardGame />
+          <ScratchCardGame
+            onScratchStart={() => scrollViewRef.current?.setNativeProps({ scrollEnabled: false })}
+            onScratchEnd={() => scrollViewRef.current?.setNativeProps({ scrollEnabled: true })}
+          />
 
           <PointsDisplay
             balance={meQuery.data.account.balance}

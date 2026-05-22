@@ -250,7 +250,11 @@ export function ScratchCardGame({
   const overlayAnim      = useRef(new Animated.Value(1)).current;
 
   // ── Derived ──────────────────────────────────────────────────────────────
-  const alreadyPlayed = localPlayed || (myPlays?.playedToday ?? false);
+  // Once the user has started scratching, ignore the server-side playedToday
+  // flag — the API call fires immediately on first touch and the query
+  // invalidation can come back before the reveal animation finishes, which
+  // would switch the component to the "already played" screen mid-scratch.
+  const alreadyPlayed = localPlayed || (!scratchStarted && (myPlays?.playedToday ?? false));
   const gameActive    = !!(config?.enabled && config?.withinWindow);
   const loading       = cfgLoading || playsLoading;
 
