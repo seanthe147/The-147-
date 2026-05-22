@@ -147,7 +147,10 @@ function DOBPicker({ value, onChange, testID }: {
       {showPicker && Platform.OS === "ios" && (
         <Modal transparent animationType="slide" visible onRequestClose={() => setShowPicker(false)}>
           <Pressable style={styles.dobModalBackdrop} onPress={() => setShowPicker(false)}>
-            <Pressable style={styles.dobModalSheet} onPress={() => {}}>
+            {/* View instead of Pressable — Pressable intercepted swipe gestures
+                needed by the native iOS spinner wheel, making it blank/unresponsive.
+                onStartShouldSetResponder still blocks the backdrop tap. */}
+            <View style={styles.dobModalSheet} onStartShouldSetResponder={() => true}>
               <DateTimePicker
                 value={dateValue}
                 mode="date"
@@ -166,7 +169,7 @@ function DOBPicker({ value, onChange, testID }: {
               >
                 <Text style={styles.dobModalDoneText}>Done</Text>
               </Pressable>
-            </Pressable>
+            </View>
           </Pressable>
         </Modal>
       )}
@@ -1945,9 +1948,10 @@ const styles = StyleSheet.create({
   dobModalSheet: {
     backgroundColor: "#FFFFFF",
     paddingTop: 8,
-    paddingBottom: 24,
+    paddingBottom: 34,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
+    minHeight: 300,
   },
   dobModalDone: {
     alignSelf: "center",
