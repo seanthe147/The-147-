@@ -592,6 +592,12 @@ export async function runStartupMigrations() {
         SELECT '50 Loyalty Points', 'You won 50 loyalty points — they have been added to your account!', 'loyalty_points', 50, 30, true
         WHERE NOT EXISTS (SELECT 1 FROM game_prizes WHERE prize_type = 'loyalty_points' LIMIT 1);
     `);
+    // Add auto-link columns to game_prizes (added 2026-05)
+    await client.query(`
+      ALTER TABLE game_prizes
+        ADD COLUMN IF NOT EXISTS square_discount_type TEXT,
+        ADD COLUMN IF NOT EXISTS square_discount_value INTEGER;
+    `);
     await client.query(`
       INSERT INTO game_prizes (name, description, prize_type, weight_percent, active)
         SELECT 'Free Soft Drink', 'You won a free soft drink — show this screen at the bar to claim it!', 'reward_tier', 10, true
@@ -3259,6 +3265,8 @@ export class DatabaseStorage implements IStorage {
     prizeType: string;
     value?: number | null;
     rewardTierId?: string | null;
+    squareDiscountType?: string | null;
+    squareDiscountValue?: number | null;
     weightPercent: number;
     active: boolean;
   }): Promise<GamePrize> {

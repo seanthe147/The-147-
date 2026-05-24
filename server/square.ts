@@ -124,6 +124,47 @@ export async function deleteLoyaltyReward(rewardId: string) {
   await squareRequest("DELETE", `/v2/loyalty/rewards/${rewardId}`);
 }
 
+// ── Loyalty Reward Tiers ─────────────────────────────────────────────────────
+// Creates a new reward tier on the loyalty programme. Called automatically when
+// a manager adds a 'reward_tier' prize in the staff portal.
+// discountType: 'FIXED_PERCENTAGE' | 'FIXED_AMOUNT'
+// discountValue: integer — percentage (e.g. 10 = 10 %) or pence (e.g. 500 = £5)
+export async function createLoyaltyRewardTier(
+  programId: string,
+  name: string,
+  discountType: "FIXED_PERCENTAGE" | "FIXED_AMOUNT",
+  discountValue: number,
+): Promise<{ id: string; name: string }> {
+  const definition: Record<string, any> = {
+    discount_type: discountType,
+    scope: { scope_type: "ORDER" },
+  };
+  if (discountType === "FIXED_PERCENTAGE") {
+    definition.percentage_discount = String(discountValue);
+  } else {
+    definition.fixed_discount_money = { amount: discountValue, currency: "GBP" };
+  }
+  const data = await squareRequest(
+    "POST",
+    `/v2/loyalty/programs/${programId}/reward-tiers`,
+    {
+      idempotency_key: `create-tier-${programId}-${name.replace(/\s+/g, "-").toLowerCase()}-${Date.now()}`,
+      reward_tier: { name, definition },
+    },
+  );
+  return data.reward_tier as { id: string; name: string };
+}
+
+// Deletes a reward tier from the loyalty programme. Called when the definition
+// changes on edit so a fresh tier is created with the updated discount.
+export async function deleteLoyaltyRewardTier(programId: string, tierId: string): Promise<void> {
+  try {
+    await squareRequest("DELETE", `/v2/loyalty/programs/${programId}/reward-tiers/${tierId}`);
+  } catch (err: any) {
+    console.warn(`[LOYALTY] Could not delete reward tier ${tierId}:`, err?.message);
+  }
+}
+
 // Mark an ISSUED reward as REDEEMED against an order.
 // This is the Square API call that actually uses up the reward so it can't
 // be double-redeemed at the till. Safe to call after payment is confirmed.

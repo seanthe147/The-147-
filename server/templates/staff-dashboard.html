@@ -1872,11 +1872,22 @@
       </div>
       <div id="gamePrizeRewardTierRow" style="display:none">
         <div class="form-group">
-          <label class="form-label">Square Reward Tier ID</label>
-          <input class="form-input" type="text" id="gamePrizeRewardTierId" placeholder="Paste the tier ID from Square Dashboard">
-          <p style="font-size:12px;color:var(--text-2);margin:4px 0 0">
-            Find this in Square Dashboard → Loyalty → Rewards programme → reward tier.
-          </p>
+          <label class="form-label">Discount type <span style="color:var(--red)">*</span></label>
+          <select class="form-input" id="gamePrizeDiscountType" style="max-width:240px">
+            <option value="FIXED_PERCENTAGE">% off the whole order</option>
+            <option value="FIXED_AMOUNT">Fixed amount off (£)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" id="gamePrizeDiscountValueLabel">Discount value <span style="color:var(--red)">*</span></label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input class="form-input" type="number" id="gamePrizeDiscountValue" min="1" placeholder="e.g. 10" style="max-width:120px" oninput="updateDiscountPreview()">
+            <span id="gamePrizeDiscountUnit" style="font-size:13px;color:var(--text-2)">%</span>
+          </div>
+          <p id="gamePrizeDiscountPreview" style="font-size:12px;color:var(--green,#166534);margin:4px 0 0;font-weight:600"></p>
+        </div>
+        <div id="gamePrizeLinkedBadge" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#166534;display:flex;align-items:center;gap:6px">
+          <span>&#x2713;</span> <span id="gamePrizeLinkedText">Linked to Square automatically</span>
         </div>
       </div>
       <div style="display:flex;gap:16px;flex-wrap:wrap">
@@ -3640,7 +3651,13 @@
                   style="border-bottom:1px solid var(--border);cursor:pointer;background:${i%2===0?'var(--surface)':'transparent'}"
                   onmouseover="this.style.background='var(--hover,#f1f5f9)'" onmouseout="this.style.background='${i%2===0?'var(--surface)':'transparent'}'">
                 <td style="padding:8px 8px;color:var(--text);font-weight:500">${esc(p.name)}</td>
-                <td style="padding:8px 8px;color:var(--text-2)">${esc(PRIZE_TYPE_LABEL[p.prizeType]||p.prizeType)}</td>
+                <td style="padding:8px 8px;color:var(--text-2)">
+                  ${esc(PRIZE_TYPE_LABEL[p.prizeType]||p.prizeType)}
+                  ${p.prizeType==='loyalty_points'&&p.value?`<span style="margin-left:4px;font-size:11px;color:var(--text-2)">(${p.value} pts)</span>`:''}
+                  ${p.prizeType==='reward_tier'&&p.squareDiscountType?`<span style="margin-left:4px;font-size:11px;color:var(--green,#166534);font-weight:600">${p.squareDiscountType==='FIXED_PERCENTAGE'?p.squareDiscountValue+'% off':p.squareDiscountValue?'£'+(p.squareDiscountValue/100).toFixed(2)+' off':''}</span>`:''}
+                  ${p.prizeType==='reward_tier'&&p.rewardTierId?`<span title="Square tier ID: ${esc(p.rewardTierId)}" style="margin-left:4px;font-size:11px;color:var(--green,#166534)">&#x2713; Linked</span>`:''}
+                  ${p.prizeType==='reward_tier'&&!p.rewardTierId?`<span style="margin-left:4px;font-size:11px;color:var(--amber,#b45309)">&#x26A0; Not linked</span>`:''}
+                </td>
                 <td style="padding:8px 8px;text-align:right;color:var(--text-2)">${p.weightPercent}</td>
                 <td style="padding:8px 8px;text-align:right;color:var(--text-2)">${p.active?pct(p):'—'}</td>
                 <td style="padding:8px 8px;text-align:center">
@@ -3725,11 +3742,23 @@
     el('gamePrizeDesc').value=prize?.description||'';
     el('gamePrizeType').value=prize?.prizeType||'none';
     el('gamePrizeValue').value=prize?.value??'';
-    el('gamePrizeRewardTierId').value=prize?.rewardTierId||'';
+    el('gamePrizeDiscountType').value=prize?.squareDiscountType||'FIXED_PERCENTAGE';
+    el('gamePrizeDiscountValue').value=prize?.squareDiscountValue??'';
     el('gamePrizeWeight').value=prize?.weightPercent??10;
     el('gamePrizeActive').checked=prize==null?true:!!prize.active;
     el('gamePrizeId').value=prize?.id||'';
+    // Show linked badge when an existing prize already has a Square tier
+    const badge=el('gamePrizeLinkedBadge');
+    if(badge){
+      if(prize?.rewardTierId){
+        badge.style.display='flex';
+        el('gamePrizeLinkedText').textContent=`Linked to Square (tier: ${prize.rewardTierId})`;
+      } else {
+        badge.style.display='none';
+      }
+    }
     updateGamePrizeTypeFields();
+    updateDiscountPreview();
     openOverlay('gamePrizeModal');
   }
 
@@ -3737,6 +3766,22 @@
     const type=el('gamePrizeType')?.value;
     el('gamePrizeValueRow').style.display=type==='loyalty_points'?'':'none';
     el('gamePrizeRewardTierRow').style.display=type==='reward_tier'?'':'none';
+    if(type==='reward_tier') updateDiscountPreview();
+  }
+
+  function updateDiscountPreview(){
+    const discType=el('gamePrizeDiscountType')?.value;
+    const discVal=parseFloat(el('gamePrizeDiscountValue')?.value||'0');
+    const unitEl=el('gamePrizeDiscountUnit');
+    const previewEl=el('gamePrizeDiscountPreview');
+    if(!unitEl||!previewEl) return;
+    if(discType==='FIXED_PERCENTAGE'){
+      unitEl.textContent='%';
+      previewEl.textContent=discVal>0?`Customers get ${discVal}% off their entire order`:'';
+    } else {
+      unitEl.textContent='£ off';
+      previewEl.textContent=discVal>0?`Customers get £${discVal.toFixed(2)} off their entire order`:'';
+    }
   }
 
   async function saveGamePrize(){
@@ -3745,12 +3790,23 @@
     btn.disabled=true;btn.textContent='Saving…';
     try{
       const id=parseInt(el('gamePrizeId')?.value||'0')||null;
+      const prizeType=el('gamePrizeType')?.value||'none';
+      const isRewardTier=prizeType==='reward_tier';
+      const discountType=el('gamePrizeDiscountType')?.value||'FIXED_PERCENTAGE';
+      const discountValueRaw=el('gamePrizeDiscountValue')?.value?.trim()||'';
+      // For FIXED_AMOUNT the UI takes £ but Square needs pence — multiply by 100
+      let discountValue=discountValueRaw?parseFloat(discountValueRaw):null;
+      if(discountValue!==null && discountType==='FIXED_AMOUNT') discountValue=Math.round(discountValue*100);
+      if(isRewardTier&&(!discountValueRaw||!discountValue)){
+        toast('Please enter a discount value for the reward voucher','error');return;
+      }
       const payload={
         name:el('gamePrizeName')?.value?.trim()||'',
         description:el('gamePrizeDesc')?.value?.trim()||null,
-        prizeType:el('gamePrizeType')?.value||'none',
+        prizeType,
         value:el('gamePrizeValue')?.value?parseInt(el('gamePrizeValue').value)||null:null,
-        rewardTierId:el('gamePrizeRewardTierId')?.value?.trim()||null,
+        squareDiscountType:isRewardTier?discountType:null,
+        squareDiscountValue:isRewardTier?discountValue:null,
         weightPercent:parseInt(el('gamePrizeWeight')?.value||'10')||10,
         active:el('gamePrizeActive')?.checked||false,
       };
@@ -3760,7 +3816,7 @@
       const r=await api(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
       if(r.ok){
         closeOverlay('gamePrizeModal');
-        toast(id?'Prize updated':'Prize added','success');
+        toast(id?'Prize updated — Square tier synced':'Prize added — Square tier created','success');
         await loadGamePanel();
       }else{
         const d=await r.json().catch(()=>({}));

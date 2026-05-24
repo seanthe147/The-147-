@@ -9053,10 +9053,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/staff/game/prizes", staffAuth, managerAuth, async (req, res) => {
-    const { name, description, prizeType, value, rewardTierId, weightPercent, active } = req.body ?? {};
+    const { name, description, prizeType, value, squareDiscountType, squareDiscountValue, weightPercent, active } = req.body ?? {};
     if (!name || !prizeType) return res.status(400).json({ message: "name and prizeType are required" });
     try {
-      const prize = await storage.upsertGamePrize({ name, description, prizeType, value, rewardTierId, weightPercent: weightPercent ?? 10, active: active !== false });
+      let rewardTierId: string | null = null;
+
+      // Auto-create the Square reward tier when a reward_tier prize is added
+      if (prizeType === "reward_tier" && squareDiscountType && squareDiscountValue && square.isConfigured()) {
+        try {
+          const program = await square.getLoyaltyProgram();
+          if (program?.id) {
+            const tier = await square.createLoyaltyRewardTier(
+              program.id,
+              name,
+              squareDiscountType as "FIXED_PERCENTAGE" | "FIXED_AMOUNT",
+              parseInt(squareDiscountValue, 10),
+            );
+            rewardTierId = tier.id;
+            console.log(`[LOYALTY] Auto-created Square reward tier ${tier.id} for prize "${name}"`);
+          }
+        } catch (sqErr: any) {
+          console.error("[LOYALTY] Failed to auto-create Square reward tier:", sqErr.message);
+          return res.status(502).json({ message: `Square error: ${sqErr.message}` });
+        }
+      }
+
+      const prize = await storage.upsertGamePrize({
+        name, description, prizeType, value,
+        rewardTierId,
+        squareDiscountType: squareDiscountType ?? null,
+        squareDiscountValue: squareDiscountValue ? parseInt(squareDiscountValue, 10) : null,
+        weightPercent: weightPercent ?? 10,
+        active: active !== false,
+      });
       res.json(prize);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -9066,9 +9095,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/staff/game/prizes/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id as string, 10);
     if (!id) return res.status(400).json({ message: "Invalid id" });
-    const { name, description, prizeType, value, rewardTierId, weightPercent, active } = req.body ?? {};
+    const { name, description, prizeType, value, squareDiscountType, squareDiscountValue, weightPercent, active } = req.body ?? {};
     try {
-      const prize = await storage.upsertGamePrize({ id, name, description, prizeType, value, rewardTierId, weightPercent, active });
+      // Fetch the existing prize so we can detect whether the discount definition changed
+      const existing = (await storage.getAllGamePrizes()).find((p) => p.id === id);
+
+      let rewardTierId: string | null = existing?.rewardTierId ?? null;
+
+      if (prizeType === "reward_tier" && squareDiscountType && squareDiscountValue && square.isConfigured()) {
+        const newDiscType = squareDiscountType as "FIXED_PERCENTAGE" | "FIXED_AMOUNT";
+        const newDiscValue = parseInt(squareDiscountValue, 10);
+        const definitionChanged =
+          !existing?.rewardTierId ||
+          existing.squareDiscountType !== newDiscType ||
+          existing.squareDiscountValue !== newDiscValue ||
+          existing.name !== name;
+
+        if (definitionChanged) {
+          try {
+            const program = await square.getLoyaltyProgram();
+            if (program?.id) {
+              // Delete the old tier first (Square doesn't support updating tier definitions)
+              if (existing?.rewardTierId) {
+                await square.deleteLoyaltyRewardTier(program.id, existing.rewardTierId);
+              }
+              const tier = await square.createLoyaltyRewardTier(program.id, name, newDiscType, newDiscValue);
+              rewardTierId = tier.id;
+              console.log(`[LOYALTY] Re-created Square reward tier ${tier.id} for prize "${name}" (definition changed)`);
+            }
+          } catch (sqErr: any) {
+            console.error("[LOYALTY] Failed to sync Square reward tier on edit:", sqErr.message);
+            return res.status(502).json({ message: `Square error: ${sqErr.message}` });
+          }
+        }
+      } else if (prizeType !== "reward_tier") {
+        // If the prize type was changed away from reward_tier, clean up the old tier
+        if (existing?.rewardTierId && square.isConfigured()) {
+          try {
+            const program = await square.getLoyaltyProgram();
+            if (program?.id) await square.deleteLoyaltyRewardTier(program.id, existing.rewardTierId);
+          } catch { /* non-fatal */ }
+        }
+        rewardTierId = null;
+      }
+
+      const prize = await storage.upsertGamePrize({
+        id, name, description, prizeType, value,
+        rewardTierId,
+        squareDiscountType: prizeType === "reward_tier" ? (squareDiscountType ?? null) : null,
+        squareDiscountValue: prizeType === "reward_tier" && squareDiscountValue ? parseInt(squareDiscountValue, 10) : null,
+        weightPercent,
+        active,
+      });
       res.json(prize);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
