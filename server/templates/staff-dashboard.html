@@ -1886,7 +1886,7 @@
           </div>
           <p id="gamePrizeDiscountPreview" style="font-size:12px;color:var(--green,#166534);margin:4px 0 0;font-weight:600"></p>
         </div>
-        <div id="gamePrizeLinkedBadge" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#166534;display:flex;align-items:center;gap:6px">
+        <div id="gamePrizeLinkedBadge" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#166534;align-items:center;gap:6px">
           <span>&#x2713;</span> <span id="gamePrizeLinkedText">Linked to Square automatically</span>
         </div>
       </div>
@@ -3643,20 +3643,19 @@
               <th style="text-align:right;padding:6px 8px;color:var(--text-2);font-weight:600">Weight</th>
               <th style="text-align:right;padding:6px 8px;color:var(--text-2);font-weight:600">Chance</th>
               <th style="text-align:center;padding:6px 8px;color:var(--text-2);font-weight:600">Active</th>
+              <th style="padding:6px 8px"></th>
             </tr>
           </thead>
           <tbody>
             ${prizes.map((p,i)=>`
-              <tr onclick="openGamePrizeModal(${JSON.stringify(p).replace(/"/g,'&quot;')})"
-                  style="border-bottom:1px solid var(--border);cursor:pointer;background:${i%2===0?'var(--surface)':'transparent'}"
-                  onmouseover="this.style.background='var(--hover,#f1f5f9)'" onmouseout="this.style.background='${i%2===0?'var(--surface)':'transparent'}'">
+              <tr style="border-bottom:1px solid var(--border);background:${i%2===0?'var(--surface)':'transparent'}">
                 <td style="padding:8px 8px;color:var(--text);font-weight:500">${esc(p.name)}</td>
                 <td style="padding:8px 8px;color:var(--text-2)">
                   ${esc(PRIZE_TYPE_LABEL[p.prizeType]||p.prizeType)}
                   ${p.prizeType==='loyalty_points'&&p.value?`<span style="margin-left:4px;font-size:11px;color:var(--text-2)">(${p.value} pts)</span>`:''}
                   ${p.prizeType==='reward_tier'&&p.squareDiscountType?`<span style="margin-left:4px;font-size:11px;color:var(--green,#166534);font-weight:600">${p.squareDiscountType==='FIXED_PERCENTAGE'?p.squareDiscountValue+'% off':p.squareDiscountValue?'£'+(p.squareDiscountValue/100).toFixed(2)+' off':''}</span>`:''}
                   ${p.prizeType==='reward_tier'&&p.rewardTierId?`<span title="Square tier ID: ${esc(p.rewardTierId)}" style="margin-left:4px;font-size:11px;color:var(--green,#166534)">&#x2713; Linked</span>`:''}
-                  ${p.prizeType==='reward_tier'&&!p.rewardTierId?`<span style="margin-left:4px;font-size:11px;color:var(--amber,#b45309)">&#x26A0; Not linked</span>`:''}
+                  ${p.prizeType==='reward_tier'&&!p.rewardTierId?`<span style="margin-left:4px;font-size:11px;color:var(--amber,#b45309)">&#x26A0; Not linked to Square yet</span>`:''}
                 </td>
                 <td style="padding:8px 8px;text-align:right;color:var(--text-2)">${p.weightPercent}</td>
                 <td style="padding:8px 8px;text-align:right;color:var(--text-2)">${p.active?pct(p):'—'}</td>
@@ -3664,6 +3663,9 @@
                   <span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;background:${p.active?'var(--green-light,#f0fdf4)':'var(--surface)'};color:${p.active?'var(--green)':'var(--text-2)'}">
                     ${p.active?'Yes':'No'}
                   </span>
+                </td>
+                <td style="padding:8px 8px;text-align:right">
+                  <button class="btn btn-secondary btn-sm" onclick="openGamePrizeModal(${JSON.stringify(p).replace(/"/g,'&quot;')})" style="font-size:12px;padding:4px 10px">Edit</button>
                 </td>
               </tr>`).join('')}
           </tbody>
@@ -3815,8 +3817,15 @@
       const method=id?'PUT':'POST';
       const r=await api(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
       if(r.ok){
+        const d=await r.json().catch(()=>({}));
         closeOverlay('gamePrizeModal');
-        toast(id?'Prize updated — Square tier synced':'Prize added — Square tier created','success');
+        if(d.squareWarning){
+          toast(`Prize saved, but Square link failed: ${d.squareWarning}`,'warn');
+        } else if(d.rewardTierId){
+          toast(id?'Prize updated — linked to Square':'Prize added — linked to Square','success');
+        } else {
+          toast(id?'Prize updated':'Prize added','success');
+        }
         await loadGamePanel();
       }else{
         const d=await r.json().catch(()=>({}));

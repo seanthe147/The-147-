@@ -9101,6 +9101,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let rewardTierId: string | null = null;
 
       // Auto-create the Square reward tier when a reward_tier prize is added
+      let squareWarning: string | null = null;
       if (prizeType === "reward_tier" && squareDiscountType && squareDiscountValue && square.isConfigured()) {
         try {
           const program = await square.getLoyaltyProgram();
@@ -9116,7 +9117,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         } catch (sqErr: any) {
           console.error("[LOYALTY] Failed to auto-create Square reward tier:", sqErr.message);
-          return res.status(502).json({ message: `Square error: ${sqErr.message}` });
+          squareWarning = sqErr.message;
         }
       }
 
@@ -9128,7 +9129,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         weightPercent: weightPercent ?? 10,
         active: active !== false,
       });
-      res.json(prize);
+      res.json({ ...prize, squareWarning });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -9143,6 +9144,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existing = (await storage.getAllGamePrizes()).find((p) => p.id === id);
 
       let rewardTierId: string | null = existing?.rewardTierId ?? null;
+      let squareWarning: string | null = null;
 
       if (prizeType === "reward_tier" && squareDiscountType && squareDiscountValue && square.isConfigured()) {
         const newDiscType = squareDiscountType as "FIXED_PERCENTAGE" | "FIXED_AMOUNT";
@@ -9167,7 +9169,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           } catch (sqErr: any) {
             console.error("[LOYALTY] Failed to sync Square reward tier on edit:", sqErr.message);
-            return res.status(502).json({ message: `Square error: ${sqErr.message}` });
+            squareWarning = sqErr.message;
           }
         }
       } else if (prizeType !== "reward_tier") {
@@ -9189,7 +9191,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         weightPercent,
         active,
       });
-      res.json(prize);
+      res.json({ ...prize, squareWarning });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
