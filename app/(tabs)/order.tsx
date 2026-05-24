@@ -809,6 +809,7 @@ function CartSheet({
   const { expoPushToken } = useNotifications();
   const { flags } = useFeatureFlags();
   const [step, setStep] = useState<"cart" | "customer">("cart");
+  const [selectedRewardId, setSelectedRewardId] = useState<string | null>(null);
   const [tableNote, setTableNote] = useState("");
   const [orderNote, setOrderNote] = useState("");
   const [guestName, setGuestName] = useState("");
@@ -857,6 +858,26 @@ function CartSheet({
     staleTime: 60 * 60 * 1000,
   });
 
+  // Issued loyalty rewards — only fetched when customer is signed in
+  const { data: loyaltyData } = useQuery<{
+    rewards?: Array<{ id: string; reward_tier_id: string; status: string }>;
+    program?: { reward_tiers?: Array<{ id: string; name: string; definition?: { discount_type?: string; percentage_discount?: string; fixed_discount_money?: { amount: number; currency: string } } }> };
+  }>({
+    queryKey: ["/api/loyalty/me"],
+    enabled: !!customer,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const token = await getCustomerToken();
+      if (!token) return {};
+      const res = await fetch(new URL("/api/loyalty/me", getApiUrl()).toString(), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return {};
+      return res.json();
+    },
+  });
+  const issuedRewards = (loyaltyData?.rewards ?? []).filter((r) => r.status === "ISSUED");
+
   useEffect(() => {
     if (!visible) {
       setStep("cart");
@@ -865,6 +886,7 @@ function CartSheet({
       setPaymentSheetVisible(false);
       setPendingOrder(null);
       setCancelledNotice(null);
+      setSelectedRewardId(null);
     } else {
       // Apply deep-link state when the sheet opens (e.g. after returning
       // from /account during the member-discount sign-in flow).
@@ -1010,6 +1032,8 @@ function CartSheet({
     // collected — without bothering the customer's other signed-in
     // devices. The server validates the token format before storing.
     pushToken: expoPushToken || undefined,
+    // Loyalty reward to redeem with this order (if the customer selected one)
+    loyaltyRewardId: selectedRewardId || undefined,
   });
 
   // Fallback path: hosted Square checkout via in-app browser modal.
@@ -1532,6 +1556,87 @@ function CartSheet({
                   </View>
                 ))}
               </View>
+
+              {/* ── Loyalty Reward Picker ── */}
+              {issuedRewards.length > 0 && (
+                <View style={styles.rewardPickerSection}>
+                  <View style={styles.rewardPickerHeader}>
+                    <Ionicons name="gift-outline" size={16} color={Colors.brand.blue} />
+                    <Text style={styles.rewardPickerTitle}>Redeem a reward</Text>
+                  </View>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.rewardPickerRow}
+                  >
+                    {issuedRewards.map((reward) => {
+                      const tier = loyaltyData?.program?.reward_tiers?.find(
+                        (t) => t.id === reward.reward_tier_id
+                      );
+                      const isSelected = selectedRewardId === reward.id;
+                      const def = tier?.definition;
+                      const label = tier?.name ?? "Reward";
+                      let valueLabel = "";
+                      if (def?.discount_type === "FIXED_PERCENTAGE" && def.percentage_discount) {
+                        valueLabel = `${def.percentage_discount}% off`;
+                      } else if (def?.discount_type === "FIXED_AMOUNT" && def.fixed_discount_money) {
+                        valueLabel = formatPrice(def.fixed_discount_money.amount);
+                      }
+                      return (
+                        <Pressable
+                          key={reward.id}
+                          onPress={() =>
+                            setSelectedRewardId(isSelected ? null : reward.id)
+                          }
+                          style={[
+                            styles.rewardPill,
+                            isSelected && styles.rewardPillSelected,
+                          ]}
+                        >
+                          <Ionicons
+                            name={isSelected ? "gift" : "gift-outline"}
+                            size={14}
+                            color={isSelected ? "#fff" : Colors.brand.blue}
+                          />
+                          <View style={{ marginLeft: 6 }}>
+                            <Text
+                              style={[
+                                styles.rewardPillLabel,
+                                isSelected && styles.rewardPillLabelSelected,
+                              ]}
+                            >
+                              {label}
+                            </Text>
+                            {valueLabel ? (
+                              <Text
+                                style={[
+                                  styles.rewardPillValue,
+                                  isSelected && styles.rewardPillValueSelected,
+                                ]}
+                              >
+                                {valueLabel}
+                              </Text>
+                            ) : null}
+                          </View>
+                          {isSelected && (
+                            <Ionicons
+                              name="checkmark-circle"
+                              size={16}
+                              color="#fff"
+                              style={{ marginLeft: 6 }}
+                            />
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                  {selectedRewardId && (
+                    <Text style={styles.rewardPickerNote}>
+                      Reward will be applied and redeemed when you pay.
+                    </Text>
+                  )}
+                </View>
+              )}
 
               <TotalSummary />
 
@@ -3013,6 +3118,70 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 15,
     color: Colors.light.textSecondary,
+  },
+  rewardPickerSection: {
+    marginHorizontal: 20,
+    marginBottom: 14,
+    backgroundColor: "#f0f7ff",
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: "rgba(0,71,171,0.12)",
+  },
+  rewardPickerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
+  },
+  rewardPickerTitle: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: Colors.brand.blue,
+  },
+  rewardPickerRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingRight: 4,
+  },
+  rewardPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 24,
+    borderWidth: 1.5,
+    borderColor: Colors.brand.blue,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  rewardPillSelected: {
+    backgroundColor: Colors.brand.blue,
+    borderColor: Colors.brand.blue,
+  },
+  rewardPillLabel: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
+    color: Colors.brand.blue,
+  },
+  rewardPillLabelSelected: {
+    color: "#fff",
+  },
+  rewardPillValue: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 11,
+    color: Colors.light.textSecondary,
+    marginTop: 1,
+  },
+  rewardPillValueSelected: {
+    color: "rgba(255,255,255,0.85)",
+  },
+  rewardPickerNote: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 11,
+    color: Colors.brand.blue,
+    marginTop: 10,
+    opacity: 0.8,
   },
   checkoutBtn: {
     marginHorizontal: 20,

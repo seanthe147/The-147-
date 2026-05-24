@@ -5819,7 +5819,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Order Checkout ─────────────────────────────────────────────────────────
   app.post("/api/orders/checkout", async (req, res) => {
-    const { items, tableNote, orderNote, customer, pushToken } = req.body;
+    const { items, tableNote, orderNote, customer, pushToken, loyaltyRewardId } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "Cart is empty" });
     }
@@ -5869,6 +5869,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const discountedTotal = discountPercent
         ? Math.round(rawTotalPence * (1 - discountPercent / 100))
         : rawTotalPence;
+
+      // Mark the selected loyalty reward as redeemed against this Square order
+      // so staff can't double-redeem it at the POS. Non-blocking — don't fail
+      // checkout if this call fails.
+      if (loyaltyRewardId && typeof loyaltyRewardId === "string" && squareOrderId) {
+        square.redeemIssuedLoyaltyReward(loyaltyRewardId, squareOrderId).catch(() => {});
+      }
 
       // Store order record (non-blocking — don't fail checkout if DB write fails)
       storage.createAppOrder({
@@ -6766,7 +6773,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Returns the orderId + computed total so the client can charge it via the
   // Web Payments SDK and POST the resulting card token to /api/orders/:id/pay.
   app.post("/api/orders/create", async (req, res) => {
-    const { items, tableNote, orderNote, customer, pushToken } = req.body;
+    const { items, tableNote, orderNote, customer, pushToken, loyaltyRewardId } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "Cart is empty" });
     }
@@ -6814,6 +6821,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, reservedOrderId,
         false, orderDealsEnabled,
       );
+
+      // Mark the selected loyalty reward as redeemed against this Square order
+      // so staff can't double-redeem it at the POS. Non-blocking — don't fail
+      // checkout if this call fails.
+      if (loyaltyRewardId && typeof loyaltyRewardId === "string" && orderId) {
+        square.redeemIssuedLoyaltyReward(loyaltyRewardId, orderId).catch(() => {});
+      }
 
       // Generate a per-order confirmation token. The client stores this
       // alongside the appOrderId on the device and presents it later to the

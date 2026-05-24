@@ -420,7 +420,12 @@ export function ScratchCardGame({
         }
       },
       onPanResponderMove: (evt) => {
-        handlePointRef.current(evt.nativeEvent.pageX, evt.nativeEvent.pageY);
+        // Re-measure on every move so a ScrollView scroll between the initial
+        // touch and now doesn't cause the brush to appear offset/jumping.
+        cardViewRef.current?.measure((_x, _y, _w, _h, px, py) => {
+          cardPosRef.current = { x: px, y: py };
+          handlePointRef.current(evt.nativeEvent.pageX, evt.nativeEvent.pageY);
+        });
       },
       onPanResponderRelease: () => {
         // Re-enable scroll as soon as the finger lifts

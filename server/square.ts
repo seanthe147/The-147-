@@ -124,6 +124,22 @@ export async function deleteLoyaltyReward(rewardId: string) {
   await squareRequest("DELETE", `/v2/loyalty/rewards/${rewardId}`);
 }
 
+// Mark an ISSUED reward as REDEEMED against an order.
+// This is the Square API call that actually uses up the reward so it can't
+// be double-redeemed at the till. Safe to call after payment is confirmed.
+export async function redeemIssuedLoyaltyReward(rewardId: string, orderId: string): Promise<void> {
+  try {
+    await squareRequest("POST", `/v2/loyalty/rewards/${rewardId}/redeem`, {
+      idempotency_key: `redeem-issued-${rewardId}-${orderId}`,
+      order_id: orderId,
+    });
+  } catch (err: any) {
+    // Log but don't throw — a failed redemption marking is recoverable by
+    // staff; we must not fail the entire checkout for this.
+    console.error(`[LOYALTY] Failed to mark reward ${rewardId} redeemed on order ${orderId}:`, err?.message);
+  }
+}
+
 export async function searchLoyaltyEvents(accountId: string, limit = 10): Promise<any[]> {
   try {
     const data = await squareRequest("POST", "/v2/loyalty/events/search", {
