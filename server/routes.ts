@@ -7806,6 +7806,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ updated, pushed });
   });
 
+  // ── Quick phone-only points lookup (no auth required) ────────────────────
+  // Lets any customer type their phone number and see their current balance
+  // directly from Square — mirrors what the POS till does. No session or OTP
+  // needed because the points balance is non-sensitive (visible at any till).
+  app.post("/api/loyalty/points-lookup", async (req, res) => {
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    const rl = checkRateLimit(`points-lookup:${ip}`, 20, 5 * 60 * 1000);
+    if (!rl.allowed) {
+      res.setHeader("Retry-After", String(rl.retryAfter));
+      return res.status(429).json({ message: "Too many lookups. Please wait a moment." });
+    }
+    if (!square.isConfigured()) {
+      return res.status(503).json({ message: "Loyalty program not configured" });
+    }
+    const { phone } = req.body;
+    if (!phone || typeof phone !== "string") {
+      return res.status(400).json({ message: "Phone number is required" });
+    }
+    const phoneCleaned = phone.replace(/\s/g, "");
+    if (phoneCleaned.length < 10) {
+      return res.status(400).json({ message: "Please enter a valid phone number" });
+    }
+    try {
+      const [account, program] = await Promise.all([
+        square.searchLoyaltyAccount(phoneCleaned),
+        square.getLoyaltyProgram(),
+      ]);
+      if (!account) {
+        return res.json({ found: false });
+      }
+      res.json({
+        found: true,
+        balance: account.balance ?? 0,
+        lifetime_points: account.lifetime_points ?? 0,
+        terminology: program?.terminology ?? { one: "point", other: "points" },
+      });
+    } catch (err: any) {
+      console.error("[LOYALTY] points-lookup error:", err.message);
+      res.status(500).json({ message: "Could not look up points right now. Please try again." });
+    }
+  });
+
   app.post("/api/loyalty/phone-auth", async (req, res) => {
     const ip = req.ip || req.socket.remoteAddress || "unknown";
     const rl = checkRateLimit(`phone-auth:${ip}`, 10, 15 * 60 * 1000);

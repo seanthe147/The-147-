@@ -158,6 +158,17 @@ export default function LoyaltyScreen() {
   const [lookupDone, setLookupDone] = useState(false);
   const [error, setError] = useState("");
 
+  // Quick phone-only lookup — no OTP needed
+  const [quickResult, setQuickResult] = useState<{
+    found: boolean;
+    balance?: number;
+    lifetime_points?: number;
+    terminology?: { one: string; other: string };
+  } | null>(null);
+  const [quickLoading, setQuickLoading] = useState(false);
+  const [quickError, setQuickError] = useState("");
+  const [showEnrollFlow, setShowEnrollFlow] = useState(false);
+
   const { data: membershipPlans = [] } = useQuery<MembershipPlan[]>({
     queryKey: ["/api/membership/plans"],
   });
@@ -408,7 +419,39 @@ export default function LoyaltyScreen() {
     setOtpCode("");
     setError("");
     setStep("phone");
+    setQuickResult(null);
+    setQuickError("");
+    setShowEnrollFlow(false);
   }, [sessionToken]);
+
+  const handleQuickLookup = useCallback(async () => {
+    const phoneCleaned = phone.replace(/\s/g, "");
+    if (phoneCleaned.length < 10) {
+      setQuickError("Please enter a valid UK phone number");
+      return;
+    }
+    setQuickLoading(true);
+    setQuickError("");
+    setQuickResult(null);
+    try {
+      const res = await fetch(loyaltyUrl("/api/loyalty/points-lookup"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: phoneCleaned }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setQuickError(data.message || "Could not look up your points. Please try again.");
+        return;
+      }
+      setQuickResult(data);
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      setQuickError("Network error. Please check your connection and try again.");
+    } finally {
+      setQuickLoading(false);
+    }
+  }, [phone]);
 
   const program: LoyaltyProgram | null = programData?.program || null;
   const programActive = programData?.active === true;
@@ -597,9 +640,9 @@ export default function LoyaltyScreen() {
               <View style={styles.lockIconRow}>
                 <Ionicons name="phone-portrait-outline" size={28} color={Colors.brand.blue} />
               </View>
-              <Text style={styles.sectionTitle}>Access Your Account</Text>
+              <Text style={styles.sectionTitle}>Check Your Points</Text>
               <Text style={styles.lookupDescription}>
-                Enter your phone number and email address. We'll send you a verification code to confirm it's you.
+                Enter the phone number linked to your loyalty account.
               </Text>
 
               <View style={styles.inputRow}>
@@ -610,58 +653,148 @@ export default function LoyaltyScreen() {
                     placeholder="07xxx xxxxxx"
                     placeholderTextColor={Colors.light.textSecondary}
                     value={phone}
-                    onChangeText={setPhone}
+                    onChangeText={(v) => { setPhone(v); setQuickResult(null); setQuickError(""); }}
                     keyboardType="phone-pad"
                     autoComplete="tel"
                     maxLength={15}
-                    returnKeyType="next"
-                  />
-                </View>
-              </View>
-
-              <View style={[styles.inputRow, { marginTop: 10 }]}>
-                <View style={styles.inputWrap}>
-                  <Ionicons name="mail-outline" size={18} color={Colors.light.textSecondary} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.phoneInput}
-                    placeholder="your@email.com"
-                    placeholderTextColor={Colors.light.textSecondary}
-                    value={email}
-                    onChangeText={setEmail}
-                    keyboardType="email-address"
-                    autoComplete="email"
-                    autoCapitalize="none"
                     returnKeyType="go"
-                    onSubmitEditing={handleSendCode}
+                    onSubmitEditing={handleQuickLookup}
                   />
                 </View>
               </View>
-
-              <Text style={styles.fieldHint}>
-                Your phone number must match the one registered on your loyalty account.
-              </Text>
 
               <Pressable
-                onPress={handleSendCode}
-                disabled={isLoading || phone.replace(/\s/g, "").length < 10 || !email.trim()}
+                onPress={handleQuickLookup}
+                disabled={quickLoading || phone.replace(/\s/g, "").length < 10}
                 style={({ pressed }) => [
                   styles.lookupButton,
-                  (isLoading || phone.replace(/\s/g, "").length < 10 || !email.trim()) && styles.buttonDisabled,
+                  (quickLoading || phone.replace(/\s/g, "").length < 10) && styles.buttonDisabled,
                   { opacity: pressed ? 0.85 : 1 },
                 ]}
               >
-                {sendCodeMutation.isPending ? (
+                {quickLoading ? (
                   <ActivityIndicator size="small" color="#FFF" />
                 ) : (
                   <>
-                    <Ionicons name="send-outline" size={18} color="#FFF" />
-                    <Text style={styles.buttonText}>Send Verification Code</Text>
+                    <Ionicons name="search-outline" size={18} color="#FFF" />
+                    <Text style={styles.buttonText}>Check My Points</Text>
                   </>
                 )}
               </Pressable>
 
-              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+              {quickError ? <Text style={styles.errorText}>{quickError}</Text> : null}
+
+              {/* ── Quick lookup result ── */}
+              {quickResult && (
+                <View style={styles.quickResultWrap}>
+                  {quickResult.found ? (
+                    <>
+                      <View style={styles.quickPointsBadge}>
+                        <Ionicons name="star" size={22} color={Colors.brand.gold} />
+                        <Text style={styles.quickPointsNumber}>{quickResult.balance ?? 0}</Text>
+                        <Text style={styles.quickPointsLabel}>
+                          {(quickResult.balance ?? 0) === 1
+                            ? (quickResult.terminology?.one || "point")
+                            : (quickResult.terminology?.other || "points")}
+                        </Text>
+                      </View>
+                      <Text style={styles.quickPointsNote}>
+                        {quickResult.lifetime_points ? `${quickResult.lifetime_points} earned in total` : ""}
+                      </Text>
+                    </>
+                  ) : (
+                    <View style={styles.notFoundWrap}>
+                      <Ionicons name="person-add-outline" size={22} color={Colors.brand.blue} />
+                      <Text style={styles.notFoundText}>
+                        No loyalty account found for this number.{"\n"}Sign in to the app to join The 147 Rewards.
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
             </View>
+
+            {/* ── Secondary: full account access via email+OTP ── */}
+            {!showEnrollFlow ? (
+              <Pressable
+                onPress={() => setShowEnrollFlow(true)}
+                style={({ pressed }) => [styles.secondaryLink, { opacity: pressed ? 0.7 : 1 }]}
+              >
+                <Ionicons name="mail-outline" size={15} color={Colors.light.textSecondary} />
+                <Text style={styles.secondaryLinkText}>Sign in with email for full account access</Text>
+              </Pressable>
+            ) : (
+              <View style={styles.lookupCard}>
+                <Text style={[styles.sectionTitle, { marginBottom: 4 }]}>Full Account Access</Text>
+                <Text style={styles.lookupDescription}>
+                  Enter your phone number and email to receive a verification code.
+                </Text>
+
+                <View style={styles.inputRow}>
+                  <View style={styles.inputWrap}>
+                    <Ionicons name="call-outline" size={18} color={Colors.light.textSecondary} style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.phoneInput}
+                      placeholder="07xxx xxxxxx"
+                      placeholderTextColor={Colors.light.textSecondary}
+                      value={phone}
+                      onChangeText={setPhone}
+                      keyboardType="phone-pad"
+                      autoComplete="tel"
+                      maxLength={15}
+                      returnKeyType="next"
+                    />
+                  </View>
+                </View>
+
+                <View style={[styles.inputRow, { marginTop: 8 }]}>
+                  <View style={styles.inputWrap}>
+                    <Ionicons name="mail-outline" size={18} color={Colors.light.textSecondary} style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.phoneInput}
+                      placeholder="your@email.com"
+                      placeholderTextColor={Colors.light.textSecondary}
+                      value={email}
+                      onChangeText={setEmail}
+                      keyboardType="email-address"
+                      autoComplete="email"
+                      autoCapitalize="none"
+                      returnKeyType="go"
+                      onSubmitEditing={handleSendCode}
+                    />
+                  </View>
+                </View>
+
+                <Pressable
+                  onPress={handleSendCode}
+                  disabled={isLoading || phone.replace(/\s/g, "").length < 10 || !email.trim()}
+                  style={({ pressed }) => [
+                    styles.lookupButton,
+                    (isLoading || phone.replace(/\s/g, "").length < 10 || !email.trim()) && styles.buttonDisabled,
+                    { opacity: pressed ? 0.85 : 1 },
+                  ]}
+                >
+                  {sendCodeMutation.isPending ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <>
+                      <Ionicons name="send-outline" size={18} color="#FFF" />
+                      <Text style={styles.buttonText}>Send Verification Code</Text>
+                    </>
+                  )}
+                </Pressable>
+
+                <Pressable
+                  onPress={() => setShowEnrollFlow(false)}
+                  style={({ pressed }) => [styles.logoutButton, { alignSelf: "center", marginTop: 8, opacity: pressed ? 0.7 : 1 }]}
+                >
+                  <Ionicons name="arrow-back-outline" size={15} color={Colors.light.textSecondary} />
+                  <Text style={styles.logoutButtonText}>Back to points check</Text>
+                </Pressable>
+
+                {error ? <Text style={styles.errorText}>{error}</Text> : null}
+              </View>
+            )}
           </>
         ) : step === "otp" ? (
           <>
