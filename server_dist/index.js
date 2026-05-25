@@ -5148,6 +5148,8 @@ function decodeAttrEntities(s) {
   return s.replace(/&#x([0-9a-f]+);?|&#(\d+);?/gi, (_m, hex, dec) => {
     const code = hex ? parseInt(hex, 16) : parseInt(dec, 10);
     return Number.isFinite(code) && code > 0 && code < 1114112 ? String.fromCodePoint(code) : "";
+  }).replace(/&([a-zA-Z][a-zA-Z0-9]*);/g, (_m, name) => {
+    return Object.prototype.hasOwnProperty.call(NAMED_ENTITY_MAP, name) ? NAMED_ENTITY_MAP[name] : _m;
   });
 }
 function sanitizeBodyHtml(html) {
@@ -5307,7 +5309,7 @@ async function saveOverride(slug, key, value) {
   }
   await storage.setSetting(settingKey(slug, key), raw);
 }
-var HERO_BG_HINT, META_TITLE_HINT, META_DESC_HINT, pageBlocks, sectionBlocks, DEFAULT_NAV, WEB_PAGES, SITE_SLUG, settingKey, escapeHtml2, SCRIPT_TAG_RE, STYLE_TAG_RE, DANGEROUS_TAG_RE, ON_HANDLER_RE, URL_ATTR_RE, DANGEROUS_SCHEME_RE, CUSTOM_PAGE_SLUG_PREFIX;
+var HERO_BG_HINT, META_TITLE_HINT, META_DESC_HINT, pageBlocks, sectionBlocks, DEFAULT_NAV, WEB_PAGES, SITE_SLUG, settingKey, escapeHtml2, SCRIPT_TAG_RE, STYLE_TAG_RE, DANGEROUS_TAG_RE, ON_HANDLER_RE, URL_ATTR_RE, DANGEROUS_SCHEME_RE, NAMED_ENTITY_MAP, CUSTOM_PAGE_SLUG_PREFIX;
 var init_web_content = __esm({
   "server/web-content.ts"() {
     "use strict";
@@ -5488,6 +5490,23 @@ var init_web_content = __esm({
     ON_HANDLER_RE = /\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
     URL_ATTR_RE = /\b(href|src|srcset|action|formaction|background|poster|xlink:href|data)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi;
     DANGEROUS_SCHEME_RE = /^(?:javascript|vbscript|livescript|mocha|data\s*:\s*text\/html)\s*:/i;
+    NAMED_ENTITY_MAP = {
+      colon: ":",
+      lpar: "(",
+      rpar: ")",
+      sol: "/",
+      bsol: "\\",
+      period: ".",
+      comma: ",",
+      semi: ";",
+      lt: "<",
+      gt: ">",
+      amp: "&",
+      quot: '"',
+      apos: "'",
+      Tab: "	",
+      NewLine: "\n"
+    };
     CUSTOM_PAGE_SLUG_PREFIX = "custom:";
   }
 });
