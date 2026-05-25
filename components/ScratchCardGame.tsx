@@ -250,17 +250,20 @@ export function ScratchCardGame({
   const overlayAnim      = useRef(new Animated.Value(1)).current;
 
   // ── Derived ──────────────────────────────────────────────────────────────
-  // Once the user has started scratching, ignore the server-side playedToday
-  // flag — the API call fires immediately on first touch and the query
-  // invalidation can come back before the reveal animation finishes, which
-  // would switch the component to the "already played" screen mid-scratch.
-  const alreadyPlayed = localPlayed || (!scratchStarted && (myPlays?.playedToday ?? false));
+  // Use apiCalledRef (set synchronously on first touch) instead of the
+  // scratchStarted state (which is async and may not be committed before the
+  // query invalidation refetch returns playedToday=true). Without this, there
+  // is a race condition where the "already played" screen appears mid-scratch.
+  const alreadyPlayed = localPlayed || (!apiCalledRef.current && (myPlays?.playedToday ?? false));
   const gameActive    = !!(config?.enabled && config?.withinWindow);
   const loading       = cfgLoading || playsLoading;
 
   // ── Reset when a new day arrives ─────────────────────────────────────────
+  // Guard with !apiCalledRef.current so mid-scratch query refetches can never
+  // wipe the scratch state. The reset is only needed between days (when the
+  // user hasn't yet interacted with today's card).
   useEffect(() => {
-    if (!localPlayed && !(myPlays?.playedToday)) {
+    if (!localPlayed && !(myPlays?.playedToday) && !apiCalledRef.current) {
       scratchPointsRef.current = [];
       coveredCells.current.clear();
       thresholdRef.current = false;

@@ -1408,8 +1408,10 @@ function CartSheet({
     <Modal
       // iOS refuses to stack a full-screen modal on top of a pageSheet, so
       // we hide the cart while the payment sheet is presenting and restore
-      // it again on close. Without this, tapping Place Order does nothing.
-      visible={visible && !paymentSheetVisible}
+      // it again on close. Without this on iOS, tapping Place Order does nothing.
+      // On Android both modals are full-screen and can be layered safely — hiding
+      // the cart first creates a race where the payment sheet never appears.
+      visible={Platform.OS === "ios" ? (visible && !paymentSheetVisible) : visible}
       animationType="slide"
       presentationStyle="pageSheet"
       onRequestClose={handleClose}

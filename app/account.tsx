@@ -106,7 +106,9 @@ function DOBPicker({ value, onChange, testID }: {
     return React.createElement("input", inputProps);
   }
 
-  const dateValue = value ? parseDateLocal(value) : new Date(2000, 0, 1);
+  // Default to ~25 years ago so the spinner starts near a realistic birth year.
+  const defaultDate = new Date(new Date().getFullYear() - 25, 0, 1);
+  const dateValue = value ? parseDateLocal(value) : defaultDate;
   const maxDate = new Date();
   const minDate = new Date();
   minDate.setFullYear(minDate.getFullYear() - 120);
@@ -162,8 +164,8 @@ function DOBPicker({ value, onChange, testID }: {
               <Pressable
                 style={styles.dobModalDone}
                 onPress={() => {
-                  // Ensure a value is set even if the user didn't spin the wheel.
-                  if (!value) onChange(localDateStr(dateValue));
+                  // Just close — the live onChange during spinning already set
+                  // the value. We never auto-set a date the user didn't choose.
                   setShowPicker(false);
                 }}
               >
