@@ -807,7 +807,13 @@ var init_schema = __esm({
       value: integer("value"),
       // points to award (prizeType='loyalty_points')
       rewardTierId: text("reward_tier_id"),
-      // Square reward tier ID (prizeType='reward_tier')
+      // Square reward tier ID (prizeType='reward_tier') — manager selects from Square Dashboard
+      squareDiscountType: text("square_discount_type"),
+      // 'FIXED_PERCENTAGE' | 'FIXED_AMOUNT' — copied from Square tier for display
+      squareDiscountValue: integer("square_discount_value"),
+      // % value (e.g. 10 = 10%) or pence (e.g. 500 = £5.00)
+      tierPoints: integer("tier_points"),
+      // points cost of the Square reward tier (used to pre-fund the customer before issuing)
       weightPercent: integer("weight_percent").notNull().default(10),
       // probability weight (relative)
       active: boolean("active").notNull().default(true),
@@ -1290,6 +1296,15 @@ async function runStartupMigrations() {
       INSERT INTO game_prizes (name, description, prize_type, value, weight_percent, active)
         SELECT '50 Loyalty Points', 'You won 50 loyalty points \u2014 they have been added to your account!', 'loyalty_points', 50, 30, true
         WHERE NOT EXISTS (SELECT 1 FROM game_prizes WHERE prize_type = 'loyalty_points' LIMIT 1);
+    `);
+    await client.query(`
+      ALTER TABLE game_prizes
+        ADD COLUMN IF NOT EXISTS square_discount_type TEXT,
+        ADD COLUMN IF NOT EXISTS square_discount_value INTEGER;
+    `);
+    await client.query(`
+      ALTER TABLE game_prizes
+        ADD COLUMN IF NOT EXISTS tier_points INTEGER;
     `);
     await client.query(`
       INSERT INTO game_prizes (name, description, prize_type, weight_percent, active)
@@ -3248,6 +3263,7 @@ __export(square_exports, {
   createCatalogSubscriptionPlan: () => createCatalogSubscriptionPlan,
   createDepositPaymentLink: () => createDepositPaymentLink,
   createLoyaltyAccount: () => createLoyaltyAccount,
+  createLoyaltyRewardTier: () => createLoyaltyRewardTier,
   createMembershipCheckoutLink: () => createMembershipCheckoutLink,
   createOrderCheckoutLink: () => createOrderCheckoutLink,
   createRefund: () => createRefund,
@@ -3258,13 +3274,16 @@ __export(square_exports, {
   createTerminalCheckout: () => createTerminalCheckout,
   createTerminalDeviceCode: () => createTerminalDeviceCode,
   deleteLoyaltyReward: () => deleteLoyaltyReward,
+  deleteLoyaltyRewardTier: () => deleteLoyaltyRewardTier,
   disableSquareCard: () => disableSquareCard,
   findSquareCustomerByEmail: () => findSquareCustomerByEmail,
   getApplicationId: () => getApplicationId,
   getCustomerGroupIds: () => getCustomerGroupIds,
   getEnvironment: () => getEnvironment,
+  getIssuedRewardDiscountPence: () => getIssuedRewardDiscountPence,
   getLoyaltyAccount: () => getLoyaltyAccount,
   getLoyaltyProgram: () => getLoyaltyProgram,
+  getLoyaltyProgramRewardTiers: () => getLoyaltyProgramRewardTiers,
   getMenuFromSquare: () => getMenuFromSquare,
   getOrCreateCustomerGroup: () => getOrCreateCustomerGroup,
   getOrder: () => getOrder,
@@ -3278,6 +3297,7 @@ __export(square_exports, {
   invalidateMenuCache: () => invalidateMenuCache,
   isConfigured: () => isConfigured,
   isWebPaymentsConfigured: () => isWebPaymentsConfigured,
+  issueFreeGameReward: () => issueFreeGameReward,
   listCustomerGroups: () => listCustomerGroups,
   listCustomersInGroup: () => listCustomersInGroup,
   listSquarePaymentsForCustomer: () => listSquarePaymentsForCustomer,
@@ -3285,6 +3305,7 @@ __export(square_exports, {
   membershipGroupName: () => membershipGroupName,
   pauseSquareSubscription: () => pauseSquareSubscription,
   payOrderWithCashTender: () => payOrderWithCashTender,
+  redeemIssuedLoyaltyReward: () => redeemIssuedLoyaltyReward,
   redeemLoyaltyReward: () => redeemLoyaltyReward,
   removeCustomerFromGroup: () => removeCustomerFromGroup,
   resumeSquareSubscription: () => resumeSquareSubscription,
@@ -3390,6 +3411,72 @@ async function redeemLoyaltyReward(accountId, rewardTierId, idempotencyKey) {
 async function deleteLoyaltyReward(rewardId) {
   await squareRequest("DELETE", `/v2/loyalty/rewards/${rewardId}`);
 }
+async function getLoyaltyProgramRewardTiers() {
+  const program = await getLoyaltyProgram();
+  if (!program?.reward_tiers) return [];
+  return program.reward_tiers.map((t) => ({
+    id: t.id,
+    name: t.name,
+    points: t.points ?? 0,
+    discountType: t.definition?.discount_type ?? null,
+    // FIXED_PERCENTAGE: percentage_discount is a string like "10"
+    // FIXED_AMOUNT: fixed_discount_money.amount is pence
+    discountValue: t.definition?.discount_type === "FIXED_PERCENTAGE" ? parseInt(t.definition.percentage_discount ?? "0", 10) : t.definition?.fixed_discount_money?.amount ?? null
+  }));
+}
+async function issueFreeGameReward(accountId, rewardTierId, tierPoints, idempotencyKey) {
+  await adjustLoyaltyPoints(
+    accountId,
+    tierPoints,
+    "Scratch card game prize",
+    `${idempotencyKey}-pts`
+  );
+  const data = await squareRequest("POST", "/v2/loyalty/rewards", {
+    reward: {
+      loyalty_account_id: accountId,
+      reward_tier_id: rewardTierId
+    },
+    idempotency_key: idempotencyKey
+  });
+  return data.reward;
+}
+async function createLoyaltyRewardTier(programId, name, discountType, discountValue) {
+  const definition = {
+    discount_type: discountType,
+    scope: { scope_type: "ORDER" }
+  };
+  if (discountType === "FIXED_PERCENTAGE") {
+    definition.percentage_discount = String(discountValue);
+  } else {
+    definition.fixed_discount_money = { amount: discountValue, currency: "GBP" };
+  }
+  const data = await squareRequest(
+    "POST",
+    `/v2/loyalty/programs/${programId}/reward-tiers`,
+    {
+      idempotency_key: `create-tier-${programId}-${name.replace(/\s+/g, "-").toLowerCase()}-${Date.now()}`,
+      reward_tier: { name, definition }
+    }
+  );
+  return data.reward_tier;
+}
+async function deleteLoyaltyRewardTier(programId, tierId) {
+  try {
+    await squareRequest("DELETE", `/v2/loyalty/programs/${programId}/reward-tiers/${tierId}`);
+  } catch (err) {
+    console.warn(`[LOYALTY] Could not delete reward tier ${tierId}:`, err?.message);
+  }
+}
+async function redeemIssuedLoyaltyReward(rewardId, orderId) {
+  try {
+    await squareRequest("POST", `/v2/loyalty/rewards/${rewardId}/redeem`, {
+      idempotency_key: `redeem-issued-${rewardId}-${orderId}`,
+      order_id: orderId
+    });
+  } catch (err) {
+    console.error(`[LOYALTY] Failed to mark reward ${rewardId} redeemed on order ${orderId}:`, err?.message);
+  }
+}
 async function searchLoyaltyEvents(accountId, limit = 10) {
   try {
     const data = await squareRequest("POST", "/v2/loyalty/events/search", {
@@ -3416,6 +3503,27 @@ async function searchIssuedRewards(accountId) {
     return data.rewards || [];
   } catch {
     return [];
+  }
+}
+async function getIssuedRewardDiscountPence(rewardId, orderTotalPence) {
+  try {
+    const rewardData = await squareRequest("GET", `/v2/loyalty/rewards/${rewardId}`);
+    const tierId = rewardData?.reward?.reward_tier_id;
+    if (!tierId) return 0;
+    const program = await getLoyaltyProgram();
+    const tier = (program?.reward_tiers ?? []).find((t) => t.id === tierId);
+    const def = tier?.definition;
+    if (!def) return 0;
+    if (def.discount_type === "FIXED_AMOUNT" && def.fixed_discount_money?.amount) {
+      return Number(def.fixed_discount_money.amount);
+    }
+    if (def.discount_type === "FIXED_PERCENTAGE" && def.percentage_discount) {
+      return Math.round(orderTotalPence * Number(def.percentage_discount) / 100);
+    }
+    return 0;
+  } catch (err) {
+    console.error(`[LOYALTY] Could not determine discount for reward ${rewardId}:`, err?.message);
+    return 0;
   }
 }
 async function searchOpenOrders() {
@@ -11537,7 +11645,7 @@ async function registerRoutes(app2) {
     res.json({ success: true });
   });
   app2.post("/api/orders/checkout", async (req, res) => {
-    const { items, tableNote, orderNote, customer, pushToken } = req.body;
+    const { items, tableNote, orderNote, customer, pushToken, loyaltyRewardId } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "Cart is empty" });
     }
@@ -11580,7 +11688,14 @@ async function registerRoutes(app2) {
         reservedOrderId,
         orderDealsEnabledHosted
       );
-      const discountedTotal = discountPercent ? Math.round(rawTotalPence * (1 - discountPercent / 100)) : rawTotalPence;
+      const memberDiscountedTotal = discountPercent ? Math.round(rawTotalPence * (1 - discountPercent / 100)) : rawTotalPence;
+      let loyaltyDiscountPence = 0;
+      if (loyaltyRewardId && typeof loyaltyRewardId === "string" && squareOrderId) {
+        loyaltyDiscountPence = await getIssuedRewardDiscountPence(loyaltyRewardId, memberDiscountedTotal);
+        redeemIssuedLoyaltyReward(loyaltyRewardId, squareOrderId).catch(() => {
+        });
+      }
+      const discountedTotal = Math.max(0, memberDiscountedTotal - loyaltyDiscountPence);
       storage.createAppOrder({
         id: reservedOrderId,
         squareLinkId: linkId || void 0,
@@ -12263,7 +12378,7 @@ async function registerRoutes(app2) {
     res.json({ ok: true });
   });
   app2.post("/api/orders/create", async (req, res) => {
-    const { items, tableNote, orderNote, customer, pushToken } = req.body;
+    const { items, tableNote, orderNote, customer, pushToken, loyaltyRewardId } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "Cart is empty" });
     }
@@ -12298,7 +12413,7 @@ async function registerRoutes(app2) {
       const { discountPercent, discountLabel, excludeWithDeals } = await resolveMemberDiscountImpl(req, customer, syncSquareMembershipForCustomer);
       const reservedOrderId = await storage.reserveAppOrderId();
       const orderDealsEnabled = await storage.getSetting("square_deals_order_enabled") !== "false";
-      const { orderId, totalPence, pricedItems } = await createSquareOrderForCheckout(
+      const { orderId, totalPence: squareTotalPence, pricedItems } = await createSquareOrderForCheckout(
         items,
         tableNote,
         customer,
@@ -12310,6 +12425,13 @@ async function registerRoutes(app2) {
         false,
         orderDealsEnabled
       );
+      let loyaltyDiscountPence = 0;
+      if (loyaltyRewardId && typeof loyaltyRewardId === "string" && orderId) {
+        loyaltyDiscountPence = await getIssuedRewardDiscountPence(loyaltyRewardId, squareTotalPence);
+        redeemIssuedLoyaltyReward(loyaltyRewardId, orderId).catch(() => {
+        });
+      }
+      const totalPence = Math.max(0, squareTotalPence - loyaltyDiscountPence);
       const confirmationToken = randomBytes3(24).toString("hex");
       const appOrder = await storage.createAppOrder({
         id: reservedOrderId,
@@ -13082,6 +13204,43 @@ async function registerRoutes(app2) {
       pushed = true;
     }
     res.json({ updated, pushed });
+  });
+  app2.post("/api/loyalty/points-lookup", async (req, res) => {
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    const rl = checkRateLimit(`points-lookup:${ip}`, 20, 5 * 60 * 1e3);
+    if (!rl.allowed) {
+      res.setHeader("Retry-After", String(rl.retryAfter));
+      return res.status(429).json({ message: "Too many lookups. Please wait a moment." });
+    }
+    if (!isConfigured()) {
+      return res.status(503).json({ message: "Loyalty program not configured" });
+    }
+    const { phone } = req.body;
+    if (!phone || typeof phone !== "string") {
+      return res.status(400).json({ message: "Phone number is required" });
+    }
+    const phoneCleaned = phone.replace(/\s/g, "");
+    if (phoneCleaned.length < 10) {
+      return res.status(400).json({ message: "Please enter a valid phone number" });
+    }
+    try {
+      const [account, program] = await Promise.all([
+        searchLoyaltyAccount(phoneCleaned),
+        getLoyaltyProgram()
+      ]);
+      if (!account) {
+        return res.json({ found: false });
+      }
+      res.json({
+        found: true,
+        balance: account.balance ?? 0,
+        lifetime_points: account.lifetime_points ?? 0,
+        terminology: program?.terminology ?? { one: "point", other: "points" }
+      });
+    } catch (err) {
+      console.error("[LOYALTY] points-lookup error:", err.message);
+      res.status(500).json({ message: "Could not look up points right now. Please try again." });
+    }
   });
   app2.post("/api/loyalty/phone-auth", async (req, res) => {
     const ip = req.ip || req.socket.remoteAddress || "unknown";
@@ -14049,12 +14208,14 @@ async function registerRoutes(app2) {
         }
         if (prize.prizeType === "reward_tier" && prize.rewardTierId && customer?.squareLoyaltyAccountId) {
           try {
-            const reward = await redeemLoyaltyReward(
+            const reward = await issueFreeGameReward(
               customer.squareLoyaltyAccountId,
               prize.rewardTierId,
+              prize.tierPoints ?? 0,
               `game-reward-${customerId}-${Date.now()}`
             );
             squareRewardId = reward?.id ?? null;
+            console.log(`[Game] Issued Square loyalty reward ${squareRewardId} to account ${customer.squareLoyaltyAccountId} for prize "${prize.name}"`);
           } catch (e) {
             console.warn("[Game] Reward issue failed:", e.message);
           }
@@ -14135,11 +14296,35 @@ async function registerRoutes(app2) {
       res.status(500).json({ message: err.message });
     }
   });
-  app2.post("/api/staff/game/prizes", staffAuth, managerAuth, async (req, res) => {
-    const { name, description, prizeType, value, rewardTierId, weightPercent, active } = req.body ?? {};
-    if (!name || !prizeType) return res.status(400).json({ message: "name and prizeType are required" });
+  app2.get("/api/staff/game/square-reward-tiers", staffAuth, managerAuth, async (_req, res) => {
+    if (!isConfigured()) return res.status(503).json({ message: "Square is not configured" });
     try {
-      const prize = await storage.upsertGamePrize({ name, description, prizeType, value, rewardTierId, weightPercent: weightPercent ?? 10, active: active !== false });
+      const tiers = await getLoyaltyProgramRewardTiers();
+      res.json(tiers);
+    } catch (err) {
+      console.error("[LOYALTY] Failed to fetch reward tiers:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app2.post("/api/staff/game/prizes", staffAuth, managerAuth, async (req, res) => {
+    const { name, description, prizeType, value, rewardTierId, squareDiscountType, squareDiscountValue, tierPoints, weightPercent, active } = req.body ?? {};
+    if (!name || !prizeType) return res.status(400).json({ message: "name and prizeType are required" });
+    if (prizeType === "reward_tier" && !rewardTierId) {
+      return res.status(400).json({ message: "Please select a Square reward tier for this prize type" });
+    }
+    try {
+      const prize = await storage.upsertGamePrize({
+        name,
+        description,
+        prizeType,
+        value: value ? parseInt(value, 10) : null,
+        rewardTierId: prizeType === "reward_tier" ? rewardTierId ?? null : null,
+        squareDiscountType: prizeType === "reward_tier" ? squareDiscountType ?? null : null,
+        squareDiscountValue: prizeType === "reward_tier" && squareDiscountValue != null ? parseInt(squareDiscountValue, 10) : null,
+        tierPoints: prizeType === "reward_tier" && tierPoints != null ? parseInt(tierPoints, 10) : null,
+        weightPercent: weightPercent ?? 10,
+        active: active !== false
+      });
       res.json(prize);
     } catch (err) {
       res.status(500).json({ message: err.message });
@@ -14148,9 +14333,24 @@ async function registerRoutes(app2) {
   app2.put("/api/staff/game/prizes/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id, 10);
     if (!id) return res.status(400).json({ message: "Invalid id" });
-    const { name, description, prizeType, value, rewardTierId, weightPercent, active } = req.body ?? {};
+    const { name, description, prizeType, value, rewardTierId, squareDiscountType, squareDiscountValue, tierPoints, weightPercent, active } = req.body ?? {};
+    if (prizeType === "reward_tier" && !rewardTierId) {
+      return res.status(400).json({ message: "Please select a Square reward tier for this prize type" });
+    }
     try {
-      const prize = await storage.upsertGamePrize({ id, name, description, prizeType, value, rewardTierId, weightPercent, active });
+      const prize = await storage.upsertGamePrize({
+        id,
+        name,
+        description,
+        prizeType,
+        value: value ? parseInt(value, 10) : null,
+        rewardTierId: prizeType === "reward_tier" ? rewardTierId ?? null : null,
+        squareDiscountType: prizeType === "reward_tier" ? squareDiscountType ?? null : null,
+        squareDiscountValue: prizeType === "reward_tier" && squareDiscountValue != null ? parseInt(squareDiscountValue, 10) : null,
+        tierPoints: prizeType === "reward_tier" && tierPoints != null ? parseInt(tierPoints, 10) : null,
+        weightPercent,
+        active
+      });
       res.json(prize);
     } catch (err) {
       res.status(500).json({ message: err.message });
