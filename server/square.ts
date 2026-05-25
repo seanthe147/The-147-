@@ -71,6 +71,28 @@ export async function searchLoyaltyAccount(phone: string) {
   return data.loyalty_accounts?.[0] || null;
 }
 
+/** Find a Square customer record by exact email address. */
+export async function searchSquareCustomerByEmail(email: string) {
+  const data = await squareRequest("POST", "/v2/customers/search", {
+    query: {
+      filter: {
+        email_address: { exact: email },
+      },
+    },
+  });
+  return data.customers?.[0] || null;
+}
+
+/** Find a loyalty account linked to a Square customer ID. */
+export async function searchLoyaltyAccountByCustomerId(squareCustomerId: string) {
+  const data = await squareRequest("POST", "/v2/loyalty/accounts/search", {
+    query: {
+      customer_ids: [squareCustomerId],
+    },
+  });
+  return data.loyalty_accounts?.[0] || null;
+}
+
 export async function createLoyaltyAccount(phone: string, programId: string) {
   const e164Phone = toE164(phone);
   const data = await squareRequest("POST", "/v2/loyalty/accounts", {

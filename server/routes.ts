@@ -8337,6 +8337,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       if (!account) {
         account = await square.searchLoyaltyAccount(phoneCleaned!);
+
+        // Fallback: if the loyalty account isn't phone-mapped (e.g. created
+        // via Square Dashboard without a phone), search Square's customer
+        // directory by email and then look up loyalty via customer ID.
+        if (!account && customer.email) {
+          try {
+            const squareCustomer = await square.searchSquareCustomerByEmail(customer.email);
+            if (squareCustomer?.id) {
+              account = await square.searchLoyaltyAccountByCustomerId(squareCustomer.id);
+            }
+          } catch {
+            // Square customer search failed — carry on without it
+          }
+        }
+
         if (account?.id) {
           if (account.id !== customer.squareLoyaltyAccountId) {
             await storage.setSquareLoyaltyAccountId(customerId, account.id);
@@ -8350,7 +8365,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!account) {
         return res.json({
-          configured: true, active: true, linked: false, hasPhone: true, canEnroll: true,
+          configured: true, active: true, linked: false, hasPhone: hasPhone, canEnroll: true,
           program: baseProgram, account: null,
         });
       }
