@@ -527,13 +527,40 @@ const ON_HANDLER_RE = /\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
 const URL_ATTR_RE = /\b(href|src|srcset|action|formaction|background|poster|xlink:href|data)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi;
 const DANGEROUS_SCHEME_RE = /^(?:javascript|vbscript|livescript|mocha|data\s*:\s*text\/html)\s*:/i;
 
+// Named HTML entities that could be used to bypass scheme checks in URLs.
+// Only characters relevant to URL/scheme injection are included intentionally;
+// a full entity map is not needed here.
+const NAMED_ENTITY_MAP: Record<string, string> = {
+  colon: ":",
+  lpar: "(",
+  rpar: ")",
+  sol: "/",
+  bsol: "\\",
+  period: ".",
+  comma: ",",
+  semi: ";",
+  lt: "<",
+  gt: ">",
+  amp: "&",
+  quot: '"',
+  apos: "'",
+  Tab: "\t",
+  NewLine: "\n",
+};
+
 function decodeAttrEntities(s: string): string {
-  return s.replace(/&#x([0-9a-f]+);?|&#(\d+);?/gi, (_m, hex, dec) => {
-    const code = hex ? parseInt(hex, 16) : parseInt(dec, 10);
-    return Number.isFinite(code) && code > 0 && code < 0x110000
-      ? String.fromCodePoint(code)
-      : "";
-  });
+  return s
+    .replace(/&#x([0-9a-f]+);?|&#(\d+);?/gi, (_m, hex, dec) => {
+      const code = hex ? parseInt(hex, 16) : parseInt(dec, 10);
+      return Number.isFinite(code) && code > 0 && code < 0x110000
+        ? String.fromCodePoint(code)
+        : "";
+    })
+    .replace(/&([a-zA-Z][a-zA-Z0-9]*);/g, (_m, name: string) => {
+      return Object.prototype.hasOwnProperty.call(NAMED_ENTITY_MAP, name)
+        ? NAMED_ENTITY_MAP[name]
+        : _m;
+    });
 }
 
 function sanitizeBodyHtml(html: string): string {

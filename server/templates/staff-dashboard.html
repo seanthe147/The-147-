@@ -6062,7 +6062,7 @@
     grid.innerHTML=bannersData.map((b,idx)=>`
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow)">
         <div style="position:relative;height:160px;background:#0a1628">
-          <img src="${b.imageUrl}" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'">
+          <img src="${esc(b.imageUrl)}" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none'">
           <div style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,.62);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;letter-spacing:.5px">#${idx+1}</div>
           <div style="position:absolute;top:8px;right:8px;display:flex;gap:6px">
             <span style="background:${b.active?'rgba(16,185,129,.9)':'rgba(0,0,0,.6)'};color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px">${b.active?'ACTIVE':'HIDDEN'}</span>
@@ -6080,7 +6080,7 @@
               </button>
             </div>
           </div>
-          <div style="font-size:13px;font-weight:600;color:var(--text-1);margin-bottom:8px">${b.title||'<em style="color:var(--text-2);font-weight:400">No title</em>'}</div>
+          <div style="font-size:13px;font-weight:600;color:var(--text-1);margin-bottom:8px">${b.title?esc(b.title):'<em style="color:var(--text-2);font-weight:400">No title</em>'}</div>
           <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
             <span style="font-size:11px;color:var(--text-2);font-weight:600;margin-right:2px">Show on:</span>
             ${['home','order','events'].map(p=>{
@@ -6103,7 +6103,7 @@
           </div>
           <div style="display:flex;gap:8px;align-items:center">
             <button class="btn btn-secondary btn-sm" style="flex:1" onclick="toggleBanner(${b.id},${!b.active})">${b.active?'Hide':'Show'}</button>
-            <button class="btn btn-secondary btn-sm" onclick="promptBannerTitle(${b.id},'${(b.title||'').replace(/'/g,"\\'")}')">
+            <button class="btn btn-secondary btn-sm" onclick="promptBannerTitle(${b.id})">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             </button>
             <button class="btn btn-sm" style="background:#ef4444;color:#fff;border-color:#ef4444" onclick="deleteBanner(${b.id})">
@@ -6349,7 +6349,8 @@
     }
   }
 
-  async function promptBannerTitle(id,currentTitle){
+  async function promptBannerTitle(id){
+    const currentTitle=(bannersData.find(b=>b.id===id)||{}).title||'';
     const title=prompt('Enter banner title (optional, shown as overlay text on the image):',currentTitle);
     if(title===null)return;
     try{
