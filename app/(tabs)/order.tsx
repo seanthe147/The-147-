@@ -75,7 +75,12 @@ const TABLE_SECTIONS = [
   { label: "Balcony", color: "#7B2F9E", tables: Array.from({ length: 5 }, (_, i) => ({ display: String(i + 39), value: `Balcony ${i + 39}` })) },
   { label: "Pool", color: "#0E7C6E", tables: Array.from({ length: 6 }, (_, i) => ({ display: String(i + 1), value: `Pool ${i + 1}` })) },
   { label: "Darts", color: "#B91C1C", tables: [{ display: "1", value: "Darts" }] },
-] as const;
+];
+
+const ALL_TABLES: { display: string; value: string; section: string; color: string }[] =
+  TABLE_SECTIONS.flatMap((s) =>
+    s.tables.map((t) => ({ display: t.display, value: t.value, section: s.label, color: s.color }))
+  );
 
 function formatPrice(pence: number) {
   return `£${(pence / 100).toFixed(2)}`;
@@ -811,6 +816,8 @@ function CartSheet({
   const [step, setStep] = useState<"cart" | "customer">("cart");
   const [selectedRewardId, setSelectedRewardId] = useState<string | null>(null);
   const [tableNote, setTableNote] = useState("");
+  const [tableModalVisible, setTableModalVisible] = useState(false);
+  const [tableSearch, setTableSearch] = useState("");
   const [orderNote, setOrderNote] = useState("");
   const [guestName, setGuestName] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
@@ -1600,81 +1607,31 @@ function CartSheet({
                 </View>
               )}
 
-              <View style={styles.tablePicker}>
-                <View style={styles.tablePickerHeader}>
-                  <Ionicons name="grid-outline" size={15} color={Colors.light.textSecondary} />
-                  <Text style={styles.tablePickerLabel}>
-                    {tableNote ? `${tableNote} selected` : "Collecting from the bar"}
-                  </Text>
-                  {!!tableNote && (
-                    <Pressable onPress={() => setTableNote("")} hitSlop={8}>
-                      <Ionicons name="close-circle" size={16} color={Colors.light.textSecondary} />
-                    </Pressable>
-                  )}
-                </View>
-                {/* Explicit "Collect from bar" pill so customers always have
-                    a clear alternative to picking a table. Selecting it just
-                    clears tableNote — the server already treats no-table as
-                    a collection order and assigns a Collection #N. */}
-                <Pressable
-                  onPress={() => setTableNote("")}
-                  style={[
-                    styles.collectOption,
-                    !tableNote && styles.collectOptionSelected,
-                  ]}
-                  testID="collect-from-bar-btn"
-                >
-                  <Ionicons
-                    name="bag-handle-outline"
-                    size={18}
-                    color={!tableNote ? "#fff" : Colors.brand.blue}
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.collectOptionTitle, !tableNote && styles.collectOptionTitleSelected]}>
-                      Collect from the bar
-                    </Text>
-                    <Text style={[styles.collectOptionSubtitle, !tableNote && styles.collectOptionSubtitleSelected]}>
-                      We'll give you a collection number
-                    </Text>
-                  </View>
-                  {!tableNote && (
-                    <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                  )}
-                </Pressable>
-                <Text style={styles.tableOrLabel}>or pick your table</Text>
-                {TABLE_SECTIONS.map((section) => (
-                  <View key={section.label} style={styles.tableSectionRow}>
-                    <View style={[styles.tableSectionLabelWrap, { borderLeftColor: section.color }]}>
-                      <Text style={[styles.tableSectionLabel, { color: section.color }]} numberOfLines={2}>
-                        {section.label}
-                      </Text>
-                    </View>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.tableNumRow}
-                    >
-                      {section.tables.map((table) => {
-                        const selected = tableNote === table.value;
-                        return (
-                          <Pressable
-                            key={table.value}
-                            onPress={() => setTableNote(selected ? "" : table.value)}
-                            style={[
-                              styles.tableNumBtn,
-                              selected && { backgroundColor: section.color, borderColor: section.color },
-                            ]}
-                          >
-                            <Text style={[styles.tableNumText, selected && styles.tableNumTextSelected]}>
-                              {table.display}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    </ScrollView>
-                  </View>
-                ))}
-              </View>
+              {/* ── Compact table selector ── */}
+              <Pressable
+                style={styles.tableSelector}
+                onPress={() => { setTableSearch(""); setTableModalVisible(true); }}
+                testID="table-selector-btn"
+              >
+                <Ionicons
+                  name={tableNote ? "grid" : "grid-outline"}
+                  size={16}
+                  color={tableNote ? Colors.brand.blue : Colors.light.textSecondary}
+                />
+                <Text style={[styles.tableSelectorLabel, tableNote && styles.tableSelectorLabelActive]}>
+                  {tableNote || "Collecting from the bar"}
+                </Text>
+                {tableNote ? (
+                  <Pressable
+                    onPress={(e) => { e.stopPropagation?.(); setTableNote(""); }}
+                    hitSlop={10}
+                  >
+                    <Ionicons name="close-circle" size={18} color={Colors.light.textSecondary} />
+                  </Pressable>
+                ) : (
+                  <Ionicons name="chevron-forward" size={16} color={Colors.light.textSecondary} />
+                )}
+              </Pressable>
 
               <TotalSummary />
 
@@ -1961,6 +1918,93 @@ function CartSheet({
         </View>
       </KeyboardAvoidingView>
     </Modal>
+    {/* ── Table search modal ── */}
+    <Modal
+      visible={tableModalVisible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={() => setTableModalVisible(false)}
+    >
+      <View style={styles.tableModalContainer}>
+        {/* Header */}
+        <View style={styles.tableModalHeader}>
+          <Text style={styles.tableModalTitle}>Select your table</Text>
+          <Pressable onPress={() => setTableModalVisible(false)} hitSlop={12}>
+            <Ionicons name="close" size={24} color={Colors.light.text} />
+          </Pressable>
+        </View>
+
+        {/* Search */}
+        <View style={styles.tableModalSearchRow}>
+          <Ionicons name="search-outline" size={16} color={Colors.light.textSecondary} />
+          <TextInput
+            style={styles.tableModalSearchInput}
+            placeholder="Search tables…"
+            placeholderTextColor={Colors.light.textSecondary}
+            value={tableSearch}
+            onChangeText={setTableSearch}
+            autoCapitalize="none"
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+          />
+        </View>
+
+        {/* Options list */}
+        <FlatList
+          data={(() => {
+            const q = tableSearch.trim().toLowerCase();
+            if (!q) return ALL_TABLES;
+            return ALL_TABLES.filter(
+              (t) =>
+                t.value.toLowerCase().includes(q) ||
+                t.section.toLowerCase().includes(q) ||
+                t.display.toLowerCase().includes(q)
+            );
+          })()}
+          keyExtractor={(t) => t.value}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ paddingBottom: 32 }}
+          ListHeaderComponent={
+            tableSearch.trim() === "" ? (
+              <Pressable
+                style={[styles.tableModalRow, !tableNote && styles.tableModalRowSelected]}
+                onPress={() => { setTableNote(""); setTableModalVisible(false); }}
+                testID="collect-from-bar-btn"
+              >
+                <View style={[styles.tableModalDot, { backgroundColor: "#6B7280" }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.tableModalRowText, !tableNote && styles.tableModalRowTextSelected]}>
+                    Collect from the bar
+                  </Text>
+                  <Text style={styles.tableModalRowSub}>We'll give you a collection number</Text>
+                </View>
+                {!tableNote && <Ionicons name="checkmark-circle" size={20} color={Colors.brand.blue} />}
+              </Pressable>
+            ) : null
+          }
+          renderItem={({ item }) => {
+            const selected = tableNote === item.value;
+            return (
+              <Pressable
+                style={[styles.tableModalRow, selected && styles.tableModalRowSelected]}
+                onPress={() => { setTableNote(item.value); setTableModalVisible(false); }}
+              >
+                <View style={[styles.tableModalDot, { backgroundColor: item.color }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.tableModalRowText, selected && styles.tableModalRowTextSelected]}>
+                    {item.value}
+                  </Text>
+                  <Text style={styles.tableModalRowSub}>{item.section}</Text>
+                </View>
+                {selected && <Ionicons name="checkmark-circle" size={20} color={Colors.brand.blue} />}
+              </Pressable>
+            );
+          }}
+          ItemSeparatorComponent={() => <View style={styles.tableModalDivider} />}
+        />
+      </View>
+    </Modal>
+
     <SquarePaymentSheet
       visible={paymentSheetVisible}
       onClose={handleClosePaymentSheet}
@@ -3343,7 +3387,10 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.7)",
     marginTop: 2,
   },
-  tablePicker: {
+  tableSelector: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
     marginHorizontal: 20,
     marginTop: 8,
     marginBottom: 4,
@@ -3351,104 +3398,92 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.light.border,
-    overflow: "hidden",
+    paddingHorizontal: 14,
+    paddingVertical: 13,
   },
-  tablePickerHeader: {
+  tableSelectorLabel: {
+    flex: 1,
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+  },
+  tableSelectorLabelActive: {
+    color: Colors.brand.blue,
+    fontFamily: "Montserrat_600SemiBold",
+  },
+  tableModalContainer: {
+    flex: 1,
+    backgroundColor: Colors.light.background,
+  },
+  tableModalHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: Colors.light.border,
   },
-  tablePickerLabel: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 12,
-    color: Colors.light.textSecondary,
-    flex: 1,
-  },
-  collectOption: {
-    flexDirection: "row" as const,
-    alignItems: "center" as const,
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginHorizontal: 10,
-    marginTop: 10,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: Colors.brand.blue,
-    backgroundColor: Colors.light.background,
-  },
-  collectOptionSelected: {
-    backgroundColor: Colors.brand.blue,
-    borderColor: Colors.brand.blue,
-  },
-  collectOptionTitle: {
+  tableModalTitle: {
     fontFamily: "Montserrat_700Bold",
+    fontSize: 18,
+    color: Colors.light.text,
+  },
+  tableModalSearchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 8,
+    backgroundColor: Colors.light.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  tableModalSearchInput: {
+    flex: 1,
+    fontFamily: "Montserrat_400Regular",
     fontSize: 14,
+    color: Colors.light.text,
+  },
+  tableModalRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+  },
+  tableModalRowSelected: {
+    backgroundColor: "#f0f7ff",
+  },
+  tableModalDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  tableModalRowText: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 14,
+    color: Colors.light.text,
+  },
+  tableModalRowTextSelected: {
+    fontFamily: "Montserrat_600SemiBold",
     color: Colors.brand.blue,
   },
-  collectOptionTitleSelected: { color: "#fff" },
-  collectOptionSubtitle: {
-    fontFamily: "Montserrat_500Medium",
-    fontSize: 11,
+  tableModalRowSub: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
     color: Colors.light.textSecondary,
     marginTop: 2,
   },
-  collectOptionSubtitleSelected: { color: "rgba(255,255,255,0.85)" },
-  tableOrLabel: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 11,
-    color: Colors.light.textSecondary,
-    textAlign: "center" as const,
-    textTransform: "uppercase" as const,
-    letterSpacing: 0.5,
-    marginVertical: 10,
-  },
-  tableSectionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.light.border,
-  },
-  tableSectionLabelWrap: {
-    width: 72,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderLeftWidth: 3,
-    justifyContent: "center",
-  },
-  tableSectionLabel: {
-    fontFamily: "Montserrat_700Bold",
-    fontSize: 10,
-    textTransform: "uppercase" as const,
-    letterSpacing: 0.5,
-  },
-  tableNumRow: {
-    flexDirection: "row",
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    gap: 6,
-  },
-  tableNumBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: Colors.light.border,
-    backgroundColor: Colors.light.background,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  tableNumText: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 12,
-    color: Colors.light.text,
-  },
-  tableNumTextSelected: {
-    color: "#fff",
+  tableModalDivider: {
+    height: 1,
+    backgroundColor: Colors.light.border,
+    marginLeft: 44,
   },
   // ── Step 2 checkout styles ──────────────────────────────────────────────────
   coSection: {
