@@ -125,10 +125,65 @@ export async function deleteLoyaltyReward(rewardId: string) {
 }
 
 // ── Loyalty Reward Tiers ─────────────────────────────────────────────────────
-// Creates a new reward tier on the loyalty programme. Called automatically when
-// a manager adds a 'reward_tier' prize in the staff portal.
-// discountType: 'FIXED_PERCENTAGE' | 'FIXED_AMOUNT'
-// discountValue: integer — percentage (e.g. 10 = 10 %) or pence (e.g. 500 = £5)
+// Returns the reward tiers configured in Square Dashboard (read-only via API).
+// Used by the prize modal dropdown so managers can pick an existing tier.
+export async function getLoyaltyProgramRewardTiers(): Promise<Array<{
+  id: string;
+  name: string;
+  points: number;
+  discountType: "FIXED_PERCENTAGE" | "FIXED_AMOUNT" | null;
+  discountValue: number | null;
+}>> {
+  const program = await getLoyaltyProgram();
+  if (!program?.reward_tiers) return [];
+  return (program.reward_tiers as any[]).map((t) => ({
+    id: t.id as string,
+    name: t.name as string,
+    points: (t.points as number) ?? 0,
+    discountType: (t.definition?.discount_type as "FIXED_PERCENTAGE" | "FIXED_AMOUNT" | null) ?? null,
+    // FIXED_PERCENTAGE: percentage_discount is a string like "10"
+    // FIXED_AMOUNT: fixed_discount_money.amount is pence
+    discountValue:
+      t.definition?.discount_type === "FIXED_PERCENTAGE"
+        ? parseInt(t.definition.percentage_discount ?? "0", 10)
+        : t.definition?.fixed_discount_money?.amount ?? null,
+  }));
+}
+
+// Issues a loyalty reward to a customer as a FREE game prize.
+// Because Square's CreateLoyaltyReward deducts points from the account, we first
+// add exactly `tierPoints` to the customer's balance (so the net change is zero),
+// then immediately create the reward (which spends those same points).
+// Result: customer's existing point balance is unchanged, but they have an ISSUED
+// reward sitting in their Square account ready to use at the till.
+export async function issueFreeGameReward(
+  accountId: string,
+  rewardTierId: string,
+  tierPoints: number,
+  idempotencyKey: string,
+): Promise<{ id: string } | null> {
+  // Step 1 — gift the exact number of points needed to cover the reward cost
+  await adjustLoyaltyPoints(
+    accountId,
+    tierPoints,
+    "Scratch card game prize",
+    `${idempotencyKey}-pts`,
+  );
+  // Step 2 — create the ISSUED reward (deducts the gifted points)
+  const data = await squareRequest("POST", "/v2/loyalty/rewards", {
+    reward: {
+      loyalty_account_id: accountId,
+      reward_tier_id: rewardTierId,
+    },
+    idempotency_key: idempotencyKey,
+  });
+  return data.reward as { id: string } | null;
+}
+
+// DEPRECATED — createLoyaltyRewardTier / deleteLoyaltyRewardTier are kept for
+// reference only. Square does not support creating reward tiers via API (only via
+// Square Dashboard). These functions always return NOT_FOUND and are no longer
+// called by the prize-save routes.
 export async function createLoyaltyRewardTier(
   programId: string,
   name: string,

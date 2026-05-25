@@ -1872,22 +1872,21 @@
       </div>
       <div id="gamePrizeRewardTierRow" style="display:none">
         <div class="form-group">
-          <label class="form-label">Discount type <span style="color:var(--red)">*</span></label>
-          <select class="form-input" id="gamePrizeDiscountType" style="max-width:240px">
-            <option value="FIXED_PERCENTAGE">% off the whole order</option>
-            <option value="FIXED_AMOUNT">Fixed amount off (£)</option>
+          <label class="form-label">Square reward tier <span style="color:var(--red)">*</span></label>
+          <p style="font-size:12px;color:var(--text-2);margin:0 0 8px">
+            Reward tiers are created in your <strong>Square Dashboard → Loyalty → Reward Tiers</strong>. Once created there, select one below — when a customer wins this prize the app will automatically issue the reward to their Square loyalty account.
+          </p>
+          <select class="form-input" id="gamePrizeTierSelect" style="max-width:400px" onchange="onGamePrizeTierSelected()">
+            <option value="">— loading Square tiers… —</option>
           </select>
+          <p id="gamePrizeTierPreview" style="font-size:12px;color:var(--green,#166534);margin:4px 0 0;font-weight:600"></p>
         </div>
-        <div class="form-group">
-          <label class="form-label" id="gamePrizeDiscountValueLabel">Discount value <span style="color:var(--red)">*</span></label>
-          <div style="display:flex;align-items:center;gap:8px">
-            <input class="form-input" type="number" id="gamePrizeDiscountValue" min="1" placeholder="e.g. 10" style="max-width:120px" oninput="updateDiscountPreview()">
-            <span id="gamePrizeDiscountUnit" style="font-size:13px;color:var(--text-2)">%</span>
-          </div>
-          <p id="gamePrizeDiscountPreview" style="font-size:12px;color:var(--green,#166534);margin:4px 0 0;font-weight:600"></p>
-        </div>
+        <!-- hidden fields populated from the selected tier -->
+        <input type="hidden" id="gamePrizeDiscountType">
+        <input type="hidden" id="gamePrizeDiscountValue">
+        <input type="hidden" id="gamePrizeTierPoints">
         <div id="gamePrizeLinkedBadge" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#166534;align-items:center;gap:6px">
-          <span>&#x2713;</span> <span id="gamePrizeLinkedText">Linked to Square automatically</span>
+          <span>&#x2713;</span> <span id="gamePrizeLinkedText">Linked to Square — reward issues automatically on win</span>
         </div>
       </div>
       <div style="display:flex;gap:16px;flex-wrap:wrap">
@@ -3737,6 +3736,67 @@
   }
 
   // Prize add / edit modal helpers
+  // Cache of Square reward tiers loaded from the API for the prize modal dropdown.
+  let _gamePrizeTiersCache=[];
+
+  // Loads existing Square reward tiers into the tier picker dropdown.
+  // Square does NOT allow creating tiers via API — managers must create them in
+  // Square Dashboard → Loyalty → Reward Tiers first.
+  async function loadGamePrizeTiers(currentTierId){
+    const sel=el('gamePrizeTierSelect');
+    if(!sel)return;
+    sel.innerHTML='<option value="">Loading Square reward tiers…</option>';
+    try{
+      const r=await api('/api/staff/game/square-reward-tiers');
+      if(!r.ok){
+        const d=await r.json().catch(()=>({}));
+        sel.innerHTML=`<option value="">Could not load tiers from Square: ${esc(d.message||'error')}</option>`;
+        return;
+      }
+      const tiers=await r.json();
+      _gamePrizeTiersCache=tiers;
+      if(!tiers.length){
+        sel.innerHTML='<option value="">No reward tiers found — create them in Square Dashboard → Loyalty → Reward Tiers first</option>';
+        return;
+      }
+      sel.innerHTML='<option value="">— Select a Square reward tier —</option>'+tiers.map(t=>{
+        const disc=t.discountType==='FIXED_PERCENTAGE'
+          ?`${t.discountValue}% off`
+          :t.discountValue?`£${(t.discountValue/100).toFixed(2)} off`:'';
+        return `<option value="${esc(t.id)}">${esc(t.name)}${disc?' — '+disc:''} (${t.points} pts)</option>`;
+      }).join('');
+      if(currentTierId)sel.value=currentTierId;
+      onGamePrizeTierSelected();
+    }catch(e){
+      sel.innerHTML='<option value="">Error loading tiers — is Square configured?</option>';
+    }
+  }
+
+  // Called when the manager selects a tier from the dropdown.
+  // Populates the hidden fields and updates the preview / linked badge.
+  function onGamePrizeTierSelected(){
+    const sel=el('gamePrizeTierSelect');
+    if(!sel)return;
+    const tierId=sel.value;
+    const tier=_gamePrizeTiersCache.find(t=>t.id===tierId)||null;
+    el('gamePrizeDiscountType').value=tier?.discountType||'';
+    el('gamePrizeDiscountValue').value=tier?.discountValue??'';
+    el('gamePrizeTierPoints').value=tier?.points??'';
+    const badge=el('gamePrizeLinkedBadge');
+    if(badge)badge.style.display=tier?'flex':'none';
+    const preview=el('gamePrizeTierPreview');
+    if(preview){
+      if(tier){
+        const disc=tier.discountType==='FIXED_PERCENTAGE'
+          ?`${tier.discountValue}% off the whole order`
+          :tier.discountValue?`£${(tier.discountValue/100).toFixed(2)} off the whole order`:'';
+        preview.textContent=disc?`Customer gets ${disc}`:'';
+      } else {
+        preview.textContent='';
+      }
+    }
+  }
+
   function openGamePrizeModal(prize){
     const isNew=!prize;
     el('gamePrizeModalTitle').textContent=isNew?'Add Prize':'Edit Prize';
@@ -3744,47 +3804,26 @@
     el('gamePrizeDesc').value=prize?.description||'';
     el('gamePrizeType').value=prize?.prizeType||'none';
     el('gamePrizeValue').value=prize?.value??'';
-    el('gamePrizeDiscountType').value=prize?.squareDiscountType||'FIXED_PERCENTAGE';
-    el('gamePrizeDiscountValue').value=prize?.squareDiscountValue??'';
     el('gamePrizeWeight').value=prize?.weightPercent??10;
     el('gamePrizeActive').checked=prize==null?true:!!prize.active;
     el('gamePrizeId').value=prize?.id||'';
-    // Show linked badge when an existing prize already has a Square tier
-    const badge=el('gamePrizeLinkedBadge');
-    if(badge){
-      if(prize?.rewardTierId){
-        badge.style.display='flex';
-        el('gamePrizeLinkedText').textContent=`Linked to Square (tier: ${prize.rewardTierId})`;
-      } else {
-        badge.style.display='none';
-      }
-    }
-    updateGamePrizeTypeFields();
-    updateDiscountPreview();
+    // Reset hidden tier fields (will be repopulated by loadGamePrizeTiers)
+    el('gamePrizeDiscountType').value=prize?.squareDiscountType||'';
+    el('gamePrizeDiscountValue').value=prize?.squareDiscountValue??'';
+    el('gamePrizeTierPoints').value=prize?.tierPoints??'';
+    updateGamePrizeTypeFields(prize?.rewardTierId||null);
     openOverlay('gamePrizeModal');
   }
 
-  function updateGamePrizeTypeFields(){
+  function updateGamePrizeTypeFields(existingTierId){
     const type=el('gamePrizeType')?.value;
     el('gamePrizeValueRow').style.display=type==='loyalty_points'?'':'none';
     el('gamePrizeRewardTierRow').style.display=type==='reward_tier'?'':'none';
-    if(type==='reward_tier') updateDiscountPreview();
+    if(type==='reward_tier')loadGamePrizeTiers(existingTierId||null);
   }
 
-  function updateDiscountPreview(){
-    const discType=el('gamePrizeDiscountType')?.value;
-    const discVal=parseFloat(el('gamePrizeDiscountValue')?.value||'0');
-    const unitEl=el('gamePrizeDiscountUnit');
-    const previewEl=el('gamePrizeDiscountPreview');
-    if(!unitEl||!previewEl) return;
-    if(discType==='FIXED_PERCENTAGE'){
-      unitEl.textContent='%';
-      previewEl.textContent=discVal>0?`Customers get ${discVal}% off their entire order`:'';
-    } else {
-      unitEl.textContent='£ off';
-      previewEl.textContent=discVal>0?`Customers get £${discVal.toFixed(2)} off their entire order`:'';
-    }
-  }
+  // Kept for backward-compat (called via onchange="updateGamePrizeTypeFields()" in the select)
+  function updateDiscountPreview(){}
 
   async function saveGamePrize(){
     const btn=el('gamePrizeSaveBtn');
@@ -3794,21 +3833,20 @@
       const id=parseInt(el('gamePrizeId')?.value||'0')||null;
       const prizeType=el('gamePrizeType')?.value||'none';
       const isRewardTier=prizeType==='reward_tier';
-      const discountType=el('gamePrizeDiscountType')?.value||'FIXED_PERCENTAGE';
-      const discountValueRaw=el('gamePrizeDiscountValue')?.value?.trim()||'';
-      // For FIXED_AMOUNT the UI takes £ but Square needs pence — multiply by 100
-      let discountValue=discountValueRaw?parseFloat(discountValueRaw):null;
-      if(discountValue!==null && discountType==='FIXED_AMOUNT') discountValue=Math.round(discountValue*100);
-      if(isRewardTier&&(!discountValueRaw||!discountValue)){
-        toast('Please enter a discount value for the reward voucher','error');return;
+      if(isRewardTier&&!el('gamePrizeTierSelect')?.value){
+        toast('Please select a Square reward tier','error');return;
       }
       const payload={
         name:el('gamePrizeName')?.value?.trim()||'',
         description:el('gamePrizeDesc')?.value?.trim()||null,
         prizeType,
         value:el('gamePrizeValue')?.value?parseInt(el('gamePrizeValue').value)||null:null,
-        squareDiscountType:isRewardTier?discountType:null,
-        squareDiscountValue:isRewardTier?discountValue:null,
+        rewardTierId:isRewardTier?(el('gamePrizeTierSelect')?.value||null):null,
+        squareDiscountType:isRewardTier?(el('gamePrizeDiscountType')?.value||null):null,
+        squareDiscountValue:isRewardTier&&el('gamePrizeDiscountValue')?.value
+          ?parseInt(el('gamePrizeDiscountValue').value)||null:null,
+        tierPoints:isRewardTier&&el('gamePrizeTierPoints')?.value
+          ?parseInt(el('gamePrizeTierPoints').value)||0:0,
         weightPercent:parseInt(el('gamePrizeWeight')?.value||'10')||10,
         active:el('gamePrizeActive')?.checked||false,
       };
@@ -3817,15 +3855,8 @@
       const method=id?'PUT':'POST';
       const r=await api(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
       if(r.ok){
-        const d=await r.json().catch(()=>({}));
         closeOverlay('gamePrizeModal');
-        if(d.squareWarning){
-          toast(`Prize saved, but Square link failed: ${d.squareWarning}`,'warn');
-        } else if(d.rewardTierId){
-          toast(id?'Prize updated — linked to Square':'Prize added — linked to Square','success');
-        } else {
-          toast(id?'Prize updated':'Prize added','success');
-        }
+        toast(id?'Prize updated':'Prize added','success');
         await loadGamePanel();
       }else{
         const d=await r.json().catch(()=>({}));
@@ -3839,6 +3870,8 @@
   window.saveGameConfig=saveGameConfig;
   window.updateGamePrizeTypeFields=updateGamePrizeTypeFields;
   window.updateDiscountPreview=updateDiscountPreview;
+  window.onGamePrizeTierSelected=onGamePrizeTierSelected;
+  window.loadGamePrizeTiers=loadGamePrizeTiers;
 
   /* ── Dashboard Notices Banner ── */
   async function loadDashboardNotices(){

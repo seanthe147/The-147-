@@ -598,6 +598,12 @@ export async function runStartupMigrations() {
         ADD COLUMN IF NOT EXISTS square_discount_type TEXT,
         ADD COLUMN IF NOT EXISTS square_discount_value INTEGER;
     `);
+    // Add tier_points column — stores the Square reward tier's points cost so the server
+    // can pre-fund the customer's account before issuing a free game-prize reward (added 2026-05)
+    await client.query(`
+      ALTER TABLE game_prizes
+        ADD COLUMN IF NOT EXISTS tier_points INTEGER;
+    `);
     await client.query(`
       INSERT INTO game_prizes (name, description, prize_type, weight_percent, active)
         SELECT 'Free Soft Drink', 'You won a free soft drink — show this screen at the bar to claim it!', 'reward_tier', 10, true
@@ -3267,6 +3273,7 @@ export class DatabaseStorage implements IStorage {
     rewardTierId?: string | null;
     squareDiscountType?: string | null;
     squareDiscountValue?: number | null;
+    tierPoints?: number | null;
     weightPercent: number;
     active: boolean;
   }): Promise<GamePrize> {

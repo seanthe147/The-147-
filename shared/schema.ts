@@ -1004,9 +1004,10 @@ export const gamePrizes = pgTable("game_prizes", {
   description: text("description"),            // shown to customer on win screen
   prizeType: text("prize_type").notNull(),     // 'none' | 'loyalty_points' | 'reward_tier'
   value: integer("value"),                     // points to award (prizeType='loyalty_points')
-  rewardTierId: text("reward_tier_id"),        // Square reward tier ID (prizeType='reward_tier') — auto-populated
-  squareDiscountType: text("square_discount_type"), // 'FIXED_PERCENTAGE' | 'FIXED_AMOUNT' — source of truth for auto-created tiers
+  rewardTierId: text("reward_tier_id"),        // Square reward tier ID (prizeType='reward_tier') — manager selects from Square Dashboard
+  squareDiscountType: text("square_discount_type"), // 'FIXED_PERCENTAGE' | 'FIXED_AMOUNT' — copied from Square tier for display
   squareDiscountValue: integer("square_discount_value"), // % value (e.g. 10 = 10%) or pence (e.g. 500 = £5.00)
+  tierPoints: integer("tier_points"),          // points cost of the Square reward tier (used to pre-fund the customer before issuing)
   weightPercent: integer("weight_percent").notNull().default(10), // probability weight (relative)
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
