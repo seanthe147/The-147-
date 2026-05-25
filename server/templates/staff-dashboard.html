@@ -3834,6 +3834,11 @@
     }catch(e){toast('Save failed','error');}
     finally{btn.disabled=false;btn.textContent='Save Prize';}
   }
+  window.openGamePrizeModal=openGamePrizeModal;
+  window.saveGamePrize=saveGamePrize;
+  window.saveGameConfig=saveGameConfig;
+  window.updateGamePrizeTypeFields=updateGamePrizeTypeFields;
+  window.updateDiscountPreview=updateDiscountPreview;
 
   /* ── Dashboard Notices Banner ── */
   async function loadDashboardNotices(){
