@@ -872,7 +872,7 @@ function CartSheet({
   }>({
     queryKey: ["/api/loyalty/me"],
     enabled: !!customer,
-    staleTime: 60_000,
+    staleTime: 0,
     queryFn: async () => {
       const token = await getCustomerToken();
       if (!token) return {};
@@ -1454,7 +1454,7 @@ function CartSheet({
       // it again on close. Without this on iOS, tapping Place Order does nothing.
       // On Android both modals are full-screen and can be layered safely — hiding
       // the cart first creates a race where the payment sheet never appears.
-      visible={Platform.OS === "ios" ? (visible && !paymentSheetVisible) : visible}
+      visible={Platform.OS === "ios" ? (visible && !paymentSheetVisible && !tableModalVisible) : visible}
       animationType="slide"
       presentationStyle="pageSheet"
       onRequestClose={handleClose}
