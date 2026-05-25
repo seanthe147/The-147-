@@ -1607,31 +1607,44 @@ function CartSheet({
                 </View>
               )}
 
-              {/* ── Compact table selector ── */}
-              <Pressable
-                style={styles.tableSelector}
-                onPress={() => { setTableSearch(""); setTableModalVisible(true); }}
-                testID="table-selector-btn"
-              >
-                <Ionicons
-                  name={tableNote ? "grid" : "grid-outline"}
-                  size={16}
-                  color={tableNote ? Colors.brand.blue : Colors.light.textSecondary}
-                />
-                <Text style={[styles.tableSelectorLabel, tableNote && styles.tableSelectorLabelActive]}>
-                  {tableNote || "Collecting from the bar"}
-                </Text>
-                {tableNote ? (
-                  <Pressable
-                    onPress={(e) => { e.stopPropagation?.(); setTableNote(""); }}
-                    hitSlop={10}
-                  >
-                    <Ionicons name="close-circle" size={18} color={Colors.light.textSecondary} />
-                  </Pressable>
-                ) : (
-                  <Ionicons name="chevron-forward" size={16} color={Colors.light.textSecondary} />
-                )}
-              </Pressable>
+              {/* ── Table / Collect buttons ── */}
+              <Text style={styles.tableSelectorTitle}>
+                Select your table or collect from the bar
+              </Text>
+              <View style={styles.tableSelectorRow}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.tableBtn,
+                    tableNote ? styles.tableBtnActive : styles.tableBtnInactive,
+                    { opacity: pressed ? 0.82 : 1 },
+                  ]}
+                  onPress={() => { setTableSearch(""); setTableModalVisible(true); }}
+                  testID="table-selector-btn"
+                >
+                  <Ionicons name="grid-outline" size={16} color="#fff" />
+                  <Text style={styles.tableBtnText} numberOfLines={1}>
+                    {tableNote || "Select a table"}
+                  </Text>
+                  {tableNote ? (
+                    <Pressable onPress={() => setTableNote("")} hitSlop={10}>
+                      <Ionicons name="close-circle" size={17} color="rgba(255,255,255,0.8)" />
+                    </Pressable>
+                  ) : null}
+                </Pressable>
+
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.tableBtn,
+                    !tableNote ? styles.tableBtnActive : styles.tableBtnInactive,
+                    { opacity: pressed ? 0.82 : 1 },
+                  ]}
+                  onPress={() => setTableNote("")}
+                  testID="collect-bar-btn"
+                >
+                  <Ionicons name="storefront-outline" size={16} color="#fff" />
+                  <Text style={styles.tableBtnText}>Collect from bar</Text>
+                </Pressable>
+              </View>
 
               <TotalSummary />
 
@@ -3387,29 +3400,42 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.7)",
     marginTop: 2,
   },
-  tableSelector: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginHorizontal: 20,
-    marginTop: 8,
-    marginBottom: 4,
-    backgroundColor: Colors.light.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.light.border,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-  },
-  tableSelectorLabel: {
-    flex: 1,
-    fontFamily: "Montserrat_500Medium",
+  tableSelectorTitle: {
+    fontFamily: "Montserrat_600SemiBold",
     fontSize: 13,
     color: Colors.light.textSecondary,
+    marginHorizontal: 20,
+    marginTop: 12,
+    marginBottom: 8,
+    textAlign: "center",
   },
-  tableSelectorLabelActive: {
-    color: Colors.brand.blue,
+  tableSelectorRow: {
+    flexDirection: "row",
+    marginHorizontal: 20,
+    gap: 10,
+    marginBottom: 4,
+  },
+  tableBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+  },
+  tableBtnActive: {
+    backgroundColor: Colors.brand.blue,
+  },
+  tableBtnInactive: {
+    backgroundColor: "#5B8FD4",
+  },
+  tableBtnText: {
     fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: "#fff",
+    flexShrink: 1,
   },
   tableModalContainer: {
     flex: 1,
