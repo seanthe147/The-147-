@@ -9105,6 +9105,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (prizeType === "reward_tier" && squareDiscountType && squareDiscountValue && square.isConfigured()) {
         try {
           const program = await square.getLoyaltyProgram();
+          console.log(`[LOYALTY] Program for new prize: id=${program?.id} type=${program?.type}`);
           if (program?.id) {
             const tier = await square.createLoyaltyRewardTier(
               program.id,
@@ -9116,7 +9117,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log(`[LOYALTY] Auto-created Square reward tier ${tier.id} for prize "${name}"`);
           }
         } catch (sqErr: any) {
-          console.error("[LOYALTY] Failed to auto-create Square reward tier:", sqErr.message);
+          console.error("[LOYALTY] Failed to auto-create Square reward tier:", sqErr.message, "code:", (sqErr as any).code, "status:", (sqErr as any).statusCode);
           squareWarning = sqErr.message;
         }
       }
@@ -9158,6 +9159,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (definitionChanged) {
           try {
             const program = await square.getLoyaltyProgram();
+            console.log(`[LOYALTY] Program for edit prize ${id}: id=${program?.id} type=${program?.type}`);
             if (program?.id) {
               // Delete the old tier first (Square doesn't support updating tier definitions)
               if (existing?.rewardTierId) {
@@ -9168,7 +9170,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.log(`[LOYALTY] Re-created Square reward tier ${tier.id} for prize "${name}" (definition changed)`);
             }
           } catch (sqErr: any) {
-            console.error("[LOYALTY] Failed to sync Square reward tier on edit:", sqErr.message);
+            console.error("[LOYALTY] Failed to sync Square reward tier on edit:", sqErr.message, "code:", (sqErr as any).code, "status:", (sqErr as any).statusCode);
             squareWarning = sqErr.message;
           }
         }
