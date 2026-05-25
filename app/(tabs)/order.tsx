@@ -1819,6 +1819,91 @@ function CartSheet({
                 <Text style={styles.coNotesCount}>{orderNote.length}/200</Text>
               </View>
 
+              {/* Loyalty reward picker — shown in checkout step too so customers
+                  can claim a reward without having to scroll past the table
+                  picker back in the cart step. Selecting/deselecting here
+                  updates the same selectedRewardId state, so TotalSummary
+                  and the server checkout call both reflect the choice. */}
+              {issuedRewards.length > 0 && (
+                <View style={styles.rewardPickerSection}>
+                  <View style={styles.rewardPickerHeader}>
+                    <Ionicons name="gift-outline" size={16} color={Colors.brand.blue} />
+                    <Text style={styles.rewardPickerTitle}>Redeem a reward</Text>
+                  </View>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.rewardPickerRow}
+                  >
+                    {issuedRewards.map((reward) => {
+                      const tier = loyaltyData?.program?.reward_tiers?.find(
+                        (t) => t.id === reward.reward_tier_id
+                      );
+                      const isSelected = selectedRewardId === reward.id;
+                      const def = tier?.definition;
+                      const label = tier?.name ?? "Reward";
+                      let valueLabel = "";
+                      if (def?.discount_type === "FIXED_PERCENTAGE" && def.percentage_discount) {
+                        valueLabel = `${def.percentage_discount}% off`;
+                      } else if (def?.discount_type === "FIXED_AMOUNT" && def.fixed_discount_money) {
+                        valueLabel = formatPrice(def.fixed_discount_money.amount);
+                      }
+                      return (
+                        <Pressable
+                          key={reward.id}
+                          onPress={() =>
+                            setSelectedRewardId(isSelected ? null : reward.id)
+                          }
+                          style={[
+                            styles.rewardPill,
+                            isSelected && styles.rewardPillSelected,
+                          ]}
+                        >
+                          <Ionicons
+                            name={isSelected ? "gift" : "gift-outline"}
+                            size={14}
+                            color={isSelected ? "#fff" : Colors.brand.blue}
+                          />
+                          <View style={{ marginLeft: 6 }}>
+                            <Text
+                              style={[
+                                styles.rewardPillLabel,
+                                isSelected && styles.rewardPillLabelSelected,
+                              ]}
+                            >
+                              {label}
+                            </Text>
+                            {valueLabel ? (
+                              <Text
+                                style={[
+                                  styles.rewardPillValue,
+                                  isSelected && styles.rewardPillValueSelected,
+                                ]}
+                              >
+                                {valueLabel}
+                              </Text>
+                            ) : null}
+                          </View>
+                          {isSelected && (
+                            <Ionicons
+                              name="checkmark-circle"
+                              size={16}
+                              color="#fff"
+                              style={{ marginLeft: 6 }}
+                            />
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                  {selectedRewardId && (
+                    <Text style={styles.rewardPickerNote}>
+                      Reward will be applied and redeemed when you pay.
+                    </Text>
+                  )}
+                </View>
+              )}
+
               {/* Compact order summary */}
               <TotalSummary />
 
