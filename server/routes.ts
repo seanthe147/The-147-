@@ -5866,16 +5866,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { url, linkId, squareOrderId, pricedItems, rawTotalPence } = await square.createOrderCheckoutLink(
         items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, reservedOrderId, orderDealsEnabledHosted,
       );
-      const discountedTotal = discountPercent
+      const memberDiscountedTotal = discountPercent
         ? Math.round(rawTotalPence * (1 - discountPercent / 100))
         : rawTotalPence;
 
-      // Mark the selected loyalty reward as redeemed against this Square order
-      // so staff can't double-redeem it at the POS. Non-blocking — don't fail
-      // checkout if this call fails.
+      // If the customer selected an ISSUED loyalty reward, look up its discount
+      // value from Square and deduct it from the total BEFORE returning the
+      // checkout URL.  Mark the reward redeemed against this order non-blocking
+      // — a failed redemption mark is recoverable by staff and must not prevent
+      // checkout from completing.
+      let loyaltyDiscountPence = 0;
       if (loyaltyRewardId && typeof loyaltyRewardId === "string" && squareOrderId) {
+        loyaltyDiscountPence = await square.getIssuedRewardDiscountPence(loyaltyRewardId, memberDiscountedTotal);
         square.redeemIssuedLoyaltyReward(loyaltyRewardId, squareOrderId).catch(() => {});
       }
+      const discountedTotal = Math.max(0, memberDiscountedTotal - loyaltyDiscountPence);
 
       // Store order record (non-blocking — don't fail checkout if DB write fails)
       storage.createAppOrder({
@@ -6817,17 +6822,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // by default; the owner can turn them off from the staff portal
       // without touching the Square dashboard.
       const orderDealsEnabled = (await storage.getSetting("square_deals_order_enabled")) !== "false";
-      const { orderId, totalPence, pricedItems } = await square.createSquareOrderForCheckout(
+      const { orderId, totalPence: squareTotalPence, pricedItems } = await square.createSquareOrderForCheckout(
         items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, reservedOrderId,
         false, orderDealsEnabled,
       );
 
-      // Mark the selected loyalty reward as redeemed against this Square order
-      // so staff can't double-redeem it at the POS. Non-blocking — don't fail
-      // checkout if this call fails.
+      // If the customer selected an ISSUED loyalty reward, look up its discount
+      // value from Square and deduct it from the total BEFORE returning
+      // amountPence to the client.  Mark the reward redeemed non-blocking.
+      let loyaltyDiscountPence = 0;
       if (loyaltyRewardId && typeof loyaltyRewardId === "string" && orderId) {
+        loyaltyDiscountPence = await square.getIssuedRewardDiscountPence(loyaltyRewardId, squareTotalPence);
         square.redeemIssuedLoyaltyReward(loyaltyRewardId, orderId).catch(() => {});
       }
+      const totalPence = Math.max(0, squareTotalPence - loyaltyDiscountPence);
 
       // Generate a per-order confirmation token. The client stores this
       // alongside the appOrderId on the device and presents it later to the

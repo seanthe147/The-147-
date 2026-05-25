@@ -266,6 +266,42 @@ export async function searchIssuedRewards(accountId: string): Promise<any[]> {
   }
 }
 
+/**
+ * Given an ISSUED loyalty reward ID, return the discount it represents in
+ * pence.  Fetches the reward's tier from the loyalty programme definition and
+ * supports both FIXED_AMOUNT and FIXED_PERCENTAGE discount types.
+ *
+ * @param rewardId       Square loyalty reward ID
+ * @param orderTotalPence  Current order total (used for % discounts)
+ * @returns  Discount amount in pence, or 0 if it cannot be determined
+ */
+export async function getIssuedRewardDiscountPence(
+  rewardId: string,
+  orderTotalPence: number,
+): Promise<number> {
+  try {
+    const rewardData = await squareRequest("GET", `/v2/loyalty/rewards/${rewardId}`);
+    const tierId: string | undefined = rewardData?.reward?.reward_tier_id;
+    if (!tierId) return 0;
+
+    const program = await getLoyaltyProgram();
+    const tier = (program?.reward_tiers ?? []).find((t: any) => t.id === tierId);
+    const def = tier?.definition;
+    if (!def) return 0;
+
+    if (def.discount_type === "FIXED_AMOUNT" && def.fixed_discount_money?.amount) {
+      return Number(def.fixed_discount_money.amount);
+    }
+    if (def.discount_type === "FIXED_PERCENTAGE" && def.percentage_discount) {
+      return Math.round(orderTotalPence * Number(def.percentage_discount) / 100);
+    }
+    return 0;
+  } catch (err: any) {
+    console.error(`[LOYALTY] Could not determine discount for reward ${rewardId}:`, err?.message);
+    return 0;
+  }
+}
+
 // ── Orders (used by Live Tables / POS sync) ─────────────────────────────────
 // Returns OPEN orders at the configured location. Square's Orders search API
 // requires a state filter; we ask for OPEN explicitly so completed/cancelled

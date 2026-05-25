@@ -1009,6 +1009,32 @@ function CartSheet({
   const discountAmountPence = discountPercent > 0 ? Math.round(memberDiscountBase * discountPercent / 100) : 0;
   const finalPrice = Math.max(0, subtotalAfterDeals - discountAmountPence);
 
+  // Loyalty reward discount — calculated client-side for display only.
+  // The server independently verifies the discount amount from Square when
+  // the order is placed, so the client value is never trusted for billing.
+  const selectedReward = issuedRewards.find((r) => r.id === selectedRewardId) ?? null;
+  const selectedRewardTier = selectedReward
+    ? (loyaltyData?.program?.reward_tiers ?? []).find((t) => t.id === selectedReward.reward_tier_id) ?? null
+    : null;
+  const selectedRewardDef = selectedRewardTier?.definition ?? null;
+  const rewardDiscountPence = (() => {
+    if (!selectedRewardDef) return 0;
+    if (
+      selectedRewardDef.discount_type === "FIXED_AMOUNT" &&
+      selectedRewardDef.fixed_discount_money?.amount
+    ) {
+      return Math.min(finalPrice, Number(selectedRewardDef.fixed_discount_money.amount));
+    }
+    if (
+      selectedRewardDef.discount_type === "FIXED_PERCENTAGE" &&
+      selectedRewardDef.percentage_discount
+    ) {
+      return Math.round(finalPrice * Number(selectedRewardDef.percentage_discount) / 100);
+    }
+    return 0;
+  })();
+  const finalPriceAfterReward = Math.max(0, finalPrice - rewardDiscountPence);
+
   const effectiveCustomer = customer
     ? { name: customer.name, email: customer.email, phone: customer.phone ?? undefined }
     : guestMode && (guestName.trim() || guestEmail.trim())
@@ -1360,7 +1386,8 @@ function CartSheet({
   const TotalSummary = () => {
     const hasDeals = dealsAmountPence > 0;
     const hasMember = discountPercent > 0;
-    const showSubtotal = hasDeals || hasMember;
+    const hasReward = rewardDiscountPence > 0;
+    const showSubtotal = hasDeals || hasMember || hasReward;
     return (
       <View style={styles.cartTotal}>
         {showSubtotal ? (
@@ -1387,9 +1414,18 @@ function CartSheet({
             <Text style={styles.discountAmount}>−{formatPrice(discountAmountPence)}</Text>
           </View>
         ) : null}
+        {hasReward ? (
+          <View style={[styles.cartTotalRow, styles.discountRow]}>
+            <View style={{ flexDirection: "row" as const, alignItems: "center" as const, gap: 6 }}>
+              <Ionicons name="gift-outline" size={14} color="#166534" />
+              <Text style={styles.discountLabel}>{selectedRewardTier?.name ?? "Loyalty reward"}</Text>
+            </View>
+            <Text style={styles.discountAmount}>−{formatPrice(rewardDiscountPence)}</Text>
+          </View>
+        ) : null}
         <View style={styles.cartTotalRow}>
           <Text style={styles.cartTotalLabel}>Total</Text>
-          <Text style={styles.cartTotalPrice}>{formatPrice(showSubtotal ? finalPrice : totalPrice)}</Text>
+          <Text style={styles.cartTotalPrice}>{formatPrice(showSubtotal ? finalPriceAfterReward : totalPrice)}</Text>
         </View>
         <View style={styles.discountNoteRow}>
           <Ionicons name="information-circle-outline" size={13} color={Colors.light.textSecondary} />
@@ -1483,82 +1519,6 @@ function CartSheet({
                 ItemSeparatorComponent={() => <View style={styles.cartDivider} />}
               />
 
-              <View style={styles.tablePicker}>
-                <View style={styles.tablePickerHeader}>
-                  <Ionicons name="grid-outline" size={15} color={Colors.light.textSecondary} />
-                  <Text style={styles.tablePickerLabel}>
-                    {tableNote ? `${tableNote} selected` : "Collecting from the bar"}
-                  </Text>
-                  {!!tableNote && (
-                    <Pressable onPress={() => setTableNote("")} hitSlop={8}>
-                      <Ionicons name="close-circle" size={16} color={Colors.light.textSecondary} />
-                    </Pressable>
-                  )}
-                </View>
-                {/* Explicit "Collect from bar" pill so customers always have
-                    a clear alternative to picking a table. Selecting it just
-                    clears tableNote — the server already treats no-table as
-                    a collection order and assigns a Collection #N. */}
-                <Pressable
-                  onPress={() => setTableNote("")}
-                  style={[
-                    styles.collectOption,
-                    !tableNote && styles.collectOptionSelected,
-                  ]}
-                  testID="collect-from-bar-btn"
-                >
-                  <Ionicons
-                    name="bag-handle-outline"
-                    size={18}
-                    color={!tableNote ? "#fff" : Colors.brand.blue}
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.collectOptionTitle, !tableNote && styles.collectOptionTitleSelected]}>
-                      Collect from the bar
-                    </Text>
-                    <Text style={[styles.collectOptionSubtitle, !tableNote && styles.collectOptionSubtitleSelected]}>
-                      We'll give you a collection number
-                    </Text>
-                  </View>
-                  {!tableNote && (
-                    <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                  )}
-                </Pressable>
-                <Text style={styles.tableOrLabel}>or pick your table</Text>
-                {TABLE_SECTIONS.map((section) => (
-                  <View key={section.label} style={styles.tableSectionRow}>
-                    <View style={[styles.tableSectionLabelWrap, { borderLeftColor: section.color }]}>
-                      <Text style={[styles.tableSectionLabel, { color: section.color }]} numberOfLines={2}>
-                        {section.label}
-                      </Text>
-                    </View>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.tableNumRow}
-                    >
-                      {section.tables.map((table) => {
-                        const selected = tableNote === table.value;
-                        return (
-                          <Pressable
-                            key={table.value}
-                            onPress={() => setTableNote(selected ? "" : table.value)}
-                            style={[
-                              styles.tableNumBtn,
-                              selected && { backgroundColor: section.color, borderColor: section.color },
-                            ]}
-                          >
-                            <Text style={[styles.tableNumText, selected && styles.tableNumTextSelected]}>
-                              {table.display}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    </ScrollView>
-                  </View>
-                ))}
-              </View>
-
               {/* ── Loyalty Reward Picker ── */}
               {issuedRewards.length > 0 && (
                 <View style={styles.rewardPickerSection}>
@@ -1640,6 +1600,82 @@ function CartSheet({
                 </View>
               )}
 
+              <View style={styles.tablePicker}>
+                <View style={styles.tablePickerHeader}>
+                  <Ionicons name="grid-outline" size={15} color={Colors.light.textSecondary} />
+                  <Text style={styles.tablePickerLabel}>
+                    {tableNote ? `${tableNote} selected` : "Collecting from the bar"}
+                  </Text>
+                  {!!tableNote && (
+                    <Pressable onPress={() => setTableNote("")} hitSlop={8}>
+                      <Ionicons name="close-circle" size={16} color={Colors.light.textSecondary} />
+                    </Pressable>
+                  )}
+                </View>
+                {/* Explicit "Collect from bar" pill so customers always have
+                    a clear alternative to picking a table. Selecting it just
+                    clears tableNote — the server already treats no-table as
+                    a collection order and assigns a Collection #N. */}
+                <Pressable
+                  onPress={() => setTableNote("")}
+                  style={[
+                    styles.collectOption,
+                    !tableNote && styles.collectOptionSelected,
+                  ]}
+                  testID="collect-from-bar-btn"
+                >
+                  <Ionicons
+                    name="bag-handle-outline"
+                    size={18}
+                    color={!tableNote ? "#fff" : Colors.brand.blue}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.collectOptionTitle, !tableNote && styles.collectOptionTitleSelected]}>
+                      Collect from the bar
+                    </Text>
+                    <Text style={[styles.collectOptionSubtitle, !tableNote && styles.collectOptionSubtitleSelected]}>
+                      We'll give you a collection number
+                    </Text>
+                  </View>
+                  {!tableNote && (
+                    <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                  )}
+                </Pressable>
+                <Text style={styles.tableOrLabel}>or pick your table</Text>
+                {TABLE_SECTIONS.map((section) => (
+                  <View key={section.label} style={styles.tableSectionRow}>
+                    <View style={[styles.tableSectionLabelWrap, { borderLeftColor: section.color }]}>
+                      <Text style={[styles.tableSectionLabel, { color: section.color }]} numberOfLines={2}>
+                        {section.label}
+                      </Text>
+                    </View>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.tableNumRow}
+                    >
+                      {section.tables.map((table) => {
+                        const selected = tableNote === table.value;
+                        return (
+                          <Pressable
+                            key={table.value}
+                            onPress={() => setTableNote(selected ? "" : table.value)}
+                            style={[
+                              styles.tableNumBtn,
+                              selected && { backgroundColor: section.color, borderColor: section.color },
+                            ]}
+                          >
+                            <Text style={[styles.tableNumText, selected && styles.tableNumTextSelected]}>
+                              {table.display}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                ))}
+              </View>
+
               <TotalSummary />
 
               {cancelledNotice ? (
@@ -1655,7 +1691,7 @@ function CartSheet({
                 testID="continue-btn"
               >
                 <Text style={styles.checkoutBtnText}>Continue</Text>
-                <Text style={styles.checkoutBtnSub}>{formatPrice(finalPrice)}</Text>
+                <Text style={styles.checkoutBtnSub}>{formatPrice(finalPriceAfterReward)}</Text>
               </Pressable>
             </>
           ) : (
