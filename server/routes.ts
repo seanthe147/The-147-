@@ -4218,6 +4218,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 action: "paid",
                 reason: `Square payment ${payment.id}`,
               }).catch((e: any) => console.error("[WEBHOOK] Audit log failed:", e.message));
+
+              // ── Loyalty points accrual ──────────────────────────────────────
+              // Award points for this spend using Square's order-based
+              // accumulation — Square applies the programme's own spend rules
+              // so we never need to hard-code points-per-pound here.
+              // Non-blocking: a failed accrual must not prevent the order from
+              // being marked paid.
+              if (appOrder.customerEmail && square.isConfigured()) {
+                (async () => {
+                  try {
+                    const loyaltyCust = await storage.getCustomerByEmail(appOrder.customerEmail!);
+                    if (loyaltyCust?.squareLoyaltyAccountId) {
+                      await square.accumulateLoyaltyPointsForOrder(
+                        loyaltyCust.squareLoyaltyAccountId,
+                        paymentOrderId,
+                        `order-loyalty-${appOrder.id}`,
+                      );
+                      console.log(`[LOYALTY] Points accumulated for app order #${appOrder.id} → account ${loyaltyCust.squareLoyaltyAccountId}`);
+                    }
+                  } catch (lpErr: any) {
+                    console.error(`[LOYALTY] Points accrual failed for order #${appOrder.id}:`, lpErr.message);
+                  }
+                })();
+              }
             }
             return res.sendStatus(200);
           }
@@ -8336,20 +8360,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       if (!account) {
-        account = await square.searchLoyaltyAccount(phoneCleaned!);
+        // Run phone search and email-based customer-ID search in parallel.
+        // Some customers have two loyalty accounts (one created at the till
+        // with a phone mapping, one linked to their Square customer profile).
+        // When they differ we prefer the account with the higher lifetime
+        // points — that's always the one they've been actively using.
+        const phoneSearchPromise = hasPhone
+          ? square.searchLoyaltyAccount(phoneCleaned!).catch(() => null)
+          : Promise.resolve(null);
 
-        // Fallback: if the loyalty account isn't phone-mapped (e.g. created
-        // via Square Dashboard without a phone), search Square's customer
-        // directory by email and then look up loyalty via customer ID.
-        if (!account && customer.email) {
-          try {
-            const squareCustomer = await square.searchSquareCustomerByEmail(customer.email);
-            if (squareCustomer?.id) {
-              account = await square.searchLoyaltyAccountByCustomerId(squareCustomer.id);
-            }
-          } catch {
-            // Square customer search failed — carry on without it
-          }
+        const emailSearchPromise: Promise<any> = customer.email
+          ? square.searchSquareCustomerByEmail(customer.email)
+              .then((sqCust) => sqCust?.id ? square.searchLoyaltyAccountByCustomerId(sqCust.id) : null)
+              .catch(() => null)
+          : Promise.resolve(null);
+
+        const [phoneAccount, emailAccount] = await Promise.all([phoneSearchPromise, emailSearchPromise]);
+
+        if (phoneAccount && emailAccount && phoneAccount.id !== emailAccount.id) {
+          // Two different accounts — use the one with more lifetime points.
+          const phonePoints = (phoneAccount.lifetime_points ?? 0) as number;
+          const emailPoints = (emailAccount.lifetime_points ?? 0) as number;
+          account = emailPoints >= phonePoints ? emailAccount : phoneAccount;
+        } else {
+          account = emailAccount || phoneAccount;
         }
 
         if (account?.id) {

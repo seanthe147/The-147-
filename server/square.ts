@@ -121,6 +121,21 @@ export async function accumulateLoyaltyPoints(accountId: string, points: number,
   return data.event;
 }
 
+/**
+ * Accumulate loyalty points for a completed Square order.
+ * Passes the order_id so Square applies the programme's own spend rules
+ * automatically — no hard-coding of points-per-pound needed.
+ */
+export async function accumulateLoyaltyPointsForOrder(accountId: string, orderId: string, idempotencyKey: string) {
+  const locationId = getLocationId();
+  const data = await squareRequest("POST", `/v2/loyalty/accounts/${accountId}/accumulate`, {
+    accumulate_points: { order_id: orderId },
+    location_id: locationId,
+    idempotency_key: idempotencyKey,
+  });
+  return data.event;
+}
+
 export async function adjustLoyaltyPoints(accountId: string, points: number, reason: string, idempotencyKey: string) {
   const data = await squareRequest("POST", `/v2/loyalty/accounts/${accountId}/adjust`, {
     adjust_points: { points, reason },
