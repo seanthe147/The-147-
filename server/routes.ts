@@ -9261,6 +9261,191 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Venue Rewards ─────────────────────────────────────────────────────────────
+  // Custom rewards (free drinks, table time, etc.) managed in the staff portal.
+  // Points are deducted from Square loyalty; claim is redeemed via a 6-char code.
+
+  app.get("/api/venue-rewards", async (req, res) => {
+    try {
+      await storage.expireOldVenueRewardClaims();
+      const tiers = await storage.getActiveVenueRewardTiers();
+
+      // Optionally attach the customer's pending claims if authenticated
+      const authHeader = req.headers.authorization;
+      let pendingClaims: any[] = [];
+      if (authHeader?.startsWith("Bearer ")) {
+        const token = authHeader.slice(7);
+        const session = await storage.validateCustomerSession(token);
+        if (session) {
+          const claims = await storage.getVenueRewardClaimsByCustomer(session.customerId);
+          // Enrich with tier name for display
+          pendingClaims = claims.map((c) => {
+            const tier = tiers.find((t) => t.id === c.tierId) ??
+              { name: "Venue Reward", category: "other" };
+            return { ...c, tierName: (tier as any).name, tierCategory: (tier as any).category };
+          });
+        }
+      }
+
+      res.json({ tiers, pendingClaims });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/venue-rewards/:tierId/claim", customerAuth, async (req: Request & { customerId?: number }, res) => {
+    const customerId = req.customerId!;
+    const tierId = parseInt(req.params.tierId as string, 10);
+    if (isNaN(tierId)) return res.status(400).json({ message: "Invalid tier ID" });
+
+    try {
+      const tier = (await storage.getActiveVenueRewardTiers()).find((t) => t.id === tierId);
+      if (!tier) return res.status(404).json({ message: "Reward not found or no longer available" });
+
+      const customer = await storage.getCustomerById(customerId);
+      if (!customer) return res.status(404).json({ message: "Customer not found" });
+
+      // Resolve the Square loyalty account (use cached ID if available, else look up by phone)
+      let loyaltyAccountId: string | null = customer.squareLoyaltyAccountId ?? null;
+      if (!loyaltyAccountId && customer.phone && square.isConfigured()) {
+        const phoneCleaned = customer.phone.replace(/\s/g, "");
+        if (phoneCleaned.length >= 10) {
+          const acct = await square.searchLoyaltyAccount(phoneCleaned).catch(() => null);
+          if (acct?.id) {
+            loyaltyAccountId = acct.id;
+            await storage.setSquareLoyaltyAccountId(customerId, acct.id);
+          }
+        }
+      }
+
+      if (!loyaltyAccountId) {
+        return res.status(400).json({ message: "No loyalty account found. Please join The 147 Rewards first." });
+      }
+
+      // Check current balance
+      const account = await square.getLoyaltyAccount(loyaltyAccountId).catch(() => null);
+      if (!account) return res.status(500).json({ message: "Could not retrieve your points balance. Please try again." });
+      const balance: number = account.balance ?? 0;
+      if (balance < tier.pointsCost) {
+        return res.status(400).json({
+          message: `Not enough points. You have ${balance} but this reward costs ${tier.pointsCost}.`,
+          balance,
+          required: tier.pointsCost,
+        });
+      }
+
+      // Deduct points via Square
+      const idempotencyKey = `venue-reward-claim-${customerId}-${tierId}-${Date.now()}`;
+      await square.adjustLoyaltyPoints(loyaltyAccountId, -tier.pointsCost, `Venue reward claim: ${tier.name}`, idempotencyKey);
+
+      // Create the claim record
+      const claim = await storage.createVenueRewardClaim({
+        customerId,
+        tierId,
+        pointsDeducted: tier.pointsCost,
+      });
+
+      res.json({
+        claim: { ...claim, tierName: tier.name, tierCategory: tier.category },
+        newBalance: balance - tier.pointsCost,
+      });
+    } catch (err: any) {
+      console.error("[venue-rewards] claim error:", err);
+      res.status(500).json({ message: err.message || "Failed to claim reward" });
+    }
+  });
+
+  // Staff: list all tiers
+  app.get("/api/staff/venue-rewards", staffAuth, async (_req, res) => {
+    try {
+      res.json(await storage.getAllVenueRewardTiers());
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Staff (manager+): create a tier
+  app.post("/api/staff/venue-rewards", staffAuth, async (req: Request & { staffId?: number; staffRole?: string }, res) => {
+    if (req.staffRole !== "manager" && req.staffRole !== "owner") {
+      return res.status(403).json({ message: "Manager access required" });
+    }
+    const { name, description, category, pointsCost, active, sortOrder } = req.body;
+    if (!name || typeof pointsCost !== "number" || pointsCost < 1) {
+      return res.status(400).json({ message: "name and pointsCost (≥1) are required" });
+    }
+    const allowed = ["food", "drink", "table", "experience", "other"];
+    const cat = allowed.includes(category) ? category : "other";
+    try {
+      const tier = await storage.createVenueRewardTier({
+        name,
+        description: description ?? null,
+        category: cat,
+        pointsCost,
+        active: active !== false,
+        sortOrder: sortOrder ?? 0,
+      });
+      res.json(tier);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Staff (manager+): update a tier
+  app.put("/api/staff/venue-rewards/:id", staffAuth, async (req: Request & { staffId?: number; staffRole?: string }, res) => {
+    if (req.staffRole !== "manager" && req.staffRole !== "owner") {
+      return res.status(403).json({ message: "Manager access required" });
+    }
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const { name, description, category, pointsCost, active, sortOrder } = req.body;
+    const allowed = ["food", "drink", "table", "experience", "other"];
+    const update: any = {};
+    if (name !== undefined) update.name = name;
+    if (description !== undefined) update.description = description;
+    if (category !== undefined) update.category = allowed.includes(category) ? category : "other";
+    if (pointsCost !== undefined) update.pointsCost = pointsCost;
+    if (active !== undefined) update.active = active;
+    if (sortOrder !== undefined) update.sortOrder = sortOrder;
+    try {
+      const tier = await storage.updateVenueRewardTier(id, update);
+      if (!tier) return res.status(404).json({ message: "Tier not found" });
+      res.json(tier);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Staff: list all claims (for the redemption desk view)
+  app.get("/api/staff/venue-rewards/claims", staffAuth, async (_req, res) => {
+    try {
+      await storage.expireOldVenueRewardClaims();
+      res.json(await storage.getAllVenueRewardClaims());
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Staff: redeem a claim by 6-char code
+  app.post("/api/staff/venue-rewards/claims/redeem", staffAuth, async (req: Request & { staffId?: number }, res) => {
+    const { code } = req.body;
+    if (!code || typeof code !== "string") {
+      return res.status(400).json({ message: "code is required" });
+    }
+    try {
+      const claim = await storage.getVenueRewardClaimByCode(code.toUpperCase().trim());
+      if (!claim) return res.status(404).json({ message: "Claim code not found" });
+      if (claim.status === "redeemed") return res.status(409).json({ message: "Already redeemed", claim });
+      if (claim.status === "expired" || claim.expiresAt < new Date()) {
+        return res.status(410).json({ message: "Claim has expired" });
+      }
+      const ok = await storage.redeemVenueRewardClaim(claim.id, req.staffId!);
+      if (!ok) return res.status(409).json({ message: "Could not redeem claim — it may have already been used" });
+      res.json({ success: true, claim: { ...claim, status: "redeemed" } });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/customers/register", async (req, res) => {
     const clientIp = getClientIp(req);
     const rateCheck = checkCustomerRateLimit(clientIp);

@@ -98,6 +98,11 @@ import {
   type GamePrize,
   gamePlays,
   type GamePlay,
+  venueRewardTiers,
+  type VenueRewardTier,
+  type InsertVenueRewardTier,
+  venueRewardClaims,
+  type VenueRewardClaim,
 } from "@shared/schema";
 import { encrypt, decrypt, hashEmail } from "./encryption";
 
@@ -608,6 +613,35 @@ export async function runStartupMigrations() {
       INSERT INTO game_prizes (name, description, prize_type, weight_percent, active)
         SELECT 'Free Soft Drink', 'You won a free soft drink — show this screen at the bar to claim it!', 'reward_tier', 10, true
         WHERE NOT EXISTS (SELECT 1 FROM game_prizes WHERE name = 'Free Soft Drink' LIMIT 1);
+    `);
+
+    // ── Venue Reward Tiers & Claims ──────────────────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS venue_reward_tiers (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        category TEXT NOT NULL DEFAULT 'other',
+        points_cost INTEGER NOT NULL,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+        updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+      );
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS venue_reward_claims (
+        id SERIAL PRIMARY KEY,
+        customer_id INTEGER NOT NULL,
+        tier_id INTEGER NOT NULL,
+        claim_code TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        points_deducted INTEGER NOT NULL,
+        redeemed_at TIMESTAMP,
+        redeemed_by_staff_id INTEGER,
+        expires_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW() NOT NULL
+      );
     `);
 
     console.log("[DB] Startup migrations applied");
@@ -3320,6 +3354,97 @@ export class DatabaseStorage implements IStorage {
         customerName: cust ? decrypt(cust.name) : null,
       };
     }));
+  }
+
+  // ── Venue Reward Tiers ───────────────────────────────────────────────────────
+
+  async getActiveVenueRewardTiers(): Promise<VenueRewardTier[]> {
+    return db.select().from(venueRewardTiers)
+      .where(eq(venueRewardTiers.active, true))
+      .orderBy(venueRewardTiers.sortOrder, venueRewardTiers.name);
+  }
+
+  async getAllVenueRewardTiers(): Promise<VenueRewardTier[]> {
+    return db.select().from(venueRewardTiers)
+      .orderBy(venueRewardTiers.sortOrder, venueRewardTiers.name);
+  }
+
+  async createVenueRewardTier(data: InsertVenueRewardTier): Promise<VenueRewardTier> {
+    const [tier] = await db.insert(venueRewardTiers).values({
+      ...data,
+      updatedAt: new Date(),
+    }).returning();
+    return tier;
+  }
+
+  async updateVenueRewardTier(id: number, data: Partial<InsertVenueRewardTier>): Promise<VenueRewardTier | null> {
+    const [tier] = await db.update(venueRewardTiers)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(venueRewardTiers.id, id))
+      .returning();
+    return tier ?? null;
+  }
+
+  // ── Venue Reward Claims ──────────────────────────────────────────────────────
+
+  async createVenueRewardClaim(data: {
+    customerId: number;
+    tierId: number;
+    pointsDeducted: number;
+  }): Promise<VenueRewardClaim> {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "";
+    for (let i = 0; i < 6; i++) {
+      code += chars[Math.floor(Math.random() * chars.length)];
+    }
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const [claim] = await db.insert(venueRewardClaims).values({
+      ...data,
+      claimCode: code,
+      status: "pending",
+      expiresAt,
+    }).returning();
+    return claim;
+  }
+
+  async getVenueRewardClaimsByCustomer(customerId: number): Promise<VenueRewardClaim[]> {
+    return db.select().from(venueRewardClaims)
+      .where(and(
+        eq(venueRewardClaims.customerId, customerId),
+        eq(venueRewardClaims.status, "pending"),
+        gt(venueRewardClaims.expiresAt, new Date()),
+      ))
+      .orderBy(desc(venueRewardClaims.createdAt));
+  }
+
+  async getVenueRewardClaimByCode(code: string): Promise<VenueRewardClaim | null> {
+    const [claim] = await db.select().from(venueRewardClaims)
+      .where(eq(venueRewardClaims.claimCode, code.toUpperCase().trim()));
+    return claim ?? null;
+  }
+
+  async redeemVenueRewardClaim(id: number, staffId: number): Promise<boolean> {
+    const result = await db.update(venueRewardClaims)
+      .set({ status: "redeemed", redeemedAt: new Date(), redeemedByStaffId: staffId })
+      .where(and(eq(venueRewardClaims.id, id), eq(venueRewardClaims.status, "pending")));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async getAllVenueRewardClaims(): Promise<(VenueRewardClaim & { customerName?: string; tierName?: string })[]> {
+    const claims = await db.select().from(venueRewardClaims)
+      .orderBy(desc(venueRewardClaims.createdAt))
+      .limit(200);
+    return Promise.all(claims.map(async (claim) => {
+      const [cust] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, claim.customerId));
+      const [tier] = await db.select({ name: venueRewardTiers.name }).from(venueRewardTiers).where(eq(venueRewardTiers.id, claim.tierId));
+      return { ...claim, customerName: cust ? decrypt(cust.name) : undefined, tierName: tier?.name };
+    }));
+  }
+
+  async expireOldVenueRewardClaims(): Promise<void> {
+    await db.update(venueRewardClaims)
+      .set({ status: "expired" })
+      .where(and(eq(venueRewardClaims.status, "pending"), lt(venueRewardClaims.expiresAt, new Date())));
   }
 
   async getLastPaidAppOrderForCustomer(email: string): Promise<AppOrder | null> {

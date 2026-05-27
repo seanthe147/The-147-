@@ -7,6 +7,7 @@ import {
   Pressable,
   Platform,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -66,6 +67,33 @@ interface IssuedReward {
   created_at: string;
 }
 
+interface VenueRewardTierItem {
+  id: number;
+  name: string;
+  description: string | null;
+  category: string;
+  pointsCost: number;
+  active: boolean;
+  sortOrder: number;
+}
+
+interface VenueRewardClaimItem {
+  id: number;
+  tierId: number;
+  claimCode: string;
+  status: string;
+  pointsDeducted: number;
+  expiresAt: string;
+  createdAt: string;
+  tierName?: string;
+  tierCategory?: string;
+}
+
+interface VenueRewardsResponse {
+  tiers: VenueRewardTierItem[];
+  pendingClaims: VenueRewardClaimItem[];
+}
+
 interface LoyaltyMeResponse {
   configured: boolean;
   active: boolean;
@@ -87,6 +115,118 @@ interface LoyaltyMeResponse {
     doublePointsToday: boolean;
     visitPoints: number;
   };
+}
+
+function categoryIcon(cat: string): React.ComponentProps<typeof Ionicons>["name"] {
+  switch (cat) {
+    case "food": return "restaurant-outline";
+    case "drink": return "wine-outline";
+    case "table": return "grid-outline";
+    case "experience": return "star-outline";
+    default: return "gift-outline";
+  }
+}
+
+function VenueRewardsSection({
+  tiers,
+  pendingClaims,
+  balance,
+  onClaim,
+  isClaiming,
+}: {
+  tiers: VenueRewardTierItem[];
+  pendingClaims: VenueRewardClaimItem[];
+  balance: number;
+  onClaim: (tier: VenueRewardTierItem) => void;
+  isClaiming: boolean;
+}) {
+  if (tiers.length === 0 && pendingClaims.length === 0) return null;
+
+  return (
+    <View style={styles.venueSection}>
+      {pendingClaims.length > 0 && (
+        <View style={styles.venuePendingWrap}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="ticket-outline" size={18} color="#7C3AED" />
+            <Text style={styles.sectionTitle}>Your Active Claim Codes</Text>
+          </View>
+          <Text style={styles.venuePendingSubtitle}>
+            Show these codes to a member of staff to claim your reward. Valid for 24 hours.
+          </Text>
+          {pendingClaims.map((claim) => {
+            const expiresAt = new Date(claim.expiresAt);
+            const minutesLeft = Math.max(0, Math.round((expiresAt.getTime() - Date.now()) / 60000));
+            const hoursLeft = Math.floor(minutesLeft / 60);
+            const minsLeft = minutesLeft % 60;
+            const expiryStr = hoursLeft > 0
+              ? `${hoursLeft}h ${minsLeft}m left`
+              : `${minutesLeft}m left`;
+            return (
+              <View key={claim.id} style={styles.claimCodeCard}>
+                <View style={styles.claimCodeIconWrap}>
+                  <Ionicons name={categoryIcon(claim.tierCategory ?? "other")} size={24} color="#7C3AED" />
+                </View>
+                <View style={styles.claimCodeBody}>
+                  <Text style={styles.claimCodeTierName}>{claim.tierName ?? "Venue Reward"}</Text>
+                  <Text style={styles.claimCodeExpiry}>{expiryStr}</Text>
+                </View>
+                <View style={styles.claimCodeBadgeWrap}>
+                  <Text style={styles.claimCodeText}>{claim.claimCode}</Text>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      )}
+
+      {tiers.length > 0 && (
+        <>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="storefront-outline" size={18} color="#7C3AED" />
+            <Text style={styles.sectionTitle}>Venue Rewards</Text>
+          </View>
+          <Text style={styles.venueSubtitle}>
+            Spend your points on venue experiences — drinks, food, table time, and more.
+          </Text>
+          {tiers.map((tier) => {
+            const canClaim = balance >= tier.pointsCost;
+            const alreadyPending = pendingClaims.some((c) => c.tierId === tier.id);
+            return (
+              <View key={tier.id} style={[styles.venueTierCard, canClaim && styles.venueTierCardReady]}>
+                <View style={styles.venueTierIconWrap}>
+                  <Ionicons
+                    name={categoryIcon(tier.category)}
+                    size={26}
+                    color={canClaim ? "#7C3AED" : Colors.light.textSecondary}
+                  />
+                </View>
+                <View style={styles.venueTierBody}>
+                  <Text style={styles.venueTierName}>{tier.name}</Text>
+                  {tier.description ? (
+                    <Text style={styles.venueTierDesc}>{tier.description}</Text>
+                  ) : null}
+                  <Text style={styles.venueTierPoints}>{tier.pointsCost} points</Text>
+                </View>
+                <Pressable
+                  onPress={() => onClaim(tier)}
+                  disabled={!canClaim || isClaiming || alreadyPending}
+                  style={({ pressed }) => [
+                    styles.venueClaimBtn,
+                    canClaim && !alreadyPending && styles.venueClaimBtnActive,
+                    (pressed && canClaim) && { opacity: 0.8 },
+                  ]}
+                >
+                  <Text style={[styles.venueClaimBtnText, canClaim && !alreadyPending && styles.venueClaimBtnTextActive]}>
+                    {alreadyPending ? "Claimed" : canClaim ? "Claim" : `${tier.pointsCost - balance} more`}
+                  </Text>
+                </Pressable>
+              </View>
+            );
+          })}
+        </>
+      )}
+    </View>
+  );
 }
 
 function PointsDisplay({ balance, terminology }: { balance: number; terminology?: { one: string; other: string } }) {
@@ -386,6 +526,48 @@ export default function RewardsScreen() {
 
   const { isAuthenticated, customer, getCustomerToken } = useCustomerAuth();
   const { firstName } = useCustomerGreeting();
+  const [isClaiming, setIsClaiming] = useState(false);
+
+  const venueRewardsQuery = useQuery<VenueRewardsResponse>({
+    queryKey: ["/api/venue-rewards", customer?.id],
+    queryFn: async () => {
+      const token = getCustomerToken();
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const res = await fetch(new URL("/api/venue-rewards", getApiUrl()).toString(), { headers });
+      if (!res.ok) throw new Error("Failed to load venue rewards");
+      return res.json();
+    },
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
+  });
+
+  const handleVenueClaim = useCallback(async (tier: VenueRewardTierItem) => {
+    if (isClaiming) return;
+    const token = getCustomerToken();
+    if (!token) return;
+    setIsClaiming(true);
+    try {
+      const res = await fetch(new URL(`/api/venue-rewards/${tier.id}/claim`, getApiUrl()).toString(), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        Alert.alert("Couldn't claim reward", data.message || "Please try again.");
+        return;
+      }
+      await Promise.all([venueRewardsQuery.refetch(), meQuery.refetch()]);
+      Alert.alert(
+        "Reward claimed! 🎉",
+        `Your claim code is: ${data.claim?.claimCode ?? ""}\n\nShow this to a member of staff. Valid for 24 hours.`
+      );
+    } catch {
+      Alert.alert("Error", "Something went wrong. Please try again.");
+    } finally {
+      setIsClaiming(false);
+    }
+  }, [isClaiming, getCustomerToken, venueRewardsQuery]);
 
   const meQuery = useQuery<LoyaltyMeResponse>({
     queryKey: ["/api/loyalty/me", customer?.id],
@@ -583,6 +765,16 @@ export default function RewardsScreen() {
             </View>
           )}
 
+          {venueRewardsQuery.data && (
+            <VenueRewardsSection
+              tiers={venueRewardsQuery.data.tiers}
+              pendingClaims={venueRewardsQuery.data.pendingClaims}
+              balance={meQuery.data.account.balance}
+              onClaim={handleVenueClaim}
+              isClaiming={isClaiming}
+            />
+          )}
+
           {meQuery.data.events && meQuery.data.events.length > 0 && (
             <ActivityFeed
               events={meQuery.data.events.slice(0, 5)}
@@ -700,4 +892,27 @@ const styles = StyleSheet.create({
   infoCard: { margin: 20, padding: 16, backgroundColor: Colors.light.surface, borderRadius: 12 },
   infoRow: { flexDirection: "row", gap: 10 },
   infoText: { fontSize: 12, color: Colors.light.textSecondary, flex: 1, lineHeight: 18, fontFamily: "Montserrat_400Regular" },
+  // ── Venue Rewards ──────────────────────────────────────────────────────────
+  venueSection: { marginHorizontal: 20, marginTop: 20, gap: 0 },
+  venuePendingWrap: { marginBottom: 20 },
+  venuePendingSubtitle: { fontSize: 13, color: Colors.light.textSecondary, marginBottom: 12, fontFamily: "Montserrat_400Regular", lineHeight: 18 },
+  claimCodeCard: { flexDirection: "row", alignItems: "center", backgroundColor: Colors.light.surface, borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 2, borderColor: "#7C3AED", gap: 12, elevation: 2 },
+  claimCodeIconWrap: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#F3E8FF", alignItems: "center", justifyContent: "center" },
+  claimCodeBody: { flex: 1 },
+  claimCodeTierName: { fontSize: 14, fontWeight: "700", color: Colors.light.text, fontFamily: "Montserrat_700Bold" },
+  claimCodeExpiry: { fontSize: 11, color: Colors.light.textSecondary, marginTop: 2, fontFamily: "Montserrat_400Regular" },
+  claimCodeBadgeWrap: { backgroundColor: "#7C3AED", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  claimCodeText: { fontSize: 18, fontWeight: "800", color: "#FFF", fontFamily: "Montserrat_700Bold", letterSpacing: 3 },
+  venueSubtitle: { fontSize: 13, color: Colors.light.textSecondary, marginBottom: 12, fontFamily: "Montserrat_400Regular", lineHeight: 18 },
+  venueTierCard: { flexDirection: "row", alignItems: "center", backgroundColor: Colors.light.surface, borderRadius: 14, padding: 14, marginBottom: 10, gap: 12, elevation: 1 },
+  venueTierCardReady: { borderWidth: 1.5, borderColor: "#7C3AED" },
+  venueTierIconWrap: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#F3E8FF", alignItems: "center", justifyContent: "center" },
+  venueTierBody: { flex: 1 },
+  venueTierName: { fontSize: 15, fontWeight: "600", color: Colors.light.text, fontFamily: "Montserrat_600SemiBold" },
+  venueTierDesc: { fontSize: 11, color: Colors.light.textSecondary, marginTop: 2, fontFamily: "Montserrat_400Regular", lineHeight: 15 },
+  venueTierPoints: { fontSize: 12, color: "#7C3AED", fontFamily: "Montserrat_600SemiBold", marginTop: 4 },
+  venueClaimBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: "#E5E7EB", minWidth: 60, alignItems: "center" },
+  venueClaimBtnActive: { backgroundColor: "#7C3AED" },
+  venueClaimBtnText: { fontSize: 13, fontWeight: "700", color: Colors.light.textSecondary, fontFamily: "Montserrat_700Bold" },
+  venueClaimBtnTextActive: { color: "#FFF" },
 });

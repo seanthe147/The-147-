@@ -1033,3 +1033,41 @@ export const gamePlays = pgTable("game_plays", {
 });
 
 export type GamePlay = typeof gamePlays.$inferSelect;
+
+// ── Venue Reward Tiers ─────────────────────────────────────────────────────────
+// Custom rewards that don't go through Square — e.g. "Free 30 min table time",
+// "Free house drink", "Coaching session". Managed by staff in the portal.
+// Point deductions are applied to the customer's Square loyalty balance.
+export const venueRewardTiers = pgTable("venue_reward_tiers", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),                      // "Free House Drink"
+  description: text("description"),                  // Extra detail shown to customer
+  category: text("category").notNull().default("other"), // 'food'|'drink'|'table'|'experience'|'other'
+  pointsCost: integer("points_cost").notNull(),       // points required to claim
+  active: boolean("active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type VenueRewardTier = typeof venueRewardTiers.$inferSelect;
+export const insertVenueRewardTierSchema = createInsertSchema(venueRewardTiers).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertVenueRewardTier = z.infer<typeof insertVenueRewardTierSchema>;
+
+// ── Venue Reward Claims ────────────────────────────────────────────────────────
+// Created when a customer claims a venue reward. Staff look up the 6-char code
+// at the till/bar and mark it redeemed to release the physical item.
+export const venueRewardClaims = pgTable("venue_reward_claims", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull(),
+  tierId: integer("tier_id").notNull(),
+  claimCode: text("claim_code").notNull(),             // 6-char uppercase alphanumeric
+  status: text("status").notNull().default("pending"), // 'pending'|'redeemed'|'expired'
+  pointsDeducted: integer("points_deducted").notNull(),
+  redeemedAt: timestamp("redeemed_at"),
+  redeemedByStaffId: integer("redeemed_by_staff_id"),
+  expiresAt: timestamp("expires_at").notNull(),        // 24h from claim
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type VenueRewardClaim = typeof venueRewardClaims.$inferSelect;
