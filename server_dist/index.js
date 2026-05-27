@@ -25,7 +25,7 @@ function isSafePublicUrl(value) {
   }
   return parsed.protocol === "https:" || parsed.protocol === "http:";
 }
-var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, tabs, tabItems, tableSessions, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, teyaOauthTokens, marketingPages, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, dealPreferences, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, passwordResetAuditLog, membershipAuditLog, bookingAuditLog, staffActionLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffDocuments, insertStaffDocumentSchema, staffOnboarding, insertStaffOnboardingSchema, staffPushTokens, paymentLog, insertPaymentLogSchema, gamePrizes, gamePlays;
+var users, insertUserSchema, staffUsers, offers, insertOfferSchema, pushTokens, insertPushTokenSchema, notifications, bookings, insertBookingSchema, tabs, tabItems, tableSessions, staffSessions, contactMessages, insertContactMessageSchema, events, insertEventSchema, siteSettings, teyaOauthTokens, marketingPages, customers, insertCustomerSchema, customerSessions, bannerImages, insertBannerImageSchema, dealPreferences, staffNotices, insertStaffNoticeSchema, staffPopups, insertStaffPopupSchema, blockedPeriods, insertBlockedPeriodSchema, membershipPlans, insertMembershipPlanSchema, membershipSubscriptions, insertMembershipSubscriptionSchema, appOrders, orderAuditLog, passwordResetAuditLog, membershipAuditLog, bookingAuditLog, staffActionLog, menuCategoryVisibility, menuItemOverrides, categorySettings, availabilityRules, staffTimeEntries, insertStaffTimeEntrySchema, staffLeaveRequests, insertStaffLeaveRequestSchema, staffLeaveAllowances, insertStaffLeaveAllowanceSchema, staffIncidents, staffRotaShifts, insertStaffRotaShiftSchema, staffRotaPublished, staffDocuments, insertStaffDocumentSchema, staffOnboarding, insertStaffOnboardingSchema, staffPushTokens, paymentLog, insertPaymentLogSchema, gamePrizes, gamePlays, venueRewardTiers, insertVenueRewardTierSchema, venueRewardClaims;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
@@ -834,6 +834,37 @@ var init_schema = __esm({
       // timezone conversion in SQL.
       londonDate: text("london_date").notNull()
     });
+    venueRewardTiers = pgTable("venue_reward_tiers", {
+      id: serial("id").primaryKey(),
+      name: text("name").notNull(),
+      // "Free House Drink"
+      description: text("description"),
+      // Extra detail shown to customer
+      category: text("category").notNull().default("other"),
+      // 'food'|'drink'|'table'|'experience'|'other'
+      pointsCost: integer("points_cost").notNull(),
+      // points required to claim
+      active: boolean("active").notNull().default(true),
+      sortOrder: integer("sort_order").notNull().default(0),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    });
+    insertVenueRewardTierSchema = createInsertSchema(venueRewardTiers).omit({ id: true, createdAt: true, updatedAt: true });
+    venueRewardClaims = pgTable("venue_reward_claims", {
+      id: serial("id").primaryKey(),
+      customerId: integer("customer_id").notNull(),
+      tierId: integer("tier_id").notNull(),
+      claimCode: text("claim_code").notNull(),
+      // 6-char uppercase alphanumeric
+      status: text("status").notNull().default("pending"),
+      // 'pending'|'redeemed'|'expired'
+      pointsDeducted: integer("points_deducted").notNull(),
+      redeemedAt: timestamp("redeemed_at"),
+      redeemedByStaffId: integer("redeemed_by_staff_id"),
+      expiresAt: timestamp("expires_at").notNull(),
+      // 24h from claim
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
   }
 });
 
@@ -1310,6 +1341,33 @@ async function runStartupMigrations() {
       INSERT INTO game_prizes (name, description, prize_type, weight_percent, active)
         SELECT 'Free Soft Drink', 'You won a free soft drink \u2014 show this screen at the bar to claim it!', 'reward_tier', 10, true
         WHERE NOT EXISTS (SELECT 1 FROM game_prizes WHERE name = 'Free Soft Drink' LIMIT 1);
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS venue_reward_tiers (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        category TEXT NOT NULL DEFAULT 'other',
+        points_cost INTEGER NOT NULL,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+        updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+      );
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS venue_reward_claims (
+        id SERIAL PRIMARY KEY,
+        customer_id INTEGER NOT NULL,
+        tier_id INTEGER NOT NULL,
+        claim_code TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        points_deducted INTEGER NOT NULL,
+        redeemed_at TIMESTAMP,
+        redeemed_by_staff_id INTEGER,
+        expires_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW() NOT NULL
+      );
     `);
     console.log("[DB] Startup migrations applied");
   } catch (err) {
@@ -3229,6 +3287,66 @@ var init_storage = __esm({
           };
         }));
       }
+      // ── Venue Reward Tiers ───────────────────────────────────────────────────────
+      async getActiveVenueRewardTiers() {
+        return db.select().from(venueRewardTiers).where(eq(venueRewardTiers.active, true)).orderBy(venueRewardTiers.sortOrder, venueRewardTiers.name);
+      }
+      async getAllVenueRewardTiers() {
+        return db.select().from(venueRewardTiers).orderBy(venueRewardTiers.sortOrder, venueRewardTiers.name);
+      }
+      async createVenueRewardTier(data) {
+        const [tier] = await db.insert(venueRewardTiers).values({
+          ...data,
+          updatedAt: /* @__PURE__ */ new Date()
+        }).returning();
+        return tier;
+      }
+      async updateVenueRewardTier(id, data) {
+        const [tier] = await db.update(venueRewardTiers).set({ ...data, updatedAt: /* @__PURE__ */ new Date() }).where(eq(venueRewardTiers.id, id)).returning();
+        return tier ?? null;
+      }
+      // ── Venue Reward Claims ──────────────────────────────────────────────────────
+      async createVenueRewardClaim(data) {
+        const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        let code = "";
+        for (let i = 0; i < 6; i++) {
+          code += chars[Math.floor(Math.random() * chars.length)];
+        }
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1e3);
+        const [claim] = await db.insert(venueRewardClaims).values({
+          ...data,
+          claimCode: code,
+          status: "pending",
+          expiresAt
+        }).returning();
+        return claim;
+      }
+      async getVenueRewardClaimsByCustomer(customerId) {
+        return db.select().from(venueRewardClaims).where(and(
+          eq(venueRewardClaims.customerId, customerId),
+          eq(venueRewardClaims.status, "pending"),
+          gt(venueRewardClaims.expiresAt, /* @__PURE__ */ new Date())
+        )).orderBy(desc(venueRewardClaims.createdAt));
+      }
+      async getVenueRewardClaimByCode(code) {
+        const [claim] = await db.select().from(venueRewardClaims).where(eq(venueRewardClaims.claimCode, code.toUpperCase().trim()));
+        return claim ?? null;
+      }
+      async redeemVenueRewardClaim(id, staffId) {
+        const result = await db.update(venueRewardClaims).set({ status: "redeemed", redeemedAt: /* @__PURE__ */ new Date(), redeemedByStaffId: staffId }).where(and(eq(venueRewardClaims.id, id), eq(venueRewardClaims.status, "pending")));
+        return (result.rowCount ?? 0) > 0;
+      }
+      async getAllVenueRewardClaims() {
+        const claims = await db.select().from(venueRewardClaims).orderBy(desc(venueRewardClaims.createdAt)).limit(200);
+        return Promise.all(claims.map(async (claim) => {
+          const [cust] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, claim.customerId));
+          const [tier] = await db.select({ name: venueRewardTiers.name }).from(venueRewardTiers).where(eq(venueRewardTiers.id, claim.tierId));
+          return { ...claim, customerName: cust ? decrypt(cust.name) : void 0, tierName: tier?.name };
+        }));
+      }
+      async expireOldVenueRewardClaims() {
+        await db.update(venueRewardClaims).set({ status: "expired" }).where(and(eq(venueRewardClaims.status, "pending"), lt(venueRewardClaims.expiresAt, /* @__PURE__ */ new Date())));
+      }
       async getLastPaidAppOrderForCustomer(email) {
         const PAID_STATUSES = ["paid", "preparing", "ready", "delivered", "collected", "completed"];
         const emailHash = hashEmail(email);
@@ -3253,6 +3371,7 @@ var square_exports = {};
 __export(square_exports, {
   SquareError: () => SquareError,
   accumulateLoyaltyPoints: () => accumulateLoyaltyPoints,
+  accumulateLoyaltyPointsForOrder: () => accumulateLoyaltyPointsForOrder,
   addCustomerToGroup: () => addCustomerToGroup,
   adjustLoyaltyPoints: () => adjustLoyaltyPoints,
   cancelSquareOrder: () => cancelSquareOrder,
@@ -3312,8 +3431,10 @@ __export(square_exports, {
   saveCardOnFile: () => saveCardOnFile,
   searchIssuedRewards: () => searchIssuedRewards,
   searchLoyaltyAccount: () => searchLoyaltyAccount,
+  searchLoyaltyAccountByCustomerId: () => searchLoyaltyAccountByCustomerId,
   searchLoyaltyEvents: () => searchLoyaltyEvents,
   searchOpenOrders: () => searchOpenOrders,
+  searchSquareCustomerByEmail: () => searchSquareCustomerByEmail,
   syncPlanToSquareCatalog: () => syncPlanToSquareCatalog,
   toE164: () => toE164
 });
@@ -3366,6 +3487,24 @@ async function searchLoyaltyAccount(phone) {
   });
   return data.loyalty_accounts?.[0] || null;
 }
+async function searchSquareCustomerByEmail(email) {
+  const data = await squareRequest("POST", "/v2/customers/search", {
+    query: {
+      filter: {
+        email_address: { exact: email }
+      }
+    }
+  });
+  return data.customers?.[0] || null;
+}
+async function searchLoyaltyAccountByCustomerId(squareCustomerId) {
+  const data = await squareRequest("POST", "/v2/loyalty/accounts/search", {
+    query: {
+      customer_ids: [squareCustomerId]
+    }
+  });
+  return data.loyalty_accounts?.[0] || null;
+}
 async function createLoyaltyAccount(phone, programId) {
   const e164Phone = toE164(phone);
   const data = await squareRequest("POST", "/v2/loyalty/accounts", {
@@ -3385,6 +3524,15 @@ async function accumulateLoyaltyPoints(accountId, points, idempotencyKey) {
   const locationId = getLocationId();
   const data = await squareRequest("POST", `/v2/loyalty/accounts/${accountId}/accumulate`, {
     accumulate_points: { points },
+    location_id: locationId,
+    idempotency_key: idempotencyKey
+  });
+  return data.event;
+}
+async function accumulateLoyaltyPointsForOrder(accountId, orderId, idempotencyKey) {
+  const locationId = getLocationId();
+  const data = await squareRequest("POST", `/v2/loyalty/accounts/${accountId}/accumulate`, {
+    accumulate_points: { order_id: orderId },
     location_id: locationId,
     idempotency_key: idempotencyKey
   });
@@ -10389,6 +10537,41 @@ async function registerRoutes(app2) {
                 action: "paid",
                 reason: `Square payment ${payment.id}`
               }).catch((e) => console.error("[WEBHOOK] Audit log failed:", e.message));
+              if (appOrder.customerEmail && isConfigured()) {
+                (async () => {
+                  try {
+                    const loyaltyCust = await storage.getCustomerByEmail(appOrder.customerEmail);
+                    if (!loyaltyCust) return;
+                    let accountId = loyaltyCust.squareLoyaltyAccountId;
+                    if (!accountId) {
+                      const phoneCleaned = loyaltyCust.phone ? loyaltyCust.phone.replace(/\s/g, "") : null;
+                      const [emailAccount, phoneAccount] = await Promise.all([
+                        loyaltyCust.email ? searchSquareCustomerByEmail(loyaltyCust.email).then((sqCust) => sqCust?.id ? searchLoyaltyAccountByCustomerId(sqCust.id) : null).catch(() => null) : Promise.resolve(null),
+                        phoneCleaned && phoneCleaned.length >= 10 ? searchLoyaltyAccount(phoneCleaned).catch(() => null) : Promise.resolve(null)
+                      ]);
+                      const candidates = [emailAccount, phoneAccount].filter(Boolean);
+                      const best = candidates.reduce((a, b) => !a || (b?.lifetime_points ?? 0) > (a?.lifetime_points ?? 0) ? b : a, null);
+                      if (best?.id) {
+                        accountId = best.id;
+                        await storage.setSquareLoyaltyAccountId(loyaltyCust.id, best.id);
+                        console.log(`[LOYALTY] Resolved + cached loyalty account ${best.id} for customer #${loyaltyCust.id}`);
+                      }
+                    }
+                    if (accountId) {
+                      await accumulateLoyaltyPointsForOrder(
+                        accountId,
+                        paymentOrderId,
+                        `order-loyalty-${appOrder.id}`
+                      );
+                      console.log(`[LOYALTY] Points accumulated for app order #${appOrder.id} \u2192 account ${accountId}`);
+                    } else {
+                      console.log(`[LOYALTY] No loyalty account found for customer #${loyaltyCust.id} \u2014 skipping accrual for order #${appOrder.id}`);
+                    }
+                  } catch (lpErr) {
+                    console.error(`[LOYALTY] Points accrual failed for order #${appOrder.id}:`, lpErr.message);
+                  }
+                })();
+              }
             }
             return res.sendStatus(200);
           }
@@ -13667,35 +13850,43 @@ async function registerRoutes(app2) {
       if (!hasPhone) {
         return res.json({ configured: true, active: true, linked: false, hasPhone: false, program: baseProgram, account: null });
       }
-      const expectedE164 = toE164(phoneCleaned);
+      const cachedIdPromise = customer.squareLoyaltyAccountId ? getLoyaltyAccount(customer.squareLoyaltyAccountId).catch(() => null) : Promise.resolve(null);
+      const emailSearchPromise = customer.email ? searchSquareCustomerByEmail(customer.email).then((sqCust) => sqCust?.id ? searchLoyaltyAccountByCustomerId(sqCust.id) : null).catch(() => null) : Promise.resolve(null);
+      const phoneSearchPromise = hasPhone ? searchLoyaltyAccount(phoneCleaned).catch(() => null) : Promise.resolve(null);
+      const [cachedAccount, emailAccount, phoneAccount] = await Promise.all([
+        cachedIdPromise,
+        emailSearchPromise,
+        phoneSearchPromise
+      ]);
+      const candidates = /* @__PURE__ */ new Map();
+      if (cachedAccount?.id) candidates.set(cachedAccount.id, cachedAccount);
+      if (emailAccount?.id) candidates.set(emailAccount.id, emailAccount);
+      if (phoneAccount?.id) candidates.set(phoneAccount.id, phoneAccount);
       let account = null;
-      if (customer.squareLoyaltyAccountId) {
-        try {
-          const cached2 = await getLoyaltyAccount(customer.squareLoyaltyAccountId);
-          const cachedPhone = cached2?.mapping?.phone_number ?? null;
-          if (cached2 && (!cachedPhone || cachedPhone === expectedE164)) {
-            account = cached2;
-          }
-        } catch {
-          account = null;
+      if (candidates.size === 0) {
+        account = null;
+      } else if (candidates.size === 1) {
+        account = candidates.values().next().value;
+      } else {
+        let best = null;
+        for (const a of candidates.values()) {
+          if (!best || (a.lifetime_points ?? 0) > (best.lifetime_points ?? 0)) best = a;
         }
+        account = best;
       }
-      if (!account) {
-        account = await searchLoyaltyAccount(phoneCleaned);
-        if (account?.id) {
-          if (account.id !== customer.squareLoyaltyAccountId) {
-            await storage.setSquareLoyaltyAccountId(customerId, account.id);
-          }
-        } else if (customer.squareLoyaltyAccountId) {
-          await storage.setSquareLoyaltyAccountId(customerId, null);
+      if (account?.id) {
+        if (account.id !== customer.squareLoyaltyAccountId) {
+          await storage.setSquareLoyaltyAccountId(customerId, account.id);
         }
+      } else if (customer.squareLoyaltyAccountId) {
+        await storage.setSquareLoyaltyAccountId(customerId, null);
       }
       if (!account) {
         return res.json({
           configured: true,
           active: true,
           linked: false,
-          hasPhone: true,
+          hasPhone,
           canEnroll: true,
           program: baseProgram,
           account: null
@@ -14378,6 +14569,158 @@ async function registerRoutes(app2) {
   app2.get("/api/staff/game/winners", staffAuth, async (_req, res) => {
     try {
       res.json(await storage.getRecentGameWinners(100));
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app2.get("/api/venue-rewards", async (req, res) => {
+    try {
+      await storage.expireOldVenueRewardClaims();
+      const tiers = await storage.getActiveVenueRewardTiers();
+      const authHeader = req.headers.authorization;
+      let pendingClaims = [];
+      if (authHeader?.startsWith("Bearer ")) {
+        const token = authHeader.slice(7);
+        const session = await storage.validateCustomerSession(token);
+        if (session) {
+          const claims = await storage.getVenueRewardClaimsByCustomer(session.customerId);
+          pendingClaims = claims.map((c) => {
+            const tier = tiers.find((t) => t.id === c.tierId) ?? { name: "Venue Reward", category: "other" };
+            return { ...c, tierName: tier.name, tierCategory: tier.category };
+          });
+        }
+      }
+      res.json({ tiers, pendingClaims });
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app2.post("/api/venue-rewards/:tierId/claim", customerAuth, async (req, res) => {
+    const customerId = req.customerId;
+    const tierId = parseInt(req.params.tierId, 10);
+    if (isNaN(tierId)) return res.status(400).json({ message: "Invalid tier ID" });
+    try {
+      const tier = (await storage.getActiveVenueRewardTiers()).find((t) => t.id === tierId);
+      if (!tier) return res.status(404).json({ message: "Reward not found or no longer available" });
+      const customer = await storage.getCustomerById(customerId);
+      if (!customer) return res.status(404).json({ message: "Customer not found" });
+      let loyaltyAccountId = customer.squareLoyaltyAccountId ?? null;
+      if (!loyaltyAccountId && customer.phone && isConfigured()) {
+        const phoneCleaned = customer.phone.replace(/\s/g, "");
+        if (phoneCleaned.length >= 10) {
+          const acct = await searchLoyaltyAccount(phoneCleaned).catch(() => null);
+          if (acct?.id) {
+            loyaltyAccountId = acct.id;
+            await storage.setSquareLoyaltyAccountId(customerId, acct.id);
+          }
+        }
+      }
+      if (!loyaltyAccountId) {
+        return res.status(400).json({ message: "No loyalty account found. Please join The 147 Rewards first." });
+      }
+      const account = await getLoyaltyAccount(loyaltyAccountId).catch(() => null);
+      if (!account) return res.status(500).json({ message: "Could not retrieve your points balance. Please try again." });
+      const balance = account.balance ?? 0;
+      if (balance < tier.pointsCost) {
+        return res.status(400).json({
+          message: `Not enough points. You have ${balance} but this reward costs ${tier.pointsCost}.`,
+          balance,
+          required: tier.pointsCost
+        });
+      }
+      const idempotencyKey = `venue-reward-claim-${customerId}-${tierId}-${Date.now()}`;
+      await adjustLoyaltyPoints(loyaltyAccountId, -tier.pointsCost, `Venue reward claim: ${tier.name}`, idempotencyKey);
+      const claim = await storage.createVenueRewardClaim({
+        customerId,
+        tierId,
+        pointsDeducted: tier.pointsCost
+      });
+      res.json({
+        claim: { ...claim, tierName: tier.name, tierCategory: tier.category },
+        newBalance: balance - tier.pointsCost
+      });
+    } catch (err) {
+      console.error("[venue-rewards] claim error:", err);
+      res.status(500).json({ message: err.message || "Failed to claim reward" });
+    }
+  });
+  app2.get("/api/staff/venue-rewards", staffAuth, async (_req, res) => {
+    try {
+      res.json(await storage.getAllVenueRewardTiers());
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app2.post("/api/staff/venue-rewards", staffAuth, async (req, res) => {
+    if (req.staffRole !== "manager" && req.staffRole !== "owner") {
+      return res.status(403).json({ message: "Manager access required" });
+    }
+    const { name, description, category, pointsCost, active, sortOrder } = req.body;
+    if (!name || typeof pointsCost !== "number" || pointsCost < 1) {
+      return res.status(400).json({ message: "name and pointsCost (\u22651) are required" });
+    }
+    const allowed = ["food", "drink", "table", "experience", "other"];
+    const cat = allowed.includes(category) ? category : "other";
+    try {
+      const tier = await storage.createVenueRewardTier({
+        name,
+        description: description ?? null,
+        category: cat,
+        pointsCost,
+        active: active !== false,
+        sortOrder: sortOrder ?? 0
+      });
+      res.json(tier);
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app2.put("/api/staff/venue-rewards/:id", staffAuth, async (req, res) => {
+    if (req.staffRole !== "manager" && req.staffRole !== "owner") {
+      return res.status(403).json({ message: "Manager access required" });
+    }
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const { name, description, category, pointsCost, active, sortOrder } = req.body;
+    const allowed = ["food", "drink", "table", "experience", "other"];
+    const update = {};
+    if (name !== void 0) update.name = name;
+    if (description !== void 0) update.description = description;
+    if (category !== void 0) update.category = allowed.includes(category) ? category : "other";
+    if (pointsCost !== void 0) update.pointsCost = pointsCost;
+    if (active !== void 0) update.active = active;
+    if (sortOrder !== void 0) update.sortOrder = sortOrder;
+    try {
+      const tier = await storage.updateVenueRewardTier(id, update);
+      if (!tier) return res.status(404).json({ message: "Tier not found" });
+      res.json(tier);
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app2.get("/api/staff/venue-rewards/claims", staffAuth, async (_req, res) => {
+    try {
+      await storage.expireOldVenueRewardClaims();
+      res.json(await storage.getAllVenueRewardClaims());
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  app2.post("/api/staff/venue-rewards/claims/redeem", staffAuth, async (req, res) => {
+    const { code } = req.body;
+    if (!code || typeof code !== "string") {
+      return res.status(400).json({ message: "code is required" });
+    }
+    try {
+      const claim = await storage.getVenueRewardClaimByCode(code.toUpperCase().trim());
+      if (!claim) return res.status(404).json({ message: "Claim code not found" });
+      if (claim.status === "redeemed") return res.status(409).json({ message: "Already redeemed", claim });
+      if (claim.status === "expired" || claim.expiresAt < /* @__PURE__ */ new Date()) {
+        return res.status(410).json({ message: "Claim has expired" });
+      }
+      const ok = await storage.redeemVenueRewardClaim(claim.id, req.staffId);
+      if (!ok) return res.status(409).json({ message: "Could not redeem claim \u2014 it may have already been used" });
+      res.json({ success: true, claim: { ...claim, status: "redeemed" } });
     } catch (err) {
       res.status(500).json({ message: err.message });
     }
