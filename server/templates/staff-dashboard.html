@@ -1262,6 +1262,7 @@
         <div class="menu-tabs" style="margin:0">
           <button class="menu-tab active" id="payTabBtnTickets" onclick="switchPayTab('tickets')">Sell Tickets</button>
           <button class="menu-tab" id="payTabBtnPay" onclick="switchPayTab('pay')">Take Payment</button>
+          <button class="menu-tab" id="payTabBtnEvents" onclick="switchPayTab('events')">Manage Events</button>
         </div>
 
         <!-- TAB: Sell Tickets -->
@@ -1396,6 +1397,106 @@
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- TAB: Manage Events -->
+        <div id="payTabEvents" class="page-body" style="display:none;padding-top:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <div>
+              <div style="font-size:15px;font-weight:700">In-App Events</div>
+              <div style="font-size:12px;color:var(--text-2);margin-top:2px">One-off events and weekly recurring nights shown in the app. TicketSource events are pulled automatically and can't be edited here.</div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="openEventModal(null)">+ Add Event</button>
+          </div>
+
+          <!-- Event type tabs -->
+          <div style="display:flex;gap:8px;margin-bottom:16px">
+            <button class="btn btn-secondary btn-sm" id="evtFilterBtnEvent" onclick="setEvtFilter('event')" style="font-weight:700">One-off Events</button>
+            <button class="btn btn-secondary btn-sm" id="evtFilterBtnWeekly" onclick="setEvtFilter('weekly')">Weekly Nights</button>
+          </div>
+
+          <div id="evtTableWrap" style="background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden">
+            <div style="color:var(--text-2);font-size:13px;padding:24px;text-align:center">Loading…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Event Modal -->
+      <div id="eventModal" class="overlay" style="display:none">
+        <div class="modal" style="max-width:520px;width:100%">
+          <div class="modal-header">
+            <div class="modal-title" id="eventModalTitle">Add Event</div>
+            <button class="modal-close" onclick="closeOverlay('eventModal')">✕</button>
+          </div>
+          <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+            <input type="hidden" id="evtId">
+            <div>
+              <label class="form-label">Title <span style="color:var(--red)">*</span></label>
+              <input class="form-input" id="evtTitle" placeholder="e.g. Snooker Night, Open Mic">
+            </div>
+            <div>
+              <label class="form-label">Description</label>
+              <textarea class="form-input" id="evtDesc" rows="2" placeholder="Optional short description" style="resize:vertical"></textarea>
+            </div>
+            <div id="evtDateRow" style="display:flex;gap:12px">
+              <div style="flex:1">
+                <label class="form-label">Date</label>
+                <input class="form-input" id="evtDate" type="date">
+              </div>
+              <div style="flex:1">
+                <label class="form-label">Start time</label>
+                <input class="form-input" id="evtTime" type="time">
+              </div>
+              <div style="flex:1">
+                <label class="form-label">End time</label>
+                <input class="form-input" id="evtEndTime" type="time">
+              </div>
+            </div>
+            <div id="evtDowRow" style="display:none">
+              <label class="form-label">Day of week</label>
+              <select class="form-input" id="evtDow">
+                <option value="">-- select --</option>
+                <option value="Monday">Monday</option>
+                <option value="Tuesday">Tuesday</option>
+                <option value="Wednesday">Wednesday</option>
+                <option value="Thursday">Thursday</option>
+                <option value="Friday">Friday</option>
+                <option value="Saturday">Saturday</option>
+                <option value="Sunday">Sunday</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Ticket / info URL</label>
+              <input class="form-input" id="evtTicketUrl" type="url" placeholder="https://…">
+            </div>
+            <div style="display:flex;gap:12px;align-items:flex-end">
+              <div style="flex:1">
+                <label class="form-label">Card colour</label>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <input type="color" id="evtColor" value="#0047AB" style="width:44px;height:36px;border:1px solid var(--border);border-radius:8px;cursor:pointer;padding:2px">
+                  <span id="evtColorHex" style="font-size:13px;color:var(--text-2);font-family:monospace">#0047AB</span>
+                </div>
+              </div>
+              <div style="flex:1">
+                <label class="form-label">Type</label>
+                <select class="form-input" id="evtType" onchange="onEvtTypeChange()">
+                  <option value="event">One-off event</option>
+                  <option value="weekly">Weekly recurring</option>
+                </select>
+              </div>
+              <div style="flex:1">
+                <label class="form-label">Visible in app</label>
+                <select class="form-input" id="evtActive">
+                  <option value="true">Yes</option>
+                  <option value="false">No (hidden)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeOverlay('eventModal')">Cancel</button>
+            <button class="btn btn-primary" onclick="saveEvent()">Save</button>
           </div>
         </div>
       </div>
@@ -8834,11 +8935,165 @@
     payState.activeTab=t;
     el('payTabBtnTickets').classList.toggle('active',t==='tickets');
     el('payTabBtnPay').classList.toggle('active',t==='pay');
+    el('payTabBtnEvents').classList.toggle('active',t==='events');
     el('payTabTickets').style.display=t==='tickets'?'':'none';
     el('payTabPay').style.display=t==='pay'?'':'none';
+    el('payTabEvents').style.display=t==='events'?'':'none';
     if(t==='pay'){if(!document.body.classList.contains('role-staff-only'))loadPaymentLog();ensureStripeMounted();}
+    if(t==='events')loadEventsTab();
   }
   window.switchPayTab=switchPayTab;
+
+  /* ── Events management ── */
+  const evtState={filter:'event',list:[]};
+
+  async function loadEventsTab(){
+    el('evtTableWrap').innerHTML='<div style="color:var(--text-2);font-size:13px;padding:24px;text-align:center">Loading…</div>';
+    try{
+      const r=await api('/api/events/all?type='+evtState.filter);
+      if(!r.ok)throw new Error('Failed to load events');
+      evtState.list=await r.json();
+      renderEvtTable();
+    }catch(e){
+      el('evtTableWrap').innerHTML='<div style="color:var(--red);font-size:13px;padding:24px;text-align:center">'+e.message+'</div>';
+    }
+  }
+
+  function setEvtFilter(f){
+    evtState.filter=f;
+    el('evtFilterBtnEvent').style.fontWeight=f==='event'?'700':'400';
+    el('evtFilterBtnWeekly').style.fontWeight=f==='weekly'?'700':'400';
+    loadEventsTab();
+  }
+  window.setEvtFilter=setEvtFilter;
+
+  function fmtEvtDate(e){
+    if(e.eventType==='weekly')return e.dayOfWeek||'—';
+    if(!e.date)return '—';
+    try{const d=new Date(e.date+'T00:00:00');return d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'});}catch{return e.date;}
+  }
+
+  function renderEvtTable(){
+    const list=evtState.list;
+    if(!list.length){
+      el('evtTableWrap').innerHTML='<div style="color:var(--text-2);font-size:13px;padding:32px;text-align:center">No events yet. Click <strong>+ Add Event</strong> to create one.</div>';
+      return;
+    }
+    const isManager=!document.body.classList.contains('role-staff-only');
+    let html='<table style="width:100%;border-collapse:collapse;font-size:13px">';
+    html+='<thead><tr style="border-bottom:2px solid var(--border)">';
+    html+='<th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--text-2)">Title</th>';
+    if(evtState.filter==='event')html+='<th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--text-2)">Date</th>';
+    else html+='<th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--text-2)">Day</th>';
+    html+='<th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--text-2)">Time</th>';
+    html+='<th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--text-2)">Source</th>';
+    html+='<th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--text-2)">Status</th>';
+    if(isManager)html+='<th style="padding:10px 14px;text-align:right;font-weight:700;color:var(--text-2)">Actions</th>';
+    html+='</tr></thead><tbody>';
+    list.forEach((e,i)=>{
+      const fromTS=e.source==='ticketsource';
+      const bg=i%2===0?'#fff':'#F8FAFC';
+      html+='<tr style="border-bottom:1px solid var(--border-light);background:'+bg+'">';
+      html+='<td style="padding:10px 14px">';
+      html+='<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+(e.imageColor||'#0047AB')+';margin-right:8px;vertical-align:middle"></span>';
+      html+='<strong>'+esc(e.title)+'</strong>';
+      if(e.description)html+='<div style="color:var(--text-2);font-size:12px;margin-top:2px">'+esc(e.description.substring(0,80))+(e.description.length>80?'…':'')+'</div>';
+      html+='</td>';
+      html+='<td style="padding:10px 14px;color:var(--text-2)">'+fmtEvtDate(e)+'</td>';
+      const timeStr=(e.time||'')+(e.endTime?' – '+e.endTime:'');
+      html+='<td style="padding:10px 14px;color:var(--text-2)">'+(timeStr||'—')+'</td>';
+      html+='<td style="padding:10px 14px">';
+      if(fromTS)html+='<span style="background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:700">TicketSource</span>';
+      else html+='<span style="background:#F0FDF4;color:#166534;border:1px solid #BBF7D0;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:700">Staff</span>';
+      html+='</td>';
+      html+='<td style="padding:10px 14px">';
+      if(e.active)html+='<span style="color:var(--green);font-weight:700">● Visible</span>';
+      else html+='<span style="color:var(--text-2)">○ Hidden</span>';
+      html+='</td>';
+      if(isManager){
+        html+='<td style="padding:10px 14px;text-align:right;white-space:nowrap">';
+        if(!fromTS){
+          html+='<button class="btn btn-secondary btn-sm" onclick=\'openEventModal('+JSON.stringify(e)+')\'>Edit</button> ';
+          html+='<button class="btn btn-sm" style="background:#FEE2E2;color:#991B1B;border:1px solid #FECACA" onclick="deleteEvent('+e.id+')">Delete</button>';
+        }else{
+          html+='<span style="font-size:12px;color:var(--text-2)">Auto-managed</span>';
+        }
+        html+='</td>';
+      }
+      html+='</tr>';
+    });
+    html+='</tbody></table>';
+    el('evtTableWrap').innerHTML=html;
+  }
+
+  function onEvtTypeChange(){
+    const t=el('evtType').value;
+    el('evtDateRow').style.display=t==='weekly'?'none':'flex';
+    el('evtDowRow').style.display=t==='weekly'?'':'none';
+  }
+  window.onEvtTypeChange=onEvtTypeChange;
+
+  function openEventModal(evt){
+    el('evtId').value=evt?evt.id:'';
+    el('evtTitle').value=evt?evt.title:'';
+    el('evtDesc').value=evt?(evt.description||''):'';
+    el('evtDate').value=evt?(evt.date||''):'';
+    el('evtTime').value=evt?(evt.time||''):'';
+    el('evtEndTime').value=evt?(evt.endTime||''):'';
+    el('evtTicketUrl').value=evt?(evt.ticketUrl||''):'';
+    const color=evt?(evt.imageColor||'#0047AB'):'#0047AB';
+    el('evtColor').value=color;
+    el('evtColorHex').textContent=color;
+    el('evtType').value=evt?(evt.eventType||'event'):'event';
+    el('evtDow').value=evt?(evt.dayOfWeek||''):'';
+    el('evtActive').value=evt?(String(evt.active!==false)):'true';
+    el('eventModalTitle').textContent=evt?'Edit Event':'Add Event';
+    onEvtTypeChange();
+    el('evtColor').oninput=function(){el('evtColorHex').textContent=this.value;};
+    openOverlay('eventModal');
+  }
+  window.openEventModal=openEventModal;
+
+  async function saveEvent(){
+    const id=el('evtId').value;
+    const title=(el('evtTitle').value||'').trim();
+    if(!title)return alert('Please enter a title');
+    const body={
+      title,
+      description:(el('evtDesc').value||'').trim()||null,
+      date:el('evtDate').value||null,
+      time:el('evtTime').value||null,
+      endTime:el('evtEndTime').value||null,
+      ticketUrl:el('evtTicketUrl').value.trim()||null,
+      imageColor:el('evtColor').value||'#0047AB',
+      eventType:el('evtType').value,
+      dayOfWeek:el('evtDow').value||null,
+      active:el('evtActive').value==='true',
+      source:'staff',
+    };
+    try{
+      let r;
+      if(id){
+        r=await api('/api/events/'+id,{method:'PUT',body:JSON.stringify(body)});
+      }else{
+        r=await api('/api/events',{method:'POST',body:JSON.stringify(body)});
+      }
+      if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||'Failed to save event');}
+      closeOverlay('eventModal');
+      loadEventsTab();
+    }catch(e){alert(e.message);}
+  }
+  window.saveEvent=saveEvent;
+
+  async function deleteEvent(id){
+    if(!confirm('Delete this event? It will be removed from the app immediately.'))return;
+    try{
+      const r=await api('/api/events/'+id,{method:'DELETE'});
+      if(!r.ok)throw new Error('Failed to delete event');
+      loadEventsTab();
+    }catch(e){alert(e.message);}
+  }
+  window.deleteEvent=deleteEvent;
 
   async function loadPaymentsPage(){
     try{
