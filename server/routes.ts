@@ -8338,63 +8338,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ configured: true, active: true, linked: false, hasPhone: false, program: baseProgram, account: null });
       }
 
-      // Try cached account ID first; if Square 404s OR the cached account's
-      // phone no longer matches the customer's profile (e.g. they changed
-      // numbers, or staff re-mapped the loyalty account), discard the cache
-      // and re-search by current profile phone. This prevents a stale link
-      // from showing the wrong account's points after a phone change.
-      const expectedE164 = square.toE164(phoneCleaned!);
+      // Always run the email-based search in parallel with the cached-ID
+      // lookup. This guards against the case where the cache points to a
+      // low-balance stub account (e.g. created at the till with only a phone
+      // mapping) while the customer's real account is linked to their Square
+      // customer profile with a much higher balance. When the two paths
+      // return different accounts we always prefer the one with more
+      // lifetime points — that is definitively their main account.
+      const cachedIdPromise: Promise<any> = customer.squareLoyaltyAccountId
+        ? square.getLoyaltyAccount(customer.squareLoyaltyAccountId).catch(() => null)
+        : Promise.resolve(null);
+
+      const emailSearchPromise: Promise<any> = customer.email
+        ? square.searchSquareCustomerByEmail(customer.email)
+            .then((sqCust) => sqCust?.id ? square.searchLoyaltyAccountByCustomerId(sqCust.id) : null)
+            .catch(() => null)
+        : Promise.resolve(null);
+
+      const phoneSearchPromise: Promise<any> = hasPhone
+        ? square.searchLoyaltyAccount(phoneCleaned!).catch(() => null)
+        : Promise.resolve(null);
+
+      const [cachedAccount, emailAccount, phoneAccount] = await Promise.all([
+        cachedIdPromise,
+        emailSearchPromise,
+        phoneSearchPromise,
+      ]);
+
+      // Collect all distinct accounts found, keyed by ID.
+      const candidates = new Map<string, any>();
+      if (cachedAccount?.id) candidates.set(cachedAccount.id, cachedAccount);
+      if (emailAccount?.id)  candidates.set(emailAccount.id,  emailAccount);
+      if (phoneAccount?.id)  candidates.set(phoneAccount.id,  phoneAccount);
+
       let account: any = null;
-      if (customer.squareLoyaltyAccountId) {
-        try {
-          const cached = await square.getLoyaltyAccount(customer.squareLoyaltyAccountId);
-          const cachedPhone = cached?.mapping?.phone_number ?? null;
-          // Trust the cache when (a) the account has no phone mapping (then
-          // ID is the only link we have) or (b) the mapped phone matches
-          // current profile phone. Otherwise discard.
-          if (cached && (!cachedPhone || cachedPhone === expectedE164)) {
-            account = cached;
-          }
-        } catch {
-          account = null;
+      if (candidates.size === 0) {
+        account = null;
+      } else if (candidates.size === 1) {
+        account = candidates.values().next().value;
+      } else {
+        // Multiple distinct accounts — pick the one with the highest lifetime
+        // points. That is always the customer's primary account.
+        let best: any = null;
+        for (const a of candidates.values()) {
+          if (!best || (a.lifetime_points ?? 0) > (best.lifetime_points ?? 0)) best = a;
         }
+        account = best;
       }
-      if (!account) {
-        // Run phone search and email-based customer-ID search in parallel.
-        // Some customers have two loyalty accounts (one created at the till
-        // with a phone mapping, one linked to their Square customer profile).
-        // When they differ we prefer the account with the higher lifetime
-        // points — that's always the one they've been actively using.
-        const phoneSearchPromise = hasPhone
-          ? square.searchLoyaltyAccount(phoneCleaned!).catch(() => null)
-          : Promise.resolve(null);
 
-        const emailSearchPromise: Promise<any> = customer.email
-          ? square.searchSquareCustomerByEmail(customer.email)
-              .then((sqCust) => sqCust?.id ? square.searchLoyaltyAccountByCustomerId(sqCust.id) : null)
-              .catch(() => null)
-          : Promise.resolve(null);
-
-        const [phoneAccount, emailAccount] = await Promise.all([phoneSearchPromise, emailSearchPromise]);
-
-        if (phoneAccount && emailAccount && phoneAccount.id !== emailAccount.id) {
-          // Two different accounts — use the one with more lifetime points.
-          const phonePoints = (phoneAccount.lifetime_points ?? 0) as number;
-          const emailPoints = (emailAccount.lifetime_points ?? 0) as number;
-          account = emailPoints >= phonePoints ? emailAccount : phoneAccount;
-        } else {
-          account = emailAccount || phoneAccount;
+      if (account?.id) {
+        if (account.id !== customer.squareLoyaltyAccountId) {
+          await storage.setSquareLoyaltyAccountId(customerId, account.id);
         }
-
-        if (account?.id) {
-          if (account.id !== customer.squareLoyaltyAccountId) {
-            await storage.setSquareLoyaltyAccountId(customerId, account.id);
-          }
-        } else if (customer.squareLoyaltyAccountId) {
-          // Stored link no longer resolves to anything — clear it so we
-          // don't keep retrying the same dead ID.
-          await storage.setSquareLoyaltyAccountId(customerId, null);
-        }
+      } else if (customer.squareLoyaltyAccountId) {
+        // Nothing resolved — clear the stale cached ID.
+        await storage.setSquareLoyaltyAccountId(customerId, null);
       }
 
       if (!account) {
