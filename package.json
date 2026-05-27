@@ -97,6 +97,7 @@
   },
   "private": true,
   "overrides": {
+    "tmp": "0.2.7",
     "minimatch": "10.2.3",
     "esbuild": "$esbuild",
     "@esbuild-kit/core-utils": {
