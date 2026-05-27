@@ -1,4 +1,4 @@
-import React, { useContext } from "react";
+import React, { useContext, useState, useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -377,6 +377,13 @@ export default function RewardsScreen() {
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const queryClient = useQueryClient();
 
+  // Disable the parent ScrollView while the user is scratching so the card
+  // doesn't shift position mid-stroke (which would offset the brush positions
+  // and make scratching feel broken).
+  const [scratchActive, setScratchActive] = useState(false);
+  const onScratchStart = useCallback(() => setScratchActive(true), []);
+  const onScratchEnd   = useCallback(() => setScratchActive(false), []);
+
   const { isAuthenticated, customer, getCustomerToken } = useCustomerAuth();
   const { firstName } = useCustomerGreeting();
 
@@ -404,6 +411,7 @@ export default function RewardsScreen() {
         { paddingTop: (isWeb ? 67 : insets.top) + 16, paddingBottom: tabBarHeight + 20, paddingHorizontal: tabletPad },
       ]}
       keyboardShouldPersistTaps="handled"
+      scrollEnabled={!scratchActive}
     >
       <LinearGradient
         colors={[Colors.brand.dark, "#2D1800"]}
@@ -499,7 +507,10 @@ export default function RewardsScreen() {
             <Text style={styles.personalIntro}>Here's where you stand, {firstName}</Text>
           ) : null}
 
-          <ScratchCardGame />
+          <ScratchCardGame
+            onScratchStart={onScratchStart}
+            onScratchEnd={onScratchEnd}
+          />
 
           <PointsDisplay
             balance={meQuery.data.account.balance}

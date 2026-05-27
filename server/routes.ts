@@ -4229,13 +4229,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 (async () => {
                   try {
                     const loyaltyCust = await storage.getCustomerByEmail(appOrder.customerEmail!);
-                    if (loyaltyCust?.squareLoyaltyAccountId) {
+                    if (!loyaltyCust) return;
+
+                    let accountId = loyaltyCust.squareLoyaltyAccountId;
+
+                    // If the account ID isn't cached yet (customer hasn't visited
+                    // the Rewards tab since enrolling), do a live Square lookup by
+                    // email and phone so we never silently drop points.
+                    if (!accountId) {
+                      const phoneCleaned = loyaltyCust.phone ? loyaltyCust.phone.replace(/\s/g, "") : null;
+
+                      const [emailAccount, phoneAccount] = await Promise.all([
+                        loyaltyCust.email
+                          ? square.searchSquareCustomerByEmail(loyaltyCust.email)
+                              .then((sqCust: any) => sqCust?.id ? square.searchLoyaltyAccountByCustomerId(sqCust.id) : null)
+                              .catch(() => null)
+                          : Promise.resolve(null),
+                        phoneCleaned && phoneCleaned.length >= 10
+                          ? square.searchLoyaltyAccount(phoneCleaned).catch(() => null)
+                          : Promise.resolve(null),
+                      ]);
+
+                      // Pick the account with the higher lifetime_points
+                      const candidates = [emailAccount, phoneAccount].filter(Boolean);
+                      const best = candidates.reduce((a: any, b: any) =>
+                        !a || (b?.lifetime_points ?? 0) > (a?.lifetime_points ?? 0) ? b : a, null);
+
+                      if (best?.id) {
+                        accountId = best.id;
+                        // Cache it so future orders don't need the live lookup
+                        await storage.setSquareLoyaltyAccountId(loyaltyCust.id, best.id);
+                        console.log(`[LOYALTY] Resolved + cached loyalty account ${best.id} for customer #${loyaltyCust.id}`);
+                      }
+                    }
+
+                    if (accountId) {
                       await square.accumulateLoyaltyPointsForOrder(
-                        loyaltyCust.squareLoyaltyAccountId,
+                        accountId,
                         paymentOrderId,
                         `order-loyalty-${appOrder.id}`,
                       );
-                      console.log(`[LOYALTY] Points accumulated for app order #${appOrder.id} → account ${loyaltyCust.squareLoyaltyAccountId}`);
+                      console.log(`[LOYALTY] Points accumulated for app order #${appOrder.id} → account ${accountId}`);
+                    } else {
+                      console.log(`[LOYALTY] No loyalty account found for customer #${loyaltyCust.id} — skipping accrual for order #${appOrder.id}`);
                     }
                   } catch (lpErr: any) {
                     console.error(`[LOYALTY] Points accrual failed for order #${appOrder.id}:`, lpErr.message);
