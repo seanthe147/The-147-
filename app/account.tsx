@@ -147,12 +147,12 @@ function DOBPicker({ value, onChange, testID }: {
         ) : null}
       </Pressable>
       {showPicker && Platform.OS === "ios" && (
-        <Modal transparent animationType="slide" visible onRequestClose={() => setShowPicker(false)}>
+        <Modal transparent animationType="none" visible onRequestClose={() => setShowPicker(false)}>
           <Pressable style={styles.dobModalBackdrop} onPress={() => setShowPicker(false)}>
-            {/* View instead of Pressable — Pressable intercepted swipe gestures
-                needed by the native iOS spinner wheel, making it blank/unresponsive.
-                onStartShouldSetResponder still blocks the backdrop tap. */}
-            <View style={styles.dobModalSheet} onStartShouldSetResponder={() => true}>
+            {/* animationType="none" is required — "slide" causes the native
+                UIPickerView to render blank before the animation completes.
+                View (not Pressable) avoids swallowing the spinner's touch events. */}
+            <View style={styles.dobModalSheet}>
               <DateTimePicker
                 value={dateValue}
                 mode="date"
@@ -160,6 +160,7 @@ function DOBPicker({ value, onChange, testID }: {
                 maximumDate={maxDate}
                 minimumDate={minDate}
                 onChange={handleChange}
+                style={{ height: 215 }}
               />
               <Pressable
                 style={styles.dobModalDone}

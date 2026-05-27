@@ -93,9 +93,9 @@ export function DatePicker({
         ) : null}
       </Pressable>
       {open && Platform.OS === "ios" && (
-        <Modal transparent animationType="slide" visible onRequestClose={() => setOpen(false)}>
+        <Modal transparent animationType="none" visible onRequestClose={() => setOpen(false)}>
           <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
-            <Pressable style={styles.sheet} onPress={() => {}}>
+            <View style={styles.sheet}>
               <DateTimePicker
                 value={dateValue}
                 mode="date"
@@ -103,6 +103,7 @@ export function DatePicker({
                 maximumDate={maxDate}
                 minimumDate={minDate}
                 onChange={onPickerChange}
+                style={{ height: 215 }}
               />
               <Pressable
                 style={styles.doneBtn}
@@ -113,7 +114,7 @@ export function DatePicker({
               >
                 <Text style={styles.doneText}>Done</Text>
               </Pressable>
-            </Pressable>
+            </View>
           </Pressable>
         </Modal>
       )}
@@ -187,15 +188,16 @@ export function TimePicker({
         ) : null}
       </Pressable>
       {open && Platform.OS === "ios" && (
-        <Modal transparent animationType="slide" visible onRequestClose={() => setOpen(false)}>
+        <Modal transparent animationType="none" visible onRequestClose={() => setOpen(false)}>
           <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
-            <Pressable style={styles.sheet} onPress={() => {}}>
+            <View style={styles.sheet}>
               <DateTimePicker
                 value={dateValue}
                 mode="time"
                 display="spinner"
                 minuteInterval={minuteInterval}
                 onChange={onPickerChange}
+                style={{ height: 215 }}
               />
               <Pressable
                 style={styles.doneBtn}
@@ -206,7 +208,7 @@ export function TimePicker({
               >
                 <Text style={styles.doneText}>Done</Text>
               </Pressable>
-            </Pressable>
+            </View>
           </Pressable>
         </Modal>
       )}
