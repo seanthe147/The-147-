@@ -258,6 +258,10 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
             // clipped by inline media playback constraints.
             allowsInlineMediaPlayback
             mediaPlaybackRequiresUserAction={false}
+            // Hardware acceleration on Android prevents the black flash on
+            // first render and ensures Google Pay's native bottom sheet
+            // composites correctly over the WebView layer.
+            androidLayerType="hardware"
             renderLoading={() => (
               <View style={styles.loadingOverlay}>
                 <ActivityIndicator color={Colors.brand.blue} />
