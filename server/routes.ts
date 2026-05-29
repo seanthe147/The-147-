@@ -6996,6 +6996,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
             reason: `Square payment ${payment.id} (in-app)`,
           }).catch((e: any) => console.error("[ORDER] Audit log failed:", e.message));
         }
+
+        // ── Loyalty points accrual (non-blocking) ──────────────────────────
+        // Award directly here so points land immediately — the webhook path
+        // (payment.updated) is a backup but not always reliable for in-app
+        // payments. Square's idempotency key prevents double-awarding if
+        // both paths fire.
+        if (order.customerEmail && order.squareOrderId && square.isConfigured()) {
+          (async () => {
+            try {
+              const loyaltyCust = await storage.getCustomerByEmail(order.customerEmail!);
+              if (!loyaltyCust) return;
+              let accountId = loyaltyCust.squareLoyaltyAccountId;
+              if (!accountId) {
+                const phoneCleaned = loyaltyCust.phone ? loyaltyCust.phone.replace(/\s/g, "") : null;
+                const [emailAcc, phoneAcc] = await Promise.all([
+                  loyaltyCust.email
+                    ? square.searchSquareCustomerByEmail(loyaltyCust.email)
+                        .then((sq: any) => sq?.id ? square.searchLoyaltyAccountByCustomerId(sq.id) : null)
+                        .catch(() => null)
+                    : Promise.resolve(null),
+                  phoneCleaned && phoneCleaned.length >= 10
+                    ? square.searchLoyaltyAccount(phoneCleaned).catch(() => null)
+                    : Promise.resolve(null),
+                ]);
+                const candidates = [emailAcc, phoneAcc].filter(Boolean);
+                const best = candidates.reduce((a: any, b: any) =>
+                  !a || (b?.lifetime_points ?? 0) > (a?.lifetime_points ?? 0) ? b : a, null);
+                if (best?.id) {
+                  accountId = best.id;
+                  await storage.setSquareLoyaltyAccountId(loyaltyCust.id, best.id);
+                }
+              }
+              if (accountId) {
+                await square.accumulateLoyaltyPointsForOrder(accountId, order.squareOrderId!, `order-loyalty-${order.id}`);
+                console.log(`[LOYALTY] Points accumulated for app order #${order.id} → account ${accountId}`);
+              } else {
+                console.log(`[LOYALTY] No loyalty account for customer #${loyaltyCust.id} (order #${order.id})`);
+              }
+            } catch (lpErr: any) {
+              console.error(`[LOYALTY] Points accrual failed for order #${order.id}:`, lpErr.message);
+            }
+          })();
+        }
       }
       // FEATURE_SAVED_CARDS: opt-in card-on-file save AFTER a successful
       // charge. We only attempt this when:
@@ -10012,6 +10055,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
             action: "paid",
             reason: `Square payment ${payment.id} (saved card)`,
           }).catch((e: any) => console.error("[ORDER] Audit log failed:", e.message));
+        }
+
+        // ── Loyalty points accrual (non-blocking) ──────────────────────────
+        if (order.customerEmail && order.squareOrderId && square.isConfigured()) {
+          (async () => {
+            try {
+              const loyaltyCust = await storage.getCustomerByEmail(order.customerEmail!);
+              if (!loyaltyCust) return;
+              let accountId = loyaltyCust.squareLoyaltyAccountId;
+              if (!accountId) {
+                const phoneCleaned = loyaltyCust.phone ? loyaltyCust.phone.replace(/\s/g, "") : null;
+                const [emailAcc, phoneAcc] = await Promise.all([
+                  loyaltyCust.email
+                    ? square.searchSquareCustomerByEmail(loyaltyCust.email)
+                        .then((sq: any) => sq?.id ? square.searchLoyaltyAccountByCustomerId(sq.id) : null)
+                        .catch(() => null)
+                    : Promise.resolve(null),
+                  phoneCleaned && phoneCleaned.length >= 10
+                    ? square.searchLoyaltyAccount(phoneCleaned).catch(() => null)
+                    : Promise.resolve(null),
+                ]);
+                const candidates = [emailAcc, phoneAcc].filter(Boolean);
+                const best = candidates.reduce((a: any, b: any) =>
+                  !a || (b?.lifetime_points ?? 0) > (a?.lifetime_points ?? 0) ? b : a, null);
+                if (best?.id) {
+                  accountId = best.id;
+                  await storage.setSquareLoyaltyAccountId(loyaltyCust.id, best.id);
+                }
+              }
+              if (accountId) {
+                await square.accumulateLoyaltyPointsForOrder(accountId, order.squareOrderId!, `order-loyalty-${order.id}`);
+                console.log(`[LOYALTY] Points accumulated for app order #${order.id} → account ${accountId}`);
+              } else {
+                console.log(`[LOYALTY] No loyalty account for customer #${loyaltyCust.id} (order #${order.id})`);
+              }
+            } catch (lpErr: any) {
+              console.error(`[LOYALTY] Points accrual failed for order #${order.id}:`, lpErr.message);
+            }
+          })();
         }
       }
       res.json({
