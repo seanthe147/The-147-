@@ -1373,15 +1373,37 @@ function CartSheet({
     setCancelledNotice("Payment cancelled. Your cart has been kept — tap Pay to try again.");
   };
 
-  const handleSheetUnavailable = async (reason: string) => {
-    // The in-app SDK could not load (offline, blocked, init failure).
-    // Fall back to the hosted checkout in the in-app browser, preserving
-    // the pending order so totals and discounts stay identical.
+  const handleSheetUnavailable = (reason: string) => {
+    // The SDK reported a fatal error (3DS fingerprint timeout, init failure,
+    // offline, etc.). Do NOT automatically open an external browser — that
+    // is confusing and removes control from the user. Instead:
+    //   1. Hide the payment sheet and clear the in-flight order state.
+    //   2. Show an Alert giving the user the choice to retry or fall back
+    //      to the hosted web checkout (which does open a browser).
     setPaymentSheetVisible(false);
     setPendingOrder(null);
     setPayError(null);
     if (__DEV__) console.warn("Square SDK unavailable:", reason);
-    await fallbackToHostedCheckout();
+    Alert.alert(
+      "Payment Form Issue",
+      'The payment screen couldn\'t load. This is usually temporary.\n\nTap "Try Again" to retry, or use web checkout as a fallback.',
+      [
+        {
+          text: "Try Again",
+          style: "default",
+          onPress: () =>
+            setPayError(
+              'Tap "Place Order" again to open a fresh payment screen.'
+            ),
+        },
+        {
+          text: "Web Checkout",
+          style: "default",
+          onPress: () => fallbackToHostedCheckout(),
+        },
+        { text: "Cancel", style: "cancel" },
+      ]
+    );
   };
 
   const handleClose = () => {

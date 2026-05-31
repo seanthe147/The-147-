@@ -258,10 +258,27 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
             // clipped by inline media playback constraints.
             allowsInlineMediaPlayback
             mediaPlaybackRequiresUserAction={false}
-            // Hardware acceleration on Android prevents the black flash on
-            // first render and ensures Google Pay's native bottom sheet
-            // composites correctly over the WebView layer.
-            androidLayerType="hardware"
+            // Intercept Android navigation requests before they leave the
+            // WebView. When Google Pay's JS API can't open the native payment
+            // sheet within the WebView (Payment Request API not available in
+            // this context), Square's SDK falls back to an intent:// URL.
+            // Without this handler Android WebView forwards that URL to
+            // Chrome, which shows a confusing error page. Returning false
+            // here cancels the navigation; Square's tokenize() promise then
+            // rejects and our inline catch handler shows a friendly message
+            // instead. All other URLs (3DS fingerprint iframes, Square CDN,
+            // etc.) are allowed through.
+            onShouldStartLoadWithRequest={(request) => {
+              const url = request.url || "";
+              if (
+                url.startsWith("intent://") ||
+                url.startsWith("googlepay://") ||
+                url.startsWith("market://")
+              ) {
+                return false; // block — shows inline error instead of Chrome
+              }
+              return true;
+            }}
             renderLoading={() => (
               <View style={styles.loadingOverlay}>
                 <ActivityIndicator color={Colors.brand.blue} />
