@@ -541,6 +541,12 @@ export function buildPaymentSheetHtml(opts: {
         try {
           var verifyDetails = {
             intent: "STORE",
+            // Including amount + currencyCode in the verifyBuyer call gives
+            // Square's 3DS engine the transaction context it needs to run a
+            // "frictionless" risk assessment — meaning fewer customers have
+            // to complete an explicit SCA challenge to save their card.
+            amount: AMOUNT,
+            currencyCode: CURRENCY,
             customerInitiated: true,
             sellerKeyedIn: false,
             billingContact: BUYER_EMAIL ? { email: BUYER_EMAIL } : {},
@@ -573,16 +579,37 @@ export function buildPaymentSheetHtml(opts: {
             // Pairs with payment_started so we can compute success rate.
             diag("payment_tokenized", { method: label });
             verifyAndSend(result.token);
+          } else if (result.status === "Cancel") {
+            // User dismissed the payment sheet (e.g. closed the Google Pay or
+            // Apple Pay overlay without completing the payment). This is not
+            // an error — just reset the button state silently so they can
+            // try again without a confusing "Payment failed" message.
+            diag("payment_cancelled", { method: label });
           } else {
-            // Build a diagnostic message that includes Square's error code +
-            // category so the user / staff can pinpoint why Apple Pay tokens
-            // are being rejected (e.g. INVALID_CARD_DATA from a domain that
-            // isn't verified for Apple Pay processing on this Square account).
+            // Build a diagnostic message including Square's error code and
+            // category so staff can pinpoint why tokens are rejected
+            // (e.g. INVALID_CARD_DATA from an unverified Apple Pay domain).
             var first = (result.errors && result.errors[0]) || {};
             var code = first.code || "UNKNOWN";
             var category = first.category || "";
-            var detail = first.detail || first.message || "Payment failed";
-            var msg = label + ": " + detail + " [" + code + (category ? " · " + category : "") + "]";
+            // Map the most common Square error codes to plain-English messages
+            // so customers understand what to do without seeing raw API codes.
+            var friendlyMessages = {
+              INVALID_CARD_DATA: "Check your card details and try again.",
+              CVV_FAILURE: "Incorrect security code (CVV) — please check and try again.",
+              EXPIRY_FAILURE: "Incorrect expiry date — please check and try again.",
+              CARD_DECLINED: "Your card was declined. Please try a different card.",
+              CARD_DECLINED_VERIFICATION_REQUIRED: "Your bank requires additional verification. Please try again or use a different card.",
+              INSUFFICIENT_FUNDS: "Insufficient funds on this card.",
+              CARD_VELOCITY_EXCEEDED: "Too many attempts — please wait a moment and try again.",
+              TRANSACTION_LIMIT_EXCEEDED: "Transaction limit exceeded. Please try a different card.",
+              CARDHOLDER_INSUFFICIENT_PERMISSIONS: "This card type is not accepted here.",
+            };
+            var friendly = friendlyMessages[code];
+            var rawDetail = first.detail || first.message || "Payment failed";
+            var msg = friendly
+              ? label + ": " + friendly
+              : label + ": " + rawDetail + " [" + code + (category ? " · " + category : "") + "]";
             setStatus(msg);
             send({ type: "error", message: msg, code: code, category: category, method: label });
           }
@@ -607,7 +634,27 @@ export function buildPaymentSheetHtml(opts: {
 
       diag("card_attach_start");
       var card;
-      payments.card().then(function (c) {
+      // Pass card styling options so the Square-hosted input fields match
+      // the payment sheet's light (#F7F8FA) background and brand colours.
+      // CardClassSelectors reference:
+      //   https://developer.squareup.com/reference/sdks/web/payments/objects/CardClassSelectors
+      payments.card({
+        style: {
+          '.input-container': { borderColor: '#E5E7EB', borderRadius: '8px' },
+          '.input-container.is-focus': { borderColor: '#3B82F6' },
+          '.input-container.is-error': { borderColor: '#DC2626' },
+          '.message-text': { color: '#6B7280' },
+          '.message-icon': { color: '#6B7280' },
+          '.message-text.is-error': { color: '#DC2626' },
+          '.message-icon.is-error': { color: '#DC2626' },
+          input: {
+            color: '#0A1628',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
+            fontSize: '15px',
+          },
+          'input::placeholder': { color: '#9CA3AF' },
+        },
+      }).then(function (c) {
         card = c;
         return c.attach("#card-container");
       }).then(function () {

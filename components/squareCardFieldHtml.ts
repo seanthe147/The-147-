@@ -40,6 +40,14 @@ export function buildCardFieldHtml(opts: {
     opts.environment === "production"
       ? "https://web.squarecdn.com/v1/square.js"
       : "https://sandbox.web.squarecdn.com/v1/square.js";
+  // Square's card-entry iframe posts tokenisation requests to pci-connect.*
+  // — a different host from the SDK CDN. Adding a preconnect hint here means
+  // the TLS handshake completes in parallel with the SDK download instead of
+  // being a serial cost the first time the customer hits Pay.
+  const tokenizationOrigin =
+    opts.environment === "production"
+      ? "https://pci-connect.squareup.com"
+      : "https://pci-connect.squareupsandbox.com";
   const amountStr = (opts.amountPence / 100).toFixed(2);
   // Same per-phase timeout as the legacy sheet — 12s tolerates poor mobile
   // signal at the venue while still preventing a truly hung WebView from
@@ -52,6 +60,18 @@ export function buildCardFieldHtml(opts: {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>Card</title>
+  <!--
+    Resource hints — kick off DNS + TLS handshake to both Square origins as
+    early as possible so the SDK download and the first tokenisation request
+    are faster on slow venue Wi-Fi / mobile data. These hints are free on
+    warm connections and never harmful — at worst the browser ignores them.
+  -->
+  <link rel="preconnect" href="${sdkSrc.replace(/\/v1\/square\.js$/, "")}" crossorigin />
+  <link rel="preconnect" href="${tokenizationOrigin}" crossorigin />
+  <link rel="preconnect" href="https://applepay.cdn-apple.com" crossorigin />
+  <link rel="dns-prefetch" href="${sdkSrc.replace(/\/v1\/square\.js$/, "")}" />
+  <link rel="dns-prefetch" href="${tokenizationOrigin}" />
+  <link rel="preload" as="script" href="${sdkSrc}" crossorigin />
   <!--
     Apple's official Apple Pay button web component. Required by App Store
     Guideline 4.9 — using a custom black button with the  Pay wordmark
@@ -347,6 +367,11 @@ export function buildCardFieldHtml(opts: {
           try {
             var verifyDetails = {
               intent: "STORE",
+              // Including amount + currencyCode gives Square's 3DS engine the
+              // transaction context for a frictionless risk assessment — fewer
+              // customers see an explicit SCA challenge when saving their card.
+              amount: AMOUNT,
+              currencyCode: CURRENCY,
               customerInitiated: true,
               sellerKeyedIn: false,
               billingContact: BUYER_EMAIL ? { email: BUYER_EMAIL } : {},
@@ -373,13 +398,34 @@ export function buildCardFieldHtml(opts: {
           var label = methodLabel || "Card";
           return paymentMethod.tokenize().then(function (result) {
             if (result.status === "OK") {
+              diag("payment_tokenized", { method: label });
               verifyAndSend(result.token);
+            } else if (result.status === "Cancel") {
+              // User dismissed the payment sheet (e.g. closed Google Pay or
+              // Apple Pay without completing it). Not an error — reset silently.
+              diag("payment_cancelled", { method: label });
             } else {
               var first = (result.errors && result.errors[0]) || {};
               var code = first.code || "UNKNOWN";
               var category = first.category || "";
-              var detail = first.detail || first.message || "Payment failed";
-              var msg = label + ": " + detail + " [" + code + (category ? " · " + category : "") + "]";
+              // Map common Square error codes to plain-English messages so
+              // customers know what to do without seeing raw API error codes.
+              var friendlyMessages = {
+                INVALID_CARD_DATA: "Check your card details and try again.",
+                CVV_FAILURE: "Incorrect security code (CVV) — please check and try again.",
+                EXPIRY_FAILURE: "Incorrect expiry date — please check and try again.",
+                CARD_DECLINED: "Your card was declined. Please try a different card.",
+                CARD_DECLINED_VERIFICATION_REQUIRED: "Your bank requires additional verification. Please try again or use a different card.",
+                INSUFFICIENT_FUNDS: "Insufficient funds on this card.",
+                CARD_VELOCITY_EXCEEDED: "Too many attempts — please wait a moment and try again.",
+                TRANSACTION_LIMIT_EXCEEDED: "Transaction limit exceeded. Please try a different card.",
+                CARDHOLDER_INSUFFICIENT_PERMISSIONS: "This card type is not accepted here.",
+              };
+              var friendly = friendlyMessages[code];
+              var rawDetail = first.detail || first.message || "Payment failed";
+              var msg = friendly
+                ? label + ": " + friendly
+                : label + ": " + rawDetail + " [" + code + (category ? " · " + category : "") + "]";
               setStatus(msg);
               send({ type: "error", message: msg, code: code, category: category, method: label });
             }
@@ -399,7 +445,28 @@ export function buildCardFieldHtml(opts: {
         }, PHASE_TIMEOUT_MS);
 
         diag("card_attach_start");
-        payments.card().then(function (c) {
+        // Pass card styling options so Square's hosted input fields match
+        // the checkout screen's white card container and brand colours.
+        // The container's own border is applied via CSS (#card-container),
+        // so we set the inner input-container border to transparent to avoid
+        // a double-border effect and only show focus/error borders.
+        payments.card({
+          style: {
+            '.input-container': { borderColor: 'transparent' },
+            '.input-container.is-focus': { borderColor: '#3B82F6' },
+            '.input-container.is-error': { borderColor: '#DC2626' },
+            '.message-text': { color: '#6B7280' },
+            '.message-icon': { color: '#6B7280' },
+            '.message-text.is-error': { color: '#DC2626' },
+            '.message-icon.is-error': { color: '#DC2626' },
+            input: {
+              color: '#0A1628',
+              fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
+              fontSize: '15px',
+            },
+            'input::placeholder': { color: '#9CA3AF' },
+          },
+        }).then(function (c) {
           card = c;
           return c.attach("#card-container");
         }).then(function () {
@@ -460,6 +527,7 @@ export function buildCardFieldHtml(opts: {
               var divider = document.getElementById("or-divider");
               if (divider) divider.style.display = "block";
               btn.addEventListener("click", function () {
+                diag("payment_started", { method: "apple_pay" });
                 tokenizeAndSend(ap, "Apple Pay");
               });
               send({ type: "wallet_ready", method: "apple_pay" });
@@ -507,6 +575,7 @@ export function buildCardFieldHtml(opts: {
               var divider = document.getElementById("or-divider");
               if (divider) divider.style.display = "block";
               btn.addEventListener("click", function () {
+                diag("payment_started", { method: "google_pay" });
                 tokenizeAndSend(gp, "Google Pay");
               });
               send({ type: "wallet_ready", method: "google_pay" });
