@@ -9118,6 +9118,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let squareRewardId: string | null = null;
       let pointsAwarded: number | null = null;
       let giftCardGan: string | null = null;
+      let autoClaimedAt: Date | null = null;
 
       if (prize && prize.prizeType !== "none") {
         const customer = await storage.getCustomerById(customerId);
@@ -9134,10 +9135,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.warn("[Game] Points award failed:", e.message);
           }
         }
-        // reward_tier prizes are tracked in-app only — no Square API call.
-        // The customer shows the win screen to staff who mark it claimed in the admin.
-        // (Previously used a ghost-points trick which conflicted with Square's own
-        //  auto-issue behaviour when customers hit tier thresholds via normal spending.)
+        // reward_tier: push the reward straight to the customer's Square loyalty account
+        // so staff only need Square POS (single system). Net points change is zero —
+        // issueFreeGameReward gifts exactly the tier's point cost then immediately creates
+        // the ISSUED reward which spends those same points.
+        // Falls back to manual in-app claim if the customer has no loyalty account or
+        // the Square call fails (reward stays unclaimed → appears in staff admin).
+        if (prize.prizeType === "reward_tier") {
+          if (prize.rewardTierId && customer?.squareLoyaltyAccountId) {
+            try {
+              const reward = await square.issueFreeGameReward(
+                customer.squareLoyaltyAccountId,
+                prize.rewardTierId,
+                prize.tierPoints ?? 0,
+                `game-reward-${customerId}-${Date.now()}`,
+              );
+              if (reward?.id) {
+                squareRewardId = reward.id;
+                autoClaimedAt = new Date(); // Square handles redemption at the till
+                console.log(`[Game] Issued Square loyalty reward ${squareRewardId} to account ${customer.squareLoyaltyAccountId} for prize "${prize.name}"`);
+              }
+            } catch (e: any) {
+              console.warn("[Game] Square reward issue failed, will fall back to manual claim:", e.message);
+            }
+          }
+          // If no loyalty account or Square call failed: squareRewardId stays null,
+          // autoClaimedAt stays null → shows up in admin Prize Claims for staff to handle.
+        }
         if (prize.prizeType === "gift_card" && prize.giftCardAmountPence && prize.giftCardAmountPence > 0) {
           try {
             const gan = await square.issueGiftCardPrize(
@@ -9159,6 +9183,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         squareRewardId,
         pointsAwarded,
         giftCardGan,
+        claimedAt: autoClaimedAt,
         londonDate,
       });
 
@@ -9168,6 +9193,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         pointsAwarded,
         giftCardGan,
         playId: play.id,
+        squareRewardIssued: !!squareRewardId,
       });
     } catch (err: any) {
       console.error("[Game] Play error:", err.message);

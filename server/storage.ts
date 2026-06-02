@@ -3349,6 +3349,8 @@ export class DatabaseStorage implements IStorage {
     squareRewardId?: string | null;
     pointsAwarded?: number | null;
     giftCardGan?: string | null;
+    claimedAt?: Date | null;
+    claimedByStaffId?: number | null;
     londonDate: string;
   }): Promise<GamePlay> {
     const [play] = await db.insert(gamePlays).values({ ...data, playedAt: new Date() }).returning();

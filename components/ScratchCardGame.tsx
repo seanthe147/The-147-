@@ -68,6 +68,7 @@ interface GameResult {
   pointsAwarded: number | null;
   giftCardGan: string | null;
   playId: number;
+  squareRewardIssued?: boolean;
 }
 
 interface ScratchPoint {
@@ -142,7 +143,16 @@ function PrizeContent({ result, error }: { result: GameResult | null; error: str
           </View>
         </View>
       )}
-      {result.prize.prizeType === "reward_tier" && (
+      {result.prize.prizeType === "reward_tier" && result.squareRewardIssued && (
+        <View style={prize.claimBox}>
+          <Ionicons name="checkmark-circle" size={16} color="#059669" />
+          <View style={prize.claimTextCol}>
+            <Text style={prize.claimLabel}>Added to your loyalty account</Text>
+            <Text style={prize.claimHint}>It'll appear automatically next time you pay at the bar</Text>
+          </View>
+        </View>
+      )}
+      {result.prize.prizeType === "reward_tier" && !result.squareRewardIssued && (
         <View style={prize.claimBox}>
           <Ionicons name="ticket-outline" size={16} color="#059669" />
           <View style={prize.claimTextCol}>
@@ -644,6 +654,7 @@ const prize = StyleSheet.create({
   claimTextCol: { flex: 1, gap: 3 },
   claimLabel: { fontFamily: "Montserrat_600SemiBold", fontSize: 12, color: "#34D399" },
   claimRef:   { fontFamily: "Montserrat_700Bold", fontSize: 16, color: "#fff", letterSpacing: 1.5 },
+  claimHint:  { fontFamily: "Montserrat_400Regular", fontSize: 11, color: "rgba(255,255,255,0.6)", lineHeight: 15 },
 });
 
 // ── Main styles ───────────────────────────────────────────────────────────────
