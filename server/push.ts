@@ -13,6 +13,7 @@ interface PushMessage {
   sound: "default";
   title: string;
   body: string;
+  channelId?: string;
   data?: PushData;
 }
 
@@ -32,6 +33,7 @@ export async function sendPushToTokens(
   const messages: PushMessage[] = tokens.map((to) => ({
     to,
     sound: "default",
+    channelId: "default",
     title,
     body,
     ...(data ? { data } : {}),

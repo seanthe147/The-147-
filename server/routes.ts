@@ -3025,6 +3025,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const messages = tokens.map(to => ({
       to,
       sound: "default" as const,
+      channelId: "default",
       title,
       body,
       ...(data ? { data } : {}),
@@ -3051,11 +3052,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const tokens = await storage.getAllPushTokens();
     if (tokens.length === 0) return { tokens, successCount: 0, failureCount: 0 };
 
-    type PushMessage = { to: string; sound: "default"; title: string; body: string };
+    type PushMessage = { to: string; sound: "default"; channelId: string; title: string; body: string };
 
     const allMessages: PushMessage[] = tokens.map((t) => ({
       to: t.token,
       sound: "default" as const,
+      channelId: "default",
       title,
       body,
     }));
