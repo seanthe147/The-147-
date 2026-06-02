@@ -246,6 +246,8 @@ interface PrizeEditorProps {
   isNew: boolean;
   squareTiers: SquareTier[];
   tiersLoading: boolean;
+  tiersError: boolean;
+  tiersRefetch: () => void;
 }
 
 function tierDiscountLabel(tier: SquareTier): string {
@@ -258,7 +260,7 @@ function tierDiscountLabel(tier: SquareTier): string {
   return "";
 }
 
-function PrizeEditor({ draft, onChange, onSave, onCancel, saving, isNew, squareTiers, tiersLoading }: PrizeEditorProps) {
+function PrizeEditor({ draft, onChange, onSave, onCancel, saving, isNew, squareTiers, tiersLoading, tiersError, tiersRefetch }: PrizeEditorProps) {
   const set = (key: keyof PrizeDraft, val: string | boolean) =>
     onChange({ ...draft, [key]: val });
 
@@ -349,12 +351,27 @@ function PrizeEditor({ draft, onChange, onSave, onCancel, saving, isNew, squareT
               <ActivityIndicator size="small" color={Colors.brand.gold} />
               <Text style={editor.tierLoadingText}>Loading tiers from Square…</Text>
             </View>
+          ) : tiersError ? (
+            <View style={editor.tierEmpty}>
+              <Ionicons name="cloud-offline-outline" size={16} color="#EF4444" />
+              <Text style={[editor.tierEmptyText, { color: "#EF4444" }]}>
+                Could not load tiers from Square. Check your Square connection, then tap Retry.
+              </Text>
+              <Pressable onPress={tiersRefetch} style={editor.retryBtn}>
+                <Ionicons name="refresh" size={13} color="#fff" />
+                <Text style={editor.retryBtnText}>Retry</Text>
+              </Pressable>
+            </View>
           ) : squareTiers.length === 0 ? (
             <View style={editor.tierEmpty}>
               <Ionicons name="alert-circle-outline" size={16} color="#F59E0B" />
               <Text style={editor.tierEmptyText}>
-                No reward tiers found in Square. Create them in Square Dashboard → Loyalty → Reward Tiers, then come back here.
+                No reward tiers found in Square. Create them in Square Dashboard → Loyalty → Reward Tiers, then tap Retry.
               </Text>
+              <Pressable onPress={tiersRefetch} style={editor.retryBtn}>
+                <Ionicons name="refresh" size={13} color="#fff" />
+                <Text style={editor.retryBtnText}>Retry</Text>
+              </Pressable>
             </View>
           ) : (
             <View style={editor.tierList}>
@@ -567,6 +584,7 @@ const editor = StyleSheet.create({
   tierEmpty: {
     flexDirection: "row",
     alignItems: "flex-start",
+    flexWrap: "wrap",
     gap: 8,
     padding: 12,
     backgroundColor: "#FFFBEB",
@@ -580,6 +598,22 @@ const editor = StyleSheet.create({
     fontSize: 12,
     color: "#92400E",
     lineHeight: 17,
+  },
+  retryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#374151",
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    alignSelf: "flex-start",
+    marginTop: 2,
+  },
+  retryBtnText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
+    color: "#fff",
   },
   tierList: {
     gap: 6,
@@ -729,6 +763,8 @@ export default function AdminGameScreen() {
   });
   const squareTiers = tiersQuery.data ?? [];
   const tiersLoading = tiersQuery.isLoading;
+  const tiersError = tiersQuery.isError;
+  const tiersRefetch = () => { tiersQuery.refetch(); };
 
   const [editingPrize, setEditingPrize] = useState<GamePrize | null>(null);
   const [editDraft, setEditDraft] = useState<PrizeDraft>(emptyDraft());
@@ -987,6 +1023,8 @@ export default function AdminGameScreen() {
                 isNew
                 squareTiers={squareTiers}
                 tiersLoading={tiersLoading}
+                tiersError={tiersError}
+                tiersRefetch={tiersRefetch}
               />
             )}
             {(prizesQuery.data ?? []).map((p) =>
@@ -1001,6 +1039,8 @@ export default function AdminGameScreen() {
                   isNew={false}
                   squareTiers={squareTiers}
                   tiersLoading={tiersLoading}
+                  tiersError={tiersError}
+                  tiersRefetch={tiersRefetch}
                 />
               ) : (
                 <PrizeRow
