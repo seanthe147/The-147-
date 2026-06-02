@@ -154,6 +154,12 @@ function PrizeRow({ prize, onToggleActive, onEdit, saving }: PrizeRowProps) {
             </>
           )}
         </View>
+        {prize.prizeType === "reward_tier" && !prize.rewardTierId && (
+          <View style={prizeRow.noTierWarn}>
+            <Ionicons name="warning-outline" size={12} color="#D97706" />
+            <Text style={prizeRow.noTierWarnText}>No Square tier linked — tap ✎ to link one</Text>
+          </View>
+        )}
       </View>
       <View style={prizeRow.right}>
         <Pressable onPress={() => onEdit(prize)} style={prizeRow.editBtn} hitSlop={8}>
@@ -224,6 +230,24 @@ const prizeRow = StyleSheet.create({
     fontFamily: "Montserrat_400Regular",
     fontSize: 11,
     color: "#D1D5DB",
+  },
+  noTierWarn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    backgroundColor: "#FEF3C7",
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    alignSelf: "flex-start",
+  },
+  noTierWarnText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 10,
+    color: "#92400E",
   },
   editBtn: {
     width: 32,

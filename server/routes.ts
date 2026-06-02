@@ -9255,6 +9255,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!square.isConfigured()) return res.status(503).json({ message: "Square is not configured" });
     try {
       const tiers = await square.getLoyaltyProgramRewardTiers();
+      // Prevent Express ETag / 304 responses — expo/fetch on React Native does not
+      // implement an HTTP cache so a 304 arrives with res.ok=false, which the query
+      // client treats as an error and puts the tier picker into the error state.
+      res.setHeader("Cache-Control", "no-store, no-cache");
       res.json(tiers);
     } catch (err: any) {
       console.error("[LOYALTY] Failed to fetch reward tiers:", err.message);
@@ -9295,9 +9299,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const id = parseInt(req.params.id as string, 10);
     if (!id) return res.status(400).json({ message: "Invalid id" });
     const { name, description, prizeType, value, rewardTierId, squareDiscountType, squareDiscountValue, tierPoints, giftCardAmountPence, weightPercent, active } = req.body ?? {};
-    if (prizeType === "reward_tier" && !rewardTierId) {
-      return res.status(400).json({ message: "Please select a Square reward tier for this prize type" });
-    }
+    // Note: we intentionally do NOT require rewardTierId on PUT so that
+    // managers can toggle active/weight on existing reward_tier prizes even
+    // before they have had a chance to link a Square tier via the picker.
+    // The POST handler enforces the tier requirement for brand-new prizes.
     if (prizeType === "gift_card" && (!giftCardAmountPence || parseFloat(giftCardAmountPence) <= 0)) {
       return res.status(400).json({ message: "Please enter a prize amount (in pounds) for this gift card" });
     }
