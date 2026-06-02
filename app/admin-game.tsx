@@ -32,9 +32,10 @@ interface GamePrize {
   id: number;
   name: string;
   description: string | null;
-  prizeType: "none" | "loyalty_points" | "reward_tier";
+  prizeType: "none" | "loyalty_points" | "reward_tier" | "gift_card";
   value: number | null;
   rewardTierId: string | null;
+  giftCardAmountPence: number | null;
   weightPercent: number;
   active: boolean;
 }
@@ -45,6 +46,7 @@ interface GameWinner {
   customerName: string | null;
   prizeId: number | null;
   pointsAwarded: number | null;
+  giftCardGan: string | null;
   playedAt: string;
   londonDate: string;
   prize: GamePrize | null;
@@ -59,6 +61,7 @@ function emptyDraft(): PrizeDraft {
     prizeType: "none",
     value: "",
     rewardTierId: "",
+    giftCardAmountPounds: "",
     weightPercent: "10",
     active: true,
   };
@@ -67,9 +70,10 @@ function emptyDraft(): PrizeDraft {
 interface PrizeDraft {
   name: string;
   description: string;
-  prizeType: "none" | "loyalty_points" | "reward_tier";
+  prizeType: "none" | "loyalty_points" | "reward_tier" | "gift_card";
   value: string;
   rewardTierId: string;
+  giftCardAmountPounds: string;
   weightPercent: string;
   active: boolean;
 }
@@ -90,6 +94,7 @@ function prizeTypeLabel(t: string): string {
   if (t === "none") return "No prize";
   if (t === "loyalty_points") return "Points";
   if (t === "reward_tier") return "Reward";
+  if (t === "gift_card") return "Gift Card";
   return t;
 }
 
@@ -97,6 +102,7 @@ function prizeTypeColor(t: string): string {
   if (t === "none") return "#6B7280";
   if (t === "loyalty_points") return Colors.brand.gold;
   if (t === "reward_tier") return "#10B981";
+  if (t === "gift_card") return "#6366F1";
   return "#6B7280";
 }
 
@@ -130,6 +136,13 @@ function PrizeRow({ prize, onToggleActive, onEdit, saving }: PrizeRowProps) {
               <Text style={prizeRow.metaDot}>·</Text>
               <Ionicons name="star" size={11} color={Colors.brand.gold} />
               <Text style={prizeRow.meta}>{prize.value} pts</Text>
+            </>
+          )}
+          {prize.prizeType === "gift_card" && !!prize.giftCardAmountPence && (
+            <>
+              <Text style={prizeRow.metaDot}>·</Text>
+              <Ionicons name="card-outline" size={11} color="#6366F1" />
+              <Text style={prizeRow.meta}>£{(prize.giftCardAmountPence / 100).toFixed(2)}</Text>
             </>
           )}
         </View>
@@ -263,14 +276,14 @@ function PrizeEditor({ draft, onChange, onSave, onCancel, saving, isNew }: Prize
       <View style={editor.field}>
         <Text style={editor.label}>Prize Type *</Text>
         <View style={editor.segRow}>
-          {(["none", "loyalty_points", "reward_tier"] as const).map((t) => (
+          {(["none", "loyalty_points", "reward_tier", "gift_card"] as const).map((t) => (
             <Pressable
               key={t}
               onPress={() => set("prizeType", t)}
               style={[editor.seg, draft.prizeType === t && editor.segActive]}
             >
               <Text style={[editor.segText, draft.prizeType === t && editor.segTextActive]}>
-                {t === "none" ? "No Prize" : t === "loyalty_points" ? "Points" : "Reward"}
+                {t === "none" ? "No Prize" : t === "loyalty_points" ? "Points" : t === "reward_tier" ? "Reward" : "Gift Card"}
               </Text>
             </Pressable>
           ))}
@@ -279,8 +292,10 @@ function PrizeEditor({ draft, onChange, onSave, onCancel, saving, isNew }: Prize
           {draft.prizeType === "none"
             ? "The customer scratches but wins nothing. Always include at least one of these."
             : draft.prizeType === "loyalty_points"
-            ? "Award a set number of loyalty points to the customer."
-            : "Unlock a Square reward tier for the customer."}
+            ? "Award a set number of loyalty points to the customer's Square account."
+            : draft.prizeType === "reward_tier"
+            ? "Unlock a Square loyalty reward tier — no points are deducted from the customer."
+            : "Issue a Square digital gift card with real monetary value (e.g. £5). No loyalty points involved at all."}
         </Text>
       </View>
 
@@ -309,6 +324,23 @@ function PrizeEditor({ draft, onChange, onSave, onCancel, saving, isNew }: Prize
             placeholderTextColor="#9CA3AF"
             autoCapitalize="none"
           />
+        </View>
+      )}
+
+      {draft.prizeType === "gift_card" && (
+        <View style={editor.field}>
+          <Text style={editor.label}>Prize Amount (£) *</Text>
+          <TextInput
+            style={editor.input}
+            value={draft.giftCardAmountPounds}
+            onChangeText={(v) => set("giftCardAmountPounds", v)}
+            placeholder="5.00"
+            placeholderTextColor="#9CA3AF"
+            keyboardType="decimal-pad"
+          />
+          <Text style={editor.hint}>
+            A Square digital gift card for this amount will be created and linked to the customer's Square account automatically when they win.
+          </Text>
         </View>
       )}
 
@@ -535,7 +567,7 @@ export default function AdminGameScreen() {
   const [newDraft, setNewDraft] = useState<PrizeDraft>(emptyDraft());
 
   const prizeMutation = useMutation({
-    mutationFn: async (payload: { id?: number; name: string; description?: string; prizeType: string; value?: number | null; rewardTierId?: string | null; weightPercent: number; active: boolean }) => {
+    mutationFn: async (payload: { id?: number; name: string; description?: string; prizeType: string; value?: number | null; rewardTierId?: string | null; giftCardAmountPence?: string | null; weightPercent: number; active: boolean }) => {
       const { id, ...body } = payload;
       const res = id
         ? await apiRequest("PUT", `/api/staff/game/prizes/${id}`, body)
@@ -563,6 +595,10 @@ export default function AdminGameScreen() {
       const pts = Number(draft.value);
       if (!Number.isInteger(pts) || pts < 1) throw new Error("Points must be a positive whole number");
     }
+    if (draft.prizeType === "gift_card") {
+      const amt = parseFloat(draft.giftCardAmountPounds);
+      if (isNaN(amt) || amt <= 0) throw new Error("Please enter a valid prize amount in pounds (e.g. 5.00)");
+    }
     return {
       id,
       name: draft.name.trim(),
@@ -570,6 +606,7 @@ export default function AdminGameScreen() {
       prizeType: draft.prizeType,
       value: draft.prizeType === "loyalty_points" ? Number(draft.value) : null,
       rewardTierId: draft.prizeType === "reward_tier" ? draft.rewardTierId.trim() || null : null,
+      giftCardAmountPence: draft.prizeType === "gift_card" ? String(draft.giftCardAmountPounds) : null,
       weightPercent: wp,
       active: draft.active,
     };
@@ -606,13 +643,14 @@ export default function AdminGameScreen() {
       prizeType: p.prizeType,
       value: p.value != null ? String(p.value) : "",
       rewardTierId: p.rewardTierId ?? "",
+      giftCardAmountPounds: p.giftCardAmountPence != null ? String(p.giftCardAmountPence / 100) : "",
       weightPercent: String(p.weightPercent),
       active: p.active,
     });
   };
 
   const handleTogglePrizeActive = (p: GamePrize, active: boolean) => {
-    prizeMutation.mutate({ id: p.id, name: p.name, description: p.description ?? undefined, prizeType: p.prizeType, value: p.value, rewardTierId: p.rewardTierId, weightPercent: p.weightPercent, active });
+    prizeMutation.mutate({ id: p.id, name: p.name, description: p.description ?? undefined, prizeType: p.prizeType, value: p.value, rewardTierId: p.rewardTierId, giftCardAmountPence: p.giftCardAmountPence != null ? String(p.giftCardAmountPence / 100) : null, weightPercent: p.weightPercent, active });
   };
 
   // ── Winners ───────────────────────────────────────────────────────────────
@@ -816,6 +854,7 @@ export default function AdminGameScreen() {
                   <Text style={styles.winnerPrize}>
                     {w.prize?.name ?? "Unknown prize"}
                     {w.pointsAwarded ? ` · +${w.pointsAwarded} pts` : ""}
+                    {w.giftCardGan ? ` · GAN: ${w.giftCardGan}` : ""}
                   </Text>
                 </View>
                 <Text style={styles.winnerDate}>{fmtDateTime(w.playedAt)}</Text>

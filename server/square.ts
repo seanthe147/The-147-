@@ -187,6 +187,55 @@ export async function getLoyaltyProgramRewardTiers(): Promise<Array<{
   }));
 }
 
+// Issues a Square digital gift card to a customer as a game prize.
+// Steps: 1) create DIGITAL gift card (PENDING) → 2) ACTIVATE with prize amount
+// → 3) link to customer's Square account (so it appears on their profile at the till).
+// Returns the gift card account number (GAN) the customer presents at checkout.
+export async function issueGiftCardPrize(
+  squareCustomerId: string | null,
+  amountPence: number,
+  idempotencyKey: string,
+): Promise<string | null> {
+  const locationId = getLocationId();
+
+  // Step 1 — create the digital gift card (starts in PENDING state)
+  const createData = await squareRequest("POST", "/v2/gift-cards", {
+    idempotency_key: `${idempotencyKey}-create`,
+    location_id: locationId,
+    gift_card: { type: "DIGITAL" },
+  });
+  const giftCard = createData.gift_card as { id: string; gan: string } | null;
+  if (!giftCard?.id || !giftCard?.gan) {
+    throw new Error("Square gift card creation returned no card");
+  }
+
+  // Step 2 — activate the gift card with the prize amount
+  await squareRequest("POST", "/v2/gift-cards/activities", {
+    idempotency_key: `${idempotencyKey}-activate`,
+    gift_card_activity: {
+      type: "ACTIVATE",
+      location_id: locationId,
+      gift_card_id: giftCard.id,
+      activate_activity_details: {
+        amount_money: { amount: amountPence, currency: "GBP" },
+      },
+    },
+  });
+
+  // Step 3 — link to customer's Square account (best-effort, won't fail the prize if this errors)
+  if (squareCustomerId) {
+    try {
+      await squareRequest("POST", `/v2/gift-cards/${giftCard.id}/link-customer`, {
+        customer_id: squareCustomerId,
+      });
+    } catch (err: any) {
+      console.warn(`[GiftCard] Could not link gift card to Square customer ${squareCustomerId}:`, err.message);
+    }
+  }
+
+  return giftCard.gan;
+}
+
 // Issues a loyalty reward to a customer as a FREE game prize.
 // Because Square's CreateLoyaltyReward deducts points from the account, we first
 // add exactly `tierPoints` to the customer's balance (so the net change is zero),

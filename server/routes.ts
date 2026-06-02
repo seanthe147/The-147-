@@ -9116,6 +9116,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       let squareRewardId: string | null = null;
       let pointsAwarded: number | null = null;
+      let giftCardGan: string | null = null;
 
       if (prize && prize.prizeType !== "none") {
         const customer = await storage.getCustomerById(customerId);
@@ -9146,6 +9147,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.warn("[Game] Reward issue failed:", e.message);
           }
         }
+        if (prize.prizeType === "gift_card" && prize.giftCardAmountPence && prize.giftCardAmountPence > 0) {
+          try {
+            const gan = await square.issueGiftCardPrize(
+              customer?.squareCustomerId ?? null,
+              prize.giftCardAmountPence,
+              `game-gc-${customerId}-${Date.now()}`,
+            );
+            giftCardGan = gan;
+            console.log(`[Game] Issued Square gift card GAN ${gan} (${prize.giftCardAmountPence}p) for prize "${prize.name}"`);
+          } catch (e: any) {
+            console.warn("[Game] Gift card issue failed:", e.message);
+          }
+        }
       }
 
       const play = await storage.createGamePlay({
@@ -9153,6 +9167,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         prizeId: prize?.id ?? null,
         squareRewardId,
         pointsAwarded,
+        giftCardGan,
         londonDate,
       });
 
@@ -9160,6 +9175,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         won: prize?.prizeType !== "none" && !!prize,
         prize: prize ? { name: prize.name, description: prize.description, prizeType: prize.prizeType } : null,
         pointsAwarded,
+        giftCardGan,
         playId: play.id,
       });
     } catch (err: any) {
@@ -9247,10 +9263,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/staff/game/prizes", staffAuth, managerAuth, async (req, res) => {
-    const { name, description, prizeType, value, rewardTierId, squareDiscountType, squareDiscountValue, tierPoints, weightPercent, active } = req.body ?? {};
+    const { name, description, prizeType, value, rewardTierId, squareDiscountType, squareDiscountValue, tierPoints, giftCardAmountPence, weightPercent, active } = req.body ?? {};
     if (!name || !prizeType) return res.status(400).json({ message: "name and prizeType are required" });
     if (prizeType === "reward_tier" && !rewardTierId) {
       return res.status(400).json({ message: "Please select a Square reward tier for this prize type" });
+    }
+    if (prizeType === "gift_card" && (!giftCardAmountPence || parseInt(giftCardAmountPence, 10) <= 0)) {
+      return res.status(400).json({ message: "Please enter a prize amount (in pounds) for this gift card" });
     }
     try {
       const prize = await storage.upsertGamePrize({
@@ -9262,6 +9281,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         squareDiscountType: prizeType === "reward_tier" ? (squareDiscountType ?? null) : null,
         squareDiscountValue: prizeType === "reward_tier" && squareDiscountValue != null ? parseInt(squareDiscountValue, 10) : null,
         tierPoints: prizeType === "reward_tier" && tierPoints != null ? parseInt(tierPoints, 10) : null,
+        giftCardAmountPence: prizeType === "gift_card" && giftCardAmountPence != null ? Math.round(parseFloat(giftCardAmountPence) * 100) : null,
         weightPercent: weightPercent ?? 10,
         active: active !== false,
       });
@@ -9274,9 +9294,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/staff/game/prizes/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id as string, 10);
     if (!id) return res.status(400).json({ message: "Invalid id" });
-    const { name, description, prizeType, value, rewardTierId, squareDiscountType, squareDiscountValue, tierPoints, weightPercent, active } = req.body ?? {};
+    const { name, description, prizeType, value, rewardTierId, squareDiscountType, squareDiscountValue, tierPoints, giftCardAmountPence, weightPercent, active } = req.body ?? {};
     if (prizeType === "reward_tier" && !rewardTierId) {
       return res.status(400).json({ message: "Please select a Square reward tier for this prize type" });
+    }
+    if (prizeType === "gift_card" && (!giftCardAmountPence || parseFloat(giftCardAmountPence) <= 0)) {
+      return res.status(400).json({ message: "Please enter a prize amount (in pounds) for this gift card" });
     }
     try {
       const prize = await storage.upsertGamePrize({
@@ -9289,6 +9312,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         squareDiscountType: prizeType === "reward_tier" ? (squareDiscountType ?? null) : null,
         squareDiscountValue: prizeType === "reward_tier" && squareDiscountValue != null ? parseInt(squareDiscountValue, 10) : null,
         tierPoints: prizeType === "reward_tier" && tierPoints != null ? parseInt(tierPoints, 10) : null,
+        giftCardAmountPence: prizeType === "gift_card" && giftCardAmountPence != null ? Math.round(parseFloat(giftCardAmountPence) * 100) : null,
         weightPercent,
         active,
       });

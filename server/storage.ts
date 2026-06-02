@@ -609,6 +609,15 @@ export async function runStartupMigrations() {
       ALTER TABLE game_prizes
         ADD COLUMN IF NOT EXISTS tier_points INTEGER;
     `);
+    // Add gift_card_amount_pence to game_prizes and gift_card_gan to game_plays (added 2026-06)
+    await client.query(`
+      ALTER TABLE game_prizes
+        ADD COLUMN IF NOT EXISTS gift_card_amount_pence INTEGER;
+    `);
+    await client.query(`
+      ALTER TABLE game_plays
+        ADD COLUMN IF NOT EXISTS gift_card_gan TEXT;
+    `);
     await client.query(`
       INSERT INTO game_prizes (name, description, prize_type, weight_percent, active)
         SELECT 'Free Soft Drink', 'You won a free soft drink — show this screen at the bar to claim it!', 'reward_tier', 10, true
@@ -3308,6 +3317,7 @@ export class DatabaseStorage implements IStorage {
     squareDiscountType?: string | null;
     squareDiscountValue?: number | null;
     tierPoints?: number | null;
+    giftCardAmountPence?: number | null;
     weightPercent: number;
     active: boolean;
   }): Promise<GamePrize> {
@@ -3332,6 +3342,7 @@ export class DatabaseStorage implements IStorage {
     prizeId: number | null;
     squareRewardId?: string | null;
     pointsAwarded?: number | null;
+    giftCardGan?: string | null;
     londonDate: string;
   }): Promise<GamePlay> {
     const [play] = await db.insert(gamePlays).values({ ...data, playedAt: new Date() }).returning();

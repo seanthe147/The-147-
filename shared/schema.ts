@@ -1002,12 +1002,13 @@ export const gamePrizes = pgTable("game_prizes", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),                // e.g. "Free Soft Drink"
   description: text("description"),            // shown to customer on win screen
-  prizeType: text("prize_type").notNull(),     // 'none' | 'loyalty_points' | 'reward_tier'
+  prizeType: text("prize_type").notNull(),     // 'none' | 'loyalty_points' | 'reward_tier' | 'gift_card'
   value: integer("value"),                     // points to award (prizeType='loyalty_points')
   rewardTierId: text("reward_tier_id"),        // Square reward tier ID (prizeType='reward_tier') — manager selects from Square Dashboard
   squareDiscountType: text("square_discount_type"), // 'FIXED_PERCENTAGE' | 'FIXED_AMOUNT' — copied from Square tier for display
   squareDiscountValue: integer("square_discount_value"), // % value (e.g. 10 = 10%) or pence (e.g. 500 = £5.00)
   tierPoints: integer("tier_points"),          // points cost of the Square reward tier (used to pre-fund the customer before issuing)
+  giftCardAmountPence: integer("gift_card_amount_pence"), // pence to load onto a Square digital gift card (prizeType='gift_card')
   weightPercent: integer("weight_percent").notNull().default(10), // probability weight (relative)
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -1026,6 +1027,7 @@ export const gamePlays = pgTable("game_plays", {
   prizeId: integer("prize_id"),               // null → prize type 'none' (no win)
   squareRewardId: text("square_reward_id"),   // Square reward ID if reward_tier prize issued
   pointsAwarded: integer("points_awarded"),   // set when prizeType='loyalty_points'
+  giftCardGan: text("gift_card_gan"),         // Square gift card account number if gift_card prize issued
   playedAt: timestamp("played_at").defaultNow().notNull(),
   // London calendar date (YYYY-MM-DD) for fast daily-limit queries without
   // timezone conversion in SQL.

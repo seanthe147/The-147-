@@ -66,6 +66,7 @@ interface GameResult {
   won: boolean;
   prize: { name: string; description: string; prizeType: string } | null;
   pointsAwarded: number | null;
+  giftCardGan: string | null;
   playId: number;
 }
 
@@ -129,6 +130,16 @@ function PrizeContent({ result, error }: { result: GameResult | null; error: str
         <View style={prize.pointsPill}>
           <Ionicons name="star" size={13} color={Colors.brand.gold} />
           <Text style={prize.pointsText}>+{result.pointsAwarded} points added</Text>
+        </View>
+      )}
+      {!!result.giftCardGan && (
+        <View style={prize.giftCardBox}>
+          <Ionicons name="card" size={14} color="#6366F1" />
+          <View style={prize.giftCardTextCol}>
+            <Text style={prize.giftCardLabel}>Square Gift Card</Text>
+            <Text style={prize.giftCardGan}>{result.giftCardGan}</Text>
+            <Text style={prize.giftCardHint}>Show this number at the bar to redeem</Text>
+          </View>
         </View>
       )}
     </View>
@@ -603,6 +614,17 @@ const prize = StyleSheet.create({
     borderWidth: 1, borderColor: "rgba(212,168,67,0.35)",
   },
   pointsText: { fontFamily: "Montserrat_600SemiBold", fontSize: 13, color: Colors.brand.gold },
+  giftCardBox: {
+    flexDirection: "row", alignItems: "flex-start", gap: 8, marginTop: 8,
+    backgroundColor: "rgba(99,102,241,0.14)", borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 10,
+    borderWidth: 1, borderColor: "rgba(99,102,241,0.35)",
+    alignSelf: "stretch",
+  },
+  giftCardTextCol: { flex: 1, gap: 2 },
+  giftCardLabel: { fontFamily: "Montserrat_600SemiBold", fontSize: 11, color: "#818CF8", letterSpacing: 0.5 },
+  giftCardGan:   { fontFamily: "Montserrat_700Bold", fontSize: 18, color: "#fff", letterSpacing: 2 },
+  giftCardHint:  { fontFamily: "Montserrat_400Regular", fontSize: 11, color: "rgba(255,255,255,0.55)" },
 });
 
 // ── Main styles ───────────────────────────────────────────────────────────────
