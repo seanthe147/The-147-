@@ -355,10 +355,10 @@ function PrizeEditor({ draft, onChange, onSave, onCancel, saving, isNew, squareT
           {draft.prizeType === "none"
             ? "The customer scratches but wins nothing. Always include at least one of these."
             : draft.prizeType === "loyalty_points"
-            ? "Award a set number of loyalty points to the customer's Square account."
+            ? "Adds points to the customer's Square loyalty account automatically when they win."
             : draft.prizeType === "reward_tier"
-            ? "Unlock a Square loyalty reward tier — no points are deducted from the customer."
-            : "Issue a Square digital gift card with real monetary value (e.g. £5). No loyalty points involved at all."}
+            ? "Issues a Square loyalty reward to the winner's account. See warning below."
+            : "Issues a unique gift card code exclusively to the winner — best choice for physical prizes like free drinks."}
         </Text>
       </View>
 
@@ -373,6 +373,19 @@ function PrizeEditor({ draft, onChange, onSave, onCancel, saving, isNew, squareT
             placeholderTextColor="#9CA3AF"
             keyboardType="number-pad"
           />
+        </View>
+      )}
+
+      {draft.prizeType === "reward_tier" && (
+        <View style={editor.warnBox}>
+          <Ionicons name="warning-outline" size={16} color="#92400E" />
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={editor.warnTitle}>Not exclusive to game winners</Text>
+            <Text style={editor.warnText}>
+              Square loyalty reward tiers are part of your whole loyalty programme — any customer who collects enough points through normal spending can also earn this reward. It cannot be made game-only.{"\n\n"}
+              For prizes that should only go to game winners (e.g. a free drink, a discount), use <Text style={{ fontFamily: "Montserrat_600SemiBold" }}>Gift Card</Text> instead — it issues a unique code exclusively to that winner.
+            </Text>
+          </View>
         </View>
       )}
 
@@ -441,7 +454,7 @@ function PrizeEditor({ draft, onChange, onSave, onCancel, saving, isNew, squareT
             </View>
           )}
           <Text style={editor.hint}>
-            The reward will be issued automatically to the customer's Square account when they win — no points are deducted from their earned balance.
+            The reward is issued automatically to the customer's Square account. Net points change is zero — the tier's point cost is gifted then immediately spent by the reward creation.
           </Text>
         </View>
       )}
@@ -458,7 +471,7 @@ function PrizeEditor({ draft, onChange, onSave, onCancel, saving, isNew, squareT
             keyboardType="decimal-pad"
           />
           <Text style={editor.hint}>
-            A Square digital gift card for this amount will be created and linked to the customer's Square account automatically when they win.
+            A unique Square gift card is created exclusively for this winner — nobody else can use it. The winner sees the code on their win screen and shows it at the bar. Staff redeem it in Square POS like any gift card.
           </Text>
         </View>
       )}
@@ -545,6 +558,26 @@ const editor = StyleSheet.create({
     fontSize: 11,
     color: "#9CA3AF",
     lineHeight: 15,
+  },
+  warnBox: {
+    flexDirection: "row",
+    gap: 10,
+    backgroundColor: "#FEF3C7",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#F59E0B55",
+    padding: 12,
+  },
+  warnTitle: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
+    color: "#92400E",
+  },
+  warnText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 11,
+    color: "#92400E",
+    lineHeight: 16,
   },
   segRow: { flexDirection: "row", gap: 6 },
   seg: {
