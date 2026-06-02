@@ -800,8 +800,9 @@ async function sendBookingConfirmationEmail(booking: {
     year: "numeric",
   });
 
-  const endHour = parseInt(booking.startTime.split(":")[0]) + booking.duration;
-  const endTime = `${endHour.toString().padStart(2, "0")}:00`;
+  const [startH, startM] = booking.startTime.split(":").map(Number);
+  const endMins = startH * 60 + startM + booking.duration * 60;
+  const endTime = `${Math.floor(endMins / 60).toString().padStart(2, "0")}:${(endMins % 60).toString().padStart(2, "0")}`;
   const durationLabel = booking.duration === 1 ? "1 hour" : `${booking.duration} hours`;
   const bookingRef = `147-${booking.id.toString().padStart(5, "0")}`;
 
