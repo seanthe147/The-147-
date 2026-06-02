@@ -60,6 +60,15 @@ interface GameWinner {
   prize: GamePrize | null;
 }
 
+interface PendingClaim {
+  id: number;
+  customerId: number;
+  customerName: string | null;
+  prizeName: string;
+  playedAt: string;
+  londonDate: string;
+}
+
 // ── Empty prize template ───────────────────────────────────────────────────────
 
 function emptyDraft(): PrizeDraft {
@@ -893,6 +902,41 @@ export default function AdminGameScreen() {
     prizeMutation.mutate({ id: p.id, name: p.name, description: p.description ?? undefined, prizeType: p.prizeType, value: p.value, rewardTierId: p.rewardTierId, giftCardAmountPence: p.giftCardAmountPence != null ? String(p.giftCardAmountPence / 100) : null, weightPercent: p.weightPercent, active });
   };
 
+  // ── Pending claims (reward_tier prizes awaiting collection) ──────────────
+  const claimsQuery = useQuery<PendingClaim[]>({
+    queryKey: ["/api/staff/game/pending-claims"],
+    refetchOnMount: "always",
+    refetchInterval: 30_000,
+  });
+
+  const claimMutation = useMutation({
+    mutationFn: async (playId: number) => {
+      const res = await apiRequest("POST", `/api/staff/game/plays/${playId}/claim`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/staff/game/pending-claims"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/staff/game/winners"] });
+    },
+    onError: (err: Error) => {
+      const msg = err.message || "Failed to mark as claimed";
+      if (Platform.OS === "web") window.alert(msg);
+      else Alert.alert("Error", msg);
+    },
+  });
+
+  const handleMarkClaimed = (claim: PendingClaim) => {
+    const confirmMsg = `Mark "${claim.prizeName}" for ${claim.customerName ?? "customer"} as claimed?`;
+    if (Platform.OS === "web") {
+      if (window.confirm(confirmMsg)) claimMutation.mutate(claim.id);
+    } else {
+      Alert.alert("Mark as Claimed", confirmMsg, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Mark Claimed", onPress: () => claimMutation.mutate(claim.id) },
+      ]);
+    }
+  };
+
   // ── Winners ───────────────────────────────────────────────────────────────
   const winnersQuery = useQuery<GameWinner[]>({
     queryKey: ["/api/staff/game/winners"],
@@ -1081,6 +1125,39 @@ export default function AdminGameScreen() {
                 <Text style={styles.emptyText}>No prizes set up yet. Tap "Add Prize" to create the first one.</Text>
               </View>
             )}
+          </View>
+        )}
+
+        {/* ── Prize Claims ──────────────────────────────────────────────── */}
+        <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Prize Claims</Text>
+
+        {claimsQuery.isLoading ? (
+          <ActivityIndicator color={Colors.brand.gold} />
+        ) : (claimsQuery.data ?? []).length === 0 ? (
+          <View style={styles.card}>
+            <Text style={styles.emptyText}>No unclaimed prizes — all clear.</Text>
+          </View>
+        ) : (
+          <View style={styles.winnerList}>
+            {(claimsQuery.data ?? []).map((claim) => (
+              <View key={claim.id} style={styles.claimRow}>
+                <View style={styles.winnerLeft}>
+                  <Text style={styles.winnerName}>{claim.customerName ?? "Unknown customer"}</Text>
+                  <Text style={styles.winnerPrize}>
+                    {claim.prizeName} · <Text style={{ color: "#34D399" }}>Ref #{claim.id.toString().padStart(5, "0")}</Text>
+                  </Text>
+                  <Text style={styles.winnerDate}>{fmtDateTime(claim.playedAt)}</Text>
+                </View>
+                <Pressable
+                  onPress={() => handleMarkClaimed(claim)}
+                  disabled={claimMutation.isPending}
+                  style={({ pressed }) => [styles.claimBtn, pressed && { opacity: 0.7 }]}
+                >
+                  <Ionicons name="checkmark-circle-outline" size={16} color="#fff" />
+                  <Text style={styles.claimBtnText}>Claimed</Text>
+                </Pressable>
+              </View>
+            ))}
           </View>
         )}
 
@@ -1283,6 +1360,30 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_400Regular",
     fontSize: 11,
     color: "#9CA3AF",
+  },
+  claimRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+    gap: 10,
+  },
+  claimBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#059669",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  claimBtnText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
+    color: "#fff",
   },
   emptyText: {
     fontFamily: "Montserrat_400Regular",

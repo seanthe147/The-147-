@@ -142,6 +142,15 @@ function PrizeContent({ result, error }: { result: GameResult | null; error: str
           </View>
         </View>
       )}
+      {result.prize.prizeType === "reward_tier" && (
+        <View style={prize.claimBox}>
+          <Ionicons name="ticket-outline" size={16} color="#059669" />
+          <View style={prize.claimTextCol}>
+            <Text style={prize.claimLabel}>Show this screen to staff to claim</Text>
+            <Text style={prize.claimRef}>Ref #{result.playId.toString().padStart(5, "0")}</Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -625,6 +634,16 @@ const prize = StyleSheet.create({
   giftCardLabel: { fontFamily: "Montserrat_600SemiBold", fontSize: 11, color: "#818CF8", letterSpacing: 0.5 },
   giftCardGan:   { fontFamily: "Montserrat_700Bold", fontSize: 18, color: "#fff", letterSpacing: 2 },
   giftCardHint:  { fontFamily: "Montserrat_400Regular", fontSize: 11, color: "rgba(255,255,255,0.55)" },
+  claimBox: {
+    flexDirection: "row", alignItems: "flex-start", gap: 8, marginTop: 8,
+    backgroundColor: "rgba(5,150,105,0.15)", borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 10,
+    borderWidth: 1, borderColor: "rgba(5,150,105,0.4)",
+    alignSelf: "stretch",
+  },
+  claimTextCol: { flex: 1, gap: 3 },
+  claimLabel: { fontFamily: "Montserrat_600SemiBold", fontSize: 12, color: "#34D399" },
+  claimRef:   { fontFamily: "Montserrat_700Bold", fontSize: 16, color: "#fff", letterSpacing: 1.5 },
 });
 
 // ── Main styles ───────────────────────────────────────────────────────────────

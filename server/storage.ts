@@ -618,6 +618,12 @@ export async function runStartupMigrations() {
       ALTER TABLE game_plays
         ADD COLUMN IF NOT EXISTS gift_card_gan TEXT;
     `);
+    // Track manual prize claims — staff mark reward_tier wins as collected at bar (added 2026-06)
+    await client.query(`
+      ALTER TABLE game_plays
+        ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS claimed_by_staff_id INTEGER;
+    `);
     await client.query(`
       INSERT INTO game_prizes (name, description, prize_type, weight_percent, active)
         SELECT 'Free Soft Drink', 'You won a free soft drink — show this screen at the bar to claim it!', 'reward_tier', 10, true
@@ -3347,6 +3353,38 @@ export class DatabaseStorage implements IStorage {
   }): Promise<GamePlay> {
     const [play] = await db.insert(gamePlays).values({ ...data, playedAt: new Date() }).returning();
     return play;
+  }
+
+  // Returns all unclaimed reward_tier game wins, newest first.
+  // Used by the staff admin to let them mark prizes as collected at the bar.
+  async getPendingRewardClaims(): Promise<Array<{ id: number; customerId: number; customerName: string | null; prizeName: string; playedAt: Date; londonDate: string }>> {
+    const plays = await db.select().from(gamePlays)
+      .where(and(isNotNull(gamePlays.prizeId), isNull(gamePlays.claimedAt)))
+      .orderBy(desc(gamePlays.playedAt));
+    const result: Array<{ id: number; customerId: number; customerName: string | null; prizeName: string; playedAt: Date; londonDate: string }> = [];
+    for (const play of plays) {
+      if (!play.prizeId) continue;
+      const [prize] = await db.select().from(gamePrizes).where(eq(gamePrizes.id, play.prizeId));
+      if (!prize || prize.prizeType !== "reward_tier") continue;
+      const [cust] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, play.customerId));
+      result.push({
+        id: play.id,
+        customerId: play.customerId,
+        customerName: cust ? decrypt(cust.name) : null,
+        prizeName: prize.name,
+        playedAt: play.playedAt,
+        londonDate: play.londonDate,
+      });
+    }
+    return result;
+  }
+
+  async claimGamePlay(id: number, staffId: number): Promise<GamePlay | null> {
+    const [play] = await db.update(gamePlays)
+      .set({ claimedAt: new Date(), claimedByStaffId: staffId })
+      .where(and(eq(gamePlays.id, id), isNull(gamePlays.claimedAt)))
+      .returning();
+    return play ?? null;
   }
 
   async getRecentGameWinners(limit = 50): Promise<Array<GamePlay & { prize: GamePrize | null; customerName: string | null }>> {

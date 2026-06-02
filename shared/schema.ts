@@ -1025,13 +1025,17 @@ export const gamePlays = pgTable("game_plays", {
   id: serial("id").primaryKey(),
   customerId: integer("customer_id").notNull(),
   prizeId: integer("prize_id"),               // null → prize type 'none' (no win)
-  squareRewardId: text("square_reward_id"),   // Square reward ID if reward_tier prize issued
+  squareRewardId: text("square_reward_id"),   // legacy — was used by ghost-points trick, no longer written
   pointsAwarded: integer("points_awarded"),   // set when prizeType='loyalty_points'
   giftCardGan: text("gift_card_gan"),         // Square gift card account number if gift_card prize issued
   playedAt: timestamp("played_at").defaultNow().notNull(),
   // London calendar date (YYYY-MM-DD) for fast daily-limit queries without
   // timezone conversion in SQL.
   londonDate: text("london_date").notNull(),
+  // Set when a staff member marks the prize as collected at the bar.
+  // null = pending (customer hasn't claimed yet); non-null = claimed.
+  claimedAt: timestamp("claimed_at"),
+  claimedByStaffId: integer("claimed_by_staff_id"),
 });
 
 export type GamePlay = typeof gamePlays.$inferSelect;

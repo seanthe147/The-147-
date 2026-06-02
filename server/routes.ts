@@ -9134,20 +9134,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.warn("[Game] Points award failed:", e.message);
           }
         }
-        if (prize.prizeType === "reward_tier" && prize.rewardTierId && customer?.squareLoyaltyAccountId) {
-          try {
-            const reward = await square.issueFreeGameReward(
-              customer.squareLoyaltyAccountId,
-              prize.rewardTierId,
-              prize.tierPoints ?? 0,
-              `game-reward-${customerId}-${Date.now()}`,
-            );
-            squareRewardId = reward?.id ?? null;
-            console.log(`[Game] Issued Square loyalty reward ${squareRewardId} to account ${customer.squareLoyaltyAccountId} for prize "${prize.name}"`);
-          } catch (e: any) {
-            console.warn("[Game] Reward issue failed:", e.message);
-          }
-        }
+        // reward_tier prizes are tracked in-app only — no Square API call.
+        // The customer shows the win screen to staff who mark it claimed in the admin.
+        // (Previously used a ghost-points trick which conflicted with Square's own
+        //  auto-issue behaviour when customers hit tier thresholds via normal spending.)
         if (prize.prizeType === "gift_card" && prize.giftCardAmountPence && prize.giftCardAmountPence > 0) {
           try {
             const gan = await square.issueGiftCardPrize(
@@ -9185,18 +9175,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Customer's own play history — shows their recent wins.
+  // Customer's own play history — today's play status + any unclaimed reward prizes.
   app.get("/api/game/my-prizes", customerAuth, async (req: Request & { customerId?: number }, res) => {
     const customerId = req.customerId!;
     try {
-      const plays = await storage.getGamePlaysToday(customerId, getGameLondonDate());
-      res.json({ playedToday: plays.length > 0, plays });
+      const [todayPlays, allPending] = await Promise.all([
+        storage.getGamePlaysToday(customerId, getGameLondonDate()),
+        storage.getPendingRewardClaims(),
+      ]);
+      const pendingClaims = allPending.filter(p => p.customerId === customerId);
+      res.json({ playedToday: todayPlays.length > 0, plays: todayPlays, pendingClaims });
     } catch {
-      res.json({ playedToday: false, plays: [] });
+      res.json({ playedToday: false, plays: [], pendingClaims: [] });
     }
   });
 
   // ── Staff game management endpoints ─────────────────────────────────────────
+
+  // List all unclaimed reward_tier game wins so staff can mark them as collected.
+  app.get("/api/staff/game/pending-claims", staffAuth, async (_req, res) => {
+    try {
+      const claims = await storage.getPendingRewardClaims();
+      res.json(claims);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Mark a game win as claimed — idempotent (double-claiming is a no-op).
+  app.post("/api/staff/game/plays/:id/claim", staffAuth, async (req: Request & { staffId?: number }, res) => {
+    const id = parseInt(req.params.id as string, 10);
+    if (!id) return res.status(400).json({ message: "Invalid play id" });
+    try {
+      const play = await storage.claimGamePlay(id, req.staffId!);
+      if (!play) return res.status(404).json({ message: "Play not found or already claimed" });
+      res.json(play);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
 
   app.get("/api/staff/game/config", staffAuth, async (_req, res) => {
     try {
