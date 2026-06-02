@@ -172,6 +172,8 @@ export async function getLoyaltyProgramRewardTiers(): Promise<Array<{
   discountValue: number | null;
 }>> {
   const program = await getLoyaltyProgram();
+  console.log("[LOYALTY DEBUG] program keys:", program ? Object.keys(program) : "null");
+  console.log("[LOYALTY DEBUG] reward_tiers raw:", JSON.stringify(program?.reward_tiers ?? "missing", null, 2));
   if (!program?.reward_tiers) return [];
   return (program.reward_tiers as any[]).map((t) => ({
     id: t.id as string,
