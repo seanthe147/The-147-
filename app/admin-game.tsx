@@ -22,6 +22,14 @@ import Colors from "@/constants/colors";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+interface SquareTier {
+  id: string;
+  name: string;
+  points: number;
+  discountType: "FIXED_PERCENTAGE" | "FIXED_AMOUNT" | null;
+  discountValue: number | null;
+}
+
 interface GameConfig {
   enabled: boolean;
   windowStart: string;
@@ -236,11 +244,31 @@ interface PrizeEditorProps {
   onCancel: () => void;
   saving: boolean;
   isNew: boolean;
+  squareTiers: SquareTier[];
+  tiersLoading: boolean;
 }
 
-function PrizeEditor({ draft, onChange, onSave, onCancel, saving, isNew }: PrizeEditorProps) {
+function tierDiscountLabel(tier: SquareTier): string {
+  if (tier.discountType === "FIXED_PERCENTAGE" && tier.discountValue != null) {
+    return `${tier.discountValue}% off`;
+  }
+  if (tier.discountType === "FIXED_AMOUNT" && tier.discountValue != null) {
+    return `£${(tier.discountValue / 100).toFixed(2)} off`;
+  }
+  return "";
+}
+
+function PrizeEditor({ draft, onChange, onSave, onCancel, saving, isNew, squareTiers, tiersLoading }: PrizeEditorProps) {
   const set = (key: keyof PrizeDraft, val: string | boolean) =>
     onChange({ ...draft, [key]: val });
+
+  const handleSelectTier = (tier: SquareTier) => {
+    onChange({
+      ...draft,
+      rewardTierId: tier.id,
+      name: draft.name || tier.name,
+    });
+  };
 
   return (
     <View style={editor.container}>
@@ -315,15 +343,56 @@ function PrizeEditor({ draft, onChange, onSave, onCancel, saving, isNew }: Prize
 
       {draft.prizeType === "reward_tier" && (
         <View style={editor.field}>
-          <Text style={editor.label}>Square Reward Tier ID *</Text>
-          <TextInput
-            style={editor.input}
-            value={draft.rewardTierId}
-            onChangeText={(v) => set("rewardTierId", v)}
-            placeholder="e.g. TIER_ID_FROM_SQUARE"
-            placeholderTextColor="#9CA3AF"
-            autoCapitalize="none"
-          />
+          <Text style={editor.label}>Select Reward Tier *</Text>
+          {tiersLoading ? (
+            <View style={editor.tierLoading}>
+              <ActivityIndicator size="small" color={Colors.brand.gold} />
+              <Text style={editor.tierLoadingText}>Loading tiers from Square…</Text>
+            </View>
+          ) : squareTiers.length === 0 ? (
+            <View style={editor.tierEmpty}>
+              <Ionicons name="alert-circle-outline" size={16} color="#F59E0B" />
+              <Text style={editor.tierEmptyText}>
+                No reward tiers found in Square. Create them in Square Dashboard → Loyalty → Reward Tiers, then come back here.
+              </Text>
+            </View>
+          ) : (
+            <View style={editor.tierList}>
+              {squareTiers.map((tier) => {
+                const selected = draft.rewardTierId === tier.id;
+                const label = tierDiscountLabel(tier);
+                return (
+                  <Pressable
+                    key={tier.id}
+                    onPress={() => handleSelectTier(tier)}
+                    style={[editor.tierRow, selected && editor.tierRowSelected]}
+                  >
+                    <View style={editor.tierRowLeft}>
+                      <Text style={[editor.tierName, selected && editor.tierNameSelected]}>
+                        {tier.name}
+                      </Text>
+                      <View style={editor.tierMeta}>
+                        {!!label && (
+                          <View style={[editor.tierBadge, selected && editor.tierBadgeSelected]}>
+                            <Text style={[editor.tierBadgeText, selected && editor.tierBadgeTextSelected]}>
+                              {label}
+                            </Text>
+                          </View>
+                        )}
+                        <Text style={editor.tierPoints}>{tier.points} pts cost</Text>
+                      </View>
+                    </View>
+                    {selected && (
+                      <Ionicons name="checkmark-circle" size={20} color={Colors.brand.gold} />
+                    )}
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+          <Text style={editor.hint}>
+            The reward will be issued automatically to the customer's Square account when they win — no points are deducted from their earned balance.
+          </Text>
         </View>
       )}
 
@@ -480,6 +549,97 @@ const editor = StyleSheet.create({
     fontSize: 14,
     color: "#fff",
   },
+  tierLoading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 12,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  tierLoadingText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 13,
+    color: "#9CA3AF",
+  },
+  tierEmpty: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    padding: 12,
+    backgroundColor: "#FFFBEB",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+  },
+  tierEmptyText: {
+    flex: 1,
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: "#92400E",
+    lineHeight: 17,
+  },
+  tierList: {
+    gap: 6,
+  },
+  tierRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    gap: 8,
+  },
+  tierRowSelected: {
+    borderColor: Colors.brand.gold,
+    backgroundColor: Colors.brand.gold + "0D",
+  },
+  tierRowLeft: {
+    flex: 1,
+    gap: 4,
+  },
+  tierName: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: Colors.light.text,
+  },
+  tierNameSelected: {
+    color: Colors.brand.gold,
+  },
+  tierMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  tierBadge: {
+    backgroundColor: "#F3F4F6",
+    borderRadius: 20,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  tierBadgeSelected: {
+    backgroundColor: Colors.brand.gold + "22",
+    borderColor: Colors.brand.gold + "55",
+  },
+  tierBadgeText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 10,
+    color: "#6B7280",
+  },
+  tierBadgeTextSelected: {
+    color: Colors.brand.gold,
+  },
+  tierPoints: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 11,
+    color: "#9CA3AF",
+  },
 });
 
 // ── Main screen ───────────────────────────────────────────────────────────────
@@ -561,13 +721,22 @@ export default function AdminGameScreen() {
     refetchOnMount: "always",
   });
 
+  // Square reward tiers — fetched live so managers can pick from a dropdown
+  const tiersQuery = useQuery<SquareTier[]>({
+    queryKey: ["/api/staff/game/square-reward-tiers"],
+    refetchOnMount: "always",
+    retry: false,
+  });
+  const squareTiers = tiersQuery.data ?? [];
+  const tiersLoading = tiersQuery.isLoading;
+
   const [editingPrize, setEditingPrize] = useState<GamePrize | null>(null);
   const [editDraft, setEditDraft] = useState<PrizeDraft>(emptyDraft());
   const [addingNew, setAddingNew] = useState(false);
   const [newDraft, setNewDraft] = useState<PrizeDraft>(emptyDraft());
 
   const prizeMutation = useMutation({
-    mutationFn: async (payload: { id?: number; name: string; description?: string; prizeType: string; value?: number | null; rewardTierId?: string | null; giftCardAmountPence?: string | null; weightPercent: number; active: boolean }) => {
+    mutationFn: async (payload: { id?: number; name: string; description?: string; prizeType: string; value?: number | null; rewardTierId?: string | null; tierPoints?: number | null; squareDiscountType?: string | null; squareDiscountValue?: number | null; giftCardAmountPence?: string | null; weightPercent: number; active: boolean }) => {
       const { id, ...body } = payload;
       const res = id
         ? await apiRequest("PUT", `/api/staff/game/prizes/${id}`, body)
@@ -595,10 +764,18 @@ export default function AdminGameScreen() {
       const pts = Number(draft.value);
       if (!Number.isInteger(pts) || pts < 1) throw new Error("Points must be a positive whole number");
     }
+    if (draft.prizeType === "reward_tier" && !draft.rewardTierId) {
+      throw new Error("Please select a reward tier from the list");
+    }
     if (draft.prizeType === "gift_card") {
       const amt = parseFloat(draft.giftCardAmountPounds);
       if (isNaN(amt) || amt <= 0) throw new Error("Please enter a valid prize amount in pounds (e.g. 5.00)");
     }
+    // For reward_tier — look up the matching Square tier so we can persist its
+    // points cost and discount details alongside the tier ID.
+    const selectedTier = draft.prizeType === "reward_tier"
+      ? squareTiers.find(t => t.id === draft.rewardTierId) ?? null
+      : null;
     return {
       id,
       name: draft.name.trim(),
@@ -606,6 +783,9 @@ export default function AdminGameScreen() {
       prizeType: draft.prizeType,
       value: draft.prizeType === "loyalty_points" ? Number(draft.value) : null,
       rewardTierId: draft.prizeType === "reward_tier" ? draft.rewardTierId.trim() || null : null,
+      tierPoints: selectedTier ? selectedTier.points : undefined,
+      squareDiscountType: selectedTier ? selectedTier.discountType : undefined,
+      squareDiscountValue: selectedTier ? selectedTier.discountValue : undefined,
       giftCardAmountPence: draft.prizeType === "gift_card" ? String(draft.giftCardAmountPounds) : null,
       weightPercent: wp,
       active: draft.active,
@@ -805,6 +985,8 @@ export default function AdminGameScreen() {
                 onCancel={() => setAddingNew(false)}
                 saving={prizeMutation.isPending}
                 isNew
+                squareTiers={squareTiers}
+                tiersLoading={tiersLoading}
               />
             )}
             {(prizesQuery.data ?? []).map((p) =>
@@ -817,6 +999,8 @@ export default function AdminGameScreen() {
                   onCancel={() => setEditingPrize(null)}
                   saving={prizeMutation.isPending}
                   isNew={false}
+                  squareTiers={squareTiers}
+                  tiersLoading={tiersLoading}
                 />
               ) : (
                 <PrizeRow
