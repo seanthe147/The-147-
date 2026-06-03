@@ -4122,6 +4122,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
 
+    // ── Customer-group prize auto-removal on payment ────────────────────────
+    // When a payment completes for an identified Square customer, remove them
+    // from any active Winners groups — the discount has been used.
+    if (paymentStatus === "COMPLETED" && payment.customer_id && square.isConfigured()) {
+      try {
+        const sqCustId: string = payment.customer_id;
+        const localCustomer = await storage.getCustomerBySquareCustomerId(sqCustId).catch(() => null);
+        if (localCustomer) {
+          const activePlays = await storage.getActiveGroupPrizePlays(localCustomer.id);
+          for (const { play, prize } of activePlays) {
+            if (prize.squareCustomerGroupId) {
+              await square.removeCustomerFromGroup(sqCustId, prize.squareCustomerGroupId).catch((e: any) =>
+                console.warn(`[WEBHOOK] Group remove failed for play ${play.id}:`, e.message)
+              );
+              await storage.removeGroupPrize(play.id, 0);
+              console.log(`[WEBHOOK] Auto-removed customer ${sqCustId} from group ${prize.squareCustomerGroupId} (play #${play.id}) after payment`);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[WEBHOOK] customer-group prize auto-removal error:", err);
+      }
+    }
+
     // ── Membership payment (completed or failed) ────────────────────────────
     if (paymentNote.startsWith("MEMBERSHIP:")) {
       const subId = parseInt(paymentNote.split(":")[1] ?? "");
@@ -9118,6 +9142,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let squareRewardId: string | null = null;
       let pointsAwarded: number | null = null;
       let giftCardGan: string | null = null;
+      let squareGroupAddedAt: Date | null = null;
       let autoClaimedAt: Date | null = null;
 
       if (prize && prize.prizeType !== "none") {
@@ -9175,6 +9200,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.warn("[Game] Gift card issue failed:", e.message);
           }
         }
+
+        // customer_group: add winner to the designated Square customer group so the
+        // associated CatalogPricingRule fires automatically at POS when they pay.
+        // The group membership is removed automatically via payment webhook or expiry job.
+        // Falls back to manual claim if the customer has no Square customer ID.
+        if (prize.prizeType === "customer_group" && prize.squareCustomerGroupId) {
+          const sqCustId = customer?.squareCustomerId;
+          if (sqCustId && square.isConfigured()) {
+            try {
+              await square.addCustomerToGroup(sqCustId, prize.squareCustomerGroupId);
+              squareGroupAddedAt = new Date();
+              console.log(`[Game] Added customer ${sqCustId} to group ${prize.squareCustomerGroupId} for prize "${prize.name}"`);
+            } catch (e: any) {
+              console.warn("[Game] Group add failed, will fall back to manual claim:", e.message);
+            }
+          }
+          // If no squareCustomerId or Square call failed: squareGroupAddedAt stays null,
+          // claimedAt stays null → shows in admin Prize Claims for manual staff handling.
+        }
       }
 
       const play = await storage.createGamePlay({
@@ -9183,6 +9227,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         squareRewardId,
         pointsAwarded,
         giftCardGan,
+        squareGroupAddedAt,
         claimedAt: autoClaimedAt,
         londonDate,
       });
@@ -9194,6 +9239,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         giftCardGan,
         playId: play.id,
         squareRewardIssued: !!squareRewardId,
+        squareGroupAdded: !!squareGroupAddedAt,
       });
     } catch (err: any) {
       console.error("[Game] Play error:", err.message);
@@ -9311,13 +9357,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/staff/game/prizes", staffAuth, managerAuth, async (req, res) => {
-    const { name, description, prizeType, value, rewardTierId, squareDiscountType, squareDiscountValue, tierPoints, giftCardAmountPence, weightPercent, active } = req.body ?? {};
+    const { name, description, prizeType, value, rewardTierId, squareDiscountType, squareDiscountValue, tierPoints, giftCardAmountPence, squareCustomerGroupId, prizeExpiryHours, weightPercent, active } = req.body ?? {};
     if (!name || !prizeType) return res.status(400).json({ message: "name and prizeType are required" });
     if (prizeType === "reward_tier" && !rewardTierId) {
       return res.status(400).json({ message: "Please select a Square reward tier for this prize type" });
     }
     if (prizeType === "gift_card" && (!giftCardAmountPence || parseInt(giftCardAmountPence, 10) <= 0)) {
       return res.status(400).json({ message: "Please enter a prize amount (in pounds) for this gift card" });
+    }
+    if (prizeType === "customer_group" && !squareCustomerGroupId?.trim()) {
+      return res.status(400).json({ message: "Please enter the Square customer group ID for this prize" });
     }
     try {
       const prize = await storage.upsertGamePrize({
@@ -9330,6 +9379,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         squareDiscountValue: prizeType === "reward_tier" && squareDiscountValue != null ? parseInt(squareDiscountValue, 10) : null,
         tierPoints: prizeType === "reward_tier" && tierPoints != null ? parseInt(tierPoints, 10) : null,
         giftCardAmountPence: prizeType === "gift_card" && giftCardAmountPence != null ? Math.round(parseFloat(giftCardAmountPence) * 100) : null,
+        squareCustomerGroupId: prizeType === "customer_group" ? (squareCustomerGroupId?.trim() ?? null) : null,
+        prizeExpiryHours: prizeType === "customer_group" && prizeExpiryHours != null ? parseInt(prizeExpiryHours, 10) : null,
         weightPercent: weightPercent ?? 10,
         active: active !== false,
       });
@@ -9342,11 +9393,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/staff/game/prizes/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id as string, 10);
     if (!id) return res.status(400).json({ message: "Invalid id" });
-    const { name, description, prizeType, value, rewardTierId, squareDiscountType, squareDiscountValue, tierPoints, giftCardAmountPence, weightPercent, active } = req.body ?? {};
-    // Note: we intentionally do NOT require rewardTierId on PUT so that
-    // managers can toggle active/weight on existing reward_tier prizes even
-    // before they have had a chance to link a Square tier via the picker.
-    // The POST handler enforces the tier requirement for brand-new prizes.
+    const { name, description, prizeType, value, rewardTierId, squareDiscountType, squareDiscountValue, tierPoints, giftCardAmountPence, squareCustomerGroupId, prizeExpiryHours, weightPercent, active } = req.body ?? {};
     if (prizeType === "gift_card" && (!giftCardAmountPence || parseFloat(giftCardAmountPence) <= 0)) {
       return res.status(400).json({ message: "Please enter a prize amount (in pounds) for this gift card" });
     }
@@ -9362,10 +9409,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
         squareDiscountValue: prizeType === "reward_tier" && squareDiscountValue != null ? parseInt(squareDiscountValue, 10) : null,
         tierPoints: prizeType === "reward_tier" && tierPoints != null ? parseInt(tierPoints, 10) : null,
         giftCardAmountPence: prizeType === "gift_card" && giftCardAmountPence != null ? Math.round(parseFloat(giftCardAmountPence) * 100) : null,
+        squareCustomerGroupId: prizeType === "customer_group" ? (squareCustomerGroupId?.trim() ?? null) : null,
+        prizeExpiryHours: prizeType === "customer_group" && prizeExpiryHours != null ? parseInt(prizeExpiryHours, 10) : null,
         weightPercent,
         active,
       });
       res.json(prize);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Staff manually revoke a customer-group prize (removes them from the Square group).
+  app.post("/api/staff/game/plays/:id/remove-group", staffAuth, async (req: Request & { staffId?: number }, res) => {
+    const id = parseInt(req.params.id as string, 10);
+    if (!id) return res.status(400).json({ message: "Invalid play id" });
+    try {
+      const play = await storage.getGamePlayById(id);
+      if (!play) return res.status(404).json({ message: "Play not found" });
+      if (play.claimedAt) return res.status(409).json({ message: "Prize already claimed/removed" });
+      // Remove from Square group if we have the details
+      if (play.squareGroupAddedAt && square.isConfigured() && play.prizeId) {
+        const prize = await storage.getGamePrizeById(play.prizeId);
+        if (prize?.squareCustomerGroupId) {
+          const customer = await storage.getCustomerById(play.customerId);
+          if (customer?.squareCustomerId) {
+            await square.removeCustomerFromGroup(customer.squareCustomerId, prize.squareCustomerGroupId).catch((e: any) =>
+              console.warn("[Game] Group remove error:", e.message)
+            );
+          }
+        }
+      }
+      const updated = await storage.removeGroupPrize(id, req.staffId!);
+      if (!updated) return res.status(404).json({ message: "Play not found or already claimed" });
+      res.json(updated);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -14059,6 +14136,37 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     (globalThis as any).__posPollStarted = true;
     setInterval(() => { void pollSquareOrders(); }, 60_000);
     setTimeout(() => { void pollSquareOrders(); }, 3_000);
+  }
+
+  // ── Customer-group prize expiry job ─────────────────────────────────────────
+  // Runs every 30 minutes. Any customer whose Winners group membership has been
+  // active longer than the prize's prizeExpiryHours is removed from the group
+  // automatically — a safety net in case the payment webhook doesn't fire
+  // (e.g. cash payment, no customer linked, server restart during payment).
+  async function expireGroupPrizes() {
+    if (!square.isConfigured()) return;
+    try {
+      const expired = await storage.getExpiredGroupPrizePlays();
+      for (const { play, prize, squareCustomerId } of expired) {
+        try {
+          if (squareCustomerId && prize.squareCustomerGroupId) {
+            await square.removeCustomerFromGroup(squareCustomerId, prize.squareCustomerGroupId);
+          }
+          await storage.removeGroupPrize(play.id, 0);
+          console.log(`[Game] Expired group prize play #${play.id} — removed customer ${squareCustomerId ?? "unknown"} from group ${prize.squareCustomerGroupId}`);
+        } catch (e: any) {
+          console.warn(`[Game] Failed to expire group prize play #${play.id}:`, e.message);
+        }
+      }
+    } catch (err) {
+      console.error("[Game] expireGroupPrizes error:", err);
+    }
+  }
+
+  if (!(globalThis as any).__groupPrizeExpiryStarted) {
+    (globalThis as any).__groupPrizeExpiryStarted = true;
+    setInterval(() => { void expireGroupPrizes(); }, 30 * 60 * 1000);
+    setTimeout(() => { void expireGroupPrizes(); }, 10_000);
   }
 
   const httpServer = createServer(app);

@@ -69,6 +69,7 @@ interface GameResult {
   giftCardGan: string | null;
   playId: number;
   squareRewardIssued?: boolean;
+  squareGroupAdded?: boolean;
 }
 
 interface ScratchPoint {
@@ -157,6 +158,24 @@ function PrizeContent({ result, error }: { result: GameResult | null; error: str
           <Ionicons name="ticket-outline" size={16} color="#059669" />
           <View style={prize.claimTextCol}>
             <Text style={prize.claimLabel}>Show this screen to staff to claim</Text>
+            <Text style={prize.claimRef}>Ref #{result.playId.toString().padStart(5, "0")}</Text>
+          </View>
+        </View>
+      )}
+      {result.prize.prizeType === "customer_group" && result.squareGroupAdded && (
+        <View style={prize.claimBox}>
+          <Ionicons name="pricetag" size={16} color="#EC4899" />
+          <View style={prize.claimTextCol}>
+            <Text style={prize.claimLabel}>Discount applied to your account</Text>
+            <Text style={prize.claimHint}>Just pay at the bar — your discount fires automatically. One transaction only.</Text>
+          </View>
+        </View>
+      )}
+      {result.prize.prizeType === "customer_group" && !result.squareGroupAdded && (
+        <View style={prize.claimBox}>
+          <Ionicons name="ticket-outline" size={16} color="#EC4899" />
+          <View style={prize.claimTextCol}>
+            <Text style={prize.claimLabel}>Show this screen to staff to apply your discount</Text>
             <Text style={prize.claimRef}>Ref #{result.playId.toString().padStart(5, "0")}</Text>
           </View>
         </View>

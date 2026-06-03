@@ -40,10 +40,12 @@ interface GamePrize {
   id: number;
   name: string;
   description: string | null;
-  prizeType: "none" | "loyalty_points" | "reward_tier" | "gift_card";
+  prizeType: "none" | "loyalty_points" | "reward_tier" | "gift_card" | "customer_group";
   value: number | null;
   rewardTierId: string | null;
   giftCardAmountPence: number | null;
+  squareCustomerGroupId: string | null;
+  prizeExpiryHours: number | null;
   weightPercent: number;
   active: boolean;
 }
@@ -65,8 +67,10 @@ interface PendingClaim {
   customerId: number;
   customerName: string | null;
   prizeName: string;
+  prizeType: string;
   playedAt: string;
   londonDate: string;
+  squareGroupAddedAt: string | null;
 }
 
 // ── Empty prize template ───────────────────────────────────────────────────────
@@ -79,6 +83,8 @@ function emptyDraft(): PrizeDraft {
     value: "",
     rewardTierId: "",
     giftCardAmountPounds: "",
+    squareCustomerGroupId: "",
+    prizeExpiryHours: "24",
     weightPercent: "10",
     active: true,
   };
@@ -87,10 +93,12 @@ function emptyDraft(): PrizeDraft {
 interface PrizeDraft {
   name: string;
   description: string;
-  prizeType: "none" | "loyalty_points" | "reward_tier" | "gift_card";
+  prizeType: "none" | "loyalty_points" | "reward_tier" | "gift_card" | "customer_group";
   value: string;
   rewardTierId: string;
   giftCardAmountPounds: string;
+  squareCustomerGroupId: string;
+  prizeExpiryHours: string;
   weightPercent: string;
   active: boolean;
 }
@@ -112,6 +120,7 @@ function prizeTypeLabel(t: string): string {
   if (t === "loyalty_points") return "Points";
   if (t === "reward_tier") return "Reward";
   if (t === "gift_card") return "Gift Card";
+  if (t === "customer_group") return "POS Discount";
   return t;
 }
 
@@ -120,6 +129,7 @@ function prizeTypeColor(t: string): string {
   if (t === "loyalty_points") return Colors.brand.gold;
   if (t === "reward_tier") return "#10B981";
   if (t === "gift_card") return "#6366F1";
+  if (t === "customer_group") return "#EC4899";
   return "#6B7280";
 }
 
@@ -339,14 +349,14 @@ function PrizeEditor({ draft, onChange, onSave, onCancel, saving, isNew, squareT
       <View style={editor.field}>
         <Text style={editor.label}>Prize Type *</Text>
         <View style={editor.segRow}>
-          {(["none", "loyalty_points", "reward_tier", "gift_card"] as const).map((t) => (
+          {(["none", "loyalty_points", "reward_tier", "gift_card", "customer_group"] as const).map((t) => (
             <Pressable
               key={t}
               onPress={() => set("prizeType", t)}
               style={[editor.seg, draft.prizeType === t && editor.segActive]}
             >
               <Text style={[editor.segText, draft.prizeType === t && editor.segTextActive]}>
-                {t === "none" ? "No Prize" : t === "loyalty_points" ? "Points" : t === "reward_tier" ? "Reward" : "Gift Card"}
+                {t === "none" ? "No Prize" : t === "loyalty_points" ? "Points" : t === "reward_tier" ? "Reward" : t === "gift_card" ? "Gift Card" : "POS Discount"}
               </Text>
             </Pressable>
           ))}
@@ -358,7 +368,9 @@ function PrizeEditor({ draft, onChange, onSave, onCancel, saving, isNew, squareT
             ? "Adds points to the customer's Square loyalty account automatically when they win."
             : draft.prizeType === "reward_tier"
             ? "Issues a Square loyalty reward to the winner's account. See warning below."
-            : "Issues a unique gift card code exclusively to the winner — best choice for physical prizes like free drinks."}
+            : draft.prizeType === "gift_card"
+            ? "Issues a unique gift card code exclusively to the winner — best choice for physical prizes like free drinks."
+            : "Adds the winner to a Square customer group so a CatalogPricingRule discount fires automatically at POS. Removed after their next payment or after expiry."}
         </Text>
       </View>
 
@@ -474,6 +486,40 @@ function PrizeEditor({ draft, onChange, onSave, onCancel, saving, isNew, squareT
             A unique Square gift card is created exclusively for this winner — nobody else can use it. The winner sees the code on their win screen and shows it at the bar. Staff redeem it in Square POS like any gift card.
           </Text>
         </View>
+      )}
+
+      {draft.prizeType === "customer_group" && (
+        <>
+          <View style={editor.field}>
+            <Text style={editor.label}>Square Customer Group ID *</Text>
+            <TextInput
+              style={editor.input}
+              value={draft.squareCustomerGroupId}
+              onChangeText={(v) => set("squareCustomerGroupId", v)}
+              placeholder="e.g. ABC123DEF456"
+              placeholderTextColor="#9CA3AF"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Text style={editor.hint}>
+              The ID of the Square customer group linked to a CatalogPricingRule. Find it in Square Dashboard → Customers → Groups. Winners are added automatically and removed after they pay or after expiry.
+            </Text>
+          </View>
+          <View style={editor.field}>
+            <Text style={editor.label}>Discount Expiry (hours)</Text>
+            <TextInput
+              style={editor.input}
+              value={draft.prizeExpiryHours}
+              onChangeText={(v) => set("prizeExpiryHours", v)}
+              placeholder="24"
+              placeholderTextColor="#9CA3AF"
+              keyboardType="number-pad"
+            />
+            <Text style={editor.hint}>
+              How many hours the winner stays in the group if they don't pay in time. Defaults to 24h. A background job removes them automatically after expiry.
+            </Text>
+          </View>
+        </>
       )}
 
       <View style={editor.field}>
@@ -838,7 +884,7 @@ export default function AdminGameScreen() {
   const [newDraft, setNewDraft] = useState<PrizeDraft>(emptyDraft());
 
   const prizeMutation = useMutation({
-    mutationFn: async (payload: { id?: number; name: string; description?: string; prizeType: string; value?: number | null; rewardTierId?: string | null; tierPoints?: number | null; squareDiscountType?: string | null; squareDiscountValue?: number | null; giftCardAmountPence?: string | null; weightPercent: number; active: boolean }) => {
+    mutationFn: async (payload: { id?: number; name: string; description?: string; prizeType: string; value?: number | null; rewardTierId?: string | null; tierPoints?: number | null; squareDiscountType?: string | null; squareDiscountValue?: number | null; giftCardAmountPence?: string | null; squareCustomerGroupId?: string | null; prizeExpiryHours?: number | null; weightPercent: number; active: boolean }) => {
       const { id, ...body } = payload;
       const res = id
         ? await apiRequest("PUT", `/api/staff/game/prizes/${id}`, body)
@@ -873,6 +919,9 @@ export default function AdminGameScreen() {
       const amt = parseFloat(draft.giftCardAmountPounds);
       if (isNaN(amt) || amt <= 0) throw new Error("Please enter a valid prize amount in pounds (e.g. 5.00)");
     }
+    if (draft.prizeType === "customer_group" && !draft.squareCustomerGroupId.trim()) {
+      throw new Error("Please enter the Square customer group ID");
+    }
     // For reward_tier — look up the matching Square tier so we can persist its
     // points cost and discount details alongside the tier ID.
     const selectedTier = draft.prizeType === "reward_tier"
@@ -889,6 +938,8 @@ export default function AdminGameScreen() {
       squareDiscountType: selectedTier ? selectedTier.discountType : undefined,
       squareDiscountValue: selectedTier ? selectedTier.discountValue : undefined,
       giftCardAmountPence: draft.prizeType === "gift_card" ? String(draft.giftCardAmountPounds) : null,
+      squareCustomerGroupId: draft.prizeType === "customer_group" ? draft.squareCustomerGroupId.trim() || null : null,
+      prizeExpiryHours: draft.prizeType === "customer_group" && draft.prizeExpiryHours ? parseInt(draft.prizeExpiryHours, 10) || 24 : null,
       weightPercent: wp,
       active: draft.active,
     };
@@ -926,13 +977,15 @@ export default function AdminGameScreen() {
       value: p.value != null ? String(p.value) : "",
       rewardTierId: p.rewardTierId ?? "",
       giftCardAmountPounds: p.giftCardAmountPence != null ? String(p.giftCardAmountPence / 100) : "",
+      squareCustomerGroupId: p.squareCustomerGroupId ?? "",
+      prizeExpiryHours: p.prizeExpiryHours != null ? String(p.prizeExpiryHours) : "24",
       weightPercent: String(p.weightPercent),
       active: p.active,
     });
   };
 
   const handleTogglePrizeActive = (p: GamePrize, active: boolean) => {
-    prizeMutation.mutate({ id: p.id, name: p.name, description: p.description ?? undefined, prizeType: p.prizeType, value: p.value, rewardTierId: p.rewardTierId, giftCardAmountPence: p.giftCardAmountPence != null ? String(p.giftCardAmountPence / 100) : null, weightPercent: p.weightPercent, active });
+    prizeMutation.mutate({ id: p.id, name: p.name, description: p.description ?? undefined, prizeType: p.prizeType, value: p.value, rewardTierId: p.rewardTierId, giftCardAmountPence: p.giftCardAmountPence != null ? String(p.giftCardAmountPence / 100) : null, squareCustomerGroupId: p.squareCustomerGroupId, prizeExpiryHours: p.prizeExpiryHours, weightPercent: p.weightPercent, active });
   };
 
   // ── Pending claims (reward_tier prizes awaiting collection) ──────────────
@@ -958,6 +1011,22 @@ export default function AdminGameScreen() {
     },
   });
 
+  const removeGroupMutation = useMutation({
+    mutationFn: async (playId: number) => {
+      const res = await apiRequest("POST", `/api/staff/game/plays/${playId}/remove-group`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/staff/game/pending-claims"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/staff/game/winners"] });
+    },
+    onError: (err: Error) => {
+      const msg = err.message || "Failed to remove from group";
+      if (Platform.OS === "web") window.alert(msg);
+      else Alert.alert("Error", msg);
+    },
+  });
+
   const handleMarkClaimed = (claim: PendingClaim) => {
     const confirmMsg = `Mark "${claim.prizeName}" for ${claim.customerName ?? "customer"} as claimed?`;
     if (Platform.OS === "web") {
@@ -966,6 +1035,18 @@ export default function AdminGameScreen() {
       Alert.alert("Mark as Claimed", confirmMsg, [
         { text: "Cancel", style: "cancel" },
         { text: "Mark Claimed", onPress: () => claimMutation.mutate(claim.id) },
+      ]);
+    }
+  };
+
+  const handleRemoveGroup = (claim: PendingClaim) => {
+    const confirmMsg = `Remove "${claim.customerName ?? "customer"}" from the winners group? This ends their POS discount early.`;
+    if (Platform.OS === "web") {
+      if (window.confirm(confirmMsg)) removeGroupMutation.mutate(claim.id);
+    } else {
+      Alert.alert("Remove from Group", confirmMsg, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Remove", style: "destructive", onPress: () => removeGroupMutation.mutate(claim.id) },
       ]);
     }
   };
@@ -1179,16 +1260,32 @@ export default function AdminGameScreen() {
                   <Text style={styles.winnerPrize}>
                     {claim.prizeName} · <Text style={{ color: "#34D399" }}>Ref #{claim.id.toString().padStart(5, "0")}</Text>
                   </Text>
+                  {claim.prizeType === "customer_group" && (
+                    <Text style={[styles.winnerDate, { color: "#EC4899" }]}>
+                      ⚠ No Square account — add to group manually
+                    </Text>
+                  )}
                   <Text style={styles.winnerDate}>{fmtDateTime(claim.playedAt)}</Text>
                 </View>
-                <Pressable
-                  onPress={() => handleMarkClaimed(claim)}
-                  disabled={claimMutation.isPending}
-                  style={({ pressed }) => [styles.claimBtn, pressed && { opacity: 0.7 }]}
-                >
-                  <Ionicons name="checkmark-circle-outline" size={16} color="#fff" />
-                  <Text style={styles.claimBtnText}>Claimed</Text>
-                </Pressable>
+                {claim.prizeType === "customer_group" ? (
+                  <Pressable
+                    onPress={() => handleRemoveGroup(claim)}
+                    disabled={removeGroupMutation.isPending}
+                    style={({ pressed }) => [styles.claimBtn, { backgroundColor: "#EC4899" }, pressed && { opacity: 0.7 }]}
+                  >
+                    <Ionicons name="person-remove-outline" size={16} color="#fff" />
+                    <Text style={styles.claimBtnText}>Remove</Text>
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    onPress={() => handleMarkClaimed(claim)}
+                    disabled={claimMutation.isPending}
+                    style={({ pressed }) => [styles.claimBtn, pressed && { opacity: 0.7 }]}
+                  >
+                    <Ionicons name="checkmark-circle-outline" size={16} color="#fff" />
+                    <Text style={styles.claimBtnText}>Claimed</Text>
+                  </Pressable>
+                )}
               </View>
             ))}
           </View>

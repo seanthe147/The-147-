@@ -624,6 +624,18 @@ export async function runStartupMigrations() {
         ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMP,
         ADD COLUMN IF NOT EXISTS claimed_by_staff_id INTEGER;
     `);
+    // Customer-group prize support — winner auto-added to a Square customer group;
+    // discount pricing rule fires automatically at POS; auto-removed after payment or expiry (added 2026-06)
+    await client.query(`
+      ALTER TABLE game_prizes
+        ADD COLUMN IF NOT EXISTS square_customer_group_id TEXT,
+        ADD COLUMN IF NOT EXISTS prize_expiry_hours INTEGER DEFAULT 24;
+    `);
+    await client.query(`
+      ALTER TABLE game_plays
+        ADD COLUMN IF NOT EXISTS square_group_added_at TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS square_group_removed_at TIMESTAMP;
+    `);
     await client.query(`
       INSERT INTO game_prizes (name, description, prize_type, weight_percent, active)
         SELECT 'Free Soft Drink', 'You won a free soft drink — show this screen at the bar to claim it!', 'reward_tier', 10, true
@@ -3324,6 +3336,8 @@ export class DatabaseStorage implements IStorage {
     squareDiscountValue?: number | null;
     tierPoints?: number | null;
     giftCardAmountPence?: number | null;
+    squareCustomerGroupId?: string | null;
+    prizeExpiryHours?: number | null;
     weightPercent: number;
     active: boolean;
   }): Promise<GamePrize> {
@@ -3349,6 +3363,7 @@ export class DatabaseStorage implements IStorage {
     squareRewardId?: string | null;
     pointsAwarded?: number | null;
     giftCardGan?: string | null;
+    squareGroupAddedAt?: Date | null;
     claimedAt?: Date | null;
     claimedByStaffId?: number | null;
     londonDate: string;
@@ -3357,28 +3372,105 @@ export class DatabaseStorage implements IStorage {
     return play;
   }
 
-  // Returns all unclaimed reward_tier game wins, newest first.
-  // Used by the staff admin to let them mark prizes as collected at the bar.
-  async getPendingRewardClaims(): Promise<Array<{ id: number; customerId: number; customerName: string | null; prizeName: string; playedAt: Date; londonDate: string }>> {
+  // Returns all unclaimed prize wins that need manual staff action, newest first.
+  // Covers reward_tier wins (staff apply at till) and customer_group wins where
+  // the customer has no Square customer ID (group couldn't be added automatically).
+  async getPendingRewardClaims(): Promise<Array<{ id: number; customerId: number; customerName: string | null; prizeName: string; prizeType: string; playedAt: Date; londonDate: string; squareGroupAddedAt: Date | null }>> {
     const plays = await db.select().from(gamePlays)
       .where(and(isNotNull(gamePlays.prizeId), isNull(gamePlays.claimedAt)))
       .orderBy(desc(gamePlays.playedAt));
-    const result: Array<{ id: number; customerId: number; customerName: string | null; prizeName: string; playedAt: Date; londonDate: string }> = [];
+    const result: Array<{ id: number; customerId: number; customerName: string | null; prizeName: string; prizeType: string; playedAt: Date; londonDate: string; squareGroupAddedAt: Date | null }> = [];
     for (const play of plays) {
       if (!play.prizeId) continue;
       const [prize] = await db.select().from(gamePrizes).where(eq(gamePrizes.id, play.prizeId));
-      if (!prize || prize.prizeType !== "reward_tier") continue;
+      // Include reward_tier (manual bar collection) and customer_group without group (fallback manual)
+      if (!prize) continue;
+      if (prize.prizeType !== "reward_tier" && prize.prizeType !== "customer_group") continue;
+      // For customer_group: only show in pending claims if the group add failed (squareGroupAddedAt is null)
+      if (prize.prizeType === "customer_group" && play.squareGroupAddedAt) continue;
       const [cust] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, play.customerId));
       result.push({
         id: play.id,
         customerId: play.customerId,
         customerName: cust ? decrypt(cust.name) : null,
         prizeName: prize.name,
+        prizeType: prize.prizeType,
         playedAt: play.playedAt,
         londonDate: play.londonDate,
+        squareGroupAddedAt: play.squareGroupAddedAt ?? null,
       });
     }
     return result;
+  }
+
+  // Returns active customer_group prize plays for a customer — group was added but
+  // prize hasn't been claimed yet (discount still active at POS).
+  async getActiveGroupPrizePlays(customerId: number): Promise<Array<{ play: GamePlay; prize: GamePrize }>> {
+    const plays = await db.select().from(gamePlays)
+      .where(and(
+        eq(gamePlays.customerId, customerId),
+        isNotNull(gamePlays.squareGroupAddedAt),
+        isNull(gamePlays.claimedAt),
+      ));
+    const result: Array<{ play: GamePlay; prize: GamePrize }> = [];
+    for (const play of plays) {
+      if (!play.prizeId) continue;
+      const [prize] = await db.select().from(gamePrizes).where(eq(gamePrizes.id, play.prizeId));
+      if (!prize || prize.prizeType !== "customer_group" || !prize.squareCustomerGroupId) continue;
+      result.push({ play, prize });
+    }
+    return result;
+  }
+
+  // Returns all customer_group plays where the prize has exceeded its expiry window
+  // and the customer hasn't yet been removed from the group.
+  async getExpiredGroupPrizePlays(): Promise<Array<{ play: GamePlay; prize: GamePrize; squareCustomerId: string | null }>> {
+    const plays = await db.select().from(gamePlays)
+      .where(and(
+        isNotNull(gamePlays.squareGroupAddedAt),
+        isNull(gamePlays.claimedAt),
+      ));
+    const result: Array<{ play: GamePlay; prize: GamePrize; squareCustomerId: string | null }> = [];
+    const now = Date.now();
+    for (const play of plays) {
+      if (!play.prizeId || !play.squareGroupAddedAt) continue;
+      const [prize] = await db.select().from(gamePrizes).where(eq(gamePrizes.id, play.prizeId));
+      if (!prize || prize.prizeType !== "customer_group" || !prize.squareCustomerGroupId) continue;
+      const expiryMs = (prize.prizeExpiryHours ?? 24) * 60 * 60 * 1000;
+      if (now - play.squareGroupAddedAt.getTime() < expiryMs) continue; // not yet expired
+      const [cust] = await db.select({ squareCustomerId: customers.squareCustomerId })
+        .from(customers).where(eq(customers.id, play.customerId));
+      result.push({ play, prize, squareCustomerId: cust?.squareCustomerId ?? null });
+    }
+    return result;
+  }
+
+  // Remove a customer from their winners group and mark the play as claimed.
+  // staffId=0 means auto-removal (webhook or expiry job).
+  async removeGroupPrize(playId: number, staffId: number = 0): Promise<GamePlay | null> {
+    const now = new Date();
+    const [play] = await db.update(gamePlays)
+      .set({ claimedAt: now, claimedByStaffId: staffId || null, squareGroupRemovedAt: now })
+      .where(and(eq(gamePlays.id, playId), isNull(gamePlays.claimedAt)))
+      .returning();
+    return play ?? null;
+  }
+
+  // Look up a local customer by their Square customer ID (for webhook matching).
+  async getCustomerBySquareCustomerId(squareCustomerId: string): Promise<Customer | null> {
+    const [cust] = await db.select().from(customers)
+      .where(eq(customers.squareCustomerId, squareCustomerId));
+    return cust ?? null;
+  }
+
+  async getGamePlayById(id: number): Promise<GamePlay | null> {
+    const [play] = await db.select().from(gamePlays).where(eq(gamePlays.id, id));
+    return play ?? null;
+  }
+
+  async getGamePrizeById(id: number): Promise<GamePrize | null> {
+    const [prize] = await db.select().from(gamePrizes).where(eq(gamePrizes.id, id));
+    return prize ?? null;
   }
 
   async claimGamePlay(id: number, staffId: number): Promise<GamePlay | null> {

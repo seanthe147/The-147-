@@ -1002,13 +1002,15 @@ export const gamePrizes = pgTable("game_prizes", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),                // e.g. "Free Soft Drink"
   description: text("description"),            // shown to customer on win screen
-  prizeType: text("prize_type").notNull(),     // 'none' | 'loyalty_points' | 'reward_tier' | 'gift_card'
+  prizeType: text("prize_type").notNull(),     // 'none' | 'loyalty_points' | 'reward_tier' | 'gift_card' | 'customer_group'
   value: integer("value"),                     // points to award (prizeType='loyalty_points')
   rewardTierId: text("reward_tier_id"),        // Square reward tier ID (prizeType='reward_tier') — manager selects from Square Dashboard
   squareDiscountType: text("square_discount_type"), // 'FIXED_PERCENTAGE' | 'FIXED_AMOUNT' — copied from Square tier for display
   squareDiscountValue: integer("square_discount_value"), // % value (e.g. 10 = 10%) or pence (e.g. 500 = £5.00)
   tierPoints: integer("tier_points"),          // points cost of the Square reward tier (used to pre-fund the customer before issuing)
   giftCardAmountPence: integer("gift_card_amount_pence"), // pence to load onto a Square digital gift card (prizeType='gift_card')
+  squareCustomerGroupId: text("square_customer_group_id"), // Square customer group ID (prizeType='customer_group') — winner auto-added; discount pricing rule fires at POS; auto-removed after payment or expiry
+  prizeExpiryHours: integer("prize_expiry_hours").default(24), // hours after win before group membership auto-expires (prizeType='customer_group')
   weightPercent: integer("weight_percent").notNull().default(10), // probability weight (relative)
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -1028,12 +1030,15 @@ export const gamePlays = pgTable("game_plays", {
   squareRewardId: text("square_reward_id"),   // legacy — was used by ghost-points trick, no longer written
   pointsAwarded: integer("points_awarded"),   // set when prizeType='loyalty_points'
   giftCardGan: text("gift_card_gan"),         // Square gift card account number if gift_card prize issued
+  squareGroupAddedAt: timestamp("square_group_added_at"), // when customer was added to Winners group (prizeType='customer_group')
+  squareGroupRemovedAt: timestamp("square_group_removed_at"), // when customer was auto-removed from group (via webhook or expiry job)
   playedAt: timestamp("played_at").defaultNow().notNull(),
   // London calendar date (YYYY-MM-DD) for fast daily-limit queries without
   // timezone conversion in SQL.
   londonDate: text("london_date").notNull(),
-  // Set when a staff member marks the prize as collected at the bar.
-  // null = pending (customer hasn't claimed yet); non-null = claimed.
+  // Set when a staff member marks the prize as collected at the bar, or when
+  // the system auto-removes the customer from a Winners group.
+  // null = pending; non-null = claimed/removed.
   claimedAt: timestamp("claimed_at"),
   claimedByStaffId: integer("claimed_by_staff_id"),
 });
