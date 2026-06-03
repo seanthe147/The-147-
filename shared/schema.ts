@@ -1010,7 +1010,7 @@ export const gamePrizes = pgTable("game_prizes", {
   tierPoints: integer("tier_points"),          // points cost of the Square reward tier (used to pre-fund the customer before issuing)
   giftCardAmountPence: integer("gift_card_amount_pence"), // pence to load onto a Square digital gift card (prizeType='gift_card')
   squareCustomerGroupId: text("square_customer_group_id"), // Square customer group ID (prizeType='customer_group') — winner auto-added; discount pricing rule fires at POS; auto-removed after payment or expiry
-  prizeExpiryHours: integer("prize_expiry_hours").default(24), // hours after win before group membership auto-expires (prizeType='customer_group')
+  prizeExpiryHours: integer("prize_expiry_hours").default(72), // hours after win before group membership auto-expires (prizeType='customer_group')
   maxDiscountPence: integer("max_discount_pence"),        // optional cap on the prize discount in pence (e.g. 600 = £6 max) — must also be set on the CatalogPricingRule in Square Dashboard
   weightPercent: integer("weight_percent").notNull().default(10), // probability weight (relative)
   active: boolean("active").notNull().default(true),
