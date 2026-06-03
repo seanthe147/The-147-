@@ -19,6 +19,7 @@ import {
   Platform,
   LayoutChangeEvent,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Svg, {
   Defs,
   Mask,
@@ -75,6 +76,20 @@ interface GameResult {
 interface ScratchPoint {
   x: number;
   y: number;
+}
+
+// ── Persistence ───────────────────────────────────────────────────────────────
+
+const GAME_RESULT_KEY = "game_result_today";
+
+/** Returns today's date string in Europe/London timezone (e.g. "03/06/2026"). */
+function getLondonDateStr(): string {
+  return new Date().toLocaleDateString("en-GB", {
+    timeZone: "Europe/London",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -282,12 +297,34 @@ export function ScratchCardGame({
   }, []);
 
   // ── Scratch state ────────────────────────────────────────────────────────
-  const [scratchStarted, setScratchStarted] = useState(false);
-  const [overlayGone, setOverlayGone]       = useState(false);
-  const [result, setResult]                 = useState<GameResult | null>(null);
-  const [gameError, setGameError]           = useState<string | null>(null);
-  const [localPlayed, setLocalPlayed]       = useState(false);
-  const [scratchPoints, setScratchPoints]   = useState<ScratchPoint[]>([]);
+  const [scratchStarted, setScratchStarted]         = useState(false);
+  const [overlayGone, setOverlayGone]               = useState(false);
+  const [result, setResult]                         = useState<GameResult | null>(null);
+  const [gameError, setGameError]                   = useState<string | null>(null);
+  const [localPlayed, setLocalPlayed]               = useState(false);
+  const [scratchPoints, setScratchPoints]           = useState<ScratchPoint[]>([]);
+  const [persistedResultLoaded, setPersistedResultLoaded] = useState(false);
+
+  // ── Load persisted result from today (survives navigation) ────────────────
+  useEffect(() => {
+    AsyncStorage.getItem(GAME_RESULT_KEY)
+      .then((raw) => {
+        if (raw) {
+          try {
+            const { date, result: r } = JSON.parse(raw) as { date: string; result: GameResult };
+            if (date === getLondonDateStr()) {
+              setResult(r);
+              setOverlayGone(true);
+              setLocalPlayed(true);
+              overlayAnim.setValue(0);
+            }
+          } catch {}
+        }
+      })
+      .catch(() => {})
+      .finally(() => setPersistedResultLoaded(true));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Refs — always-fresh values accessible inside PanResponder callbacks
   const scratchPointsRef = useRef<ScratchPoint[]>([]);
@@ -324,6 +361,8 @@ export function ScratchCardGame({
       setGameError(null);
       overlayAnim.setValue(1);
       cardPosRef.current = null;
+      // Clear the persisted result so tomorrow's card starts fresh
+      AsyncStorage.removeItem(GAME_RESULT_KEY).catch(() => {});
     }
   }, [myPlays?.playedToday, localPlayed]);
 
@@ -336,7 +375,13 @@ export function ScratchCardGame({
       toValue: 0,
       duration: 400,
       useNativeDriver: true,
-    }).start(() => setOverlayGone(true));
+    }).start(() => {
+      setOverlayGone(true);
+      // Release the parent scroll lock — panHandlers are removed when overlayGone
+      // becomes true, so onPanResponderRelease will never fire for a finger still
+      // held down at this moment. We must release scroll here explicitly.
+      onScratchEndRef.current();
+    });
   }, [overlayAnim]);
 
   const triggerRevealRef = useRef(triggerReveal);
@@ -374,6 +419,8 @@ export function ScratchCardGame({
       }
       const r = data as GameResult;
       setResult(r);
+      // Persist so the revealed card survives navigation until midnight
+      AsyncStorage.setItem(GAME_RESULT_KEY, JSON.stringify({ date: getLondonDateStr(), result: r })).catch(() => {});
       qc.invalidateQueries({ queryKey: ["/api/game/my-prizes"] });
       if (r.pointsAwarded) {
         qc.invalidateQueries({ queryKey: ["/api/loyalty/me"] });
@@ -495,11 +542,39 @@ export function ScratchCardGame({
   ).current;
 
   // ── Guard renders ─────────────────────────────────────────────────────────
-  if (loading)          return null;
+  if (loading || !persistedResultLoaded) return null;
   if (!config?.enabled) return null;
 
   // ── Already played today ──────────────────────────────────────────────────
   if (alreadyPlayed) {
+    // If we have the result stored, show the revealed card so the customer
+    // can see their prize until midnight — then it resets for a new day.
+    if (result && overlayGone) {
+      return (
+        <View style={styles.wrapper}>
+          <View style={styles.wrapperLabel}>
+            <Ionicons name="star" size={13} color={Colors.brand.gold} />
+            <Text style={styles.wrapperLabelText}>TODAY'S LUCKY BREAK</Text>
+          </View>
+          <View style={styles.headerRow}>
+            <LinearGradient
+              colors={[Colors.brand.gold, "#B8860B"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.headerBadge}
+            >
+              <Ionicons name="sparkles" size={13} color="#FFF" />
+              <Text style={styles.headerBadgeText}>DAILY LUCKY BREAK</Text>
+            </LinearGradient>
+            <Text style={styles.headerSub}>Resets at midnight</Text>
+          </View>
+          <View style={styles.cardFrame}>
+            <PrizeContent result={result} error={null} />
+          </View>
+        </View>
+      );
+    }
+    // No stored result (played on another device / storage cleared)
     return (
       <View style={styles.wrapper}>
         <View style={styles.wrapperLabel}>
