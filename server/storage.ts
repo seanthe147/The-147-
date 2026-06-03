@@ -3407,6 +3407,20 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
+  // Returns all prize IDs this customer has ever won (any status) for customer_group prizes.
+  // Used to exclude one-time prizes from the eligible pool on subsequent plays.
+  async getCustomerWonGroupPrizeIds(customerId: number): Promise<number[]> {
+    const plays = await db.select({ prizeId: gamePlays.prizeId })
+      .from(gamePlays)
+      .where(and(eq(gamePlays.customerId, customerId), isNotNull(gamePlays.prizeId)));
+    const prizeIds = plays.map(p => p.prizeId).filter((id): id is number => id != null);
+    if (prizeIds.length === 0) return [];
+    const groupPrizes = await db.select({ id: gamePrizes.id })
+      .from(gamePrizes)
+      .where(and(eq(gamePrizes.prizeType, "customer_group"), inArray(gamePrizes.id, prizeIds)));
+    return groupPrizes.map(p => p.id);
+  }
+
   // Returns active customer_group prize plays for a customer — group was added but
   // prize hasn't been claimed yet (discount still active at POS).
   async getActiveGroupPrizePlays(customerId: number): Promise<Array<{ play: GamePlay; prize: GamePrize }>> {

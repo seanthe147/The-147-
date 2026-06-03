@@ -9136,8 +9136,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(429).json({ message: "You have already played today — come back tomorrow!", alreadyPlayed: true });
       }
 
-      const prizes = await storage.getActiveGamePrizes();
-      const prize = rollGamePrize(prizes);
+      const [prizes, wonGroupPrizeIds] = await Promise.all([
+        storage.getActiveGamePrizes(),
+        storage.getCustomerWonGroupPrizeIds(customerId),
+      ]);
+      // customer_group prizes are one-time-only: exclude any this customer has already won
+      const eligiblePrizes = wonGroupPrizeIds.length > 0
+        ? prizes.filter(p => !(p.prizeType === "customer_group" && wonGroupPrizeIds.includes(p.id)))
+        : prizes;
+      const prize = rollGamePrize(eligiblePrizes);
 
       let squareRewardId: string | null = null;
       let pointsAwarded: number | null = null;
