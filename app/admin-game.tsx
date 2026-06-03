@@ -46,6 +46,7 @@ interface GamePrize {
   giftCardAmountPence: number | null;
   squareCustomerGroupId: string | null;
   prizeExpiryHours: number | null;
+  maxDiscountPence: number | null;
   weightPercent: number;
   active: boolean;
 }
@@ -70,7 +71,6 @@ interface PendingClaim {
   prizeType: string;
   playedAt: string;
   londonDate: string;
-  squareGroupAddedAt: string | null;
 }
 
 // ── Empty prize template ───────────────────────────────────────────────────────
@@ -85,6 +85,7 @@ function emptyDraft(): PrizeDraft {
     giftCardAmountPounds: "",
     squareCustomerGroupId: "",
     prizeExpiryHours: "24",
+    maxDiscountPounds: "",
     weightPercent: "10",
     active: true,
   };
@@ -99,6 +100,7 @@ interface PrizeDraft {
   giftCardAmountPounds: string;
   squareCustomerGroupId: string;
   prizeExpiryHours: string;
+  maxDiscountPounds: string;
   weightPercent: string;
   active: boolean;
 }
@@ -519,6 +521,20 @@ function PrizeEditor({ draft, onChange, onSave, onCancel, saving, isNew, squareT
               How many hours the winner stays in the group if they don't pay in time. Defaults to 24h. A background job removes them automatically after expiry.
             </Text>
           </View>
+          <View style={editor.field}>
+            <Text style={editor.label}>Max Discount Cap (£, optional)</Text>
+            <TextInput
+              style={editor.input}
+              value={draft.maxDiscountPounds}
+              onChangeText={(v) => set("maxDiscountPounds", v)}
+              placeholder="e.g. 6.00"
+              placeholderTextColor="#9CA3AF"
+              keyboardType="decimal-pad"
+            />
+            <Text style={editor.hint}>
+              Reminder: also set the matching "Maximum price" on the CatalogPricingRule in Square Dashboard to enforce this cap at the till. This field is for your reference only.
+            </Text>
+          </View>
         </>
       )}
 
@@ -884,7 +900,7 @@ export default function AdminGameScreen() {
   const [newDraft, setNewDraft] = useState<PrizeDraft>(emptyDraft());
 
   const prizeMutation = useMutation({
-    mutationFn: async (payload: { id?: number; name: string; description?: string; prizeType: string; value?: number | null; rewardTierId?: string | null; tierPoints?: number | null; squareDiscountType?: string | null; squareDiscountValue?: number | null; giftCardAmountPence?: string | null; squareCustomerGroupId?: string | null; prizeExpiryHours?: number | null; weightPercent: number; active: boolean }) => {
+    mutationFn: async (payload: { id?: number; name: string; description?: string; prizeType: string; value?: number | null; rewardTierId?: string | null; tierPoints?: number | null; squareDiscountType?: string | null; squareDiscountValue?: number | null; giftCardAmountPence?: string | null; squareCustomerGroupId?: string | null; prizeExpiryHours?: number | null; maxDiscountPence?: string | null; weightPercent: number; active: boolean }) => {
       const { id, ...body } = payload;
       const res = id
         ? await apiRequest("PUT", `/api/staff/game/prizes/${id}`, body)
@@ -940,6 +956,7 @@ export default function AdminGameScreen() {
       giftCardAmountPence: draft.prizeType === "gift_card" ? String(draft.giftCardAmountPounds) : null,
       squareCustomerGroupId: draft.prizeType === "customer_group" ? draft.squareCustomerGroupId.trim() || null : null,
       prizeExpiryHours: draft.prizeType === "customer_group" && draft.prizeExpiryHours ? parseInt(draft.prizeExpiryHours, 10) || 24 : null,
+      maxDiscountPence: draft.prizeType === "customer_group" && draft.maxDiscountPounds ? String(draft.maxDiscountPounds) : null,
       weightPercent: wp,
       active: draft.active,
     };
@@ -979,13 +996,14 @@ export default function AdminGameScreen() {
       giftCardAmountPounds: p.giftCardAmountPence != null ? String(p.giftCardAmountPence / 100) : "",
       squareCustomerGroupId: p.squareCustomerGroupId ?? "",
       prizeExpiryHours: p.prizeExpiryHours != null ? String(p.prizeExpiryHours) : "24",
+      maxDiscountPounds: p.maxDiscountPence != null ? String(p.maxDiscountPence / 100) : "",
       weightPercent: String(p.weightPercent),
       active: p.active,
     });
   };
 
   const handleTogglePrizeActive = (p: GamePrize, active: boolean) => {
-    prizeMutation.mutate({ id: p.id, name: p.name, description: p.description ?? undefined, prizeType: p.prizeType, value: p.value, rewardTierId: p.rewardTierId, giftCardAmountPence: p.giftCardAmountPence != null ? String(p.giftCardAmountPence / 100) : null, squareCustomerGroupId: p.squareCustomerGroupId, prizeExpiryHours: p.prizeExpiryHours, weightPercent: p.weightPercent, active });
+    prizeMutation.mutate({ id: p.id, name: p.name, description: p.description ?? undefined, prizeType: p.prizeType, value: p.value, rewardTierId: p.rewardTierId, giftCardAmountPence: p.giftCardAmountPence != null ? String(p.giftCardAmountPence / 100) : null, squareCustomerGroupId: p.squareCustomerGroupId, prizeExpiryHours: p.prizeExpiryHours, maxDiscountPence: p.maxDiscountPence != null ? String(p.maxDiscountPence / 100) : null, weightPercent: p.weightPercent, active });
   };
 
   // ── Pending claims (reward_tier prizes awaiting collection) ──────────────
@@ -1011,22 +1029,6 @@ export default function AdminGameScreen() {
     },
   });
 
-  const removeGroupMutation = useMutation({
-    mutationFn: async (playId: number) => {
-      const res = await apiRequest("POST", `/api/staff/game/plays/${playId}/remove-group`, {});
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/staff/game/pending-claims"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/staff/game/winners"] });
-    },
-    onError: (err: Error) => {
-      const msg = err.message || "Failed to remove from group";
-      if (Platform.OS === "web") window.alert(msg);
-      else Alert.alert("Error", msg);
-    },
-  });
-
   const handleMarkClaimed = (claim: PendingClaim) => {
     const confirmMsg = `Mark "${claim.prizeName}" for ${claim.customerName ?? "customer"} as claimed?`;
     if (Platform.OS === "web") {
@@ -1035,18 +1037,6 @@ export default function AdminGameScreen() {
       Alert.alert("Mark as Claimed", confirmMsg, [
         { text: "Cancel", style: "cancel" },
         { text: "Mark Claimed", onPress: () => claimMutation.mutate(claim.id) },
-      ]);
-    }
-  };
-
-  const handleRemoveGroup = (claim: PendingClaim) => {
-    const confirmMsg = `Remove "${claim.customerName ?? "customer"}" from the winners group? This ends their POS discount early.`;
-    if (Platform.OS === "web") {
-      if (window.confirm(confirmMsg)) removeGroupMutation.mutate(claim.id);
-    } else {
-      Alert.alert("Remove from Group", confirmMsg, [
-        { text: "Cancel", style: "cancel" },
-        { text: "Remove", style: "destructive", onPress: () => removeGroupMutation.mutate(claim.id) },
       ]);
     }
   };
@@ -1260,32 +1250,16 @@ export default function AdminGameScreen() {
                   <Text style={styles.winnerPrize}>
                     {claim.prizeName} · <Text style={{ color: "#34D399" }}>Ref #{claim.id.toString().padStart(5, "0")}</Text>
                   </Text>
-                  {claim.prizeType === "customer_group" && (
-                    <Text style={[styles.winnerDate, { color: "#EC4899" }]}>
-                      ⚠ No Square account — add to group manually
-                    </Text>
-                  )}
                   <Text style={styles.winnerDate}>{fmtDateTime(claim.playedAt)}</Text>
                 </View>
-                {claim.prizeType === "customer_group" ? (
-                  <Pressable
-                    onPress={() => handleRemoveGroup(claim)}
-                    disabled={removeGroupMutation.isPending}
-                    style={({ pressed }) => [styles.claimBtn, { backgroundColor: "#EC4899" }, pressed && { opacity: 0.7 }]}
-                  >
-                    <Ionicons name="person-remove-outline" size={16} color="#fff" />
-                    <Text style={styles.claimBtnText}>Remove</Text>
-                  </Pressable>
-                ) : (
-                  <Pressable
-                    onPress={() => handleMarkClaimed(claim)}
-                    disabled={claimMutation.isPending}
-                    style={({ pressed }) => [styles.claimBtn, pressed && { opacity: 0.7 }]}
-                  >
-                    <Ionicons name="checkmark-circle-outline" size={16} color="#fff" />
-                    <Text style={styles.claimBtnText}>Claimed</Text>
-                  </Pressable>
-                )}
+                <Pressable
+                  onPress={() => handleMarkClaimed(claim)}
+                  disabled={claimMutation.isPending}
+                  style={({ pressed }) => [styles.claimBtn, pressed && { opacity: 0.7 }]}
+                >
+                  <Ionicons name="checkmark-circle-outline" size={16} color="#fff" />
+                  <Text style={styles.claimBtnText}>Claimed</Text>
+                </Pressable>
               </View>
             ))}
           </View>

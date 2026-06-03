@@ -9204,7 +9204,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // customer_group: add winner to the designated Square customer group so the
         // associated CatalogPricingRule fires automatically at POS when they pay.
         // The group membership is removed automatically via payment webhook or expiry job.
-        // Falls back to manual claim if the customer has no Square customer ID.
+        // If the add fails (no Square account, or API error) the play is auto-claimed
+        // immediately so no discount was ever granted — staff never need to intervene.
         if (prize.prizeType === "customer_group" && prize.squareCustomerGroupId) {
           const sqCustId = customer?.squareCustomerId;
           if (sqCustId && square.isConfigured()) {
@@ -9213,11 +9214,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
               squareGroupAddedAt = new Date();
               console.log(`[Game] Added customer ${sqCustId} to group ${prize.squareCustomerGroupId} for prize "${prize.name}"`);
             } catch (e: any) {
-              console.warn("[Game] Group add failed, will fall back to manual claim:", e.message);
+              console.warn("[Game] Group add failed — auto-claiming play (no discount granted):", e.message);
+              autoClaimedAt = new Date(); // nothing to track; keep plays table clean
             }
+          } else {
+            // No Square account linked — can't add to group; auto-claim silently
+            console.warn(`[Game] customer_group prize but no squareCustomerId for customer ${customerId} — auto-claiming`);
+            autoClaimedAt = new Date();
           }
-          // If no squareCustomerId or Square call failed: squareGroupAddedAt stays null,
-          // claimedAt stays null → shows in admin Prize Claims for manual staff handling.
         }
       }
 
@@ -9357,7 +9361,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/staff/game/prizes", staffAuth, managerAuth, async (req, res) => {
-    const { name, description, prizeType, value, rewardTierId, squareDiscountType, squareDiscountValue, tierPoints, giftCardAmountPence, squareCustomerGroupId, prizeExpiryHours, weightPercent, active } = req.body ?? {};
+    const { name, description, prizeType, value, rewardTierId, squareDiscountType, squareDiscountValue, tierPoints, giftCardAmountPence, squareCustomerGroupId, prizeExpiryHours, maxDiscountPence, weightPercent, active } = req.body ?? {};
     if (!name || !prizeType) return res.status(400).json({ message: "name and prizeType are required" });
     if (prizeType === "reward_tier" && !rewardTierId) {
       return res.status(400).json({ message: "Please select a Square reward tier for this prize type" });
@@ -9381,6 +9385,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         giftCardAmountPence: prizeType === "gift_card" && giftCardAmountPence != null ? Math.round(parseFloat(giftCardAmountPence) * 100) : null,
         squareCustomerGroupId: prizeType === "customer_group" ? (squareCustomerGroupId?.trim() ?? null) : null,
         prizeExpiryHours: prizeType === "customer_group" && prizeExpiryHours != null ? parseInt(prizeExpiryHours, 10) : null,
+        maxDiscountPence: prizeType === "customer_group" && maxDiscountPence != null ? Math.round(parseFloat(maxDiscountPence) * 100) : null,
         weightPercent: weightPercent ?? 10,
         active: active !== false,
       });
@@ -9393,7 +9398,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/staff/game/prizes/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id as string, 10);
     if (!id) return res.status(400).json({ message: "Invalid id" });
-    const { name, description, prizeType, value, rewardTierId, squareDiscountType, squareDiscountValue, tierPoints, giftCardAmountPence, squareCustomerGroupId, prizeExpiryHours, weightPercent, active } = req.body ?? {};
+    const { name, description, prizeType, value, rewardTierId, squareDiscountType, squareDiscountValue, tierPoints, giftCardAmountPence, squareCustomerGroupId, prizeExpiryHours, maxDiscountPence, weightPercent, active } = req.body ?? {};
     if (prizeType === "gift_card" && (!giftCardAmountPence || parseFloat(giftCardAmountPence) <= 0)) {
       return res.status(400).json({ message: "Please enter a prize amount (in pounds) for this gift card" });
     }
@@ -9411,6 +9416,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         giftCardAmountPence: prizeType === "gift_card" && giftCardAmountPence != null ? Math.round(parseFloat(giftCardAmountPence) * 100) : null,
         squareCustomerGroupId: prizeType === "customer_group" ? (squareCustomerGroupId?.trim() ?? null) : null,
         prizeExpiryHours: prizeType === "customer_group" && prizeExpiryHours != null ? parseInt(prizeExpiryHours, 10) : null,
+        maxDiscountPence: prizeType === "customer_group" && maxDiscountPence != null ? Math.round(parseFloat(maxDiscountPence) * 100) : null,
         weightPercent,
         active,
       });

@@ -631,6 +631,11 @@ export async function runStartupMigrations() {
         ADD COLUMN IF NOT EXISTS square_customer_group_id TEXT,
         ADD COLUMN IF NOT EXISTS prize_expiry_hours INTEGER DEFAULT 24;
     `);
+    // Cap the customer_group prize discount (e.g. max £6 off) — documented alongside prize; enforced via CatalogPricingRule in Square (added 2026-06)
+    await client.query(`
+      ALTER TABLE game_prizes
+        ADD COLUMN IF NOT EXISTS max_discount_pence INTEGER;
+    `);
     await client.query(`
       ALTER TABLE game_plays
         ADD COLUMN IF NOT EXISTS square_group_added_at TIMESTAMP,
@@ -3338,6 +3343,7 @@ export class DatabaseStorage implements IStorage {
     giftCardAmountPence?: number | null;
     squareCustomerGroupId?: string | null;
     prizeExpiryHours?: number | null;
+    maxDiscountPence?: number | null;
     weightPercent: number;
     active: boolean;
   }): Promise<GamePrize> {
@@ -3372,22 +3378,21 @@ export class DatabaseStorage implements IStorage {
     return play;
   }
 
-  // Returns all unclaimed prize wins that need manual staff action, newest first.
-  // Covers reward_tier wins (staff apply at till) and customer_group wins where
-  // the customer has no Square customer ID (group couldn't be added automatically).
-  async getPendingRewardClaims(): Promise<Array<{ id: number; customerId: number; customerName: string | null; prizeName: string; prizeType: string; playedAt: Date; londonDate: string; squareGroupAddedAt: Date | null }>> {
+  // Returns all unclaimed reward_tier wins that need manual staff action, newest first.
+  // customer_group prizes are fully automatic (added/removed by the system) and
+  // never appear here — if the group add fails at win time, the play is auto-claimed
+  // immediately in the game route so it never lands in this list.
+  async getPendingRewardClaims(): Promise<Array<{ id: number; customerId: number; customerName: string | null; prizeName: string; prizeType: string; playedAt: Date; londonDate: string }>> {
     const plays = await db.select().from(gamePlays)
       .where(and(isNotNull(gamePlays.prizeId), isNull(gamePlays.claimedAt)))
       .orderBy(desc(gamePlays.playedAt));
-    const result: Array<{ id: number; customerId: number; customerName: string | null; prizeName: string; prizeType: string; playedAt: Date; londonDate: string; squareGroupAddedAt: Date | null }> = [];
+    const result: Array<{ id: number; customerId: number; customerName: string | null; prizeName: string; prizeType: string; playedAt: Date; londonDate: string }> = [];
     for (const play of plays) {
       if (!play.prizeId) continue;
       const [prize] = await db.select().from(gamePrizes).where(eq(gamePrizes.id, play.prizeId));
-      // Include reward_tier (manual bar collection) and customer_group without group (fallback manual)
-      if (!prize) continue;
-      if (prize.prizeType !== "reward_tier" && prize.prizeType !== "customer_group") continue;
-      // For customer_group: only show in pending claims if the group add failed (squareGroupAddedAt is null)
-      if (prize.prizeType === "customer_group" && play.squareGroupAddedAt) continue;
+      // Only reward_tier prizes need manual staff action at the bar.
+      // customer_group prizes are handled entirely by the system.
+      if (!prize || prize.prizeType !== "reward_tier") continue;
       const [cust] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, play.customerId));
       result.push({
         id: play.id,
@@ -3397,7 +3402,6 @@ export class DatabaseStorage implements IStorage {
         prizeType: prize.prizeType,
         playedAt: play.playedAt,
         londonDate: play.londonDate,
-        squareGroupAddedAt: play.squareGroupAddedAt ?? null,
       });
     }
     return result;
