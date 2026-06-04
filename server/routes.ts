@@ -8788,6 +8788,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(200).send(html);
   });
 
+  // iPad kiosk ordering page — card-payment-only self-service ordering terminal.
+  // Served at /kiosk; load in Safari on an iPad in Guided Access mode.
+  // Integrates with /api/menu, /api/orders/kiosk-checkout, and /api/loyalty/points-lookup.
+  app.get("/kiosk", (_req, res) => {
+    const templatePath = path.resolve(process.cwd(), "server", "templates", "kiosk.html");
+    const html = fs.readFileSync(templatePath, "utf-8");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    res.status(200).send(html);
+  });
+
   // Printable A4 cheat sheet for staff: how to find and charge kiosk orders
   // on the Square till. Public route (no auth) so it can be opened on any
   // device near the till and printed without a staff login.

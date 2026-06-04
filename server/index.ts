@@ -608,6 +608,7 @@ function configureExpoAndLanding(app: express.Application) {
         "/booking-widget",
         "/verify-email",
         "/reset-password",
+        "/kiosk",
       ]);
       if (devServerPages.has(req.path)) return next();
       // Proxy all other web requests to Metro so Expo Router handles client-side routes
@@ -651,6 +652,7 @@ function configureExpoAndLanding(app: express.Application) {
         "/booking-widget",
         "/verify-email",
         "/reset-password",
+        "/kiosk",
       ]);
       if (serverPages.has(req.path)) return next();
       if (fs.existsSync(indexPath)) {
