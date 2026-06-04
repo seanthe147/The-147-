@@ -4,6 +4,9 @@
  * Full-screen dark background, centred 147 branding, pulsing gold CTA,
  * live clock + date, and a bottom banner cycling through promotional slides.
  * Tapping anywhere dismisses the attract screen and navigates to the menu.
+ *
+ * Staff exit: long-press (2 s) the logo box to open the PIN entry overlay.
+ * Correct PIN → staff menu (exit app / change PIN). Wrong PIN → silent dismiss.
  */
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
@@ -18,6 +21,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
 import { useKiosk } from "@/contexts/KioskContext";
 import { useCart } from "@/contexts/CartContext";
+import { useKioskPin } from "@/hooks/useKioskPin";
+import {
+  KioskPinOverlay,
+  KioskExitActions,
+} from "@/components/KioskPinOverlay";
 
 const BANNER_SLIDES = [
   {
@@ -140,6 +148,10 @@ export default function AttractScreen() {
   const { attractVisible, dismissAttract } = useKiosk();
   const { clearCart } = useCart();
   const { timeStr, dateStr } = useClockDisplay();
+  const { checkPin, loading: pinLoading } = useKioskPin();
+
+  const [pinVisible, setPinVisible] = useState(false);
+  const [actionsVisible, setActionsVisible] = useState(false);
 
   useEffect(() => {
     if (!attractVisible) {
@@ -148,32 +160,82 @@ export default function AttractScreen() {
   }, [attractVisible, router]);
 
   const handleStart = useCallback(() => {
+    if (pinVisible || actionsVisible) return;
     clearCart();
     dismissAttract();
-  }, [clearCart, dismissAttract]);
+  }, [pinVisible, actionsVisible, clearCart, dismissAttract]);
+
+  const handleLogoLongPress = useCallback(() => {
+    if (pinLoading) return;
+    setPinVisible(true);
+  }, [pinLoading]);
+
+  const handlePinDismiss = useCallback(() => {
+    setPinVisible(false);
+  }, []);
+
+  const handlePinCorrect = useCallback(() => {
+    setPinVisible(false);
+    setActionsVisible(true);
+  }, []);
+
+  const handleActionsDismiss = useCallback(() => {
+    setActionsVisible(false);
+  }, []);
+
+  const handleSetupPin = useCallback(() => {
+    setActionsVisible(false);
+    router.push("/staff-setup");
+  }, [router]);
 
   return (
-    <Pressable style={[attractStyles.root, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 }]} onPress={handleStart}>
-      {/* Top bar: date left, time right */}
-      <View style={attractStyles.topBar}>
-        <Text style={attractStyles.dateText}>{dateStr}</Text>
-        <Text style={attractStyles.timeText}>{timeStr}</Text>
-      </View>
-
-      {/* Centre: branding */}
-      <View style={attractStyles.centre}>
-        <View style={attractStyles.logoBox}>
-          <Text style={attractStyles.logoNumber}>147</Text>
+    <>
+      <Pressable
+        style={[attractStyles.root, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 }]}
+        onPress={handleStart}
+      >
+        {/* Top bar: date left, time right */}
+        <View style={attractStyles.topBar}>
+          <Text style={attractStyles.dateText}>{dateStr}</Text>
+          <Text style={attractStyles.timeText}>{timeStr}</Text>
         </View>
-        <Text style={attractStyles.venueName}>The 147</Text>
-        <Text style={attractStyles.tagline}>SNOOKER · BAR · RESTAURANT</Text>
-        <View style={attractStyles.divider} />
-        <PulsingButton onPress={handleStart} />
-      </View>
 
-      {/* Bottom: promotional banner carousel */}
-      <BannerCarousel />
-    </Pressable>
+        {/* Centre: branding */}
+        <View style={attractStyles.centre}>
+          {/* Logo: long-press (2 s) to trigger staff PIN exit.
+              No onPress here — single taps fall through to the parent
+              full-screen Pressable that calls handleStart. */}
+          <Pressable
+            onLongPress={handleLogoLongPress}
+            delayLongPress={2000}
+          >
+            <View style={attractStyles.logoBox}>
+              <Text style={attractStyles.logoNumber}>147</Text>
+            </View>
+          </Pressable>
+          <Text style={attractStyles.venueName}>The 147</Text>
+          <Text style={attractStyles.tagline}>SNOOKER · BAR · RESTAURANT</Text>
+          <View style={attractStyles.divider} />
+          <PulsingButton onPress={handleStart} />
+        </View>
+
+        {/* Bottom: promotional banner carousel */}
+        <BannerCarousel />
+      </Pressable>
+
+      <KioskPinOverlay
+        visible={pinVisible}
+        onDismiss={handlePinDismiss}
+        onCorrect={handlePinCorrect}
+        checkPin={checkPin}
+      />
+
+      <KioskExitActions
+        visible={actionsVisible}
+        onDismiss={handleActionsDismiss}
+        onSetupPin={handleSetupPin}
+      />
+    </>
   );
 }
 
