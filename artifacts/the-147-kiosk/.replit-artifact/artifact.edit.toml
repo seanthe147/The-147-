@@ -1,0 +1,22 @@
+kind = "mobile"
+previewPath = "/the-147-kiosk/"
+title = "The 147 Kiosk"
+version = "1.0.0"
+id = "artifacts/the-147-kiosk"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+name = "expo"
+paths = [ "/the-147-kiosk/" ]
+localPort = 19390
+
+[services.development]
+run = "pnpm --filter @workspace/the-147-kiosk run dev"
+
+[services.env]
+PORT = "19390"
+BASE_PATH = "/the-147-kiosk/"
