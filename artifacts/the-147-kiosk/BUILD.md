@@ -9,6 +9,29 @@
 - **Distribution Certificate**: already stored in EAS
   (serial `7FF7BB4E8DEB3793A4B6A49C092806BC`, same team as the main app)
 - **Build profiles**: `eas.json` has `development`, `preview`, and `production`
+- **EAS environment variables**: `EXPO_PUBLIC_DOMAIN` is set for all three environments
+  - `development` + `preview` → current Replit dev domain (for dev/sideload builds)
+  - `production` → **must be updated** to your live deployed domain before releasing
+
+## ⚠️ Before your first production build — update the production domain
+
+The production `EXPO_PUBLIC_DOMAIN` is currently a placeholder. Update it to your
+live Replit deployment domain (e.g. `the-147-bradford.replit.app`) before triggering
+a production build:
+
+```bash
+cd artifacts/the-147-kiosk
+EXPO_TOKEN=<expo-token> eas env:update production \
+  --name EXPO_PUBLIC_DOMAIN \
+  --value <your-production-domain> \
+  --non-interactive
+```
+
+Or update it via the EAS dashboard:
+https://expo.dev/accounts/the-147/projects/the-147-kiosk/settings/environment-variables
+
+You can find your production domain by deploying the project on Replit (the "Publish"
+button) — it appears as `<project>.<username>.replit.app`.
 
 ## What still needs doing (one time only)
 
