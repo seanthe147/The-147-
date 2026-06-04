@@ -1,136 +1,28 @@
-entrypoint = "README.md"
-modules = ["nodejs-22", "node", "python-3.11", "postgresql-16"]
-
-[nix]
-channel = "stable-24_05"
-packages = ["zip"]
+modules = ["nodejs-24", "python-3.11"]
 
 [deployment]
-deploymentTarget = "cloudrun"
-build = ["bash", "-c", "npx expo export -p web --output-dir static-build && npm run server:build"]
-run = ["npm", "run", "server:prod"]
+router = "application"
+deploymentTarget = "autoscale"
 
-[env]
-PORT = "5000"
-
-[agent]
-stack = "EXPO"
+[deployment.postBuild]
+args = ["pnpm", "store", "prune"]
+env = { "CI" = "true" }
 
 [workflows]
 runButton = "Project"
 
-[[workflows.workflow]]
-name = "Project"
-mode = "parallel"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Start App"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Start Frontend"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Start Backend"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "typecheck"
-
-[[workflows.workflow]]
-name = "Start App"
-author = "agent"
-mode = "parallel"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Start Backend"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Start Frontend"
-
-[[workflows.workflow]]
-name = "Start Backend"
-author = "agent"
-mode = "sequential"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm run server:dev"
-
-[[workflows.workflow]]
-name = "Start Frontend"
-author = "agent"
-mode = "sequential"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "EXPO_PACKAGER_PROXY_URL=https://$REPLIT_DEV_DOMAIN REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN EXPO_PUBLIC_DOMAIN=$REPLIT_DEV_DOMAIN npx expo start --localhost"
-
-[[workflows.workflow]]
-name = "typecheck"
-author = "agent"
-
-[workflows.workflow.metadata]
-isValidation = true
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npx tsc --noEmit && npx tsc --noEmit -p server/tsconfig.json"
-
-[userenv]
-
-[userenv.shared]
-SQUARE_ENVIRONMENT = "production"
-RESEND_FROM_EMAIL = "Info@the147.co.uk"
-RESEND_FROM_NAME = "The 147"
-EXPO_ASC_KEY_ID = "PRH75PPG5Z"
-EXPO_ASC_ISSUER_ID = "7cdddb46-b377-45c0-9cbe-e07c358d3cc5"
-EXPO_APPLE_TEAM_ID = "94LW5H4828"
-EXPO_APPLE_TEAM_TYPE = "COMPANY_OR_ORGANIZATION"
-EXPO_ASC_API_KEY_PATH = "/tmp/AuthKey_PRH75PPG5Z.p8"
-SMTP_HOST = "smtp.gmail.com"
-SMTP_PORT = "587"
-SQUARE_DEPOSIT_LINK_URL = "https://square.link/u/tdsM4jUv"
-SQUARE_WEBHOOK_URL = "https://the147bradford.replit.app/api/webhooks/square"
-SQUARE_LOC_ID = "LRHR4ZM2FCJYY"
-TICKETSOURCE_BOX_OFFICE_URL = "https://www.ticketsource.com/the147"
-STRIPE_MOTO_ENABLED = "true"
-MANAGER_EMAIL = "Rebecca@the147.co.uk"
-MEMBERSHIP_AUDIT_EMAIL = "Rebecca@the147.co.uk"
-STAFF_NOTIFICATION_EMAIL = "Rebecca@the147.co.uk"
-PUBLIC_FROM_EMAIL = "Info@the147.co.uk"
+[agent]
+stack = "PNPM_WORKSPACE"
+expertMode = true
 
 [postMerge]
 path = "scripts/post-merge.sh"
-timeoutMs = 180000
+timeoutMs = 20000
 
 [[ports]]
-localPort = 5000
+localPort = 8080
 externalPort = 80
 
 [[ports]]
-localPort = 8081
-externalPort = 8081
-
-[[ports]]
-localPort = 8082
+localPort = 19289
 externalPort = 3000
-
-[[ports]]
-localPort = 8083
-externalPort = 3001
-
-[[ports]]
-localPort = 23636
-externalPort = 3002

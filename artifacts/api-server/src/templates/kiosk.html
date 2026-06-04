@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>The 147 — Order & Pay</title>
+<style>
+  :root {
+    --blue: #0047AB;
+    --blue-light: #1a6bd4;
+    --gold: #D4A843;
+    --gold-dim: rgba(212,168,67,0.15);
+    --red: #DF3131;
+    --dark: #0A1628;
+    --navy: #132742;
+    --navy-2: #0d1e34;
+    --white: #FFFFFF;
+    --white-60: rgba(255,255,255,0.6);
+    --white-40: rgba(255,255,255,0.4);
+    --white-20: rgba(255,255,255,0.2);
+    --white-08: rgba(255,255,255,0.08);
+    --border: rgba(255,255,255,0.06);
+    --green: #4caf50;
+    --font: -apple-system, 'Inter', 'SF Pro Display', sans-serif;
+    --radius: 16px;
+    --radius-sm: 10px;
+    --radius-lg: 24px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: var(--dark); color: var(--white);
+    font-family: var(--font); font-size: 16px;
+    touch-action: manipulation;
+  }
+
+  /* ── Screen management ── */
+  .screen { position: fixed; inset: 0; display: none; }
+  .screen.active { display: flex; }
+
+  /* ══════════════════════════════════════════
+     ATTRACT SCREEN
+  ══════════════════════════════════════════ */
+  #sc-attract {
+    flex-direction: column;
+    background: linear-gradient(160deg, #0A1628 0%, #132742 60%, #0d1f3a 100%);
+    align-items: center; justify-content: space-between;
+  }
+  .attract-grid {
+    position: absolute; inset: 0;
+    background-image: radial-gradient(circle at 1px 1px, rgba(212,168,67,0.06) 1px, transparent 0);
+    background-size: 40px 40px; pointer-events: none;
+  }
+  .attract-glow {
+    position: absolute; top: -120px; left: 50%; transform: translateX(-50%);
+    width: 600px; height: 300px;
+    background: radial-gradient(ellipse, rgba(0,71,171,0.3) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .attract-header {
+    width: 100%; display: flex; justify-content: space-between; align-items: center;
+    padding: 32px 48px 0; position: relative; z-index: 1;
+  }
+  .attract-date { color: var(--white-40); font-size: 16px; }
+  .attract-time {
+    color: var(--white-40); font-size: 28px; font-weight: 300;
+    letter-spacing: 2px; font-variant-numeric: tabular-nums;
+  }
+  .attract-centre { display: flex; flex-direction: column; align-items: center; gap: 0; position: relative; z-index: 1; }
+  .attract-logo {
+    width: 90px; height: 90px;
+    background: linear-gradient(135deg, var(--blue) 0%, var(--blue-light) 100%);
+    border-radius: 22px; display: flex; align-items: center; justify-content: center;
+    margin-bottom: 28px;
+    box-shadow: 0 0 60px rgba(0,71,171,0.5), 0 0 120px rgba(0,71,171,0.2);
+  }
+  .attract-logo span { color: var(--gold); font-size: 36px; font-weight: 800; }
+  .attract-title {
+    font-size: 64px; font-weight: 700; letter-spacing: -2px; line-height: 1;
+    text-shadow: 0 2px 40px rgba(0,71,171,0.4);
+  }
+  .attract-subtitle {
+    color: var(--gold); font-size: 17px; font-weight: 500;
+    letter-spacing: 6px; text-transform: uppercase; margin-top: 12px;
+  }
+  .attract-divider {
+    width: 60px; height: 2px; margin: 32px 0;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  }
+  .attract-cta {
+    background: linear-gradient(135deg, #c9a03c 0%, var(--gold) 100%);
+    color: var(--dark); border: none; border-radius: 20px;
+    padding: 26px 76px; font-size: 24px; font-weight: 700; cursor: pointer;
+    letter-spacing: 0.5px;
+    box-shadow: 0 0 30px rgba(212,168,67,0.4), 0 8px 32px rgba(0,0,0,0.4);
+    transition: all 0.15s;
+  }
+  .attract-cta:active { transform: scale(0.97); }
+  .attract-hint { color: var(--white-40); font-size: 14px; margin-top: 18px; letter-spacing: 1px; }
+
+  /* Banner */
+  .attract-banner {
+    width: 100%; height: 108px; flex-shrink: 0; position: relative; z-index: 1;
+    display: flex; align-items: center; padding: 0 48px; gap: 24px;
+    border-top: 2px solid var(--gold); background: #0047AB;
+    transition: background 0.5s ease, border-color 0.5s ease;
+  }
+  .banner-icon {
+    width: 64px; height: 64px; border-radius: var(--radius); flex-shrink: 0;
+    background: var(--white-08); display: flex; align-items: center;
+    justify-content: center; font-size: 28px;
+  }
+  .banner-text { flex: 1; }
+  .banner-label {
+    font-size: 11px; font-weight: 700; letter-spacing: 3px;
+    text-transform: uppercase; margin-bottom: 4px;
+  }
+  .banner-body { color: rgba(255,255,255,0.85); font-size: 17px; line-height: 1.4; }
+  .banner-dots { display: flex; gap: 6px; flex-shrink: 0; }
+  .banner-dot {
+    height: 6px; border-radius: 3px; cursor: pointer;
+    background: var(--white-20); transition: all 0.4s ease;
+  }
+
+  /* ══════════════════════════════════════════
+     MENU SCREEN
+  ══════════════════════════════════════════ */
+  #sc-menu { flex-direction: column; background: var(--dark); }
+  .menu-topbar {
+    height: 72px; background: var(--navy); border-bottom: 1px solid rgba(212,168,67,0.2);
+    display: flex; align-items: center; padding: 0 32px; gap: 20px; flex-shrink: 0;
+  }
+  .menu-brand-icon {
+    width: 40px; height: 40px; background: var(--blue); border-radius: var(--radius-sm);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .menu-brand-icon span { color: var(--gold); font-size: 13px; font-weight: 800; }
+  .menu-brand-name { font-size: 20px; font-weight: 700; }
+  .menu-brand-sub { color: var(--white-40); font-size: 14px; }
+  .menu-spacer { flex: 1; }
+  .cart-pill {
+    background: var(--gold); border-radius: 14px; padding: 10px 24px;
+    display: flex; align-items: center; gap: 10px;
+    cursor: pointer; border: none; color: var(--dark); font-weight: 700;
+    font-size: 16px; font-family: var(--font); transition: all 0.15s;
+  }
+  .cart-pill:active { transform: scale(0.97); }
+  .cart-pill .pill-icon { font-size: 18px; }
+  .cart-pill.empty { background: var(--white-08); color: var(--white-40); pointer-events: none; }
+  .menu-body { flex: 1; display: flex; overflow: hidden; }
+
+  /* Sidebar */
+  .menu-sidebar {
+    width: 180px; background: var(--navy-2); flex-shrink: 0;
+    border-right: 1px solid var(--border); display: flex;
+    flex-direction: column; overflow-y: auto; padding: 20px 0;
+  }
+  .cat-btn {
+    background: transparent; border: none; border-left: 3px solid transparent;
+    color: var(--white-40); padding: 16px 18px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+    width: 100%; transition: all 0.15s; text-align: left;
+  }
+  .cat-btn.active {
+    background: rgba(0,71,171,0.25); border-left-color: var(--blue);
+    color: var(--white);
+  }
+  .cat-btn:active { opacity: 0.8; }
+  .cat-emoji { font-size: 22px; }
+  .cat-name { font-size: 14px; font-weight: 500; }
+  .cat-count { font-size: 11px; color: var(--white-40); }
+  .cat-unavailable { opacity: 0.4; pointer-events: none; }
+  .cat-unavailable .cat-name::after { content: ' (closed)'; font-size: 11px; }
+
+  /* Item grid */
+  .menu-grid {
+    flex: 1; overflow-y: auto; padding: 20px 24px;
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    grid-auto-rows: min-content; gap: 16px; align-content: start;
+  }
+  .item-card {
+    background: var(--navy); border-radius: var(--radius);
+    padding: 20px; display: flex; flex-direction: column; gap: 8px;
+    border: 1px solid var(--border); position: relative; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .item-card:active { transform: scale(0.98); border-color: rgba(0,71,171,0.4); }
+  .item-card.sold-out { opacity: 0.5; pointer-events: none; }
+  .item-card.unavailable { opacity: 0.45; pointer-events: none; }
+  .item-img {
+    width: 100%; height: 110px; border-radius: var(--radius-sm);
+    object-fit: cover; background: var(--white-08); margin-bottom: 4px;
+  }
+  .item-emoji { font-size: 32px; margin-bottom: 4px; }
+  .item-badge {
+    position: absolute; top: 14px; right: 14px;
+    background: var(--gold-dim); border: 1px solid rgba(212,168,67,0.4);
+    border-radius: 6px; padding: 2px 8px;
+    color: var(--gold); font-size: 11px; font-weight: 600;
+  }
+  .sold-out-badge {
+    position: absolute; top: 14px; right: 14px;
+    background: rgba(223,49,49,0.15); border: 1px solid rgba(223,49,49,0.4);
+    border-radius: 6px; padding: 2px 8px;
+    color: var(--red); font-size: 11px; font-weight: 600;
+  }
+  .item-name { color: var(--white); font-weight: 600; font-size: 15px; line-height: 1.3; }
+  .item-desc { color: var(--white-40); font-size: 12px; line-height: 1.4; flex: 1; }
+  .item-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
+  .item-price { color: var(--white); font-weight: 700; font-size: 20px; }
+  .item-dietary { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+  .dietary-tag {
+    font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px;
+    background: rgba(76,175,80,0.15); color: #81c784; border: 1px solid rgba(76,175,80,0.3);
+  }
+  .add-btn {
+    width: 44px; height: 44px; border-radius: var(--radius-sm); border: none;
+    background: var(--white-08); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; color: var(--white-60); transition: all 0.15s; flex-shrink: 0;
+  }
+  .add-btn.in-cart { background: var(--blue); color: var(--white); font-size: 16px; font-weight: 700; }
+  .add-btn:active { transform: scale(0.9); }
+  .menu-loading {
+    grid-column: 1/-1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px;
+    padding: 60px; color: var(--white-40);
+  }
+  .spinner {
+    width: 40px; height: 40px; border: 3px solid var(--white-08);
+    border-top-color: var(--blue); border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  .menu-error { grid-column: 1/-1; text-align: center; padding: 60px; color: var(--white-40); }
+  .subcat-tabs {
+    grid-column: 1/-1; display: flex; gap: 8px; flex-wrap: wrap; padding: 0 0 8px;
+  }
+  .subcat-tab {
+    background: var(--white-08); border: 1px solid var(--border);
+    border-radius: 20px; padding: 8px 18px; font-size: 14px; font-weight: 500;
+    color: var(--white-60); cursor: pointer; border: none; font-family: var(--font);
+    transition: all 0.15s;
+  }
+  .subcat-tab.active { background: var(--blue); color: var(--white); }
+  .subcat-tab:active { opacity: 0.8; }
+
+  /* ══════════════════════════════════════════
+     CHECKOUT SCREEN
+  ══════════════════════════════════════════ */
+  #sc-checkout { flex-direction: column; background: var(--dark); }
+  .checkout-topbar {
+    height: 72px; background: var(--navy); border-bottom: 1px solid rgba(212,168,67,0.2);
+    display: flex; align-items: center; padding: 0 32px; gap: 16px; flex-shrink: 0;
+  }
+  .back-btn {
+    background: var(--white-08); border: none; border-radius: var(--radius-sm);
+    padding: 10px 18px; display: flex; align-items: center; gap: 8px;
+    color: var(--white-60); font-size: 15px; cursor: pointer; font-family: var(--font);
+    transition: all 0.15s;
+  }
+  .back-btn:active { opacity: 0.7; }
+  .checkout-body { flex: 1; display: flex; overflow: hidden; }
+
+  /* Order summary (left) */
+  .checkout-order {
+    flex: 1; overflow-y: auto; padding: 28px 32px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .checkout-section-label {
+    color: var(--white-40); font-size: 12px; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase; margin-bottom: 4px;
+  }
+  .order-row {
+    background: var(--navy); border-radius: var(--radius); padding: 16px 18px;
+    display: flex; align-items: center; gap: 14px; border: 1px solid var(--border);
+  }
+  .order-row-emoji { font-size: 22px; width: 32px; text-align: center; flex-shrink: 0; }
+  .order-row-info { flex: 1; }
+  .order-row-name { font-weight: 600; font-size: 15px; }
+  .order-row-mods { color: var(--white-40); font-size: 12px; margin-top: 2px; }
+  .order-qty-ctrl { display: flex; align-items: center; gap: 8px; }
+  .qty-btn {
+    width: 38px; height: 38px; border-radius: var(--radius-sm); border: none;
+    background: var(--white-08); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--white-60); font-size: 18px; transition: all 0.15s;
+  }
+  .qty-btn.remove { background: rgba(223,49,49,0.15); color: var(--red); }
+  .qty-btn:active { transform: scale(0.9); }
+  .qty-num { color: var(--white); font-weight: 700; font-size: 18px; width: 24px; text-align: center; }
+  .order-row-price { color: var(--white); font-weight: 700; font-size: 17px; min-width: 64px; text-align: right; }
+
+  /* Payment panel (right) */
+  .checkout-pay {
+    width: 360px; background: var(--navy-2); flex-shrink: 0;
+    border-left: 1px solid var(--border);
+    display: flex; flex-direction: column; padding: 28px; gap: 16px;
+    overflow-y: auto;
+  }
+  .pay-title { font-size: 20px; font-weight: 700; }
+  .pay-subtotal-rows { display: flex; flex-direction: column; gap: 8px; }
+  .pay-line { display: flex; justify-content: space-between; }
+  .pay-line-label { color: var(--white-60); font-size: 14px; }
+  .pay-line-val { color: rgba(255,255,255,0.8); font-size: 14px; font-weight: 500; }
+  .pay-divider { height: 1px; background: var(--border); }
+  .pay-total-row { display: flex; justify-content: space-between; align-items: center; }
+  .pay-total-label { font-size: 18px; font-weight: 600; }
+  .pay-total-val { font-size: 28px; font-weight: 800; }
+
+  /* Form fields */
+  .form-group { display: flex; flex-direction: column; gap: 8px; }
+  .form-label { font-size: 13px; font-weight: 600; color: var(--white-60); letter-spacing: 0.5px; }
+  .form-input {
+    background: var(--navy); border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm); padding: 14px 16px;
+    color: var(--white); font-size: 16px; font-family: var(--font);
+    outline: none; width: 100%; transition: border-color 0.15s;
+    -webkit-appearance: none;
+  }
+  .form-input:focus { border-color: var(--blue); }
+  .form-input.error { border-color: var(--red); }
+  .form-hint { font-size: 12px; color: var(--white-40); }
+  .form-error { font-size: 12px; color: var(--red); }
+
+  /* Loyalty */
+  .loyalty-card {
+    background: rgba(0,71,171,0.15); border: 1px solid rgba(0,71,171,0.3);
+    border-radius: var(--radius-sm); padding: 12px 14px;
+    font-size: 13px; color: var(--white-60); line-height: 1.5;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .loyalty-found { color: var(--gold); font-weight: 600; }
+  .loyalty-pts { font-size: 12px; }
+
+  /* Pay button */
+  .pay-btn {
+    background: linear-gradient(135deg, #D4A843 0%, #e8c05a 100%);
+    border: none; border-radius: 18px; padding: 20px 0;
+    color: var(--dark); font-weight: 800; font-size: 18px;
+    cursor: pointer; display: flex; align-items: center;
+    justify-content: center; gap: 10px; font-family: var(--font);
+    box-shadow: 0 4px 24px rgba(212,168,67,0.4); transition: all 0.15s;
+  }
+  .pay-btn:active { transform: scale(0.98); }
+  .pay-btn:disabled { background: rgba(212,168,67,0.5); cursor: not-allowed; }
+  .pay-btn .btn-icon { font-size: 20px; }
+
+  /* ══════════════════════════════════════════
+     PAYING SCREEN
+  ══════════════════════════════════════════ */
+  #sc-paying {
+    flex-direction: column; align-items: center; justify-content: center;
+    background: var(--dark); gap: 32px; text-align: center;
+  }
+  .paying-terminal {
+    width: 140px; height: 140px; border-radius: 28px;
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+    border: 2px solid rgba(0,71,171,0.4);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 60px;
+    box-shadow: 0 0 60px rgba(0,71,171,0.3);
+    animation: pulse-blue 2s ease-in-out infinite;
+  }
+  .paying-title { font-size: 36px; font-weight: 700; }
+  .paying-sub { color: var(--white-60); font-size: 18px; }
+  .paying-step { color: var(--white-40); font-size: 14px; }
+
+  /* ══════════════════════════════════════════
+     SUCCESS SCREEN
+  ══════════════════════════════════════════ */
+  #sc-success {
+    flex-direction: column; align-items: center; justify-content: center;
+    background: var(--dark); gap: 28px; text-align: center;
+  }
+  .success-icon {
+    width: 120px; height: 120px; border-radius: 50%;
+    background: rgba(27,94,32,0.2); border: 2px solid var(--green);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 56px;
+    animation: pop 0.4s ease-out;
+  }
+  .success-title { font-size: 44px; font-weight: 700; }
+  .success-sub { color: var(--white-60); font-size: 18px; max-width: 500px; line-height: 1.5; }
+  .success-ticket {
+    background: var(--navy); border-radius: var(--radius); padding: 20px 48px;
+    font-size: 18px; font-weight: 600; color: var(--gold);
+  }
+  .success-countdown { color: var(--white-40); font-size: 14px; margin-top: 8px; }
+
+  /* ══════════════════════════════════════════
+     ERROR SCREEN
+  ══════════════════════════════════════════ */
+  #sc-error {
+    flex-direction: column; align-items: center; justify-content: center;
+    background: var(--dark); gap: 28px; text-align: center;
+  }
+  .error-icon {
+    width: 120px; height: 120px; border-radius: 50%;
+    background: rgba(100,0,0,0.2); border: 2px solid var(--red);
+    display: flex; align-items: center; justify-content: center; font-size: 56px;
+  }
+  .error-title { font-size: 36px; font-weight: 700; color: var(--red); }
+  .error-sub { color: var(--white-60); font-size: 18px; max-width: 500px; line-height: 1.5; }
+  #error-msg { color: var(--white-40); font-size: 15px; }
+  .error-back-btn {
+    background: var(--navy); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px 40px;
+    color: var(--white); font-size: 16px; font-weight: 600;
+    cursor: pointer; font-family: var(--font); transition: all 0.15s;
+  }
+  .error-back-btn:active { opacity: 0.8; }
+
+  /* ══════════════════════════════════════════
+     MODIFIER MODAL
+  ══════════════════════════════════════════ */
+  #modifier-modal {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    display: none; align-items: center; justify-content: center;
+    z-index: 1000; padding: 40px;
+  }
+  #modifier-modal.open { display: flex; }
+  .modal-box {
+    background: var(--navy); border-radius: 24px; padding: 32px;
+    width: 100%; max-width: 600px; max-height: 80vh;
+    display: flex; flex-direction: column; gap: 20px;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .modal-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+  .modal-title { font-size: 22px; font-weight: 700; }
+  .modal-price { color: var(--gold); font-size: 24px; font-weight: 800; }
+  .modal-close {
+    width: 40px; height: 40px; border-radius: 10px; background: var(--white-08);
+    border: none; color: var(--white-60); font-size: 20px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .modal-desc { color: var(--white-40); font-size: 14px; margin-top: -8px; }
+  .modal-body { overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+  .modifier-group-title {
+    font-size: 13px; font-weight: 700; color: var(--white-60);
+    letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px;
+  }
+  .modifier-options { display: flex; flex-direction: column; gap: 8px; }
+  .modifier-opt {
+    background: var(--navy-2); border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm); padding: 14px 18px;
+    display: flex; justify-content: space-between; align-items: center;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .modifier-opt.selected { border-color: var(--blue); background: rgba(0,71,171,0.2); }
+  .modifier-opt:active { opacity: 0.8; }
+  .modifier-opt-name { font-size: 16px; font-weight: 500; }
+  .modifier-opt-price { color: var(--white-60); font-size: 14px; }
+  .modifier-opt-price.free { color: var(--white-20); }
+  .modal-footer { display: flex; gap: 12px; }
+  .modal-cancel {
+    flex: 1; background: var(--white-08); border: none; border-radius: var(--radius-sm);
+    padding: 16px; color: var(--white-60); font-size: 16px; font-weight: 600;
+    cursor: pointer; font-family: var(--font); transition: all 0.15s;
+  }
+  .modal-cancel:active { opacity: 0.8; }
+  .modal-add {
+    flex: 2; background: var(--blue); border: none; border-radius: var(--radius-sm);
+    padding: 16px; color: var(--white); font-size: 16px; font-weight: 700;
+    cursor: pointer; font-family: var(--font); transition: all 0.15s;
+  }
+  .modal-add:active { opacity: 0.8; }
+
+  /* ══════════════════════════════════════════
+     KEYBOARD
+  ══════════════════════════════════════════ */
+  #kiosk-keyboard {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: #1c2a40; border-top: 1px solid var(--border);
+    display: none; flex-direction: column; z-index: 500; padding: 12px;
+    gap: 8px;
+  }
+  #kiosk-keyboard.open { display: flex; }
+  .kb-row { display: flex; gap: 8px; }
+  .kb-key {
+    flex: 1; height: 60px; background: var(--navy-2); border: none;
+    border-radius: var(--radius-sm); color: var(--white);
+    font-size: 20px; font-weight: 500; cursor: pointer; font-family: var(--font);
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.1s;
+  }
+  .kb-key:active { background: var(--blue); transform: scale(0.95); }
+  .kb-key.space { flex: 3; font-size: 14px; color: var(--white-60); }
+  .kb-key.delete { background: rgba(223,49,49,0.15); color: var(--red); }
+  .kb-key.done { background: var(--blue); color: var(--white); font-weight: 700; flex: 2; font-size: 16px; }
+  .kb-toggle { background: none; border: none; color: var(--white-40); font-size: 13px; cursor: pointer; }
+
+  /* Animations */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse-blue {
+    0%, 100% { box-shadow: 0 0 40px rgba(0,71,171,0.3); }
+    50% { box-shadow: 0 0 80px rgba(0,71,171,0.6); border-color: rgba(0,71,171,0.7); }
+  }
+  @keyframes pop {
+    0% { transform: scale(0.5); opacity: 0; }
+    80% { transform: scale(1.1); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .fade-in { animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+</style>
+</head>
+<body>
+
+<!-- ─── ATTRACT SCREEN ─── -->
+<div id="sc-attract" class="screen active">
+  <div class="attract-grid"></div>
+  <div class="attract-glow"></div>
+  <div class="attract-header">
+    <div class="attract-date" id="attract-date"></div>
+    <div class="attract-time" id="attract-time"></div>
+  </div>
+  <div class="attract-centre">
+    <div class="attract-logo"><span>147</span></div>
+    <div class="attract-title">The 147</div>
+    <div class="attract-subtitle">Snooker · Bar · Restaurant</div>
+    <div class="attract-divider"></div>
+    <button class="attract-cta" onclick="startOrder()">Tap to Start Your Order</button>
+    <div class="attract-hint">Card payment only · Terminal at counter</div>
+  </div>
+  <div class="attract-banner" id="attract-banner">
+    <div class="banner-icon" id="banner-icon"></div>
+    <div class="banner-text">
+      <div class="banner-label" id="banner-label"></div>
+      <div class="banner-body" id="banner-body"></div>
+    </div>
+    <div class="banner-dots" id="banner-dots"></div>
+  </div>
+</div>
+
+<!-- ─── MENU SCREEN ─── -->
+<div id="sc-menu" class="screen">
+  <div class="menu-topbar">
+    <div class="menu-brand-icon"><span>147</span></div>
+    <div class="menu-brand-name">The 147</div>
+    <div class="menu-brand-sub">— Choose your order</div>
+    <div class="menu-spacer"></div>
+    <button class="cart-pill empty" id="cart-pill" onclick="showCheckout()">
+      <span class="pill-icon">🛒</span>
+      <span id="cart-pill-text">0 items</span>
+      <span>›</span>
+    </button>
+  </div>
+  <div class="menu-body">
+    <div class="menu-sidebar" id="menu-sidebar"></div>
+    <div class="menu-grid" id="menu-grid"></div>
+  </div>
+</div>
+
+<!-- ─── CHECKOUT SCREEN ─── -->
+<div id="sc-checkout" class="screen">
+  <div class="checkout-topbar">
+    <button class="back-btn" onclick="goBack()">‹ Back to Menu</button>
+    <div class="menu-spacer"></div>
+    <div class="menu-brand-icon"><span>147</span></div>
+    <div class="menu-brand-name">Your Order</div>
+  </div>
+  <div class="checkout-body">
+    <div class="checkout-order" id="checkout-order-list">
+      <div class="checkout-section-label">Items</div>
+    </div>
+    <div class="checkout-pay">
+      <div class="pay-title">Order Summary</div>
+      <div class="pay-subtotal-rows" id="pay-summary-rows"></div>
+      <div class="pay-divider"></div>
+      <div class="pay-total-row">
+        <div class="pay-total-label">Total</div>
+        <div class="pay-total-val" id="pay-total">£0.00</div>
+      </div>
+      <div class="pay-divider"></div>
+
+      <div class="form-group">
+        <div class="form-label">Your Name *</div>
+        <input class="form-input" id="f-name" type="text" placeholder="e.g. John"
+          onfocus="openKeyboard(this,'text')" readonly>
+        <div class="form-error" id="f-name-err" style="display:none">Please enter your name</div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-label">Table Number *</div>
+        <input class="form-input" id="f-table" type="text" placeholder="e.g. 4"
+          onfocus="openKeyboard(this,'num')" readonly>
+        <div class="form-error" id="f-table-err" style="display:none">Enter your table number (1–99)</div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-label">Mobile Number <span style="color:var(--white-40);font-weight:400">(optional — earn loyalty points)</span></div>
+        <input class="form-input" id="f-phone" type="text" placeholder="e.g. 07700 900000"
+          onfocus="openKeyboard(this,'phone')" readonly>
+        <div class="loyalty-card" id="loyalty-card" style="display:none">
+          <div id="loyalty-status"></div>
+        </div>
+      </div>
+
+      <button class="pay-btn" id="pay-btn" onclick="submitOrder()">
+        <span class="btn-icon">💳</span> Pay by Card
+      </button>
+
+      <div class="loyalty-card" style="font-size:12px;color:var(--white-40)">
+        💳 Tap, insert, or swipe your card on the terminal when prompted
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── PAYING SCREEN ─── -->
+<div id="sc-paying" class="screen">
+  <div class="paying-terminal">💳</div>
+  <div>
+    <div class="paying-title">Please Tap Your Card</div>
+    <div class="paying-sub" style="margin-top:8px">Present your card, phone, or watch to the terminal at the counter</div>
+  </div>
+  <div class="paying-step" id="paying-step">Setting up your order…</div>
+</div>
+
+<!-- ─── SUCCESS SCREEN ─── -->
+<div id="sc-success" class="screen">
+  <div class="success-icon">✓</div>
+  <div>
+    <div class="success-title">Order Placed!</div>
+    <div class="success-sub" style="margin-top:8px">
+      Your food and drinks are being prepared. Please take a seat and we'll bring it to you.
+    </div>
+  </div>
+  <div class="success-ticket" id="success-ticket">Order #—</div>
+  <div class="success-countdown" id="success-countdown"></div>
+</div>
+
+<!-- ─── ERROR SCREEN ─── -->
+<div id="sc-error" class="screen">
+  <div class="error-icon">✕</div>
+  <div class="error-title">Something went wrong</div>
+  <div class="error-sub" id="error-sub">We couldn't complete your order. Please order at the counter.</div>
+  <div id="error-msg"></div>
+  <button class="error-back-btn" onclick="resetToAttract()">Return to Start</button>
+</div>
+
+<!-- ─── MODIFIER MODAL ─── -->
+<div id="modifier-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modal-title"></div>
+        <div class="modal-desc" id="modal-desc"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+        <button class="modal-close" onclick="closeModal()">✕</button>
+        <div class="modal-price" id="modal-price"></div>
+      </div>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-footer">
+      <button class="modal-cancel" onclick="closeModal()">Cancel</button>
+      <button class="modal-add" id="modal-add-btn" onclick="confirmAddToCart()">Add to Order</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── ON-SCREEN KEYBOARD ─── -->
+<div id="kiosk-keyboard">
+  <div id="kb-rows"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════
+const S = {
+  menu: [],
+  cart: [],      // [{variationId, itemId, name, price, quantity, emoji, modifiers:[{catalogObjectId,name,price}]}]
+  activeCategory: null,
+  activeSubcat: null,
+  pendingItem: null,       // item being configured in modal
+  pendingModifiers: {},    // modListId → [optionId]
+  loyaltyBalance: null,
+  orderResult: null,
+  idleTimer: null,
+  countdownTimer: null,
+  bannerTimer: null,
+  bannerSlide: 0,
+  loyaltyTimer: null,
+};
+
+// ═══════════════════════════════════════════════════════════
+// BANNER CONFIG — edit these to change the adverts
+// ═══════════════════════════════════════════════════════════
+const BANNER_SLIDES = [
+  { bg: '#0047AB', accent: '#D4A843', emoji: '🎱', title: 'Table Booking', body: 'Reserve your table in the app — no queuing, no waiting.' },
+  { bg: '#1a1a2e', accent: '#DF3131', emoji: '🎤', title: 'Live Events — Check the board!', body: 'Live music & sport every weekend. Doors open 8pm.' },
+  { bg: '#132742', accent: '#D4A843', emoji: '⭐', title: 'Join The 147 Club', body: 'Earn points on every order. Get free drinks, priority booking & more.' },
+  { bg: '#0d1e34', accent: '#4caf50', emoji: '🍔', title: 'Kitchen Open 12–10pm', body: 'Full food menu available daily. Order here or at the bar.' },
+  { bg: '#1c0a28', accent: '#D4A843', emoji: '📺', title: 'Sky Sports & TNT Sports', body: 'All major fixtures live. Check our fixtures board for today\'s games.' },
+  { bg: '#12200a', accent: '#81c784', emoji: '🏆', title: 'Wednesday Night League', body: 'Join our snooker league — sign up at the bar or in the app.' },
+];
+const BANNER_DURATION = 4000;
+
+// ═══════════════════════════════════════════════════════════
+// CATEGORY EMOJIS (fallback, Square doesn't have emojis)
+// ═══════════════════════════════════════════════════════════
+const CAT_EMOJI = {
+  food: '🍔', drink: '🍺', bar: '🍸', snack: '🍿', dessert: '🍦',
+  pizza: '🍕', burger: '🍔', wing: '🍗', soft: '🥤', beer: '🍺',
+  wine: '🍷', spirit: '🥃', cocktail: '🍹', coffee: '☕', hot: '🌶️',
+  veg: '🥗', special: '⭐', deal: '🔖', side: '🍟', starter: '🥗',
+};
+function catEmoji(name = '') {
+  const n = name.toLowerCase();
+  for (const [k, v] of Object.entries(CAT_EMOJI)) if (n.includes(k)) return v;
+  return '🍽️';
+}
+
+// ═══════════════════════════════════════════════════════════
+// SCREEN NAVIGATION
+// ═══════════════════════════════════════════════════════════
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('sc-' + id).classList.add('active');
+  document.getElementById('sc-' + id).classList.add('fade-in');
+  closeKeyboard();
+}
+
+function startOrder() {
+  resetIdleTimer();
+  if (S.menu.length === 0) loadMenu();
+  showScreen('menu');
+}
+
+function goBack() {
+  resetIdleTimer();
+  showScreen('menu');
+}
+
+function showCheckout() {
+  resetIdleTimer();
+  if (S.cart.length === 0) return;
+  renderCheckout();
+  showScreen('checkout');
+}
+
+function resetToAttract() {
+  S.cart = [];
+  S.pendingItem = null;
+  S.pendingModifiers = {};
+  S.loyaltyBalance = null;
+  S.orderResult = null;
+  clearTimeout(S.countdownTimer);
+  document.getElementById('f-name').value = '';
+  document.getElementById('f-table').value = '';
+  document.getElementById('f-phone').value = '';
+  document.getElementById('loyalty-card').style.display = 'none';
+  showScreen('attract');
+}
+
+// ═══════════════════════════════════════════════════════════
+// IDLE TIMER
+// ═══════════════════════════════════════════════════════════
+const IDLE_MS = 90_000;
+function resetIdleTimer() {
+  clearTimeout(S.idleTimer);
+  S.idleTimer = setTimeout(resetToAttract, IDLE_MS);
+}
+document.addEventListener('touchstart', resetIdleTimer, { passive: true });
+document.addEventListener('click', resetIdleTimer, { passive: true });
+
+// ═══════════════════════════════════════════════════════════
+// CLOCK
+// ═══════════════════════════════════════════════════════════
+function updateClock() {
+  const d = new Date();
+  document.getElementById('attract-time').textContent =
+    d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  document.getElementById('attract-date').textContent =
+    d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ═══════════════════════════════════════════════════════════
+// BANNER
+// ═══════════════════════════════════════════════════════════
+function initBanner() {
+  const dots = document.getElementById('banner-dots');
+  dots.innerHTML = BANNER_SLIDES.map((_, i) =>
+    `<div class="banner-dot" id="bd-${i}" onclick="goToSlide(${i})" style="width:6px"></div>`
+  ).join('');
+  showSlide(0);
+  S.bannerTimer = setInterval(nextSlide, BANNER_DURATION);
+}
+function showSlide(i) {
+  S.bannerSlide = i;
+  const sl = BANNER_SLIDES[i];
+  const banner = document.getElementById('attract-banner');
+  banner.style.background = sl.bg;
+  banner.style.borderTopColor = sl.accent;
+  document.getElementById('banner-icon').textContent = sl.emoji;
+  document.getElementById('banner-label').textContent = sl.title;
+  document.getElementById('banner-label').style.color = sl.accent;
+  document.getElementById('banner-body').textContent = sl.body;
+  BANNER_SLIDES.forEach((_, j) => {
+    const dot = document.getElementById('bd-' + j);
+    dot.style.width = j === i ? '20px' : '6px';
+    dot.style.background = j === i ? sl.accent : 'rgba(255,255,255,0.25)';
+  });
+}
+function nextSlide() { showSlide((S.bannerSlide + 1) % BANNER_SLIDES.length); }
+function goToSlide(i) {
+  clearInterval(S.bannerTimer);
+  showSlide(i);
+  S.bannerTimer = setInterval(nextSlide, BANNER_DURATION);
+}
+
+// ═══════════════════════════════════════════════════════════
+// MENU LOADING
+// ═══════════════════════════════════════════════════════════
+async function loadMenu() {
+  renderSidebar([]);
+  document.getElementById('menu-grid').innerHTML =
+    '<div class="menu-loading"><div class="spinner"></div><div>Loading menu…</div></div>';
+  try {
+    const res = await fetch('/api/menu');
+    if (!res.ok) throw new Error('Menu unavailable');
+    const cats = await res.json();
+    // Flatten subcategories into top level for sidebar simplicity
+    const flat = [];
+    for (const cat of cats) {
+      if (cat.subcategories && cat.subcategories.length > 0) {
+        if (cat.items.length > 0) flat.push({ ...cat, subcategories: undefined });
+        for (const sub of cat.subcategories) flat.push({ ...sub, isKitchen: cat.isKitchen || sub.isKitchen });
+      } else {
+        flat.push(cat);
+      }
+    }
+    S.menu = flat.filter(c => c.items && c.items.length > 0);
+    if (S.menu.length === 0) throw new Error('No items available right now');
+    S.activeCategory = S.menu[0].id;
+    renderSidebar(S.menu);
+    renderItems(S.menu[0]);
+  } catch (e) {
+    document.getElementById('menu-grid').innerHTML =
+      `<div class="menu-error">
+        <div style="font-size:32px;margin-bottom:16px">😔</div>
+        <div style="font-size:18px;font-weight:600;margin-bottom:8px">Menu unavailable</div>
+        <div style="color:var(--white-40)">${e.message}</div>
+        <button onclick="loadMenu()" style="margin-top:24px;background:var(--blue);border:none;border-radius:var(--radius-sm);padding:14px 32px;color:#fff;font-size:16px;font-weight:600;cursor:pointer;font-family:var(--font)">Retry</button>
+      </div>`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// SIDEBAR
+// ═══════════════════════════════════════════════════════════
+function renderSidebar(cats) {
+  const sidebar = document.getElementById('menu-sidebar');
+  if (cats.length === 0) { sidebar.innerHTML = ''; return; }
+  sidebar.innerHTML = cats.map(cat => `
+    <button class="cat-btn ${cat.id === S.activeCategory ? 'active' : ''}"
+      onclick="selectCategory('${cat.id}')">
+      <div class="cat-emoji">${catEmoji(cat.name)}</div>
+      <div class="cat-name">${esc(cat.name)}</div>
+      <div class="cat-count">${cat.items.length} item${cat.items.length !== 1 ? 's' : ''}</div>
+    </button>
+  `).join('');
+}
+
+function selectCategory(id) {
+  resetIdleTimer();
+  S.activeCategory = id;
+  const cat = S.menu.find(c => c.id === id);
+  renderSidebar(S.menu);
+  if (cat) renderItems(cat);
+  document.getElementById('menu-grid').scrollTop = 0;
+}
+
+// ═══════════════════════════════════════════════════════════
+// ITEM GRID
+// ═══════════════════════════════════════════════════════════
+function renderItems(cat) {
+  const grid = document.getElementById('menu-grid');
+  grid.innerHTML = cat.items.map((item, i) => itemCard(cat, item, i)).join('');
+}
+
+function itemCard(cat, item, i) {
+  const inCart = S.cart.some(c => c.variationId === item.variationId);
+  const cartItem = S.cart.find(c => c.variationId === item.variationId);
+  const qty = cartItem?.quantity ?? 0;
+  const img = item.imageUrl
+    ? `<img class="item-img" src="${esc(item.imageUrl)}" alt="${esc(item.name)}" loading="lazy" onerror="this.style.display='none'">`
+    : '';
+  const badge = item.soldOut
+    ? `<div class="sold-out-badge">Sold out</div>`
+    : (item.variationName && item.variationName !== 'Regular' ? `<div class="item-badge">${esc(item.variationName)}</div>` : '');
+  const dietary = (item.dietaryTags || []).map(t =>
+    `<span class="dietary-tag">${esc(t)}</span>`).join('');
+  const addBtn = item.soldOut
+    ? `<div class="add-btn" style="opacity:0.3;pointer-events:none">−</div>`
+    : `<button class="add-btn ${inCart ? 'in-cart' : ''}" onclick="handleAddItem('${esc(cat.id)}','${esc(item.variationId)}',event)">
+        ${inCart ? qty : '+'}
+       </button>`;
+  return `
+    <div class="item-card ${item.soldOut ? 'sold-out' : ''}" onclick="handleItemTap('${esc(cat.id)}','${esc(item.variationId)}')">
+      ${img}
+      ${badge}
+      <div class="item-name">${esc(item.name)}</div>
+      ${item.description ? `<div class="item-desc">${esc(item.description)}</div>` : '<div class="item-desc"></div>'}
+      ${dietary ? `<div class="item-dietary">${dietary}</div>` : ''}
+      <div class="item-footer">
+        <div class="item-price">£${pence2(item.price)}</div>
+        ${addBtn}
+      </div>
+    </div>`;
+}
+
+function handleItemTap(catId, variationId) {
+  resetIdleTimer();
+  const cat = S.menu.find(c => c.id === catId);
+  const item = cat?.items.find(it => it.variationId === variationId);
+  if (!item || item.soldOut) return;
+  if (item.modifiers && item.modifiers.length > 0) {
+    openModal(item);
+  } else {
+    addToCart(item, []);
+    refreshItemGrid(catId);
+    updateCartPill();
+  }
+}
+
+function handleAddItem(catId, variationId, ev) {
+  ev.stopPropagation();
+  handleItemTap(catId, variationId);
+}
+
+function addToCart(item, modifiers) {
+  // Build a unique key including modifier selection
+  const existing = S.cart.find(c =>
+    c.variationId === item.variationId &&
+    JSON.stringify(c.modifiers) === JSON.stringify(modifiers)
+  );
+  if (existing) {
+    existing.quantity++;
+  } else {
+    S.cart.push({
+      variationId: item.variationId,
+      itemId: item.id,
+      name: item.name,
+      price: item.price + modifiers.reduce((s, m) => s + (m.price || 0), 0),
+      quantity: 1,
+      emoji: catEmoji(item.name),
+      modifiers,
+    });
+  }
+  updateCartPill();
+}
+
+function removeFromCart(idx) {
+  if (S.cart[idx].quantity > 1) S.cart[idx].quantity--;
+  else S.cart.splice(idx, 1);
+  updateCartPill();
+  renderCheckout();
+  if (S.cart.length === 0) goBack();
+}
+function addQtyInCheckout(idx) {
+  S.cart[idx].quantity++;
+  updateCartPill();
+  renderCheckout();
+}
+
+function refreshItemGrid(catId) {
+  const cat = S.menu.find(c => c.id === catId);
+  if (cat) renderItems(cat);
+}
+
+function updateCartPill() {
+  const count = S.cart.reduce((s, i) => s + i.quantity, 0);
+  const total = cartTotal();
+  const pill = document.getElementById('cart-pill');
+  const txt = document.getElementById('cart-pill-text');
+  if (count === 0) {
+    pill.className = 'cart-pill empty';
+    txt.textContent = '0 items';
+  } else {
+    pill.className = 'cart-pill';
+    txt.textContent = `${count} item${count !== 1 ? 's' : ''} · £${pence2(total)}`;
+  }
+}
+
+function cartTotal() {
+  return S.cart.reduce((s, i) => s + i.price * i.quantity, 0);
+}
+
+// ═══════════════════════════════════════════════════════════
+// MODIFIER MODAL
+// ═══════════════════════════════════════════════════════════
+function openModal(item) {
+  S.pendingItem = item;
+  S.pendingModifiers = {};
+  document.getElementById('modal-title').textContent = item.name;
+  document.getElementById('modal-desc').textContent = item.description || '';
+  document.getElementById('modal-price').textContent = '£' + pence2(item.price);
+  document.getElementById('modal-add-btn').textContent = 'Add to Order · £' + pence2(item.price);
+
+  const body = document.getElementById('modal-body');
+  body.innerHTML = (item.modifiers || []).map(list => `
+    <div>
+      <div class="modifier-group-title">${esc(list.name)}${list.selectionType === 'SINGLE' ? ' — choose one' : ''}</div>
+      <div class="modifier-options">
+        ${list.options.map(opt => `
+          <div class="modifier-opt" id="mopt-${esc(opt.id)}"
+            onclick="toggleModifier('${esc(list.id)}','${esc(opt.id)}','${list.selectionType}',${opt.price || 0},'${esc(opt.name)}')">
+            <div class="modifier-opt-name">${esc(opt.name)}</div>
+            <div class="modifier-opt-price ${opt.price ? '' : 'free'}">
+              ${opt.price ? `+£${pence2(opt.price)}` : 'included'}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+
+  document.getElementById('modifier-modal').classList.add('open');
+}
+
+function toggleModifier(listId, optId, selType, price, name) {
+  if (!S.pendingModifiers[listId]) S.pendingModifiers[listId] = [];
+  const arr = S.pendingModifiers[listId];
+
+  if (selType === 'SINGLE') {
+    // Deselect previous
+    arr.forEach(prev => {
+      const el = document.getElementById('mopt-' + prev.id);
+      if (el) el.classList.remove('selected');
+    });
+    S.pendingModifiers[listId] = [{ id: optId, name, price }];
+  } else {
+    const idx = arr.findIndex(o => o.id === optId);
+    if (idx >= 0) {
+      arr.splice(idx, 1);
+    } else {
+      arr.push({ id: optId, name, price });
+    }
+  }
+
+  document.getElementById('mopt-' + optId).classList.toggle('selected',
+    S.pendingModifiers[listId].some(o => o.id === optId));
+
+  // Recalculate price
+  let total = S.pendingItem.price;
+  for (const opts of Object.values(S.pendingModifiers)) {
+    for (const o of opts) total += o.price || 0;
+  }
+  document.getElementById('modal-price').textContent = '£' + pence2(total);
+  document.getElementById('modal-add-btn').textContent = 'Add to Order · £' + pence2(total);
+}
+
+function confirmAddToCart() {
+  const item = S.pendingItem;
+  if (!item) return;
+  const modifiers = Object.values(S.pendingModifiers).flat().map(o => ({
+    catalogObjectId: o.id,
+    name: o.name,
+    price: o.price || 0,
+  }));
+  addToCart(item, modifiers);
+  closeModal();
+  refreshItemGrid(S.activeCategory);
+}
+
+function closeModal() {
+  document.getElementById('modifier-modal').classList.remove('open');
+  S.pendingItem = null;
+  S.pendingModifiers = {};
+}
+
+// ═══════════════════════════════════════════════════════════
+// CHECKOUT
+// ═══════════════════════════════════════════════════════════
+function renderCheckout() {
+  const list = document.getElementById('checkout-order-list');
+  list.innerHTML = '<div class="checkout-section-label">Items</div>' +
+    S.cart.map((item, idx) => `
+      <div class="order-row">
+        <div class="order-row-emoji">${item.emoji}</div>
+        <div class="order-row-info">
+          <div class="order-row-name">${esc(item.name)}</div>
+          ${item.modifiers.length ? `<div class="order-row-mods">${item.modifiers.map(m => esc(m.name)).join(', ')}</div>` : ''}
+        </div>
+        <div class="order-qty-ctrl">
+          <button class="qty-btn ${item.quantity === 1 ? 'remove' : ''}" onclick="removeFromCart(${idx})">
+            ${item.quantity === 1 ? '🗑' : '−'}
+          </button>
+          <div class="qty-num">${item.quantity}</div>
+          <button class="qty-btn" onclick="addQtyInCheckout(${idx})" style="background:rgba(0,71,171,0.3)">+</button>
+        </div>
+        <div class="order-row-price">£${pence2(item.price * item.quantity)}</div>
+      </div>
+    `).join('');
+
+  const total = cartTotal();
+  const summaryRows = document.getElementById('pay-summary-rows');
+  summaryRows.innerHTML = S.cart.map(item =>
+    `<div class="pay-line">
+      <div class="pay-line-label">${item.quantity}× ${esc(item.name)}</div>
+      <div class="pay-line-val">£${pence2(item.price * item.quantity)}</div>
+    </div>`
+  ).join('');
+
+  document.getElementById('pay-total').textContent = '£' + pence2(total);
+}
+
+// ═══════════════════════════════════════════════════════════
+// LOYALTY LOOKUP
+// ═══════════════════════════════════════════════════════════
+function scheduleLoyaltyLookup(phone) {
+  clearTimeout(S.loyaltyTimer);
+  const cleaned = phone.replace(/\s/g, '');
+  if (cleaned.length < 10) {
+    document.getElementById('loyalty-card').style.display = 'none';
+    S.loyaltyBalance = null;
+    return;
+  }
+  S.loyaltyTimer = setTimeout(async () => {
+    try {
+      const res = await fetch('/api/loyalty/points-lookup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: cleaned }),
+      });
+      const data = await res.json();
+      const card = document.getElementById('loyalty-card');
+      const status = document.getElementById('loyalty-status');
+      card.style.display = 'flex';
+      if (data.found) {
+        S.loyaltyBalance = data.balance;
+        const term = data.terminology?.other ?? 'points';
+        status.innerHTML = `<div class="loyalty-found">⭐ Loyalty account found!</div>
+          <div class="loyalty-pts">You have <strong>${data.balance}</strong> ${term}. Points will be added when your card is charged.</div>`;
+      } else {
+        S.loyaltyBalance = null;
+        status.innerHTML = `<div>📱 New member? Points will be added automatically when you pay.</div>`;
+      }
+    } catch { /* non-fatal */ }
+  }, 800);
+}
+
+// ═══════════════════════════════════════════════════════════
+// SUBMIT ORDER
+// ═══════════════════════════════════════════════════════════
+async function submitOrder() {
+  const name = document.getElementById('f-name').value.trim();
+  const table = document.getElementById('f-table').value.trim();
+  const phone = document.getElementById('f-phone').value.trim();
+
+  let valid = true;
+  if (name.length < 2) {
+    document.getElementById('f-name').classList.add('error');
+    document.getElementById('f-name-err').style.display = '';
+    valid = false;
+  } else {
+    document.getElementById('f-name').classList.remove('error');
+    document.getElementById('f-name-err').style.display = 'none';
+  }
+  if (!/^\d{1,3}$/.test(table)) {
+    document.getElementById('f-table').classList.add('error');
+    document.getElementById('f-table-err').style.display = '';
+    valid = false;
+  } else {
+    document.getElementById('f-table').classList.remove('error');
+    document.getElementById('f-table-err').style.display = 'none';
+  }
+  if (!valid) return;
+
+  const btn = document.getElementById('pay-btn');
+  btn.disabled = true;
+  btn.textContent = 'Placing order…';
+
+  showScreen('paying');
+  document.getElementById('paying-step').textContent = 'Creating your order…';
+
+  try {
+    const payload = {
+      items: S.cart.map(item => ({
+        variationId: item.variationId,
+        itemId: item.itemId,
+        name: item.name,
+        price: item.price - item.modifiers.reduce((s, m) => s + (m.price || 0), 0),
+        quantity: item.quantity,
+        modifiers: item.modifiers,
+      })),
+      customerName: name,
+      tableNumber: table,
+      ...(phone.replace(/\s/g, '').length >= 10 ? { customerPhone: phone.replace(/\s/g, '') } : {}),
+    };
+
+    const res = await fetch('/api/orders/kiosk-checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      if (data.terminalUnavailable) {
+        showError('Card terminal unavailable', 'The card terminal isn\'t reachable right now. Please order at the counter — sorry for the inconvenience!');
+      } else {
+        showError('Order failed', data.message || 'Something went wrong. Please try again or order at the counter.');
+      }
+      btn.disabled = false;
+      btn.innerHTML = '<span class="btn-icon">💳</span> Pay by Card';
+      return;
+    }
+
+    S.orderResult = data;
+    document.getElementById('paying-step').textContent = 'Order sent to terminal · Please tap your card now';
+
+    // Show success after a short delay (terminal handles async payment)
+    setTimeout(() => showSuccess(data), 1500);
+
+  } catch (err) {
+    showError('Connection error', 'Could not reach the server. Please try again or order at the counter.');
+    btn.disabled = false;
+    btn.innerHTML = '<span class="btn-icon">💳</span> Pay by Card';
+  }
+}
+
+function showSuccess(data) {
+  const ticket = data.ticketNumber ? `Kiosk Order #${data.ticketNumber}` : `Order #${data.appOrderId}`;
+  document.getElementById('success-ticket').textContent = ticket;
+  showScreen('success');
+  let secs = 20;
+  function tick() {
+    document.getElementById('success-countdown').textContent = `Returning to start in ${secs}s…`;
+    if (secs-- <= 0) { clearInterval(S.countdownTimer); resetToAttract(); }
+  }
+  tick();
+  S.countdownTimer = setInterval(tick, 1000);
+}
+
+function showError(title, sub) {
+  document.querySelector('.error-title').textContent = title;
+  document.getElementById('error-sub').textContent = sub;
+  showScreen('error');
+}
+
+// ═══════════════════════════════════════════════════════════
+// ON-SCREEN KEYBOARD
+// ═══════════════════════════════════════════════════════════
+let kbTarget = null, kbType = null, kbShift = false;
+const KB_ROWS_ALPHA = [
+  ['q','w','e','r','t','y','u','i','o','p'],
+  ['a','s','d','f','g','h','j','k','l'],
+  ['⇧','z','x','c','v','b','n','m','⌫'],
+  ['123','[space]','[done]'],
+];
+const KB_ROWS_NUM = [
+  ['1','2','3'],
+  ['4','5','6'],
+  ['7','8','9'],
+  ['.','0','⌫'],
+  ['[done]'],
+];
+const KB_ROWS_PHONE = [
+  ['1','2','3'],
+  ['4','5','6'],
+  ['7','8','9'],
+  ['+','0','⌫'],
+  [' ','[done]'],
+];
+
+function openKeyboard(input, type) {
+  resetIdleTimer();
+  kbTarget = input;
+  kbType = type;
+  kbShift = false;
+  renderKeyboard(type);
+  document.getElementById('kiosk-keyboard').classList.add('open');
+}
+function closeKeyboard() {
+  document.getElementById('kiosk-keyboard').classList.remove('open');
+  kbTarget = null;
+  // Trigger loyalty lookup when phone field is done
+  const phone = document.getElementById('f-phone');
+  if (phone) scheduleLoyaltyLookup(phone.value);
+}
+function renderKeyboard(type) {
+  const rows = type === 'num' ? KB_ROWS_NUM : type === 'phone' ? KB_ROWS_PHONE : KB_ROWS_ALPHA;
+  const kb = document.getElementById('kb-rows');
+  kb.innerHTML = rows.map(row =>
+    `<div class="kb-row">${row.map(k => {
+      if (k === '[space]') return `<button class="kb-key space" onclick="kbType_key(' ')">space</button>`;
+      if (k === '[done]') return `<button class="kb-key done" onclick="closeKeyboard()">Done</button>`;
+      if (k === '⌫') return `<button class="kb-key delete" onclick="kbBackspace()">⌫</button>`;
+      if (k === '⇧') return `<button class="kb-key" id="kb-shift" onclick="kbShiftToggle()">⇧</button>`;
+      if (k === '123') return `<button class="kb-key" onclick="renderKeyboard('num')" style="font-size:14px">123</button>`;
+      return `<button class="kb-key" onclick="kbType_key('${k}')">${k}</button>`;
+    }).join('')}</div>`
+  ).join('');
+}
+function kbType_key(k) {
+  resetIdleTimer();
+  if (!kbTarget) return;
+  const c = kbShift ? k.toUpperCase() : k;
+  kbTarget.value += c;
+  kbTarget.dispatchEvent(new Event('input'));
+  if (kbShift) { kbShift = false; const sh = document.getElementById('kb-shift'); if(sh) sh.style.background=''; }
+  if (kbType === 'phone') scheduleLoyaltyLookup(kbTarget.value);
+}
+function kbBackspace() {
+  resetIdleTimer();
+  if (!kbTarget) return;
+  kbTarget.value = kbTarget.value.slice(0, -1);
+  kbTarget.dispatchEvent(new Event('input'));
+  if (kbType === 'phone') scheduleLoyaltyLookup(kbTarget.value);
+}
+function kbShiftToggle() {
+  kbShift = !kbShift;
+  const sh = document.getElementById('kb-shift');
+  if (sh) sh.style.background = kbShift ? 'var(--blue)' : '';
+}
+
+// ═══════════════════════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════════════════════
+function pence2(p) {
+  return (p / 100).toFixed(2);
+}
+function esc(str) {
+  return String(str ?? '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ═══════════════════════════════════════════════════════════
+// BOOT
+// ═══════════════════════════════════════════════════════════
+initBanner();
+</script>
+</body>
+</html>

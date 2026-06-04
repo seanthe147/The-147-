@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Membership — The 147 Bradford</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --blue:#1E5BC6;--blue-dark:#143F94;--gold:#D9A93C;
+  --ink:#0d0d0d;--muted:#5a6573;--bg:#ffffff;--bg-alt:#f6f8fb;--line:#e7eaef;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Montserrat',sans-serif;color:var(--ink);background:var(--bg-alt);-webkit-font-smoothing:antialiased;min-height:100vh}
+a{text-decoration:none;color:inherit}
+
+/* Mini header */
+.mh{background:var(--ink);padding:18px 28px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+.mh-brand{display:flex;align-items:center;gap:10px;color:#fff}
+.mh-mark{width:34px;height:34px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff 0%,#fff 18%,var(--gold) 19%,var(--gold) 100%);display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:800;font-size:14px;color:var(--ink)}
+.mh-title{font-family:'Playfair Display',serif;font-size:18px;color:#fff;font-weight:700}
+.mh-title span{color:var(--gold)}
+.mh-sub{font-size:12px;color:#888;letter-spacing:1px;text-transform:uppercase;margin-top:1px}
+
+/* Billing toggle */
+.billing-wrap{display:flex;justify-content:center;padding:36px 24px 0}
+.billing-toggle{display:inline-flex;background:#fff;border:1.5px solid var(--line);border-radius:12px;overflow:hidden;gap:0}
+.billing-toggle button{padding:10px 24px;font-family:'Montserrat',sans-serif;font-size:13px;font-weight:700;border:0;background:transparent;color:var(--muted);cursor:pointer;transition:background .15s,color .15s;letter-spacing:.3px}
+.billing-toggle button.active{background:var(--blue);color:#fff}
+.save-badge{margin-left:8px;background:var(--gold);color:var(--ink);font-size:10px;padding:2px 7px;border-radius:6px;font-weight:800;vertical-align:middle;letter-spacing:.5px}
+
+/* Plans grid */
+.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;padding:28px 28px 48px;max-width:1000px;margin:0 auto}
+@media(max-width:680px){.plans{grid-template-columns:1fr;padding:20px 16px 40px}}
+
+.plan{background:#fff;border:1.5px solid var(--line);border-radius:20px;padding:28px 24px 24px;display:flex;flex-direction:column;transition:border-color .2s,transform .2s,box-shadow .2s;position:relative}
+.plan.featured{border-color:var(--gold);box-shadow:0 8px 40px rgba(217,169,60,.18)}
+.plan:hover{transform:translateY(-3px);box-shadow:0 16px 40px rgba(0,0,0,.08)}
+.plan.featured:hover{box-shadow:0 16px 40px rgba(217,169,60,.22)}
+.pop-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--gold);color:var(--ink);font-size:10px;font-weight:800;padding:4px 14px;border-radius:99px;letter-spacing:1px;text-transform:uppercase;white-space:nowrap}
+
+.plan-name{font-family:'Playfair Display',serif;font-size:22px;font-weight:700;color:var(--ink);margin-bottom:4px}
+.plan-desc{font-size:12px;color:var(--muted);margin-bottom:20px}
+.plan-price{font-family:'Playfair Display',serif;font-size:38px;font-weight:800;color:var(--blue);line-height:1}
+.plan-price small{font-size:14px;font-weight:500;color:var(--muted);font-family:'Montserrat',sans-serif}
+.plan-annual-equiv{font-size:11px;color:var(--muted);margin-top:4px;height:16px}
+.plan-divider{border:0;border-top:1px solid var(--line);margin:18px 0}
+.perks{list-style:none;margin-bottom:24px;flex:1}
+.perks li{display:flex;align-items:flex-start;gap:10px;font-size:13.5px;color:var(--ink);padding:6px 0}
+.perks li svg{flex-shrink:0;margin-top:2px;stroke:var(--gold)}
+.perks li.dim svg{stroke:#ccc}
+.perks li.dim{color:var(--muted)}
+
+.join-btn{width:100%;padding:14px;border-radius:12px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:14px;border:0;cursor:pointer;transition:background .2s,transform .15s,box-shadow .2s;letter-spacing:.3px}
+.plan:not(.featured) .join-btn{background:var(--bg-alt);color:var(--blue);border:1.5px solid var(--blue)}
+.plan:not(.featured) .join-btn:hover{background:var(--blue);color:#fff}
+.plan.featured .join-btn{background:var(--gold);color:var(--ink)}
+.plan.featured .join-btn:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(217,169,60,.4)}
+.join-btn:disabled{opacity:.6;cursor:default;transform:none!important;box-shadow:none!important}
+
+/* Bottom note */
+.foot-note{text-align:center;font-size:12px;color:var(--muted);padding:0 24px 40px;max-width:600px;margin:0 auto}
+.foot-note a{color:var(--blue);font-weight:600}
+
+/* Loading state */
+.loading-screen{display:flex;align-items:center;justify-content:center;min-height:60vh;flex-direction:column;gap:16px;color:var(--muted)}
+.spinner{width:40px;height:40px;border:3px solid var(--line);border-top-color:var(--blue);border-radius:50%;animation:spin .85s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Error state */
+.error-screen{text-align:center;padding:60px 24px;color:var(--muted)}
+.error-screen h3{color:var(--ink);font-size:20px;margin-bottom:10px}
+.error-screen button{margin-top:16px;padding:10px 22px;background:var(--blue);color:#fff;border:0;border-radius:10px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:14px;cursor:pointer}
+
+/* Toast */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:14px 24px;border-radius:12px;font-size:13px;font-weight:600;opacity:0;transition:opacity .3s;pointer-events:none;z-index:99;white-space:nowrap}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<header class="mh">
+  <div class="mh-brand">
+    <div class="mh-mark">147</div>
+    <div>
+      <div class="mh-title">The 1<span>4</span>7 <span style="font-size:14px;opacity:.7;font-family:'Montserrat',sans-serif;font-weight:600">· Membership</span></div>
+    </div>
+  </div>
+  <div class="mh-sub">No contracts · cancel anytime</div>
+</header>
+
+<div id="app">
+  <div class="loading-screen"><div class="spinner"></div><span>Loading plans…</span></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  var billing = 'monthly';
+  var plans = [];
+
+  function fmt(pence){ return '£' + (pence/100).toFixed(2).replace(/\.00$/,''); }
+
+  function perk(icon, text, dim){
+    return '<li'+(dim?' class="dim"':'')+'>'+
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>'+
+      text+'</li>';
+  }
+
+  function planHtml(p){
+    var monthly = billing === 'monthly';
+    var rawPrice = monthly ? p.priceMonthly : Math.round(p.priceAnnual / 12);
+    var annualTotal = p.priceAnnual ? fmt(p.priceAnnual) : null;
+    var saving = p.priceMonthly && p.priceAnnual
+      ? Math.round(100 - ((p.priceAnnual / 12) / p.priceMonthly * 100))
+      : 0;
+    var isFeatured = p.tier === 'century' || (plans.length > 0 && plans[1] && p.id === plans[1].id);
+
+    var badgeHtml = isFeatured ? '<div class="pop-badge">Most Popular</div>' : '';
+    var annualEquiv = (!monthly && annualTotal)
+      ? '<div class="plan-annual-equiv">'+annualTotal+'/year</div>'
+      : '<div class="plan-annual-equiv">&nbsp;</div>';
+
+    var perksHtml = '<ul class="perks">';
+    if (p.snookerUnlimited) perksHtml += perk('check', 'Unlimited table access');
+    else if (p.hoursIncluded) perksHtml += perk('check', p.hoursIncluded + ' free snooker hours/month');
+    /* otherwise (0 or blank) — no snooker line */
+    perksHtml += perk('check', p.foodDrinkDiscount + '% off all food &amp; drinks');
+    if(p.guestPassesMonthly > 0)
+      perksHtml += perk('check', p.guestPassesMonthly + ' guest pass'+(p.guestPassesMonthly>1?'es':'')+'/month');
+    else
+      perksHtml += perk('check', 'Guest passes', true);
+    if(p.priorityBooking)
+      perksHtml += perk('check', 'Priority table booking');
+    else
+      perksHtml += perk('check', 'Priority booking', true);
+    perksHtml += perk('check', p.loyaltyMultiplier+'× loyalty points on spend');
+    perksHtml += perk('check', 'Members-only tournament entry');
+    perksHtml += '</ul>';
+
+    return '<div class="plan'+(isFeatured?' featured':'')+'" data-id="'+p.id+'" data-billing="'+billing+'">'+
+      badgeHtml+
+      '<div class="plan-name">'+p.name+'</div>'+
+      '<div class="plan-desc">'+p.description+'</div>'+
+      '<div class="plan-price">'+fmt(rawPrice)+'<small>/mo</small></div>'+
+      annualEquiv+
+      (!monthly && saving > 0 ? '<div style="font-size:11px;color:var(--gold);font-weight:700;margin-top:4px">Save '+saving+'% vs monthly</div><div style="height:4px"></div>' : '<div style="height:20px"></div>')+
+      '<hr class="plan-divider">'+
+      perksHtml+
+      '<button class="join-btn" data-plan-id="'+p.id+'">Join '+p.name+'</button>'+
+    '</div>';
+  }
+
+  function render(){
+    if(!plans.length) return;
+    var html = '<div class="billing-wrap">'+
+      '<div class="billing-toggle">'+
+        '<button id="btnMonthly" class="'+(billing==='monthly'?'active':'')+'" onclick="setBilling(\'monthly\')">Monthly</button>'+
+        '<button id="btnAnnual" class="'+(billing==='annual'?'active':'')+'" onclick="setBilling(\'annual\')">Annual <span class="save-badge">SAVE 15%</span></button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="plans">'+plans.map(planHtml).join('')+'</div>'+
+    '<p class="foot-note">Subscriptions are managed via Square. Your card is charged at the start of each billing period.<br>Cancel anytime by contacting us — no cancellation fees. <a href="/privacy-policy" target="_blank">Privacy Policy</a>.</p>';
+    document.getElementById('app').innerHTML = html;
+  }
+
+  window.setBilling = function(b){
+    billing = b;
+    render();
+    attachHandlers();
+  };
+
+  function toast(msg, dur){
+    var el = document.getElementById('toast');
+    el.textContent = msg; el.classList.add('show');
+    setTimeout(function(){ el.classList.remove('show'); }, dur || 3000);
+  }
+
+  function attachHandlers(){
+    // Joining requires an account (so the membership is linked to the customer).
+    // Send the user to the main /membership page where they can register/sign in
+    // and complete payment via the proper join modal.
+    document.querySelectorAll('.join-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        try { window.top.location.href = '/membership'; }
+        catch(e){ window.location.href = '/membership'; }
+      });
+    });
+  }
+
+  // Fetch plans
+  fetch('/api/membership/plans')
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      plans = (data || []).filter(function(p){ return p.active !== false; })
+                          .sort(function(a,b){ return (a.sortOrder||0)-(b.sortOrder||0); });
+      if(!plans.length){
+        document.getElementById('app').innerHTML =
+          '<div class="error-screen"><h3>No plans available</h3><p>Our membership plans are being updated — pop in or give us a call.</p></div>';
+        return;
+      }
+      render();
+      attachHandlers();
+    })
+    .catch(function(){
+      document.getElementById('app').innerHTML =
+        '<div class="error-screen"><h3>Couldn\'t load plans</h3><p>Please check your connection or give us a call.</p><button onclick="location.reload()">Try again</button></div>';
+    });
+})();
+</script>
+</body></html>

@@ -1,0 +1,1178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Book a Table – The 147</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue: #0047AB;
+      --navy: #0A1628;
+      --red: #DF3131;
+      --gold: #D4A843;
+      --green: #16A34A;
+      --text: #1a1a2e;
+      --text-sub: #6b7280;
+      --border: #e5e7eb;
+      --bg: #f9fafb;
+      --white: #ffffff;
+      --radius: 12px;
+    }
+
+    body {
+      font-family: 'Montserrat', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    .widget {
+      max-width: 560px;
+      margin: 0 auto;
+      padding: 20px 16px 40px;
+    }
+
+    .brand-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .brand-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--gold);
+    }
+
+    .brand-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--navy);
+      letter-spacing: 0.5px;
+    }
+
+    .brand-sub {
+      font-size: 12px;
+      color: var(--text-sub);
+      font-weight: 500;
+      margin-top: 1px;
+    }
+
+    .steps {
+      display: flex;
+      align-items: center;
+      margin-bottom: 28px;
+      gap: 0;
+    }
+
+    .step-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex: 1;
+    }
+
+    .step-circle {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      background: var(--white);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-sub);
+      transition: all 0.2s;
+      position: relative;
+      z-index: 1;
+    }
+
+    .step-circle.active { border-color: var(--blue); background: var(--blue); color: var(--white); }
+    .step-circle.done { border-color: var(--green); background: var(--green); color: var(--white); }
+
+    .step-label { font-size: 10px; font-weight: 600; color: var(--text-sub); margin-top: 4px; white-space: nowrap; }
+    .step-label.active { color: var(--blue); }
+    .step-label.done { color: var(--green); }
+
+    .step-line { flex: 1; height: 2px; background: var(--border); margin-top: -18px; transition: background 0.2s; }
+    .step-line.done { background: var(--green); }
+
+    .card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .card-title { font-size: 16px; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
+    .card-sub { font-size: 12px; color: var(--text-sub); margin-bottom: 16px; }
+
+    .table-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    .table-card {
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 12px;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
+      background: var(--white);
+    }
+
+    .table-card:hover { border-color: var(--blue); background: #f0f5ff; }
+    .table-card.selected { border-color: var(--blue); background: #eef3ff; }
+
+    .table-icon { font-size: 28px; margin-bottom: 6px; }
+    .table-name { font-size: 14px; font-weight: 700; color: var(--navy); }
+    .table-price { font-size: 11px; font-weight: 600; color: var(--text-sub); margin-top: 2px; }
+
+    .table-num-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+
+    .num-btn {
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 4px;
+      cursor: pointer;
+      text-align: center;
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--navy);
+      background: var(--white);
+      transition: all 0.15s;
+    }
+
+    .num-btn:hover { border-color: var(--blue); }
+    .num-btn.selected { border-color: var(--blue); background: var(--blue); color: var(--white); }
+
+    .guest-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+
+    .date-scroll {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      scrollbar-width: none;
+      margin-bottom: 16px;
+    }
+
+    .date-scroll::-webkit-scrollbar { display: none; }
+
+    .date-btn {
+      flex-shrink: 0;
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      text-align: center;
+      background: var(--white);
+      transition: all 0.15s;
+      min-width: 64px;
+    }
+
+    .date-btn:hover { border-color: var(--blue); }
+    .date-btn.selected { border-color: var(--blue); background: var(--blue); color: var(--white); }
+
+    .date-day { font-size: 11px; font-weight: 600; text-transform: uppercase; opacity: 0.8; }
+    .date-num { font-size: 20px; font-weight: 700; }
+    .date-mon { font-size: 10px; font-weight: 600; opacity: 0.8; }
+
+    .duration-row { display: flex; gap: 8px; margin-bottom: 16px; }
+
+    .dur-btn {
+      flex: 1;
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 8px;
+      cursor: pointer;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--navy);
+      background: var(--white);
+      transition: all 0.15s;
+    }
+
+    .dur-btn:hover { border-color: var(--blue); }
+    .dur-btn.selected { border-color: var(--blue); background: var(--blue); color: var(--white); }
+
+    .time-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+
+    .time-btn {
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 4px;
+      cursor: pointer;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--navy);
+      background: var(--white);
+      transition: all 0.15s;
+    }
+
+    .time-btn:hover:not(.unavailable) { border-color: var(--blue); }
+    .time-btn.selected { border-color: var(--blue); background: var(--blue); color: var(--white); }
+    .time-btn.unavailable { opacity: 0.35; cursor: not-allowed; background: var(--bg); }
+
+    .avail-loading { text-align: center; padding: 20px; color: var(--text-sub); font-size: 13px; }
+
+    .spinner-sm {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--border);
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .field { margin-bottom: 14px; }
+
+    .field label { display: block; font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+    .field label .req { color: var(--red); margin-left: 2px; }
+
+    .field input, .field textarea, .field select {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      font-family: 'Montserrat', sans-serif;
+      font-size: 14px;
+      color: var(--text);
+      background: var(--white);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--blue); }
+    .field textarea { resize: vertical; min-height: 80px; }
+
+    .consent-row {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 14px;
+      background: #f0f7ff;
+      border-radius: 10px;
+      border: 1.5px solid #c3d9ff;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+
+    .consent-row input[type="checkbox"] {
+      width: 18px; height: 18px; flex-shrink: 0; cursor: pointer;
+      accent-color: var(--blue); margin-top: 2px;
+    }
+
+    .consent-text { font-size: 12px; color: var(--text-sub); line-height: 1.5; }
+    .consent-text a { color: var(--blue); text-decoration: none; font-weight: 600; }
+
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .summary-row:last-child { border-bottom: none; }
+    .summary-label { font-size: 12px; color: var(--text-sub); font-weight: 600; }
+    .summary-value { font-size: 13px; font-weight: 700; color: var(--navy); text-align: right; }
+
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 15px 24px;
+      border: none;
+      border-radius: var(--radius);
+      font-family: 'Montserrat', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      text-align: center;
+    }
+
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn:not(:disabled):hover { opacity: 0.88; }
+    .btn-primary { background: var(--blue); color: var(--white); }
+    .btn-navy { background: var(--navy); color: var(--white); }
+    .btn-outline { background: transparent; color: var(--text-sub); border: 1.5px solid var(--border); font-size: 14px; margin-top: 10px; }
+
+    .btn-row { display: flex; gap: 10px; margin-top: 4px; }
+    .btn-row .btn { flex: 1; }
+
+    .error-box {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 10px;
+      padding: 12px 14px;
+      color: var(--red);
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 14px;
+      display: none;
+    }
+
+    .success-screen { text-align: center; padding: 20px 10px; }
+    .deposit-notice { background: #FFF7E6; border: 1.5px solid #FCD34D; border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; display: flex; align-items: flex-start; gap: 10px; }
+    .deposit-notice-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+    .deposit-notice-text { font-size: 13px; color: #92400E; line-height: 1.5; }
+    .deposit-screen { text-align: center; padding: 20px 10px; }
+    .deposit-icon { font-size: 52px; margin-bottom: 12px; }
+    .deposit-title { font-size: 22px; font-weight: 700; color: var(--navy); margin-bottom: 10px; }
+    .deposit-sub { font-size: 14px; color: var(--text-sub); line-height: 1.6; margin-bottom: 24px; }
+    .deposit-amount { display: inline-block; background: var(--blue); color: #fff; font-size: 28px; font-weight: 700; border-radius: 12px; padding: 10px 28px; margin-bottom: 20px; }
+    .btn-pay { background: #16A34A; color: #fff; font-size: 16px; font-weight: 700; padding: 14px 28px; border-radius: 12px; border: none; cursor: pointer; width: 100%; margin-bottom: 10px; }
+    .btn-pay:hover { background: #15803d; }
+
+    .success-icon {
+      width: 72px; height: 72px; border-radius: 50%;
+      background: #dcfce7; display: flex; align-items: center;
+      justify-content: center; margin: 0 auto 20px; font-size: 36px;
+    }
+
+    .success-title { font-size: 22px; font-weight: 700; color: var(--navy); margin-bottom: 10px; }
+    .success-sub { font-size: 14px; color: var(--text-sub); line-height: 1.6; margin-bottom: 24px; }
+
+    .booking-ref {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px; margin-bottom: 24px;
+    }
+
+    .booking-ref-label { font-size: 11px; font-weight: 600; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .booking-ref-num { font-size: 20px; font-weight: 700; color: var(--blue); }
+
+    .hide { display: none !important; }
+
+    @media (max-width: 380px) {
+      .table-grid { grid-template-columns: 1fr 1fr; }
+      .time-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+  </style>
+</head>
+<body>
+<div class="widget">
+
+  <!-- Brand header -->
+  <div class="brand-header">
+    <div class="brand-dot"></div>
+    <div>
+      <div class="brand-title">THE 147</div>
+      <div class="brand-sub">Snooker · Bar · Restaurant</div>
+    </div>
+  </div>
+
+  <!-- Steps -->
+  <div class="steps" id="steps">
+    <div class="step-item">
+      <div class="step-circle active" id="sc1">1</div>
+      <div class="step-label active" id="sl1">Table</div>
+    </div>
+    <div class="step-line" id="line1"></div>
+    <div class="step-item">
+      <div class="step-circle" id="sc2">2</div>
+      <div class="step-label" id="sl2">Date &amp; Time</div>
+    </div>
+    <div class="step-line" id="line2"></div>
+    <div class="step-item">
+      <div class="step-circle" id="sc3">3</div>
+      <div class="step-label" id="sl3">Details</div>
+    </div>
+    <div class="step-line" id="line3"></div>
+    <div class="step-item">
+      <div class="step-circle" id="sc4">4</div>
+      <div class="step-label" id="sl4">Confirm</div>
+    </div>
+  </div>
+
+  <!-- STEP 1: Table type -->
+  <div id="step1">
+    <div class="card">
+      <div class="card-title">Choose a Table</div>
+      <div class="card-sub">Select the type of table you'd like to book</div>
+      <div class="table-grid" id="tableGrid">
+        <div class="table-card" data-type="snooker" onclick="selectTableType(this)">
+          <div class="table-icon">🎱</div>
+          <div class="table-name">Snooker</div>
+          <div class="table-price">From £7.95/hr</div>
+        </div>
+        <div class="table-card" data-type="pool" onclick="selectTableType(this)">
+          <div class="table-icon">🟢</div>
+          <div class="table-name">Pool</div>
+          <div class="table-price">£5/hr</div>
+        </div>
+        <div class="table-card" data-type="dining" onclick="selectTableType(this)">
+          <div class="table-icon">🍽️</div>
+          <div class="table-name">Dining</div>
+          <div class="table-price">Restaurant</div>
+        </div>
+        <div class="table-card" data-type="darts" onclick="selectTableType(this)">
+          <div class="table-icon">🎯</div>
+          <div class="table-name">Darts</div>
+          <div class="table-price">£6/hr</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Snooker table number -->
+    <div class="card hide" id="tableNumCard">
+      <div class="card-title">Which Snooker Table?</div>
+      <div class="card-sub">Select your preferred table (1–10)</div>
+      <div class="table-num-grid" id="tableNumGrid"></div>
+    </div>
+
+    <!-- Pool table number -->
+    <div class="card hide" id="poolTableCard">
+      <div class="card-title">Which Pool Table?</div>
+      <div class="card-sub">Select your preferred table (1–6)</div>
+      <div class="table-num-grid" id="poolTableGrid"></div>
+    </div>
+
+    <!-- Dining guest count -->
+    <div class="card hide" id="diningGuestCard">
+      <div class="card-title">Party Size</div>
+      <div class="card-sub">How many guests are dining?</div>
+      <div class="guest-grid" id="guestGrid"></div>
+    </div>
+
+    <button class="btn btn-primary" id="step1Next" disabled onclick="goToStep2()">Next: Choose Date &amp; Time →</button>
+  </div>
+
+  <!-- STEP 2: Date & Time -->
+  <div id="step2" class="hide">
+    <div class="card">
+      <div class="card-title">Select a Date</div>
+      <div class="date-scroll" id="dateScroll"></div>
+
+      <div id="durationSection">
+        <div class="card-title" style="margin-bottom:12px">Duration</div>
+        <div class="duration-row" id="durRow">
+          <div class="dur-btn selected" data-dur="1" onclick="selectDuration(this)">1 hour</div>
+          <div class="dur-btn" data-dur="2" onclick="selectDuration(this)">2 hours</div>
+          <div class="dur-btn" data-dur="3" onclick="selectDuration(this)">3 hours</div>
+        </div>
+        <div id="priceEstimate" style="display:none;margin-top:10px;text-align:center;font-size:13px;font-weight:600;color:var(--blue);background:#eef3ff;border-radius:8px;padding:7px 12px;"></div>
+      </div>
+
+      <div class="card-title" style="margin-bottom:10px">Available Times</div>
+      <div id="timeContainer">
+        <div class="avail-loading"><span class="spinner-sm"></span>Select a date to see times</div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="goToStep(1)">← Back</button>
+      <button class="btn btn-primary" id="step2Next" disabled onclick="goToStep3()">Next: Your Details →</button>
+    </div>
+  </div>
+
+  <!-- STEP 3: Details -->
+  <div id="step3" class="hide">
+    <div class="card">
+      <div class="card-title">Your Details</div>
+      <div class="card-sub">We need your contact details to confirm the booking</div>
+
+      <div class="error-box" id="detailsError"></div>
+
+      <div class="field">
+        <label>Full Name <span class="req">*</span></label>
+        <input type="text" id="custName" placeholder="Your full name" autocomplete="name" />
+      </div>
+      <div class="field">
+        <label>Email Address <span class="req">*</span></label>
+        <input type="email" id="custEmail" placeholder="your@email.com" autocomplete="email" />
+      </div>
+      <div class="field">
+        <label>Phone Number <span class="req">*</span></label>
+        <input type="tel" id="custPhone" placeholder="07700 000 000" autocomplete="tel" />
+      </div>
+      <div class="field">
+        <label>Notes <span style="color:var(--text-sub);font-weight:400">(optional)</span></label>
+        <textarea id="custNotes" placeholder="Any special requests or notes..."></textarea>
+      </div>
+
+      <label class="consent-row">
+        <input type="checkbox" id="gdprCheck" />
+        <span class="consent-text">
+          I consent to The 147 processing my personal data for the purpose of this booking.
+          Your data will be retained for 90 days then automatically deleted.
+          You can request deletion at any time.
+          See our <a href="https://the147bradford.replit.app/privacy-policy" target="_blank">Privacy Policy</a> for full details.
+        </span>
+      </label>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="goToStep(2)">← Back</button>
+      <button class="btn btn-primary" onclick="goToStep4()">Review Booking →</button>
+    </div>
+  </div>
+
+  <!-- STEP 4: Confirm -->
+  <div id="step4" class="hide">
+    <div class="card">
+      <div class="card-title">Confirm Your Booking</div>
+      <div class="card-sub">Please check your details before confirming</div>
+
+      <div class="error-box" id="confirmError"></div>
+
+      <div class="summary-row">
+        <span class="summary-label">Table</span>
+        <span class="summary-value" id="sumTable">–</span>
+      </div>
+      <div class="summary-row" id="sumGuestRow" style="display:none">
+        <span class="summary-label">Guests</span>
+        <span class="summary-value" id="sumGuests">–</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">Date</span>
+        <span class="summary-value" id="sumDate">–</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">Time</span>
+        <span class="summary-value" id="sumTime">–</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">Duration</span>
+        <span class="summary-value" id="sumDuration">–</span>
+      </div>
+      <div class="summary-row" id="sumCostRow" style="display:none">
+        <span class="summary-label">Est. Cost</span>
+        <span class="summary-value" id="sumCost" style="color:var(--blue);font-weight:700">–</span>
+      </div>
+      <div class="summary-row" id="sumDepositRow" style="display:none">
+        <span class="summary-label">Deposit</span>
+        <span class="summary-value" style="color:#D97706;font-weight:700">£5.00 required</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">Name</span>
+        <span class="summary-value" id="sumName">–</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">Email</span>
+        <span class="summary-value" id="sumEmail">–</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">Phone</span>
+        <span class="summary-value" id="sumPhone">–</span>
+      </div>
+    </div>
+
+    <div id="depositNotice" class="deposit-notice" style="display:none">
+      <div class="deposit-notice-icon">💳</div>
+      <div class="deposit-notice-text">
+        A <strong>£5.00 deposit</strong> is required for dining bookings of 7 or more guests.
+        You'll be taken to a secure Square payment page after confirming.
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="goToStep(3)">← Edit</button>
+      <button class="btn btn-navy" id="confirmBtn" onclick="submitBooking()">Confirm Booking ✓</button>
+    </div>
+  </div>
+
+  <!-- STEP: Deposit Payment -->
+  <div id="stepDeposit" class="hide">
+    <div class="card deposit-screen">
+      <div class="deposit-icon">💳</div>
+      <div class="deposit-title">Deposit Required</div>
+      <div class="deposit-sub">
+        A deposit is required to secure your dining booking for <strong id="depositGuestCount">7</strong> guests.
+        You'll be taken to a secure Square payment page — return here once you've paid.
+      </div>
+      <div class="deposit-amount">£5.00</div>
+      <button class="btn-pay" id="depositPayBtn" onclick="openDepositPayment()">Pay £5.00 Deposit →</button>
+      <div id="depositPaidSection" style="display:none;margin-top:12px;text-align:center">
+        <p style="color:#16A34A;font-size:14px;font-weight:600;margin-bottom:8px">✓ Payment completed? Click below to confirm your booking.</p>
+        <button class="btn btn-navy" onclick="completeDepositBooking()" style="width:100%;font-size:15px;padding:14px">My Booking is Confirmed ✓</button>
+      </div>
+      <div class="booking-ref" style="margin-bottom:16px;margin-top:16px">
+        <div class="booking-ref-label">Booking Reference</div>
+        <div class="booking-ref-num" id="depositRef">#000</div>
+      </div>
+      <button class="btn btn-outline" onclick="resetWidget()" style="width:100%;margin-top:4px">Cancel Booking</button>
+    </div>
+  </div>
+
+  <!-- STEP 5: Success -->
+  <div id="step5" class="hide">
+    <div class="card success-screen">
+      <div class="success-icon">✓</div>
+      <div class="success-title" id="successTitle">Booking Confirmed!</div>
+      <div class="success-sub" id="successMessage">
+        Your table has been reserved. A confirmation has been sent to your email address.
+        Please arrive 5 minutes before your slot.
+      </div>
+      <div class="booking-ref">
+        <div class="booking-ref-label">Booking Reference</div>
+        <div class="booking-ref-num" id="successRef">#000</div>
+      </div>
+      <button class="btn btn-primary" onclick="resetWidget()">Make Another Booking</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const API_BASE = 'https://the147bradford.replit.app';
+  const TABLE_HOURS = ['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00'];
+  const TABLE_NAMES = { snooker: 'Snooker', pool: 'Pool', dining: 'Dining', darts: 'Darts', shuffleboard: 'Shuffleboard' };
+  // Hourly rates (£) — update these to match actual pricing
+  const HOURLY_RATES = { snooker: 7.95, pool: 5.00, darts: 6.00, dining: 0 };
+
+  function updatePriceEstimate() {
+    const el = document.getElementById('priceEstimate');
+    if (!el) return;
+    const rate = HOURLY_RATES[state.tableType];
+    if (rate == null || rate === 0) { el.style.display = 'none'; return; }
+    const total = (rate * state.duration).toFixed(2);
+    el.textContent = `Estimated cost: £${total} (${state.duration} hr × £${rate.toFixed(2)}/hr)`;
+    el.style.display = 'block';
+  }
+
+  let state = freshState();
+
+  function freshState() {
+    return {
+      tableType: null, tableNumber: null, guestCount: null,
+      date: null, duration: 1, time: null,
+      name: '', email: '', phone: '', notes: '',
+      bookedSlots: [], totalTables: 1, blockedPeriodsList: []
+    };
+  }
+
+  const DEPOSIT_THRESHOLD = 7;
+  let depositPaymentUrl = null;
+
+  function goToStep(n) {
+    [1,2,3,4,5].forEach(i => {
+      document.getElementById('step'+i).classList.toggle('hide', i !== n);
+    });
+    document.getElementById('stepDeposit').classList.add('hide');
+    updateStepIndicator(n);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function showDepositStep(bookingId, paymentUrl, guestCount) {
+    depositPaymentUrl = paymentUrl;
+    [1,2,3,4,5].forEach(i => document.getElementById('step'+i).classList.add('hide'));
+    document.getElementById('stepDeposit').classList.remove('hide');
+    document.getElementById('depositRef').textContent = '#' + String(bookingId).padStart(4, '0');
+    document.getElementById('depositGuestCount').textContent = guestCount;
+    document.getElementById('depositPaidSection').style.display = 'none';
+    updateStepIndicator(4);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function openDepositPayment() {
+    if (depositPaymentUrl) {
+      window.open(depositPaymentUrl, '_blank');
+      // After opening Square payment, show the "I've paid" confirmation section
+      setTimeout(() => {
+        document.getElementById('depositPaidSection').style.display = '';
+      }, 1500);
+    }
+  }
+
+  function completeDepositBooking() {
+    // Customer confirms they've paid — show success screen
+    document.getElementById('successTitle').textContent = 'Booking Pending Confirmation';
+    document.getElementById('successRef').textContent = document.getElementById('depositRef').textContent;
+    document.getElementById('successMessage').textContent =
+      'Your booking has been submitted. Once your £5.00 deposit payment is confirmed, your dining reservation will be fully confirmed. You should receive a confirmation email shortly.';
+    goToStep(5);
+  }
+
+  function updateStepIndicator(current) {
+    [1,2,3,4].forEach(i => {
+      const circle = document.getElementById('sc'+i);
+      const label = document.getElementById('sl'+i);
+      if (i < current) {
+        circle.className = 'step-circle done'; circle.textContent = '✓';
+        label.className = 'step-label done';
+      } else if (i === current) {
+        circle.className = 'step-circle active'; circle.textContent = String(i);
+        label.className = 'step-label active';
+      } else {
+        circle.className = 'step-circle'; circle.textContent = String(i);
+        label.className = 'step-label';
+      }
+      if (i < 4) {
+        document.getElementById('line'+i).className = 'step-line' + (i < current ? ' done' : '');
+      }
+    });
+    document.getElementById('steps').classList.toggle('hide', current === 5);
+  }
+
+  // ── Step 1 ──────────────────────────────────────────────────────────────────
+  function selectTableType(el) {
+    document.querySelectorAll('.table-card').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+    state.tableType = el.dataset.type;
+    state.tableNumber = null;
+    state.guestCount = null;
+    state.time = null;
+
+    document.getElementById('tableNumCard').classList.add('hide');
+    document.getElementById('poolTableCard').classList.add('hide');
+    document.getElementById('diningGuestCard').classList.add('hide');
+    document.getElementById('step1Next').disabled = true;
+
+    if (state.tableType === 'snooker') {
+      document.getElementById('tableNumCard').classList.remove('hide');
+      buildSnookerGrid();
+    } else if (state.tableType === 'pool') {
+      document.getElementById('poolTableCard').classList.remove('hide');
+      buildPoolGrid();
+    } else if (state.tableType === 'dining') {
+      document.getElementById('diningGuestCard').classList.remove('hide');
+      buildGuestGrid();
+    } else {
+      document.getElementById('step1Next').disabled = false;
+    }
+    updatePriceEstimate();
+  }
+
+  function buildSnookerGrid() {
+    const grid = document.getElementById('tableNumGrid');
+    grid.innerHTML = '';
+    for (let i = 1; i <= 10; i++) {
+      const btn = document.createElement('div');
+      btn.className = 'num-btn';
+      btn.textContent = String(i);
+      btn.dataset.num = String(i);
+      btn.onclick = () => {
+        document.querySelectorAll('#tableNumGrid .num-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        state.tableNumber = btn.dataset.num;
+        document.getElementById('step1Next').disabled = false;
+      };
+      grid.appendChild(btn);
+    }
+  }
+
+  function buildPoolGrid() {
+    const grid = document.getElementById('poolTableGrid');
+    grid.innerHTML = '';
+    for (let i = 1; i <= 6; i++) {
+      const btn = document.createElement('div');
+      btn.className = 'num-btn';
+      btn.textContent = String(i);
+      btn.dataset.num = String(i);
+      btn.onclick = () => {
+        document.querySelectorAll('#poolTableGrid .num-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        state.tableNumber = btn.dataset.num;
+        document.getElementById('step1Next').disabled = false;
+      };
+      grid.appendChild(btn);
+    }
+  }
+
+  function buildGuestGrid() {
+    const grid = document.getElementById('guestGrid');
+    grid.innerHTML = '';
+    for (let i = 1; i <= 20; i++) {
+      const btn = document.createElement('div');
+      btn.className = 'num-btn';
+      btn.textContent = String(i);
+      btn.dataset.num = String(i);
+      btn.onclick = () => {
+        document.querySelectorAll('#guestGrid .num-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        state.guestCount = parseInt(btn.dataset.num);
+        document.getElementById('step1Next').disabled = false;
+      };
+      grid.appendChild(btn);
+    }
+  }
+
+  function goToStep2() {
+    buildDateScroll();
+    goToStep(2);
+  }
+
+  // ── Date helpers (use local time to avoid UTC/BST off-by-one) ───────────────
+  function localDateStr(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  // ── Step 2 ──────────────────────────────────────────────────────────────────
+  function getBookingDays() {
+    const days = [];
+    const today = new Date();
+    for (let i = 0; i < 182; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      days.push(d);
+    }
+    return days;
+  }
+
+  function buildDateScroll() {
+    const scroll = document.getElementById('dateScroll');
+    scroll.innerHTML = '';
+    getBookingDays().forEach((d) => {
+      const btn = document.createElement('div');
+      btn.className = 'date-btn';
+      const day = d.toLocaleDateString('en-GB', { weekday: 'short' });
+      const num = d.getDate();
+      const mon = d.toLocaleDateString('en-GB', { month: 'short' });
+      btn.innerHTML = `<div class="date-day">${day}</div><div class="date-num">${num}</div><div class="date-mon">${mon}</div>`;
+      btn.dataset.date = localDateStr(d);
+      btn.onclick = () => selectDate(btn, localDateStr(d));
+      scroll.appendChild(btn);
+    });
+  }
+
+  function selectDate(el, dateStr) {
+    document.querySelectorAll('.date-btn').forEach(b => b.classList.remove('selected'));
+    el.classList.add('selected');
+    state.date = dateStr;
+    state.time = null;
+    document.getElementById('step2Next').disabled = true;
+    loadAvailability();
+  }
+
+  function selectDuration(el) {
+    document.querySelectorAll('.dur-btn').forEach(b => b.classList.remove('selected'));
+    el.classList.add('selected');
+    state.duration = parseInt(el.dataset.dur);
+    updatePriceEstimate();
+    if (state.date) {
+      state.time = null;
+      document.getElementById('step2Next').disabled = true;
+      renderTimeSlots();
+    }
+  }
+
+  async function loadAvailability() {
+    if (!state.date) return;
+    const container = document.getElementById('timeContainer');
+    container.innerHTML = '<div class="avail-loading"><span class="spinner-sm"></span>Checking availability…</div>';
+    state.bookedSlots = [];
+    state.totalTables = 1;
+    state.blockedPeriodsList = [];
+
+    try {
+      let url = `${API_BASE}/api/bookings/availability?date=${state.date}&tableType=${state.tableType}`;
+      if (state.tableNumber) url += `&tableNumber=${state.tableNumber}`;
+      const [availRes, blocksRes] = await Promise.all([
+        fetch(url),
+        fetch(`${API_BASE}/api/blocked-periods`),
+      ]);
+      if (availRes.ok) {
+        const data = await availRes.json();
+        if (data && data.totalTables) {
+          state.bookedSlots = data.slots || [];
+          state.totalTables = data.totalTables;
+        } else {
+          state.bookedSlots = Array.isArray(data) ? data : [];
+          state.totalTables = 1;
+        }
+      }
+      if (blocksRes.ok) {
+        state.blockedPeriodsList = await blocksRes.json();
+      }
+    } catch(e) {
+      console.error('Availability fetch failed:', e);
+    }
+
+    renderTimeSlots();
+  }
+
+  function isSlotBlockedByManager(time) {
+    const dateObj = new Date(state.date + 'T00:00:00');
+    const dow = dateObj.getDay(); // 0=Sun...6=Sat
+    const slotStart = toMins(time);
+    const slotEnd = slotStart + state.duration * 60;
+    for (const b of state.blockedPeriodsList) {
+      // Table type filter
+      if (b.tableType && b.tableType !== state.tableType) continue;
+      // Date/day filter
+      const matchDate = b.date && b.date === state.date;
+      const matchDay  = b.dayOfWeek != null && b.dayOfWeek === dow;
+      if (!matchDate && !matchDay) continue;
+      // Time overlap check
+      const bStart = b.startTime ? toMins(b.startTime) : 0;
+      const bEnd   = b.endTime   ? toMins(b.endTime)   : 24 * 60;
+      if (slotStart < bEnd && slotEnd > bStart) return true;
+    }
+    return false;
+  }
+
+  function isSlotBooked(time, duration) {
+    const start = toMins(time);
+    const end = start + duration * 60;
+    let count = 0;
+    for (const slot of state.bookedSlots) {
+      const sStart = toMins(slot.startTime);
+      const sEnd = sStart + (slot.duration || 1) * 60;
+      if (start < sEnd && end > sStart) count++;
+    }
+    return count >= (state.totalTables || 1);
+  }
+
+  function toMins(t) {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + (m || 0);
+  }
+
+  function renderTimeSlots() {
+    const container = document.getElementById('timeContainer');
+    const grid = document.createElement('div');
+    grid.className = 'time-grid';
+
+    const todayStr = localDateStr(new Date());
+    const isToday = state.date === todayStr;
+    const now = new Date();
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const selectedDow = new Date(state.date + 'T00:00:00').getDay(); // 0=Sun...6=Sat
+    const isDiningDay = [0, 3, 4, 5, 6].includes(selectedDow); // Wed=3, Thu=4, Fri=5, Sat=6, Sun=0
+
+    // Dining restriction: only Wed-Sun
+    if (state.tableType === 'dining' && !isDiningDay) {
+      container.innerHTML = '<div class="avail-loading" style="color:var(--red)">🍽️ Dining is only available Wednesday to Sunday. Please choose a different date.</div>';
+      return;
+    }
+
+    const diningStart = toMins('12:00');
+    const diningEnd   = toMins('20:00'); // last slot must end by 20:00
+
+    let anyAvail = false;
+    TABLE_HOURS.forEach(t => {
+      const slotStart = toMins(t);
+      const slotEnd   = slotStart + state.duration * 60;
+
+      // Standard closing: must end by 22:00
+      if (slotEnd > toMins('22:00')) return;
+
+      // Dining hours: 12pm–8pm only
+      if (state.tableType === 'dining') {
+        if (slotStart < diningStart || slotEnd > diningEnd) return;
+      }
+
+      // Hide past/imminent slots on today
+      if (isToday && slotStart < nowMins + 30) return;
+
+      // Manager-blocked periods
+      if (isSlotBlockedByManager(t)) {
+        const btn = document.createElement('div');
+        btn.className = 'time-btn unavailable';
+        btn.innerHTML = `${t}<br><span style="font-size:10px;opacity:0.75">Closed</span>`;
+        grid.appendChild(btn);
+        return;
+      }
+
+      const booked = isSlotBooked(t, state.duration);
+      if (!booked) anyAvail = true;
+
+      const btn = document.createElement('div');
+      btn.className = 'time-btn' + (booked ? ' unavailable' : '') + (state.time === t ? ' selected' : '');
+      btn.textContent = t;
+      if (!booked) {
+        btn.onclick = () => {
+          document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('selected'));
+          btn.classList.add('selected');
+          state.time = t;
+          document.getElementById('step2Next').disabled = false;
+        };
+      }
+      grid.appendChild(btn);
+    });
+
+    container.innerHTML = '';
+    if (!anyAvail && grid.childElementCount === 0) {
+      container.innerHTML = '<div class="avail-loading" style="color:var(--red)">No availability for this date. Please try another day.</div>';
+    } else if (!anyAvail) {
+      container.appendChild(grid);
+      const msg = document.createElement('div');
+      msg.className = 'avail-loading';
+      msg.style.color = 'var(--red)';
+      msg.style.marginTop = '10px';
+      msg.textContent = 'All slots are fully booked or closed for this date.';
+      container.appendChild(msg);
+    } else {
+      container.appendChild(grid);
+    }
+  }
+
+  function goToStep3() { goToStep(3); }
+
+  // ── Step 3 ──────────────────────────────────────────────────────────────────
+  function goToStep4() {
+    const name = document.getElementById('custName').value.trim();
+    const email = document.getElementById('custEmail').value.trim();
+    const phone = document.getElementById('custPhone').value.trim();
+    const gdpr = document.getElementById('gdprCheck').checked;
+    const errBox = document.getElementById('detailsError');
+
+    if (!name || !email || !phone) {
+      errBox.textContent = 'Please fill in all required fields (name, email, phone).';
+      errBox.style.display = 'block'; return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errBox.textContent = 'Please enter a valid email address.';
+      errBox.style.display = 'block'; return;
+    }
+    if (!gdpr) {
+      errBox.textContent = 'You must consent to data processing to make a booking.';
+      errBox.style.display = 'block'; return;
+    }
+
+    errBox.style.display = 'none';
+    state.name = name; state.email = email;
+    state.phone = phone; state.notes = document.getElementById('custNotes').value.trim();
+    populateSummary();
+    goToStep(4);
+  }
+
+  // ── Step 4 ──────────────────────────────────────────────────────────────────
+  function populateSummary() {
+    const tableLabel = TABLE_NAMES[state.tableType] || state.tableType;
+    const tableNum = state.tableNumber ? ` #${state.tableNumber}` : '';
+    document.getElementById('sumTable').textContent = tableLabel + tableNum;
+
+    const guestRow = document.getElementById('sumGuestRow');
+    if (state.tableType === 'dining' && state.guestCount) {
+      document.getElementById('sumGuests').textContent = state.guestCount + ' guest' + (state.guestCount > 1 ? 's' : '');
+      guestRow.style.display = 'flex';
+    } else {
+      guestRow.style.display = 'none';
+    }
+
+    const d = new Date(state.date + 'T00:00:00');
+    document.getElementById('sumDate').textContent = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+    document.getElementById('sumTime').textContent = state.time;
+    document.getElementById('sumDuration').textContent = state.duration + ' hour' + (state.duration > 1 ? 's' : '');
+    const rate = HOURLY_RATES[state.tableType];
+    const costRow = document.getElementById('sumCostRow');
+    if (rate != null && rate > 0) {
+      const total = (rate * state.duration).toFixed(2);
+      document.getElementById('sumCost').textContent = `~£${total}`;
+      costRow.style.display = 'flex';
+    } else {
+      costRow.style.display = 'none';
+    }
+    document.getElementById('sumName').textContent = state.name;
+    document.getElementById('sumEmail').textContent = state.email;
+    document.getElementById('sumPhone').textContent = state.phone;
+
+    // Deposit logic
+    const needsDeposit = state.tableType === 'dining' && state.guestCount >= DEPOSIT_THRESHOLD;
+    document.getElementById('sumDepositRow').style.display = needsDeposit ? 'flex' : 'none';
+    document.getElementById('depositNotice').style.display = needsDeposit ? 'flex' : 'none';
+    const btn = document.getElementById('confirmBtn');
+    btn.textContent = needsDeposit ? 'Confirm & Pay Deposit ✓' : 'Confirm Booking ✓';
+  }
+
+  async function submitBooking() {
+    const btn = document.getElementById('confirmBtn');
+    const errBox = document.getElementById('confirmError');
+    btn.disabled = true;
+    btn.textContent = 'Confirming…';
+    errBox.style.display = 'none';
+
+    const payload = {
+      tableType: state.tableType,
+      tableNumber: state.tableNumber ? String(state.tableNumber) : null,
+      guestCount: state.guestCount || null,
+      date: state.date,
+      startTime: state.time,
+      duration: state.duration,
+      customerName: state.name,
+      customerEmail: state.email,
+      customerPhone: state.phone,
+      notes: state.notes || null,
+      gdprConsent: true,
+      status: 'confirmed',
+    };
+
+    try {
+      const res = await fetch(`${API_BASE}/api/bookings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+
+      // Payment link generation failed — booking is held, customer should call
+      if (res.status === 503 && data.message === 'payment_link_failed') {
+        document.getElementById('successTitle').textContent = 'Booking Reserved';
+        document.getElementById('successRef').textContent = data.bookingRef || ('#' + String(data.bookingId).padStart(4, '0'));
+        document.getElementById('successMessage').textContent =
+          `Your table has been reserved (ref: ${data.bookingRef}) but our online payment system is temporarily unavailable. ` +
+          `Please call us to pay the £5 deposit and confirm your booking. We apologise for the inconvenience.`;
+        goToStep(5);
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(data.message || 'Booking failed. Please try again.');
+      }
+
+      // Deposit required — show deposit payment step
+      if (data.depositRequired && data.depositPaymentUrl) {
+        showDepositStep(data.id, data.depositPaymentUrl, state.guestCount);
+        return;
+      }
+
+      // Standard confirmation
+      document.getElementById('successTitle').textContent = 'Booking Confirmed!';
+      document.getElementById('successRef').textContent = '#' + String(data.id).padStart(4, '0');
+      const tableLabel = TABLE_NAMES[state.tableType] || state.tableType;
+      const dateStr = new Date(state.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long' });
+      document.getElementById('successMessage').textContent =
+        `Your ${tableLabel} booking has been confirmed for ${state.time} on ${dateStr}. A confirmation has been sent to ${state.email}. Please arrive 5 minutes before your slot.`;
+      goToStep(5);
+
+    } catch(err) {
+      errBox.textContent = err.message || 'Something went wrong. Please try again.';
+      errBox.style.display = 'block';
+      btn.disabled = false;
+      const needsDeposit = state.tableType === 'dining' && state.guestCount >= DEPOSIT_THRESHOLD;
+      btn.textContent = needsDeposit ? 'Confirm & Pay Deposit ✓' : 'Confirm Booking ✓';
+    }
+  }
+
+  function resetWidget() {
+    state = freshState();
+    depositPaymentUrl = null;
+    document.getElementById('stepDeposit').classList.add('hide');
+    document.querySelectorAll('.table-card').forEach(c => c.classList.remove('selected'));
+    document.getElementById('tableNumCard').classList.add('hide');
+    document.getElementById('poolTableCard').classList.add('hide');
+    document.getElementById('diningGuestCard').classList.add('hide');
+    document.getElementById('step1Next').disabled = true;
+    document.getElementById('step2Next').disabled = true;
+    document.getElementById('custName').value = '';
+    document.getElementById('custEmail').value = '';
+    document.getElementById('custPhone').value = '';
+    document.getElementById('custNotes').value = '';
+    document.getElementById('gdprCheck').checked = false;
+    document.getElementById('detailsError').style.display = 'none';
+    document.getElementById('confirmError').style.display = 'none';
+    document.querySelectorAll('.dur-btn').forEach((b, i) => b.classList.toggle('selected', i === 0));
+    goToStep(1);
+  }
+</script>
+</body>
+</html>

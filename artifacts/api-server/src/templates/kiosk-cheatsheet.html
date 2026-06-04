@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<title>Kiosk Orders — Staff Cheat Sheet — The 147</title>
+<style>
+  @page { size: A4; margin: 14mm; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #111;
+    background: #fff;
+    line-height: 1.4;
+    padding: 20px 28px;
+    max-width: 820px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 26px;
+    margin: 0 0 4px;
+    border-bottom: 3px solid #111;
+    padding-bottom: 8px;
+  }
+  .subtitle { font-size: 13px; color: #555; margin: 0 0 22px; }
+  h2 {
+    font-size: 17px;
+    background: #111;
+    color: #fff;
+    padding: 6px 12px;
+    margin: 22px 0 10px;
+    border-radius: 4px;
+  }
+  ol, ul { padding-left: 22px; margin: 0 0 14px; }
+  ol li, ul li { margin-bottom: 8px; font-size: 14px; }
+  ol li strong, ul li strong { font-weight: 700; }
+  .callout {
+    border-left: 4px solid #d97706;
+    background: #fef3c7;
+    padding: 10px 14px;
+    margin: 12px 0;
+    font-size: 13px;
+    border-radius: 0 4px 4px 0;
+  }
+  .callout-good { border-left-color: #059669; background: #d1fae5; }
+  .callout-bad { border-left-color: #dc2626; background: #fee2e2; }
+  .key {
+    display: inline-block;
+    background: #111;
+    color: #fff;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  .footer {
+    margin-top: 28px;
+    padding-top: 10px;
+    border-top: 1px solid #ddd;
+    font-size: 11px;
+    color: #888;
+    text-align: center;
+  }
+  .print-btn {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    background: #111;
+    color: #fff;
+    border: 0;
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  @media print { .print-btn { display: none; } body { padding: 0; } }
+</style>
+</head>
+<body>
+<button class="print-btn" onclick="window.print()">Print this page</button>
+
+<h1>Kiosk Orders — Staff Cheat Sheet</h1>
+<p class="subtitle">How kiosk orders work and what staff need to do. Pin this near the till.</p>
+
+<h2>How the kiosk works (the short version)</h2>
+<ul>
+  <li><strong>Card-only.</strong> The kiosk takes card payments at the counter terminal &mdash; no cash, no "pay at counter later".</li>
+  <li>Customer adds items on the kiosk, types their name &amp; table number, and taps <span class="key">Pay by card</span>.</li>
+  <li>The counter terminal lights up. Customer taps, inserts or swipes their card on the terminal.</li>
+  <li>Once payment goes through, the order fires straight to the <strong>bar/kitchen KDS</strong>. Staff don't need to do anything on the till.</li>
+  <li>Customer sees their order number on the kiosk screen and waits at their table for delivery.</li>
+</ul>
+
+<div class="callout callout-good">
+  <strong>Normal day, you do nothing.</strong> Kiosk orders pay themselves on the terminal and appear on the KDS automatically. The till just records them like any other card sale.
+</div>
+
+<h2>If a customer says "the card terminal won't work"</h2>
+<ol>
+  <li>Check the terminal is on, has signal, and isn't mid-transaction with another customer.</li>
+  <li>Ask the customer to try a different card if possible.</li>
+  <li>If it still won't go through, the kiosk will show <strong>"Card payment unavailable, please order at the counter"</strong>. The kiosk order is automatically cancelled &mdash; nothing is owed and nothing fires to the KDS.</li>
+  <li>Take their order on the till as you would any other walk-up customer (cash or card on the till).</li>
+</ol>
+
+<div class="callout callout-bad">
+  <strong>Important:</strong> If for any reason a kiosk order does appear in the till's Online Orders / Pickup queue (rare &mdash; only happens if the terminal pushed but the customer never tapped a card, or if a previous version of the app left an unpaid order behind), <strong>do NOT charge it on the till</strong>. Doing so closes the order without firing the food/drink to the KDS. Instead, find the order on the staff dashboard (<strong>/staff &rarr; Orders &amp; Menu &rarr; Orders</strong>), take the payment physically, and tap the green <span class="key">Mark Paid</span> button. That fires the prep ticket to the KDS.
+</div>
+
+<h2>If a customer says "I paid but my food/drink hasn't come"</h2>
+<ol>
+  <li>Open the staff dashboard at <strong>/staff &rarr; Orders &amp; Menu &rarr; Orders</strong>.</li>
+  <li>Find the order by name or kiosk ticket number (the blue <span class="key">KIOSK #42</span> badge).</li>
+  <li>Check its status:
+    <ul>
+      <li><strong>Paid</strong> &mdash; the KDS has the order. Check the bar/kitchen for the holdup.</li>
+      <li><strong>Pay at counter</strong> &mdash; the terminal payment didn't actually complete. Take payment now and tap <span class="key">Mark Paid</span>.</li>
+      <li><strong>Cancelled</strong> &mdash; the order was voided. The customer wasn't charged. Re-take the order on the till.</li>
+    </ul>
+  </li>
+</ol>
+
+<h2>If a customer wants to add or cancel items after ordering</h2>
+<ul>
+  <li><strong>Add items:</strong> their kiosk order is already paid, so just take the new items as a fresh sale on the till.</li>
+  <li><strong>Cancel:</strong> open the order on the staff dashboard and tap <span class="key">Cancel order</span>. If they were already charged, refund through the Square dashboard separately.</li>
+</ul>
+
+<div class="footer">
+  The 147 &mdash; Bradford &mdash; Kiosk Orders Cheat Sheet &middot; Card-only kiosk &middot; Pin near the till.
+</div>
+
+</body>
+</html>

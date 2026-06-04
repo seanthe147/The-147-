@@ -1,0 +1,1 @@
+- [The 147 workspace structure](the-147-structure.md) — key non-obvious decisions made during the migration from a monolithic repo to pnpm workspace
