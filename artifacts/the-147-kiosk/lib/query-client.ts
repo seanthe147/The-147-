@@ -7,13 +7,13 @@ export function getApiUrl(): string {
     return window.location.origin;
   }
 
-  const host = process.env.EXPO_PUBLIC_DOMAIN;
+  const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL;
 
-  if (!host) {
-    throw new Error("EXPO_PUBLIC_DOMAIN is not set");
+  if (!apiBase) {
+    throw new Error("EXPO_PUBLIC_API_BASE_URL is not set");
   }
 
-  return `https://${host}`;
+  return apiBase;
 }
 
 async function throwIfResNotOk(res: Response) {

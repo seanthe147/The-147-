@@ -33,6 +33,41 @@ https://expo.dev/accounts/the-147/projects/the-147-kiosk/settings/environment-va
 You can find your production domain by deploying the project on Replit (the "Publish"
 button) — it appears as `<project>.<username>.replit.app`.
 
+## Environment variables (one time only)
+
+The production kiosk build must hit the live API, not the Replit dev domain.
+Set `EXPO_PUBLIC_API_BASE_URL` in EAS for the `production` environment before
+triggering a production build.
+
+### Set via EAS CLI
+```bash
+cd artifacts/the-147-kiosk
+EXPO_TOKEN=<your-expo-token> eas env:create \
+  --name EXPO_PUBLIC_API_BASE_URL \
+  --value "https://<your-deployed-domain>/api" \
+  --environment production
+```
+Replace `<your-deployed-domain>` with the domain shown in the Replit deployment
+dashboard (e.g. `the-147.replit.app`).
+
+### Or set via the Expo dashboard
+Open https://expo.dev/accounts/the-147/projects/the-147-kiosk/settings/environment-variables,
+add a new variable:
+- **Name**: `EXPO_PUBLIC_API_BASE_URL`
+- **Value**: `https://<your-deployed-domain>/api`
+- **Environment**: `production`
+
+### Local / dev builds
+Copy `.env.example` to `.env.local` and fill in your Replit dev domain:
+```bash
+cp .env.example .env.local
+# Then edit .env.local:
+# EXPO_PUBLIC_API_BASE_URL=https://<your-replit-dev-domain>/api
+```
+`.env.local` is gitignored and never baked into EAS builds.
+
+---
+
 ## What still needs doing (one time only)
 
 EAS needs to create an **App Store provisioning profile** for
