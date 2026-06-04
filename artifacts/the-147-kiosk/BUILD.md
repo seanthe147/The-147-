@@ -1,61 +1,78 @@
 # Building The 147 Kiosk for iPad
 
-## EAS project is already registered
-- **EAS Project ID**: `b35e28d2-6a2a-4cd2-bb07-f426fb4f31bd`
-- **EAS project page**: https://expo.dev/accounts/the-147/projects/the-147-kiosk
+## What's already done
+- **EAS project registered**: `@the-147/the-147-kiosk`
+  - Project ID: `b35e28d2-6a2a-4cd2-bb07-f426fb4f31bd`
+  - Project page: https://expo.dev/accounts/the-147/projects/the-147-kiosk
 - **Bundle ID**: `com.the147bradford.kiosk`
+- **Apple Team**: `94LW5H4828` (Cue Gardens Ltd) — already in eas.json
+- **Distribution Certificate**: already stored in EAS
+  (serial `7FF7BB4E8DEB3793A4B6A49C092806BC`, same team as the main app)
+- **Build profiles**: `eas.json` has `development`, `preview`, and `production`
 
-## One-time setup: link your Apple Distribution Certificate
+## What still needs doing (one time only)
 
-You only need to do this the first time. From any machine with Expo CLI installed and your
-Apple Developer credentials to hand, run:
+EAS needs to create an **App Store provisioning profile** for
+`com.the147bradford.kiosk` in your Apple Developer account. This requires
+Apple Developer credentials and must be done from a terminal that can run
+EAS CLI.
 
+### Option A — via EAS interactive setup (recommended)
 ```bash
 cd artifacts/the-147-kiosk
 EXPO_TOKEN=<your-expo-token> eas credentials --platform ios
 ```
+When prompted, choose:
+- **"Manage build credentials"**
+- **"Distribution Certificate"** → choose the existing one
+  (serial `7FF7BB4E8DEB3793A4B6A49C092806BC`)
+- **"Provisioning Profile"** → "Add a new provisioning profile"
+  (EAS will create it automatically using your Apple credentials)
 
-Follow the prompts — EAS will create (or reuse an existing) Distribution Certificate and a
-provisioning profile for `com.the147bradford.kiosk` and store them securely in EAS.
+You'll be asked to log in with your Apple ID or provide an
+App Store Connect API key (Key ID + Issuer ID + .p8 file).
 
-## Trigger a production build
+### Option B — via App Store Connect API key (fastest, no MFA needed)
+If you have an App Store Connect API key for team `94LW5H4828`:
+```bash
+cd artifacts/the-147-kiosk
+EXPO_TOKEN=<expo-token> \
+EXPO_ASC_KEY_ID=<your-key-id> \
+EXPO_ASC_ISSUER_ID=<your-issuer-id> \
+EXPO_ASC_KEY_PATH=/path/to/AuthKey_<key-id>.p8 \
+eas build --platform ios --profile production --non-interactive
+```
+Find the Key ID and Issuer ID at:
+https://appstoreconnect.apple.com/access/integrations/api
 
-Once credentials are set up, you can trigger a build from any machine (including this Replit):
-
+## Trigger a production build (after credentials are set up)
+```bash
+cd artifacts/the-147-kiosk
+EXPO_TOKEN=<expo-token> eas build --platform ios --profile production --non-interactive
+```
+Or from the workspace root:
 ```bash
 pnpm --filter @workspace/the-147-kiosk exec eas build --platform ios --profile production
 ```
-
-Or from inside the kiosk directory:
-
-```bash
-cd artifacts/the-147-kiosk
-EXPO_TOKEN=<your-expo-token> eas build --platform ios --profile production
-```
-
-EAS builds in the cloud — no Mac required. The build takes ~15–20 minutes.
+EAS builds in the cloud — no Mac required. Takes ~15–20 minutes.
 
 ## Distribute to the venue iPad
 
-### Option A — TestFlight (easiest)
+### Via TestFlight (easiest)
 1. Go to https://expo.dev/accounts/the-147/projects/the-147-kiosk
 2. Download the IPA once the build is green
-3. Upload to App Store Connect → TestFlight
-4. Install on the venue iPad via TestFlight
+3. Upload to App Store Connect → TestFlight → install on venue iPad
 
-### Option B — MDM / direct install (no App Store needed)
-Build with the `preview` profile instead (uses `internal` distribution):
-
+### Via MDM / Apple Configurator 2 (no App Store needed)
+Use the `preview` profile instead (internal distribution):
 ```bash
 eas build --platform ios --profile preview
 ```
+Then sideload the IPA directly via Apple Configurator 2 or your MDM.
 
-Then use Apple Configurator 2 or your MDM solution to sideload the IPA directly.
-
-## eas.json profiles at a glance
-
-| Profile | Distribution | Simulator | Auto-increment |
-|---------|-------------|-----------|----------------|
-| `development` | Internal | No | No |
-| `preview` | Internal | No | No |
-| `production` | App Store | No | Yes |
+## EAS profiles at a glance
+| Profile      | Distribution | Simulator | Auto-increment |
+|-------------|-------------|-----------|----------------|
+| `development` | Internal  | No        | No             |
+| `preview`     | Internal  | No        | No             |
+| `production`  | App Store | No        | Yes            |
