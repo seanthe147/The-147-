@@ -6915,12 +6915,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       // If the customer selected an ISSUED loyalty reward, look up its discount
-      // value from Square and deduct it from the total BEFORE returning
-      // amountPence to the client.  Mark the reward redeemed non-blocking.
+      // value from Square and AWAIT the redemption so the discount is applied
+      // to the Square order before we return amountPence to the client.
+      // If redeemIssuedLoyaltyReward is not awaited the Square order total stays
+      // at the full amount and the subsequent /pay call is rejected with
+      // "payment total does not match order total".
       let loyaltyDiscountPence = 0;
       if (loyaltyRewardId && typeof loyaltyRewardId === "string" && orderId) {
         loyaltyDiscountPence = await square.getIssuedRewardDiscountPence(loyaltyRewardId, squareTotalPence);
-        square.redeemIssuedLoyaltyReward(loyaltyRewardId, orderId).catch(() => {});
+        await square.redeemIssuedLoyaltyReward(loyaltyRewardId, orderId);
       }
       const totalPence = Math.max(0, squareTotalPence - loyaltyDiscountPence);
 
