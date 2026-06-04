@@ -1,0 +1,3296 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "contact": {
+      "email": "poslink@teya.com",
+      "name": "Poslink Service",
+      "url": "https://teyaglobal.atlassian.net/wiki/spaces/CE/pages/5993563200/Integration+Guide"
+    },
+    "description": "Handles messaging between the ePOS software and terminal.",
+    "title": "POSLink API",
+    "version": "1.2"
+  },
+  "servers": [
+    {
+      "url": "https://api.teya.com",
+      "description": "Production Server"
+    }
+  ],
+  "security": [
+    {
+      "authorisation": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Payment Requests"
+    },
+    {
+      "name": "Refunds"
+    },
+    {
+      "name": "Stores"
+    },
+    {
+      "name": "Terminals"
+    },
+    {
+      "name": "Print Receipts (ePOS)",
+      "description": "Create a receipt print job and fetch its status/events"
+    }
+  ],
+  "paths": {
+    "/poslink/v2/payment-requests" : {
+      "post" : {
+        "description" : "This API call is used to create a new payment request",
+        "operationId" : "createPayment",
+        "parameters" : [ {
+          "description" : "A unique key used to identify the request. Repeating the request with the same key will return the same response.\nUse different keys for different requests.\nUse the same key for retries of the same request.\n",
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "maxLength" : 64,
+            "minLength" : 1,
+            "type" : "string",
+            "description" : "A unique key used to identify the request. Repeating the request with the same key will return the same response.\nUse different keys for different requests.\nUse the same key for retries of the same request.\n"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreatePaymentRequestV2"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "examples" : {
+                  "Create_Payment_New_10_V2" : {
+                    "description" : "Create_Payment_New_10_V2",
+                    "value" : {
+                      "payment_request_id" : "dfc4fc52-8293-45b6-9f3e-b3b0f8f88188",
+                      "requested_amount" : {
+                        "currency" : "GBP",
+                        "amount" : 10,
+                        "tip" : 0
+                      },
+                      "status" : "NEW",
+                      "transaction_type" : "SALE",
+                      "created_at" : "2022-06-15T16:24:120Z",
+                      "updated_at" : "2022-06-15T16:26:120Z",
+                      "merchant_reference" : "423897410",
+                      "terminal_id" : "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+                      "store_id" : "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+                    }
+                  },
+                  "Create_Payment_New_20_V2" : {
+                    "description" : "Create_Payment_New_20_V2",
+                    "value" : {
+                      "payment_request_id" : "452aade7-8b08-4d81-a510-d5e19d34b6dd",
+                      "requested_amount" : {
+                        "currency" : "GBP",
+                        "amount" : 20,
+                        "tip" : 0
+                      },
+                      "status" : "NEW",
+                      "transaction_type" : "SALE",
+                      "created_at" : "2022-06-15T16:24:120Z",
+                      "updated_at" : "2022-06-15T16:26:120Z",
+                      "merchant_reference" : "423897410",
+                      "terminal_id" : "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+                      "store_id" : "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+                    }
+                  },
+                  "Create_Payment_New_30_V2" : {
+                    "description" : "Create_Payment_New_30_V2",
+                    "value" : {
+                      "payment_request_id" : "19799e09-1c66-4f35-b0e4-ce3f1ed1872c",
+                      "requested_amount" : {
+                        "currency" : "GBP",
+                        "amount" : 30,
+                        "tip" : 0
+                      },
+                      "status" : "NEW",
+                      "transaction_type" : "SALE",
+                      "created_at" : "2022-06-15T16:24:120Z",
+                      "updated_at" : "2022-06-15T16:26:120Z",
+                      "merchant_reference" : "423897410",
+                      "terminal_id" : "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+                      "store_id" : "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+                    }
+                  },
+                  "Create_Payment_New_40_V2" : {
+                    "description" : "Create_Payment_New_40_V2",
+                    "value" : {
+                      "payment_request_id" : "7d5bde02-3076-4fe0-b728-3bfe3e6e5a5b",
+                      "requested_amount" : {
+                        "currency" : "GBP",
+                        "amount" : 40,
+                        "tip" : 0
+                      },
+                      "status" : "NEW",
+                      "transaction_type" : "SALE",
+                      "created_at" : "2022-06-15T16:24:120Z",
+                      "updated_at" : "2022-06-15T16:26:120Z",
+                      "merchant_reference" : "423897410",
+                      "terminal_id" : "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+                      "store_id" : "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+                    }
+                  },
+                  "Create_Payment_New_50_V2" : {
+                    "description" : "Create_Payment_New_50_V2",
+                    "value" : {
+                      "payment_request_id" : "d0cae7a7-b068-4342-bb23-87f70b0de6bc",
+                      "requested_amount" : {
+                        "currency" : "GBP",
+                        "amount" : 50,
+                        "tip" : 0
+                      },
+                      "status" : "NEW",
+                      "transaction_type" : "SALE",
+                      "created_at" : "2022-06-15T16:24:120Z",
+                      "updated_at" : "2022-06-15T16:26:120Z",
+                      "merchant_reference" : "423897410",
+                      "terminal_id" : "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+                      "store_id" : "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+                    }
+                  },
+                  "Create_Payment_New_60_V2" : {
+                    "description" : "Create_Payment_New_60_V2",
+                    "value" : {
+                      "payment_request_id" : "2caa487d-a742-40e8-9323-59af71e2e1ad",
+                      "requested_amount" : {
+                        "currency" : "GBP",
+                        "amount" : 60,
+                        "tip" : 0
+                      },
+                      "status" : "NEW",
+                      "transaction_type" : "SALE",
+                      "created_at" : "2022-06-15T16:24:120Z",
+                      "updated_at" : "2022-06-15T16:26:120Z",
+                      "merchant_reference" : "423897410",
+                      "terminal_id" : "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+                      "store_id" : "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+                    }
+                  },
+                  "Create_Payment_New_70_V2" : {
+                    "description" : "Create_Payment_New_70_V2",
+                    "value" : {
+                      "payment_request_id" : "bee17dec-01dd-4ee5-a17d-ec01dd2ee5ca",
+                      "requested_amount" : {
+                        "currency" : "GBP",
+                        "amount" : 70,
+                        "tip" : 0
+                      },
+                      "status" : "NEW",
+                      "transaction_type" : "SALE",
+                      "created_at" : "2022-06-15T16:24:120Z",
+                      "updated_at" : "2022-06-15T16:26:120Z",
+                      "merchant_reference" : "423897410",
+                      "terminal_id" : "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+                      "store_id" : "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/CreatePaymentResponseV2"
+                }
+              }
+            },
+            "description" : "Payment request created successfully"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "example" : {
+                  "code" : "BAD_REQUEST",
+                  "description" : "Bad Request"
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description" : "Bad request"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "example" : {
+                  "code" : "UNAUTHORIZED",
+                  "description" : "Unauthorized"
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description" : "Lacks valid authentication credentials for the requested resource"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "example" : {
+                  "code" : "FORBIDDEN",
+                  "description" : "Forbidden"
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description" : "The server understands the request but refuses to authorize it"
+          },
+          "408" : {
+            "content" : {
+              "application/json" : {
+                "example" : {
+                  "code" : "REQUEST_TIMEOUT",
+                  "description" : "Request timeout"
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description" : "Request timeout"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description" : "Conflict"
+          },
+          "422" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description" : "Unprocessable Entity"
+          },
+          "429" : {
+            "content" : {
+              "application/json" : {
+                "example" : {
+                  "code" : "TOO_MANY_REQUESTS",
+                  "description" : "Too Many Requests"
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description" : "Too many requests in a given amount of time"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "example" : {
+                  "code" : "INTERNAL_SERVER_ERROR",
+                  "description" : "Internal Server Error"
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description" : "Internal Server Error"
+          }
+        },
+        "summary" : "Create a payment request",
+        "tags" : [ "Payment Requests" ]
+      }
+    },
+    "/poslink/v2/payment-requests/{payment-request-id}": {
+      "get": {
+        "description": "Streams real-time updates for a payment request using Server‑Sent Events (SSE) with content type text/event-stream.\n\nEach message in the stream is an SSE event with:\n- event: full or diff\n- data: a JSON object that matches the RetrieveStreamPaymentResponse schema\n- a blank line terminates each event frame\n\nSemantics:\n- The first event is event: full and contains a full snapshot of the payment request.\n- While the payment remains non-final, subsequent events are event: diff and may include only the fields that have changed.\n  Clients should merge diff objects onto the latest known state keyed by payment_request_id, using updated_at to apply the most recent values.\n- When the payment reaches a final status (SUCCESSFUL, FAILED, or CANCELLED), a final event: full is sent and the stream is closed.\n- If the payment is already final when requested, a single event: full is sent and the connection is closed immediately.\n\nConnection behavior:\n- The server may close the connection after approximately one minute of inactivity; clients should reconnect if they still expect updates.\n\nWire examples:\n- Full snapshot frame:\n  event: full\n  data: {\"payment_request_id\":\"...\",\"status\":\"NEW\",\"...\":\"...\"}\n\n- Diff frame:\n  event: diff\n  data: {\"payment_request_id\":\"...\",\"status\":\"IN_PROGRESS\",\"progress_status\":\"CARD_PRESENTED\",\"updated_at\":\"2022-06-15T16:27:12Z\"}\n\nNote: The response schema below describes the structure of \"data\" within each SSE frame (the JSON payload), not the SSE framing itself.\n",
+        "operationId": "getPaymentById",
+        "parameters": [
+          {
+            "description": "The ID assigned to the payment request",
+            "in": "path",
+            "name": "payment-request-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "examples": {
+                  "Stream_Payment_Response_Failed": {
+                    "description": "Stream_Payment_Response_Failed",
+                    "value": {
+                      "payment_request_id": "2caa487d-a742-40e8-9323-59af71e2e1ad",
+                      "requested_amount": {
+                        "currency": "GBP",
+                        "amount": 60,
+                        "tip": 0
+                      },
+                      "status": "FAILED",
+                      "transaction_type": "SALE",
+                      "created_at": "2022-06-15T16:24:120Z",
+                      "updated_at": "2022-06-15T16:29:120Z",
+                      "merchant_reference": "423897460",
+                      "status_reason": "DECLINED_ONLINE",
+                      "terminal_id": "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+                      "store_id": "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+                    }
+                  },
+                  "Stream_Payment_Response_InProgress_Card_Presented": {
+                    "description": "Stream_Payment_Response_InProgress_Card_Presented",
+                    "value": {
+                      "payment_request_id": "dfc4fc52-8293-45b6-9f3e-b3b0f8f88188",
+                      "status": "IN_PROGRESS",
+                      "progress_status": "CARD_PRESENTED",
+                      "updated_at": "2022-06-15T16:27:120Z"
+                    }
+                  },
+                  "Stream_Payment_Response_InProgress_Waiting_For_Card_Entry": {
+                    "description": "Stream_Payment_Response_InProgress_Waiting_For_Card_Entry",
+                    "value": {
+                      "payment_request_id": "dfc4fc52-8293-45b6-9f3e-b3b0f8f88188",
+                      "status": "IN_PROGRESS",
+                      "progress_status": "WAITING_FOR_CARD_ENTRY",
+                      "updated_at": "2022-06-15T16:26:120Z"
+                    }
+                  },
+                  "Stream_Payment_Response_New": {
+                    "description": "Stream_Payment_Response_New",
+                    "value": {
+                      "payment_request_id": "dfc4fc52-8293-45b6-9f3e-b3b0f8f88188",
+                      "requested_amount": {
+                        "currency": "GBP",
+                        "amount": 10,
+                        "tip": 0
+                      },
+                      "status": "NEW",
+                      "transaction_type": "SALE",
+                      "created_at": "2022-06-15T16:24:120Z",
+                      "updated_at": "2022-06-15T16:24:120Z",
+                      "merchant_reference": "423897410",
+                      "terminal_id": "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+                      "store_id": "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+                    }
+                  },
+                  "Stream_Payment_Response_Successful": {
+                    "description": "Stream_Payment_Response_Successful",
+                    "value": {
+                      "payment_request_id": "bee17dec-01dd-4ee5-a17d-ec01dd2ee5ca",
+                      "requested_amount": {
+                        "currency": "GBP",
+                        "amount": 70,
+                        "tip": 0
+                      },
+                      "status": "SUCCESSFUL",
+                      "transaction_type": "SALE",
+                      "created_at": "2022-06-15T16:24:120Z",
+                      "updated_at": "2022-06-15T16:29:120Z",
+                      "transaction_timestamp": "2022-06-15T16:25:45.123Z",
+                      "merchant_reference": "423897430",
+                      "transaction_id": "te3c89aa-d84f-4916-b88b-7e6a051765fa",
+                      "gateway_payment_id": "39e3bacdd5d38d9ce611cf88afbcc86df829a9a5641880b3",
+                      "terminal_id": "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+                      "store_id": "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3",
+                      "metadata": {
+                        "payment_method_details": {
+                          "card": {
+                            "last4": "1234",
+                            "issuing_country": "GB",
+                            "brand": "MASTERCARD",
+                            "type": "DEBIT",
+                            "bin": "123456"
+                          },
+                          "entry_mode": "MAGSTRIPE_SWIPED",
+                          "verification_method": "OFFLINE_PIN",
+                          "application_name": "Debit MasterCard",
+                          "application_id": "A0000000041010",
+                          "mid": "5006544",
+                          "response_code": "00",
+                          "authorisation_code": "A8RLR8"
+                        }
+                      }
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RetrieveStreamPaymentResponse"
+                }
+              }
+            },
+            "description": "Payment request with real-time status updates"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "BAD_REQUEST",
+                  "description": "Bad Request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "UNAUTHORIZED",
+                  "description": "Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Lacks valid authentication credentials for the requested resource"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "FORBIDDEN",
+                  "description": "Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "The server understands the request but refuses to authorize it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "PAYMENT_REQUEST_NOT_FOUND",
+                  "description": "Not found"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Payment request not found"
+          },
+          "408": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "REQUEST_TIMEOUT",
+                  "description": "Request timeout"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Request timeout"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "TOO_MANY_REQUESTS",
+                  "description": "Too Many Requests"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Too many requests in a given amount of time"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "INTERNAL_SERVER_ERROR",
+                  "description": "Internal Server Error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get payment request with real-time updates",
+        "tags": [
+          "Payment Requests"
+        ]
+      },
+      "patch": {
+        "description": "This API call is used to update a payment request",
+        "operationId": "updatePayment",
+        "parameters": [
+          {
+            "description": "The ID assigned to the payment request",
+            "in": "path",
+            "name": "payment-request-id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewCancelPaymentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "Update_Payment_Cancelling_Cancelled": {
+                    "description": "Update_Payment_Cancelling_Cancelled",
+                    "value": {
+                      "code": "CANNOT_CANCEL_CANCELLED_PAYMENT_REQUEST",
+                      "description": "ePos unable to cancel payment request, transaction already in cancelled status"
+                    }
+                  },
+                  "Update_Payment_Cancelling_Failed": {
+                    "description": "Update_Payment_Cancelling_Failed",
+                    "value": {
+                      "code": "CANNOT_CANCEL_FAILED_PAYMENT_REQUEST",
+                      "description": "ePos unable to cancel payment request, transaction already in failed status"
+                    }
+                  },
+                  "Update_Payment_Cancelling_InProgress": {
+                    "description": "Update_Payment_Cancelling_InProgress",
+                    "value": {
+                      "payment_request_id": "452aade7-8b08-4d81-a510-d5e19d34b6dd",
+                      "status": "CANCELLING",
+                      "updated_at": "2023-08-14T11:28:45.610Z"
+                    }
+                  },
+                  "Update_Payment_Cancelling_New": {
+                    "description": "Update_Payment_Cancelling_New",
+                    "value": {
+                      "payment_request_id": "dfc4fc52-8293-45b6-9f3e-b3b0f8f88188",
+                      "status": "CANCELLING",
+                      "updated_at": "2023-08-14T11:28:45.610Z"
+                    }
+                  },
+                  "Update_Payment_Cancelling_Successful": {
+                    "description": "Update_Payment_Cancelling_Successful",
+                    "value": {
+                      "code": "CANNOT_CANCEL_SUCCESSFUL_PAYMENT_REQUEST",
+                      "description": "ePos unable to cancel payment request, As it has already completed"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/CancelPaymentRequestResponse"
+                }
+              }
+            },
+            "description": "Payment request updated successfully"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "BAD_REQUEST",
+                  "description": "Bad Request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "UNAUTHORIZED",
+                  "description": "Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Lacks valid authentication credentials for the requested resource"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "FORBIDDEN",
+                  "description": "Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "The server understands the request but refuses to authorize it"
+          },
+          "408": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "REQUEST_TIMEOUT",
+                  "description": "Request timeout"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Request timeout"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "UNSUPPORTED_MEDIA_TYPE",
+                  "description": "Unsupported Media Type"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "TOO_MANY_REQUESTS",
+                  "description": "Too Many Requests"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Too many requests in a given amount of time"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "INTERNAL_SERVER_ERROR",
+                  "description": "Internal Server Error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Update a payment request",
+        "tags": [
+          "Payment Requests"
+        ]
+      }
+    },
+    "/poslink/v1/payment-requests" : {
+      "get" : {
+        "description" : "This API call is used to retrieve a list of payment requests and their details",
+        "operationId" : "getPayments",
+        "parameters" : [ {
+          "description" : "The ID of the store to retrieve requests associated with",
+          "example" : "da728238-ee94-470a-a1ba-a03161fdf98c",
+          "in" : "query",
+          "name" : "store_id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "description" : "The ID of the terminal to retrieve requests associated with",
+          "example" : "2a3bdd2f-b52a-426c-b0fc-48c963650882",
+          "in" : "query",
+          "name" : "terminal_id",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "The current status of the request. Must be a valid enum value. If you omit this parameter, the returned list will include all statuses",
+          "example" : "NEW",
+          "in" : "query",
+          "name" : "status",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "enum" : [ "NEW", "IN_PROGRESS", "SUCCESSFUL", "CANCELLING", "CANCELLED", "FAILED" ]
+          }
+        }, {
+          "description" : "The transaction type of the request. Must be a valid enum value",
+          "example" : "SALE",
+          "in" : "query",
+          "name" : "transaction_type",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "enum" : [ "SALE" ]
+          }
+        }, {
+          "description" : "The start date using the ISO 8601 format",
+          "example" : "2023-09-20T11:00:00Z",
+          "in" : "query",
+          "name" : "start_date_time",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }, {
+          "description" : "The end date using the ISO 8601 format",
+          "example" : "2023-09-20T11:00:00Z",
+          "in" : "query",
+          "name" : "end_date_time",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }, {
+          "description" : "The maximum number of results to be returned",
+          "example" : 20,
+          "in" : "query",
+          "name" : "limit",
+          "required" : false,
+          "schema" : {
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 10
+          }
+        }, {
+          "description" : "The (zero-based) offset of the first record in the collection to return",
+          "example" : 1,
+          "in" : "query",
+          "name" : "offset",
+          "required" : false,
+          "schema" : {
+            "minimum" : 0,
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0
+          }
+        }, {
+          "description" : "Sort the result set in ascending (ASC) or descending (DESC) order based on the date the payment request is created",
+          "example" : "ASC",
+          "in" : "query",
+          "name" : "sort",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "enum" : [ "ASC", "DESC" ]
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "examples" : {
+                  "List_Payment_Requests_All" : {
+                    "description" : "List_Payment_Requests_All",
+                    "value" : {
+                      "payment_requests" : [ {
+                        "payment_request_id" : "2caa487d-a742-40e8-9323-59af71e2e1ad",
+                        "requested_amount" : {
+                          "currency" : "GBP",
+                          "amount" : 60,
+                          "tip" : 0
+                        },
+                        "status" : "FAILED",
+                        "transaction_type" : "SALE",
+                        "created_at" : "2022-06-15T16:24:120Z",
+                        "updated_at" : "2022-06-15T16:25:120Z",
+                        "source_reference_id" : "423897460",
+                        "merchant_reference" : "423897460",
+                        "status_reason" : "DECLINED_ONLINE",
+                        "epos_instance_id" : "reg92056_epos",
+                        "terminal_id" : "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+                        "store_id" : "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+                      }, {
+                        "payment_request_id" : "19799e09-1c66-4f35-b0e4-ce3f1ed1872c",
+                        "requested_amount" : {
+                          "currency" : "GBP",
+                          "amount" : 30,
+                          "tip" : 0
+                        },
+                        "status" : "SUCCESSFUL",
+                        "transaction_type" : "SALE",
+                        "created_at" : "2022-06-15T16:24:120Z",
+                        "updated_at" : "2022-06-15T16:26:120Z",
+                        "source_reference_id" : "423897430",
+                        "merchant_reference" : "423897430",
+                        "epos_instance_id" : "reg92056_epos",
+                        "gateway_payment_id" : "39e3bacdd5d38d9ce611cf88afbcc86df829a9a5641880b3",
+                        "terminal_id" : "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+                        "store_id" : "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+                      }, {
+                        "payment_request_id" : "d0cae7a7-b068-4342-bb23-87f70b0de6bc",
+                        "requested_amount" : {
+                          "currency" : "GBP",
+                          "amount" : 50,
+                          "tip" : 0
+                        },
+                        "status" : "CANCELLED",
+                        "transaction_type" : "SALE",
+                        "created_at" : "2022-06-15T16:24:120Z",
+                        "updated_at" : "2022-06-15T16:26:120Z",
+                        "source_reference_id" : "423897450",
+                        "merchant_reference" : "423897450",
+                        "status_reason" : "CANCELLED_BY_EPOS",
+                        "epos_instance_id" : "reg92056_epos",
+                        "terminal_id" : "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+                        "store_id" : "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+                      } ],
+                      "pagination" : {
+                        "limit" : 10,
+                        "offset" : 0,
+                        "total_count" : 3
+                      }
+                    }
+                  },
+                  "List_Payment_Requests_Cancelled" : {
+                    "description" : "List_Payment_Requests_Cancelled",
+                    "value" : {
+                      "payment_requests" : [ {
+                        "payment_request_id" : "d0cae7a7-b068-4342-bb23-87f70b0de6bc",
+                        "requested_amount" : {
+                          "currency" : "GBP",
+                          "amount" : 50,
+                          "tip" : 0
+                        },
+                        "status" : "CANCELLED",
+                        "transaction_type" : "SALE",
+                        "created_at" : "2022-06-15T16:24:120Z",
+                        "updated_at" : "2022-06-15T16:26:120Z",
+                        "source_reference_id" : "423897450",
+                        "merchant_reference" : "423897450",
+                        "status_reason" : "CANCELLED_BY_EPOS",
+                        "epos_instance_id" : "reg92056_epos",
+                        "terminal_id" : "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+                        "store_id" : "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+                      } ],
+                      "pagination" : {
+                        "limit" : 10,
+                        "offset" : 0,
+                        "total_count" : 1
+                      }
+                    }
+                  },
+                  "List_Payment_Requests_Cancelling" : {
+                    "description" : "List_Payment_Requests_Cancelling",
+                    "value" : {
+                      "payment_requests" : [ {
+                        "payment_request_id" : "7d5bde02-3076-4fe0-b728-3bfe3e6e5a5b",
+                        "requested_amount" : {
+                          "currency" : "GBP",
+                          "amount" : 40,
+                          "tip" : 0
+                        },
+                        "status" : "CANCELLING",
+                        "transaction_type" : "SALE",
+                        "created_at" : "2022-06-15T16:24:120Z",
+                        "updated_at" : "2022-06-15T16:26:120Z",
+                        "source_reference_id" : "423897440",
+                        "merchant_reference" : "423897440",
+                        "epos_instance_id" : "reg92056_epos",
+                        "terminal_id" : "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+                        "store_id" : "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+                      } ],
+                      "pagination" : {
+                        "limit" : 10,
+                        "offset" : 0,
+                        "total_count" : 1
+                      }
+                    }
+                  },
+                  "List_Payment_Requests_Failed" : {
+                    "description" : "List_Payment_Requests_Failed",
+                    "value" : {
+                      "payment_requests" : [ {
+                        "payment_request_id" : "2caa487d-a742-40e8-9323-59af71e2e1ad",
+                        "requested_amount" : {
+                          "currency" : "GBP",
+                          "amount" : 60,
+                          "tip" : 0
+                        },
+                        "status" : "FAILED",
+                        "transaction_type" : "SALE",
+                        "created_at" : "2022-06-15T16:24:120Z",
+                        "updated_at" : "2022-06-15T16:25:120Z",
+                        "source_reference_id" : "423897460",
+                        "merchant_reference" : "423897460",
+                        "status_reason" : "DECLINED_ONLINE",
+                        "epos_instance_id" : "reg92056_epos",
+                        "terminal_id" : "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+                        "store_id" : "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+                      } ],
+                      "pagination" : {
+                        "limit" : 10,
+                        "offset" : 0,
+                        "total_count" : 1
+                      }
+                    }
+                  },
+                  "List_Payment_Requests_InProgress" : {
+                    "description" : "List_Payment_Requests_InProgress",
+                    "value" : {
+                      "payment_requests" : [ {
+                        "payment_request_id" : "452aade7-8b08-4d81-a510-d5e19d34b6dd",
+                        "requested_amount" : {
+                          "currency" : "GBP",
+                          "amount" : 20,
+                          "tip" : 0
+                        },
+                        "status" : "IN_PROGRESS",
+                        "transaction_type" : "SALE",
+                        "created_at" : "2022-06-15T16:24:120Z",
+                        "updated_at" : "2022-06-15T16:25:120Z",
+                        "source_reference_id" : "423897420",
+                        "merchant_reference" : "423897420",
+                        "epos_instance_id" : "reg92056_epos",
+                        "terminal_id" : "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+                        "store_id" : "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+                      } ],
+                      "pagination" : {
+                        "limit" : 10,
+                        "offset" : 0,
+                        "total_count" : 1
+                      }
+                    }
+                  },
+                  "List_Payment_Requests_New" : {
+                    "description" : "List_Payment_Requests_New",
+                    "value" : {
+                      "payment_requests" : [ {
+                        "payment_request_id" : "dfc4fc52-8293-45b6-9f3e-b3b0f8f88188",
+                        "requested_amount" : {
+                          "currency" : "GBP",
+                          "amount" : 10,
+                          "tip" : 0
+                        },
+                        "status" : "NEW",
+                        "transaction_type" : "SALE",
+                        "created_at" : "2022-06-15T16:24:120Z",
+                        "updated_at" : "2022-06-15T16:26:120Z",
+                        "source_reference_id" : "423897410",
+                        "merchant_reference" : "423897410",
+                        "epos_instance_id" : "reg92056_epos",
+                        "terminal_id" : "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+                        "store_id" : "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+                      } ],
+                      "pagination" : {
+                        "limit" : 10,
+                        "offset" : 0,
+                        "total_count" : 1
+                      }
+                    }
+                  },
+                  "List_Payment_Requests_Successful" : {
+                    "description" : "List_Payment_Requests_Successful",
+                    "value" : {
+                      "payment_requests" : [ {
+                        "payment_request_id" : "19799e09-1c66-4f35-b0e4-ce3f1ed1872c",
+                        "requested_amount" : {
+                          "currency" : "GBP",
+                          "amount" : 30,
+                          "tip" : 0
+                        },
+                        "status" : "SUCCESSFUL",
+                        "transaction_type" : "SALE",
+                        "created_at" : "2022-06-15T16:24:120Z",
+                        "updated_at" : "2022-06-15T16:26:120Z",
+                        "source_reference_id" : "423897430",
+                        "merchant_reference" : "423897430",
+                        "epos_instance_id" : "reg92056_epos",
+                        "gateway_payment_id" : "39e3bacdd5d38d9ce611cf88afbcc86df829a9a5641880b3",
+                        "terminal_id" : "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+                        "store_id" : "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+                      } ],
+                      "pagination" : {
+                        "limit" : 10,
+                        "offset" : 0,
+                        "total_count" : 1
+                      }
+                    }
+                  }
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/PaymentRequests"
+                }
+              }
+            },
+            "description" : "List of payment requests successfully retrieved"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "example" : {
+                  "code" : "BAD_REQUEST",
+                  "description" : "Bad Request"
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description" : "Bad request"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "example" : {
+                  "code" : "UNAUTHORIZED",
+                  "description" : "Unauthorized"
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description" : "Lacks valid authentication credentials for the requested resource"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "example" : {
+                  "code" : "FORBIDDEN",
+                  "description" : "Forbidden"
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description" : "The server understands the request but refuses to authorize it"
+          },
+          "408" : {
+            "content" : {
+              "application/json" : {
+                "example" : {
+                  "code" : "REQUEST_TIMEOUT",
+                  "description" : "Request timeout"
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description" : "Request timeout"
+          },
+          "429" : {
+            "content" : {
+              "application/json" : {
+                "example" : {
+                  "code" : "TOO_MANY_REQUESTS",
+                  "description" : "Too Many Requests"
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description" : "Too many requests in a given amount of time"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "example" : {
+                  "code" : "INTERNAL_SERVER_ERROR",
+                  "description" : "Internal Server Error"
+                },
+                "schema" : {
+                  "$ref" : "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description" : "Internal Server Error"
+          }
+        },
+        "summary" : "Retrieve a list of payment requests",
+        "tags" : [ "Payment Requests" ]
+      }
+    },
+    "/poslink/v1/refunds": {
+      "post": {
+        "description": "This API call is used to create a new refund request",
+        "operationId": "createRefund",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EposCreateRefundRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "Refund_Fail": {
+                    "description": "Refund_Fail",
+                    "value": {
+                      "id": "edc61513c1153fb490b809a7fa971aee71884810620513b3",
+                      "amounts": {
+                        "total_amount": 1500,
+                        "currency": "GBP"
+                      },
+                      "gateway_payment_id": "39e3bacdd5d38d9ce611cf88afbcc86df829a9a5641880b3",
+                      "transaction_id": "te3c89aa-d84f-4916-b88b-7e6a051765fa",
+                      "status": "FAILED",
+                      "status_reason": "INSUFFICIENT_FUNDS",
+                      "created_at": "2022-06-15T16:26:120Z"
+                    }
+                  },
+                  "Refund_Success": {
+                    "description": "Refund_Success",
+                    "value": {
+                      "id": "edc61513c1153fb490b809a7fa971aee71884810620513b3",
+                      "amounts": {
+                        "total_amount": 1500,
+                        "currency": "GBP"
+                      },
+                      "gateway_payment_id": "ed9fdf723c40fada03b6ce783beb182376a85c735b3e2f27",
+                      "transaction_id": "ed9fdf723c40fada03b6ce783beb182376a85c735b3e2f27",
+                      "status": "SUCCESSFUL",
+                      "created_at": "2022-06-15T16:26:120Z"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/EposCreateRefundResponse"
+                }
+              }
+            },
+            "description": "Refund request created successfully"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "BAD_REQUEST",
+                  "description": "Bad Request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "UNAUTHORIZED",
+                  "description": "Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Lacks valid authentication credentials for the requested resource"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "FORBIDDEN",
+                  "description": "Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "The server understands the request but refuses to authorize it"
+          },
+          "408": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "REQUEST_TIMEOUT",
+                  "description": "Request timeout"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Request timeout"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "UNSUPPORTED_MEDIA_TYPE",
+                  "description": "Unsupported Media Type"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "TOO_MANY_REQUESTS",
+                  "description": "Too Many Requests"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Too many requests in a given amount of time"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "INTERNAL_SERVER_ERROR",
+                  "description": "Internal Server Error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create a new refund request",
+        "tags": [
+          "Refunds"
+        ]
+      }
+    },
+    "/poslink/v1/stores": {
+      "get": {
+        "description": "This API call is used to retrieve all the stores for a given merchant. This API is used in the ePOS registration process",
+        "operationId": "getStores",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "Main_Store": {
+                    "description": "Main_Store",
+                    "value": {
+                      "stores": [
+                        {
+                          "id": "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3",
+                          "name": "Mari Sucos - Main Store",
+                          "address": {
+                            "city": "Porto",
+                            "country": "PT",
+                            "street_address_line_1": "Rua da boavista 531",
+                            "street_address_line_2": "Towns",
+                            "zipcode": "4050-104"
+                          }
+                        },
+                        {
+                          "id": "34a735b9-58a6-4622-af5f-054e6d87e22d",
+                          "name": "Mari Sucos - Fast Express",
+                          "address": {
+                            "city": "Lisboa",
+                            "country": "PT",
+                            "street_address_line_1": "Avenida dos almirantes 112",
+                            "street_address_line_2": "",
+                            "zipcode": "4098-104"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RetrieveStoreResponse"
+                }
+              }
+            },
+            "description": "Stores data successfully retrieved"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "BAD_REQUEST",
+                  "description": "Bad Request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "UNAUTHORIZED",
+                  "description": "Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Lacks valid authentication credentials for the requested resource"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "FORBIDDEN",
+                  "description": "Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "The server understands the request but refuses to authorize it"
+          },
+          "408": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "REQUEST_TIMEOUT",
+                  "description": "Request timeout"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Request timeout"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "TOO_MANY_REQUESTS",
+                  "description": "Too Many Requests"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Too many requests in a given amount of time"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "INTERNAL_SERVER_ERROR",
+                  "description": "Internal Server Error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Retrieve a list of stores",
+        "tags": [
+          "Stores"
+        ]
+      }
+    },
+    "/poslink/v1/stores/{store_id}/terminals": {
+      "get": {
+        "description": "This API call is used to retrieve a list of terminals that belong to a store. This API is used in the ePOS registration process",
+        "operationId": "getTerminals",
+        "parameters": [
+          {
+            "description": "The ID of the store to retrieve the terminals for",
+            "example": "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3",
+            "in": "path",
+            "name": "store_id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "Terminals_Main_Store": {
+                    "description": "Terminals_Main_Store",
+                    "value": {
+                      "terminals": [
+                        {
+                          "terminal_id": "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+                          "terminal_name": "MPAS_test_terminal",
+                          "serial_number": "202877303091039717483041"
+                        }
+                      ]
+                    }
+                  },
+                  "Terminals_Secondary_Store": {
+                    "description": "Terminals_Secondary_Store",
+                    "value": {
+                      "terminals": [
+                        {
+                          "terminal_id": "d8b7d48f-ec22-4290-a73b-69a2bdf6cb75",
+                          "terminal_name": "MPAS_test_terminal_2",
+                          "serial_number": "123456789012345678901234"
+                        },
+                        {
+                          "terminal_id": "a938cd2a-b125-449c-be42-166fb69fd011",
+                          "terminal_name": "MPAS_test_terminal_3",
+                          "serial_number": "098765432109876543210987"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/RetrieveTerminalResponse"
+                }
+              }
+            },
+            "description": "Terminals data successfully retrieved"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "BAD_REQUEST",
+                  "description": "Bad Request"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "UNAUTHORIZED",
+                  "description": "Unauthorized"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Lacks valid authentication credentials for the requested resource"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "FORBIDDEN",
+                  "description": "Forbidden"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "The server understands the request but refuses to authorize it"
+          },
+          "408": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "REQUEST_TIMEOUT",
+                  "description": "Request timeout"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Request timeout"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "TOO_MANY_REQUESTS",
+                  "description": "Too Many Requests"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Too many requests in a given amount of time"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "code": "INTERNAL_SERVER_ERROR",
+                  "description": "Internal Server Error"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Retrieve a list of terminals",
+        "tags": [
+          "Terminals"
+        ]
+      }
+    },
+    "/poslink/v1/receipt-requests": {
+      "post": {
+        "tags": [
+          "Print Receipts (ePOS)"
+        ],
+        "summary": "Create a receipt to print (JSON or multipart image)",
+        "description": "Creates a receipt print job by either:\n - Sending a JSON payload that describes the receipt content to be rendered by the service; or\n - Uploading a pre-rendered receipt image via multipart/form-data.\n\n On success, a new receipt job is created and the response contains the unique receipt_id,\n initial status (NOT_PRINTED), and creation timestamp. Clients can then subscribe to status updates via the SSE endpoint or poll for the result.\n\n Content types:\n - application/json\n - multipart/form-data (fields: store_id, terminal_id, image)\n\n Response: 201 Created with a JSON body containing identifiers and initial status.\n",
+        "operationId": "createPrintJob",
+        "parameters": [
+          {
+            "name": "store_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "terminal_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "image": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "required": [
+                  "image"
+                ]
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceiptCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptCreatedResponse"
+                },
+                "example": {
+                  "receipt_id": "rcpt_123",
+                  "status": "NOT_PRINTED",
+                  "created_at": "2025-09-10T12:34:56Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "BAD_REQUEST",
+                  "description": "Bad Request"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Lacks valid authentication credentials for the requested resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "UNAUTHORISED",
+                  "description": "Unauthorised"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The server understands the request but refuses to authorise it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "FORBIDDEN",
+                  "description": "Forbidden"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests in a given amount of time",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "TOO_MANY_REQUESTS",
+                  "description": "Too Many Requests"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "INTERNAL_SERVER_ERROR",
+                  "description": "Internal Server Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/poslink/v1/receipt-requests/{receipt_id}/status": {
+      "get": {
+        "tags": [
+          "Print Receipts (ePOS)"
+        ],
+        "summary": "Get receipt print job with real-time updates",
+        "description": "Streams real-time updates for a receipt print job using Server‑Sent Events (SSE) with content type text/event-stream.\n\nEach message in the stream is an SSE event with:\n- data: a JSON object with receipt status fields (no formal schema available for SSE payload)\n- a blank line terminates each event frame\n\nSemantics:\n- The stream emits receipt status updates as they occur.\n- When the receipt reaches a final status (for example, PRINTED or FAILED), a last event is sent and the stream is closed.\n- If the receipt is already final when requested, a single event is sent and the connection is closed immediately.\n\nPossible statuses:\n- NOT_PRINTED\n- ENQUEUED\n- PRINTING\n- PRINTED\n- FAILED\n- UNKNOWN\n\nPossible status reasons:\n- TIMEOUT\n- BUSY\n- OUT_OF_PAPER\n- OVERHEATED\n- COVER_OPEN\n- LOW_BATTERY\n- OTHER\n\nConnection behavior:\n- The server may close the connection after approximately one minute of inactivity; clients should reconnect if updates are still expected.\n\nWire example:\ndata: {\"receipt_id\":\"...\",\"status\":\"PRINTED\",\"status_reason\":null,\"updated_at\":\"2025-09-10T12:30:45Z\"}\n\nNote: The response schema below describes the structure of the JSON object placed in the SSE data field, not the SSE framing itself.\n",
+        "operationId": "streamEvents",
+        "parameters": [
+          {
+            "name": "receipt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE stream",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "Server-Sent Events stream with lines prefixed by data: ",
+                  "example": "data: {\n    \"receipt_id\" : \"rcpt_123\",\n    \"status\" : \"NOT_PRINTED\",\n    \"status_reason\": null,\n    \"updated_at\" : \"2025-09-10T12:35:00Z\"\n}\n",
+                  "title": "SSE Event Stream"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "BAD_REQUEST",
+                  "description": "Bad Request"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Lacks valid authentication credentials for the requested resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "UNAUTHORISED",
+                  "description": "Unauthorised"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The server understands the request but refuses to authorise it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "FORBIDDEN",
+                  "description": "Forbidden"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests in a given amount of time",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "TOO_MANY_REQUESTS",
+                  "description": "Too Many Requests"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "INTERNAL_SERVER_ERROR",
+                  "description": "Internal Server Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Address": {
+        "title": "Address",
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": "string",
+            "description": "Name of the city where the store is located",
+            "example": "Porto"
+          },
+          "country": {
+            "type": "string",
+            "description": "Name of the country where the store is located. Must be a valid ISO 3166 code.",
+            "format": "ISO 3166",
+            "example": "PT"
+          },
+          "street_address_line_1": {
+            "type": "string",
+            "description": "Street address of the store",
+            "example": "Rua da boavista 531"
+          },
+          "street_address_line_2": {
+            "type": "string",
+            "description": "Street address of the store",
+            "example": "Towns"
+          },
+          "zipcode": {
+            "type": "string",
+            "description": "Zip code of the store",
+            "example": "4050-104"
+          }
+        },
+        "description": "The address of the store",
+        "example": {
+          "address": {
+            "city": "Porto",
+            "country": "PT",
+            "street_address_line_1": "Rua da boavista 531",
+            "street_address_line_2": "Towns",
+            "zipcode": "4050-104"
+          }
+        }
+      },
+      "CancelPaymentRequest": {
+        "title": "CancelPaymentRequest",
+        "required": [
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "The status to update the payment request to",
+            "enum": [
+              "CANCELLING",
+              "CANCELLED"
+            ]
+          }
+        },
+        "example": {
+          "status": "CANCELLING"
+        }
+      },
+      "CancelPaymentRequestResponse": {
+        "title": "CancelPaymentRequestResponse",
+        "type": "object",
+        "properties": {
+          "payment_request_id": {
+            "type": "string",
+            "description": "The ID assigned to the payment request",
+            "format": "uuid",
+            "example": "dfc4fc52-8293-45b6-9f3e-b3b0f8f88188"
+          },
+          "status": {
+            "type": "string",
+            "description": "The current status of the request. Note that this cannot be NEW",
+            "example": "CANCELLED",
+            "enum": [
+              "CANCELLING",
+              "CANCELLED"
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "The date and time the payment request was last updated (ISO 8601 format)",
+            "example": "2023-03-02T16:24:16.449Z"
+          }
+        },
+        "example": {
+          "payment_request_id": "dfc4fc52-8293-45b6-9f3e-b3b0f8f88188",
+          "status": "CANCELLING",
+          "updated_at": "2023-08-14T11:28:45.610Z"
+        }
+      },
+      "CancelPaymentResponse": {
+        "title": "CancelPaymentResponse",
+        "type": "object",
+        "properties": {
+          "payment_request_id": {
+            "type": "string",
+            "description": "The ID assigned to the payment request",
+            "format": "uuid",
+            "example": "dfc4fc52-8293-45b6-9f3e-b3b0f8f88188"
+          },
+          "source_reference_id": {
+            "type": "string",
+            "description": "The unique external identifier of each payment request sent by the ePOS",
+            "example": "1364624531"
+          },
+          "status": {
+            "type": "string",
+            "description": "The current status of the request. Note that this cannot be NEW",
+            "example": "CANCELLED",
+            "enum": [
+              "CANCELLING",
+              "CANCELLED"
+            ]
+          },
+          "status_reason": {
+            "type": "string",
+            "description": "A description for the reason of a status",
+            "example": "CANCELLED_BY_USER",
+            "enum": [
+              "CANCELLED_BY_USER",
+              "CANCELLED_BY_EPOS"
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "The date and time the payment request was last updated (ISO 8601 format)",
+            "example": "2023-03-02T16:24:16.449Z"
+          }
+        },
+        "example": {
+          "payment_request_id": "7d5bde02-3076-4fe0-b728-3bfe3e6e5a5b",
+          "status": "CANCELLED",
+          "status_reason": "CANCELLED_BY_EPOS",
+          "updated_at": "2023-08-14T11:28:45.610Z",
+          "source_reference_id": "423897440",
+          "success": true
+        }
+      },
+      "Card": {
+        "title": "Card",
+        "type": "object",
+        "properties": {
+          "brand": {
+            "type": "string",
+            "description": "The brand of the payment network used by the card",
+            "example": "VISA,MASTERCARD,UNION_PAY,JCB,DINERS,AMEX,OTHER"
+          },
+          "issuing_country": {
+            "type": "string",
+            "description": "The Country code (ISO 3166-1 alpha-2) where the card was issued",
+            "example": "GB"
+          },
+          "last4": {
+            "type": "string",
+            "description": "The last 4 digits of a card",
+            "example": "1234"
+          },
+          "type": {
+            "type": "string",
+            "description": "The type of the card",
+            "example": "DEBIT,CREDIT,PREPAID,CHARGE,UNKNOWN"
+          }
+        },
+        "description": "Card",
+        "example": {
+          "last4": "4673",
+          "issuing_country": "GB",
+          "brand": "MASTERCARD",
+          "type": "DEBIT"
+        }
+      },
+      "CreatePaymentRequestV2" : {
+        "title" : "CreatePaymentRequestV2",
+        "required" : [ "requested_amount", "store_id", "transaction_type" ],
+        "type" : "object",
+        "properties" : {
+          "epos_instance_id" : {
+            "type" : "string",
+            "description" : "The external ID of the ePOS sending the request",
+            "example" : "eposName_1"
+          },
+          "merchant_reference" : {
+            "type" : "string",
+            "description" : "The merchant reference for this payment request",
+            "example" : "ORDER_123"
+          },
+          "requested_amount" : {
+            "$ref" : "#/components/schemas/RequestedAmount"
+          },
+          "store_id" : {
+            "type" : "string",
+            "description" : "The ID of the store sending the request",
+            "format" : "uuid",
+            "example" : "eac4d470-4731-45b2-af6b-c828f03c1f9d"
+          },
+          "terminal_id" : {
+            "type" : "string",
+            "description" : "The ID of the terminal the request is assigned to",
+            "example" : "70dc65ba-1c13-492a-82a0-15821e5f63ba"
+          },
+          "transaction_type" : {
+            "type" : "string",
+            "description" : "The transaction type of this request",
+            "format" : "enum",
+            "example" : "SALE",
+            "enum" : [ "SALE" ]
+          }
+        },
+        "description" : "Request to create a new payment request in the ePOS system"
+      },
+      "CreatePaymentResponseV2" : {
+        "title" : "CreatePaymentResponseV2",
+        "type" : "object",
+        "properties" : {
+          "created_at" : {
+            "type" : "string",
+            "description" : "The date and time the payment request was created at (ISO 8601 format)",
+            "example" : "2022-06-15T16:24:120Z"
+          },
+          "epos_instance_id" : {
+            "type" : "string",
+            "description" : "The external ID of the ePOS sending the request",
+            "example" : "eposName_1"
+          },
+          "merchant_reference" : {
+            "type" : "string",
+            "description" : "The unique external identifier of each payment request sent by the ePOS",
+            "example" : "1364624531"
+          },
+          "payment_request_id" : {
+            "type" : "string",
+            "description" : "The payment request identifier",
+            "format" : "uuid",
+            "example" : "dfc4fc52-8293-45b6-9f3e-b3b0f8f88188"
+          },
+          "requested_amount" : {
+            "$ref" : "#/components/schemas/RequestedAmount"
+          },
+          "status" : {
+            "type" : "string",
+            "description" : "The current status of the request",
+            "example" : "NEW",
+            "enum" : [ "NEW" ]
+          },
+          "store_id" : {
+            "type" : "string",
+            "description" : "The store identifier",
+            "format" : "uuid",
+            "example" : "da728238-ee94-470a-a1ba-a03161fdf98c"
+          },
+          "terminal_id" : {
+            "type" : "string",
+            "description" : "The terminal identifier",
+            "example" : "2a3bdd2f-b52a-426c-b0fc-48c963650882"
+          },
+          "transaction_type" : {
+            "type" : "string",
+            "description" : "The transaction type of this request",
+            "example" : "SALE"
+          },
+          "updated_at" : {
+            "type" : "string",
+            "description" : "The date and time the payment request was last updated (ISO 8601 format)",
+            "example" : "2022-06-15T16:26:120Z"
+          }
+        },
+        "description" : "Response to a request to create a new payment request in the ePOS system",
+        "example" : {
+          "payment_request_id" : "dfc4fc52-8293-45b6-9f3e-b3b0f8f88188",
+          "requested_amount" : {
+            "currency" : "GBP",
+            "amount" : 10,
+            "tip" : 0
+          },
+          "status" : "NEW",
+          "transaction_type" : "SALE",
+          "created_at" : "2022-06-15T16:24:120Z",
+          "updated_at" : "2022-06-15T16:26:120Z",
+          "merchant_reference" : "423897410",
+          "terminal_id" : "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+          "store_id" : "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+        }
+      },
+      "EposCreateRefundRequest": {
+        "title": "EposCreateRefundRequest",
+        "required": [
+          "amount",
+          "gateway_payment_id"
+        ],
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "description": "A positive integer representing the full amount to charge in the smallest currency unit (e.g., 100 cents to charge $1). Inclusive of the tip",
+            "format": "int32",
+            "example": 1500
+          },
+          "gateway_payment_id": {
+            "type": "string",
+            "description": "Identifier of original payment",
+            "example": "ed9fdf723c40fada03b6ce783beb182376a85c735b3e2f27"
+          }
+        },
+        "example": {
+          "amount": 1500,
+          "gateway_payment_id": "28f42d6a6d02068f8cbcda8b16702bc6a1c98b4164c92ef9"
+        }
+      },
+      "EposCreateRefundResponse": {
+        "title": "EposCreateRefundResponse",
+        "type": "object",
+        "properties": {
+          "amounts": {
+            "$ref": "#/components/schemas/RefundedAmount"
+          },
+          "created_at": {
+            "type": "string",
+            "description": "The date and time the REFUND was created (in ISO 8601 with time-zone).",
+            "example": "2023-03-02T16:24:16.449Z"
+          },
+          "gateway_payment_id": {
+            "type": "string",
+            "description": "Identifier of original payment. This field will be populated for a SUCCESSFUL payment request",
+            "example": "ed9fdf723c40fada03b6ce783beb182376a85c735b3e2f27"
+          },
+          "id": {
+            "type": "string",
+            "description": "Unique identifier of the refund created",
+            "example": "edc61513c1153fb490b809a7fa971aee71884810620513b3"
+          },
+          "status": {
+            "type": "string",
+            "description": "The current status of the request",
+            "example": "SUCCESSFUL",
+            "enum": [
+              "SUCCESSFUL",
+              "FAILED",
+              "PENDING"
+            ]
+          },
+          "status_reason": {
+            "type": "string",
+            "description": "Reason for why REFUND is in FAILED or PENDING status",
+            "example": "INVALID_PARAMETERS",
+            "enum": [
+              "AMOUNT_MISMATCH",
+              "INVALID_PARAMETERS",
+              "TIMEOUT",
+              "INSUFFICIENT_FUNDS",
+              "UNKNOWN_ERROR"
+            ]
+          },
+          "transaction_id": {
+            "type": "string",
+            "description": "**Deprecation Notice** :\nThe _transaction_id_ property has been marked for deprecation in favour of the _gateway_payment_id_ property. Use of _transaction_id_ is discouraged, and later versions of this specification may remove it.\n\n\nTransaction ID",
+            "example": "dfc4fc52-8293-45b6-9f3e-b3b0f8f88188",
+            "deprecated": true
+          }
+        },
+        "example": {
+          "id": "edc61513c1153fb490b809a7fa971aee71884810620513b3",
+          "amounts": {
+            "total_amount": 1500,
+            "currency": "GBP"
+          },
+          "gateway_payment_id": "ed9fdf723c40fada03b6ce783beb182376a85c735b3e2f27",
+          "transaction_id": "ed9fdf723c40fada03b6ce783beb182376a85c735b3e2f27",
+          "status": "SUCCESSFUL",
+          "created_at": "2022-06-15T16:26:120Z"
+        }
+      },
+      "ExceptionResponse": {
+        "title": "ExceptionResponse",
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Error code",
+            "format": "enum",
+            "example": "BAD_REQUEST"
+          },
+          "description": {
+            "type": "string",
+            "description": "Error description",
+            "example": "Bad Request"
+          }
+        },
+        "example": {
+          "code": "BAD_REQUEST",
+          "description": "Bad Request"
+        }
+      },
+      "NewCancelPaymentRequest": {
+        "title": "NewCancelPaymentRequest",
+        "required": [
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "The status to update the payment request to",
+            "enum": [
+              "CANCELLING"
+            ]
+          }
+        },
+        "example": {
+          "status": "CANCELLING"
+        }
+      },
+      "Pagination": {
+        "title": "Pagination",
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "description": "The maximum number of entries to return. If the value exceeds the maximum, then the maximum value will be used",
+            "format": "int32",
+            "example": 100
+          },
+          "offset": {
+            "type": "integer",
+            "description": "The (zero-based) offset of the first record in the collection to return",
+            "format": "int32",
+            "example": 0
+          },
+          "total_count": {
+            "type": "integer",
+            "description": "Total number of records",
+            "format": "int32",
+            "example": 100
+          }
+        },
+        "example": {
+          "limit": 10,
+          "offset": 0,
+          "total_count": 1
+        }
+      },
+      "PaymentMethodDetails": {
+        "title": "PaymentMethodDetails",
+        "type": "object",
+        "properties": {
+          "application_id": {
+            "type": "string",
+            "description": "Application ID that uniquely identifies the card type",
+            "example": "A0000000041010"
+          },
+          "authorisation_code": {
+            "type": "string",
+            "description": "Authorisation code used to approve a transaction",
+            "example": "A8RLR8"
+          },
+          "card": {
+            "$ref": "#/components/schemas/Card"
+          },
+          "entry_mode": {
+            "type": "string",
+            "description": "The method by which the card was used",
+            "example": "ECOM, EMV_PIN, CONTACT_ICC, EMV_CONTACTLESS, KEYED, MAGSTRIPE_SWIPED, ON_FILE, MAGSTRIPE_FALLBACK"
+          },
+          "mid": {
+            "type": "string",
+            "description": "Merchant acquiring MID",
+            "example": "5006544"
+          },
+          "response_code": {
+            "type": "string",
+            "description": "Transaction response code provided by the schemes",
+            "example": "00"
+          },
+          "verification_method": {
+            "type": "string",
+            "description": "The method by which the card was verified",
+            "example": "NONE, ELECTRONIC_SIGNATURE, ON_DEVICE, MANUAL, SIGNATURE, OFFLINE_PIN, ONLINE_PIN, OFFLINE_PIN_PLUS_SIGNATURE, SECURED_ELECTRONIC_COMMERCE"
+          }
+        },
+        "description": "The payment method details",
+        "example": {
+          "card": {
+            "last4": "4673",
+            "issuing_country": "GB",
+            "brand": "MASTERCARD",
+            "type": "DEBIT"
+          },
+          "entry_mode": "EMV_CONTACTLESS",
+          "verification_method": "NONE",
+          "application_id": "A0000000041010",
+          "response_code": "00",
+          "authorisation_code": "537001"
+        }
+      },
+      "PaymentRequests": {
+        "title": "PaymentRequests",
+        "type": "object",
+        "properties": {
+          "pagination": {
+            "$ref": "#/components/schemas/Pagination"
+          },
+          "payment_requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RetrievePaymentResponse"
+            }
+          }
+        },
+        "example": {
+          "payment_requests": [
+            {
+              "payment_request_id": "dfc4fc52-8293-45b6-9f3e-b3b0f8f88188",
+              "requested_amount": {
+                "currency": "GBP",
+                "amount": 10,
+                "tip": 0
+              },
+              "status": "NEW",
+              "transaction_type": "SALE",
+              "created_at": "2022-06-15T16:24:120Z",
+              "updated_at": "2022-06-15T16:26:120Z",
+              "source_reference_id": "423897410",
+              "epos_instance_id": "reg92056_epos",
+              "terminal_id": "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+              "store_id": "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+            }
+          ],
+          "pagination": {
+            "limit": 10,
+            "offset": 0,
+            "total_count": 1
+          }
+        }
+      },
+      "RefundedAmount": {
+        "title": "RefundedAmount",
+        "required": [
+          "currency",
+          "total_amount"
+        ],
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string",
+            "description": "The currency used in this payment. Must be a valid ISO 4217 currency code",
+            "format": "ISO 4217",
+            "example": "EUR"
+          },
+          "total_amount": {
+            "type": "integer",
+            "description": "A positive integer representing the full amount to charge in the smallest currency unit (e.g., 100 cents to charge $1). Inclusive of the tip",
+            "format": "int32",
+            "example": 1500
+          }
+        },
+        "example": {
+          "total_amount": 1500,
+          "currency": "GBP"
+        }
+      },
+      "RequestedAmount": {
+        "title": "RequestedAmount",
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "description": "A positive integer representing the full amount to charge in the smallest currency unit (e.g., 100 cents to charge $1). Inclusive of the tip",
+            "format": "int32",
+            "example": 1500
+          },
+          "currency": {
+            "type": "string",
+            "description": "The currency used in this payment. Must be a valid ISO 4217 currency code",
+            "format": "ISO 4217",
+            "example": "USD"
+          },
+          "tip": {
+            "type": "integer",
+            "description": "A positive integer that represents the tip added to the payment in the smallest currency unit (e.g., 100 cents to charge $1)",
+            "format": "int32",
+            "example": 10
+          }
+        },
+        "description": "Requested Amount",
+        "example": {
+          "currency": "GBP",
+          "amount": 50,
+          "tip": 0
+        }
+      },
+      "RetrievePaymentResponse" : {
+        "title" : "RetrievePaymentResponse",
+        "type" : "object",
+        "properties" : {
+          "created_at" : {
+            "type" : "string",
+            "description" : "The date and time the payment request was created at (ISO 8601 format)",
+            "example" : "2023-03-02T16:24:16.449Z"
+          },
+          "epos_instance_id" : {
+            "type" : "string",
+            "description" : "The external ID of the ePOS sending the request",
+            "example" : "eposName_1"
+          },
+          "gateway_payment_id" : {
+            "type" : "string",
+            "description" : "Identifier of original payment. This field will be populated for a SUCCESSFUL payment request",
+            "example" : "39e3bacdd5d38d9ce611cf88afbcc86df829a9a5641880b3"
+          },
+          "merchant_reference" : {
+            "type" : "string",
+            "description" : "The unique external identifier of each payment request sent by the ePOS",
+            "example" : "1412342314234"
+          },
+          "metadata" : {
+            "$ref" : "#/components/schemas/TransactionMetadata"
+          },
+          "payment_request_id" : {
+            "type" : "string",
+            "description" : "The payment request identifier",
+            "format" : "uuid",
+            "example" : "dfc4fc52-8293-45b6-9f3e-b3b0f8f88188"
+          },
+          "requested_amount" : {
+            "$ref" : "#/components/schemas/RequestedAmount"
+          },
+          "source_reference_id" : {
+            "type" : "string",
+            "description" : "**Deprecation Notice** :\nThe _source_reference_id_ property has been marked for deprecation in favour of the _merchant_reference_ property. Use of _source_reference_id_ is discouraged, and later versions of this specification may remove it.\n\n\nThe unique external identifier of each payment request sent by the ePOS",
+            "example" : "1412342314234",
+            "deprecated" : true
+          },
+          "status" : {
+            "type" : "string",
+            "description" : "The current status of the request",
+            "example" : "NEW",
+            "enum" : [ "NEW", "IN_PROGRESS", "SUCCESSFUL", "CANCELLING", "CANCELLED", "FAILED" ]
+          },
+          "status_reason" : {
+            "type" : "string",
+            "description" : "A description for the reason of a status",
+            "example" : "CANCELLED_BY_USER",
+            "enum" : [ "CANCELLED_BY_EPOS", "CANCELLED_BY_USER", "DECLINED_ONLINE", "DECLINED_OFFLINE", "TIMEOUT", "CONNECTION_ERROR", "COMM_TIMEOUT", "CARD_PROCESSING_ERROR", "EXPIRED", "UNKNOWN" ]
+          },
+          "store_id" : {
+            "type" : "string",
+            "description" : "The store identifier",
+            "format" : "uuid",
+            "example" : "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+          },
+          "terminal_id" : {
+            "type" : "string",
+            "description" : "The terminal identifier",
+            "example" : "70dc65ba-1c13-492a-82a0-15821e5f63ba"
+          },
+          "transaction_id" : {
+            "type" : "string",
+            "description" : "**Deprecation Notice** :\nThe _transaction_id_ property has been marked for deprecation in favour of the _gateway_payment_id_ property. Use of _transaction_id_ is discouraged, and later versions of this specification may remove it.\n\n\nThe ID assigned to the transaction",
+            "example" : "dfc4fc52-8293-45b6-9f3e-b3b0f8f88188",
+            "deprecated" : true
+          },
+          "transaction_type" : {
+            "type" : "string",
+            "description" : "The transaction type of this request",
+            "format" : "enum",
+            "example" : "SALE",
+            "enum" : [ "SALE" ]
+          },
+          "updated_at" : {
+            "type" : "string",
+            "description" : "The date and time the payment request was last updated (ISO 8601 format)",
+            "example" : "2023-03-02T16:24:16.449Z"
+          }
+        },
+        "example" : {
+          "payment_request_id" : "dfc4fc52-8293-45b6-9f3e-b3b0f8f88188",
+          "requested_amount" : {
+            "currency" : "GBP",
+            "amount" : 10,
+            "tip" : 0
+          },
+          "status" : "NEW",
+          "transaction_type" : "SALE",
+          "created_at" : "2022-06-15T16:24:120Z",
+          "updated_at" : "2022-06-15T16:26:120Z",
+          "source_reference_id" : "423897410",
+          "merchant_reference" : "423897410",
+          "terminal_id" : "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+          "store_id" : "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+        }
+      },
+      "RetrievePaymentResponseWithMetadata": {
+        "title": "RetrievePaymentResponseWithMetadata",
+        "type": "object",
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "description": "The date and time the payment request was created at (ISO 8601 format)",
+            "example": "2023-03-02T16:24:16.449Z"
+          },
+          "epos_instance_id": {
+            "type": "string",
+            "description": "The external ID of the ePOS sending the request",
+            "example": "eposName_1"
+          },
+          "gateway_payment_id": {
+            "type": "string",
+            "description": "Identifier of original payment. This field will be populated for a SUCCESSFUL payment request",
+            "example": "39e3bacdd5d38d9ce611cf88afbcc86df829a9a5641880b3"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/TransactionMetadata"
+          },
+          "payment_request_id": {
+            "type": "string",
+            "description": "The payment request identifier",
+            "format": "uuid",
+            "example": "dfc4fc52-8293-45b6-9f3e-b3b0f8f88188"
+          },
+          "requested_amount": {
+            "$ref": "#/components/schemas/RequestedAmount"
+          },
+          "source_reference_id": {
+            "type": "string",
+            "description": "The unique external identifier of each payment request sent by the ePOS",
+            "example": "1412342314234"
+          },
+          "status": {
+            "type": "string",
+            "description": "The current status of the request",
+            "example": "NEW",
+            "enum": [
+              "NEW",
+              "IN_PROGRESS",
+              "SUCCESSFUL",
+              "CANCELLING",
+              "CANCELLED",
+              "FAILED"
+            ]
+          },
+          "status_reason": {
+            "type": "string",
+            "description": "A description for the reason of a status",
+            "example": "CANCELLED_BY_USER",
+            "enum": [
+              "CANCELLED_BY_EPOS",
+              "CANCELLED_BY_USER",
+              "DECLINED_ONLINE",
+              "DECLINED_OFFLINE",
+              "TIMEOUT",
+              "CONNECTION_ERROR",
+              "COMM_TIMEOUT",
+              "CARD_PROCESSING_ERROR",
+              "EXPIRED",
+              "UNKNOWN"
+            ]
+          },
+          "store_id": {
+            "type": "string",
+            "description": "The store identifier",
+            "format": "uuid",
+            "example": "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+          },
+          "terminal_id": {
+            "type": "string",
+            "description": "The terminal identifier",
+            "example": "70dc65ba-1c13-492a-82a0-15821e5f63ba"
+          },
+          "transaction_id": {
+            "type": "string",
+            "description": "**Deprecation Notice** :\nThe _transaction_id_ property has been marked for deprecation in favour of the _gateway_payment_id_ property. Use of _transaction_id_ is discouraged, and later versions of this specification may remove it.\n\n\nThe ID assigned to the transaction",
+            "example": "dfc4fc52-8293-45b6-9f3e-b3b0f8f88188",
+            "deprecated": true
+          },
+          "transaction_type": {
+            "type": "string",
+            "description": "The transaction type of this request",
+            "format": "enum",
+            "example": "SALE",
+            "enum": [
+              "SALE"
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "The date and time the payment request was last updated (ISO 8601 format)",
+            "example": "2023-03-02T16:24:16.449Z"
+          }
+        },
+        "example": {
+          "payment_request_id": "dfc4fc52-8293-45b6-9f3e-b3b0f8f88188",
+          "requested_amount": {
+            "currency": "GBP",
+            "amount": 10,
+            "tip": 0
+          },
+          "status": "NEW",
+          "transaction_type": "SALE",
+          "created_at": "2022-06-15T16:24:120Z",
+          "updated_at": "2022-06-15T16:26:120Z",
+          "source_reference_id": "423897410",
+          "terminal_id": "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+          "store_id": "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+        }
+      },
+      "RetrieveStoreResponse": {
+        "title": "RetrieveStoreResponse",
+        "type": "object",
+        "properties": {
+          "stores": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Store"
+            }
+          }
+        },
+        "example": {
+          "stores": [
+            {
+              "id": "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3",
+              "name": "Mari Sucos - Main Store",
+              "address": {
+                "city": "Porto",
+                "country": "PT",
+                "street_address_line_1": "Rua da boavista 531",
+                "street_address_line_2": "Towns",
+                "zipcode": "4050-104"
+              }
+            },
+            {
+              "id": "34a735b9-58a6-4622-af5f-054e6d87e22d",
+              "name": "Mari Sucos - Fast Express",
+              "address": {
+                "city": "Lisboa",
+                "country": "PT",
+                "street_address_line_1": "Avenida dos almirantes 112",
+                "street_address_line_2": "",
+                "zipcode": "4098-104"
+              }
+            }
+          ]
+        }
+      },
+      "RetrieveStreamPaymentResponse": {
+        "type": "object",
+        "example": {
+          "payment_request_id": "dfc4fc52-8293-45b6-9f3e-b3b0f8f88188",
+          "status": "IN_PROGRESS",
+          "progress_status": "WAITING_FOR_CARD_ENTRY",
+          "updated_at": "2022-06-15T16:26:120Z"
+        },
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "description": "The date and time the payment request was created at (ISO 8601 format)",
+            "example": "2023-03-02T16:24:16.449Z"
+          },
+          "epos_instance_id": {
+            "type": "string",
+            "description": "The external ID of the ePOS sending the request",
+            "example": "eposName_1"
+          },
+          "gateway_payment_id": {
+            "type": "string",
+            "description": "Identifier of original payment. This field will be populated for a SUCCESSFUL payment request",
+            "example": "39e3bacdd5d38d9ce611cf88afbcc86df829a9a5641880b3"
+          },
+          "merchant_reference": {
+            "type": "string",
+            "description": "The unique external identifier of each payment request sent by the ePOS",
+            "example": "ME1412342314234"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/TransactionMetadata"
+          },
+          "payment_request_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The payment request identifier",
+            "example": "dfc4fc52-8293-45b6-9f3e-b3b0f8f88188"
+          },
+          "progress_status": {
+            "type": "string",
+            "format": "enum",
+            "description": "Payment request progress status. Optional field to provide granular progress information during an update",
+            "enum": [
+              "SENT_TO_PAYMENT_APP",
+              "RECEIVED",
+              "WAITING_FOR_CARD_ENTRY",
+              "TIP_SELECTION",
+              "CARD_PRESENTED",
+              "PIN_ENTRY",
+              "INSERT_CARD",
+              "DCC_SELECTION",
+              "REMOVE_CARD",
+              "APP_SELECTION",
+              "UNKNOWN"
+            ],
+            "example": "WAITING_FOR_CARD_ENTRY"
+          },
+          "requested_amount": {
+            "$ref": "#/components/schemas/RequestedAmount"
+          },
+          "status": {
+            "type": "string",
+            "description": "The current status of the request",
+            "enum": [
+              "NEW",
+              "IN_PROGRESS",
+              "SUCCESSFUL",
+              "CANCELLING",
+              "CANCELLED",
+              "FAILED"
+            ],
+            "example": "NEW"
+          },
+          "status_reason": {
+            "type": "string",
+            "description": "A description for the reason of a status",
+            "enum": [
+              "CANCELLED_BY_EPOS",
+              "CANCELLED_BY_USER",
+              "DECLINED_ONLINE",
+              "DECLINED_OFFLINE",
+              "TIMEOUT",
+              "CONNECTION_ERROR",
+              "COMM_TIMEOUT",
+              "CARD_PROCESSING_ERROR",
+              "EXPIRED",
+              "UNKNOWN"
+            ],
+            "example": "CANCELLED_BY_USER"
+          },
+          "store_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The store identifier",
+            "example": "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+          },
+          "terminal_id": {
+            "type": "string",
+            "description": "The terminal identifier",
+            "example": "70dc65ba-1c13-492a-82a0-15821e5f63ba"
+          },
+          "transaction_timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Transaction timestamp when the transaction occurred (in ISO 8601 with time-zone)",
+            "example": "2025-10-24T21:56:24.464Z"
+          },
+          "transaction_type": {
+            "type": "string",
+            "format": "enum",
+            "description": "The transaction type of this request",
+            "enum": [
+              "SALE"
+            ],
+            "example": "SALE"
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "The date and time the payment request was last updated (ISO 8601 format)",
+            "example": "2023-03-02T16:24:16.449Z"
+          }
+        },
+        "title": "RetrieveStreamPaymentResponse"
+      },
+      "RetrieveTerminalResponse": {
+        "title": "RetrieveTerminalResponse",
+        "type": "object",
+        "properties": {
+          "terminals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Terminal"
+            }
+          }
+        },
+        "example": {
+          "terminals": [
+            {
+              "terminal_id": "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+              "terminal_name": "MPAS_test_terminal",
+              "serial_number": "202877303091039717483041"
+            }
+          ]
+        }
+      },
+      "Store": {
+        "title": "Store",
+        "type": "object",
+        "properties": {
+          "address": {
+            "$ref": "#/components/schemas/Address"
+          },
+          "id": {
+            "type": "string",
+            "description": "The store identifier",
+            "example": "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3"
+          },
+          "name": {
+            "type": "string",
+            "description": "The name of the store",
+            "example": "Mari Sucos - Main Store"
+          }
+        },
+        "example": {
+          "id": "f04fe1ce-e7bd-4c5b-b873-b156643c0bc3",
+          "name": "Mari Sucos - Main Store",
+          "address": {
+            "city": "Porto",
+            "country": "PT",
+            "street_address_line_1": "Rua da boavista 531",
+            "street_address_line_2": "Towns",
+            "zipcode": "4050-104"
+          }
+        }
+      },
+      "Terminal": {
+        "title": "Terminal",
+        "type": "object",
+        "properties": {
+          "serial_number": {
+            "type": "string",
+            "description": "The serial number of the terminal",
+            "example": "202877303091039717483041"
+          },
+          "terminal_id": {
+            "type": "string",
+            "description": "The terminal identifier",
+            "example": "70dc65ba-1c13-492a-82a0-15821e5f63ba"
+          },
+          "terminal_name": {
+            "type": "string",
+            "description": "The name of the terminal",
+            "example": "MPAS_test_terminal"
+          }
+        },
+        "example": {
+          "terminal_id": "70dc65ba-1c13-492a-82a0-15821e5f63ba",
+          "terminal_name": "MPAS_test_terminal",
+          "serial_number": "202877303091039717483041"
+        }
+      },
+      "TransactionMetadata": {
+        "title": "TransactionMetadata",
+        "type": "object",
+        "properties": {
+          "payment_method_details": {
+            "$ref": "#/components/schemas/PaymentMethodDetails"
+          }
+        },
+        "description": "Transaction metadata",
+        "example": {
+          "payment_method_details": {
+            "card": {
+              "last4": "4673",
+              "issuing_country": "GB",
+              "brand": "MASTERCARD",
+              "type": "DEBIT"
+            },
+            "entry_mode": "EMV_CONTACTLESS",
+            "verification_method": "NONE",
+            "application_id": "A0000000041010",
+            "mid": "5006544",
+            "response_code": "00",
+            "authorisation_code": "537001"
+          }
+        }
+      },
+      "ReceiptCreatedResponse": {
+        "type": "object",
+        "description": "Response returned after a receipt print job is created",
+        "properties": {
+          "receipt_id": {
+            "type": "string",
+            "description": "Generated receipt identifier",
+            "example": "rcpt_123"
+          },
+          "status": {
+            "type": "string",
+            "description": "Current status of the receipt",
+            "example": "NOT_PRINTED"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp in ISO 8601 date-time format (e.g., 2025-09-10T12:34:56Z)",
+            "example": "2025-09-10T12:34:56Z"
+          }
+        },
+        "title": "Receipt Created Response"
+      },
+      "ReceiptCreateRequest": {
+        "type": "object",
+        "description": "Request body to create a new print receipt job",
+        "properties": {
+          "store_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Store identifier",
+            "example": "4b33fd70-7c92-4060-9898-f066e77d3ae1"
+          },
+          "terminal_id": {
+            "type": "string",
+            "description": "Terminal identifier",
+            "example": "80c267d3"
+          },
+          "print_model": {
+            "$ref": "#/components/schemas/PrintDocument"
+          }
+        },
+        "required": [
+          "print_model",
+          "store_id",
+          "terminal_id"
+        ],
+        "title": "Receipt Create Request"
+      },
+      "PrintDocument": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Row"
+            },
+            "maxItems": 150,
+            "minItems": 1
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "title": "PrintDocument"
+      },
+      "Row": {
+        "type": "object",
+        "discriminator": {
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/ItemsRow"
+          },
+          {
+            "$ref": "#/components/schemas/TableRow"
+          },
+          {
+            "$ref": "#/components/schemas/SpacerRow"
+          },
+          {
+            "$ref": "#/components/schemas/DividerRow"
+          }
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "Row"
+      },
+      "ItemsRow": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Row"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Element"
+                },
+                "maxItems": 10,
+                "minItems": 1
+              }
+            },
+            "required": [
+              "items"
+            ]
+          }
+        ],
+        "title": "ItemsRow"
+      },
+      "TableRow": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Row"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "header_cells": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TableHeaderCell"
+                }
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TableInnerRow"
+                }
+              }
+            }
+          }
+        ],
+        "title": "TableRow"
+      },
+      "SpacerRow": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Row"
+          }
+        ],
+        "title": "SpacerRow"
+      },
+      "DividerRow": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Row"
+          }
+        ],
+        "title": "DividerRow"
+      },
+      "Element": {
+        "type": "object",
+        "discriminator": {
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TextElement"
+          },
+          {
+            "$ref": "#/components/schemas/QrCodeElement"
+          },
+          {
+            "$ref": "#/components/schemas/ImageElement"
+          }
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "Element"
+      },
+      "TextElement": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Element"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "align": {
+                "type": "string",
+                "enum": [
+                  "LEFT",
+                  "RIGHT",
+                  "CENTER"
+                ]
+              }
+            },
+            "required": [
+              "text"
+            ]
+          }
+        ],
+        "title": "TextElement"
+      },
+      "QrCodeElement": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Element"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string"
+              },
+              "align": {
+                "type": "string",
+                "enum": [
+                  "LEFT",
+                  "RIGHT",
+                  "CENTER"
+                ]
+              }
+            },
+            "required": [
+              "url"
+            ]
+          }
+        ],
+        "title": "QrCodeElement"
+      },
+      "ImageElement": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Element"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "base64": {
+                "type": "string"
+              },
+              "align": {
+                "type": "string",
+                "enum": [
+                  "LEFT",
+                  "RIGHT",
+                  "CENTER"
+                ]
+              }
+            },
+            "required": [
+              "base64"
+            ]
+          }
+        ],
+        "title": "ImageElement"
+      },
+      "TableHeaderCell": {
+        "type": "object",
+        "properties": {
+          "element": {
+            "$ref": "#/components/schemas/Element"
+          },
+          "weight": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "required": [
+          "element"
+        ],
+        "title": "TableHeaderCell"
+      },
+      "TableInnerRow": {
+        "type": "object",
+        "properties": {
+          "cells": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Element"
+            }
+          }
+        },
+        "required": [
+          "cells"
+        ],
+        "title": "TableInnerRow"
+      },
+      "Error": {
+        "type": "object",
+        "description": "Error response",
+        "properties": {
+          "code": {
+            "type": "string",
+            "format": "enum",
+            "description": "The error code",
+            "enum": [
+              "BAD_REQUEST",
+              "UNAUTHORISED",
+              "FORBIDDEN",
+              "CONFLICT",
+              "INTERNAL_SERVER_ERROR",
+              "TOO_MANY_REQUESTS",
+              "NOT_FOUND",
+              "GONE",
+              "UNSUPPORTED_MEDIA_TYPE"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "description": "The description of the error"
+          },
+          "invalid_params": {
+            "type": "array",
+            "description": "Invalid parameters",
+            "items": {
+              "$ref": "#/components/schemas/InvalidParams"
+            }
+          }
+        },
+        "required": [
+          "code",
+          "description"
+        ],
+        "title": "Error"
+      },
+      "InvalidParams": {
+        "type": "object",
+        "description": "Invalid parameters",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The path to the missing/invalid parameter expressed in dot notation"
+          },
+          "reason": {
+            "type": "string",
+            "description": "The reason why the validation failed"
+          }
+        },
+        "required": [
+          "path",
+          "reason"
+        ],
+        "title": "InvalidParams"
+      }
+  },
+  "securitySchemes": {
+      "authorisation": {
+        "description": "Given a valid access token, you can now use a Bearer Token to authenticate your requests.\nTo do so you have to preface your access token with Bearer and send it in the HTTP Authorization header.\nIt should look something like this: `Authorization: Bearer <ACCESS_TOKEN>`\n",
+        "flows": {
+          "authorizationCode": {
+            "authorizationUrl": "https://id.teya.com/oauth/v2/oauth-authorize",
+            "scopes": {},
+            "tokenUrl": "https://id.teya.com/oauth/v2/oauth-token"
+          }
+        },
+        "type": "oauth2"
+      }
+    }
+  }
+}

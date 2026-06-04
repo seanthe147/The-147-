@@ -1,0 +1,73 @@
+Running "npm ci --include=dev" in /home/expo/workingdir/build directory
+npm warn deprecated rimraf@3.0.2: Rimraf versions prior to v4 are no longer supported
+npm warn deprecated inflight@1.0.6: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
+npm warn deprecated @esbuild-kit/esm-loader@2.6.5: Merged into tsx: https://tsx.is
+npm warn deprecated @esbuild-kit/core-utils@3.3.2: Merged into tsx: https://tsx.is
+npm warn deprecated glob@7.2.3: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm warn deprecated glob@7.2.3: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm warn deprecated glob@7.2.3: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm warn deprecated glob@7.2.3: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+> expo-app@1.0.0 postinstall
+> patch-package
+patch-package 8.0.1
+Applying patches...
+@react-navigation/bottom-tabs@7.15.5 ✔
+expo-asset@12.0.12 ✔
+Warning: patch-package detected a patch file version mismatch
+  Don't worry! This is probably fine. The patch was still applied
+  successfully. Here's the deets:
+  Patch file created for
+    @react-navigation/bottom-tabs@7.15.5
+  applied to
+    @react-navigation/bottom-tabs@7.16.1
+  
+  At path
+  
+    node_modules/@react-navigation/bottom-tabs
+  This warning is just to give you a heads-up. There is a small chance of
+  breakage even though the patch was applied successfully. Make sure the package
+  still behaves like you expect (you wrote tests, right?) and then run
+    patch-package @react-navigation/bottom-tabs
+  to update the version in the patch file name and make this warning go away.
+Warning: patch-package detected a patch file version mismatch
+  Don't worry! This is probably fine. The patch was still applied
+  successfully. Here's the deets:
+  Patch file created for
+    expo-asset@12.0.12
+  applied to
+    expo-asset@12.0.13
+  
+  At path
+  
+    node_modules/expo-asset
+  This warning is just to give you a heads-up. There is a small chance of
+  breakage even though the patch was applied successfully. Make sure the package
+  still behaves like you expect (you wrote tests, right?) and then run
+    patch-package expo-asset
+  to update the version in the patch file name and make this warning go away.
+**ERROR** Failed to apply patch for package @react-navigation/elements at path
+  
+    node_modules/@react-navigation/elements
+  This error was caused because @react-navigation/elements has changed since you
+  made the patch file for it. This introduced conflicts with your patch,
+  just like a merge conflict in Git when separate incompatible changes are
+  made to the same piece of code.
+  Maybe this means your patch file is no longer necessary, in which case
+  hooray! Just delete it!
+  Otherwise, you need to generate a new patch file.
+  To generate a new one, just repeat the steps you made to generate the first
+  one.
+  i.e. manually make the appropriate file changes, then run 
+    patch-package @react-navigation/elements
+  Info:
+    Patch file: patches/@react-navigation+elements+2.9.10.patch
+    Patch was made for version: 2.9.10
+    Installed version: 2.9.18
+---
+patch-package finished with 2 warning(s), 1 error(s).
+npm error code 1
+npm error path /home/expo/workingdir/build
+npm error command failed
+npm error command sh -c patch-package
+npm error A complete log of this run can be found in: /home/expo/.npm/_logs/2026-05-16T22_20_40_622Z-debug-0.log
+npm ci --include=dev exited with non-zero code: 1

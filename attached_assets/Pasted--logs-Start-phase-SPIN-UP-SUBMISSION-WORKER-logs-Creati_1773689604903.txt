@@ -1,0 +1,42 @@
+
+[logs] Start phase: SPIN_UP_SUBMISSION_WORKER
+[logs] Creating new worker instance
+[logs] End phase: SPIN_UP_SUBMISSION_WORKER
+
+[logs] Start phase: SUBMIT_TO_APP_STORE
+[logs] Starting the submit process
+[logs] Downloading archive
+[logs] Preparing artifact
+[logs] Verifying archive
+[logs] Creating ascApiJsonKey.json file with ASC credentials
+[logs] Submitting iOS app to TestFlight...
+[logs] Submitting the app with fastlane pilot
+[logs] -------------------
+[logs] --- Step: pilot ---
+[logs] -------------------
+[logs] Creating authorization token for App Store Connect API
+[logs] Ready to upload new build to TestFlight (App: 6759579882)...
+[logs] Going to upload updated app to App Store Connect
+[logs] This might take a few minutes. Please don't interrupt the script.
+[logs] [altool] 2026-03-16 12:32:27.762 *** Error: No suitable application records were found. Verify your bundle identifier “com.the147snooker.app” is correct and that you are signed in with an Apple ID that has access to the app in App Store Connect. App Store operation failed. (-19000)
+[logs] [altool]  {
+[logs] 
+[logs] [altool]     NSLocalizedDescription = "No suitable application records were found. Verify your bundle identifier \U201ccom.the147snooker.app\U201d is correct and that you are signed in with an Apple ID that has access to the app in App Store Connect.";
+[logs] [altool]     NSLocalizedFailureReason = "App Store operation failed.";
+[logs] 
+[logs] [altool]     NSLocalizedRecoverySuggestion = "No suitable application records were found. Verify your bundle identifier \U201ccom.the147snooker.app\U201d is correct and that you are signed in with an Apple ID that has access to the app in App Store Connect.";
+[logs] 
+[logs] [altool] }
+[logs] Application Loader output above ^
+[logs] Error uploading '/var/folders/m1/8_w9962s3b79dqm00nnlm85m0000gn/T/51c2b134-9e87-4d2c-9376-cc0dcac9dd76.ipa'.
+[logs] No suitable application records were found. Verify your bundle identifier “com.the147snooker.app” is correct and that you are signed in with an Apple ID that has access to the app in App Store Connect. App Store operation failed. (-19000)
+[logs] The call to the altool completed with a non-zero exit status: 1. This indicates a failure.
+[logs] Could not download/upload from App Store Connect!
+[logs] [!] Error uploading ipa file: 
+[logs]  [Application Loader Error Output]: Error uploading '/var/folders/m1/8_w9962s3b79dqm00nnlm85m0000gn/T/51c2b134-9e87-4d2c-9376-cc0dcac9dd76.ipa'.
+[logs] [Application Loader Error Output]: No suitable application records were found. Verify your bundle identifier “com.the147snooker.app” is correct and that you are signed in with an Apple ID that has access to the app in App Store Connect. App Store operation failed. (-19000)
+[logs] [Application Loader Error Output]: The call to the altool completed with a non-zero exit status: 1. This indicates a failure.
+[logs] Fastlane pilot failed
+[logs] Failed to submit the app to the store
+[logs] End phase: SUBMIT_TO_APP_STORE
+~/workspace$ 

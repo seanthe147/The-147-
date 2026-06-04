@@ -1,0 +1,41 @@
+[33m[altool] 2026-05-27 15:46:00.107 [1m[31mERROR: [altool.600003984140] Validation failed This bundle is invalid. The value for key CFBundleShortVersionString [2.8.1] in the Info.plist file must contain a higher version than that of the previously approved version [2.8.1]. Please find more information about CFBundleShortVersionString at https://developer.apple.com/documentation/bundleresources/information_property_list/cfbundleshortversionstring (ID: db1a4de3-02e0-4e7c-98eb-283c8d3ac5ba) (409)
+app-store / 🚀 Submit to App Store
+
+[33m[altool] NSLocalizedFailureReason = "This bundle is invalid. The value for key CFBundleShortVersionString [2.8.1] in the Info.plist file must contain a higher version than that of the previously approved version [2.8.1]. Please find more information about CFBundleShortVersionString at https://developer.apple.com/documentation/bundleresources/information_property_list/cfbundleshortversionstring (ID: db1a4de3-02e0-4e7c-98eb-283c8d3ac5ba)";
+app-store / 🚀 Submit to App Store
+
+[33m[altool] NSUnderlyingError = "Error Domain=IrisAPI Code=-19241 \"Validation failed\" UserInfo={status=409, detail=This bundle is invalid. The value for key CFBundleShortVersionString [2.8.1] in the Info.plist file must contain a higher version than that of the previously approved version [2.8.1]. Please find more information about CFBundleShortVersionString at https://developer.apple.com/documentation/bundleresources/information_property_list/cfbundleshortversionstring, id=db1a4de3-02e0-4e7c-98eb-283c8d3ac5ba, code=STATE_ERROR.VALIDATION_ERROR, title=Validation failed, NSLocalizedFailureReason=This bundle is invalid. The value for key CFBundleShortVersionString [2.8.1] in the Info.plist file must contain a higher version than that of the previously approved version [2.8.1]. Please find more information about CFBundleShortVersionString at https://developer.apple.com/documentation/bundleresources/information_property_list/cfbundleshortversionstring, NSLocalizedDescription=Validation failed}";
+app-store / 🚀 Submit to App Store
+
+[33m[altool] UPLOAD FAILED with 2 errors
+app-store / 🚀 Submit to App Store
+
+[33m[altool] 2026-05-27 15:46:00.106 [1m[31mERROR: [altool.600003984140] Error uploading '/var/folders/5_/4knlryn57n39p2c_jw8567z00000gn/T/5bdee592-df7c-414c-b30f-049b25203b14.ipa'.[0m
+app-store / 🚀 Submit to App Store
+
+[33m[altool] 2026-05-27 15:46:00.107 [1m[31mERROR: [altool.600003984140] Validation failed Invalid Pre-Release Train. The train version '2.8.1' is closed for new build submissions (ID: e10f2b4f-fc71-4c7e-be51-aa67f555818c) (409)
+app-store / 🚀 Submit to App Store
+
+[33m[altool] NSLocalizedDescription = "Validation failed";
+app-store / 🚀 Submit to App Store
+
+[33m[altool] NSUnderlyingError = "Error Domain=IrisAPI Code=-19241 \"Validation failed\" UserInfo={status=409, detail=Invalid Pre-Release Train. The train version '2.8.1' is closed for new build submissions, id=e10f2b4f-fc71-4c7e-be51-aa67f555818c, code=STATE_ERROR.VALIDATION_ERROR, title=Validation failed, NSLocalizedFailureReason=Invalid Pre-Release Train. The train version '2.8.1' is closed for new build submissions, NSLocalizedDescription=Validation failed}";
+app-store / 🚀 Submit to App Store
+
+[33m[altool] 2026-05-27 15:46:00.107 [1m[31mERROR: [altool.600003984140] Validation failed This bundle is invalid. The value for key CFBundleShortVersionString [2.8.1] in the Info.plist file must contain a higher version than that of the previously approved version [2.8.1]. Please find more information about CFBundleShortVersionString at https://developer.apple.com/documentation/bundleresources/information_property_list/cfbundleshortversionstring (ID: db1a4de3-02e0-4e7c-98eb-283c8d3ac5ba) (409)
+app-store / 🚀 Submit to App Store
+
+[33m[altool] NSLocalizedDescription = "Validation failed";
+app-store / 🚀 Submit to App Store
+
+[33m[altool] NSUnderlyingError = "Error Domain=IrisAPI Code=-19241 \"Validation failed\" UserInfo={status=409, detail=This bundle is invalid. The value for key CFBundleShortVersionString [2.8.1] in the Info.plist file must contain a higher version than that of the previously approved version [2.8.1]. Please find more information about CFBundleShortVersionString at https://developer.apple.com/documentation/bundleresources/information_property_list/cfbundleshortversionstring, id=db1a4de3-02e0-4e7c-98eb-283c8d3ac5ba, code=STATE_ERROR.VALIDATION_ERROR, title=Validation failed, NSLocalizedFailureReason=This bundle is invalid. The value for key CFBundleShortVersionString [2.8.1] in the Info.plist file must contain a higher version than that of the previously approved version [2.8.1]. Please find more information about CFBundleShortVersionString at https://developer.apple.com/documentation/bundleresources/information_property_list/cfbundleshortversionstring, NSLocalizedDescription=Validation failed}";
+app-store / 🚀 Submit to App Store
+
+[31mThe call to the altool completed with a non-zero exit status: 1. This indicates a failure.[0m
+app-store / 🚀 Submit to App Store
+
+[!] Error uploading ipa file:
+app-store / 🚀 Submit to App Store
+
+[Application Loader Error Output]: The call to the altool completed with a non-zero exit status: 1. This indicates a failure.[0m
+app-store / 🚀 Submit to App Store

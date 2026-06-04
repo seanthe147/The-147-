@@ -1,0 +1,14 @@
+Error: Couldn't find the bottom tab bar height. Are you inside a screen in Bottom Tab Navigator?
+
+Stack Trace:
+Error: Couldn't find the bottom tab bar height. Are you inside a screen in Bottom Tab Navigator?
+    at useBottomTabBarHeight (/Users/expo/Library/Developer/Xcode/DerivedData/The147-fqlvzmxpmqplsnbczjybkqyvwbun/Build/Intermediates.noindex/ArchiveIntermediates/The147/BuildProductsPath/Release-iphoneos/main.jsbundle:89558:22)
+    at OrderScreen (/Users/expo/Library/Developer/Xcode/DerivedData/The147-fqlvzmxpmqplsnbczjybkqyvwbun/Build/Intermediates.noindex/ArchiveIntermediates/The147/BuildProductsPath/Release-iphoneos/main.jsbundle:140722:77)
+    at renderWithHooks (/Users/expo/Library/Developer/Xcode/DerivedData/The147-fqlvzmxpmqplsnbczjybkqyvwbun/Build/Intermediates.noindex/ArchiveIntermediates/The147/BuildProductsPath/Release-iphoneos/main.jsbundle:16530:32)
+    at updateFunctionComponent (/Users/expo/Library/Developer/Xcode/DerivedData/The147-fqlvzmxpmqplsnbczjybkqyvwbun/Build/Intermediates.noindex/ArchiveIntermediates/The147/BuildProductsPath/Release-iphoneos/main.jsbundle:18083:32)
+    at beginWork (/Users/expo/Library/Developer/Xcode/DerivedData/The147-fqlvzmxpmqplsnbczjybkqyvwbun/Build/Intermediates.noindex/ArchiveIntermediates/The147/BuildProductsPath/Release-iphoneos/main.jsbundle:18497:39)
+    at performUnitOfWork (/Users/expo/Library/Developer/Xcode/DerivedData/The147-fqlvzmxpmqplsnbczjybkqyvwbun/Build/Intermediates.noindex/ArchiveIntermediates/The147/BuildProductsPath/Release-iphoneos/main.jsbundle:20050:25)
+    at workLoopSync (/Users/expo/Library/Developer/Xcode/DerivedData/The147-fqlvzmxpmqplsnbczjybkqyvwbun/Build/Intermediates.noindex/ArchiveIntermediates/The147/BuildProductsPath/Release-iphoneos/main.jsbundle:19954:55)
+    at renderRootSync (/Users/expo/Library/Developer/Xcode/DerivedData/The147-fqlvzmxpmqplsnbczjybkqyvwbun/Build/Intermediates.noindex/ArchiveIntermediates/The147/BuildProductsPath/Release-iphoneos/main.jsbundle:19939:19)
+    at performWorkOnRoot (/Users/expo/Library/Developer/Xcode/DerivedData/The147-fqlvzmxpmqplsnbczjybkqyvwbun/Build/Intermediates.noindex/ArchiveIntermediates/The147/BuildProductsPath/Release-iphoneos/main.jsbundle:19742:56)
+    at performWorkOnRootViaSchedulerTask (/Users/expo/Library/Developer/Xcode/DerivedData/The147-fqlvzmxpmqplsnbczjybkqyvwbun/Build/Intermediates.noindex/ArchiveIntermediates/The147/BuildProductsPath/Release-iphoneos/main.jsbundle:16085:22)

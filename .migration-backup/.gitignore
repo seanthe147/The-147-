@@ -1,0 +1,53 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native - anchor to project root so /credentials/android/ is not affected
+/ios/
+/android/
+*.orig.*
+
+# Signing files - never commit these to the repository
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# credentials files - real secrets injected at build time from env vars by
+# eas-build-pre-install.sh. credentials.json is committed with PLACEHOLDER
+# values only (required to satisfy eas-cli's local pre-upload check); it is
+# overwritten on the build server before signing happens.
+credentials/
+ios-creds/
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+
+# typescript
+*.tsbuildinfo
+.vercel
+
+.env
+
+# Replit chat attachments (may contain sensitive files shared in chat)
+attached_assets/

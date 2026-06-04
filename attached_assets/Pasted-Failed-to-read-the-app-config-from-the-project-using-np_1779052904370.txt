@@ -1,0 +1,27 @@
+Failed to read the app config from the project using "npx expo config" command: npx expo config --json exited with non-zero code: 1.
+Falling back to the version of "@expo/config" shipped with the EAS CLI.
+Unable to resolve a valid config plugin for expo-router.
+• main export of expo-router does not appear to be a config plugin: the following error was thrown when importing /Users/seanlowe/Desktop/The-147/node_modules/expo-router/app.plugin.js: Cannot find module '@expo/config-plugins'
+Require stack:
+- /Users/seanlowe/Desktop/The-147/node_modules/expo/config-plugins.js
+- /Users/seanlowe/Desktop/The-147/node_modules/expo-router/plugin/build/index.js
+- /Users/seanlowe/Desktop/The-147/node_modules/expo-router/app.plugin.js
+- /Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/@expo/config-plugins/build/utils/plugin-resolver.js
+- /Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/@expo/config-plugins/build/plugins/withStaticPlugin.js
+- /Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/@expo/config-plugins/build/plugins/withPlugins.js
+- /Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/@expo/config-plugins/build/index.js
+- /Users/seanlowe/.npm-global/lib/node_modules/eas-cli/build/build/android/syncProjectConfiguration.js
+- /Users/seanlowe/.npm-global/lib/node_modules/eas-cli/build/build/android/build.js
+- /Users/seanlowe/.npm-global/lib/node_modules/eas-cli/build/build/runBuildAndSubmit.js
+- /Users/seanlowe/.npm-global/lib/node_modules/eas-cli/build/commands/build/index.js
+- /Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/@oclif/core/lib/module-loader.js
+- /Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/@oclif/core/lib/help/index.js
+- /Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/@oclif/core/lib/errors/handle.js
+- /Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/@oclif/core/lib/errors/index.js
+- /Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/@oclif/core/lib/config/config.js
+- /Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/@oclif/core/lib/config/index.js
+- /Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/@oclif/core/lib/command.js
+- /Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/@oclif/core/lib/index.js
+- /Users/seanlowe/.npm-global/lib/node_modules/eas-cli/bin/run MODULE_NOT_FOUND
+Verify that expo-router includes a config plugin. If it does not, then remove the entry from plugins in your app config file. Learn more: https://docs.expo.dev/guides/config-plugins/
+    Error: build command failed.

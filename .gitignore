@@ -1,53 +1,49 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
+
+# compiled output
+dist
+tmp
+out-tsc
+*.tsbuildinfo
+.expo
+.expo-shared
 
 # dependencies
-node_modules/
+node_modules
 
-# Expo
-.expo/
-dist/
-web-build/
-expo-env.d.ts
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
 
-# Native - anchor to project root so /credentials/android/ is not affected
-/ios/
-/android/
-*.orig.*
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
 
-# Signing files - never commit these to the repository
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
+# misc
+/.sass-cache
+/connect.lock
+/coverage
+/libpeerconnection.log
+npm-debug.log
+yarn-error.log
+testem.log
+/typings
 
-# credentials files - real secrets injected at build time from env vars by
-# eas-build-pre-install.sh. credentials.json is committed with PLACEHOLDER
-# values only (required to satisfy eas-cli's local pre-upload check); it is
-# overwritten on the build server before signing happens.
-credentials/
-ios-creds/
-
-# Metro
-.metro-health-check*
-
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
-
-# macOS
+# System Files
 .DS_Store
-*.pem
+Thumbs.db
 
-# local env files
-.env*.local
+.cursor/rules/nx-rules.mdc
+.github/instructions/nx.instructions.md
 
-# typescript
-*.tsbuildinfo
-.vercel
-
-.env
-
-# Replit chat attachments (may contain sensitive files shared in chat)
-attached_assets/
+# Replit
+.cache/
+.local/

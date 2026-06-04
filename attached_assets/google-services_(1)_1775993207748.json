@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "657487616758",
+    "project_id": "the-147-app",
+    "storage_bucket": "the-147-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:657487616758:android:5e8f2c429e34b2d568ead7",
+        "android_client_info": {
+          "package_name": "com.the147bradford.venue"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBhGca8KIpxfhOd5HaMw5K3EcbdzoLRg7k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
