@@ -128,9 +128,20 @@ eas build --platform ios --profile preview
 ```
 Then sideload the IPA directly via Apple Configurator 2 or your MDM.
 
+## Pre-build validation
+
+Before every production EAS build, the `prebuildCommand` in `eas.json` automatically
+runs `scripts/validate-env.js` (plain Node — no extra tooling required). It checks that:
+
+- `EXPO_PUBLIC_API_BASE_URL` is set **and** is a valid HTTPS URL
+
+If either check fails the build exits immediately with a clear error message, saving
+the ~15-minute cloud build time. Fix the missing variable in the EAS dashboard (or
+via `eas env:create`) and re-trigger the build.
+
 ## EAS profiles at a glance
-| Profile      | Distribution | Simulator | Auto-increment |
-|-------------|-------------|-----------|----------------|
-| `development` | Internal  | No        | No             |
-| `preview`     | Internal  | No        | No             |
-| `production`  | App Store | No        | Yes            |
+| Profile      | Distribution | Simulator | Auto-increment | Pre-build check |
+|-------------|-------------|-----------|----------------|-----------------|
+| `development` | Internal  | No        | No             | No              |
+| `preview`     | Internal  | No        | No             | No              |
+| `production`  | App Store | No        | Yes            | Yes             |
