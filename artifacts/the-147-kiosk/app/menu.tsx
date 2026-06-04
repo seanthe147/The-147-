@@ -32,6 +32,21 @@ function formatPrice(pence: number) {
   return `£${(pence / 100).toFixed(2)}`;
 }
 
+// ─── Ordering-status type ─────────────────────────────────────────────────────
+
+interface OrderingStatus {
+  enabled: boolean;
+  kitchenOpen?: boolean;
+  barOpen?: boolean;
+  reason?: string;
+  kitchenReason?: string;
+  barReason?: string;
+  nextOpen?: string;
+  barNextOpen?: string;
+  closesAt?: string;
+  barClosesAt?: string;
+}
+
 // ─── Modifier modal ───────────────────────────────────────────────────────────
 
 interface ModifierModalProps {
@@ -140,17 +155,19 @@ interface ItemCardProps {
   item: MenuItem;
   onPress: (item: MenuItem) => void;
   quantity: number;
+  categoryClosed?: boolean;
 }
 
-function ItemCard({ item, onPress, quantity }: ItemCardProps) {
+function ItemCard({ item, onPress, quantity, categoryClosed }: ItemCardProps) {
   const soldOut = !!item.soldOut;
+  const blocked = soldOut || !!categoryClosed;
   return (
     <Pressable
-      onPress={() => !soldOut && onPress(item)}
+      onPress={() => !blocked && onPress(item)}
       style={({ pressed }) => [
         cardStyles.card,
-        soldOut && cardStyles.cardSoldOut,
-        pressed && !soldOut && { opacity: 0.85 },
+        blocked && cardStyles.cardBlocked,
+        pressed && !blocked && { opacity: 0.85 },
       ]}
     >
       {item.imageUrl ? (
@@ -166,10 +183,10 @@ function ItemCard({ item, onPress, quantity }: ItemCardProps) {
           <Text style={cardStyles.desc} numberOfLines={2}>{item.description}</Text>
         ) : null}
         <View style={cardStyles.footer}>
-          <Text style={[cardStyles.price, soldOut && { color: Colors.light.textSecondary }]}>
-            {soldOut ? "Sold out" : formatPrice(item.price)}
+          <Text style={[cardStyles.price, blocked && { color: Colors.light.textSecondary }]}>
+            {soldOut ? "Sold out" : categoryClosed ? "Unavailable" : formatPrice(item.price)}
           </Text>
-          {quantity > 0 && !soldOut && (
+          {quantity > 0 && !blocked && (
             <View style={cardStyles.qtyBadge}>
               <Text style={cardStyles.qtyBadgeText}>{quantity}</Text>
             </View>
@@ -177,6 +194,33 @@ function ItemCard({ item, onPress, quantity }: ItemCardProps) {
         </View>
       </View>
     </Pressable>
+  );
+}
+
+// ─── Closed banner ────────────────────────────────────────────────────────────
+
+interface ClosedBannerProps {
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  title: string;
+  subtitle: string;
+  nextOpen?: string;
+  nextOpenLabel?: string;
+}
+
+function ClosedBanner({ icon, title, subtitle, nextOpen, nextOpenLabel }: ClosedBannerProps) {
+  return (
+    <View style={bannerStyles.wrap}>
+      <Ionicons name={icon} size={22} color="#92400e" />
+      <View style={{ flex: 1 }}>
+        <Text style={bannerStyles.title}>{title}</Text>
+        <Text style={bannerStyles.sub}>{subtitle}</Text>
+        {nextOpen ? (
+          <Text style={bannerStyles.nextOpen}>
+            {nextOpenLabel ?? "Back:"} {nextOpen}
+          </Text>
+        ) : null}
+      </View>
+    </View>
   );
 }
 
@@ -195,6 +239,20 @@ export default function MenuScreen() {
     queryKey: ["/api/menu"],
   });
 
+  const { data: orderingStatus } = useQuery<OrderingStatus>({
+    queryKey: ["/api/ordering-status"],
+    staleTime: 5 * 1000,
+    refetchInterval: 15 * 1000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
+  });
+
+  // Defensive defaults: treat undefined as open so we never block items on
+  // a stale/missing response — only block when the server explicitly says false.
+  const orderingEnabled = orderingStatus?.enabled !== false;
+  const kitchenOpen = orderingStatus?.kitchenOpen !== false;
+  const barOpen = orderingStatus?.barOpen !== false;
+
   const allCategories = useMemo<MenuCategory[]>(() => {
     if (!categories) return [];
     const flat: MenuCategory[] = [];
@@ -209,6 +267,15 @@ export default function MenuScreen() {
     () => allCategories.find((c) => c.id === selectedCatId) ?? allCategories[0] ?? null,
     [allCategories, selectedCatId]
   );
+
+  // Determine if the currently-selected category is unavailable.
+  const selectedCatClosed = useMemo(() => {
+    if (!selectedCategory) return false;
+    if (!orderingEnabled) return true;
+    if (selectedCategory.isKitchen && !kitchenOpen) return true;
+    if (!selectedCategory.isKitchen && !barOpen) return true;
+    return false;
+  }, [selectedCategory, orderingEnabled, kitchenOpen, barOpen]);
 
   const handleItemPress = useCallback((item: MenuItem) => {
     resetIdle();
@@ -244,6 +311,30 @@ export default function MenuScreen() {
   }, [clearCart, showAttract, router]);
 
   const handleTouch = useCallback(() => resetIdle(), [resetIdle]);
+
+  // Build the closed banner for the selected category (if any).
+  const closedBanner = useMemo((): ClosedBannerProps | null => {
+    if (!selectedCategory || !orderingEnabled) return null;
+    if (selectedCategory.isKitchen && !kitchenOpen) {
+      return {
+        icon: "restaurant-outline",
+        title: "Kitchen closed",
+        subtitle: orderingStatus?.kitchenReason ?? "Food items are unavailable until the kitchen reopens.",
+        nextOpen: orderingStatus?.nextOpen,
+        nextOpenLabel: "Kitchen back:",
+      };
+    }
+    if (!selectedCategory.isKitchen && !barOpen) {
+      return {
+        icon: "wine-outline",
+        title: "Bar closed",
+        subtitle: orderingStatus?.barReason ?? "Drinks are unavailable right now.",
+        nextOpen: orderingStatus?.barNextOpen,
+        nextOpenLabel: "Bar back:",
+      };
+    }
+    return null;
+  }, [selectedCategory, orderingEnabled, kitchenOpen, barOpen, orderingStatus]);
 
   return (
     <Pressable
@@ -304,15 +395,32 @@ export default function MenuScreen() {
             <ScrollView showsVerticalScrollIndicator={false}>
               {allCategories.map((cat) => {
                 const active = cat.id === (selectedCategory?.id ?? null);
+                const catClosed =
+                  !orderingEnabled ||
+                  (cat.isKitchen ? !kitchenOpen : !barOpen);
                 return (
                   <Pressable
                     key={cat.id}
                     onPress={() => { resetIdle(); setSelectedCatId(cat.id); }}
                     style={[sidebarStyles.item, active && sidebarStyles.itemActive]}
                   >
-                    <Text style={[sidebarStyles.itemText, active && sidebarStyles.itemTextActive]}>
+                    <Text
+                      style={[
+                        sidebarStyles.itemText,
+                        active && sidebarStyles.itemTextActive,
+                        catClosed && sidebarStyles.itemTextClosed,
+                      ]}
+                    >
                       {cat.name}
                     </Text>
+                    {catClosed && (
+                      <Ionicons
+                        name="lock-closed-outline"
+                        size={12}
+                        color="rgba(255,255,255,0.3)"
+                        style={{ marginTop: 2 }}
+                      />
+                    )}
                     {active && <View style={sidebarStyles.activeIndicator} />}
                   </Pressable>
                 );
@@ -336,17 +444,29 @@ export default function MenuScreen() {
                       item={item}
                       onPress={handleItemPress}
                       quantity={getQuantity(item.variationId)}
+                      categoryClosed={selectedCatClosed}
                     />
                   </View>
                 )}
                 ListHeaderComponent={
-                  <View style={screenStyles.catHeader}>
-                    <Text style={screenStyles.catName}>{selectedCategory.name}</Text>
-                    {selectedCategory.isKitchen && (
-                      <View style={screenStyles.kitchenTag}>
-                        <Ionicons name="flame-outline" size={14} color={Colors.brand.gold} />
-                        <Text style={screenStyles.kitchenTagText}>Kitchen</Text>
-                      </View>
+                  <View>
+                    <View style={screenStyles.catHeader}>
+                      <Text style={screenStyles.catName}>{selectedCategory.name}</Text>
+                      {selectedCategory.isKitchen && (
+                        <View style={screenStyles.kitchenTag}>
+                          <Ionicons name="flame-outline" size={14} color={Colors.brand.gold} />
+                          <Text style={screenStyles.kitchenTagText}>Kitchen</Text>
+                        </View>
+                      )}
+                    </View>
+                    {closedBanner && (
+                      <ClosedBanner
+                        icon={closedBanner.icon}
+                        title={closedBanner.title}
+                        subtitle={closedBanner.subtitle}
+                        nextOpen={closedBanner.nextOpen}
+                        nextOpenLabel={closedBanner.nextOpenLabel}
+                      />
                     )}
                   </View>
                 }
@@ -546,6 +666,9 @@ const sidebarStyles = StyleSheet.create({
     color: "#fff",
     fontWeight: "700",
   },
+  itemTextClosed: {
+    color: "rgba(255,255,255,0.28)",
+  },
   activeIndicator: {
     position: "absolute",
     left: 0,
@@ -565,7 +688,7 @@ const cardStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.07)",
   },
-  cardSoldOut: {
+  cardBlocked: {
     opacity: 0.45,
   },
   image: {
@@ -723,5 +846,37 @@ const modStyles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "800",
     color: "#fff",
+  },
+});
+
+const bannerStyles = StyleSheet.create({
+  wrap: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    backgroundColor: "#FEF3C7",
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 10,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+  },
+  title: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#78350f",
+    marginBottom: 2,
+  },
+  sub: {
+    fontSize: 13,
+    color: "#92400e",
+    lineHeight: 18,
+  },
+  nextOpen: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#78350f",
+    marginTop: 4,
   },
 });
