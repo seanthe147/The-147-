@@ -27,6 +27,8 @@ export interface MenuItem {
   description: string;
   price: number;
   soldOut?: boolean;
+  hidden?: boolean;
+  kioskHidden?: boolean;
   imageUrl?: string;
   updatedAt?: string;
   modifiers?: ModifierList[];
@@ -41,4 +43,5 @@ export interface MenuCategory {
   items: MenuItem[];
   subcategories?: MenuCategory[];
   isKitchen?: boolean;
+  kioskHidden?: boolean;
 }

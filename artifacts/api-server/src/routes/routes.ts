@@ -5217,6 +5217,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         id: cat.id,
         name: cat.name,
         hidden: categoryOverrideMap.get(cat.id)?.hidden ?? false,
+        kioskHidden: categoryOverrideMap.get(cat.id)?.kioskHidden ?? false,
         items: cat.items.map(item => ({
           variationId: item.variationId,
           itemId: item.id,
@@ -5225,6 +5226,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           price: item.price,
           soldOut: itemOverrideMap.get(item.variationId)?.soldOut ?? false,
           hidden: itemOverrideMap.get(item.variationId)?.hidden ?? false,
+          kioskHidden: itemOverrideMap.get(item.variationId)?.kioskHidden ?? false,
         })),
       }));
 
@@ -5336,6 +5338,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: any) {
       console.error("[STAFF MENU] Item hide error:", err.message);
       res.status(500).json({ message: "Failed to update item" });
+    }
+  });
+
+  // ── Kiosk visibility toggles (manager/owner only) ─────────────────────────
+
+  app.put("/api/staff/menu/categories/:categoryId/kiosk-hidden", staffAuth, managerAuth, async (req: any, res) => {
+    const { categoryId } = req.params;
+    const { kioskHidden } = req.body;
+    if (typeof kioskHidden !== "boolean") return res.status(400).json({ message: "kioskHidden must be boolean" });
+    try {
+      const updatedBy = req.staffUser?.username ?? "staff";
+      await storage.setMenuCategoryKioskHidden(categoryId, kioskHidden, updatedBy);
+      square.invalidateMenuCache();
+      res.json({ ok: true, kioskHidden });
+    } catch (err: any) {
+      req.log.error({ err }, "[STAFF KIOSK] Category kiosk-hidden toggle error");
+      res.status(500).json({ message: "Failed to update category" });
+    }
+  });
+
+  app.put("/api/staff/menu/items/:variationId/kiosk-hidden", staffAuth, managerAuth, async (req: any, res) => {
+    const { variationId } = req.params;
+    const { kioskHidden, itemId, name } = req.body;
+    if (typeof kioskHidden !== "boolean") return res.status(400).json({ message: "kioskHidden must be boolean" });
+    if (!itemId || !name) return res.status(400).json({ message: "itemId and name required" });
+    try {
+      const updatedBy = req.staffUser?.username ?? "staff";
+      await storage.setMenuItemKioskHidden(variationId, itemId, name, kioskHidden, updatedBy);
+      square.invalidateMenuCache();
+      res.json({ ok: true, kioskHidden });
+    } catch (err: any) {
+      req.log.error({ err }, "[STAFF KIOSK] Item kiosk-hidden toggle error");
+      res.status(500).json({ message: "Failed to update item" });
+    }
+  });
+
+  // ── Kiosk master on/off ────────────────────────────────────────────────────
+
+  app.get("/api/staff/kiosk-settings", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      const enabled = (await storage.getSetting("kiosk_ordering_enabled")) !== "false";
+      res.json({ enabled });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to load kiosk settings" });
+    }
+  });
+
+  app.put("/api/staff/kiosk-settings", staffAuth, managerAuth, async (req: any, res) => {
+    const { enabled } = req.body;
+    if (typeof enabled !== "boolean") return res.status(400).json({ message: "enabled must be boolean" });
+    try {
+      await storage.setSetting("kiosk_ordering_enabled", String(enabled));
+      const who = req.staffUser?.username ?? "staff";
+      req.log.info({ enabled, who }, "[KIOSK] Kiosk ordering toggled");
+      res.json({ enabled });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update kiosk settings" });
     }
   });
 

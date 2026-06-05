@@ -791,6 +791,8 @@ export interface IStorage {
   getCategorySettings(): Promise<CategorySetting[]>;
   upsertCategorySettings(settings: { categoryId: string; displayOrder?: number; mergedIntoId?: string | null; parentCategoryId?: string | null; displayName?: string | null; imageUrl?: string | null; updatedBy: string }[]): Promise<void>;
   updateCategoryImage(categoryId: string, imageUrl: string | null, updatedBy: string): Promise<void>;
+  setMenuCategoryKioskHidden(categoryId: string, kioskHidden: boolean, updatedBy: string): Promise<void>;
+  setMenuItemKioskHidden(variationId: string, itemId: string, name: string, kioskHidden: boolean, updatedBy: string): Promise<void>;
   getAvailabilityRules(): Promise<AvailabilityRule[]>;
   createAvailabilityRule(rule: Omit<AvailabilityRule, 'id' | 'updatedAt'>): Promise<AvailabilityRule>;
   updateAvailabilityRule(id: number, rule: Partial<Omit<AvailabilityRule, 'id' | 'updatedAt'>>): Promise<AvailabilityRule | undefined>;
@@ -2342,6 +2344,27 @@ export class DatabaseStorage implements IStorage {
       .onConflictDoUpdate({
         target: menuItemOverrides.variationId,
         set: { hidden, updatedBy, updatedAt: new Date() },
+      });
+  }
+
+  async setMenuCategoryKioskHidden(categoryId: string, kioskHidden: boolean, updatedBy: string): Promise<void> {
+    await db.insert(menuCategoryVisibility)
+      .values({ categoryId, hidden: false, kioskHidden, updatedBy, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: menuCategoryVisibility.categoryId,
+        set: { kioskHidden, updatedBy, updatedAt: new Date() },
+      });
+  }
+
+  async setMenuItemKioskHidden(variationId: string, itemId: string, name: string, kioskHidden: boolean, updatedBy: string): Promise<void> {
+    const existing = await db.select().from(menuItemOverrides).where(eq(menuItemOverrides.variationId, variationId));
+    const currentSoldOut = existing[0]?.soldOut ?? false;
+    const currentHidden = existing[0]?.hidden ?? false;
+    await db.insert(menuItemOverrides)
+      .values({ variationId, itemId, name, soldOut: currentSoldOut, hidden: currentHidden, kioskHidden, updatedBy, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: menuItemOverrides.variationId,
+        set: { kioskHidden, updatedBy, updatedAt: new Date() },
       });
   }
 

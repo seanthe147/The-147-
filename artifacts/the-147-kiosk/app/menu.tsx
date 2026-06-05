@@ -257,8 +257,16 @@ export default function MenuScreen() {
     if (!categories) return [];
     const flat: MenuCategory[] = [];
     for (const cat of categories) {
-      flat.push(cat);
-      if (cat.subcategories?.length) flat.push(...cat.subcategories);
+      if (cat.kioskHidden) continue;
+      const visibleItems = (cat.items ?? []).filter((i) => !i.kioskHidden);
+      flat.push({ ...cat, items: visibleItems });
+      if (cat.subcategories?.length) {
+        for (const sub of cat.subcategories) {
+          if (sub.kioskHidden) continue;
+          const subItems = (sub.items ?? []).filter((i) => !i.kioskHidden);
+          flat.push({ ...sub, items: subItems });
+        }
+      }
     }
     return flat.filter((c) => c.items?.length > 0);
   }, [categories]);

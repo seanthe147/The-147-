@@ -718,6 +718,7 @@ export type StaffActionEntry = typeof staffActionLog.$inferSelect;
 export const menuCategoryVisibility = pgTable("menu_category_visibility", {
   categoryId: text("category_id").primaryKey(),
   hidden: boolean("hidden").notNull().default(false),
+  kioskHidden: boolean("kiosk_hidden").notNull().default(false),
   updatedBy: text("updated_by").notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -730,6 +731,7 @@ export const menuItemOverrides = pgTable("menu_item_overrides", {
   name: text("name").notNull(),
   soldOut: boolean("sold_out").notNull().default(false),
   hidden: boolean("hidden").notNull().default(false),
+  kioskHidden: boolean("kiosk_hidden").notNull().default(false),
   // ── Dietary tags (FEATURE_DIETARY_FILTERS) ──────────────────────────────
   // Comma-separated tag codes that describe an item's dietary suitability:
   // V (Vegetarian), VG (Vegan), GF (Gluten-Free), DF (Dairy-Free),
