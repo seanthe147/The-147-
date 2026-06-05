@@ -8780,7 +8780,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/staff", (_req, res) => {
-    const templatePath = path.resolve(process.cwd(), "server", "templates", "staff-dashboard.html");
+    const templatePath = path.join(__dirname, "../src/templates", "staff-dashboard.html");
     const html = fs.readFileSync(templatePath, "utf-8");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
@@ -8792,7 +8792,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Served at /kiosk; load in Safari on an iPad in Guided Access mode.
   // Integrates with /api/menu, /api/orders/kiosk-checkout, and /api/loyalty/points-lookup.
   app.get("/kiosk", (_req, res) => {
-    const templatePath = path.resolve(process.cwd(), "server", "templates", "kiosk.html");
+    const templatePath = path.join(__dirname, "../src/templates", "kiosk.html");
     const html = fs.readFileSync(templatePath, "utf-8");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "no-store");
@@ -8803,7 +8803,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // on the Square till. Public route (no auth) so it can be opened on any
   // device near the till and printed without a staff login.
   app.get("/staff/kiosk-cheatsheet", (_req, res) => {
-    const templatePath = path.resolve(process.cwd(), "server", "templates", "kiosk-cheatsheet.html");
+    const templatePath = path.join(__dirname, "../src/templates", "kiosk-cheatsheet.html");
     const html = fs.readFileSync(templatePath, "utf-8");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "public, max-age=300");
@@ -10590,7 +10590,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.setHeader("Expires", "0");
   };
   const serveMembershipPage = (_req: Request, res: Response) => {
-    const pagePath = path.resolve(process.cwd(), "server", "templates", "membership-page.html");
+    const pagePath = path.join(__dirname, "../src/templates", "membership-page.html");
     membershipPageHeaders(res);
     try {
       const html = fs.readFileSync(pagePath, "utf-8");
@@ -10624,7 +10624,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Booking widget — embeddable iframe for Wix and other websites
   app.get("/widget/booking", (_req, res) => {
-    const widgetPath = path.resolve(process.cwd(), "server", "templates", "booking-widget.html");
+    const widgetPath = path.join(__dirname, "../src/templates", "booking-widget.html");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("X-Frame-Options", "ALLOWALL");
     res.setHeader("Content-Security-Policy", "frame-ancestors *");
@@ -12492,7 +12492,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Data deletion page — required by Apple App Store & Google Play
   app.get("/delete-account", (_req, res) => {
-    const pagePath = path.resolve(process.cwd(), "server", "templates", "delete-account.html");
+    const pagePath = path.join(__dirname, "../src/templates", "delete-account.html");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "no-store");
     try {
