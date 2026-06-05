@@ -9,6 +9,7 @@ localPort = 8080
 name = "API Server"
 paths = [
   "/api",
+  "/assets",
   "/terms",
   "/staff-privacy-notice",
   "/widget",

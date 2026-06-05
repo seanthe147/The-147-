@@ -350,6 +350,10 @@ async function bootstrapOwner() {
   }
   app.use("/uploads", express.static(uploadsDir));
 
+  // Template assets (logo, images used by HTML templates)
+  const templateAssetsDir = path.join(__dirname, "../src/templates/assets");
+  app.use("/assets", express.static(templateAssetsDir));
+
   // Register all API routes from the original server
   const server = await registerRoutes(app);
 
