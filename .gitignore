@@ -47,3 +47,6 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Data exports / backups — never commit customer data
+artifacts/api-server/backups/
