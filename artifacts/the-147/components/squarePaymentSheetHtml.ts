@@ -525,26 +525,36 @@ export function buildPaymentSheetHtml(opts: {
           var cb = document.getElementById("save-card-checkbox");
           saveCardChecked = !!(cb && cb.checked);
         }
-        // The "we need an SCA challenge up front" paths are STORE (membership
-        // sign-up) and CHARGE_AND_STORE *when* the customer has opted in to
-        // saving the card. For plain CHARGE — and for CHARGE_AND_STORE with
-        // the checkbox unchecked — skip verifyBuyer to preserve existing
-        // one-tap behaviour: the server will still try the payment without
-        // a 3DS token (Square will challenge there if it must).
-        var needsSca =
-          INTENT === "STORE" ||
-          (INTENT === "CHARGE_AND_STORE" && saveCardChecked);
-        if (!needsSca) {
-          send({ type: "token", token: token, saveCard: saveCardChecked });
-          return;
-        }
+        // Always run verifyBuyer regardless of intent.
+        //
+        // UK PSD2 / SCA rules require 3DS verification for most
+        // card-not-present transactions. Previously we skipped verifyBuyer
+        // for plain CHARGE payments on the assumption that Square would
+        // "challenge later if needed" — but Square cannot initiate a 3DS
+        // challenge AFTER the payment token has been submitted.  The result
+        // was CARD_DECLINED_VERIFICATION_REQUIRED being returned from
+        // /api/orders/:id/pay for any bank that mandates SCA, leaving the
+        // customer unable to pay.
+        //
+        // Calling verifyBuyer with intent "CHARGE" lets Square perform a
+        // frictionless risk assessment first. If the bank requires a
+        // challenge (rare for low-risk in-person-venue amounts) the 3DS
+        // sheet opens inside the WebView and the customer completes it
+        // before we even send the token to our server.  If the bank says
+        // no challenge is needed, Square returns a verification token
+        // (or null for cards that truly skip SCA) and we pass it along.
+        //
+        // For STORE / CHARGE_AND_STORE-with-save the intent must be "STORE"
+        // (Square requires this for future-use / recurring authorisations).
+        var scaIntent = (INTENT === "STORE" || (INTENT === "CHARGE_AND_STORE" && saveCardChecked))
+          ? "STORE"
+          : "CHARGE";
         try {
           var verifyDetails = {
-            intent: "STORE",
-            // Including amount + currencyCode in the verifyBuyer call gives
-            // Square's 3DS engine the transaction context it needs to run a
-            // "frictionless" risk assessment — meaning fewer customers have
-            // to complete an explicit SCA challenge to save their card.
+            intent: scaIntent,
+            // Providing amount + currencyCode lets Square's 3DS engine run a
+            // frictionless risk assessment, reducing how often customers see
+            // an explicit challenge for low-value in-venue transactions.
             amount: AMOUNT,
             currencyCode: CURRENCY,
             customerInitiated: true,
@@ -554,16 +564,16 @@ export function buildPaymentSheetHtml(opts: {
           payments.verifyBuyer(token, verifyDetails).then(function (vr) {
             send({ type: "token", token: token, verificationToken: vr && vr.token ? vr.token : null, saveCard: saveCardChecked });
           }).catch(function (err) {
-            // Some cards do not require SCA — Square returns an error in that
-            // case. Forward the token without a verificationToken so the
-            // server can still try to save the card.
-            var msg = (err && err.message) || "";
-            if (/not\\s+required|no\\s+challenge|UNSUPPORTED/i.test(msg)) {
-              send({ type: "token", token: token, verificationToken: null, saveCard: saveCardChecked });
-            } else {
-              setStatus(msg || "Card verification failed");
-              send({ type: "error", message: msg || "Card verification failed" });
-            }
+            // verifyBuyer can reject for two benign reasons:
+            //  1. "SCA not required" / "no challenge" — card is exempt
+            //  2. A transient SDK error (e.g. network blip during the
+            //     3DS fingerprint iframe load)
+            // In both cases we forward the token without a verificationToken.
+            // The server will attempt the payment; it succeeds for exempt
+            // cards and may fail with CARD_DECLINED_VERIFICATION_REQUIRED
+            // for cards that genuinely need SCA — in which case the customer
+            // sees a clear error and can retry or use web checkout.
+            send({ type: "token", token: token, verificationToken: null, saveCard: saveCardChecked });
           });
         } catch (e) {
           send({ type: "token", token: token, verificationToken: null, saveCard: saveCardChecked });
@@ -634,6 +644,16 @@ export function buildPaymentSheetHtml(opts: {
 
       diag("card_attach_start");
       var card;
+
+      // Attempt to initialise the card form. On iOS WKWebView the first
+      // attach() call sometimes fails with a transient error (observed in
+      // production as card_attach_error immediately after apple_pay_ready).
+      // A single retry after 400 ms recovers in most cases.  If the second
+      // attempt also fails we call fatal() so the user is offered the
+      // browser fallback rather than being left on an infinite spinner.
+      function tryCardInit(attempt) {
+        attempt = attempt || 1;
+
       // Pass card styling options so the Square-hosted input fields match
       // the payment sheet's light (#F7F8FA) background and brand colours.
       // CardClassSelectors reference:
@@ -696,10 +716,26 @@ export function buildPaymentSheetHtml(opts: {
           });
         });
       }).catch(function (err) {
-        clearTimeout(cardAttachTimer);
-        diag("card_attach_error", { reason: (err && err.message) ? String(err.message).slice(0, 200) : "unknown" });
-        fatal("Could not load card form: " + (err && err.message ? err.message : "unknown error"));
+        var reason = (err && err.message) ? String(err.message).slice(0, 200) : "unknown";
+        diag("card_attach_error", { reason: reason, attempt: attempt });
+        if (fatalSent || cardReady) return;
+        if (attempt < 2) {
+          // One retry after 400 ms. On iOS WKWebView this recovers from
+          // a transient race where the Apple Pay button custom element
+          // finishes rendering just as Square tries to inject its card
+          // iframes, briefly leaving #card-container in a zero-size state.
+          setTimeout(function () {
+            if (fatalSent || cardReady) return;
+            tryCardInit(attempt + 1);
+          }, 400);
+        } else {
+          clearTimeout(cardAttachTimer);
+          fatal("Could not load card form: " + (err && err.message ? err.message : "unknown error"));
+        }
       });
+      } // end tryCardInit
+
+      tryCardInit();
 
       // Apple Pay (iOS Safari/WebKit only, requires verified domain).
       // Fully isolated — any failure here MUST NOT affect the card form.

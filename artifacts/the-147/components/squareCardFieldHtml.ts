@@ -358,18 +358,18 @@ export function buildCardFieldHtml(opts: {
         }
 
         function verifyAndSend(token) {
-          // STORE intent runs verifyBuyer up front for SCA/3DS challenges.
-          // CHARGE intent (orders) skips this — preserves existing behaviour.
-          if (INTENT !== "STORE") {
-            send({ type: "token", token: token });
-            return;
-          }
+          // Always run verifyBuyer — UK PSD2/SCA rules mean some banks
+          // require 3DS for all card-not-present transactions, including
+          // plain CHARGE. Skipping it causes CARD_DECLINED_VERIFICATION_REQUIRED
+          // from the server for those cards.
+          // STORE / future-use must use intent "STORE"; plain CHARGE uses "CHARGE".
+          var scaIntent = INTENT === "STORE" ? "STORE" : "CHARGE";
           try {
             var verifyDetails = {
-              intent: "STORE",
+              intent: scaIntent,
               // Including amount + currencyCode gives Square's 3DS engine the
               // transaction context for a frictionless risk assessment — fewer
-              // customers see an explicit SCA challenge when saving their card.
+              // customers see an explicit SCA challenge.
               amount: AMOUNT,
               currencyCode: CURRENCY,
               customerInitiated: true,
@@ -378,16 +378,11 @@ export function buildCardFieldHtml(opts: {
             };
             payments.verifyBuyer(token, verifyDetails).then(function (vr) {
               send({ type: "token", token: token, verificationToken: vr && vr.token ? vr.token : null });
-            }).catch(function (err) {
-              var msg = (err && err.message) || "";
-              // Some cards do not require SCA — Square returns an error.
-              // Forward without a verificationToken so the server can try.
-              if (/not\\s+required|no\\s+challenge|UNSUPPORTED/i.test(msg)) {
-                send({ type: "token", token: token, verificationToken: null });
-              } else {
-                setStatus(msg || "Card verification failed");
-                send({ type: "error", message: msg || "Card verification failed" });
-              }
+            }).catch(function () {
+              // verifyBuyer rejected — card may be SCA-exempt or there was a
+              // transient SDK error. Forward without a token; the server will
+              // attempt the payment and surface a clear error if SCA is needed.
+              send({ type: "token", token: token, verificationToken: null });
             });
           } catch (e) {
             send({ type: "token", token: token, verificationToken: null });

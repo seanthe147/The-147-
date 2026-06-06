@@ -7208,8 +7208,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const errorCode: string | undefined = first.code;
       const errorDetail: string | undefined = first.detail || err?.message;
       console.error("[ORDER] Pay failed:", { code: err?.code, errorCode, detail: errorDetail });
+      // Map known Square error codes to plain-English messages.
+      const friendlyMessages: Record<string, string> = {
+        CARD_DECLINED_VERIFICATION_REQUIRED:
+          "Your bank requires additional verification for this payment. Please try again — the card verification screen should appear. If it still fails, try a different card or use the web checkout option.",
+        CARD_DECLINED: "Your card was declined. Please check your details or try a different card.",
+        INSUFFICIENT_FUNDS: "Your card has insufficient funds. Please try a different card.",
+        INVALID_CARD: "Your card details appear to be invalid. Please check them and try again.",
+        CARD_EXPIRED: "Your card has expired. Please use a different card.",
+        CVV_FAILURE: "The card security code was incorrect. Please check it and try again.",
+        ADDRESS_VERIFICATION_FAILURE: "The billing address didn't match. Please check your details and try again.",
+        GENERIC_DECLINE: "Your card was declined. Please try a different card or contact your bank.",
+        TRANSACTION_LIMIT: "This transaction exceeds your card's limit. Please try a different payment method.",
+      };
+      const message = (errorCode && friendlyMessages[errorCode]) || errorDetail || "Card charge failed";
       res.status(400).json({
-        message: errorDetail || "Card charge failed",
+        message,
         errorCode: errorCode || null,
       });
     }
