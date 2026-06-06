@@ -715,6 +715,14 @@ export function buildPaymentSheetHtml(opts: {
             payBtn.textContent = PAY_LABEL;
           });
         });
+        // Wallet buttons initialised HERE — after the card form is safely
+        // attached and interactive. On iOS WKWebView, calling
+        // payments.applePay() in parallel with card.attach() caused the
+        // card form to lose an internal Square SDK race and throw
+        // card_attach_error on every attempt. Sequencing eliminates this:
+        // Apple Pay and Google Pay buttons appear slightly later (~1-2 s)
+        // but the card form is always reliable.
+        initWallets();
       }).catch(function (err) {
         var reason = (err && err.message) ? String(err.message).slice(0, 200) : "unknown";
         diag("card_attach_error", { reason: reason, attempt: attempt });
@@ -736,6 +744,12 @@ export function buildPaymentSheetHtml(opts: {
       } // end tryCardInit
 
       tryCardInit();
+
+      // initWallets() is called from inside tryCardInit's success handler
+      // (after the card form is confirmed attached) — NOT here in parallel.
+      // Defined as a named function so tryCardInit can call it regardless of
+      // source-order (function declarations are hoisted within this IIFE).
+      function initWallets() {
 
       // Apple Pay (iOS Safari/WebKit only, requires verified domain).
       // Fully isolated — any failure here MUST NOT affect the card form.
@@ -837,6 +851,8 @@ export function buildPaymentSheetHtml(opts: {
       } catch (e) {
         diag("google_pay_throw", { reason: (e && e.message) ? String(e.message).slice(0, 200) : "unknown" });
       }
+      } // end initWallets
+
       } // end bootSquare
     })();
   </script>
