@@ -96,6 +96,7 @@ export function buildPaymentSheetHtml(opts: {
   -->
   <script
     crossorigin="anonymous"
+    async
     src="https://applepay.cdn-apple.com/jsapi/v1.1.0/apple-pay-sdk.js"
   ></script>
   <style>
@@ -187,6 +188,8 @@ export function buildPaymentSheetHtml(opts: {
     #loading { display: flex; align-items: center; justify-content: center; gap: 10px; color: #6B7280; font-size: 13px; padding: 24px 0; }
     .spinner { width: 16px; height: 16px; border: 2px solid #E5E7EB; border-top-color: #0047AB; border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    #slow-warning { display: none; margin: 0 0 12px; padding: 12px 14px; background: #FEF3C7; border: 1px solid #FCD34D; border-radius: 10px; font-size: 13px; color: #78350F; text-align: center; }
+    #slow-retry-btn { display: inline-block; margin-top: 8px; padding: 7px 18px; background: #0047AB; color: #fff; font-size: 13px; font-weight: 700; border: none; border-radius: 8px; cursor: pointer; }
 
     .trust-footer {
       display: flex; align-items: center; justify-content: center; gap: 6px;
@@ -206,6 +209,11 @@ export function buildPaymentSheetHtml(opts: {
   </div>
 
   <div id="recurring-notice"></div>
+
+  <div id="slow-warning">
+    Taking longer than usual — tap below to try again.
+    <br/><button id="slow-retry-btn" type="button">Retry</button>
+  </div>
 
   <div id="loading"><div class="spinner"></div> Loading payment options…</div>
 
@@ -642,6 +650,32 @@ export function buildPaymentSheetHtml(opts: {
         fatal("The card form did not load in time. Close this and try again, or use browser checkout.");
       }, PHASE_TIMEOUT_MS);
 
+      // Show a gentle "taking longer than usual" warning after 6 s so the
+      // user isn't stuck staring at a spinner — they get an inline retry
+      // button rather than having to wait for the full 12 s fatal timeout.
+      var slowWarningShown = false;
+      var slowWarningTimer = setTimeout(function () {
+        if (cardReady || fatalSent) return;
+        slowWarningShown = true;
+        var w = document.getElementById("slow-warning");
+        if (w) w.style.display = "block";
+        diag("slow_warning_shown");
+      }, 6000);
+
+      // Retry button: abandon the hanging attempt and re-run tryCardInit.
+      // fatalSent is intentionally NOT reset here so that a second hang
+      // (which increments attempt to 2 and calls fatal()) still terminates.
+      var slowBtn = document.getElementById("slow-retry-btn");
+      if (slowBtn) {
+        slowBtn.addEventListener("click", function () {
+          var w = document.getElementById("slow-warning");
+          if (w) w.style.display = "none";
+          slowWarningShown = false;
+          diag("slow_retry_tapped");
+          tryCardInit(1);
+        });
+      }
+
       diag("card_attach_start");
       var card;
 
@@ -658,6 +692,7 @@ export function buildPaymentSheetHtml(opts: {
       // the payment sheet's light (#F7F8FA) background and brand colours.
       // CardClassSelectors reference:
       //   https://developer.squareup.com/reference/sdks/web/payments/objects/CardClassSelectors
+      diag("card_obj_start", { attempt: attempt });
       payments.card({
         style: {
           '.input-container': { borderColor: '#E5E7EB', borderRadius: '8px' },
@@ -676,10 +711,14 @@ export function buildPaymentSheetHtml(opts: {
         },
       }).then(function (c) {
         card = c;
+        diag("card_obj_ready", { attempt: attempt });
         return c.attach("#card-container");
       }).then(function () {
         cardReady = true;
         clearTimeout(cardAttachTimer);
+        clearTimeout(slowWarningTimer);
+        var w = document.getElementById("slow-warning");
+        if (w) w.style.display = "none";
         diag("card_attached");
         if (fatalSent) return; // already gave up
         var payBtn = document.getElementById("pay-card-btn");
