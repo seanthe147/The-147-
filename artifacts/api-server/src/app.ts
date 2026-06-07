@@ -108,9 +108,9 @@ export function createApp(): Express {
     const reqPath = req.path;
     let capturedJsonResponse: Record<string, unknown> | undefined = undefined;
     const originalResJson = res.json.bind(res);
-    res.json = function (bodyJson: any, ...args: any[]) {
+    res.json = function (bodyJson: any) {
       capturedJsonResponse = bodyJson;
-      return originalResJson(bodyJson, ...args);
+      return originalResJson(bodyJson);
     };
     res.on("finish", () => {
       if (!reqPath.startsWith("/api")) return;

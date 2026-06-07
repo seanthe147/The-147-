@@ -95,7 +95,7 @@ async function fetchLeagueFixtures(
     signal: AbortSignal.timeout(8000),
   });
   if (!res.ok) throw new Error(`TheSportsDB ${leagueId}: HTTP ${res.status}`);
-  const json = await res.json();
+  const json: any = await res.json();
   const events: any[] = Array.isArray(json?.events) ? json.events : [];
 
   const now = Date.now();

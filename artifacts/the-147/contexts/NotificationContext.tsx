@@ -4,7 +4,7 @@ import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { EventSubscription } from "expo-modules-core";
+type EventSubscription = { remove: () => void };
 import { router } from "expo-router";
 import { apiRequest, queryClient } from "@/lib/query-client";
 

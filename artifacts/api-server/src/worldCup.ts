@@ -62,7 +62,7 @@ async function fetchEspn(): Promise<CachedMatch> {
   const url = `${ESPN_SCOREBOARD}?dates=${yyyymmdd(start)}-${yyyymmdd(end)}&limit=100`;
   const res = await fetch(url, { headers: { Accept: "application/json" } });
   if (!res.ok) throw new Error(`ESPN ${res.status}`);
-  const json = await res.json();
+  const json: any = await res.json();
   const events: any[] = Array.isArray(json?.events) ? json.events : [];
   if (!events.length) return emptyMatch();
 
@@ -171,7 +171,7 @@ async function fetchSportsDb(): Promise<CachedMatch> {
   try {
     const res = await fetch(SPORTSDB_SEASON, { headers: { Accept: "application/json" } });
     if (res.ok) {
-      const json = await res.json();
+      const json: any = await res.json();
       events = Array.isArray(json?.events) ? json.events : [];
     }
   } catch {
@@ -181,7 +181,7 @@ async function fetchSportsDb(): Promise<CachedMatch> {
     try {
       const res = await fetch(SPORTSDB_NEXT, { headers: { Accept: "application/json" } });
       if (res.ok) {
-        const json = await res.json();
+        const json: any = await res.json();
         events = Array.isArray(json?.events) ? json.events : [];
       }
     } catch {
@@ -261,7 +261,7 @@ async function fetchEspnEnglandList(limit: number): Promise<CachedMatch[]> {
   const url = `${ESPN_SCOREBOARD}?dates=${yyyymmdd(start)}-${yyyymmdd(end)}&limit=200`;
   const res = await fetch(url, { headers: { Accept: "application/json" } });
   if (!res.ok) throw new Error(`ESPN ${res.status}`);
-  const json = await res.json();
+  const json: any = await res.json();
   const events: any[] = Array.isArray(json?.events) ? json.events : [];
   if (!events.length) return [];
 
@@ -307,7 +307,7 @@ async function fetchSportsDbEnglandList(limit: number): Promise<CachedMatch[]> {
   try {
     const res = await fetch(SPORTSDB_SEASON, { headers: { Accept: "application/json" } });
     if (res.ok) {
-      const json = await res.json();
+      const json: any = await res.json();
       events = Array.isArray(json?.events) ? json.events : [];
     }
   } catch {}
@@ -315,7 +315,7 @@ async function fetchSportsDbEnglandList(limit: number): Promise<CachedMatch[]> {
     try {
       const res = await fetch(SPORTSDB_NEXT, { headers: { Accept: "application/json" } });
       if (res.ok) {
-        const json = await res.json();
+        const json: any = await res.json();
         events = Array.isArray(json?.events) ? json.events : [];
       }
     } catch {}

@@ -91,8 +91,8 @@ function getPlanFeatures(plan: MembershipPlan): { icon: keyof typeof Ionicons.gl
   const detailed = Array.isArray(plan.benefitsDetailed) && plan.benefitsDetailed.length > 0
     ? plan.benefitsDetailed
     : getPlanBenefits(plan);
-  return detailed.map((b) => ({
-    icon: b.key === "hours" && plan.snookerUnlimited ? "infinite-outline" : BENEFIT_ICONS[b.key],
+  return detailed.map((b: { key: string; text: string }) => ({
+    icon: b.key === "hours" && plan.snookerUnlimited ? "infinite-outline" : BENEFIT_ICONS[b.key as BenefitKey],
     text: b.text,
   }));
 }

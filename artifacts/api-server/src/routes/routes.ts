@@ -3084,7 +3084,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           },
           body: JSON.stringify(batch),
         });
-        responseData = await response.json();
+        responseData = await response.json() as typeof responseData;
       } catch (err) {
         console.error("[Push] Network error sending to Expo:", err);
         failureCount += batch.length;

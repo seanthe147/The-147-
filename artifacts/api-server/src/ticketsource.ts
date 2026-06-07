@@ -82,7 +82,7 @@ export async function fetchTicketSourceEvents(): Promise<AppEvent[]> {
       return cachedEvents;
     }
 
-    const eventsData = await eventsRes.json();
+    const eventsData: any = await eventsRes.json();
     const tsEvents: TicketSourceEvent[] = eventsData.data || [];
 
     const allAppEvents: AppEvent[] = [];
@@ -103,7 +103,7 @@ export async function fetchTicketSourceEvents(): Promise<AppEvent[]> {
 
         if (!datesRes.ok) continue;
 
-        const datesData = await datesRes.json();
+        const datesData: any = await datesRes.json();
         const dates: TicketSourceDate[] = datesData.data || [];
 
         // Filter out cancelled/non-public dates

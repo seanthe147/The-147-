@@ -19,13 +19,13 @@ function getHeaders(): Record<string, string> {
   };
 }
 
-async function squareRequest(method: string, path: string, body?: unknown) {
+async function squareRequest(method: string, path: string, body?: unknown): Promise<any> {
   const url = `${SQUARE_BASE_URL}${path}`;
   const options: RequestInit = { method, headers: getHeaders() };
   if (body) options.body = JSON.stringify(body);
 
   const response = await fetch(url, options);
-  const data = await response.json();
+  const data: any = await response.json();
 
   if (!response.ok) {
     const errorDetail = data.errors?.[0]?.detail || "Square API error";

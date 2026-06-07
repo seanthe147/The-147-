@@ -232,7 +232,7 @@ async function teyaRequest(
       authorization: `Bearer ${token}`,
       accept: "application/json",
     };
-    let body: BodyInit | undefined;
+    let body: string | undefined;
     if (opts.body !== undefined) {
       headers["content-type"] = "application/json";
       body = JSON.stringify(opts.body);

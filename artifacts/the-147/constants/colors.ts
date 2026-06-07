@@ -5,6 +5,13 @@ const BRAND_NAVY = "#132742";
 const BRAND_GOLD = "#D4A843";
 
 export default {
+  radius: {
+    sm: 6,
+    md: 12,
+    lg: 16,
+    xl: 24,
+    full: 9999,
+  },
   light: {
     text: "#1A1A2E",
     textSecondary: "#6B7280",

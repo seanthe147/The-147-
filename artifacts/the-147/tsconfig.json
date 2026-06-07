@@ -8,6 +8,9 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@workspace/db/schema": [
+        "../../lib/db/src/schema"
       ]
     }
   },
