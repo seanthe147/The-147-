@@ -1,0 +1,35 @@
+
+Using EAS CLI without version control system is not recommended, use this mode only if you know what you are doing.
+Resolved "production" environment for the build. Learn more: https://docs.expo.dev/eas/environment-variables/#setting-the-environment-for-your-builds
+No environment variables with visibility "Plain text" and "Sensitive" found for the "production" environment on EAS.
+Specified value for "ios.bundleIdentifier" in app.json is ignored because an ios directory was detected in the project.
+EAS Build will use the value found in the native code.
+- Incrementing buildNumber from 125 to 126.
+✔ Incremented buildNumber from 125 to 126.
+ios.buildNumber field in app config is ignored when version source is set to remote, but this value will still be in the manifest available via expo-constants. It's recommended to remove this value from app config.
+✔ Using remote iOS credentials (Expo server)
+Distribution Certificate is not validated for non-interactive builds.
+Skipping Provisioning Profile validation on Apple Servers because we aren't authenticated.
+Project Credentials Configuration
+Project                   @replit-private-13dec2e5-79f6-42cb-8e2a-5f1bb4d13e63/the-147
+Bundle Identifier         com.the147bradford.app
+                          
+App Store Configuration   
+                          
+Distribution Certificate  
+Serial Number             536A45571E0B2A039A13EBA961ACBF2C
+Expiration Date           Wed, 21 Apr 2027 13:31:10 PDT
+Apple Team                94LW5H4828 (Cue Gardens Ltd)
+Updated                   1 month ago
+                          
+Provisioning Profile      
+Developer Portal ID       X66F6X44K3
+Status                    active
+Expiration                Wed, 21 Apr 2027 13:31:10 PDT
+Apple Team                94LW5H4828 (Cue Gardens Ltd)
+Updated                   1 month ago
+                          
+All credentials are ready to build @replit-private-13dec2e5-79f6-42cb-8e2a-5f1bb4d13e63/the-147 (com.the147bradford.app)
+CommandError: You're currently using the bare workflow, where runtime version policies are not supported. You must set your runtime version manually. For example, define your runtime version as "1.0.0", not {"policy": "appVersion"} in your app config. https://docs.expo.dev/eas-update/runtime-versions
+Error: build:internal command failed.
+Failed to run eas build:internal
