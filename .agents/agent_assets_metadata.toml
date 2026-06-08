@@ -1,0 +1,62 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "edKyCTSABbHCjWCQ9Celg"
+uri = "file://artifacts/mockup-sandbox/public/images/promo.png"
+type = "image"
+title = "Snooker club promo banner"
+
+[[generated]]
+id = "OXyn41IEwvI8jR8hyRCwV"
+uri = "file://artifacts/mockup-sandbox/public/images/offer.png"
+type = "image"
+title = "Offer card snooker drinks"
+
+[[generated]]
+id = "72TBPNcjwb097WamaGTc_"
+uri = "file://artifacts/mockup-sandbox/public/images/vivid-sports.png"
+type = "image"
+title = "Snooker sports banner"
+
+[[generated]]
+id = "ysefUYU9hnZm25gUBBWt-"
+uri = "file://artifacts/mockup-sandbox/public/images/vivid-promo.png"
+type = "image"
+title = "Club promotion banner"
+
+[[generated]]
+id = "ovkBbZ01CvnfFMrrb1rh5"
+uri = "file://artifacts/mockup-sandbox/public/images/vivid-offer1.png"
+type = "image"
+title = "Food offer image"
+
+[[generated]]
+id = "KAJJaLQoLvAPmIajNhS0V"
+uri = "file://artifacts/mockup-sandbox/public/images/vivid-offer2.png"
+type = "image"
+title = "Drinks offer image"
+
+[[generated]]
+id = "uP3aSoehS_wKXU59X6ixx"
+uri = "file://artifacts/mockup-sandbox/public/images/avatar.png"
+type = "image"
+title = "Snooker player avatar"
+
+[[generated]]
+id = "VaxxmIbkhpW5-sbVh5sKd"
+uri = "file://artifacts/mockup-sandbox/public/images/snooker-promo.png"
+type = "image"
+title = "Snooker table promo"
+
+[[generated]]
+id = "RKtbAA_VIBnIy8o5u3va7"
+uri = "file://artifacts/mockup-sandbox/public/images/food-offer.png"
+type = "image"
+title = "Food and drink offer"
+
+[[generated]]
+id = "YomNx9UaHFMJrOFvaYpfo"
+uri = "file://artifacts/mockup-sandbox/public/images/cocktail-offer.png"
+type = "image"
+title = "Cocktail offer"
