@@ -221,8 +221,7 @@ function ScratchOverlay({
 
   return (
     <Animated.View
-      style={[StyleSheet.absoluteFill, { opacity: overlayOpacity }]}
-      pointerEvents="none"
+      style={[StyleSheet.absoluteFill, { opacity: overlayOpacity, pointerEvents: 'none' }]}
     >
       <Svg width={cardW} height={cardH} style={StyleSheet.absoluteFill}>
         <Defs>
@@ -674,7 +673,7 @@ export function ScratchCardGame({
 
         {/* "Scratch here" prompt — only before the first touch */}
         {!overlayGone && !scratchStarted && (
-          <View style={styles.scratchPrompt} pointerEvents="none">
+          <View style={[styles.scratchPrompt, { pointerEvents: 'none' }]}>
             <Ionicons name="finger-print" size={30} color={Colors.brand.gold} />
             <Text style={styles.scratchPromptText}>Scratch here</Text>
           </View>

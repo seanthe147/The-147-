@@ -161,9 +161,9 @@ export function KioskAttractOverlay() {
                 paddingTop: Math.max(insets.top, 32) + (isLandscape ? 12 : 48),
                 paddingBottom: Math.max(insets.bottom, 24) + (isLandscape ? 16 : 36),
                 paddingHorizontal: isTablet ? 64 : 32,
+                pointerEvents: 'none',
               },
             ]}
-            pointerEvents="none"
           >
             <View style={styles.brandWrap}>
               <Text style={[styles.brandSmall, isTablet && { fontSize: 20, letterSpacing: 6 }]}>{welcomeText}</Text>

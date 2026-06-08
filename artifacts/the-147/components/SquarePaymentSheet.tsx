@@ -296,7 +296,7 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
         ) : null}
 
         {props.inProgress ? (
-          <View style={styles.processingOverlay} pointerEvents="auto">
+          <View style={[styles.processingOverlay, { pointerEvents: 'auto' }]}>
             <View style={styles.processingCard}>
               <ActivityIndicator color={Colors.brand.blue} size="large" />
               <Text style={styles.processingText}>Authorising your payment…</Text>

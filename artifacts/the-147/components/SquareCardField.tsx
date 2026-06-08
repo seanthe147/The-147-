@@ -170,7 +170,7 @@ export const SquareCardField = React.forwardRef<SquareCardFieldHandle, SquareCar
     return (
       <View style={[styles.container, { height: contentHeight }]}>
         {!ready && (
-          <View style={styles.loadingOverlay} pointerEvents="none">
+          <View style={[styles.loadingOverlay, { pointerEvents: 'none' }]}>
             <ActivityIndicator color={Colors.brand.blue} />
             <Text style={styles.loadingText}>Loading secure card form…</Text>
           </View>
