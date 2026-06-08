@@ -200,10 +200,12 @@ const WorldCupCard = memo(function WorldCupCard() {
 const QuickActionPill = memo(function QuickActionPill({
   icon,
   label,
+  iconColor,
   onPress,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
+  iconColor?: string;
   onPress: () => void;
 }) {
   return (
@@ -213,13 +215,14 @@ const QuickActionPill = memo(function QuickActionPill({
         onPress();
       }}
       style={({ pressed }) => [
-        styles.pill,
-        { opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] },
+        styles.quickTileWrap,
+        { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.94 : 1 }] },
       ]}
     >
-      <Ionicons name={icon} size={18} color={Colors.brand.blue} />
-      <Text style={styles.pillLabel}>{label}</Text>
-      <Ionicons name="chevron-forward" size={14} color={Colors.light.textSecondary} />
+      <View style={styles.quickTileIcon}>
+        <Ionicons name={icon} size={24} color={iconColor ?? "#FFFFFF"} />
+      </View>
+      <Text style={styles.quickTileLabel}>{label}</Text>
     </Pressable>
   );
 });
@@ -720,16 +723,31 @@ export default function HomeScreen() {
               every other case. */}
           <PersonalisedHomeCards />
 
+          <WorldCupCard />
+
           <View style={styles.quickNav}>
-            <WorldCupCard />
             <QuickActionPill
-              icon="restaurant-outline"
-              label="Food & Drinks Menu"
+              icon="calendar"
+              label="Book Table"
+              iconColor={Colors.brand.blue}
+              onPress={goToBook}
+            />
+            <QuickActionPill
+              icon="restaurant"
+              label="Order Food"
+              iconColor={Colors.brand.gold}
               onPress={goToOrder}
+            />
+            <QuickActionPill
+              icon="diamond"
+              label="Membership"
+              iconColor="#FFFFFF"
+              onPress={() => router.push("/(tabs)/loyalty")}
             />
             <QuickActionPill
               icon="mail-outline"
               label="Contact Us"
+              iconColor="#FFFFFF"
               onPress={goToContact}
             />
           </View>
@@ -766,9 +784,9 @@ export default function HomeScreen() {
             onPress={() => Linking.openURL("https://www.the147.co.uk")}
             style={({ pressed }) => [styles.websiteCard, { opacity: pressed ? 0.8 : 1 }]}
           >
-            <Ionicons name="globe-outline" size={18} color={Colors.brand.blue} />
+            <Ionicons name="globe-outline" size={18} color={Colors.brand.gold} />
             <Text style={styles.websiteText}>Visit www.the147.co.uk</Text>
-            <Ionicons name="open-outline" size={13} color={Colors.light.textSecondary} />
+            <Ionicons name="open-outline" size={13} color="rgba(255,255,255,0.4)" />
           </Pressable>
 
           <View style={{ height: Platform.OS === "web" ? 50 : tabBarHeight + 20 }} />
@@ -790,7 +808,7 @@ function getOpeningHoursToday(): { day: string; hours: string; closeTime: string
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F5F6F8",
+    backgroundColor: "#0A1628",
   },
   scrollContent: {
     paddingTop: 0,
@@ -957,39 +975,68 @@ const styles = StyleSheet.create({
     paddingTop: 20,
   },
   quickNav: {
-    paddingHorizontal: 20,
-    gap: 6,
-    marginBottom: 24,
-  },
-  pill: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#EEF0F3",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    marginBottom: 28,
+    gap: 8,
   },
-  pillLabel: {
+  quickTileWrap: {
     flex: 1,
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 14,
-    color: Colors.light.text,
+    alignItems: "center",
+    gap: 8,
+  },
+  quickTileIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.15)",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0,0,0,0.3)",
+    borderLeftWidth: 1,
+    borderLeftColor: "rgba(255,255,255,0.05)",
+    borderRightWidth: 1,
+    borderRightColor: "rgba(255,255,255,0.05)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  quickTileLabel: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 11,
+    color: "rgba(255,255,255,0.7)",
+    textAlign: "center",
   },
   wcCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#EEF0F3",
+    borderRadius: 16,
+    backgroundColor: "rgba(10,22,40,0.7)",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.15)",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0,0,0,0.4)",
+    borderLeftWidth: 1,
+    borderLeftColor: "rgba(255,255,255,0.05)",
+    borderRightWidth: 1,
+    borderRightColor: "rgba(255,255,255,0.05)",
     overflow: "hidden",
-    marginBottom: 6,
+    marginHorizontal: 20,
+    marginBottom: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    elevation: 10,
   },
   wcHeader: {
-    backgroundColor: Colors.brand.blue,
+    backgroundColor: "rgba(19,39,66,0.8)",
     paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingVertical: 10,
   },
   wcTitleRow: {
     flexDirection: "row",
@@ -1012,19 +1059,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 18,
     alignItems: "center",
+    backgroundColor: "rgba(10,22,40,0.6)",
   },
   wcLoadingText: {
-    color: Colors.light.textSecondary,
+    color: "rgba(255,255,255,0.45)",
     fontSize: 12,
   },
   wcRow: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingVertical: 11,
     gap: 8,
     borderBottomWidth: 1,
-    borderBottomColor: "#F1F3F6",
+    borderBottomColor: "rgba(255,255,255,0.07)",
+    backgroundColor: "rgba(10,22,40,0.6)",
   },
   wcLogo: {
     width: 18,
@@ -1035,25 +1084,25 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: "#E5E7EB",
+    backgroundColor: "rgba(255,255,255,0.15)",
   },
   wcTeamName: {
     flex: 1,
     fontFamily: "Montserrat_700Bold",
     fontSize: 13,
-    color: Colors.light.text,
+    color: "#FFFFFF",
     letterSpacing: 0.3,
   },
   wcVs: {
     fontFamily: "Montserrat_500Medium",
     fontSize: 11,
-    color: Colors.light.textSecondary,
+    color: "rgba(255,255,255,0.45)",
     letterSpacing: 0,
   },
   wcScore: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 14,
-    color: Colors.light.text,
+    color: "#FFFFFF",
     minWidth: 18,
     textAlign: "right",
   },
@@ -1064,26 +1113,28 @@ const styles = StyleSheet.create({
   wcDateText: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 12,
-    color: Colors.brand.blue,
+    color: Colors.brand.gold,
     textAlign: "right",
   },
   wcLivePill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "rgba(255,59,48,0.12)",
     borderRadius: 999,
     paddingHorizontal: 8,
     paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: "rgba(255,59,48,0.25)",
   },
   wcLiveDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "#EF4444",
+    backgroundColor: "#ff3b30",
   },
   wcLiveText: {
-    color: "#B91C1C",
+    color: "#ff3b30",
     fontFamily: "Montserrat_700Bold",
     fontSize: 10,
     letterSpacing: 0.4,
@@ -1098,13 +1149,13 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 18,
-    color: Colors.light.text,
+    color: "#FFFFFF",
     letterSpacing: -0.3,
   },
   seeAllText: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 13,
-    color: Colors.brand.blue,
+    color: Colors.brand.gold,
   },
   bannerSection: {
     marginBottom: 28,
@@ -1112,10 +1163,17 @@ const styles = StyleSheet.create({
   bannerSlide: {
     width: BANNER_WIDTH,
     height: BANNER_HEIGHT,
-    borderRadius: 16,
+    borderRadius: 20,
     overflow: "hidden",
     marginRight: 12,
-    backgroundColor: Colors.light.surface,
+    backgroundColor: "rgba(19,39,66,0.8)",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.15)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.5,
+    shadowRadius: 24,
+    elevation: 12,
   },
   bannerImage: {
     width: "100%",
@@ -1171,10 +1229,10 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: Colors.light.border,
+    backgroundColor: "rgba(255,255,255,0.25)",
   },
   dotActive: {
-    backgroundColor: Colors.brand.blue,
+    backgroundColor: Colors.brand.gold,
     width: 20,
     borderRadius: 3,
   },
@@ -1186,12 +1244,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 14,
     marginHorizontal: 20,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(255,255,255,0.06)",
     padding: 14,
     borderRadius: 14,
     marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#EEF0F3",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.12)",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0,0,0,0.25)",
+    borderLeftWidth: 1,
+    borderLeftColor: "rgba(255,255,255,0.04)",
+    borderRightWidth: 1,
+    borderRightColor: "rgba(255,255,255,0.04)",
   },
   eventDateBox: {
     width: 48,
@@ -1216,13 +1280,13 @@ const styles = StyleSheet.create({
   eventTitle: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 14,
-    color: Colors.light.text,
+    color: "#FFFFFF",
     marginBottom: 2,
   },
   eventMeta: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 12,
-    color: Colors.light.textSecondary,
+    color: "rgba(255,255,255,0.5)",
   },
   offersSection: {
     marginBottom: 16,
@@ -1237,7 +1301,7 @@ const styles = StyleSheet.create({
   offersSectionTitle: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 14,
-    color: Colors.light.text,
+    color: "#FFFFFF",
   },
   offersScroll: {
     paddingHorizontal: 20,
@@ -1326,20 +1390,28 @@ const styles = StyleSheet.create({
   dealsSectionTitle: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 14,
-    color: Colors.light.text,
+    color: "#FFFFFF",
   },
   dealsScroll: {
     paddingHorizontal: 20,
     gap: 10,
   },
   dealCard: {
-    backgroundColor: Colors.brand.navy,
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
     minWidth: 140,
     maxWidth: 180,
     justifyContent: "space-between",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.12)",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0,0,0,0.3)",
+    borderLeftWidth: 1,
+    borderLeftColor: "rgba(255,255,255,0.04)",
+    borderRightWidth: 1,
+    borderRightColor: "rgba(255,255,255,0.04)",
   },
   dealName: {
     fontFamily: "Montserrat_600SemiBold",
@@ -1405,14 +1477,20 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     paddingVertical: 14,
     borderRadius: 14,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#EEF0F3",
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.12)",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0,0,0,0.25)",
+    borderLeftWidth: 1,
+    borderLeftColor: "rgba(255,255,255,0.04)",
+    borderRightWidth: 1,
+    borderRightColor: "rgba(255,255,255,0.04)",
   },
   websiteText: {
     fontFamily: "Montserrat_500Medium",
     fontSize: 13,
-    color: Colors.brand.blue,
+    color: Colors.brand.gold,
   },
 
   // FEATURE_PERSONALISED_HOME — section + cards on the home tab.
@@ -1427,16 +1505,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     letterSpacing: 0.6,
     textTransform: "uppercase",
-    color: Colors.light.textSecondary,
+    color: "rgba(255,255,255,0.45)",
     marginBottom: 4,
   },
   personalisedCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#EEF0F3",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.12)",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0,0,0,0.25)",
+    borderLeftWidth: 1,
+    borderLeftColor: "rgba(255,255,255,0.04)",
+    borderRightWidth: 1,
+    borderRightColor: "rgba(255,255,255,0.04)",
     padding: 14,
     gap: 12,
   },
@@ -1444,7 +1528,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: Colors.brand.blue + "1A",
+    backgroundColor: "rgba(0,71,171,0.2)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1454,13 +1538,13 @@ const styles = StyleSheet.create({
   personalisedHeading: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 14,
-    color: Colors.light.text,
+    color: "#FFFFFF",
     marginBottom: 2,
   },
   personalisedSub: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 12,
-    color: Colors.light.textSecondary,
+    color: "rgba(255,255,255,0.5)",
   },
 });
 

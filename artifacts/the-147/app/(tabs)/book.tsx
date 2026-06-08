@@ -875,9 +875,9 @@ export default function BookScreen() {
               )}
 
               {isDining && guestCount >= DEPOSIT_GUEST_THRESHOLD && (
-                <View style={{ backgroundColor: "#FFF7E6", borderRadius: 10, padding: 12, marginBottom: 12, flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Ionicons name="card-outline" size={18} color="#D97706" />
-                  <Text style={{ color: "#92400E", fontSize: 13, flex: 1 }}>
+                <View style={{ backgroundColor: "rgba(212,168,67,0.1)", borderRadius: 10, padding: 12, marginBottom: 12, flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderColor: "rgba(212,168,67,0.25)" }}>
+                  <Ionicons name="card-outline" size={18} color={Colors.brand.gold} />
+                  <Text style={{ color: "rgba(255,255,255,0.85)", fontSize: 13, flex: 1 }}>
                     A £5 deposit is required for dining bookings of {DEPOSIT_GUEST_THRESHOLD}+ guests. You'll be redirected to a secure payment page after confirming.
                   </Text>
                 </View>
@@ -1316,12 +1316,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "#FFF7ED",
+    backgroundColor: "rgba(212,168,67,0.08)",
     borderRadius: 10,
     padding: 12,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#FDBA74",
+    borderColor: "rgba(212,168,67,0.25)",
   },
   diningNoticeText: {
     fontFamily: "Inter_500Medium",

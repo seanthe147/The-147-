@@ -558,7 +558,7 @@ const modStyles = StyleSheet.create({
     color: Colors.light.textSecondary,
   },
   requiredBadge: {
-    backgroundColor: "#FEF3C7",
+    backgroundColor: "rgba(212,168,67,0.15)",
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -566,7 +566,7 @@ const modStyles = StyleSheet.create({
   requiredText: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 11,
-    color: "#92400E",
+    color: "#D4A843",
   },
   option: {
     flexDirection: "row",

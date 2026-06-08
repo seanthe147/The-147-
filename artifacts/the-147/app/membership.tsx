@@ -860,13 +860,13 @@ function ActiveMembership({
       )}
 
       {isPending && !isFrozen && (
-        <View style={[styles.paymentBanner, { borderColor: "#F59E0B44", backgroundColor: "#FFFBEB" }]}>
-          <View style={[styles.paymentBannerIconWrap, { backgroundColor: "#FEF3C7" }]}>
-            <Ionicons name="time-outline" size={22} color="#D97706" />
+        <View style={[styles.paymentBanner, { borderColor: "rgba(212,168,67,0.25)", backgroundColor: "rgba(212,168,67,0.08)" }]}>
+          <View style={[styles.paymentBannerIconWrap, { backgroundColor: "rgba(212,168,67,0.15)" }]}>
+            <Ionicons name="time-outline" size={22} color="#D4A843" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.paymentBannerTitle, { color: "#92400E" }]}>Payment Pending</Text>
-            <Text style={[styles.paymentBannerBody, { color: "#92400E" }]}>
+            <Text style={[styles.paymentBannerTitle, { color: "#D4A843" }]}>Payment Pending</Text>
+            <Text style={[styles.paymentBannerBody, { color: "rgba(255,255,255,0.7)" }]}>
               Complete your payment to activate your membership benefits.
             </Text>
           </View>
@@ -885,9 +885,9 @@ function ActiveMembership({
       )}
 
       {!isFrozen && !isPending && failedAttempts > 0 && (
-        <View style={[styles.paymentBanner, { borderColor: "#F59E0B44", backgroundColor: "#FFFBEB" }]}>
-          <Ionicons name="alert-circle-outline" size={20} color="#D97706" />
-          <Text style={[styles.paymentBannerBody, { color: "#92400E", marginLeft: 8, flex: 1 }]}>
+        <View style={[styles.paymentBanner, { borderColor: "rgba(212,168,67,0.25)", backgroundColor: "rgba(212,168,67,0.08)" }]}>
+          <Ionicons name="alert-circle-outline" size={20} color="#D4A843" />
+          <Text style={[styles.paymentBannerBody, { color: "rgba(255,255,255,0.7)", marginLeft: 8, flex: 1 }]}>
             {failedAttempts === 1
               ? "A payment recently failed. Ensure your card details are up to date."
               : `${failedAttempts}/3 payments have failed. One more failure will suspend your benefits.`}
@@ -984,7 +984,7 @@ const styles = StyleSheet.create({
   planPeriod: { fontFamily: "Montserrat_400Regular", fontSize: 11, color: Colors.light.textSecondary },
   planPriceMonthly: { fontFamily: "Montserrat_400Regular", fontSize: 10, color: Colors.light.textSecondary, marginTop: 1 },
   billingToggle: {
-    flexDirection: "row", backgroundColor: "#F1F5F9",
+    flexDirection: "row", backgroundColor: "rgba(255,255,255,0.08)",
     borderRadius: 12, padding: 4, marginBottom: 16,
   },
   billingOption: {
@@ -1143,20 +1143,20 @@ const styles = StyleSheet.create({
   },
   paymentBanner: {
     flexDirection: "row", alignItems: "center", gap: 12,
-    backgroundColor: "#FEF2F2", borderRadius: 14,
-    borderWidth: 1, borderColor: "#FCA5A544",
+    backgroundColor: "rgba(239,68,68,0.08)", borderRadius: 14,
+    borderWidth: 1, borderColor: "rgba(239,68,68,0.2)",
     padding: 14,
   },
   paymentBannerIconWrap: {
     width: 38, height: 38, borderRadius: 10,
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "rgba(239,68,68,0.15)",
     alignItems: "center", justifyContent: "center", flexShrink: 0,
   },
   paymentBannerTitle: {
-    fontFamily: "Montserrat_700Bold", fontSize: 13, color: "#991B1B", marginBottom: 2,
+    fontFamily: "Montserrat_700Bold", fontSize: 13, color: "#f87171", marginBottom: 2,
   },
   paymentBannerBody: {
-    fontFamily: "Montserrat_400Regular", fontSize: 12, color: "#991B1B", lineHeight: 17,
+    fontFamily: "Montserrat_400Regular", fontSize: 12, color: "rgba(255,255,255,0.65)", lineHeight: 17,
   },
   retryBtn: {
     backgroundColor: "#EF4444", borderRadius: 10,
@@ -1166,10 +1166,10 @@ const styles = StyleSheet.create({
   },
   retryBtnText: { fontFamily: "Montserrat_700Bold", fontSize: 12, color: "#fff" },
   staffStartDate: {
-    backgroundColor: "#F5F3FF",
+    backgroundColor: "rgba(124,58,237,0.1)",
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#7C3AED33",
+    borderColor: "rgba(124,58,237,0.25)",
     padding: 14,
     marginBottom: 12,
   },

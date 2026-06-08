@@ -1,6 +1,6 @@
 import { Tabs, useRouter, usePathname } from "expo-router";
 import { BlurView } from "expo-blur";
-import { Platform, StyleSheet, useColorScheme, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect } from "react";
 import Colors from "@/constants/colors";
@@ -9,8 +9,6 @@ import { useKiosk } from "@/contexts/KioskContext";
 import { NextMatchBar } from "@/components/NextMatchBar";
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
   const isWeb = Platform.OS === "web";
   const isIOS = Platform.OS === "ios";
   const { tabBarVisible } = useTabBar();
@@ -38,13 +36,13 @@ export default function TabLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: Colors.brand.blue,
-          tabBarInactiveTintColor: isDark ? "#888" : "#9CA3AF",
+          tabBarActiveTintColor: Colors.brand.gold,
+          tabBarInactiveTintColor: "rgba(255,255,255,0.4)",
           tabBarStyle: {
             position: "absolute" as const,
-            backgroundColor: isIOS ? "transparent" : isDark ? "#0A1628" : "#FFFFFF",
+            backgroundColor: isIOS ? "transparent" : "#0A1628",
             borderTopWidth: isWeb ? 1 : 0,
-            borderTopColor: isDark ? "#1F2937" : "#E5E7EB",
+            borderTopColor: "rgba(255,255,255,0.08)",
             elevation: 0,
             ...(isWeb ? { height: 84 } : {}),
             display: showBar ? "flex" : "none",
@@ -52,15 +50,19 @@ export default function TabLayout() {
           tabBarBackground: () =>
             isIOS ? (
               <BlurView
-                intensity={100}
-                tint={isDark ? "dark" : "light"}
-                style={StyleSheet.absoluteFill}
+                intensity={80}
+                tint="dark"
+                style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(10,22,40,0.6)" }]}
               />
             ) : isWeb ? (
               <View
                 style={[
                   StyleSheet.absoluteFill,
-                  { backgroundColor: isDark ? "#0A1628" : "#FFFFFF" },
+                  {
+                    backgroundColor: "rgba(10,22,40,0.92)",
+                    borderTopWidth: 1,
+                    borderTopColor: "rgba(255,255,255,0.08)",
+                  },
                 ]}
               />
             ) : null,
