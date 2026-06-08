@@ -51,6 +51,10 @@
       ],
       "expo-font"
     ],
+    "runtimeVersion": "1.0.0",
+    "updates": {
+      "url": "https://u.expo.dev/b35e28d2-6a2a-4cd2-bb07-f426fb4f31bd"
+    },
     "experiments": {
       "typedRoutes": true
     },

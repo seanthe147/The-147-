@@ -5,7 +5,10 @@
   "main": "expo-router/entry",
   "scripts": {
     "dev": "EXPO_PACKAGER_PROXY_URL=https://$REPLIT_EXPO_DEV_DOMAIN EXPO_PUBLIC_API_BASE_URL=https://$REPLIT_DEV_DOMAIN/api REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN npx expo start --localhost --port 19390",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "update:production": "EAS_SKIP_AUTO_FINGERPRINT=1 eas update --channel production --message",
+    "build:ios": "EAS_SKIP_AUTO_FINGERPRINT=1 eas build --platform ios --profile production --non-interactive",
+    "submit:ios": "EAS_SKIP_AUTO_FINGERPRINT=1 eas submit --platform ios --latest"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
