@@ -14,7 +14,7 @@ export function Deep() {
         <div style={{ width: '100%', height: '100%', overflowY: 'auto', overflowX: 'hidden', zIndex: 1, position: 'relative', paddingBottom: 100 }}>
           
           {/* Header */}
-          <div style={{ padding: '60px 24px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ padding: '56px 24px 0px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: -1, color: '#ffffff' }}>THE <span style={{ color: '#D4A843' }}>147</span></div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               <div style={{ position: 'relative' }}>
@@ -25,7 +25,12 @@ export function Deep() {
             </div>
           </div>
 
-          <div style={{ padding: '0 24px' }}>
+          {/* Greeting */}
+          <div style={{ padding: '12px 24px 0px' }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: 'rgba(255,255,255,0.9)', letterSpacing: -0.3 }}>Good evening, James 👋</div>
+          </div>
+
+          <div style={{ padding: '16px 24px 0' }}>
             {/* Points Pill */}
             <div style={{ 
               display: 'inline-flex', 
@@ -47,11 +52,11 @@ export function Deep() {
               <span style={{ fontSize: 13, fontWeight: 600, color: '#D4A843' }}>Gold Member · 1,240 pts</span>
             </div>
 
-            {/* Live Sports Card */}
+            {/* Upcoming World Cup Card */}
             <div style={{
               position: 'relative',
-              borderRadius: 24,
-              padding: 20,
+              borderRadius: 20,
+              padding: '16px 18px',
               background: 'linear-gradient(180deg, rgba(19,39,66,0.7) 0%, rgba(10,22,40,0.8) 100%)',
               borderTop: '1px solid rgba(255,255,255,0.15)',
               borderBottom: '1px solid rgba(0,0,0,0.5)',
@@ -60,44 +65,47 @@ export function Deep() {
               backdropFilter: 'blur(30px)',
               WebkitBackdropFilter: 'blur(30px)',
               boxShadow: '0 16px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1)',
-              marginBottom: 24,
+              marginBottom: 20,
               overflow: 'hidden'
             }}>
-              {/* Red Glow for live */}
-              <div style={{ position: 'absolute', top: 0, right: 0, width: 100, height: 100, background: 'radial-gradient(circle, rgba(255,59,48,0.2) 0%, rgba(0,0,0,0) 70%)', filter: 'blur(20px)', animation: 'pulse 2s infinite' }} />
-              
-              <style>
-                {`
-                  @keyframes pulse {
-                    0% { opacity: 0.5; }
-                    50% { opacity: 1; }
-                    100% { opacity: 0.5; }
-                  }
-                `}
-              </style>
+              {/* Gold glow top-left */}
+              <div style={{ position: 'absolute', top: 0, left: 0, width: 120, height: 80, background: 'radial-gradient(circle, rgba(212,168,67,0.12) 0%, rgba(0,0,0,0) 70%)', filter: 'blur(20px)' }} />
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: '#8E9EAF' }}>WORLD CUP 2026</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,59,48,0.1)', padding: '4px 10px', borderRadius: 12, border: '1px solid rgba(255,59,48,0.2)' }}>
-                  <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#ff3b30', boxShadow: '0 0 6px #ff3b30' }} />
-                  <span style={{ fontSize: 10, fontWeight: 700, color: '#ff3b30', letterSpacing: 1 }}>LIVE</span>
+              {/* Header row */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span style={{ fontSize: 16 }}>🏆</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.8, color: '#D4A843' }}>WORLD CUP 2026</span>
                 </div>
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', fontWeight: 500 }}>Next England matches</span>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                  <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#ffffff', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: 24 }}>🏴󠁧󠁢󠁥󠁮󠁧󠁿</div>
-                  <span style={{ fontSize: 14, fontWeight: 600 }}>ENG</span>
+              {/* Fixture rows */}
+              {[
+                { flag1: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', team1: 'ENG', flag2: '🇭🇷', team2: 'CRO', day: 'Wed', date: '17 Jun', time: '21:00' },
+                { flag1: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', team1: 'ENG', flag2: '🇬🇭', team2: 'GHA', day: 'Tue', date: '23 Jun', time: '21:00' },
+              ].map((m, i) => (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '10px 0',
+                  borderTop: i === 0 ? '1px solid rgba(255,255,255,0.07)' : '1px solid rgba(255,255,255,0.07)',
+                }}>
+                  {/* Teams */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 18 }}>{m.flag1}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{m.team1}</span>
+                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', fontWeight: 500, marginInline: 2 }}>vs</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{m.team2}</span>
+                    <span style={{ fontSize: 18 }}>{m.flag2}</span>
+                  </div>
+                  {/* Date + time */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ fontSize: 11, color: '#D4A843', fontWeight: 600 }}>{m.day},</span>
+                    <span style={{ fontSize: 11, color: '#D4A843', fontWeight: 600 }}>{m.date}</span>
+                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontWeight: 500, marginLeft: 2 }}>{m.time}</span>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <div style={{ fontSize: 32, fontWeight: 800, color: '#ffffff', textShadow: '0 0 16px rgba(255,255,255,0.3)' }}>2 - 1</div>
-                  <span style={{ fontSize: 12, color: '#4CAF50', fontWeight: 600, marginTop: 4 }}>76'</span>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                  <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#ffffff', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: 24 }}>🇫🇷</div>
-                  <span style={{ fontSize: 14, fontWeight: 600 }}>FRA</span>
-                </div>
-              </div>
+              ))}
             </div>
 
             {/* Quick Action Row */}
