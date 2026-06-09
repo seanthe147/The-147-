@@ -6,17 +6,20 @@ const projectRoot = __dirname;
 
 const config = getDefaultConfig(projectRoot);
 
-// Watch only the shared lib and scripts packages — NOT the entire
-// workspace root, which would include .local/skills and other dirs
-// that Metro can't watch reliably (deleted template subdirs, etc.)
-config.watchFolders = [
-  path.resolve(workspaceRoot, "lib"),
-  path.resolve(workspaceRoot, "scripts"),
-];
+// Include the whole workspace root so Metro can traverse node_modules
+// across workspace packages. .local and .migration-backup are excluded
+// via the watcher ignore function so Metro never tries to watch their
+// deleted/stale subdirectories (which caused the ENOENT crash).
+config.watchFolders = [workspaceRoot];
+
+const localDir = path.resolve(workspaceRoot, ".local") + path.sep;
+const backupDir = path.resolve(workspaceRoot, ".migration-backup") + path.sep;
 
 config.watcher = {
   ...config.watcher,
   additionalExts: config.watcher?.additionalExts || [],
+  ignore: (filePath) =>
+    filePath.startsWith(localDir) || filePath.startsWith(backupDir),
 };
 
 config.resolver = {
