@@ -10,12 +10,19 @@
       "ios": {
         "simulator": false,
         "image": "latest"
+      },
+      "android": {
+        "buildType": "apk",
+        "image": "latest"
       }
     },
     "preview": {
       "distribution": "internal",
       "ios": {
         "simulator": false
+      },
+      "android": {
+        "buildType": "apk"
       }
     },
     "production": {
@@ -23,6 +30,10 @@
       "prebuildCommand": "node scripts/validate-env.js",
       "ios": {
         "simulator": false,
+        "image": "latest"
+      },
+      "android": {
+        "buildType": "apk",
         "image": "latest"
       }
     }

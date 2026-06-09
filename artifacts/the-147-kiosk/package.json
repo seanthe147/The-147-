@@ -8,6 +8,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "update:production": "EAS_SKIP_AUTO_FINGERPRINT=1 eas update --channel production --message",
     "build:ios": "EAS_SKIP_AUTO_FINGERPRINT=1 eas build --platform ios --profile production --non-interactive",
+    "build:android": "EAS_SKIP_AUTO_FINGERPRINT=1 eas build --platform android --profile production --non-interactive",
+    "build:all": "EAS_SKIP_AUTO_FINGERPRINT=1 eas build --platform all --profile production --non-interactive",
     "submit:ios": "EAS_SKIP_AUTO_FINGERPRINT=1 eas submit --platform ios --latest"
   },
   "devDependencies": {
