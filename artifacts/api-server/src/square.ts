@@ -306,20 +306,61 @@ export async function deleteLoyaltyRewardTier(programId: string, tierId: string)
   }
 }
 
-// Mark an ISSUED reward as REDEEMED against an order.
-// This is the Square API call that actually uses up the reward so it can't
-// be double-redeemed at the till. Safe to call after payment is confirmed.
+// Mark an ISSUED reward as REDEEMED at this location.
+// Square's /redeem endpoint accepts idempotency_key + location_id only —
+// order_id is NOT a recognised field on this endpoint and causes a 400.
+// The discount is applied to the Square order separately (before this call)
+// via updateOrderWithLoyaltyDiscount; this call only marks the reward as
+// consumed so it cannot be double-redeemed at the till.
 export async function redeemIssuedLoyaltyReward(rewardId: string, orderId: string): Promise<void> {
   try {
     await squareRequest("POST", `/v2/loyalty/rewards/${rewardId}/redeem`, {
       idempotency_key: `redeem-issued-${rewardId}-${orderId}`,
-      order_id: orderId,
+      location_id: getLocationId(),
     });
   } catch (err: any) {
     // Log but don't throw — a failed redemption marking is recoverable by
     // staff; we must not fail the entire checkout for this.
-    console.error(`[LOYALTY] Failed to mark reward ${rewardId} redeemed on order ${orderId}:`, err?.message);
+    console.error(`[LOYALTY] Failed to mark reward ${rewardId} redeemed:`, err?.message);
   }
+}
+
+// Apply a fixed-amount loyalty reward discount directly to a Square order.
+// This must be called BEFORE taking payment so the Square order total matches
+// the amount the client is about to charge. Without this, Square rejects the
+// payment with an order-total mismatch (e.g. customer pays 31p for a 531p
+// order because the loyalty discount was never stamped on Square's side).
+// Returns the Square-confirmed new order total in pence.
+export async function updateOrderWithLoyaltyDiscount(
+  orderId: string,
+  orderVersion: number,
+  existingDiscounts: any[],
+  discountAmountPence: number,
+): Promise<number> {
+  const locationId = getLocationId();
+  const loyaltyDiscount = {
+    uid: "LOYALTY-REWARD",
+    name: "Loyalty Reward",
+    type: "FIXED_AMOUNT",
+    amount_money: { amount: discountAmountPence, currency: "GBP" },
+    scope: "ORDER",
+  };
+  const data = await squareRequest("PUT", `/v2/orders/${orderId}`, {
+    idempotency_key: `loyalty-disc-${orderId}`,
+    order: {
+      version: orderVersion,
+      location_id: locationId,
+      // Include ALL existing discounts (e.g. member discount) plus the new
+      // loyalty discount. Square merges on uid so existing ones are preserved.
+      discounts: [...existingDiscounts, loyaltyDiscount],
+    },
+  });
+  // Use Square's confirmed total, not our locally-computed value.
+  return Number(
+    data.order?.total_money?.amount ??
+    data.order?.net_amounts?.total_money?.amount ??
+    0,
+  );
 }
 
 export async function searchLoyaltyEvents(accountId: string, limit = 10): Promise<any[]> {
@@ -1809,18 +1850,22 @@ export async function createSquareOrderForCheckout(
   orderNumber?: number,
   asOpenTicket?: boolean,
   applyDeals: boolean = true,
-): Promise<{ orderId: string; totalPence: number; pricedItems: PricedLineItem[] }> {
+): Promise<{ orderId: string; totalPence: number; pricedItems: PricedLineItem[]; orderVersion: number; orderDiscounts: any[] }> {
   const idempotencyKey = `order-create-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   const { order, pricedItems } = await buildSquareOrderBody(
     items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, orderNumber, asOpenTicket, applyDeals,
   );
+  // Capture the discounts we sent (member discount, deals) so they can be
+  // included alongside the loyalty discount when we update the order later.
+  const orderDiscounts: any[] = order.discounts ?? [];
   const data = await squareRequest("POST", "/v2/orders", {
     idempotency_key: idempotencyKey,
     order,
   });
   if (!data.order?.id) throw new Error("No order returned from Square");
   const totalPence = Number(data.order.total_money?.amount ?? data.order.net_amounts?.total_money?.amount ?? 0);
-  return { orderId: data.order.id as string, totalPence, pricedItems };
+  const orderVersion = Number(data.order.version ?? 1);
+  return { orderId: data.order.id as string, totalPence, pricedItems, orderVersion, orderDiscounts };
 }
 
 export async function createOrderCheckoutLink(

@@ -6968,23 +6968,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // by default; the owner can turn them off from the staff portal
       // without touching the Square dashboard.
       const orderDealsEnabled = (await storage.getSetting("square_deals_order_enabled")) !== "false";
-      const { orderId, totalPence: squareTotalPence, pricedItems } = await square.createSquareOrderForCheckout(
+      const { orderId, totalPence: squareTotalPence, pricedItems, orderVersion, orderDiscounts } = await square.createSquareOrderForCheckout(
         items, tableNote, customer, discountPercent, discountLabel, excludeWithDeals, orderNote, reservedOrderId,
         false, orderDealsEnabled,
       );
 
-      // If the customer selected an ISSUED loyalty reward, look up its discount
-      // value from Square and AWAIT the redemption so the discount is applied
-      // to the Square order before we return amountPence to the client.
-      // If redeemIssuedLoyaltyReward is not awaited the Square order total stays
-      // at the full amount and the subsequent /pay call is rejected with
-      // "payment total does not match order total".
-      let loyaltyDiscountPence = 0;
+      // If the customer selected an ISSUED loyalty reward:
+      //  1. Look up the reward's fixed discount value from Square.
+      //  2. Apply it as an order-level discount via PUT /v2/orders/:id so the
+      //     Square order total matches what the client will charge. Without this
+      //     step the payment is rejected — Square validates that the payment
+      //     amount matches the outstanding order balance.
+      //  3. Mark the reward as consumed (non-blocking — the discount above is
+      //     what actually prevents re-use; the redemption mark is belt-and-
+      //     braces for the loyalty ledger).
+      let totalPence = squareTotalPence;
       if (loyaltyRewardId && typeof loyaltyRewardId === "string" && orderId) {
-        loyaltyDiscountPence = await square.getIssuedRewardDiscountPence(loyaltyRewardId, squareTotalPence);
-        await square.redeemIssuedLoyaltyReward(loyaltyRewardId, orderId);
+        const loyaltyDiscountPence = await square.getIssuedRewardDiscountPence(loyaltyRewardId, squareTotalPence);
+        if (loyaltyDiscountPence > 0) {
+          try {
+            // updateOrderWithLoyaltyDiscount returns the Square-confirmed total
+            // after the discount — use that rather than our local calculation.
+            totalPence = await square.updateOrderWithLoyaltyDiscount(
+              orderId, orderVersion, orderDiscounts, loyaltyDiscountPence,
+            );
+          } catch (err: any) {
+            // If we can't apply the discount to the Square order, do NOT subtract
+            // it from the total — a mismatch would cause the payment to fail.
+            // Charge the full price and let the customer contact staff for a
+            // manual adjustment.
+            console.error("[LOYALTY] Failed to apply discount to Square order — charging full price:", err?.message);
+          }
+        }
+        // Non-blocking: mark the reward as consumed. This prevents re-use at
+        // the till even if this path exits early or the next step fails.
+        square.redeemIssuedLoyaltyReward(loyaltyRewardId, orderId).catch(() => {});
       }
-      const totalPence = Math.max(0, squareTotalPence - loyaltyDiscountPence);
 
       // Generate a per-order confirmation token. The client stores this
       // alongside the appOrderId on the device and presents it later to the
