@@ -2,7 +2,7 @@
   "expo": {
     "name": "The 147",
     "slug": "the-147",
-    "version": "2.8.3",
+    "version": "2.8.7",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "the147",
@@ -172,7 +172,7 @@
       }
     },
     "owner": "the-147",
-    "runtimeVersion": "2.8.3",
+    "runtimeVersion": "2.8.7",
     "updates": {
       "url": "https://u.expo.dev/3f31dfb1-b149-43ca-ab9a-91b6d7cb230a"
     }
