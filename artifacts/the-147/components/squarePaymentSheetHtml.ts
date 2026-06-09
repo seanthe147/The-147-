@@ -39,6 +39,13 @@ export function buildPaymentSheetHtml(opts: {
    * exactly like a plain CHARGE.
    */
   showSaveCard?: boolean;
+  /**
+   * "android" suppresses Google Pay initialization — it cannot work inside
+   * Android WebView (Payment Request API is unavailable; Square's SDK falls
+   * back to intent:// which we block, causing a confusing error). Card
+   * payments and Apple Pay (on iOS) are unaffected.
+   */
+  platform?: string;
 }): string {
   const sdkSrc =
     opts.environment === "production"
@@ -276,6 +283,11 @@ export function buildPaymentSheetHtml(opts: {
       var SDK_SRC = ${JSON.stringify(sdkSrc)};
       var PHASE_TIMEOUT_MS = ${PHASE_TIMEOUT_MS};
       var ENVIRONMENT = ${JSON.stringify(opts.environment)};
+      // Google Pay cannot work inside Android WebView — the Payment Request
+      // API is unavailable, so Square's SDK falls back to an intent:// URL
+      // which we block in onShouldStartLoadWithRequest. Skip the init
+      // entirely so the button never appears and no confusing error fires.
+      var IS_ANDROID = ${JSON.stringify(opts.platform === "android")};
       var SHEET_OPENED_AT = Date.now();
       // Per-open session id so the server can group all diagnostic events
       // from one customer's attempt at the sheet (load → fail → retry).
@@ -862,6 +874,12 @@ export function buildPaymentSheetHtml(opts: {
       // tokenisation race on Android (both handlers fired simultaneously).
       // Using a custom button + single gp.tokenize() call (same pattern as
       // Apple Pay above) eliminates the race completely.
+      //
+      // Skipped entirely on Android: Payment Request API is unavailable in
+      // Android WebView, so Square falls back to an intent:// URL that we
+      // block, causing a confusing error. IS_ANDROID is set from Platform.OS
+      // at build time in SquarePaymentSheet.tsx.
+      if (!IS_ANDROID) {
       try {
         var pr2 = paymentRequest();
         payments.googlePay(pr2).then(function (gp) {
@@ -901,6 +919,7 @@ export function buildPaymentSheetHtml(opts: {
       } catch (e) {
         diag("google_pay_throw", { reason: (e && e.message) ? String(e.message).slice(0, 200) : "unknown" });
       }
+      } // end if (!IS_ANDROID)
       } // end initWallets
 
       } // end bootSquare

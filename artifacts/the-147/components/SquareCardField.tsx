@@ -77,6 +77,7 @@ export const SquareCardField = React.forwardRef<SquareCardFieldHandle, SquareCar
         intent: props.intent || "CHARGE",
         buyerEmail: props.buyerEmail || null,
         recurringDescription: props.recurringDescription || null,
+        platform: Platform.OS,
       });
       // Amount is baked into the HTML for the wallet payment request — so
       // any amount change forces a remount, which is correct behaviour.

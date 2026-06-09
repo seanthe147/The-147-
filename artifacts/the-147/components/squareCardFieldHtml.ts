@@ -35,6 +35,11 @@ export function buildCardFieldHtml(opts: {
   buyerEmail?: string | null;
   /** Recurring description for STORE intent (memberships). Null for one-off CHARGE. */
   recurringDescription?: string | null;
+  /**
+   * "android" suppresses Google Pay — it cannot work inside Android WebView.
+   * Card payments and Apple Pay (iOS only) are unaffected.
+   */
+  platform?: string;
 }): string {
   const sdkSrc =
     opts.environment === "production"
@@ -166,6 +171,8 @@ export function buildCardFieldHtml(opts: {
       var SDK_SRC = ${JSON.stringify(sdkSrc)};
       var PHASE_TIMEOUT_MS = ${PHASE_TIMEOUT_MS};
       var ENVIRONMENT = ${JSON.stringify(opts.environment)};
+      // Google Pay cannot work inside Android WebView — skip init entirely.
+      var IS_ANDROID = ${JSON.stringify(opts.platform === "android")};
       var SHEET_OPENED_AT = Date.now();
       var SESSION_ID = (Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
 
@@ -551,6 +558,11 @@ export function buildCardFieldHtml(opts: {
         // Using a custom button and calling gp.tokenize() manually, exactly
         // like Apple Pay above. gp.attach() creates Square's button with its
         // own internal click handler, causing a tokenisation race on Android.
+        //
+        // Skipped entirely on Android: Payment Request API unavailable in
+        // Android WebView — Square falls back to intent:// which we block,
+        // producing a confusing error. IS_ANDROID set from Platform.OS.
+        if (!IS_ANDROID) {
         try {
           var pr2 = paymentRequest();
           payments.googlePay(pr2).then(function (gp) {
@@ -594,6 +606,7 @@ export function buildCardFieldHtml(opts: {
         } catch (e) {
           diag("google_pay_throw", { reason: (e && e.message) ? String(e.message).slice(0, 200) : "unknown" });
         }
+        } // end if (!IS_ANDROID)
       } // end bootSquare
     })();
   </script>

@@ -103,6 +103,7 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
       buyerEmail: props.buyerEmail || null,
       recurringDescription: props.recurringDescription || null,
       showSaveCard: !!props.showSaveCard,
+      platform: Platform.OS,
     });
   }, [props.applicationId, props.locationId, props.environment, props.amountPence, props.currency, props.intent, props.buyerEmail, props.recurringDescription, props.showSaveCard]);
 
