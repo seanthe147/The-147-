@@ -164,3 +164,5 @@ overrides:
   qs: "^6.15.2"
   # Security: postcss <8.5.10 has XSS via unescaped </style> (GHSA-qx2v-qp2m-jg93)
   postcss: "^8.5.10"
+  # Security: shell-quote <=1.8.3 has ReDoS / argument injection (GHSA-w7jw-789q-3m8p)
+  shell-quote: "^1.8.4"
