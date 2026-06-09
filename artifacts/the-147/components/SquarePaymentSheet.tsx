@@ -251,6 +251,12 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
             javaScriptEnabled
             domStorageEnabled
             startInLoadingState
+            // Square SDK's card form iframe uses session cookies for
+            // its internal communication channel. Without these flags
+            // iOS WKWebView blocks the cross-origin cookies and the
+            // attach() call silently fails.
+            sharedCookiesEnabled={true}
+            thirdPartyCookiesEnabled={true}
             // iOS WKWebView disables Apple Pay JS APIs (window.ApplePaySession)
             // by default. Without this prop, Square's payments.applePay()
             // promise rejects silently with "unsupported on this device" and

@@ -59,7 +59,13 @@ export function buildPaymentSheetHtml(opts: {
   // still want a hard ceiling so a truly hung WebView doesn't strand the
   // user, but 12s is a much better fit for real-world mobile latencies and
   // the SDK load is now retried once before this timeout actually fatals.
-  const PHASE_TIMEOUT_MS = 12000;
+  // Two separate timeout budgets:
+  //   SDK_TIMEOUT_MS  — how long we wait for square.js to download from CDN
+  //   CARD_TIMEOUT_MS — how long we give the card form to attach (we now
+  //                     allow 3 attempts with 1.5 s / 3 s back-off delays,
+  //                     so the total can reach ~25 s on slow connections)
+  const SDK_TIMEOUT_MS = 12000;
+  const CARD_TIMEOUT_MS = 28000;
   // Bridge: postMessage works for both react-native-webview (window.ReactNativeWebView)
   // and the web fallback (parent window via window.parent.postMessage).
   // Square's tokenization endpoint — different host from the SDK CDN. Adding
@@ -156,10 +162,7 @@ export function buildPaymentSheetHtml(opts: {
     .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
     .card-header .label { font-size: 13px; font-weight: 700; color: rgba(255,255,255,0.9); }
     .brands { display: flex; gap: 6px; align-items: center; }
-    .brand-pill { font-size: 9px; font-weight: 800; padding: 3px 7px; border-radius: 4px; color: #fff; letter-spacing: 0.4px; }
-    .b-visa { background: #1A1F71; }
-    .b-mc { background: linear-gradient(90deg, #EB001B 0%, #EB001B 50%, #F79E1B 50%, #F79E1B 100%); }
-    .b-amex { background: #006FCF; }
+    .brand-logo { height: 20px; width: auto; display: block; border-radius: 3px; }
 
     #card-container { min-height: 90px; }
 
@@ -236,9 +239,12 @@ export function buildPaymentSheetHtml(opts: {
       <div class="card-header">
         <div class="label">Card details</div>
         <div class="brands">
-          <span class="brand-pill b-visa">VISA</span>
-          <span class="brand-pill b-mc">MC</span>
-          <span class="brand-pill b-amex">AMEX</span>
+          <!-- Visa -->
+          <svg class="brand-logo" viewBox="0 0 38 24" xmlns="http://www.w3.org/2000/svg" aria-label="Visa"><rect width="38" height="24" rx="4" fill="#1A1F71"/><path d="M15.68 16.5h-2.3l1.44-8.86h2.3L15.68 16.5zm-4.3-8.86L9.15 13.7l-.28-1.4-.84-4.24s-.1-.42-.57-.42H4.1l-.05.17s1.03.21 2.23.94l1.86 7.11h2.42l3.7-8.86h-2.47zM30.17 16.5h2.14l-1.87-8.86h-1.88c-.42 0-.78.24-.93.61l-3.47 8.25h2.42l.48-1.33h2.96l.15 1.33zm-2.56-3.17l1.22-3.36.68 3.36h-1.9zm-3.4-4.35l.33-1.93s-1.02-.39-2.09-.39c-1.15 0-3.88.5-3.88 2.95 0 2.3 3.2 2.33 3.2 3.54 0 1.2-2.87 1-3.82.23l-.34 2s1.03.5 2.62.5c1.58 0 3.96-.82 3.96-3.05 0-2.32-3.22-2.53-3.22-3.54 0-1 2.23-.87 3.24-.31z" fill="#fff"/></svg>
+          <!-- Mastercard -->
+          <svg class="brand-logo" viewBox="0 0 38 24" xmlns="http://www.w3.org/2000/svg" aria-label="Mastercard"><rect width="38" height="24" rx="4" fill="#252525"/><circle cx="15" cy="12" r="7" fill="#EB001B"/><circle cx="23" cy="12" r="7" fill="#F79E1B"/><path d="M19 6.8a7 7 0 0 1 0 10.4A7 7 0 0 1 19 6.8z" fill="#FF5F00"/></svg>
+          <!-- Amex -->
+          <svg class="brand-logo" viewBox="0 0 38 24" xmlns="http://www.w3.org/2000/svg" aria-label="Amex"><rect width="38" height="24" rx="4" fill="#006FCF"/><path d="M8 15.5l.9-2.1h5.3l.9 2.1H17l-4-9h-1.8l-4 9H8zm4.5-6.8l1.8 4.2h-3.6l1.8-4.2zm9.5 6.8V9.4l-3 6.1h-1.3l-3-6.1v6.1h-1.7v-9h2.5l2.6 5.5 2.6-5.5H23v9h-1zm4.5 0v-9h6.5v1.5H28v2h4.8v1.5H28v2.5h5.5v1.5H26.5z" fill="#fff"/></svg>
         </div>
       </div>
       <div id="card-container"></div>
@@ -281,7 +287,8 @@ export function buildPaymentSheetHtml(opts: {
       var RECURRING_DESC = ${JSON.stringify(opts.recurringDescription || "")};
       var SHOW_SAVE_CARD = ${JSON.stringify(!!opts.showSaveCard)};
       var SDK_SRC = ${JSON.stringify(sdkSrc)};
-      var PHASE_TIMEOUT_MS = ${PHASE_TIMEOUT_MS};
+      var SDK_TIMEOUT_MS = ${SDK_TIMEOUT_MS};
+      var CARD_TIMEOUT_MS = ${CARD_TIMEOUT_MS};
       var ENVIRONMENT = ${JSON.stringify(opts.environment)};
       // Google Pay cannot work inside Android WebView — the Payment Request
       // API is unavailable, so Square's SDK falls back to an intent:// URL
@@ -460,7 +467,7 @@ export function buildPaymentSheetHtml(opts: {
           } else {
             fatal("Could not reach the payment service (timed out loading the secure payment library). Close this and try again, or use browser checkout.");
           }
-        }, PHASE_TIMEOUT_MS);
+        }, SDK_TIMEOUT_MS);
 
         var s = document.createElement("script");
         s.src = srcUrl;
@@ -673,7 +680,7 @@ export function buildPaymentSheetHtml(opts: {
       var cardAttachTimer = setTimeout(function () {
         if (cardReady) return;
         fatal("The card form did not load in time. Close this and try again, or use browser checkout.");
-      }, PHASE_TIMEOUT_MS);
+      }, CARD_TIMEOUT_MS);
 
       // Show a gentle "taking longer than usual" warning after 6 s so the
       // user isn't stuck staring at a spinner — they get an inline retry
@@ -792,21 +799,42 @@ export function buildPaymentSheetHtml(opts: {
         // but the card form is always reliable.
         initWallets();
       }).catch(function (err) {
-        var reason = (err && err.message) ? String(err.message).slice(0, 200) : "unknown";
-        diag("card_attach_error", { reason: reason, attempt: attempt });
+        // Capture the full error for diagnostics. Square SDK sometimes
+        // rejects .attach() with null/undefined (no message), so we need
+        // to distinguish that from a real error string.
+        var reason = "none";
+        if (err !== null && err !== undefined) {
+          reason = err.message ? String(err.message).slice(0, 200) : (String(err).slice(0, 200) || "(object)");
+        }
+        diag("card_attach_error", { reason: reason, attempt: attempt, errType: typeof err });
         if (fatalSent || cardReady) return;
-        if (attempt < 2) {
-          // One retry after 400 ms. On iOS WKWebView this recovers from
-          // a transient race where the Apple Pay button custom element
-          // finishes rendering just as Square tries to inject its card
-          // iframes, briefly leaving #card-container in a zero-size state.
+
+        // ── Cleanup before retry ──────────────────────────────────────────
+        // Destroy the failed card object so Square SDK's internal state is
+        // fully reset. Without this the next payments.card() call can
+        // inherit a half-initialised iframe and .attach() fails immediately.
+        if (card) {
+          try { card.destroy(); } catch (e) {}
+          card = null;
+        }
+        // Remove any partial Square iframe that was injected into the
+        // container during the failed attach — a stale iframe element
+        // confuses the next attach attempt.
+        var container = document.getElementById("card-container");
+        if (container) container.innerHTML = "";
+
+        if (attempt < 3) {
+          // Back off significantly: iOS WKWebView takes ~1 s to fully tear
+          // down a failed cross-origin iframe. 400 ms was too short; 1.5 s
+          // / 3 s gives the engine time to clean up before we retry.
+          var delay = attempt === 1 ? 1500 : 3000;
           setTimeout(function () {
             if (fatalSent || cardReady) return;
             tryCardInit(attempt + 1);
-          }, 400);
+          }, delay);
         } else {
           clearTimeout(cardAttachTimer);
-          fatal("Could not load card form: " + (err && err.message ? err.message : "unknown error"));
+          fatal("Could not load the card form. Please close and try again, or use web checkout.");
         }
       });
       } // end tryCardInit
