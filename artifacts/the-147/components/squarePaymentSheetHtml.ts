@@ -365,11 +365,24 @@ export function buildPaymentSheetHtml(opts: {
 
       // Capture any uncaught script error so we can surface it instead of
       // showing the user a forever-loading spinner.
+      //
+      // IMPORTANT: both handlers are gated on !sdkLoaded. Square's Web
+      // Payments SDK fires unhandled promise rejections from its own
+      // internals after it loads — Apple Pay domain validation, Google Pay
+      // session checks, internal analytics — on platforms/networks where
+      // those features aren't available. These rejections do NOT affect
+      // card payment ability, but without the gate they would trigger
+      // fatal() and kill the entire sheet. All critical post-load errors
+      // are already caught by the try/catch and .catch() chains inside
+      // bootSquare/tryCardInit, so silencing the global handlers once the
+      // SDK has loaded is safe.
       window.addEventListener("error", function (e) {
+        if (sdkLoaded) return; // post-load errors are caught inside bootSquare
         var msg = (e && (e.message || (e.error && e.error.message))) || "Unknown script error";
         fatal("Payment library error: " + msg);
       });
       window.addEventListener("unhandledrejection", function (e) {
+        if (sdkLoaded) return; // Square SDK fires these from wallet/analytics internals
         var reason = e && e.reason;
         var msg = (reason && (reason.message || String(reason))) || "Unknown promise rejection";
         fatal("Payment library error: " + msg);
