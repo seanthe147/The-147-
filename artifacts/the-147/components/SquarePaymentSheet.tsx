@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import Colors from "@/constants/colors";
 import { buildPaymentSheetHtml } from "@/components/squarePaymentSheetHtml";
+import { getApiUrl } from "@/lib/query-client";
 
 export interface SquarePaymentSheetProps {
   visible: boolean;
@@ -70,10 +71,12 @@ type BridgeMessage =
 // React Native runtime has clean network access.
 function postDiagnostic(payload: Record<string, unknown>) {
   try {
-    const base = (process.env.EXPO_PUBLIC_API_URL as string | undefined)
-      || (process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : "");
-    if (!base) return;
-    const url = `${base.replace(/\/$/, "")}/api/public/payment-sheet-diagnostics`;
+    // Use the same URL resolution as the rest of the app so diagnostics reach
+    // the server in production builds where EXPO_PUBLIC_DOMAIN is not embedded
+    // as a build-time env var. getApiUrl() reads EXPO_PUBLIC_DOMAIN at runtime
+    // on native and uses window.location.origin on web.
+    const base = getApiUrl().replace(/\/$/, "");
+    const url = `${base}/api/public/payment-sheet-diagnostics`;
     void fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

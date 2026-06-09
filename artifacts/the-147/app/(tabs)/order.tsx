@@ -828,6 +828,10 @@ function CartSheet({
   const [payError, setPayError] = useState<string | null>(null);
   const [paymentSheetVisible, setPaymentSheetVisible] = useState(false);
   const [pendingOrder, setPendingOrder] = useState<{ appOrderId: number; amountPence: number; confirmationToken?: string } | null>(null);
+  // Incrementing this key forces SquarePaymentSheet to fully unmount and
+  // remount (fresh WebView, fresh JS state) on "Try Again" — without it the
+  // WebView stays alive with fatalSent=true and the card form never reappears.
+  const [paySheetKey, setPaySheetKey] = useState(0);
   const [cancelledNotice, setCancelledNotice] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
@@ -1429,8 +1433,13 @@ function CartSheet({
         {
           text: "Try Again",
           style: "default",
-          // Reopen the sheet — fresh WebView load against the same order.
-          onPress: () => setPaymentSheetVisible(true),
+          // Increment the key to force a full unmount+remount of the WebView
+          // (resets fatalSent=true and restarts SDK init from scratch), then
+          // make the sheet visible again against the same server-side order.
+          onPress: () => {
+            setPaySheetKey(k => k + 1);
+            setPaymentSheetVisible(true);
+          },
         },
         {
           text: "Web Checkout",
@@ -2094,6 +2103,7 @@ function CartSheet({
         each payment attempt gets a fresh WebView with the correct amount. */}
     {pendingOrder !== null && (
       <SquarePaymentSheet
+        key={paySheetKey}
         visible={paymentSheetVisible}
         onClose={handleClosePaymentSheet}
         onTokenized={handleTokenized}
