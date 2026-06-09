@@ -689,15 +689,20 @@ export function buildPaymentSheetHtml(opts: {
         attempt = attempt || 1;
 
       // Pass card styling options so the Square-hosted input fields match
-      // the payment sheet's light (#F7F8FA) background and brand colours.
+      // the payment sheet's dark theme as closely as possible.
+      // NOTE: Square's card element renders inside a cross-origin iframe so
+      // we cannot change the iframe's background colour — it will always be
+      // white. Input text must remain dark (#0A1628) for legibility on that
+      // white background. We can still apply brand-matched border colours
+      // and error/focus states.
       // CardClassSelectors reference:
       //   https://developer.squareup.com/reference/sdks/web/payments/objects/CardClassSelectors
       diag("card_obj_start", { attempt: attempt });
       payments.card({
         style: {
-          '.input-container': { borderColor: '#E5E7EB', borderRadius: '8px' },
+          '.input-container': { borderColor: '#D1D5DB', borderRadius: '10px' },
           '.input-container.is-focus': { borderColor: '#3B82F6' },
-          '.input-container.is-error': { borderColor: '#DC2626' },
+          '.input-container.is-error': { borderColor: '#EF4444' },
           '.message-text': { color: '#6B7280' },
           '.message-icon': { color: '#6B7280' },
           '.message-text.is-error': { color: '#DC2626' },

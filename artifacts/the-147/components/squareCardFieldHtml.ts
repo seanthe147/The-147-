@@ -86,7 +86,7 @@ export function buildCardFieldHtml(opts: {
     /* Transparent background — the React Native checkout screen paints the
        backdrop. Margin/padding are zeroed so the WebView height matches
        content exactly (see ResizeObserver below). */
-    html, body { margin: 0; padding: 0; background: transparent; color: #0A1628; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+    html, body { margin: 0; padding: 0; background: transparent; color: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
     body { padding: 0 16px; }
 
     .wallets { display: flex; flex-direction: column; gap: 10px; }
@@ -101,7 +101,7 @@ export function buildCardFieldHtml(opts: {
     .or {
       display: none;
       text-align: center;
-      color: #9CA3AF;
+      color: rgba(255,255,255,0.35);
       font-size: 11px;
       letter-spacing: 1.4px;
       font-weight: 600;
@@ -114,22 +114,24 @@ export function buildCardFieldHtml(opts: {
       top: 50%;
       width: calc(50% - 70px);
       height: 1px;
-      background: #E5E7EB;
+      background: rgba(255,255,255,0.12);
     }
     .or::before { left: 0; }
     .or::after  { right: 0; }
 
+    /* Square's card-entry iframe always has a white background (cross-origin
+       restriction — we cannot style it). The container adds the rounded border
+       so the white iframe sits inside a dark-glass frame that matches the app. */
     #card-container {
       min-height: 90px;
-      background: #fff;
-      border: 1px solid #E5E7EB;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
       border-radius: 12px;
       padding: 14px;
-      box-shadow: 0 1px 3px rgba(10, 22, 40, 0.04);
     }
 
     #status {
-      color: #B91C1C;
+      color: #F87171;
       font-size: 13px;
       margin-top: 10px;
       min-height: 18px;
@@ -440,16 +442,19 @@ export function buildCardFieldHtml(opts: {
         }, PHASE_TIMEOUT_MS);
 
         diag("card_attach_start");
-        // Pass card styling options so Square's hosted input fields match
-        // the checkout screen's white card container and brand colours.
-        // The container's own border is applied via CSS (#card-container),
-        // so we set the inner input-container border to transparent to avoid
-        // a double-border effect and only show focus/error borders.
+        // Pass card styling options to Square's hosted input fields.
+        // NOTE: Square's card element renders in a cross-origin iframe whose
+        // background cannot be changed — it will always be white. Input text
+        // must remain dark (#0A1628) for legibility. The outer #card-container
+        // provides the dark-glass border/bg visible to the user; the inner
+        // .input-container border is kept transparent to avoid a double-border.
+        // CardClassSelectors reference:
+        //   https://developer.squareup.com/reference/sdks/web/payments/objects/CardClassSelectors
         payments.card({
           style: {
             '.input-container': { borderColor: 'transparent' },
             '.input-container.is-focus': { borderColor: '#3B82F6' },
-            '.input-container.is-error': { borderColor: '#DC2626' },
+            '.input-container.is-error': { borderColor: '#EF4444' },
             '.message-text': { color: '#6B7280' },
             '.message-icon': { color: '#6B7280' },
             '.message-text.is-error': { color: '#DC2626' },
