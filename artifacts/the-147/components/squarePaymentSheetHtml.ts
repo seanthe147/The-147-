@@ -823,7 +823,13 @@ export function buildPaymentSheetHtml(opts: {
             el.style.overflow = "hidden";
             var btn = document.createElement("apple-pay-button");
             btn.setAttribute("buttonstyle", "black");
-            btn.setAttribute("type", "buy");
+            // Use the semantically correct button type so the Apple Pay sheet
+            // shows the right action label:
+            //   "Subscribe with  Pay" — for membership/recurring billing
+            //   "Buy with  Pay"       — for one-off orders
+            // Apple's guidelines provide type="subscribe" exactly for this case.
+            // Using "buy" on a subscription screen is technically non-compliant.
+            btn.setAttribute("type", IS_SUBSCRIPTION ? "subscribe" : "buy");
             btn.setAttribute("locale", "en-GB");
             btn.style.setProperty("--apple-pay-button-width", "100%");
             btn.style.setProperty("--apple-pay-button-height", "50px");
