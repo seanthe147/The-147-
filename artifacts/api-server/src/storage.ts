@@ -2480,6 +2480,7 @@ export class DatabaseStorage implements IStorage {
     pushToken?: string;
     paymentMethod?: "online" | "counter";
     ticketNumber?: number;
+    loyaltyRewardId?: string;
   }): Promise<{ id: number }> {
     const rows = await db.insert(appOrders).values({
       ...(data.id !== undefined ? { id: data.id } : {}),
@@ -2499,6 +2500,7 @@ export class DatabaseStorage implements IStorage {
       pushToken: data.pushToken ?? null,
       paymentMethod: data.paymentMethod ?? "online",
       ticketNumber: data.ticketNumber ?? null,
+      loyaltyRewardId: data.loyaltyRewardId ?? null,
     }).returning({ id: appOrders.id });
     return { id: rows[0].id };
   }

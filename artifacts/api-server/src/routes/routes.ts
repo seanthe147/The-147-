@@ -7000,9 +7000,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.error("[LOYALTY] Failed to apply discount to Square order — charging full price:", err?.message);
           }
         }
-        // Non-blocking: mark the reward as consumed. This prevents re-use at
-        // the till even if this path exits early or the next step fails.
-        square.redeemIssuedLoyaltyReward(loyaltyRewardId, orderId).catch(() => {});
       }
 
       // Generate a per-order confirmation token. The client stores this
@@ -7037,6 +7034,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         discountLabel: discountLabel ?? undefined,
         confirmationToken,
         pushToken: isValidExpoPushToken(pushToken) ? pushToken : undefined,
+        // Stored so the /pay route can mark it redeemed AFTER a successful
+        // payment rather than here (which would burn the reward even on a
+        // later card decline).
+        loyaltyRewardId: loyaltyRewardId ?? undefined,
       });
 
       res.json({
@@ -7142,6 +7143,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
             action: "paid",
             reason: `Square payment ${payment.id} (in-app)`,
           }).catch((e: any) => console.error("[ORDER] Audit log failed:", e.message));
+        }
+
+        // ── Loyalty reward redemption (non-blocking) ───────────────────────
+        // Mark the loyalty reward as consumed ONLY after a confirmed payment.
+        // Previously this was done at order-creation time, which burned the
+        // reward even when the card was later declined.  Storing the reward
+        // ID on the app_orders row and redeeming here ensures customers can
+        // retry with the same reward after a declined card.
+        if (order.loyaltyRewardId && order.squareOrderId && square.isConfigured()) {
+          square.redeemIssuedLoyaltyReward(order.loyaltyRewardId, order.squareOrderId).catch((e: any) => {
+            console.error("[LOYALTY] Failed to mark reward redeemed after payment:", e?.message);
+          });
         }
 
         // ── Loyalty points accrual (non-blocking) ──────────────────────────

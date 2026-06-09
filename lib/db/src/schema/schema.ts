@@ -598,6 +598,11 @@ export const appOrders = pgTable("app_orders", {
   // confirmation screen and on the staff dashboard. Resets per day.
   // Null for online orders.
   ticketNumber: integer("ticket_number"),
+  // Square loyalty reward ID applied to this order, if any. Stored here
+  // so the /pay endpoint can mark the reward as redeemed AFTER a
+  // successful payment — not at order-creation time, which would burn the
+  // reward even if the card is later declined.
+  loyaltyRewardId: text("loyalty_reward_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
