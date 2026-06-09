@@ -43,12 +43,7 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-      [
-        "expo-router",
-        {
-          "origin": "https://replit.com/"
-        }
-      ],
+      "expo-router",
       "expo-font"
     ],
     "runtimeVersion": "1.0.0",
@@ -59,9 +54,6 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {
-        "origin": "https://replit.com/"
-      },
       "eas": {
         "projectId": "b35e28d2-6a2a-4cd2-bb07-f426fb4f31bd"
       }

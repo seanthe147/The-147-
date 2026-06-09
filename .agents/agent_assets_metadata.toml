@@ -60,3 +60,9 @@ id = "YomNx9UaHFMJrOFvaYpfo"
 uri = "file://artifacts/mockup-sandbox/public/images/cocktail-offer.png"
 type = "image"
 title = "Cocktail offer"
+
+[[generated]]
+id = "L2dsD32GfVNSFqGNkcYLN"
+uri = "file://artifacts/the-147-kiosk/assets/images/icon.png"
+type = "image"
+title = "147 kiosk icon"
