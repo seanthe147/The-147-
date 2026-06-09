@@ -1447,6 +1447,17 @@ function verifyStaffCredential(
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // ── Temporary file-download route (remove after OTA push) ───────────────
+  app.get("/api/tmp/payment-fix", (_req, res) => {
+    const filePath = path.join(__dirname, "../../the-147/components/squarePaymentSheetHtml.ts");
+    if (fs.existsSync(filePath)) {
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      res.setHeader("Content-Disposition", 'attachment; filename="squarePaymentSheetHtml.ts"');
+      res.send(fs.readFileSync(filePath, "utf8"));
+    } else {
+      res.status(404).json({ error: "file not found", tried: filePath });
+    }
+  });
   // ── One-shot kitchen-category seeder ────────────────────────────────────
   // Auto-tags obvious food categories (Burgers, Pizzas, Mains, etc.) as
   // `isKitchen=true` the first time the server boots after this feature
