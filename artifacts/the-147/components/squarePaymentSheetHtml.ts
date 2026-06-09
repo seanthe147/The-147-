@@ -101,16 +101,17 @@ export function buildPaymentSheetHtml(opts: {
   ></script>
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    html, body { margin: 0; padding: 0; background: #F7F8FA; color: #0A1628; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+    html, body { margin: 0; padding: 0; background: #0A1628; color: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
     body { padding: 18px 16px 28px; min-height: 100vh; }
 
     .amount-card {
-      background: linear-gradient(135deg, #0A1628 0%, #0047AB 100%);
+      background: linear-gradient(135deg, #132742 0%, #0047AB 100%);
       color: #fff;
       border-radius: 16px;
       padding: 18px 20px;
-      box-shadow: 0 6px 18px rgba(10, 22, 40, 0.18);
+      box-shadow: 0 6px 24px rgba(0, 71, 171, 0.35);
       margin-bottom: 18px;
+      border: 1px solid rgba(255,255,255,0.1);
     }
     .amount-card .label { font-size: 12px; opacity: 0.75; text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 4px; font-weight: 600; }
     .amount-card .value { font-size: 30px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.1; }
@@ -118,9 +119,9 @@ export function buildPaymentSheetHtml(opts: {
 
     #recurring-notice {
       display: none;
-      background: #FEF3C7;
-      border: 1px solid #FCD34D;
-      color: #78350F;
+      background: rgba(180,83,9,0.18);
+      border: 1px solid rgba(252,211,77,0.35);
+      color: #FCD34D;
       font-size: 12.5px;
       line-height: 1.5;
       border-radius: 10px;
@@ -129,25 +130,24 @@ export function buildPaymentSheetHtml(opts: {
       font-weight: 500;
     }
 
-    .section-title { font-size: 11px; font-weight: 700; color: #6B7280; text-transform: uppercase; letter-spacing: 1.3px; margin-bottom: 10px; }
+    .section-title { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.45); text-transform: uppercase; letter-spacing: 1.3px; margin-bottom: 10px; }
 
     .wallets { display: flex; flex-direction: column; gap: 10px; margin-bottom: 6px; }
     #apple-pay-button, #google-pay-button { display: none; height: 50px; border-radius: 12px; overflow: hidden; }
 
-    .or { display: none; text-align: center; color: #9CA3AF; font-size: 11px; letter-spacing: 1.4px; font-weight: 600; margin: 18px 0 14px; position: relative; }
-    .or::before, .or::after { content: ""; position: absolute; top: 50%; width: calc(50% - 60px); height: 1px; background: #E5E7EB; }
+    .or { display: none; text-align: center; color: rgba(255,255,255,0.35); font-size: 11px; letter-spacing: 1.4px; font-weight: 600; margin: 18px 0 14px; position: relative; }
+    .or::before, .or::after { content: ""; position: absolute; top: 50%; width: calc(50% - 60px); height: 1px; background: rgba(255,255,255,0.12); }
     .or::before { left: 0; }
     .or::after { right: 0; }
 
     .card-card {
-      background: #fff;
-      border: 1px solid #E5E7EB;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
       border-radius: 14px;
       padding: 16px;
-      box-shadow: 0 2px 6px rgba(10, 22, 40, 0.04);
     }
     .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-    .card-header .label { font-size: 13px; font-weight: 700; color: #0A1628; }
+    .card-header .label { font-size: 13px; font-weight: 700; color: rgba(255,255,255,0.9); }
     .brands { display: flex; gap: 6px; align-items: center; }
     .brand-pill { font-size: 9px; font-weight: 800; padding: 3px 7px; border-radius: 4px; color: #fff; letter-spacing: 0.4px; }
     .b-visa { background: #1A1F71; }
@@ -159,13 +159,13 @@ export function buildPaymentSheetHtml(opts: {
     #pay-card-btn {
       width: 100%; margin-top: 14px; padding: 15px; border: none; border-radius: 12px;
       background: #0047AB; color: white; font-size: 16px; font-weight: 700; cursor: pointer;
-      box-shadow: 0 4px 12px rgba(0, 71, 171, 0.28);
+      box-shadow: 0 4px 14px rgba(0, 71, 171, 0.45);
       transition: transform 0.1s, box-shadow 0.1s, opacity 0.15s;
     }
-    #pay-card-btn:active { transform: translateY(1px); box-shadow: 0 2px 6px rgba(0, 71, 171, 0.22); }
-    #pay-card-btn:disabled { opacity: 0.55; cursor: default; box-shadow: none; }
+    #pay-card-btn:active { transform: translateY(1px); box-shadow: 0 2px 6px rgba(0, 71, 171, 0.3); }
+    #pay-card-btn:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
 
-    #recurring-fineprint { display: none; font-size: 11.5px; color: #6B7280; line-height: 1.5; margin-top: 10px; text-align: center; }
+    #recurring-fineprint { display: none; font-size: 11.5px; color: rgba(255,255,255,0.45); line-height: 1.5; margin-top: 10px; text-align: center; }
 
     /* ── FEATURE_SAVED_CARDS opt-in checkbox ──
        Hidden by default; the inline script un-hides it when SHOW_SAVE_CARD
@@ -176,29 +176,29 @@ export function buildPaymentSheetHtml(opts: {
     #save-card-row {
       display: none; align-items: flex-start; gap: 10px;
       margin-top: 14px; padding: 11px 12px;
-      background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 10px;
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
       cursor: pointer; user-select: none; -webkit-user-select: none;
     }
-    #save-card-row input[type="checkbox"] { width: 18px; height: 18px; margin: 1px 0 0 0; accent-color: #0047AB; flex-shrink: 0; }
-    #save-card-row .save-card-label { font-size: 13px; font-weight: 600; color: #0A1628; line-height: 1.35; }
-    #save-card-row .save-card-sub { font-size: 11.5px; color: #6B7280; font-weight: 500; line-height: 1.4; margin-top: 2px; }
+    #save-card-row input[type="checkbox"] { width: 18px; height: 18px; margin: 1px 0 0 0; accent-color: #3B82F6; flex-shrink: 0; }
+    #save-card-row .save-card-label { font-size: 13px; font-weight: 600; color: #FFFFFF; line-height: 1.35; }
+    #save-card-row .save-card-sub { font-size: 11.5px; color: rgba(255,255,255,0.5); font-weight: 500; line-height: 1.4; margin-top: 2px; }
 
-    #status { margin-top: 10px; font-size: 13px; color: #DC2626; min-height: 16px; text-align: center; font-weight: 500; }
+    #status { margin-top: 10px; font-size: 13px; color: #F87171; min-height: 16px; text-align: center; font-weight: 500; }
 
-    #loading { display: flex; align-items: center; justify-content: center; gap: 10px; color: #6B7280; font-size: 13px; padding: 24px 0; }
-    .spinner { width: 16px; height: 16px; border: 2px solid #E5E7EB; border-top-color: #0047AB; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    #loading { display: flex; align-items: center; justify-content: center; gap: 10px; color: rgba(255,255,255,0.5); font-size: 13px; padding: 24px 0; }
+    .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.12); border-top-color: #3B82F6; border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    #slow-warning { display: none; margin: 0 0 12px; padding: 12px 14px; background: #FEF3C7; border: 1px solid #FCD34D; border-radius: 10px; font-size: 13px; color: #78350F; text-align: center; }
+    #slow-warning { display: none; margin: 0 0 12px; padding: 12px 14px; background: rgba(180,83,9,0.18); border: 1px solid rgba(252,211,77,0.35); border-radius: 10px; font-size: 13px; color: #FCD34D; text-align: center; }
     #slow-retry-btn { display: inline-block; margin-top: 8px; padding: 7px 18px; background: #0047AB; color: #fff; font-size: 13px; font-weight: 700; border: none; border-radius: 8px; cursor: pointer; }
 
     .trust-footer {
       display: flex; align-items: center; justify-content: center; gap: 6px;
       margin-top: 18px; padding-top: 16px;
-      border-top: 1px solid #E5E7EB;
-      font-size: 11px; color: #9CA3AF; font-weight: 500;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      font-size: 11px; color: rgba(255,255,255,0.3); font-weight: 500;
     }
-    .trust-footer .lock { display: inline-block; width: 10px; height: 10px; border: 1.5px solid #9CA3AF; border-radius: 2px; position: relative; }
-    .trust-footer .lock::before { content: ""; position: absolute; top: -4px; left: 1.5px; width: 5px; height: 5px; border: 1.5px solid #9CA3AF; border-bottom: none; border-radius: 4px 4px 0 0; }
+    .trust-footer .lock { display: inline-block; width: 10px; height: 10px; border: 1.5px solid rgba(255,255,255,0.3); border-radius: 2px; position: relative; }
+    .trust-footer .lock::before { content: ""; position: absolute; top: -4px; left: 1.5px; width: 5px; height: 5px; border: 1.5px solid rgba(255,255,255,0.3); border-bottom: none; border-radius: 4px 4px 0 0; }
   </style>
 </head>
 <body>
