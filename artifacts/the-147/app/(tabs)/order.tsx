@@ -2851,24 +2851,24 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    backgroundColor: "#fef3c7",
+    backgroundColor: "rgba(180,83,9,0.18)",
     borderRadius: 14,
     marginHorizontal: 16,
     marginTop: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: "#fcd34d",
+    borderColor: "rgba(252,211,77,0.25)",
   },
   orderingClosedTitle: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 14,
-    color: "#92400e",
+    color: "#FCD34D",
     marginBottom: 2,
   },
   orderingClosedSub: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 12,
-    color: "#a16207",
+    color: "rgba(252,211,77,0.75)",
     lineHeight: 16,
   },
   searchBar: {
@@ -3040,17 +3040,17 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   variationBadge: {
-    backgroundColor: "#eff6ff",
+    backgroundColor: "rgba(0,71,171,0.2)",
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderWidth: 1,
-    borderColor: "#bfdbfe",
+    borderColor: "rgba(0,71,171,0.4)",
   },
   variationText: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 10,
-    color: "#2563eb",
+    color: "#60A5FA",
     letterSpacing: 0.3,
   },
   itemDesc: {
@@ -3283,7 +3283,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   discountRow: {
-    backgroundColor: "#f0fdf4",
+    backgroundColor: "rgba(21,128,61,0.15)",
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -3291,12 +3291,12 @@ const styles = StyleSheet.create({
   discountLabel: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 13,
-    color: "#166534",
+    color: "#4ADE80",
   },
   discountAmount: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 13,
-    color: "#166534",
+    color: "#4ADE80",
   },
   cartTotalLabel: {
     fontFamily: "Montserrat_700Bold",
@@ -3324,12 +3324,12 @@ const styles = StyleSheet.create({
   rewardPickerSection: {
     marginHorizontal: 20,
     marginBottom: 14,
-    backgroundColor: "#f0f7ff",
+    backgroundColor: "rgba(0,71,171,0.15)",
     borderRadius: 14,
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderWidth: 1,
-    borderColor: "rgba(0,71,171,0.12)",
+    borderColor: "rgba(0,71,171,0.3)",
   },
   rewardPickerHeader: {
     flexDirection: "row",
@@ -3350,7 +3350,7 @@ const styles = StyleSheet.create({
   rewardPill: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff",
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderRadius: 24,
     borderWidth: 1.5,
     borderColor: Colors.brand.blue,
@@ -3397,7 +3397,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 8,
-    backgroundColor: "#E0EAFF",
+    backgroundColor: "rgba(0,71,171,0.2)",
     paddingHorizontal: 14,
     paddingVertical: 10,
     marginHorizontal: 20,
@@ -3406,7 +3406,7 @@ const styles = StyleSheet.create({
   },
   cancelledBannerText: {
     flex: 1,
-    color: "#0A1628",
+    color: "rgba(255,255,255,0.85)",
     fontSize: 13,
     fontFamily: "Montserrat_500Medium",
     lineHeight: 18,
@@ -3506,7 +3506,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   tableModalRowSelected: {
-    backgroundColor: "#f0f7ff",
+    backgroundColor: "rgba(0,71,171,0.15)",
   },
   tableModalDot: {
     width: 10,
