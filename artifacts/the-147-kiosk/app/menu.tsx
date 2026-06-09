@@ -101,7 +101,7 @@ function ModifierModal({ item, onAdd, onClose }: ModifierModalProps) {
             <Text style={modStyles.itemName}>{item.name}</Text>
             {item.description ? <Text style={modStyles.itemDesc}>{item.description}</Text> : null}
             <Pressable onPress={onClose} hitSlop={12} style={modStyles.closeBtn}>
-              <Ionicons name="close" size={28} color={Colors.light.textSecondary} />
+              <Ionicons name="close" size={28} color="rgba(255,255,255,0.5)" />
             </Pressable>
           </View>
 
@@ -183,7 +183,7 @@ function ItemCard({ item, onPress, quantity, categoryClosed }: ItemCardProps) {
           <Text style={cardStyles.desc} numberOfLines={2}>{item.description}</Text>
         ) : null}
         <View style={cardStyles.footer}>
-          <Text style={[cardStyles.price, blocked && { color: Colors.light.textSecondary }]}>
+          <Text style={[cardStyles.price, blocked && { color: "rgba(255,255,255,0.3)" }]}>
             {soldOut ? "Sold out" : categoryClosed ? "Unavailable" : formatPrice(item.price)}
           </Text>
           {quantity > 0 && !blocked && (
@@ -210,7 +210,7 @@ interface ClosedBannerProps {
 function ClosedBanner({ icon, title, subtitle, nextOpen, nextOpenLabel }: ClosedBannerProps) {
   return (
     <View style={bannerStyles.wrap}>
-      <Ionicons name={icon} size={22} color="#92400e" />
+      <Ionicons name={icon} size={22} color={Colors.brand.gold} />
       <View style={{ flex: 1 }}>
         <Text style={bannerStyles.title}>{title}</Text>
         <Text style={bannerStyles.sub}>{subtitle}</Text>
@@ -760,25 +760,27 @@ const modStyles = StyleSheet.create({
     width: "90%",
     maxWidth: 600,
     maxHeight: "85%",
-    backgroundColor: "#fff",
+    backgroundColor: Colors.brand.navy,
     borderRadius: 24,
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
   },
   header: {
     padding: 24,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.light.border,
+    borderBottomColor: "rgba(255,255,255,0.1)",
     position: "relative",
   },
   itemName: {
     fontSize: 22,
     fontWeight: "800",
-    color: Colors.light.text,
+    color: "#FFFFFF",
     paddingRight: 40,
   },
   itemDesc: {
     fontSize: 14,
-    color: Colors.light.textSecondary,
+    color: "rgba(255,255,255,0.5)",
     marginTop: 4,
   },
   closeBtn: {
@@ -793,12 +795,12 @@ const modStyles = StyleSheet.create({
   listName: {
     fontSize: 16,
     fontWeight: "700",
-    color: Colors.light.text,
+    color: "#FFFFFF",
     marginBottom: 2,
   },
   listHint: {
     fontSize: 12,
-    color: Colors.light.textSecondary,
+    color: "rgba(255,255,255,0.45)",
     marginBottom: 10,
   },
   option: {
@@ -808,20 +810,20 @@ const modStyles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 12,
     borderWidth: 1.5,
-    borderColor: Colors.light.border,
+    borderColor: "rgba(255,255,255,0.15)",
     marginBottom: 8,
     gap: 12,
   },
   optionSelected: {
     borderColor: Colors.brand.blue,
-    backgroundColor: "#EFF6FF",
+    backgroundColor: "rgba(0,71,171,0.2)",
   },
   optCheck: {
     width: 24,
     height: 24,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: Colors.light.border,
+    borderColor: "rgba(255,255,255,0.3)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -832,17 +834,17 @@ const modStyles = StyleSheet.create({
   optName: {
     flex: 1,
     fontSize: 16,
-    color: Colors.light.text,
+    color: "#FFFFFF",
   },
   optPrice: {
     fontSize: 14,
     fontWeight: "600",
-    color: Colors.light.textSecondary,
+    color: "rgba(255,255,255,0.5)",
   },
   footer: {
     padding: 20,
     borderTopWidth: 1,
-    borderTopColor: Colors.light.border,
+    borderTopColor: "rgba(255,255,255,0.1)",
   },
   addBtn: {
     backgroundColor: Colors.brand.blue,
@@ -862,29 +864,29 @@ const bannerStyles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 12,
-    backgroundColor: "#FEF3C7",
+    backgroundColor: "rgba(212,168,67,0.1)",
     borderRadius: 12,
     padding: 14,
     marginTop: 10,
     marginBottom: 6,
     borderWidth: 1,
-    borderColor: "#FDE68A",
+    borderColor: "rgba(212,168,67,0.25)",
   },
   title: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#78350f",
+    color: Colors.brand.gold,
     marginBottom: 2,
   },
   sub: {
     fontSize: 13,
-    color: "#92400e",
+    color: "rgba(212,168,67,0.75)",
     lineHeight: 18,
   },
   nextOpen: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#78350f",
+    color: Colors.brand.gold,
     marginTop: 4,
   },
 });

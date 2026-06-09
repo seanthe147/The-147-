@@ -219,7 +219,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
     if (items.length === 0) {
       return (
         <View style={styles.empty}>
-          <Ionicons name="cart-outline" size={88} color={Colors.light.textSecondary} />
+          <Ionicons name="cart-outline" size={88} color="rgba(255,255,255,0.4)" />
           <Text style={[styles.emptyText, isTablet && { fontSize: 20 }]}>Your basket is empty</Text>
           <Pressable
             style={({ pressed }) => [styles.primaryBtn, styles.primaryBtnTablet, { opacity: pressed ? 0.85 : 1, marginTop: 24 }]}
@@ -319,7 +319,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
               value={name}
               onChangeText={setName}
               placeholder="First name"
-              placeholderTextColor={Colors.light.textSecondary}
+              placeholderTextColor="rgba(255,255,255,0.35)"
               style={[styles.bigInput, styles.bigInputTablet]}
               autoCapitalize="words"
               returnKeyType="done"
@@ -331,7 +331,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
               value={phone}
               onChangeText={(t) => setPhone(t.replace(/[^0-9+\s]/g, ""))}
               placeholder="07…"
-              placeholderTextColor={Colors.light.textSecondary}
+              placeholderTextColor="rgba(255,255,255,0.35)"
               style={[styles.bigInput, styles.bigInputTablet]}
               keyboardType="phone-pad"
               returnKeyType="done"
@@ -353,7 +353,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
               <Text style={[styles.sectionSub, { fontSize: 15 }]}>Tap the number on your table card</Text>
               <View style={styles.tableDisplay}>
                 <Text style={styles.tableDisplayText}>
-                  {tableNumber || <Text style={{ color: Colors.light.textSecondary }}>—</Text>}
+                  {tableNumber || <Text style={{ color: "rgba(255,255,255,0.35)" }}>—</Text>}
                 </Text>
               </View>
               <NumPad
@@ -395,7 +395,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
           value={name}
           onChangeText={setName}
           placeholder="First name"
-          placeholderTextColor={Colors.light.textSecondary}
+          placeholderTextColor="rgba(255,255,255,0.35)"
           style={styles.bigInput}
           autoCapitalize="words"
           maxLength={40}
@@ -405,7 +405,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
           value={tableNumber}
           onChangeText={(t) => setTableNumber(t.replace(/[^0-9]/g, ""))}
           placeholder="e.g. 12"
-          placeholderTextColor={Colors.light.textSecondary}
+          placeholderTextColor="rgba(255,255,255,0.35)"
           style={[styles.bigInput, { textAlign: "center", letterSpacing: 4, fontSize: 32 }]}
           keyboardType="number-pad"
           maxLength={3}
@@ -480,7 +480,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
                 <View style={[styles.header, isTablet && styles.headerTablet]}>
                   {step === "details" ? (
                     <Pressable onPress={() => setStep("cart")} hitSlop={12}>
-                      <Ionicons name="chevron-back" size={isTablet ? 36 : 28} color={Colors.light.text} />
+                      <Ionicons name="chevron-back" size={isTablet ? 36 : 28} color="#FFFFFF" />
                     </Pressable>
                   ) : (
                     <View style={{ width: isTablet ? 36 : 28 }} />
@@ -489,7 +489,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
                     {step === "cart" ? "Your order" : "Your details"}
                   </Text>
                   <Pressable onPress={onClose} hitSlop={12}>
-                    <Ionicons name="close" size={isTablet ? 36 : 28} color={Colors.light.text} />
+                    <Ionicons name="close" size={isTablet ? 36 : 28} color="#FFFFFF" />
                   </Pressable>
                 </View>
               )}
@@ -508,44 +508,44 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.light.background },
+  container: { flex: 1, backgroundColor: Colors.brand.dark },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 12 },
   headerTablet: { paddingHorizontal: 28, paddingBottom: 16 },
-  headerTitle: { fontSize: 20, fontWeight: "700", color: Colors.light.text },
-  line: { flexDirection: "row", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.light.border },
+  headerTitle: { fontSize: 20, fontWeight: "700", color: "#FFFFFF" },
+  line: { flexDirection: "row", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.08)" },
   lineTablet: { paddingVertical: 18 },
-  lineName: { fontSize: 16, fontWeight: "600", color: Colors.light.text },
-  lineMods: { fontSize: 13, color: Colors.light.textSecondary, marginTop: 2 },
+  lineName: { fontSize: 16, fontWeight: "600", color: "#FFFFFF" },
+  lineMods: { fontSize: 13, color: "rgba(255,255,255,0.5)", marginTop: 2 },
   linePrice: { fontSize: 15, fontWeight: "700", color: Colors.brand.blue, marginTop: 4 },
   qtyBox: { flexDirection: "row", alignItems: "center", gap: 12 },
-  qtyBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.light.surfaceElevated, alignItems: "center", justifyContent: "center" },
+  qtyBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.08)", alignItems: "center", justifyContent: "center" },
   qtyBtnTablet: { width: 52, height: 52, borderRadius: 26 },
-  qtyText: { fontSize: 18, fontWeight: "700", color: Colors.light.text, minWidth: 24, textAlign: "center" },
-  totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 16, borderTopWidth: 1, borderTopColor: Colors.light.border },
-  totalLabel: { fontSize: 18, fontWeight: "600", color: Colors.light.text },
+  qtyText: { fontSize: 18, fontWeight: "700", color: "#FFFFFF", minWidth: 24, textAlign: "center" },
+  totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 16, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)" },
+  totalLabel: { fontSize: 18, fontWeight: "600", color: "#FFFFFF" },
   totalAmount: { fontSize: 24, fontWeight: "800", color: Colors.brand.blue },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
-  emptyText: { fontSize: 18, color: Colors.light.textSecondary },
+  emptyText: { fontSize: 18, color: "rgba(255,255,255,0.5)" },
   twoCol: { flex: 1, flexDirection: "row" },
   twoColLeft: { flex: 1 },
-  twoColRight: { width: 340, borderLeftWidth: 1, borderLeftColor: Colors.light.border, padding: 24 },
-  summaryCard: { backgroundColor: Colors.light.surface, borderRadius: 16, padding: 24, gap: 4 },
-  summaryLabel: { fontSize: 11, fontWeight: "800", letterSpacing: 2, color: Colors.light.textSecondary, marginBottom: 12 },
+  twoColRight: { width: 340, borderLeftWidth: 1, borderLeftColor: "rgba(255,255,255,0.08)", padding: 24 },
+  summaryCard: { backgroundColor: "rgba(255,255,255,0.06)", borderRadius: 16, padding: 24, gap: 4, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)" },
+  summaryLabel: { fontSize: 11, fontWeight: "800", letterSpacing: 2, color: "rgba(255,255,255,0.45)", marginBottom: 12 },
   summaryRow: { flexDirection: "row", justifyContent: "space-between" },
-  summaryRowLabel: { fontSize: 16, color: Colors.light.text },
-  summaryRowValue: { fontSize: 16, fontWeight: "600", color: Colors.light.text },
-  summaryTotalLabel: { fontSize: 20, fontWeight: "700", color: Colors.light.text },
+  summaryRowLabel: { fontSize: 16, color: "#FFFFFF" },
+  summaryRowValue: { fontSize: 16, fontWeight: "600", color: "#FFFFFF" },
+  summaryTotalLabel: { fontSize: 20, fontWeight: "700", color: "#FFFFFF" },
   summaryTotalValue: { fontSize: 24, fontWeight: "800", color: Colors.brand.blue },
-  sectionTitle: { fontSize: 18, fontWeight: "700", color: Colors.light.text, marginBottom: 4 },
-  sectionSub: { fontSize: 14, color: Colors.light.textSecondary, marginBottom: 12 },
-  bigInput: { backgroundColor: Colors.light.surface, borderWidth: 1.5, borderColor: Colors.light.border, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 18, color: Colors.light.text },
+  sectionTitle: { fontSize: 18, fontWeight: "700", color: "#FFFFFF", marginBottom: 4 },
+  sectionSub: { fontSize: 14, color: "rgba(255,255,255,0.5)", marginBottom: 12 },
+  bigInput: { backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1.5, borderColor: "rgba(255,255,255,0.12)", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 18, color: "#FFFFFF" },
   bigInputTablet: { fontSize: 22, paddingVertical: 18, paddingHorizontal: 20 },
-  callout: { flexDirection: "row", alignItems: "flex-start", gap: 12, backgroundColor: "#EFF6FF", borderRadius: 12, padding: 14 },
+  callout: { flexDirection: "row", alignItems: "flex-start", gap: 12, backgroundColor: "rgba(0,71,171,0.15)", borderRadius: 12, padding: 14, borderWidth: 1, borderColor: "rgba(0,71,171,0.3)" },
   calloutTitle: { fontSize: 14, fontWeight: "700", color: Colors.brand.blue, marginBottom: 2 },
-  calloutText: { fontSize: 13, color: Colors.light.textSecondary, lineHeight: 20 },
+  calloutText: { fontSize: 13, color: "rgba(255,255,255,0.6)", lineHeight: 20 },
   padCard: { flex: 1, alignItems: "center" },
   tableDisplay: { width: 180, height: 90, borderWidth: 2, borderColor: Colors.brand.blue, borderRadius: 16, alignItems: "center", justifyContent: "center", marginVertical: 16 },
-  tableDisplayText: { fontSize: 48, fontWeight: "800", color: Colors.light.text, letterSpacing: 4 },
+  tableDisplayText: { fontSize: 48, fontWeight: "800", color: "#FFFFFF", letterSpacing: 4 },
   primaryBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: Colors.brand.blue, borderRadius: 14, paddingVertical: 16, paddingHorizontal: 24 },
   primaryBtnTablet: { paddingVertical: 20, borderRadius: 18 },
   primaryBtnText: { fontSize: 18, fontWeight: "700", color: "#fff" },
@@ -554,19 +554,19 @@ const styles = StyleSheet.create({
   ghostBtnText: { fontSize: 16, fontWeight: "600", color: Colors.brand.blue },
   confirmWrap: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
   confirmCheck: { width: 100, height: 100, borderRadius: 50, backgroundColor: Colors.brand.blue, alignItems: "center", justifyContent: "center" },
-  confirmHeading: { fontSize: 32, fontWeight: "800", color: Colors.light.text, marginTop: 20 },
-  confirmSub: { fontSize: 18, color: Colors.light.textSecondary, textAlign: "center", marginTop: 10, maxWidth: 480 },
+  confirmHeading: { fontSize: 32, fontWeight: "800", color: "#FFFFFF", marginTop: 20 },
+  confirmSub: { fontSize: 18, color: "rgba(255,255,255,0.55)", textAlign: "center", marginTop: 10, maxWidth: 480 },
   ticketBox: { alignItems: "center", marginTop: 12 },
   ticketBoxTablet: { marginTop: 8 },
-  ticketLabel: { fontSize: 11, fontWeight: "800", letterSpacing: 3, color: Colors.light.textSecondary },
+  ticketLabel: { fontSize: 11, fontWeight: "800", letterSpacing: 3, color: "rgba(255,255,255,0.45)" },
   ticketNumber: { fontSize: 140, fontWeight: "800", color: Colors.brand.blue, lineHeight: 160 },
-  confirmFooter: { fontSize: 14, color: Colors.light.textSecondary, marginTop: 12 },
+  confirmFooter: { fontSize: 14, color: "rgba(255,255,255,0.4)", marginTop: 12 },
 });
 
 const padStyles = StyleSheet.create({
   grid: { flexDirection: "row", flexWrap: "wrap", width: 280, gap: 10 },
   cell: { width: 80, height: 80 },
-  btn: { borderRadius: 16, backgroundColor: Colors.light.surfaceElevated, alignItems: "center", justifyContent: "center" },
-  btnGhost: { backgroundColor: "transparent", borderWidth: 1.5, borderColor: Colors.light.border },
-  btnText: { fontSize: 28, fontWeight: "700", color: Colors.light.text },
+  btn: { borderRadius: 16, backgroundColor: "rgba(255,255,255,0.08)", alignItems: "center", justifyContent: "center" },
+  btnGhost: { backgroundColor: "transparent", borderWidth: 1.5, borderColor: "rgba(255,255,255,0.2)" },
+  btnText: { fontSize: 28, fontWeight: "700", color: "#FFFFFF" },
 });
