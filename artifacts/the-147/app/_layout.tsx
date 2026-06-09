@@ -24,6 +24,7 @@ import {
   Montserrat_600SemiBold,
   Montserrat_700Bold,
 } from "@expo-google-fonts/montserrat";
+import { Ionicons } from "@expo/vector-icons";
 
 LogBox.ignoreLogs([
   '"shadow*" style props are deprecated',
@@ -100,6 +101,10 @@ export default function RootLayout() {
     Montserrat_500Medium,
     Montserrat_600SemiBold,
     Montserrat_700Bold,
+    // Pre-register Ionicons here so the font is guaranteed loaded before
+    // any icon renders — prevents the CTFontManagerError 104 race condition
+    // that shows blank squares on first open in Expo Go.
+    ...Ionicons.font,
   });
 
   useEffect(() => {

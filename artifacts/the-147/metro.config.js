@@ -6,8 +6,13 @@ const projectRoot = __dirname;
 
 const config = getDefaultConfig(projectRoot);
 
-// Include all workspace packages in Metro's watch list
-config.watchFolders = [workspaceRoot];
+// Watch only the shared lib and scripts packages — NOT the entire
+// workspace root, which would include .local/skills and other dirs
+// that Metro can't watch reliably (deleted template subdirs, etc.)
+config.watchFolders = [
+  path.resolve(workspaceRoot, "lib"),
+  path.resolve(workspaceRoot, "scripts"),
+];
 
 config.watcher = {
   ...config.watcher,

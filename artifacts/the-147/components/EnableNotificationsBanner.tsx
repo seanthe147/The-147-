@@ -87,21 +87,23 @@ export const EnableNotificationsBanner = memo(EnableNotificationsBannerInner);
 const styles = StyleSheet.create({
   card: {
     flexDirection: "row",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(19,39,66,0.75)",
     borderRadius: 16,
     padding: 16,
     marginHorizontal: 16,
     marginTop: 12,
     marginBottom: 4,
     gap: 12,
-    boxShadow: "0px 2px 8px rgba(0,0,0,0.06)",
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    boxShadow: "0px 8px 24px rgba(0,0,0,0.35)",
+    elevation: 4,
   },
   iconWrap: {
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: Colors.brand.blue + "12",
+    backgroundColor: "rgba(0,71,171,0.25)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -109,13 +111,13 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 15,
-    color: Colors.light.text,
+    color: "#FFFFFF",
     marginBottom: 4,
   },
   subtitle: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 12,
-    color: Colors.light.textSecondary,
+    color: "rgba(255,255,255,0.55)",
     lineHeight: 17,
     marginBottom: 12,
   },
@@ -138,6 +140,6 @@ const styles = StyleSheet.create({
   snoozeText: {
     fontFamily: "Montserrat_500Medium",
     fontSize: 13,
-    color: Colors.light.textSecondary,
+    color: "rgba(255,255,255,0.4)",
   },
 });
