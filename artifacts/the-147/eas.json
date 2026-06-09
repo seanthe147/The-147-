@@ -14,6 +14,7 @@
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
       "ios": {
         "buildConfiguration": "Release"
       },
@@ -22,7 +23,8 @@
       }
     },
     "production": {
-      "autoIncrement": true,
+      "autoIncrement": false,
+      "channel": "production",
       "ios": {
         "buildConfiguration": "Release"
       },

@@ -17,7 +17,7 @@
       "supportsTablet": true,
       "requireFullScreen": true,
       "bundleIdentifier": "com.the147bradford.app",
-      "buildNumber": "5",
+      "buildNumber": "68",
       "entitlements": {
         "com.apple.developer.in-app-payments": [
           "merchant.com.the147bradford.app"
@@ -174,7 +174,10 @@
     "owner": "the-147",
     "runtimeVersion": "2.8.7",
     "updates": {
-      "url": "https://u.expo.dev/3f31dfb1-b149-43ca-ab9a-91b6d7cb230a"
+      "url": "https://u.expo.dev/3f31dfb1-b149-43ca-ab9a-91b6d7cb230a",
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      }
     }
   }
 }
