@@ -24,6 +24,7 @@ import { getApiUrl } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
 import { useResponsive } from "@/hooks/useResponsive";
+import { useMatchBarVisible } from "@/hooks/useMatchBarVisible";
 
 const SESSION_KEY = "loyalty_session";
 function loyaltyUrl(path: string): string {
@@ -144,6 +145,7 @@ export default function LoyaltyScreen() {
   const { tabletPad } = useResponsive();
   const isWeb = Platform.OS === "web";
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
+  const matchBarVisible = useMatchBarVisible();
   const queryClient = useQueryClient();
 
   const { isAuthenticated, customer, getCustomerToken } = useCustomerAuth();
@@ -468,7 +470,7 @@ export default function LoyaltyScreen() {
         style={styles.container}
         contentContainerStyle={[
           styles.content,
-          { paddingTop: (isWeb ? 67 : insets.top) + 16, paddingBottom: tabBarHeight + 20, paddingHorizontal: tabletPad },
+          { paddingTop: (isWeb ? 67 : matchBarVisible ? 0 : insets.top) + 16, paddingBottom: tabBarHeight + 20, paddingHorizontal: tabletPad },
         ]}
         keyboardShouldPersistTaps="handled"
       >

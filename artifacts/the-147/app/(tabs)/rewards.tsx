@@ -20,6 +20,7 @@ import { getApiUrl } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
 import { useResponsive } from "@/hooks/useResponsive";
+import { useMatchBarVisible } from "@/hooks/useMatchBarVisible";
 import { ScratchCardGame } from "@/components/ScratchCardGame";
 
 function loyaltyUrl(path: string): string {
@@ -515,6 +516,7 @@ export default function RewardsScreen() {
   const { tabletPad } = useResponsive();
   const isWeb = Platform.OS === "web";
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
+  const matchBarVisible = useMatchBarVisible();
   const queryClient = useQueryClient();
 
   // Disable the parent ScrollView while the user is scratching so the card
@@ -590,7 +592,7 @@ export default function RewardsScreen() {
       style={styles.container}
       contentContainerStyle={[
         styles.content,
-        { paddingTop: (isWeb ? 67 : insets.top) + 16, paddingBottom: tabBarHeight + 20, paddingHorizontal: tabletPad },
+        { paddingTop: (isWeb ? 67 : matchBarVisible ? 0 : insets.top) + 16, paddingBottom: tabBarHeight + 20, paddingHorizontal: tabletPad },
       ]}
       keyboardShouldPersistTaps="handled"
       scrollEnabled={!scratchActive}

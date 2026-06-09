@@ -56,6 +56,7 @@ import type { MenuCategory, MenuItem, ModifierList, SelectedModifier } from "@/t
 import { DIETARY_TAGS, type DietaryTagCode } from "@/types/menu";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import { useResponsive } from "@/hooks/useResponsive";
+import { useMatchBarVisible } from "@/hooks/useMatchBarVisible";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 // Ratio matches the recommended 1500×650 upload size (2.308:1).
@@ -2068,6 +2069,7 @@ export default function OrderScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const webTopInset = Platform.OS === "web" ? 67 : 0;
+  const matchBarVisible = useMatchBarVisible();
   const params = useLocalSearchParams<{ hlCatId?: string; hlItemId?: string; hlItemName?: string; openCheckout?: string; checkoutStep?: string; prefillEmail?: string }>();
 
   const { isKioskMode } = useKiosk();
@@ -2181,7 +2183,7 @@ export default function OrderScreen() {
     });
   }, []);
 
-  const headerHeight = insets.top + 56 + (Platform.OS === "web" ? webTopInset : 0);
+  const headerHeight = (matchBarVisible ? 0 : insets.top) + 56 + (Platform.OS === "web" ? webTopInset : 0);
   const searchBarHeight = 52;
   const categoryPageHeaderHeight = headerHeight + searchBarHeight;
   const categoryBarHeight = 52;
@@ -2340,7 +2342,7 @@ export default function OrderScreen() {
   if (isLoading) {
     return (
       <View style={styles.container}>
-        <View style={[styles.header, { paddingTop: insets.top + webTopInset }]}>
+        <View style={[styles.header, { paddingTop: (matchBarVisible ? 0 : insets.top) + webTopInset }]}>
           <View style={styles.headerRow}>
             <View>
               <Text style={styles.headerTitle}>Order</Text>
@@ -2359,7 +2361,7 @@ export default function OrderScreen() {
   if (isError || !categories) {
     return (
       <View style={styles.container}>
-        <View style={[styles.header, { paddingTop: insets.top + webTopInset }]}>
+        <View style={[styles.header, { paddingTop: (matchBarVisible ? 0 : insets.top) + webTopInset }]}>
           <View style={styles.headerRow}>
             <View>
               <Text style={styles.headerTitle}>Order</Text>
@@ -2383,7 +2385,7 @@ export default function OrderScreen() {
     const isSearching = searchQuery.trim().length > 0;
     return (
       <View style={styles.container}>
-        <View style={[styles.header, { paddingTop: insets.top + webTopInset }]}>
+        <View style={[styles.header, { paddingTop: (matchBarVisible ? 0 : insets.top) + webTopInset }]}>
           <View style={styles.headerRow}>
             <View>
               <Text style={styles.headerTitle}>Order</Text>
@@ -2625,7 +2627,7 @@ export default function OrderScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + webTopInset }]}>
+      <View style={[styles.header, { paddingTop: (matchBarVisible ? 0 : insets.top) + webTopInset }]}>
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
             <Pressable onPress={handleBack} hitSlop={8} style={({ pressed }) => [styles.backBtn, { opacity: pressed ? 0.7 : 1 }]}>
