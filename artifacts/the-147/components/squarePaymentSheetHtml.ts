@@ -734,7 +734,6 @@ export function buildPaymentSheetHtml(opts: {
           '.message-icon.is-error': { color: '#DC2626' },
           input: {
             color: '#0A1628',
-            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif',
             fontSize: '15px',
           },
           'input::placeholder': { color: '#9CA3AF' },

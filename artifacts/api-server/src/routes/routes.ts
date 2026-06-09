@@ -14182,6 +14182,21 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       if (!tab) return res.status(404).json({ message: "Tab not found" });
       if (tab.status !== "open") return res.status(400).json({ message: "Tab is already closed" });
 
+      // Comp is the "free soft drink" member benefit — limit to exactly 1 item.
+      // This prevents staff from adding multiple drinks (or pints) and writing
+      // off the whole tab. If more than 1 non-voided item is present the route
+      // returns a 400 so the client can prompt staff to void the extras first.
+      if (method === "comp") {
+        const tabItemRows = await db.select().from(tabItems).where(dEq(tabItems.tabId, id));
+        const activeItems = tabItemRows.filter((i) => !i.voided);
+        const totalQuantity = activeItems.reduce((s, i) => s + i.quantity, 0);
+        if (totalQuantity > 1) {
+          return res.status(400).json({
+            message: `Comp is for 1 complimentary item only — this tab has ${totalQuantity} items. Void the extras before comping.`,
+          });
+        }
+      }
+
       const total = await recalcTabTotal(id);
       await db.update(tabs).set({
         status: "closed",
