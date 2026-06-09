@@ -2086,26 +2086,34 @@ function CartSheet({
       </View>
     </Modal>
 
-    <SquarePaymentSheet
-      visible={paymentSheetVisible}
-      onClose={handleClosePaymentSheet}
-      onTokenized={handleTokenized}
-      onUnavailable={handleSheetUnavailable}
-      applicationId={squareConfig?.applicationId ?? null}
-      locationId={squareConfig?.locationId ?? null}
-      environment={squareConfig?.environment ?? "sandbox"}
-      amountPence={pendingOrder?.amountPence ?? 0}
-      buyerEmail={customer?.email || guestEmail.trim() || null}
-      inProgress={paying}
-      errorMessage={payError}
-      // FEATURE_SAVED_CARDS: opt-in checkbox is only shown when (a) the flag
-      // is on, (b) the buyer is signed in, AND (c) they don't already have
-      // a saved card. CHARGE_AND_STORE intent triggers a 3DS challenge if
-      // the customer ticks the box; otherwise it behaves identically to
-      // CHARGE so latency / SCA UX is unaffected for non-opt-in users.
-      intent={flags.savedCards && customer && !savedCard ? "CHARGE_AND_STORE" : "CHARGE"}
-      showSaveCard={!!(flags.savedCards && customer && !savedCard)}
-    />
+    {/* Only mount when there's an active pending order — prevents the WebView
+        from initialising in the background with amountPence=0 (before any
+        order exists), which caused Square's SDK to fire a fatal immediately
+        and show the "Payment Screen Issue" alert before the user had done
+        anything. The component is unmounted entirely when not in use so
+        each payment attempt gets a fresh WebView with the correct amount. */}
+    {pendingOrder !== null && (
+      <SquarePaymentSheet
+        visible={paymentSheetVisible}
+        onClose={handleClosePaymentSheet}
+        onTokenized={handleTokenized}
+        onUnavailable={handleSheetUnavailable}
+        applicationId={squareConfig?.applicationId ?? null}
+        locationId={squareConfig?.locationId ?? null}
+        environment={squareConfig?.environment ?? "sandbox"}
+        amountPence={pendingOrder.amountPence}
+        buyerEmail={customer?.email || guestEmail.trim() || null}
+        inProgress={paying}
+        errorMessage={payError}
+        // FEATURE_SAVED_CARDS: opt-in checkbox is only shown when (a) the flag
+        // is on, (b) the buyer is signed in, AND (c) they don't already have
+        // a saved card. CHARGE_AND_STORE intent triggers a 3DS challenge if
+        // the customer ticks the box; otherwise it behaves identically to
+        // CHARGE so latency / SCA UX is unaffected for non-opt-in users.
+        intent={flags.savedCards && customer && !savedCard ? "CHARGE_AND_STORE" : "CHARGE"}
+        showSaveCard={!!(flags.savedCards && customer && !savedCard)}
+      />
+    )}
     </>
   );
 }
