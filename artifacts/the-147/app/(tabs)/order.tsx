@@ -1378,31 +1378,39 @@ function CartSheet({
     // The SDK reported a fatal error (3DS fingerprint timeout, init failure,
     // offline, etc.). Do NOT automatically open an external browser — that
     // is confusing and removes control from the user. Instead:
-    //   1. Hide the payment sheet and clear the in-flight order state.
+    //   1. Hide the payment sheet but KEEP pendingOrder intact so "Try Again"
+    //      can reopen the sheet against the same server-side order.
     //   2. Show an Alert giving the user the choice to retry or fall back
     //      to the hosted web checkout (which does open a browser).
     setPaymentSheetVisible(false);
-    setPendingOrder(null);
     setPayError(null);
     if (__DEV__) console.warn("Square SDK unavailable:", reason);
     Alert.alert(
-      "Payment Form Issue",
-      'The payment screen couldn\'t load. This is usually temporary.\n\nTap "Try Again" to retry, or use web checkout as a fallback.',
+      "Payment Screen Issue",
+      "The payment screen couldn't load — this is usually temporary.\n\nTap \"Try Again\" to reopen it, or \"Web Checkout\" to pay via browser.",
       [
         {
           text: "Try Again",
           style: "default",
-          onPress: () =>
-            setPayError(
-              'Tap "Place Order" again to open a fresh payment screen.'
-            ),
+          // Reopen the sheet — fresh WebView load against the same order.
+          onPress: () => setPaymentSheetVisible(true),
         },
         {
           text: "Web Checkout",
           style: "default",
-          onPress: () => fallbackToHostedCheckout(),
+          onPress: () => {
+            // Abandon the in-flight Square order and create a fresh one
+            // via hosted checkout instead.
+            setPendingOrder(null);
+            fallbackToHostedCheckout();
+          },
         },
-        { text: "Cancel", style: "cancel" },
+        {
+          text: "Cancel",
+          style: "cancel",
+          // Clean up the pending order so it doesn't linger as a zombie.
+          onPress: () => setPendingOrder(null),
+        },
       ]
     );
   };
