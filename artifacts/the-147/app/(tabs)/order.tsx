@@ -1266,6 +1266,43 @@ function CartSheet({
       if (typeof data.confirmationToken === "string" && data.confirmationToken.length > 0) {
         void setPendingConfirmation({ appOrderId: data.appOrderId, token: data.confirmationToken });
       }
+
+      // Zero-amount guard: when a loyalty reward covers 100% of the order,
+      // the server returns amountPence=0. Square immediately rejects a
+      // payment request for £0, causing the payment sheet to fatal on open.
+      // Instead, call the free-complete endpoint and go straight to the
+      // confirmation screen — no card needed.
+      if (data.amountPence === 0) {
+        const freeUrl = new URL(`/api/orders/${data.appOrderId}/complete-free`, apiBase);
+        const freeRes = await fetch(freeUrl.toString(), {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ confirmationToken: data.confirmationToken }),
+        });
+        if (!freeRes.ok) {
+          const freeErr = await freeRes.json().catch(() => ({}));
+          throw new Error((freeErr as any).message || "Could not complete free order");
+        }
+        const confirmationParams: Record<string, string> = {
+          appOrderId: String(data.appOrderId),
+          tableNote: snapshottedTableRef.current,
+          totalPence: "0",
+          items: JSON.stringify(snapshottedItemsRef.current),
+        };
+        if (data.confirmationToken) confirmationParams.token = data.confirmationToken;
+        setPendingOrder(null);
+        onClose();
+        clearCart();
+        setTableNote("");
+        setOrderNote("");
+        setGuestName("");
+        setGuestEmail("");
+        setStep("cart");
+        setGuestMode(false);
+        router.push({ pathname: "/order-confirmation", params: confirmationParams });
+        return;
+      }
+
       setPaymentSheetVisible(true);
     } catch (err: any) {
       Alert.alert("Checkout Error", err.message || "Please try again.");

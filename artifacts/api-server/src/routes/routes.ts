@@ -7037,6 +7037,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── In-app order: complete a zero-amount (fully loyalty-discounted) order ──
+  // When a loyalty reward covers 100% of the order total the client should
+  // call this instead of opening the Square payment sheet, because Square
+  // rejects a payment request with amount=0 immediately. The confirmationToken
+  // (issued by /orders/create) is required to prevent enumeration attacks.
+  app.post("/api/orders/:appOrderId/complete-free", async (req, res) => {
+    const appOrderId = parseInt(String(req.params.appOrderId));
+    if (isNaN(appOrderId)) return res.status(400).json({ message: "Invalid order id" });
+    const { confirmationToken } = req.body || {};
+    if (typeof confirmationToken !== "string" || !confirmationToken.trim()) {
+      return res.status(400).json({ message: "Missing confirmation token" });
+    }
+    try {
+      const order = await storage.getAppOrder(appOrderId);
+      if (!order) return res.status(404).json({ message: "Order not found" });
+      if (order.confirmationToken !== confirmationToken.trim()) {
+        return res.status(403).json({ message: "Invalid confirmation token" });
+      }
+      if (order.totalPence !== 0) {
+        return res.status(400).json({ message: "Order total is not zero — use the payment flow" });
+      }
+      if (order.status !== "pending") {
+        return res.status(409).json({ message: `Order is already ${order.status}` });
+      }
+      await storage.updateAppOrderStatus(order.id, "paid");
+      await storage.logOrderAction({
+        orderId: order.id,
+        staffUsername: "system",
+        action: "paid",
+        reason: "Free order — 100% loyalty reward discount applied",
+      }).catch((e: any) => console.error("[ORDER] Audit log failed:", e.message));
+      console.log(`[ORDER] Free-completed order #${order.id} (loyalty reward covered full amount)`);
+      res.json({ ok: true, appOrderId: order.id });
+    } catch (err: any) {
+      console.error("[ORDER] Complete-free failed:", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ── In-app order: pay with a Web Payments SDK card token ───────────────────
   app.post("/api/orders/:appOrderId/pay", async (req, res) => {
     const appOrderId = parseInt(String(req.params.appOrderId));
