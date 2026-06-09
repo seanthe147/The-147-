@@ -212,6 +212,7 @@ export function buildPaymentSheetHtml(opts: {
   </style>
 </head>
 <body>
+  <div style="background:#FF4444;color:#fff;text-align:center;font-size:11px;font-weight:700;padding:3px 0;letter-spacing:1px;">OTA-R2</div>
   <div class="amount-card">
     <div class="label" id="amount-label">Total</div>
     <div class="value">£${amountStr}</div>
