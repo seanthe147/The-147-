@@ -824,7 +824,7 @@ export default function RewardsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.light.background },
   content: { paddingHorizontal: 0 },
-  headerGradient: { marginHorizontal: 20, borderRadius: 16, padding: 24, alignItems: "center", gap: 8 },
+  headerGradient: { marginHorizontal: 20, borderRadius: 16, padding: 24, alignItems: "center", gap: 8, overflow: "hidden" as const },
   headerTitle: { fontSize: 22, fontWeight: "700", color: "#FFF", fontFamily: "Montserrat_700Bold" },
   headerSubtitle: { fontSize: 14, color: "rgba(255,255,255,0.7)", textAlign: "center", fontFamily: "Montserrat_400Regular" },
   personalIntro: { fontFamily: "Montserrat_500Medium", fontSize: 14, color: Colors.light.textSecondary, textAlign: "center", marginTop: 16, marginBottom: -4, paddingHorizontal: 20 },

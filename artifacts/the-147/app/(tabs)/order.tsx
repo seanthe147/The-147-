@@ -2407,6 +2407,7 @@ export default function OrderScreen() {
     return (
       <View style={styles.container}>
         <View style={[styles.header, { paddingTop: (matchBarVisible ? 0 : insets.top) + webTopInset }]}>
+          {Platform.OS === "ios" && <BlurView intensity={65} tint="dark" style={StyleSheet.absoluteFill} />}
           <View style={styles.headerRow}>
             <View>
               <Text style={styles.headerTitle}>Order</Text>
@@ -2426,6 +2427,7 @@ export default function OrderScreen() {
     return (
       <View style={styles.container}>
         <View style={[styles.header, { paddingTop: (matchBarVisible ? 0 : insets.top) + webTopInset }]}>
+          {Platform.OS === "ios" && <BlurView intensity={65} tint="dark" style={StyleSheet.absoluteFill} />}
           <View style={styles.headerRow}>
             <View>
               <Text style={styles.headerTitle}>Order</Text>
@@ -2450,6 +2452,7 @@ export default function OrderScreen() {
     return (
       <View style={styles.container}>
         <View style={[styles.header, { paddingTop: (matchBarVisible ? 0 : insets.top) + webTopInset }]}>
+          {Platform.OS === "ios" && <BlurView intensity={65} tint="dark" style={StyleSheet.absoluteFill} />}
           <View style={styles.headerRow}>
             <View>
               <Text style={styles.headerTitle}>Order</Text>
@@ -2692,6 +2695,7 @@ export default function OrderScreen() {
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: (matchBarVisible ? 0 : insets.top) + webTopInset }]}>
+        {Platform.OS === "ios" && <BlurView intensity={65} tint="dark" style={StyleSheet.absoluteFill} />}
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
             <Pressable onPress={handleBack} hitSlop={8} style={({ pressed }) => [styles.backBtn, { opacity: pressed ? 0.7 : 1 }]}>
@@ -2855,9 +2859,10 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 20,
-    backgroundColor: Colors.brand.navy,
+    backgroundColor: Platform.OS === "ios" ? "transparent" : "rgba(10,22,40,0.92)",
     paddingHorizontal: 20,
     paddingBottom: 10,
+    overflow: "hidden" as const,
   },
   headerRow: {
     flexDirection: "row",
