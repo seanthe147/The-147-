@@ -4,6 +4,25 @@
     "GOOGLE_SERVICES_JSON": "EAS file secret — upload with: eas secret:create --scope project --name GOOGLE_SERVICES_JSON --type file --value ./google-services.json",
     "GOOGLE_SERVICES_INFO_PLIST": "EAS file secret — upload with: eas secret:create --scope project --name GOOGLE_SERVICES_INFO_PLIST --type file --value ./GoogleService-Info.plist"
   },
+  "_runbook": {
+    "google_services_ios_verification": {
+      "description": "Steps to verify GOOGLE_SERVICES_INFO_PLIST EAS secret is wired correctly before an App Store submission.",
+      "wiring_confirmed": "app.config.js ios.googleServicesFile reads process.env.GOOGLE_SERVICES_INFO_PLIST with a local fallback — confirmed 2026-06-10.",
+      "pre_build_checklist": [
+        "1. Confirm the secret exists: run `eas secret:list` and check GOOGLE_SERVICES_INFO_PLIST appears with type=file.",
+        "2. If missing, upload it: eas secret:create --scope project --name GOOGLE_SERVICES_INFO_PLIST --type file --value ./GoogleService-Info.plist",
+        "3. Confirm the file contains the correct bundle ID (com.the147bradford.app) and EAS project ID (3f31dfb1-b149-43ca-ab9a-91b6d7cb230a)."
+      ],
+      "smoke_test_command": "eas build --platform ios --profile preview --no-wait",
+      "success_criteria": [
+        "Build log shows 'GoogleService-Info.plist' copied into the iOS bundle (search for 'GoogleService' in the EAS build log).",
+        "No 'missing GoogleService-Info.plist' or 'file not found' Xcode error in the build output.",
+        "Build completes with status 'finished' (not 'errored') on https://expo.dev/accounts/the-147/projects/the-147/builds."
+      ],
+      "failure_recovery": "If the build errors with a missing plist, re-upload the secret (step 2 above) and re-run. The env var is injected by EAS at build time — it is not present during local `expo start`.",
+      "last_verified": "pending — run smoke test above before next App Store submission and update this date"
+    }
+  },
   "cli": {
     "version": ">= 12.0.0",
     "appVersionSource": "local"
