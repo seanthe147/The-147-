@@ -16,6 +16,7 @@ import {
   Pressable,
   Animated,
 } from "react-native";
+import { BlurView } from "expo-blur";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
@@ -99,7 +100,7 @@ function BannerCarousel() {
   const slide = BANNER_SLIDES[slideIdx];
 
   return (
-    <View style={bannerStyles.container}>
+    <BlurView intensity={28} tint="dark" style={bannerStyles.container}>
       <View style={bannerStyles.dotsRow}>
         {BANNER_SLIDES.map((_, i) => (
           <View
@@ -115,7 +116,7 @@ function BannerCarousel() {
           <Text style={bannerStyles.subtitle}>{slide.subtitle}</Text>
         </View>
       </Animated.View>
-    </View>
+    </BlurView>
   );
 }
 
@@ -209,8 +210,10 @@ export default function AttractScreen() {
             onLongPress={handleLogoLongPress}
             delayLongPress={2000}
           >
-            <View style={attractStyles.logoBox}>
-              <Text style={attractStyles.logoNumber}>147</Text>
+            <View style={attractStyles.logoHalo}>
+              <View style={attractStyles.logoBox}>
+                <Text style={attractStyles.logoNumber}>147</Text>
+              </View>
             </View>
           </Pressable>
           <Text style={attractStyles.venueName}>The 147</Text>
@@ -268,6 +271,14 @@ const attractStyles = StyleSheet.create({
     justifyContent: "center",
     gap: 12,
   },
+  logoHalo: {
+    padding: 14,
+    borderRadius: 38,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    marginBottom: 4,
+  },
   logoBox: {
     width: 120,
     height: 120,
@@ -275,7 +286,6 @@ const attractStyles = StyleSheet.create({
     backgroundColor: Colors.brand.blue,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 4,
   },
   logoNumber: {
     fontSize: 52,
@@ -308,6 +318,13 @@ const attractStyles = StyleSheet.create({
     paddingVertical: 22,
     paddingHorizontal: 56,
     borderRadius: 50,
+    borderTopWidth: 1.5,
+    borderTopColor: "rgba(255,255,255,0.45)",
+    shadowColor: Colors.brand.gold,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 20,
+    elevation: 10,
   },
   ctaBtnText: {
     fontSize: 26,
@@ -319,12 +336,15 @@ const attractStyles = StyleSheet.create({
 
 const bannerStyles = StyleSheet.create({
   container: {
-    backgroundColor: Colors.brand.navy,
     borderRadius: 16,
     paddingVertical: 16,
     paddingHorizontal: 28,
     marginBottom: 8,
     gap: 10,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.13)",
+    backgroundColor: "rgba(255,255,255,0.05)",
   },
   dotsRow: {
     flexDirection: "row",

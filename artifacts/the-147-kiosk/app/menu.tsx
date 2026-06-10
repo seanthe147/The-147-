@@ -18,6 +18,7 @@ import {
   FlatList,
   Image,
 } from "react-native";
+import { BlurView } from "expo-blur";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -167,7 +168,7 @@ function ItemCard({ item, onPress, quantity, categoryClosed }: ItemCardProps) {
       style={({ pressed }) => [
         cardStyles.card,
         blocked && cardStyles.cardBlocked,
-        pressed && !blocked && { opacity: 0.85 },
+        pressed && !blocked && cardStyles.cardPressed,
       ]}
     >
       {item.imageUrl ? (
@@ -349,8 +350,8 @@ export default function MenuScreen() {
       style={[screenStyles.root, { paddingTop: insets.top }]}
       onTouchStart={handleTouch}
     >
-      {/* Header bar */}
-      <View style={screenStyles.header}>
+      {/* Header bar — frosted glass */}
+      <BlurView intensity={40} tint="dark" style={screenStyles.header}>
         <Pressable onPress={handleBack} style={screenStyles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={Colors.brand.gold} />
           <Text style={screenStyles.backText}>Back</Text>
@@ -382,7 +383,7 @@ export default function MenuScreen() {
             <Text style={screenStyles.cartLabel}>View Order</Text>
           )}
         </Pressable>
-      </View>
+      </BlurView>
 
       {/* Body */}
       {isLoading ? (
@@ -398,8 +399,8 @@ export default function MenuScreen() {
         </View>
       ) : (
         <View style={screenStyles.body}>
-          {/* Sidebar */}
-          <View style={screenStyles.sidebar}>
+          {/* Sidebar — frosted glass */}
+          <BlurView intensity={20} tint="dark" style={screenStyles.sidebar}>
             <ScrollView showsVerticalScrollIndicator={false}>
               {allCategories.map((cat) => {
                 const active = cat.id === (selectedCategory?.id ?? null);
@@ -434,7 +435,7 @@ export default function MenuScreen() {
                 );
               })}
             </ScrollView>
-          </View>
+          </BlurView>
 
           {/* Item grid */}
           <View style={screenStyles.grid}>
@@ -516,9 +517,10 @@ const screenStyles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingVertical: 14,
-    backgroundColor: Colors.brand.navy,
+    backgroundColor: "rgba(10,22,40,0.65)",
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.08)",
+    borderBottomColor: "rgba(255,255,255,0.1)",
+    overflow: "hidden",
   },
   backBtn: {
     flexDirection: "row",
@@ -619,9 +621,10 @@ const screenStyles = StyleSheet.create({
   },
   sidebar: {
     width: 180,
-    backgroundColor: Colors.brand.navy,
+    backgroundColor: "rgba(19,39,66,0.55)",
     borderRightWidth: 1,
     borderRightColor: "rgba(255,255,255,0.08)",
+    overflow: "hidden",
   },
   grid: {
     flex: 1,
@@ -663,7 +666,7 @@ const sidebarStyles = StyleSheet.create({
     position: "relative",
   },
   itemActive: {
-    backgroundColor: "rgba(0,71,171,0.2)",
+    backgroundColor: "rgba(0,71,171,0.22)",
   },
   itemText: {
     fontSize: 15,
@@ -684,50 +687,59 @@ const sidebarStyles = StyleSheet.create({
     bottom: 8,
     width: 3,
     borderRadius: 2,
-    backgroundColor: Colors.brand.gold,
+    backgroundColor: Colors.brand.blue,
   },
 });
 
 const cardStyles = StyleSheet.create({
   card: {
-    backgroundColor: Colors.brand.navy,
-    borderRadius: 14,
+    flex: 1,
+    borderRadius: 16,
     overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
+    borderColor: "rgba(255,255,255,0.1)",
+    shadowColor: "#000",
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    elevation: 4,
   },
   cardBlocked: {
     opacity: 0.45,
   },
+  cardPressed: {
+    opacity: 0.82,
+  },
   image: {
     width: "100%",
-    height: 130,
-    backgroundColor: "#1a2f4a",
+    aspectRatio: 4 / 3,
   },
   imagePlaceholder: {
+    backgroundColor: "rgba(255,255,255,0.04)",
     alignItems: "center",
     justifyContent: "center",
   },
   body: {
     padding: 12,
+    flex: 1,
+    justifyContent: "space-between",
     gap: 4,
   },
   name: {
     fontSize: 15,
     fontWeight: "700",
     color: "#fff",
-    lineHeight: 20,
   },
   desc: {
     fontSize: 12,
-    color: "rgba(255,255,255,0.45)",
+    color: "rgba(255,255,255,0.5)",
     lineHeight: 16,
   },
   footer: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 6,
+    marginTop: 4,
   },
   price: {
     fontSize: 16,
@@ -735,53 +747,88 @@ const cardStyles = StyleSheet.create({
     color: Colors.brand.gold,
   },
   qtyBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: Colors.brand.blue,
     alignItems: "center",
     justifyContent: "center",
   },
   qtyBadgeText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "800",
     color: "#fff",
+  },
+});
+
+const bannerStyles = StyleSheet.create({
+  wrap: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: "rgba(212,168,67,0.1)",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "rgba(212,168,67,0.25)",
+  },
+  title: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#fff",
+    marginBottom: 2,
+  },
+  sub: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.6)",
+  },
+  nextOpen: {
+    fontSize: 12,
+    color: Colors.brand.gold,
+    marginTop: 4,
+    fontWeight: "600",
   },
 });
 
 const modStyles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: "rgba(0,0,0,0.65)",
     alignItems: "center",
     justifyContent: "center",
   },
   sheet: {
-    width: "90%",
-    maxWidth: 600,
-    maxHeight: "85%",
-    backgroundColor: Colors.brand.navy,
+    backgroundColor: "rgba(12,24,44,0.95)",
     borderRadius: 24,
     overflow: "hidden",
+    width: "85%",
+    maxWidth: 560,
+    maxHeight: "82%",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: "rgba(255,255,255,0.14)",
+    shadowColor: "#000",
+    shadowOpacity: 0.6,
+    shadowRadius: 40,
+    elevation: 24,
   },
   header: {
     padding: 24,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.1)",
+    borderBottomColor: "rgba(255,255,255,0.08)",
     position: "relative",
   },
   itemName: {
     fontSize: 22,
     fontWeight: "800",
-    color: "#FFFFFF",
-    paddingRight: 40,
+    color: "#fff",
+    paddingRight: 36,
   },
   itemDesc: {
     fontSize: 14,
-    color: "rgba(255,255,255,0.5)",
+    color: "rgba(255,255,255,0.55)",
     marginTop: 4,
+    paddingRight: 36,
   },
   closeBtn: {
     position: "absolute",
@@ -791,32 +838,33 @@ const modStyles = StyleSheet.create({
   listSection: {
     paddingHorizontal: 24,
     paddingTop: 20,
+    gap: 8,
   },
   listName: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#FFFFFF",
+    color: "#fff",
     marginBottom: 2,
   },
   listHint: {
     fontSize: 12,
-    color: "rgba(255,255,255,0.45)",
-    marginBottom: 10,
+    color: "rgba(255,255,255,0.4)",
+    marginBottom: 4,
   },
   option: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.15)",
-    marginBottom: 8,
     gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
   },
   optionSelected: {
-    borderColor: Colors.brand.blue,
-    backgroundColor: "rgba(0,71,171,0.2)",
+    backgroundColor: "rgba(0,71,171,0.18)",
+    borderColor: "rgba(0,71,171,0.4)",
   },
   optCheck: {
     width: 24,
@@ -833,60 +881,31 @@ const modStyles = StyleSheet.create({
   },
   optName: {
     flex: 1,
-    fontSize: 16,
-    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "500",
+    color: "#fff",
   },
   optPrice: {
     fontSize: 14,
     fontWeight: "600",
-    color: "rgba(255,255,255,0.5)",
+    color: "rgba(255,255,255,0.55)",
   },
   footer: {
     padding: 20,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.1)",
+    borderTopColor: "rgba(255,255,255,0.08)",
   },
   addBtn: {
     backgroundColor: Colors.brand.blue,
-    borderRadius: 16,
-    paddingVertical: 18,
+    borderRadius: 14,
+    paddingVertical: 16,
     alignItems: "center",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.25)",
   },
   addBtnText: {
-    fontSize: 18,
-    fontWeight: "800",
+    fontSize: 17,
+    fontWeight: "700",
     color: "#fff",
-  },
-});
-
-const bannerStyles = StyleSheet.create({
-  wrap: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-    backgroundColor: "rgba(212,168,67,0.1)",
-    borderRadius: 12,
-    padding: 14,
-    marginTop: 10,
-    marginBottom: 6,
-    borderWidth: 1,
-    borderColor: "rgba(212,168,67,0.25)",
-  },
-  title: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: Colors.brand.gold,
-    marginBottom: 2,
-  },
-  sub: {
-    fontSize: 13,
-    color: "rgba(212,168,67,0.75)",
-    lineHeight: 18,
-  },
-  nextOpen: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: Colors.brand.gold,
-    marginTop: 4,
   },
 });
