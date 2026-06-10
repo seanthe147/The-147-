@@ -11,6 +11,7 @@ paths = [
   "/api",
   "/assets",
   "/terms",
+  "/privacy-policy",
   "/staff-privacy-notice",
   "/widget",
   "/uploads",
