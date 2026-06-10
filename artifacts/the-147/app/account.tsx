@@ -1132,6 +1132,13 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
           <Text style={styles.privacyLinkText}>View Privacy Policy</Text>
         </Pressable>
         <Pressable
+          onPress={() => router.push("/gdpr-rights")}
+          style={({ pressed }) => [styles.privacyLink, { opacity: pressed ? 0.7 : 1 }]}
+        >
+          <Ionicons name="shield-outline" size={18} color={Colors.brand.blue} />
+          <Text style={styles.privacyLinkText}>UK GDPR Rights</Text>
+        </Pressable>
+        <Pressable
           onPress={() => Linking.openURL(`${getApiUrl().replace(/\/$/, "")}/terms`)}
           style={({ pressed }) => [styles.privacyLink, { opacity: pressed ? 0.7 : 1 }]}
           testID="terms-link-account"

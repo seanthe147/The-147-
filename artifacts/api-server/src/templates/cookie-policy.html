@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cookie & Storage Policy — The 147</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f7; color: #1d1d1f; line-height: 1.7;
+    }
+    header { background: #0b1120; color: #fff; padding: 28px 24px; text-align: center; }
+    header h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.3px; }
+    header p { color: #aab; font-size: 0.9rem; margin-top: 6px; }
+    main { max-width: 760px; margin: 40px auto; padding: 0 24px 60px; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: #e8f0fe; color: #1a56db;
+      border-radius: 20px; padding: 6px 14px;
+      font-size: 0.82rem; font-weight: 600; margin-bottom: 10px;
+    }
+    .updated { color: #777; font-size: 0.83rem; margin-bottom: 32px; }
+    h2 {
+      font-size: 1.05rem; font-weight: 700; color: #0b1120;
+      margin: 32px 0 10px; padding-bottom: 6px;
+      border-bottom: 2px solid #e8ecf2;
+    }
+    p { margin-bottom: 12px; font-size: 0.94rem; color: #333; }
+    .storage-item {
+      display: flex; gap: 14px; align-items: flex-start;
+      background: #fff; border-radius: 8px; padding: 14px;
+      margin-bottom: 8px; border: 1px solid #e8ecf2;
+    }
+    .storage-icon {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: #e8f0fe; display: flex; align-items: center;
+      justify-content: center; flex-shrink: 0; font-size: 1.1rem;
+    }
+    .storage-label { font-weight: 700; font-size: 0.94rem; color: #0b1120; }
+    .storage-desc { font-size: 0.88rem; color: #555; margin-top: 3px; }
+    ul { padding-left: 0; list-style: none; margin-bottom: 12px; }
+    ul li {
+      font-size: 0.94rem; color: #333; padding: 7px 12px;
+      border-left: 3px solid #1a56db33; margin-bottom: 6px;
+      background: #fff; border-radius: 0 6px 6px 0;
+    }
+    footer { text-align: center; padding: 24px; font-size: 0.82rem; color: #aaa; border-top: 1px solid #e0e0e0; }
+    a { color: #1a56db; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>The 147 — Cookie &amp; Storage Policy</h1>
+    <p>Snooker · Bar · Restaurant</p>
+  </header>
+
+  <main>
+    <div class="badge">📱 Device Storage Only — No Tracking Cookies</div>
+    <p class="updated">Last Updated: March 2026</p>
+
+    <h2>No Web Cookies</h2>
+    <p>The 147 app is a native mobile application. We do not use web browser cookies or any third-party tracking cookies. There are no advertising trackers, no cross-site tracking, and no analytics cookies.</p>
+
+    <h2>What We Store on Your Device</h2>
+    <p>The app stores a small amount of data locally on your device using AsyncStorage (React Native's local storage). This data stays on your device and is never sold or shared with third parties.</p>
+
+    <div class="storage-item">
+      <div class="storage-icon">🔒</div>
+      <div>
+        <div class="storage-label">Consent Preferences</div>
+        <div class="storage-desc">Your privacy consent choices (analytics, marketing) and the date you gave consent. Stored so you are not asked every time you open the app.</div>
+      </div>
+    </div>
+    <div class="storage-item">
+      <div class="storage-icon">🔑</div>
+      <div>
+        <div class="storage-label">Session Token</div>
+        <div class="storage-desc">If you sign in to your account, an authentication token is stored securely so you stay logged in between sessions. Cleared when you sign out.</div>
+      </div>
+    </div>
+    <div class="storage-item">
+      <div class="storage-icon">🏆</div>
+      <div>
+        <div class="storage-label">Loyalty Points Cache</div>
+        <div class="storage-desc">Your current loyalty points balance is cached locally to display instantly without a network request. Refreshed automatically when you open the app.</div>
+      </div>
+    </div>
+
+    <h2>What We Do Not Store</h2>
+    <p>We do not store payment card details, passwords, or any sensitive personal data in local storage. Booking and account data is held on our secure servers only.</p>
+
+    <h2>Third-Party Content</h2>
+    <p>Some screens embed third-party services (OrderTab for food ordering, TicketSource for event tickets). These load in an in-app browser and may use their own cookies subject to their own privacy policies.</p>
+
+    <h2>Clearing Local Data</h2>
+    <p>To clear locally stored consent preferences in the app, go to <strong>About → Privacy Policy → Reset Privacy Preferences</strong>. To clear your session, sign out from <strong>My Account</strong>.</p>
+
+    <p>See also our <a href="/privacy-policy">Privacy Policy</a> and <a href="/gdpr-rights">UK GDPR Rights</a>.</p>
+  </main>
+
+  <footer>
+    &copy; 2026 The 147 · <a href="https://www.the147.co.uk">www.the147.co.uk</a>
+  </footer>
+</body>
+</html>

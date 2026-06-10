@@ -343,6 +343,36 @@ async function bootstrapOwner() {
     });
   }
 
+  // GDPR rights
+  const gdprRightsHtmlPath = templatePath("gdpr-rights.html");
+  if (fs.existsSync(gdprRightsHtmlPath)) {
+    const gdprRightsHtml = fs.readFileSync(gdprRightsHtmlPath, "utf-8");
+    app.get("/gdpr-rights", (_req, res) => {
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.status(200).send(gdprRightsHtml);
+    });
+  }
+
+  // Cookie & storage policy
+  const cookiePolicyHtmlPath = templatePath("cookie-policy.html");
+  if (fs.existsSync(cookiePolicyHtmlPath)) {
+    const cookiePolicyHtml = fs.readFileSync(cookiePolicyHtmlPath, "utf-8");
+    app.get("/cookie-policy", (_req, res) => {
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.status(200).send(cookiePolicyHtml);
+    });
+  }
+
+  // Cancellation & refund policy
+  const cancellationPolicyHtmlPath = templatePath("cancellation-policy.html");
+  if (fs.existsSync(cancellationPolicyHtmlPath)) {
+    const cancellationPolicyHtml = fs.readFileSync(cancellationPolicyHtmlPath, "utf-8");
+    app.get("/cancellation-policy", (_req, res) => {
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.status(200).send(cancellationPolicyHtml);
+    });
+  }
+
   // Static assets / uploads
   const uploadsDir = path.resolve(process.cwd(), "uploads");
   if (!fs.existsSync(uploadsDir)) {

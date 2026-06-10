@@ -22,6 +22,9 @@ paths = [
   "/membership",
   "/staff",
   "/kiosk",
+  "/gdpr-rights",
+  "/cookie-policy",
+  "/cancellation-policy",
 ]
 
 [services.development]

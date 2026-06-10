@@ -186,11 +186,27 @@ export default function AboutScreen() {
             <Ionicons name="open-outline" size={14} color={Colors.light.textSecondary} />
           </Pressable>
           <Pressable
-            onPress={() => router.push("/privacy-policy")}
+            onPress={() => router.push("/gdpr-rights")}
             style={({ pressed }) => [styles.contactItem, { opacity: pressed ? 0.7 : 1 }]}
           >
             <Ionicons name="shield-outline" size={18} color={Colors.brand.blue} />
             <Text style={styles.contactText}>UK GDPR Rights</Text>
+            <Ionicons name="chevron-forward" size={14} color={Colors.light.textSecondary} />
+          </Pressable>
+          <Pressable
+            onPress={() => router.push("/cookie-policy")}
+            style={({ pressed }) => [styles.contactItem, { opacity: pressed ? 0.7 : 1 }]}
+          >
+            <Ionicons name="phone-portrait-outline" size={18} color={Colors.brand.blue} />
+            <Text style={styles.contactText}>Cookie & Storage Policy</Text>
+            <Ionicons name="chevron-forward" size={14} color={Colors.light.textSecondary} />
+          </Pressable>
+          <Pressable
+            onPress={() => router.push("/cancellation-policy")}
+            style={({ pressed }) => [styles.contactItem, { opacity: pressed ? 0.7 : 1 }]}
+          >
+            <Ionicons name="receipt-outline" size={18} color={Colors.brand.blue} />
+            <Text style={styles.contactText}>Cancellation & Refunds</Text>
             <Ionicons name="chevron-forward" size={14} color={Colors.light.textSecondary} />
           </Pressable>
         </InfoSection>

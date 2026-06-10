@@ -80,6 +80,9 @@ function RootLayoutNav() {
           </>
         )}
         <Stack.Screen name="privacy-policy" options={{ headerShown: false, presentation: "modal" }} />
+        <Stack.Screen name="gdpr-rights" options={{ headerShown: false, presentation: "modal" }} />
+        <Stack.Screen name="cookie-policy" options={{ headerShown: false, presentation: "modal" }} />
+        <Stack.Screen name="cancellation-policy" options={{ headerShown: false, presentation: "modal" }} />
         <Stack.Screen name="contact" options={{ headerShown: false, presentation: "modal" }} />
         {showCustomerRoutes && (
           <>
