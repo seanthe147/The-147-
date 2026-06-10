@@ -16,6 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 import { Image as ExpoImage } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { useQuery } from "@tanstack/react-query";
@@ -393,18 +394,15 @@ export default function EventsScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <LinearGradient
-          colors={[Colors.brand.dark, Colors.brand.navy]}
-          style={styles.heroSection}
-        >
-          <View style={styles.heroInner}>
-            <Text style={styles.heroTitle}>Events & Tickets</Text>
-            <Text style={styles.heroSubtitle}>
-              Live entertainment, tournaments & special nights at The 147
-            </Text>
-          </View>
-
-          <View style={styles.tabBar}>
+        {Platform.OS === "ios" ? (
+          <BlurView intensity={55} tint="dark" style={styles.heroSection}>
+            <View style={styles.heroInner}>
+              <Text style={styles.heroTitle}>Events & Tickets</Text>
+              <Text style={styles.heroSubtitle}>
+                Live entertainment, tournaments & special nights at The 147
+              </Text>
+            </View>
+            <View style={styles.tabBar}>
             <Pressable
               onPress={() => {
                 setActiveTab("events");
@@ -438,7 +436,39 @@ export default function EventsScreen() {
               </Text>
             </Pressable>
           </View>
-        </LinearGradient>
+          </BlurView>
+        ) : (
+          <View style={[styles.heroSection, { backgroundColor: "rgba(10,22,40,0.88)" }]}>
+            <View style={styles.heroInner}>
+              <Text style={styles.heroTitle}>Events & Tickets</Text>
+              <Text style={styles.heroSubtitle}>
+                Live entertainment, tournaments & special nights at The 147
+              </Text>
+            </View>
+            <View style={styles.tabBar}>
+              <Pressable
+                onPress={() => {
+                  setActiveTab("events");
+                  if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}
+                style={[styles.tab, activeTab === "events" && styles.tabActive]}
+              >
+                <Ionicons name="calendar" size={16} color={activeTab === "events" ? "#FFFFFF" : "rgba(255,255,255,0.5)"} />
+                <Text style={[styles.tabText, activeTab === "events" && styles.tabTextActive]}>Events</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setActiveTab("whats-on");
+                  if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}
+                style={[styles.tab, activeTab === "whats-on" && styles.tabActive]}
+              >
+                <Ionicons name="repeat" size={16} color={activeTab === "whats-on" ? "#FFFFFF" : "rgba(255,255,255,0.5)"} />
+                <Text style={[styles.tabText, activeTab === "whats-on" && styles.tabTextActive]}>What's On</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
 
         {bannerImages && bannerImages.length > 0 && (
           <BannerCarousel images={bannerImages} />

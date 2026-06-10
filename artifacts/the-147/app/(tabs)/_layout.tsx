@@ -40,7 +40,7 @@ export default function TabLayout() {
           tabBarInactiveTintColor: "rgba(255,255,255,0.4)",
           tabBarStyle: {
             position: "absolute" as const,
-            backgroundColor: isIOS ? "transparent" : "#0A1628",
+            backgroundColor: "transparent",
             borderTopWidth: isWeb ? 1 : 0,
             borderTopColor: "rgba(255,255,255,0.08)",
             elevation: 0,
@@ -65,7 +65,18 @@ export default function TabLayout() {
                   },
                 ]}
               />
-            ) : null,
+            ) : (
+              <View
+                style={[
+                  StyleSheet.absoluteFill,
+                  {
+                    backgroundColor: "rgba(10,22,40,0.88)",
+                    borderTopWidth: StyleSheet.hairlineWidth,
+                    borderTopColor: "rgba(255,255,255,0.14)",
+                  },
+                ]}
+              />
+            ),
         }}
       >
         <Tabs.Screen

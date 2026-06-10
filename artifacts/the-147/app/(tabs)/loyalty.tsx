@@ -17,6 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
@@ -474,18 +475,27 @@ export default function LoyaltyScreen() {
         ]}
         keyboardShouldPersistTaps="handled"
       >
-        <LinearGradient
-          colors={[Colors.brand.dark, Colors.brand.navy]}
-          style={styles.headerGradient}
-        >
-          <Ionicons name="diamond" size={28} color={Colors.brand.gold} />
-          <Text style={styles.headerTitle}>Membership</Text>
-          <Text style={styles.headerSubtitle}>
-            {firstName
-              ? `Welcome back, ${firstName}`
-              : "Membership plans & your loyalty account"}
-          </Text>
-        </LinearGradient>
+        {Platform.OS === "ios" ? (
+          <BlurView intensity={55} tint="dark" style={styles.headerGradient}>
+            <Ionicons name="diamond" size={28} color={Colors.brand.gold} />
+            <Text style={styles.headerTitle}>Membership</Text>
+            <Text style={styles.headerSubtitle}>
+              {firstName
+                ? `Welcome back, ${firstName}`
+                : "Membership plans & your loyalty account"}
+            </Text>
+          </BlurView>
+        ) : (
+          <View style={[styles.headerGradient, { backgroundColor: "rgba(10,22,40,0.88)" }]}>
+            <Ionicons name="diamond" size={28} color={Colors.brand.gold} />
+            <Text style={styles.headerTitle}>Membership</Text>
+            <Text style={styles.headerSubtitle}>
+              {firstName
+                ? `Welcome back, ${firstName}`
+                : "Membership plans & your loyalty account"}
+            </Text>
+          </View>
+        )}
 
         {(programLoading || step === "loading") ? (
           <View style={styles.loadingWrap}>

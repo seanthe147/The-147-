@@ -30,6 +30,7 @@ import {
 // fade-in transition. The menu is image-heavy and was the slowest part of
 // the Order tab to render on cold start with React Native's built-in Image.
 import { Image as ExpoImage } from "expo-image";
+import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";

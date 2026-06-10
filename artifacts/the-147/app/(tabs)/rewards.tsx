@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 import { getApiUrl } from "@/lib/query-client";
@@ -597,18 +598,27 @@ export default function RewardsScreen() {
       keyboardShouldPersistTaps="handled"
       scrollEnabled={!scratchActive}
     >
-      <LinearGradient
-        colors={[Colors.brand.dark, "#2D1800"]}
-        style={styles.headerGradient}
-      >
-        <Ionicons name="gift" size={28} color={Colors.brand.gold} />
-        <Text style={styles.headerTitle}>Rewards</Text>
-        <Text style={styles.headerSubtitle}>
-          {firstName
-            ? `${firstName} — scratch cards, points & prizes`
-            : "Scratch cards, points & prizes"}
-        </Text>
-      </LinearGradient>
+      {Platform.OS === "ios" ? (
+        <BlurView intensity={55} tint="dark" style={styles.headerGradient}>
+          <Ionicons name="gift" size={28} color={Colors.brand.gold} />
+          <Text style={styles.headerTitle}>Rewards</Text>
+          <Text style={styles.headerSubtitle}>
+            {firstName
+              ? `${firstName} — scratch cards, points & prizes`
+              : "Scratch cards, points & prizes"}
+          </Text>
+        </BlurView>
+      ) : (
+        <View style={[styles.headerGradient, { backgroundColor: "rgba(10,22,40,0.88)" }]}>
+          <Ionicons name="gift" size={28} color={Colors.brand.gold} />
+          <Text style={styles.headerTitle}>Rewards</Text>
+          <Text style={styles.headerSubtitle}>
+            {firstName
+              ? `${firstName} — scratch cards, points & prizes`
+              : "Scratch cards, points & prizes"}
+          </Text>
+        </View>
+      )}
 
       {!isAuthenticated ? (
         <View style={styles.statusCard}>
