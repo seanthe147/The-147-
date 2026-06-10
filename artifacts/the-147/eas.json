@@ -8,10 +8,12 @@
     "google_services_ios_verification": {
       "description": "Steps to verify GOOGLE_SERVICES_INFO_PLIST EAS secret is wired correctly before an App Store submission.",
       "wiring_confirmed": "app.config.js ios.googleServicesFile reads process.env.GOOGLE_SERVICES_INFO_PLIST with a local fallback — confirmed 2026-06-10.",
+      "environment_note": "IMPORTANT: `eas build` MUST be run from the Mac terminal (~/The-147 or a local checkout of this workspace). It writes .git/index.lock which is blocked inside the Replit agent environment. `eas update` (OTA only) can still be run from Replit.",
       "pre_build_checklist": [
-        "1. Confirm the secret exists: run `eas secret:list` and check GOOGLE_SERVICES_INFO_PLIST appears with type=file.",
-        "2. If missing, upload it: eas secret:create --scope project --name GOOGLE_SERVICES_INFO_PLIST --type file --value ./GoogleService-Info.plist",
-        "3. Confirm the file contains the correct bundle ID (com.the147bradford.app) and EAS project ID (3f31dfb1-b149-43ca-ab9a-91b6d7cb230a)."
+        "1. On Mac terminal: cd into the workspace checkout.",
+        "2. Confirm the secret exists: run `eas secret:list` and check GOOGLE_SERVICES_INFO_PLIST appears with type=file.",
+        "3. If missing, upload it: eas secret:create --scope project --name GOOGLE_SERVICES_INFO_PLIST --type file --value ./GoogleService-Info.plist",
+        "4. Confirm the plist contains the correct bundle ID (com.the147bradford.app) and EAS project ID (3f31dfb1-b149-43ca-ab9a-91b6d7cb230a)."
       ],
       "smoke_test_command": "eas build --platform ios --profile preview --no-wait",
       "success_criteria": [
@@ -19,8 +21,9 @@
         "No 'missing GoogleService-Info.plist' or 'file not found' Xcode error in the build output.",
         "Build completes with status 'finished' (not 'errored') on https://expo.dev/accounts/the-147/projects/the-147/builds."
       ],
-      "failure_recovery": "If the build errors with a missing plist, re-upload the secret (step 2 above) and re-run. The env var is injected by EAS at build time — it is not present during local `expo start`.",
-      "last_verified": "pending — run smoke test above before next App Store submission and update this date"
+      "post_build_action": "Once the build passes, update last_verified below with today's date (YYYY-MM-DD).",
+      "failure_recovery": "If the build errors with a missing plist, re-upload the secret (step 3 above) and re-run. The env var is injected by EAS at build time — it is not present during local `expo start`.",
+      "last_verified": "pending — run smoke test from Mac terminal before next App Store submission and update this date"
     }
   },
   "cli": {
