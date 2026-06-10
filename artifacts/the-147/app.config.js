@@ -112,6 +112,7 @@ module.exports = {
   },
   android: {
     package: "com.the147bradford.venue",
+    googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? "./google-services.json",
     permissions: [],
     blockedPermissions: [
       "android.permission.CAMERA",
