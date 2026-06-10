@@ -1,0 +1,76 @@
+eanlowe@Seans-Mac-mini the-147-kiosk % pnpm --filter @workspace/the-147-kiosk run build:ios
+pnpm --filter @workspace/the-147-kiosk run build:android
+pnpm --filter @workspace/the-147-kiosk run build:all   # both at once
+Scope: all 10 workspace projects
+../mockup-sandbox                        | [WARN] deprecated recharts@2.15.4
+[WARN] Tarball download average speed 47 KiB/s (size 150 KiB) is below 50 KiB/s: https://registry.npmjs.org/tsx/-/tsx-4.21.0.tgz (GET)
+[WARN] Tarball download average speed 47 KiB/s (size 207 KiB) is below 50 KiB/s: https://registry.npmjs.org/react-native-keyboard-controller/-/react-native-keyboard-controller-1.18.5.tgz (GET)
+[WARN] Tarball download average speed 43 KiB/s (size 248 KiB) is below 50 KiB/s: https://registry.npmjs.org/expo-image-picker/-/expo-image-picker-17.0.11.tgz (GET)
+[WARN] Tarball download average speed 48 KiB/s (size 282 KiB) is below 50 KiB/s: https://registry.npmjs.org/expo-location/-/expo-location-19.0.8.tgz (GET)
+[WARN] Tarball download average speed 43 KiB/s (size 569 KiB) is below 50 KiB/s: https://registry.npmjs.org/zod/-/zod-3.25.76.tgz (GET)
+[WARN] 9 other warnings
+[WARN] 3 deprecated subdependencies found: glob@7.2.3, inflight@1.0.6, rimraf@3.0.2
+../..                                    | +511 +++++++++++++++++++++++++++++++++++++++++++++++++++
+Downloading @img/sharp-libvips-darwin-arm64@1.2.4: 7.64 MB/7.64 MB, done
+[WARN] GET https://registry.npmjs.org/@expo-google-fonts/inter/-/inter-0.4.2.tgz error (23). Will retry in 10 seconds. 2 retries left.
+../..                                    | Progress: resolved 1196, reused 757, downloaded 411, added 511, done
+../.. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_user_agent" in pnpm/*) ;; *) echo "Use pnpm instead" >&2; exi…
+└─ Done in 31ms
+[WARN] Issues with peer dependencies found. Run "pnpm peers check" to list them.
+
+dependencies:
+- expo-updates 29.0.18
+
+[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: esbuild@0.27.3, sharp@0.34.5
+
+Run "pnpm approve-builds" to pick which dependencies should be allowed to run scripts.
+[ERROR] Command failed with exit code 1: pnpm install
+
+pnpm: Command failed with exit code 1: pnpm install
+    at getFinalError (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:29357:14)
+    at makeError (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:31664:21)
+    at getSyncResult (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:33508:10)
+    at spawnSubprocessSync (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:33468:14)
+    at execaCoreSync (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:33398:23)
+    at callBoundExeca (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:35926:23)
+    at boundExeca (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:35903:49)
+    at sync (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:36058:14)
+    at runPnpmCli (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:212641:5)
+    at runDepsStatusCheck (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:214345:7)
+Scope: all 10 workspace projects
+../.. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_user_agent" in pnpm/*) ;; *) echo "Use pnpm instead" >&2; exi…
+│ Use pnpm instead
+└─ Failed in 20ms at /Users/seanlowe/Desktop/The-147/The-147
+[ELIFECYCLE] Command failed with exit code 1.
+[ERROR] Command failed with exit code 1: pnpm install
+
+pnpm: Command failed with exit code 1: pnpm install
+    at getFinalError (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:29357:14)
+    at makeError (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:31664:21)
+    at getSyncResult (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:33508:10)
+    at spawnSubprocessSync (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:33468:14)
+    at execaCoreSync (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:33398:23)
+    at callBoundExeca (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:35926:23)
+    at boundExeca (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:35903:49)
+    at sync (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:36058:14)
+    at runPnpmCli (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:212641:5)
+    at runDepsStatusCheck (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:214345:7)
+Scope: all 10 workspace projects
+../.. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_user_agent" in pnpm/*) ;; *) echo "Use pnpm instead" >&2; exi…
+│ Use pnpm instead
+└─ Failed in 20ms at /Users/seanlowe/Desktop/The-147/The-147
+[ELIFECYCLE] Command failed with exit code 1.
+[ERROR] Command failed with exit code 1: pnpm install
+
+pnpm: Command failed with exit code 1: pnpm install
+    at getFinalError (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:29357:14)
+    at makeError (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:31664:21)
+    at getSyncResult (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:33508:10)
+    at spawnSubprocessSync (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:33468:14)
+    at execaCoreSync (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:33398:23)
+    at callBoundExeca (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:35926:23)
+    at boundExeca (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:35903:49)
+    at sync (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:36058:14)
+    at runPnpmCli (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:212641:5)
+    at runDepsStatusCheck (file:///Users/seanlowe/.npm-global/lib/node_modules/pnpm/dist/pnpm.mjs:214345:7)
+seanlowe@Seans-Mac-mini the-147-kiosk % 
