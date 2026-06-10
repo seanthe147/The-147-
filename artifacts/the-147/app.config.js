@@ -127,7 +127,7 @@ module.exports = {
       backgroundImage: "./assets/images/android-icon-background.png",
       monochromeImage: "./assets/images/android-icon-monochrome.png",
     },
-    versionCode: 116,
+    versionCode: 117,
   },
   web: {
     favicon: "./assets/images/favicon.png",
