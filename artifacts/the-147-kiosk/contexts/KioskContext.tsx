@@ -16,7 +16,7 @@ import React, {
   ReactNode,
 } from "react";
 
-const IDLE_TIMEOUT_MS = 90_000;
+const IDLE_TIMEOUT_MS = 30_000;
 
 interface KioskContextValue {
   attractVisible: boolean;

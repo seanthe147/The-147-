@@ -85,6 +85,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
     appOrderId: number;
     terminalPushed: boolean;
   } | null>(null);
+  const [countdown, setCountdown] = useState(20);
 
   const reset = useCallback(() => {
     setStep("cart");
@@ -93,6 +94,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
     setPhone("");
     setSubmitting(false);
     setConfirmation(null);
+    setCountdown(20);
   }, []);
 
   useEffect(() => {
@@ -101,12 +103,19 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
 
   useEffect(() => {
     if (step !== "confirmation") return;
-    const t = setTimeout(() => {
-      clearCart();
-      onClose();
-      showAttract();
-    }, 12_000);
-    return () => clearTimeout(t);
+    setCountdown(20);
+    const interval = setInterval(() => {
+      setCountdown((n) => {
+        if (n <= 1) {
+          clearCart();
+          onClose();
+          showAttract();
+          return 0;
+        }
+        return n - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
   }, [step, clearCart, onClose, showAttract]);
 
   const canContinue = items.length > 0;
@@ -450,7 +459,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
           </Text>
         </View>
         <Text style={[styles.confirmFooter, isTablet && { fontSize: 16 }]}>
-          Closing automatically in a few seconds…
+          Returning to start screen in {countdown}s
         </Text>
         <Pressable
           style={({ pressed }) => [

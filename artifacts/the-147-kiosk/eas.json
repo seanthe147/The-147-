@@ -29,7 +29,6 @@
     "production": {
       "channel": "production",
       "autoIncrement": true,
-      "prebuildCommand": "node scripts/validate-env.js",
       "ios": {
         "simulator": false,
         "image": "latest"
