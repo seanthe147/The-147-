@@ -8598,25 +8598,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // customer profile with a much higher balance. When the two paths
       // return different accounts we always prefer the one with more
       // lifetime points — that is definitively their main account.
+      //
+      // IMPORTANT: we distinguish between a search that errored (Square API
+      // transient failure) and one that returned a genuine empty result.
+      // If every lookup errors we must NOT clear the cached account ID — that
+      // would cause a reliable loyalty link to be repeatedly broken whenever
+      // Square has a brief outage. We only evict the cached ID when at least
+      // one search definitively confirmed no matching account exists.
+      const _ERR = Symbol("err");
+
       const cachedIdPromise: Promise<any> = customer.squareLoyaltyAccountId
-        ? square.getLoyaltyAccount(customer.squareLoyaltyAccountId).catch(() => null)
+        ? square.getLoyaltyAccount(customer.squareLoyaltyAccountId).catch(() => _ERR)
         : Promise.resolve(null);
 
       const emailSearchPromise: Promise<any> = customer.email
         ? square.searchSquareCustomerByEmail(customer.email)
             .then((sqCust) => sqCust?.id ? square.searchLoyaltyAccountByCustomerId(sqCust.id) : null)
-            .catch(() => null)
+            .catch(() => _ERR)
         : Promise.resolve(null);
 
       const phoneSearchPromise: Promise<any> = hasPhone
-        ? square.searchLoyaltyAccount(phoneCleaned!).catch(() => null)
+        ? square.searchLoyaltyAccount(phoneCleaned!).catch(() => _ERR)
         : Promise.resolve(null);
 
-      const [cachedAccount, emailAccount, phoneAccount] = await Promise.all([
+      const [cachedResult, emailResult, phoneResult] = await Promise.all([
         cachedIdPromise,
         emailSearchPromise,
         phoneSearchPromise,
       ]);
+
+      // Filter out error sentinels — treat them as "unknown", not "not found".
+      const cachedAccount = cachedResult === _ERR ? null : cachedResult;
+      const emailAccount  = emailResult  === _ERR ? null : emailResult;
+      const phoneAccount  = phoneResult  === _ERR ? null : phoneResult;
+
+      // If every branch threw, we have no reliable signal — keep the cache intact.
+      const allErrored = cachedResult === _ERR && emailResult === _ERR && phoneResult === _ERR;
 
       // Collect all distinct accounts found, keyed by ID.
       const candidates = new Map<string, any>();
@@ -8643,8 +8660,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (account.id !== customer.squareLoyaltyAccountId) {
           await storage.setSquareLoyaltyAccountId(customerId, account.id);
         }
-      } else if (customer.squareLoyaltyAccountId) {
-        // Nothing resolved — clear the stale cached ID.
+      } else if (customer.squareLoyaltyAccountId && !allErrored) {
+        // Only clear the stale cached ID when at least one search returned a
+        // definitive "not found" — never on a total Square API failure.
         await storage.setSquareLoyaltyAccountId(customerId, null);
       }
 
