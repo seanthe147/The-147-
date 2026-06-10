@@ -13,6 +13,7 @@ import { router } from "expo-router";
 import Colors from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useConsent } from "@/contexts/ConsentContext";
+import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -42,21 +43,26 @@ export default function CookiePolicyScreen() {
   const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { revokeConsent } = useConsent();
+  const { logout } = useCustomerAuth();
 
-  async function handleClearLocalData() {
+  async function doClear() {
+    await Promise.all([revokeConsent(), logout()]);
+  }
+
+  function handleClearLocalData() {
     if (Platform.OS === "web") {
       const confirmed = window.confirm(
-        "This will clear your consent preferences and local app data. You will be asked to consent again next time you open the app. Continue?"
+        "This will sign you out and clear all consent preferences and local app data. You will be asked to consent again next time you open the app. Continue?"
       );
-      if (confirmed) await revokeConsent();
+      if (confirmed) doClear();
     } else {
       const { Alert } = require("react-native");
       Alert.alert(
         "Clear Local Data",
-        "This will clear your consent preferences and local app data. You will be asked to consent again next time you open the app.",
+        "This will sign you out and clear all consent preferences and local app data. You will be asked to consent again on next launch.",
         [
           { text: "Cancel", style: "cancel" as const },
-          { text: "Clear Data", style: "destructive" as const, onPress: () => revokeConsent() },
+          { text: "Clear Data", style: "destructive" as const, onPress: doClear },
         ]
       );
     }
@@ -136,10 +142,10 @@ export default function CookiePolicyScreen() {
 
         <Section title="Clear Your Local Data">
           <Text style={styles.bodyText}>
-            You can clear all locally stored consent preferences and app data at any
-            time. This will reset your privacy settings and the app will ask for
-            consent again on next launch. Your account and booking data on our
-            servers is unaffected.
+            You can clear all locally stored data at any time. This will sign you out,
+            reset your privacy consent preferences, and clear any cached data on this
+            device. The app will ask for consent again on next launch. Your account
+            and booking data on our servers is unaffected.
           </Text>
           <Pressable
             onPress={handleClearLocalData}
@@ -149,7 +155,8 @@ export default function CookiePolicyScreen() {
             <Text style={styles.clearButtonText}>Clear Local App Data</Text>
           </Pressable>
           <Text style={styles.clearNote}>
-            To sign out and clear your session token, use the Sign Out option in My Account.
+            Clearing local data signs you out automatically. To sign out without clearing
+            consent preferences, use the Sign Out option in My Account.
           </Text>
         </Section>
       </ScrollView>
