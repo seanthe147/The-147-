@@ -14,6 +14,8 @@ module.exports = {
     backgroundColor: "#0A1628",
   },
   ios: {
+    googleServicesFile:
+      process.env.GOOGLE_SERVICES_INFO_PLIST ?? "./GoogleService-Info.plist",
     supportsTablet: true,
     requireFullScreen: true,
     bundleIdentifier: "com.the147bradford.app",

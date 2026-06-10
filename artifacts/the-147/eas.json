@@ -1,5 +1,9 @@
 {
   "$schema": "https://json.eas.dev/eas.schema.json",
+  "_secrets": {
+    "GOOGLE_SERVICES_JSON": "EAS file secret — upload with: eas secret:create --scope project --name GOOGLE_SERVICES_JSON --type file --value ./google-services.json",
+    "GOOGLE_SERVICES_INFO_PLIST": "EAS file secret — upload with: eas secret:create --scope project --name GOOGLE_SERVICES_INFO_PLIST --type file --value ./GoogleService-Info.plist"
+  },
   "cli": {
     "version": ">= 12.0.0",
     "appVersionSource": "local"
