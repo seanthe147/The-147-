@@ -21,6 +21,7 @@
     "@types/react": "~19.1.10",
     "expo": "~54.0.27",
     "expo-blur": "~15.0.8",
+    "expo-updates": "~29.0.17",
     "expo-constants": "~18.0.11",
     "expo-font": "~14.0.10",
     "expo-haptics": "~15.0.8",
