@@ -50,3 +50,9 @@ Thumbs.db
 
 # Data exports / backups — never commit customer data
 artifacts/api-server/backups/
+
+# Firebase — contains credentials, never commit
+google-services.json
+GoogleService-Info.plist
+attached_assets/google-services*.json
+attached_assets/GoogleService-Info*.plist
