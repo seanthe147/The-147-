@@ -522,6 +522,10 @@
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
           Orders &amp; Menu
         </div>
+        <div class="nav-item hidden" data-page="kiosk" id="navKiosk">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/><rect x="8" y="6" width="8" height="7" rx="1"/></svg>
+          Kiosk
+        </div>
 
         <div class="nav-section hidden" id="navSectionCustomers" style="margin-top:8px">Customers</div>
         <div class="nav-item hidden" data-page="memberships" id="navMemberships">
@@ -1052,6 +1056,51 @@
               <div class="menu-loading">Loading…</div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- KIOSK CONTROL PAGE (manager/owner) -->
+      <div class="page" id="pageKiosk">
+        <div class="page-body">
+
+          <!-- Status banner -->
+          <div id="kioskStatusBanner" style="border-radius:var(--r-lg);padding:22px 24px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:20px;transition:background .3s;background:var(--green-light);border:1.5px solid var(--green)">
+            <div style="display:flex;align-items:center;gap:14px">
+              <div id="kioskStatusDot" style="width:14px;height:14px;border-radius:50%;flex-shrink:0;background:var(--green);box-shadow:0 0 0 4px rgba(22,163,74,0.18)"></div>
+              <div>
+                <div id="kioskStatusTitle" style="font-size:17px;font-weight:800;color:var(--text)">Kiosk is accepting orders</div>
+                <div id="kioskStatusDesc" style="font-size:13px;color:var(--text-2);margin-top:2px">Customers can place and pay for orders at the iPad.</div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;flex-shrink:0">
+              <span id="kioskStatusLabel" style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--green)">Live</span>
+              <label class="toggle-wrap" style="transform:scale(1.25);transform-origin:right center">
+                <input type="checkbox" id="kioskPageMasterToggle" onchange="kioskPageToggleMaster(this.checked)">
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Toolbar -->
+          <div class="menu-refresh-bar" style="margin-bottom:16px">
+            <p style="font-size:13px;color:var(--text-2);margin:0">Toggle whole categories or individual items on or off. Changes take effect immediately — the kiosk refreshes every 15 seconds.</p>
+            <div style="display:flex;gap:8px;align-items:center">
+              <a href="/staff/kiosk-cheatsheet" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration:none">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></svg>
+                Cheat sheet
+              </a>
+              <button class="btn btn-secondary btn-sm" onclick="loadKioskPage(true)">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <!-- Category + item list -->
+          <div id="kioskPageCatList" style="padding:0 0 32px">
+            <div class="menu-loading">Loading…</div>
+          </div>
+
         </div>
       </div>
 
@@ -3151,7 +3200,7 @@
     // — like the weekly leftover-membership audit email — can open straight
     // onto the right tab. Falls back to Bookings for everyone (floor staff
     // included — they need the calendar for daily shift work).
-    const tabNavIds={bookings:'navBookings',messages:'navMessages',comms:'navComms',staff:'navStaff',memberships:'navMemberships',menu:'navMenu',website:'navWebsite',banners:'navBanners',offers:'navOffers',deals:'navDeals',loyaltygame:'navLoyaltyGame',venuerewards:'navVenueRewards',payments:'navPayments',hr:'navHR',gdpr:'navGDPR',auditlog:'navAuditLog',settings:'navSettings'};
+    const tabNavIds={bookings:'navBookings',messages:'navMessages',comms:'navComms',staff:'navStaff',memberships:'navMemberships',menu:'navMenu',kiosk:'navKiosk',website:'navWebsite',banners:'navBanners',offers:'navOffers',deals:'navDeals',loyaltygame:'navLoyaltyGame',venuerewards:'navVenueRewards',payments:'navPayments',hr:'navHR',gdpr:'navGDPR',auditlog:'navAuditLog',settings:'navSettings'};
     let initialPage='bookings';
     try{
       const hash=(window.location.hash||'').replace(/^#/,'').toLowerCase();
@@ -3207,6 +3256,7 @@
     // confusing 403 when they click it.
     el('navMemberships').classList.toggle('hidden',!isManager);
     el('navMenu').classList.toggle('hidden',!isManager);
+    el('navKiosk').classList.toggle('hidden',!isManager);
     el('navWebsite').classList.toggle('hidden',!isOwner);
     el('navBanners').classList.toggle('hidden',!isManager);
     el('navOffers').classList.toggle('hidden',!isManager);
@@ -3389,7 +3439,7 @@
     }
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page'+cap(page)));
-    const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',website:'Website',banners:'App Banners',offers:'Offers',deals:'Current Deals',loyaltygame:'Loyalty Game',venuerewards:'Venue Rewards',payments:'Events & Payments',hr:'HR & Attendance',gdpr:'GDPR & Compliance',auditlog:'Audit Log'};
+    const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',kiosk:'Kiosk Control',website:'Website',banners:'App Banners',offers:'Offers',deals:'Current Deals',loyaltygame:'Loyalty Game',venuerewards:'Venue Rewards',payments:'Events & Payments',hr:'HR & Attendance',gdpr:'GDPR & Compliance',auditlog:'Audit Log'};
     el('topbarTitle').textContent=titles[page]||'';
     el('topbarSub').textContent='';
     if(page==='bookings'){el('topbarActions').style.display='';switchBookingsTab('bookings');loadBookings();loadUpcomingDates();loadDashboardNotices();startBookingsPolling();}
@@ -3405,6 +3455,7 @@
     if(page==='loyaltygame')loadGamePanel();
     if(page==='venuerewards')loadVenueRewards();
     if(page==='menu'){switchMenuTab('orders');loadOrders();loadOrderingSchedule();}
+    if(page==='kiosk')loadKioskPage();
     if(page==='banners')loadBanners();
     if(page==='website')loadWebsiteEditor();
     if(page==='offers')loadOffers();
@@ -6212,6 +6263,167 @@
   }
   window.kioskToggleItemHidden=kioskToggleItemHidden;
   window.loadKioskSettings=loadKioskSettings;
+
+  /* ── Dedicated Kiosk Control Page ───────────────────────────────────────── */
+  let kioskPageData=null;
+
+  function kioskPageSetBanner(enabled){
+    const banner=el('kioskStatusBanner');
+    const dot=el('kioskStatusDot');
+    const title=el('kioskStatusTitle');
+    const desc=el('kioskStatusDesc');
+    const label=el('kioskStatusLabel');
+    const toggle=el('kioskPageMasterToggle');
+    if(!banner)return;
+    if(enabled){
+      banner.style.background='var(--green-light)';banner.style.borderColor='var(--green)';
+      if(dot){dot.style.background='var(--green)';dot.style.boxShadow='0 0 0 4px rgba(22,163,74,0.18)';}
+      if(title)title.textContent='Kiosk is accepting orders';
+      if(desc)desc.textContent='Customers can place and pay for orders at the iPad.';
+      if(label){label.textContent='Live';label.style.color='var(--green)';}
+    }else{
+      banner.style.background='var(--red-light)';banner.style.borderColor='var(--red)';
+      if(dot){dot.style.background='var(--red)';dot.style.boxShadow='0 0 0 4px rgba(223,49,49,0.18)';}
+      if(title)title.textContent='Kiosk ordering is paused';
+      if(desc)desc.textContent='The iPad will show a "please order at the counter" message.';
+      if(label){label.textContent='Paused';label.style.color='var(--red)';}
+    }
+    if(toggle)toggle.checked=enabled;
+  }
+
+  async function loadKioskPage(force){
+    const list=el('kioskPageCatList');
+    if(!force&&kioskPageData){renderKioskPageMenu(kioskPageData);return;}
+    if(list)list.innerHTML='<div class="menu-loading">Loading…</div>';
+    try{
+      const [settingsRes,menuRes]=await Promise.all([
+        apiFetch('/api/staff/kiosk-settings'),
+        apiFetch('/api/staff/menu'),
+      ]);
+      const {enabled}=await settingsRes.json();
+      const cats=await menuRes.json();
+      kioskPageSetBanner(enabled);
+      kioskPageData=cats;
+      renderKioskPageMenu(cats);
+    }catch(e){
+      if(list)list.innerHTML='<p style="color:var(--red);padding:16px 0">Failed to load kiosk settings.</p>';
+    }
+  }
+  window.loadKioskPage=loadKioskPage;
+
+  function renderKioskPageMenu(cats){
+    const list=el('kioskPageCatList');
+    if(!list)return;
+    if(!cats||!cats.length){list.innerHTML='<p style="color:var(--text-2);font-size:13px;padding:8px 0">No categories found.</p>';return;}
+    let html='';
+    for(const cat of cats){
+      const catHidden=!!cat.kioskHidden;
+      const catItems=cat.items||[];
+      html+=`<div class="menu-cat" style="margin-bottom:8px">
+        <div class="menu-cat-header" onclick="kioskPageToggleCatExpand('${cat.id}')" id="kioskPageCatHdr_${cat.id}">
+          <svg class="menu-cat-arrow" id="kioskPageArrow_${cat.id}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0;transition:transform .2s"><polyline points="9 18 15 12 9 6"/></svg>
+          <span style="flex:1;font-size:14px;font-weight:700;color:${catHidden?'var(--text-3)':'var(--text)'}">${cat.name}${catHidden?' <span style="font-size:11px;font-weight:600;color:var(--red);background:var(--red-light);padding:2px 7px;border-radius:4px;margin-left:6px">Hidden</span>':''}</span>
+          <span style="font-size:11px;color:var(--text-3);margin-right:8px">${catItems.length} item${catItems.length!==1?'s':''}</span>
+          <label class="toggle-wrap" onclick="event.stopPropagation()" style="flex-shrink:0" title="${catHidden?'Hidden — click to show':'Visible — click to hide'}">
+            <input type="checkbox" ${catHidden?'':'checked'} onchange="event.stopPropagation();kioskPageToggleCatHidden('${cat.id}',!this.checked,'${cat.name.replace(/'/g,"\\'")}')">
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </label>
+        </div>
+        <div id="kioskPageCatItems_${cat.id}" style="display:none">`;
+      if(!catItems.length){
+        html+=`<div style="padding:12px 16px;font-size:13px;color:var(--text-3)">No items</div>`;
+      }else{
+        for(const item of catItems){
+          const itemHidden=!!item.kioskHidden;
+          html+=`<div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-top:1px solid var(--border)">
+            <span style="flex:1;font-size:13px;color:${itemHidden?'var(--text-3)':'var(--text)'}">${item.name}${item.variationName?` <span style="color:var(--text-3);font-size:12px">(${item.variationName})</span>`:''}${itemHidden?' <span style="font-size:11px;font-weight:600;color:var(--red);background:var(--red-light);padding:1px 6px;border-radius:4px;margin-left:4px">Hidden</span>':''}</span>
+            <span style="font-size:12px;color:var(--text-3);flex-shrink:0">£${(item.price/100).toFixed(2)}</span>
+            <label class="toggle-wrap" style="flex-shrink:0" title="${itemHidden?'Hidden — click to show':'Visible — click to hide'}">
+              <input type="checkbox" ${itemHidden?'':'checked'} onchange="kioskPageToggleItemHidden('${item.variationId}','${item.itemId}','${item.name.replace(/'/g,"\\'")}',!this.checked)">
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            </label>
+          </div>`;
+        }
+      }
+      html+=`</div></div>`;
+    }
+    list.innerHTML=html;
+  }
+
+  function kioskPageToggleCatExpand(catId){
+    const panel=el('kioskPageCatItems_'+catId);
+    const arrow=el('kioskPageArrow_'+catId);
+    if(!panel)return;
+    const open=panel.style.display==='none';
+    panel.style.display=open?'':'none';
+    if(arrow)arrow.style.transform=open?'rotate(90deg)':'';
+  }
+  window.kioskPageToggleCatExpand=kioskPageToggleCatExpand;
+
+  async function kioskPageToggleMaster(enabled){
+    try{
+      const r=await apiFetch('/api/staff/kiosk-settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});
+      if(!r.ok)throw new Error('Failed');
+      kioskPageSetBanner(enabled);
+      // Also sync the existing menu tab toggle if it exists
+      const oldToggle=el('kioskMasterToggle');
+      if(oldToggle)oldToggle.checked=enabled;
+      showToast(enabled?'Kiosk ordering enabled — iPad is now live':'Kiosk ordering paused — iPad will prompt counter orders','success');
+    }catch(e){
+      showToast('Failed to update kiosk status','error');
+      const toggle=el('kioskPageMasterToggle');
+      if(toggle)toggle.checked=!enabled;
+    }
+  }
+  window.kioskPageToggleMaster=kioskPageToggleMaster;
+
+  async function kioskPageToggleCatHidden(catId,kioskHidden,catName){
+    try{
+      const r=await apiFetch(`/api/staff/menu/categories/${encodeURIComponent(catId)}/kiosk-hidden`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({kioskHidden})});
+      if(!r.ok)throw new Error('Failed');
+      if(kioskPageData){
+        const cat=kioskPageData.find(c=>c.id===catId);
+        if(cat)cat.kioskHidden=kioskHidden;
+        renderKioskPageMenu(kioskPageData);
+      }
+      // Sync menu tab data too
+      if(kioskMenuData){
+        const cat=kioskMenuData.find(c=>c.id===catId);
+        if(cat)cat.kioskHidden=kioskHidden;
+      }
+      showToast(`"${catName}" ${kioskHidden?'hidden on kiosk':'visible on kiosk'}`,'success');
+    }catch(e){
+      showToast('Failed to update category','error');
+      loadKioskPage(true);
+    }
+  }
+  window.kioskPageToggleCatHidden=kioskPageToggleCatHidden;
+
+  async function kioskPageToggleItemHidden(variationId,itemId,name,kioskHidden){
+    try{
+      const r=await apiFetch(`/api/staff/menu/items/${encodeURIComponent(variationId)}/kiosk-hidden`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({kioskHidden,itemId,name})});
+      if(!r.ok)throw new Error('Failed');
+      if(kioskPageData){
+        for(const cat of kioskPageData){
+          const item=(cat.items||[]).find(i=>i.variationId===variationId);
+          if(item){item.kioskHidden=kioskHidden;break;}
+        }
+        renderKioskPageMenu(kioskPageData);
+      }
+      // Sync menu tab data too
+      if(kioskMenuData){
+        for(const cat of kioskMenuData){
+          const item=(cat.items||[]).find(i=>i.variationId===variationId);
+          if(item){item.kioskHidden=kioskHidden;break;}
+        }
+      }
+      showToast(`"${name}" ${kioskHidden?'hidden on kiosk':'visible on kiosk'}`,'success');
+    }catch(e){
+      showToast('Failed to update item','error');
+      loadKioskPage(true);
+    }
+  }
+  window.kioskPageToggleItemHidden=kioskPageToggleItemHidden;
 
   async function saveAvailRule(editId){
     const targetVal=document.getElementById('availTarget').value;
