@@ -1,0 +1,80 @@
+seanlowe@Seans-Mac-mini The-147 % // Change buildNumber (under "ios"):
+"buildNumber": "68",
+
+// Add requestHeaders to the "updates" section:
+"updates": {
+  "url": "https://u.expo.dev/3f31dfb1-b149-43ca-ab9a-91b6d7cb230a",
+  "requestHeaders": {
+    "expo-channel-name": "production"
+  }
+}
+zsh: parse error near `}'
+seanlowe@Seans-Mac-mini The-147 % "production": {
+  "channel": "production",
+  ...rest of existing config...
+}
+zsh: parse error near `}'
+seanlowe@Seans-Mac-mini The-147 % cd ~/The-147
+eas build --profile production --platform ios --non-interactive
+cd: no such file or directory: /Users/seanlowe/The-147
+★ eas-cli@20.1.0 is now available.
+To upgrade, run:
+npm install -g eas-cli
+Proceeding with outdated version.
+
+
+⚠️ Detected that your app uses Expo Go for development, this is not recommended when building production apps.
+Learn more: https://expo.fyi/why-not-build-expo-go-for-production
+To suppress this warning, set EAS_BUILD_NO_EXPO_GO_WARNING=true.
+
+Resolved "production" environment for the build. Learn more: https://docs.expo.dev/eas/environment-variables/#setting-the-environment-for-your-builds
+No environment variables with visibility "Plain text" and "Sensitive" found for the "production" environment on EAS.
+Environment variables loaded from the "production" build profile "env" configuration: EXPO_PUBLIC_DOMAIN, EXPO_PUBLIC_APP_VARIANT.
+
+
+
+✔ Using local iOS credentials (credentials.json)
+
+Bumping expo.ios.buildNumber from 3 to 4
+
+Compressing project files and uploading to EAS Build. Learn more: https://expo.fyi/eas-build-archive
+✔ Compressed project files 3s (124 MB)
+✔ Uploaded to EAS 56s
+✔ Computed project fingerprint
+
+See logs: https://expo.dev/accounts/the-147/projects/the-147/builds/3bd1a5d1-b5d9-4475-8f91-90e75e46f26b
+
+Waiting for build to complete. You can press Ctrl+C to exit.
+✖ Build failed
+
+🍏 iOS build failed:
+Unknown error. See logs of the Pre-install hook build phase for more information.
+seanlowe@Seans-Mac-mini The-147 % # 1. Pull latest from Replit to your Mac
+git pull
+
+# 2. From the kiosk package directory:
+cd artifacts/the-147-kiosk
+
+# Preview build → TestFlight internal testing
+EXPO_TOKEN=<your-token> eas build --profile preview --platform ios --non-interactive
+
+# Or production build (App Store / external TestFlight):
+EXPO_TOKEN=<your-token> eas build --profile production --platform ios --non-interactive
+zsh: command not found: #
+There is no tracking information for the current branch.
+Please specify which branch you want to merge with.
+See git-pull(1) for details.
+
+    git pull <remote> <branch>
+
+If you wish to set tracking information for this branch you can do so with:
+
+    git branch --set-upstream-to=<remote>/<branch> main
+
+zsh: command not found: #
+cd: no such file or directory: artifacts/the-147-kiosk
+zsh: command not found: #
+zsh: no such file or directory: your-token
+zsh: bad pattern: (App Store / external TestFlight):
+zsh: no such file or directory: your-token
+seanlowe@Seans-Mac-mini The-147 % 
