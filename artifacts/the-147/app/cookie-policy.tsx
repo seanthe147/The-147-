@@ -13,6 +13,7 @@ import { router } from "expo-router";
 import Colors from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useConsent } from "@/contexts/ConsentContext";
+import { POLICY_DATES } from "@workspace/db/policy-dates";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -90,7 +91,7 @@ export default function CookiePolicyScreen() {
           <Text style={styles.topBadgeText}>Device Storage Only — No Tracking Cookies</Text>
         </View>
 
-        <Text style={styles.lastUpdated}>Last Updated: March 2026</Text>
+        <Text style={styles.lastUpdated}>Last Updated: {POLICY_DATES.cookiePolicy}</Text>
 
         <Section title="No Web Cookies">
           <Text style={styles.bodyText}>

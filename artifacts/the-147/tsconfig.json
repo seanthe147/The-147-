@@ -11,6 +11,9 @@
       ],
       "@workspace/db/schema": [
         "../../lib/db/src/schema"
+      ],
+      "@workspace/db/policy-dates": [
+        "../../lib/db/src/policy-dates.ts"
       ]
     }
   },

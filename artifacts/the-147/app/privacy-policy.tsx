@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import Colors from "@/constants/colors";
 import { useConsent } from "@/contexts/ConsentContext";
+import { POLICY_DATES } from "@workspace/db/policy-dates";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -71,7 +72,7 @@ export default function PrivacyPolicyScreen() {
           <Text style={styles.topBadgeText}>UK GDPR Compliant</Text>
         </View>
 
-        <Text style={styles.lastUpdated}>Last Updated: June 2026</Text>
+        <Text style={styles.lastUpdated}>Last Updated: {POLICY_DATES.privacyPolicy}</Text>
 
         <Section title="1. Who We Are">
           <Text style={styles.bodyText}>

@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import Colors from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
+import { POLICY_DATES } from "@workspace/db/policy-dates";
 
 function Section({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) {
   return (
@@ -63,7 +64,7 @@ export default function CancellationPolicyScreen() {
           <Text style={styles.topBadgeText}>Cancellation & Refund Policy</Text>
         </View>
 
-        <Text style={styles.lastUpdated}>Last Updated: April 2026</Text>
+        <Text style={styles.lastUpdated}>Last Updated: {POLICY_DATES.cancellationPolicy}</Text>
 
         <Section title="Table Bookings & Deposits" icon="game-controller-outline">
           <PolicyItem

@@ -4,6 +4,7 @@ import { registerRoutes } from "./routes/routes";
 import { runStartupMigrations } from "./storage";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { POLICY_DATES } from "@workspace/db/policy-dates";
 
 
 // __dirname is injected by the build banner (see build.mjs)
@@ -316,7 +317,8 @@ async function bootstrapOwner() {
   // Privacy policy
   const privacyPolicyHtmlPath = templatePath("privacy-policy.html");
   if (fs.existsSync(privacyPolicyHtmlPath)) {
-    const privacyPolicyHtml = fs.readFileSync(privacyPolicyHtmlPath, "utf-8");
+    const privacyPolicyHtml = fs.readFileSync(privacyPolicyHtmlPath, "utf-8")
+      .replace("{{PRIVACY_POLICY_DATE}}", POLICY_DATES.privacyPolicy);
     app.get("/privacy-policy", (_req, res) => {
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.status(200).send(privacyPolicyHtml);
@@ -346,7 +348,8 @@ async function bootstrapOwner() {
   // GDPR rights
   const gdprRightsHtmlPath = templatePath("gdpr-rights.html");
   if (fs.existsSync(gdprRightsHtmlPath)) {
-    const gdprRightsHtml = fs.readFileSync(gdprRightsHtmlPath, "utf-8");
+    const gdprRightsHtml = fs.readFileSync(gdprRightsHtmlPath, "utf-8")
+      .replace("{{GDPR_RIGHTS_DATE}}", POLICY_DATES.gdprRights);
     app.get("/gdpr-rights", (_req, res) => {
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.status(200).send(gdprRightsHtml);
@@ -356,7 +359,8 @@ async function bootstrapOwner() {
   // Cookie & storage policy
   const cookiePolicyHtmlPath = templatePath("cookie-policy.html");
   if (fs.existsSync(cookiePolicyHtmlPath)) {
-    const cookiePolicyHtml = fs.readFileSync(cookiePolicyHtmlPath, "utf-8");
+    const cookiePolicyHtml = fs.readFileSync(cookiePolicyHtmlPath, "utf-8")
+      .replace("{{COOKIE_POLICY_DATE}}", POLICY_DATES.cookiePolicy);
     app.get("/cookie-policy", (_req, res) => {
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.status(200).send(cookiePolicyHtml);
@@ -366,7 +370,8 @@ async function bootstrapOwner() {
   // Cancellation & refund policy
   const cancellationPolicyHtmlPath = templatePath("cancellation-policy.html");
   if (fs.existsSync(cancellationPolicyHtmlPath)) {
-    const cancellationPolicyHtml = fs.readFileSync(cancellationPolicyHtmlPath, "utf-8");
+    const cancellationPolicyHtml = fs.readFileSync(cancellationPolicyHtmlPath, "utf-8")
+      .replace("{{CANCELLATION_POLICY_DATE}}", POLICY_DATES.cancellationPolicy);
     app.get("/cancellation-policy", (_req, res) => {
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.status(200).send(cancellationPolicyHtml);

@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import Colors from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
+import { POLICY_DATES } from "@workspace/db/policy-dates";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -63,7 +64,7 @@ export default function GdprRightsScreen() {
           <Text style={styles.topBadgeText}>UK GDPR — Data Protection Act 2018</Text>
         </View>
 
-        <Text style={styles.lastUpdated}>Last Updated: March 2026</Text>
+        <Text style={styles.lastUpdated}>Last Updated: {POLICY_DATES.gdprRights}</Text>
 
         <Text style={styles.intro}>
           Under the UK General Data Protection Regulation (UK GDPR) and the Data Protection
