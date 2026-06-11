@@ -63,6 +63,8 @@ export default function GdprRightsScreen() {
           <Text style={styles.topBadgeText}>UK GDPR — Data Protection Act 2018</Text>
         </View>
 
+        <Text style={styles.lastUpdated}>Last Updated: March 2026</Text>
+
         <Text style={styles.intro}>
           Under the UK General Data Protection Regulation (UK GDPR) and the Data Protection
           Act 2018, you have the following rights regarding your personal data held by The 147.
@@ -179,12 +181,18 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     alignSelf: "flex-start",
-    marginBottom: 16,
+    marginBottom: 12,
   },
   topBadgeText: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 13,
     color: Colors.brand.blue,
+  },
+  lastUpdated: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginBottom: 16,
   },
   intro: {
     fontFamily: "Montserrat_400Regular",

@@ -71,7 +71,7 @@ export default function PrivacyPolicyScreen() {
           <Text style={styles.topBadgeText}>UK GDPR Compliant</Text>
         </View>
 
-        <Text style={styles.lastUpdated}>Last Updated: March 2026</Text>
+        <Text style={styles.lastUpdated}>Last Updated: June 2026</Text>
 
         <Section title="1. Who We Are">
           <Text style={styles.bodyText}>
