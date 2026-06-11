@@ -25,7 +25,11 @@ export function getApiUrl(): string {
   let host = process.env.EXPO_PUBLIC_DOMAIN;
 
   if (!host) {
-    throw new Error("EXPO_PUBLIC_DOMAIN is not set");
+    // Fall back to the known production domain so that native builds compiled
+    // without EXPO_PUBLIC_DOMAIN baked in (e.g. an Android build where the env
+    // var was missing at EAS build time) still reach the server instead of
+    // crashing every screen that calls getApiUrl().
+    host = "the147bradford.replit.app";
   }
 
   let url = new URL(`https://${host}`);
