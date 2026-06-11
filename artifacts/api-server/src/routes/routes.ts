@@ -9644,6 +9644,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Kiosk prize code redemption — no staff session required.
+  // Security: the 6-char code is the credential; staff must have entered kiosk PIN to reach this UI.
+  app.post("/api/kiosk/redeem-prize-code", async (req, res) => {
+    const { code } = req.body as { code?: string };
+    if (!code || typeof code !== "string") return res.status(400).json({ message: "code is required" });
+    try {
+      const result = await storage.redeemGamePlayByCode(code, 0);
+      if (!result) return res.status(404).json({ message: "Code not found or already redeemed" });
+      res.json({ success: true, customerName: result.customerName, prizeName: result.prizeName });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // Mark a game win as claimed — idempotent (double-claiming is a no-op).
   app.post("/api/staff/game/plays/:id/claim", staffAuth, async (req: Request & { staffId?: number }, res) => {
     const id = parseInt(req.params.id as string, 10);

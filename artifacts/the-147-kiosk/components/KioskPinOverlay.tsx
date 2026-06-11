@@ -2,11 +2,11 @@
  * KioskPinOverlay — full-screen PIN entry modal for staff to exit kiosk mode.
  *
  * Triggered by a 2-second long-press on the logo in the attract screen.
- * Correct PIN → choice between exiting the app or going to the staff setup
- * screen to change the PIN.
+ * Correct PIN → choice between exiting the app, going to PIN setup,
+ * or redeeming a prize code.
  * Wrong PIN → silent dismiss (no error shown to customer).
  */
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   Modal,
   View,
@@ -16,9 +16,12 @@ import {
   BackHandler,
   Platform,
   Linking,
+  TextInput,
+  ActivityIndicator,
 } from "react-native";
 import { BlurView } from "expo-blur";
 import Colors from "@/constants/colors";
+import { apiRequest } from "@/lib/query-client";
 
 const PIN_LENGTH = 4;
 
@@ -132,7 +135,10 @@ export function KioskPinOverlay({ visible, onDismiss, onCorrect, checkPin }: Pro
   );
 }
 
-/** Called after PIN is confirmed — shows Exit / Setup options. */
+type StaffMode = "menu" | "redeem";
+type RedeemStatus = "idle" | "loading" | "success" | "error";
+
+/** Called after PIN is confirmed — shows Exit / Redeem Prize Code / Setup options. */
 export function KioskExitActions({
   visible,
   onDismiss,
@@ -142,12 +148,57 @@ export function KioskExitActions({
   onDismiss: () => void;
   onSetupPin: () => void;
 }) {
+  const [mode, setMode] = useState<StaffMode>("menu");
+  const [code, setCode] = useState("");
+  const [redeemStatus, setRedeemStatus] = useState<RedeemStatus>("idle");
+  const [resultMsg, setResultMsg] = useState("");
+  const inputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    if (!visible) {
+      setMode("menu");
+      setCode("");
+      setRedeemStatus("idle");
+      setResultMsg("");
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (mode === "redeem") {
+      setTimeout(() => inputRef.current?.focus(), 200);
+    }
+  }, [mode]);
+
   const handleExit = useCallback(() => {
     if (Platform.OS === "android") {
       BackHandler.exitApp();
     } else {
       Linking.openURL("app-settings:");
     }
+  }, []);
+
+  const handleRedeem = useCallback(async () => {
+    const trimmed = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (trimmed.length < 4) return;
+    setRedeemStatus("loading");
+    try {
+      const res = await apiRequest("POST", "/api/kiosk/redeem-prize-code", { code: trimmed });
+      const data = await res.json() as { prizeName: string; customerName: string | null };
+      setRedeemStatus("success");
+      setResultMsg(`✓ ${data.prizeName}${data.customerName ? ` for ${data.customerName}` : ""}`);
+      setCode("");
+    } catch (err: any) {
+      setRedeemStatus("error");
+      const raw: string = err?.message ?? "";
+      setResultMsg(raw.replace(/^\d+:\s*/, "") || "Code not found or already redeemed");
+    }
+  }, [code]);
+
+  const handleBackToMenu = useCallback(() => {
+    setMode("menu");
+    setCode("");
+    setRedeemStatus("idle");
+    setResultMsg("");
   }, []);
 
   return (
@@ -160,45 +211,140 @@ export function KioskExitActions({
     >
       <BlurView intensity={35} tint="dark" style={overlayStyles.blurFill}>
         <Pressable style={overlayStyles.backdrop} onPress={onDismiss}>
-          <Pressable style={overlayStyles.card} onPress={(e) => e.stopPropagation()}>
-            <Text style={overlayStyles.title}>Staff Menu</Text>
+          <Pressable
+            style={[overlayStyles.card, mode === "redeem" && overlayStyles.cardWide]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            {mode === "menu" ? (
+              <>
+                <Text style={overlayStyles.title}>Staff Menu</Text>
+                <View style={actionStyles.btnGroup}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      actionStyles.btn,
+                      actionStyles.btnGreen,
+                      pressed && actionStyles.btnPressed,
+                    ]}
+                    onPress={() => setMode("redeem")}
+                  >
+                    <Text style={actionStyles.btnTextGreen}>🎟 Redeem Prize Code</Text>
+                  </Pressable>
 
-            <View style={actionStyles.btnGroup}>
-              <Pressable
-                style={({ pressed }) => [
-                  actionStyles.btn,
-                  actionStyles.btnPrimary,
-                  pressed && actionStyles.btnPressed,
-                ]}
-                onPress={handleExit}
-              >
-                <Text style={actionStyles.btnTextPrimary}>
-                  {Platform.OS === "android" ? "Exit App" : "Open Settings"}
+                  <Pressable
+                    style={({ pressed }) => [
+                      actionStyles.btn,
+                      actionStyles.btnPrimary,
+                      pressed && actionStyles.btnPressed,
+                    ]}
+                    onPress={handleExit}
+                  >
+                    <Text style={actionStyles.btnTextPrimary}>
+                      {Platform.OS === "android" ? "Exit App" : "Open Settings"}
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={({ pressed }) => [
+                      actionStyles.btn,
+                      actionStyles.btnSecondary,
+                      pressed && actionStyles.btnPressed,
+                    ]}
+                    onPress={onSetupPin}
+                  >
+                    <Text style={actionStyles.btnTextSecondary}>Change PIN</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={({ pressed }) => [
+                      actionStyles.btn,
+                      actionStyles.btnGhost,
+                      pressed && actionStyles.btnPressed,
+                    ]}
+                    onPress={onDismiss}
+                  >
+                    <Text style={actionStyles.btnTextGhost}>Cancel</Text>
+                  </Pressable>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={overlayStyles.title}>Redeem Prize Code</Text>
+                <Text style={redeemStyles.hint}>
+                  Enter the 6-character code shown to the customer after winning
                 </Text>
-              </Pressable>
 
-              <Pressable
-                style={({ pressed }) => [
-                  actionStyles.btn,
-                  actionStyles.btnSecondary,
-                  pressed && actionStyles.btnPressed,
-                ]}
-                onPress={onSetupPin}
-              >
-                <Text style={actionStyles.btnTextSecondary}>Change PIN</Text>
-              </Pressable>
+                <TextInput
+                  ref={inputRef}
+                  style={redeemStyles.codeInput}
+                  value={code}
+                  onChangeText={(t) => {
+                    setCode(t.toUpperCase());
+                    if (redeemStatus !== "idle") {
+                      setRedeemStatus("idle");
+                      setResultMsg("");
+                    }
+                  }}
+                  placeholder="A B C 1 2 3"
+                  placeholderTextColor="rgba(255,255,255,0.2)"
+                  autoCapitalize="characters"
+                  maxLength={8}
+                  editable={redeemStatus !== "loading"}
+                />
 
-              <Pressable
-                style={({ pressed }) => [
-                  actionStyles.btn,
-                  actionStyles.btnGhost,
-                  pressed && actionStyles.btnPressed,
-                ]}
-                onPress={onDismiss}
-              >
-                <Text style={actionStyles.btnTextGhost}>Cancel</Text>
-              </Pressable>
-            </View>
+                {redeemStatus === "success" && (
+                  <View style={redeemStyles.successBox}>
+                    <Text style={redeemStyles.successText}>{resultMsg}</Text>
+                  </View>
+                )}
+                {redeemStatus === "error" && (
+                  <View style={redeemStyles.errorBox}>
+                    <Text style={redeemStyles.errorText}>{resultMsg}</Text>
+                  </View>
+                )}
+
+                <View style={actionStyles.btnGroup}>
+                  {redeemStatus !== "success" && (
+                    <Pressable
+                      style={({ pressed }) => [
+                        actionStyles.btn,
+                        actionStyles.btnGreen,
+                        (redeemStatus === "loading" || code.trim().length < 4) && { opacity: 0.45 },
+                        pressed && actionStyles.btnPressed,
+                      ]}
+                      onPress={handleRedeem}
+                      disabled={redeemStatus === "loading" || code.trim().length < 4}
+                    >
+                      {redeemStatus === "loading"
+                        ? <ActivityIndicator color={Colors.brand.dark} />
+                        : <Text style={actionStyles.btnTextGreen}>Redeem</Text>}
+                    </Pressable>
+                  )}
+                  {redeemStatus === "success" && (
+                    <Pressable
+                      style={({ pressed }) => [
+                        actionStyles.btn,
+                        actionStyles.btnGreen,
+                        pressed && actionStyles.btnPressed,
+                      ]}
+                      onPress={handleBackToMenu}
+                    >
+                      <Text style={actionStyles.btnTextGreen}>Redeem Another</Text>
+                    </Pressable>
+                  )}
+
+                  <Pressable
+                    style={({ pressed }) => [
+                      actionStyles.btn,
+                      actionStyles.btnGhost,
+                      pressed && actionStyles.btnPressed,
+                    ]}
+                    onPress={handleBackToMenu}
+                  >
+                    <Text style={actionStyles.btnTextGhost}>← Back</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
           </Pressable>
         </Pressable>
       </BlurView>
@@ -230,6 +376,10 @@ const overlayStyles = StyleSheet.create({
     shadowOpacity: 0.6,
     shadowRadius: 40,
     elevation: 24,
+  },
+  cardWide: {
+    minWidth: 380,
+    maxWidth: 460,
   },
   title: {
     fontSize: 22,
@@ -308,6 +458,10 @@ const actionStyles = StyleSheet.create({
     backgroundColor: Colors.brand.gold,
     borderTopColor: "rgba(255,255,255,0.4)",
   },
+  btnGreen: {
+    backgroundColor: "#10B981",
+    borderTopColor: "rgba(255,255,255,0.3)",
+  },
   btnSecondary: {
     backgroundColor: "rgba(255,255,255,0.10)",
     borderColor: "rgba(255,255,255,0.14)",
@@ -323,6 +477,11 @@ const actionStyles = StyleSheet.create({
     fontWeight: "700",
     color: Colors.brand.dark,
   },
+  btnTextGreen: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: Colors.brand.dark,
+  },
   btnTextSecondary: {
     fontSize: 18,
     fontWeight: "600",
@@ -332,5 +491,62 @@ const actionStyles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "500",
     color: "rgba(255,255,255,0.45)",
+  },
+});
+
+const redeemStyles = StyleSheet.create({
+  hint: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.55)",
+    textAlign: "center",
+    maxWidth: 300,
+    marginTop: -12,
+    lineHeight: 20,
+  },
+  codeInput: {
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    color: "#fff",
+    fontSize: 32,
+    fontWeight: "800",
+    letterSpacing: 8,
+    textAlign: "center",
+    paddingVertical: 18,
+    paddingHorizontal: 24,
+    width: "100%",
+  },
+  successBox: {
+    backgroundColor: "rgba(16,185,129,0.15)",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(16,185,129,0.4)",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    width: "100%",
+    alignItems: "center",
+  },
+  successText: {
+    color: "#34D399",
+    fontSize: 15,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  errorBox: {
+    backgroundColor: "rgba(239,68,68,0.15)",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.35)",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    width: "100%",
+    alignItems: "center",
+  },
+  errorText: {
+    color: "#F87171",
+    fontSize: 14,
+    fontWeight: "500",
+    textAlign: "center",
   },
 });
