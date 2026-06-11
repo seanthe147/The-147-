@@ -9316,7 +9316,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { getNextWorldCupMatch } = await import("../worldCup.js");
       const match = await getNextWorldCupMatch();
-      if (!isWcMatchDay(match)) {
+      // TODO: RE-ENABLE BEFORE RELEASE — match day gate (bypassed in non-production for testing)
+      if (process.env.NODE_ENV === "production" && !isWcMatchDay(match)) {
         return res.status(403).json({ message: "The penalty challenge is only available on World Cup match days." });
       }
 

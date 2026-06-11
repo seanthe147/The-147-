@@ -151,7 +151,7 @@ const WorldCupGameBanner = memo(function WorldCupGameBanner() {
     staleTime: 60_000,
   });
 
-  if (!isAuthenticated || !data?.matchDay) return null;
+  if (!isAuthenticated || (!__DEV__ && !data?.matchDay)) return null;
 
   const match = data.todayMatch;
   const alreadyPlayed = data.alreadyPlayed;
