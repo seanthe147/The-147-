@@ -91,8 +91,31 @@
   </header>
 
   <main>
+    <style>
+      .related-nav {
+        display: flex; flex-wrap: wrap; gap: 8px;
+        background: #fff; border: 1px solid #e8ecf2; border-radius: 10px;
+        padding: 14px 16px; margin-bottom: 28px;
+      }
+      .related-nav span { font-size: 0.82rem; color: #777; margin-right: 4px; }
+      .related-nav a {
+        font-size: 0.88rem; font-weight: 600; color: #1a56db;
+        background: #e8f0fe; border-radius: 20px; padding: 4px 12px;
+        text-decoration: none;
+      }
+      .related-nav a:hover { text-decoration: underline; }
+    </style>
+
     <div class="badge">📜 Customer Terms of Service</div>
     <p class="updated">Last Updated: April 2026</p>
+
+    <nav class="related-nav">
+      <span>Related policies:</span>
+      <a href="/privacy-policy">Privacy Policy</a>
+      <a href="/gdpr-rights">UK GDPR Rights</a>
+      <a href="/cancellation-policy">Cancellation &amp; Refunds</a>
+      <a href="/staff-privacy-notice">Staff Privacy Notice</a>
+    </nav>
 
     <h2>1. About These Terms</h2>
     <p>These Terms &amp; Conditions ("Terms") govern your use of services provided by The 147 ("we", "us", "our"), a snooker venue, bar, and restaurant operating in Bradford, United Kingdom. By booking a table, purchasing a membership, buying a gift card, placing a food or drink order, or otherwise using our services, you agree to these Terms.</p>
