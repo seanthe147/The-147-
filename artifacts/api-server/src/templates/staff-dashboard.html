@@ -6151,8 +6151,8 @@
     if(list)list.innerHTML='<div class="menu-loading">Loading…</div>';
     try{
       const [settingsRes,menuRes]=await Promise.all([
-        apiFetch('/api/staff/kiosk-settings'),
-        apiFetch('/api/staff/menu'),
+        api('/api/staff/kiosk-settings'),
+        api('/api/staff/menu'),
       ]);
       const {enabled}=await settingsRes.json();
       const cats=await menuRes.json();
@@ -6216,7 +6216,7 @@
 
   async function kioskToggleMaster(enabled){
     try{
-      const r=await apiFetch('/api/staff/kiosk-settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});
+      const r=await api('/api/staff/kiosk-settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});
       if(!r.ok)throw new Error('Failed');
       showToast(enabled?'Kiosk ordering enabled':'Kiosk ordering paused','success');
     }catch(e){
@@ -6229,7 +6229,7 @@
 
   async function kioskToggleCatHidden(catId,kioskHidden,catName){
     try{
-      const r=await apiFetch(`/api/staff/menu/categories/${encodeURIComponent(catId)}/kiosk-hidden`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({kioskHidden})});
+      const r=await api(`/api/staff/menu/categories/${encodeURIComponent(catId)}/kiosk-hidden`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({kioskHidden})});
       if(!r.ok)throw new Error('Failed');
       if(kioskMenuData){
         const cat=kioskMenuData.find(c=>c.id===catId);
@@ -6246,7 +6246,7 @@
 
   async function kioskToggleItemHidden(variationId,itemId,name,kioskHidden){
     try{
-      const r=await apiFetch(`/api/staff/menu/items/${encodeURIComponent(variationId)}/kiosk-hidden`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({kioskHidden,itemId,name})});
+      const r=await api(`/api/staff/menu/items/${encodeURIComponent(variationId)}/kiosk-hidden`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({kioskHidden,itemId,name})});
       if(!r.ok)throw new Error('Failed');
       if(kioskMenuData){
         for(const cat of kioskMenuData){
@@ -6297,8 +6297,8 @@
     if(list)list.innerHTML='<div class="menu-loading">Loading…</div>';
     try{
       const [settingsRes,menuRes]=await Promise.all([
-        apiFetch('/api/staff/kiosk-settings'),
-        apiFetch('/api/staff/menu'),
+        api('/api/staff/kiosk-settings'),
+        api('/api/staff/menu'),
       ]);
       const {enabled}=await settingsRes.json();
       const cats=await menuRes.json();
@@ -6362,7 +6362,7 @@
 
   async function kioskPageToggleMaster(enabled){
     try{
-      const r=await apiFetch('/api/staff/kiosk-settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});
+      const r=await api('/api/staff/kiosk-settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});
       if(!r.ok)throw new Error('Failed');
       kioskPageSetBanner(enabled);
       // Also sync the existing menu tab toggle if it exists
@@ -6379,7 +6379,7 @@
 
   async function kioskPageToggleCatHidden(catId,kioskHidden,catName){
     try{
-      const r=await apiFetch(`/api/staff/menu/categories/${encodeURIComponent(catId)}/kiosk-hidden`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({kioskHidden})});
+      const r=await api(`/api/staff/menu/categories/${encodeURIComponent(catId)}/kiosk-hidden`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({kioskHidden})});
       if(!r.ok)throw new Error('Failed');
       if(kioskPageData){
         const cat=kioskPageData.find(c=>c.id===catId);
@@ -6401,7 +6401,7 @@
 
   async function kioskPageToggleItemHidden(variationId,itemId,name,kioskHidden){
     try{
-      const r=await apiFetch(`/api/staff/menu/items/${encodeURIComponent(variationId)}/kiosk-hidden`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({kioskHidden,itemId,name})});
+      const r=await api(`/api/staff/menu/items/${encodeURIComponent(variationId)}/kiosk-hidden`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({kioskHidden,itemId,name})});
       if(!r.ok)throw new Error('Failed');
       if(kioskPageData){
         for(const cat of kioskPageData){
