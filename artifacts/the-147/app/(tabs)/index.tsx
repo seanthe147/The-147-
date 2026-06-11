@@ -160,38 +160,54 @@ const WorldCupGameBanner = memo(function WorldCupGameBanner() {
     <Pressable
       onPress={() => {
         if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        router.push("/(tabs)/loyalty");
+        router.push("/world-cup-game" as any);
       }}
-      style={({ pressed }) => [styles.wcGameBanner, { opacity: pressed ? 0.88 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
+      style={({ pressed }) => [styles.wcGameBanner, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
     >
       <LinearGradient
-        colors={["#0d2a0d", "#1a5c1a", "#0d3a1a"]}
+        colors={["#052e16", "#166534", "#14532d"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFillObject}
       />
-      {/* Animated shimmer border */}
-      <View style={styles.wcGameBannerBorder} />
+      {/* Pitch centre-circle decoration */}
+      <View style={styles.wcGameBannerCircle} />
+      <View style={styles.wcGameBannerHalfLine} />
+      {/* Content */}
       <View style={styles.wcGameBannerInner}>
-        <Text style={styles.wcGameBannerEmoji}>⚽</Text>
-        <View style={styles.wcGameBannerText}>
-          <Text style={styles.wcGameBannerTitle}>
-            {alreadyPlayed ? "You've taken your shot!" : "PENALTY CHALLENGE"}
-          </Text>
-          <Text style={styles.wcGameBannerSub}>
-            {alreadyPlayed
-              ? "See your result in the Rewards tab"
-              : match
-              ? `${match.homeShort} vs ${match.awayShort} · Tap to play`
-              : "World Cup match day · Tap to play"}
-          </Text>
+        {/* Top label row */}
+        <View style={styles.wcGameBannerTopRow}>
+          <View style={styles.wcGameBannerLivePill}>
+            <View style={styles.wcGameBannerLiveDot} />
+            <Text style={styles.wcGameBannerLiveText}>WORLD CUP 2026</Text>
+          </View>
+          {alreadyPlayed && (
+            <View style={styles.wcGameBannerPlayedPill}>
+              <Ionicons name="checkmark-circle" size={11} color="#4ade80" />
+              <Text style={styles.wcGameBannerPlayedText}>PLAYED</Text>
+            </View>
+          )}
         </View>
-        <View style={styles.wcGameBannerChevron}>
-          {alreadyPlayed
-            ? <Ionicons name="checkmark-circle" size={22} color="#4ade80" />
-            : <Ionicons name="football" size={22} color="#4ade80" />}
+        {/* Centre: big matchup */}
+        <View style={styles.wcGameBannerCentre}>
+          <Text style={styles.wcGameBannerBigEmoji}>⚽</Text>
+          <Text style={styles.wcGameBannerMainTitle}>PENALTY CHALLENGE</Text>
+          {match ? (
+            <Text style={styles.wcGameBannerMatchup}>
+              {match.homeShort} vs {match.awayShort}
+            </Text>
+          ) : null}
+        </View>
+        {/* Bottom CTA */}
+        <View style={styles.wcGameBannerCta}>
+          <Text style={styles.wcGameBannerCtaText}>
+            {alreadyPlayed ? "View your result" : "TAP TO PLAY"}
+          </Text>
+          <Ionicons name="arrow-forward" size={13} color="#4ade80" />
         </View>
       </View>
+      {/* Border */}
+      <View style={styles.wcGameBannerBorder} />
     </Pressable>
   );
 });
@@ -1207,51 +1223,138 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   wcGameBanner: {
+    width: BANNER_WIDTH,
+    height: BANNER_HEIGHT,
     marginHorizontal: 20,
     marginBottom: 14,
     borderRadius: 16,
     overflow: "hidden",
     shadowColor: "#16a34a",
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowOpacity: 0.4,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  wcGameBannerCircle: {
+    position: "absolute",
+    width: BANNER_HEIGHT * 1.1,
+    height: BANNER_HEIGHT * 1.1,
+    borderRadius: BANNER_HEIGHT * 0.55,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+    right: -BANNER_HEIGHT * 0.25,
+    top: -BANNER_HEIGHT * 0.05,
+  },
+  wcGameBannerHalfLine: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: "50%",
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  wcGameBannerInner: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    justifyContent: "space-between",
+  },
+  wcGameBannerTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  wcGameBannerLivePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(74,222,128,0.15)",
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: "rgba(74,222,128,0.3)",
+  },
+  wcGameBannerLiveDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "#4ade80",
+  },
+  wcGameBannerLiveText: {
+    color: "#4ade80",
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 9,
+    letterSpacing: 1,
+  },
+  wcGameBannerPlayedPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(74,222,128,0.1)",
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: "rgba(74,222,128,0.2)",
+  },
+  wcGameBannerPlayedText: {
+    color: "#4ade80",
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 9,
+    letterSpacing: 1,
+  },
+  wcGameBannerCentre: {
+    alignItems: "center",
+    gap: 4,
+  },
+  wcGameBannerBigEmoji: {
+    fontSize: 38,
+    marginBottom: 2,
+  },
+  wcGameBannerMainTitle: {
+    color: "#FFFFFF",
+    fontFamily: "Montserrat_800ExtraBold",
+    fontSize: 20,
+    letterSpacing: 2,
+    textAlign: "center",
+  },
+  wcGameBannerMatchup: {
+    color: "rgba(255,255,255,0.7)",
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    letterSpacing: 0.5,
+    textAlign: "center",
+    marginTop: 2,
+  },
+  wcGameBannerCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    backgroundColor: "rgba(74,222,128,0.15)",
+    borderRadius: 999,
+    paddingVertical: 7,
+    paddingHorizontal: 16,
+    alignSelf: "center",
+    borderWidth: 1,
+    borderColor: "rgba(74,222,128,0.3)",
+  },
+  wcGameBannerCtaText: {
+    color: "#4ade80",
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 11,
+    letterSpacing: 1.2,
   },
   wcGameBannerBorder: {
     position: "absolute",
-    inset: 0,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     borderRadius: 16,
     borderWidth: 1.5,
-    borderColor: "rgba(74,222,128,0.4)",
-  },
-  wcGameBannerInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 12,
-  },
-  wcGameBannerEmoji: {
-    fontSize: 30,
-  },
-  wcGameBannerText: {
-    flex: 1,
-  },
-  wcGameBannerTitle: {
-    color: "#FFFFFF",
-    fontFamily: "Montserrat_700Bold",
-    fontSize: 14,
-    letterSpacing: 1.2,
-  },
-  wcGameBannerSub: {
-    color: "rgba(255,255,255,0.65)",
-    fontFamily: "Montserrat_500Medium",
-    fontSize: 12,
-    marginTop: 2,
-  },
-  wcGameBannerChevron: {
-    alignItems: "center",
-    justifyContent: "center",
+    borderColor: "rgba(74,222,128,0.25)",
   },
   sectionHeader: {
     flexDirection: "row",
