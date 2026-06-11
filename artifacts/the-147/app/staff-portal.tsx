@@ -409,21 +409,27 @@ interface AdminToolProps {
 }
 
 function AdminTool({ icon, title, description, color, onPress, testID }: AdminToolProps) {
-  const { isTablet } = useResponsive();
+  const { isTablet, width } = useResponsive();
+  const isWide = width >= 960;
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.toolCard, isTablet && styles.toolCardTablet, { opacity: pressed ? 0.8 : 1 }]}
+      style={({ pressed }) => [
+        styles.toolCard,
+        isTablet && styles.toolCardTablet,
+        isWide && styles.toolCardWide,
+        { opacity: pressed ? 0.8 : 1 },
+      ]}
       testID={testID}
     >
       <View style={[styles.toolIconWrap, { backgroundColor: color + "15" }]}>
-        <Ionicons name={icon} size={24} color={color} />
+        <Ionicons name={icon} size={22} color={color} />
       </View>
       <View style={styles.toolInfo}>
         <Text style={styles.toolTitle}>{title}</Text>
         <Text style={styles.toolDesc}>{description}</Text>
       </View>
-      <Ionicons name="chevron-forward" size={18} color={Colors.light.textSecondary} />
+      <Ionicons name="chevron-forward" size={16} color={Colors.light.textSecondary} />
     </Pressable>
   );
 }
@@ -2546,15 +2552,18 @@ const styles = StyleSheet.create({
   },
   sectionLabel: {
     fontFamily: "Montserrat_700Bold",
-    fontSize: 11,
+    fontSize: 10,
     color: Colors.light.textSecondary,
-    letterSpacing: 1.5,
-    marginBottom: 12,
-    marginTop: 8,
+    letterSpacing: 2,
+    marginBottom: 10,
+    marginTop: 20,
+    paddingLeft: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.brand.gold + "60",
   },
   toolsList: {
-    gap: 10,
-    marginBottom: 28,
+    gap: 8,
+    marginBottom: 4,
   },
   toolsListTablet: {
     flexDirection: "row",
@@ -2562,11 +2571,11 @@ const styles = StyleSheet.create({
   },
   toolCard: {
     backgroundColor: Colors.light.surface,
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 14,
+    padding: 12,
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
+    gap: 12,
     borderWidth: 1,
     borderColor: Colors.light.border,
   },
@@ -2574,10 +2583,14 @@ const styles = StyleSheet.create({
     flexBasis: "48%",
     flexGrow: 0,
   },
+  toolCardWide: {
+    flexBasis: "31%",
+    flexGrow: 0,
+  },
   toolIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },

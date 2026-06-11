@@ -33,6 +33,7 @@ export interface MenuItem {
   updatedAt?: string;
   modifiers?: ModifierList[];
   dietaryTags?: string[];
+  variants?: MenuItem[];
 }
 
 export interface MenuCategory {

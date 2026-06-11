@@ -48,6 +48,30 @@ interface OrderingStatus {
   barClosesAt?: string;
 }
 
+// ─── Group variants by parent item id ────────────────────────────────────────
+// Items from Square that share the same `id` (parent catalog item) but differ
+// in `variationId` are size/style variants of the same product.  This helper
+// collapses them into a single representative entry whose `variants` array
+// holds every option sorted cheapest-first.
+
+function groupByParentId(items: MenuItem[]): MenuItem[] {
+  const map = new Map<string, MenuItem[]>();
+  const order: string[] = [];
+  for (const item of items) {
+    if (!map.has(item.id)) {
+      map.set(item.id, []);
+      order.push(item.id);
+    }
+    map.get(item.id)!.push(item);
+  }
+  return order.map((id) => {
+    const group = map.get(id)!;
+    if (group.length === 1) return group[0];
+    const sorted = [...group].sort((a, b) => a.price - b.price);
+    return { ...sorted[0], price: sorted[0].price, variants: sorted };
+  });
+}
+
 // ─── Modifier modal ───────────────────────────────────────────────────────────
 
 interface ModifierModalProps {
@@ -150,6 +174,167 @@ function ModifierModal({ item, onAdd, onClose }: ModifierModalProps) {
   );
 }
 
+// ─── Size-picker modal ────────────────────────────────────────────────────────
+// Shown when a grouped card (multiple variants) is tapped.  Step 1 lets the
+// customer pick a size; if that variant has modifiers, step 2 collects them.
+
+interface SizePickerModalProps {
+  item: MenuItem | null;
+  onAdd: (item: MenuItem, modifiers: SelectedModifier[]) => void;
+  onClose: () => void;
+}
+
+function SizePickerModal({ item, onAdd, onClose }: SizePickerModalProps) {
+  const [selectedVariant, setSelectedVariant] = useState<MenuItem | null>(null);
+  const [modSelections, setModSelections] = useState<Record<string, SelectedModifier>>({});
+
+  if (!item?.variants) return null;
+
+  const variants = item.variants;
+
+  const namedVariant = (v: MenuItem): MenuItem => ({
+    ...v,
+    name: v.variationName ? `${item.name} — ${v.variationName}` : v.name,
+  });
+
+  const handlePickSize = (v: MenuItem) => {
+    if (v.soldOut) return;
+    if (!v.modifiers || v.modifiers.length === 0) {
+      onAdd(namedVariant(v), []);
+      setSelectedVariant(null);
+      setModSelections({});
+      onClose();
+    } else {
+      setSelectedVariant(v);
+      setModSelections({});
+    }
+  };
+
+  const toggleMod = (list: ModifierList, opt: { id: string; name: string; price: number }) => {
+    const key = `${list.id}:${opt.id}`;
+    setModSelections((prev) => {
+      if (list.selectionType === "SINGLE") {
+        const next = { ...prev };
+        Object.keys(next).forEach((k) => { if (k.startsWith(`${list.id}:`)) delete next[k]; });
+        next[key] = { catalogObjectId: opt.id, name: opt.name, price: opt.price };
+        return next;
+      }
+      if (prev[key]) { const next = { ...prev }; delete next[key]; return next; }
+      return { ...prev, [key]: { catalogObjectId: opt.id, name: opt.name, price: opt.price } };
+    });
+  };
+
+  const totalMod = Object.values(modSelections).reduce((s, m) => s + m.price, 0);
+
+  const handleAddWithMods = () => {
+    if (!selectedVariant) return;
+    onAdd(namedVariant(selectedVariant), Object.values(modSelections));
+    setSelectedVariant(null);
+    setModSelections({});
+    onClose();
+  };
+
+  const handleBack = () => {
+    if (selectedVariant) {
+      setSelectedVariant(null);
+      setModSelections({});
+    } else {
+      onClose();
+    }
+  };
+
+  return (
+    <Modal visible={!!item} animationType="fade" transparent onRequestClose={handleBack}>
+      <Pressable style={modStyles.backdrop} onPress={handleBack}>
+        <Pressable style={modStyles.sheet} onPress={(e) => e.stopPropagation()}>
+          <View style={modStyles.header}>
+            <Text style={modStyles.itemName}>{item.name}</Text>
+            {selectedVariant && (
+              <Text style={modStyles.itemDesc}>{selectedVariant.variationName}</Text>
+            )}
+            <Pressable onPress={handleBack} hitSlop={12} style={modStyles.closeBtn}>
+              <Ionicons
+                name={selectedVariant ? "arrow-back" : "close"}
+                size={28}
+                color="rgba(255,255,255,0.5)"
+              />
+            </Pressable>
+          </View>
+
+          {!selectedVariant ? (
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 10 }}>
+              <Text style={[modStyles.listName, { paddingHorizontal: 8, marginBottom: 4 }]}>
+                Choose your size
+              </Text>
+              {variants.map((v) => (
+                <Pressable
+                  key={v.variationId}
+                  onPress={() => handlePickSize(v)}
+                  disabled={!!v.soldOut}
+                  style={[sizeStyles.option, v.soldOut && sizeStyles.optionSoldOut]}
+                >
+                  <Text style={[sizeStyles.optionName, v.soldOut && { opacity: 0.45 }]}>
+                    {v.variationName ?? v.name}
+                  </Text>
+                  <Text style={[sizeStyles.optionPrice, v.soldOut && { opacity: 0.4 }]}>
+                    {v.soldOut ? "Sold out" : formatPrice(v.price)}
+                  </Text>
+                  {!v.soldOut && (v.modifiers?.length ?? 0) > 0 && (
+                    <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.35)" />
+                  )}
+                  {!v.soldOut && (v.modifiers?.length ?? 0) === 0 && (
+                    <Ionicons name="add-circle" size={20} color={Colors.brand.gold} />
+                  )}
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : (
+            <>
+              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }}>
+                {(selectedVariant.modifiers ?? []).map((list) => (
+                  <View key={list.id} style={modStyles.listSection}>
+                    <Text style={modStyles.listName}>{list.name}</Text>
+                    {list.selectionType === "SINGLE" && (
+                      <Text style={modStyles.listHint}>Choose one</Text>
+                    )}
+                    {list.options.map((opt) => {
+                      const sel = !!modSelections[`${list.id}:${opt.id}`];
+                      return (
+                        <Pressable
+                          key={opt.id}
+                          onPress={() => toggleMod(list, opt)}
+                          style={[modStyles.option, sel && modStyles.optionSelected]}
+                        >
+                          <View style={[modStyles.optCheck, sel && modStyles.optCheckSelected]}>
+                            {sel && <Ionicons name="checkmark" size={16} color="#fff" />}
+                          </View>
+                          <Text style={[modStyles.optName, sel && { color: Colors.brand.blue }]}>
+                            {opt.name}
+                          </Text>
+                          {opt.price > 0 && (
+                            <Text style={modStyles.optPrice}>+{formatPrice(opt.price)}</Text>
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ))}
+              </ScrollView>
+              <View style={modStyles.footer}>
+                <Pressable style={modStyles.addBtn} onPress={handleAddWithMods}>
+                  <Text style={modStyles.addBtnText}>
+                    Add to order — {formatPrice(selectedVariant.price + totalMod)}
+                  </Text>
+                </Pressable>
+              </View>
+            </>
+          )}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 // ─── Menu item card ──────────────────────────────────────────────────────────
 
 interface ItemCardProps {
@@ -160,8 +345,18 @@ interface ItemCardProps {
 }
 
 function ItemCard({ item, onPress, quantity, categoryClosed }: ItemCardProps) {
-  const soldOut = !!item.soldOut;
+  const isGrouped = !!(item.variants && item.variants.length > 1);
+  const allSoldOut = isGrouped && item.variants!.every((v) => v.soldOut);
+  const soldOut = isGrouped ? allSoldOut : !!item.soldOut;
   const blocked = soldOut || !!categoryClosed;
+
+  const priceLabel = () => {
+    if (categoryClosed) return "Unavailable";
+    if (soldOut) return "Sold out";
+    if (isGrouped) return `from ${formatPrice(item.price)}`;
+    return formatPrice(item.price);
+  };
+
   return (
     <Pressable
       onPress={() => !blocked && onPress(item)}
@@ -178,14 +373,23 @@ function ItemCard({ item, onPress, quantity, categoryClosed }: ItemCardProps) {
           <Ionicons name="fast-food-outline" size={32} color="rgba(255,255,255,0.3)" />
         </View>
       )}
+      {soldOut && !categoryClosed && (
+        <View style={cardStyles.soldOutBadge}>
+          <Text style={cardStyles.soldOutBadgeText}>SOLD OUT</Text>
+        </View>
+      )}
       <View style={cardStyles.body}>
         <Text style={cardStyles.name} numberOfLines={2}>{item.name}</Text>
-        {item.description ? (
+        {isGrouped ? (
+          <Text style={cardStyles.variantHint} numberOfLines={1}>
+            {item.variants!.map((v) => v.variationName ?? v.name).join(" · ")}
+          </Text>
+        ) : item.description ? (
           <Text style={cardStyles.desc} numberOfLines={2}>{item.description}</Text>
         ) : null}
         <View style={cardStyles.footer}>
           <Text style={[cardStyles.price, blocked && { color: "rgba(255,255,255,0.3)" }]}>
-            {soldOut ? "Sold out" : categoryClosed ? "Unavailable" : formatPrice(item.price)}
+            {priceLabel()}
           </Text>
           {quantity > 0 && !blocked && (
             <View style={cardStyles.qtyBadge}>
@@ -234,6 +438,7 @@ export default function MenuScreen() {
   const { showAttract, resetIdle } = useKiosk();
   const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
   const [modifierItem, setModifierItem] = useState<MenuItem | null>(null);
+  const [sizePickerItem, setSizePickerItem] = useState<MenuItem | null>(null);
   const [checkoutVisible, setCheckoutVisible] = useState(false);
 
   const { data: categories, isLoading, error } = useQuery<MenuCategory[]>({
@@ -260,12 +465,12 @@ export default function MenuScreen() {
     for (const cat of categories) {
       if (cat.kioskHidden) continue;
       const visibleItems = (cat.items ?? []).filter((i) => !i.kioskHidden);
-      flat.push({ ...cat, items: visibleItems });
+      flat.push({ ...cat, items: groupByParentId(visibleItems) });
       if (cat.subcategories?.length) {
         for (const sub of cat.subcategories) {
           if (sub.kioskHidden) continue;
           const subItems = (sub.items ?? []).filter((i) => !i.kioskHidden);
-          flat.push({ ...sub, items: subItems });
+          flat.push({ ...sub, items: groupByParentId(subItems) });
         }
       }
     }
@@ -288,7 +493,9 @@ export default function MenuScreen() {
 
   const handleItemPress = useCallback((item: MenuItem) => {
     resetIdle();
-    if (item.modifiers && item.modifiers.length > 0) {
+    if (item.variants && item.variants.length > 1) {
+      setSizePickerItem(item);
+    } else if (item.modifiers && item.modifiers.length > 0) {
       setModifierItem(item);
     } else {
       addItem({
@@ -443,7 +650,7 @@ export default function MenuScreen() {
               <FlatList
                 key={selectedCategory.id}
                 data={selectedCategory.items}
-                keyExtractor={(item) => item.variationId}
+                keyExtractor={(item) => item.variants ? item.id : item.variationId}
                 numColumns={3}
                 columnWrapperStyle={{ gap: 14 }}
                 contentContainerStyle={{ padding: 20, gap: 14, paddingBottom: insets.bottom + 20 }}
@@ -452,7 +659,11 @@ export default function MenuScreen() {
                     <ItemCard
                       item={item}
                       onPress={handleItemPress}
-                      quantity={getQuantity(item.variationId)}
+                      quantity={
+                        item.variants
+                          ? item.variants.reduce((s, v) => s + getQuantity(v.variationId), 0)
+                          : getQuantity(item.variationId)
+                      }
                       categoryClosed={selectedCatClosed}
                     />
                   </View>
@@ -495,6 +706,13 @@ export default function MenuScreen() {
         item={modifierItem}
         onAdd={handleModifierAdd}
         onClose={() => setModifierItem(null)}
+      />
+
+      {/* Size picker modal (grouped variants) */}
+      <SizePickerModal
+        item={sizePickerItem}
+        onAdd={handleModifierAdd}
+        onClose={() => setSizePickerItem(null)}
       />
 
       {/* Checkout sheet */}
@@ -758,6 +976,58 @@ const cardStyles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
     color: "#fff",
+  },
+  soldOutBadge: {
+    position: "absolute",
+    top: 8,
+    left: 8,
+    right: 8,
+    backgroundColor: "rgba(185,28,28,0.90)",
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 10,
+  },
+  soldOutBadgeText: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#fff",
+    letterSpacing: 2,
+  },
+  variantHint: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.45)",
+    lineHeight: 15,
+  },
+});
+
+const sizeStyles = StyleSheet.create({
+  option: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  optionSoldOut: {
+    opacity: 0.45,
+  },
+  optionName: {
+    flex: 1,
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#fff",
+  },
+  optionPrice: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: Colors.brand.gold,
   },
 });
 
