@@ -9255,6 +9255,170 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return true;
   }
 
+  // ── World Cup Penalty Shootout game ──────────────────────────────────────────
+  //
+  // Separate from the daily scratch card — only available on World Cup match
+  // days (any match is live or within 3h of kickoff on the London calendar
+  // date). One play per customer per London calendar date, same prize backend.
+
+  function isWcMatchDay(match: {
+    status: string;
+    kickoffIso: string | null;
+  }): boolean {
+    if (match.status === "none") return false;
+    if (match.status === "live") return true;
+    // Treat the day of any upcoming match (kickoff within next 24h) as a match day
+    // so the banner / game appear early enough to be useful
+    if (match.kickoffIso) {
+      const kickoff = new Date(match.kickoffIso);
+      const now = new Date();
+      const diffMs = kickoff.getTime() - now.getTime();
+      const msInDay = 24 * 60 * 60 * 1000;
+      // Show all day on the match day (kickoff within next 24h OR already past today)
+      const londonToday = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+      const londonKickoff = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" }).format(kickoff);
+      if (londonToday === londonKickoff) return true;
+      if (diffMs > 0 && diffMs < msInDay) return true;
+    }
+    if (match.status === "finished") {
+      // Still show for a few hours after FT so punters at the bar can still play
+      if (match.kickoffIso) {
+        const kickoff = new Date(match.kickoffIso);
+        const now = new Date();
+        const msSinceKickoff = now.getTime() - kickoff.getTime();
+        return msSinceKickoff < 4 * 60 * 60 * 1000;
+      }
+    }
+    return false;
+  }
+
+  // GET /api/game/wc-status — returns today's match + whether the game is
+  // available. Requires customer auth so we can check alreadyPlayed.
+  app.get("/api/game/wc-status", customerAuth, async (req: Request & { customerId?: number }, res) => {
+    try {
+      const customerId = req.customerId!;
+      const { getNextWorldCupMatch } = await import("../worldCup.js");
+      const match = await getNextWorldCupMatch();
+      const matchDay = isWcMatchDay(match);
+      const londonDate = getGameLondonDate();
+      const todayWcPlays = await storage.getGamePlaysToday(customerId, `wc-${londonDate}`);
+      const alreadyPlayed = todayWcPlays.length > 0;
+      const todayMatch = match.status !== "none" ? {
+        homeName: match.homeName,
+        awayName: match.awayName,
+        homeShort: match.homeShort,
+        awayShort: match.awayShort,
+        homeLogo: match.homeLogo,
+        awayLogo: match.awayLogo,
+        kickoffIso: match.kickoffIso,
+        status: match.status,
+        minute: match.minute,
+        stage: match.stage,
+      } : null;
+      res.json({ available: matchDay, matchDay, todayMatch, alreadyPlayed });
+    } catch (err: any) {
+      req.log.error({ err }, "[WC_GAME] Status error");
+      res.status(500).json({ available: false, matchDay: false, todayMatch: null, alreadyPlayed: false });
+    }
+  });
+
+  // POST /api/game/wc-play — one penalty shot per match day. Uses same prize
+  // backend (rollGamePrize, Square loyalty/gift card/group).
+  app.post("/api/game/wc-play", customerAuth, async (req: Request & { customerId?: number }, res) => {
+    const customerId = req.customerId!;
+    try {
+      const { getNextWorldCupMatch } = await import("../worldCup.js");
+      const match = await getNextWorldCupMatch();
+      if (!isWcMatchDay(match)) {
+        return res.status(403).json({ message: "The penalty challenge is only available on World Cup match days." });
+      }
+
+      const londonDate = getGameLondonDate();
+      const wcDate = `wc-${londonDate}`;
+      const todayPlays = await storage.getGamePlaysToday(customerId, wcDate);
+      if (todayPlays.length > 0) {
+        return res.status(429).json({ message: "You've already taken your shot today — come back on the next match day!", alreadyPlayed: true });
+      }
+
+      // Roll prize — 60% chance of scoring (win), 40% saved (no prize)
+      // We encode this by giving a "none" prize a weight of ~40 relative to sum
+      const [prizes, wonGroupPrizeIds] = await Promise.all([
+        storage.getActiveGamePrizes(),
+        storage.getCustomerWonGroupPrizeIds(customerId),
+      ]);
+      const eligiblePrizes = wonGroupPrizeIds.length > 0
+        ? prizes.filter(p => !(p.prizeType === "customer_group" && wonGroupPrizeIds.includes(p.id)))
+        : prizes;
+
+      // 40% chance the keeper saves regardless of prize roll
+      const saved = Math.random() < 0.40;
+      const prize = saved ? null : rollGamePrize(eligiblePrizes);
+
+      let squareRewardId: string | null = null;
+      let pointsAwarded: number | null = null;
+      let giftCardGan: string | null = null;
+      let squareGroupAddedAt: Date | null = null;
+      let autoClaimedAt: Date | null = null;
+
+      if (!saved && prize && prize.prizeType !== "none") {
+        const customer = await storage.getCustomerById(customerId);
+        if (prize.prizeType === "loyalty_points" && prize.value && customer?.squareLoyaltyAccountId) {
+          try {
+            await square.adjustLoyaltyPoints(customer.squareLoyaltyAccountId, prize.value, "WC Penalty prize", `wc-prize-${customerId}-${Date.now()}`);
+            pointsAwarded = prize.value;
+          } catch (e: any) { req.log.warn({ err: e }, "[WC_GAME] Points award failed"); }
+        }
+        if (prize.prizeType === "reward_tier" && prize.rewardTierId && customer?.squareLoyaltyAccountId) {
+          try {
+            const reward = await square.issueFreeGameReward(customer.squareLoyaltyAccountId, prize.rewardTierId, prize.tierPoints ?? 0, `wc-reward-${customerId}-${Date.now()}`);
+            if (reward?.id) { squareRewardId = reward.id; autoClaimedAt = new Date(); }
+          } catch (e: any) { req.log.warn({ err: e }, "[WC_GAME] Reward issue failed"); }
+        }
+        if (prize.prizeType === "gift_card" && prize.giftCardAmountPence && prize.giftCardAmountPence > 0) {
+          try {
+            const customer2 = await storage.getCustomerById(customerId);
+            giftCardGan = await square.issueGiftCardPrize(customer2?.squareCustomerId ?? null, prize.giftCardAmountPence, `wc-gc-${customerId}-${Date.now()}`);
+          } catch (e: any) { req.log.warn({ err: e }, "[WC_GAME] Gift card failed"); }
+        }
+        if (prize.prizeType === "customer_group" && prize.squareCustomerGroupId) {
+          const customer3 = await storage.getCustomerById(customerId);
+          if (customer3?.squareCustomerId && square.isConfigured()) {
+            try {
+              await square.addCustomerToGroup(customer3.squareCustomerId, prize.squareCustomerGroupId);
+              squareGroupAddedAt = new Date();
+            } catch (e: any) { req.log.warn({ err: e }, "[WC_GAME] Group add failed"); autoClaimedAt = new Date(); }
+          } else { autoClaimedAt = new Date(); }
+        }
+      }
+
+      const play = await storage.createGamePlay({
+        customerId,
+        prizeId: prize?.id ?? null,
+        squareRewardId,
+        pointsAwarded,
+        giftCardGan,
+        squareGroupAddedAt,
+        claimedAt: autoClaimedAt,
+        londonDate: wcDate, // prefixed so daily limits don't mix with scratch card
+      });
+
+      req.log.info({ customerId, saved, prizeId: prize?.id, playId: play.id }, "[WC_GAME] Penalty shot played");
+      res.json({
+        won: !saved && prize?.prizeType !== "none" && !!prize,
+        saved,
+        prize: prize && !saved ? { name: prize.name, description: prize.description, prizeType: prize.prizeType } : null,
+        pointsAwarded,
+        giftCardGan,
+        playId: play.id,
+        squareRewardIssued: !!squareRewardId,
+        squareGroupAdded: !!squareGroupAddedAt,
+      });
+    } catch (err: any) {
+      req.log.error({ err }, "[WC_GAME] Play error");
+      res.status(500).json({ message: "Something went wrong — please try again." });
+    }
+  });
+
   // ── Customer game endpoints ───────────────────────────────────────────────────
 
   // Public config — lets the app know whether to show the game button at all.

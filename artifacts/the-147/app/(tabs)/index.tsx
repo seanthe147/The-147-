@@ -131,6 +131,71 @@ function formatMatchDate(iso: string | null): string {
   return `${day} ${time}`;
 }
 
+// ── World Cup Penalty Game Banner ─────────────────────────────────────────────
+// Shown only on match days (when /api/game/wc-status returns matchDay:true).
+// Tapping it goes straight to the Rewards tab where the penalty game lives.
+const WorldCupGameBanner = memo(function WorldCupGameBanner() {
+  const { isAuthenticated, getCustomerToken } = useCustomerAuth();
+  const { data } = useQuery<{ available: boolean; matchDay: boolean; alreadyPlayed: boolean; todayMatch: { homeShort: string; awayShort: string; status: string } | null }>({
+    queryKey: ["/api/game/wc-status"],
+    queryFn: async () => {
+      const token = getCustomerToken();
+      if (!token) return { available: false, matchDay: false, alreadyPlayed: false, todayMatch: null };
+      const res = await fetch(new URL("/api/game/wc-status", getApiUrl()).toString(), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return { available: false, matchDay: false, alreadyPlayed: false, todayMatch: null };
+      return res.json();
+    },
+    enabled: isAuthenticated,
+    staleTime: 60_000,
+  });
+
+  if (!isAuthenticated || !data?.matchDay) return null;
+
+  const match = data.todayMatch;
+  const alreadyPlayed = data.alreadyPlayed;
+
+  return (
+    <Pressable
+      onPress={() => {
+        if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        router.push("/(tabs)/loyalty");
+      }}
+      style={({ pressed }) => [styles.wcGameBanner, { opacity: pressed ? 0.88 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
+    >
+      <LinearGradient
+        colors={["#0d2a0d", "#1a5c1a", "#0d3a1a"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+      {/* Animated shimmer border */}
+      <View style={styles.wcGameBannerBorder} />
+      <View style={styles.wcGameBannerInner}>
+        <Text style={styles.wcGameBannerEmoji}>⚽</Text>
+        <View style={styles.wcGameBannerText}>
+          <Text style={styles.wcGameBannerTitle}>
+            {alreadyPlayed ? "You've taken your shot!" : "PENALTY CHALLENGE"}
+          </Text>
+          <Text style={styles.wcGameBannerSub}>
+            {alreadyPlayed
+              ? "See your result in the Rewards tab"
+              : match
+              ? `${match.homeShort} vs ${match.awayShort} · Tap to play`
+              : "World Cup match day · Tap to play"}
+          </Text>
+        </View>
+        <View style={styles.wcGameBannerChevron}>
+          {alreadyPlayed
+            ? <Ionicons name="checkmark-circle" size={22} color="#4ade80" />
+            : <Ionicons name="football" size={22} color="#4ade80" />}
+        </View>
+      </View>
+    </Pressable>
+  );
+});
+
 const WorldCupCard = memo(function WorldCupCard() {
   const { data, isLoading } = useQuery<{ matches: EnglandMatch[] }>({
     queryKey: ["/api/world-cup/england-next"],
@@ -723,6 +788,8 @@ export default function HomeScreen() {
               every other case. */}
           <PersonalisedHomeCards />
 
+          <WorldCupGameBanner />
+
           <WorldCupCard />
 
           <View style={styles.quickNav}>
@@ -1138,6 +1205,53 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_700Bold",
     fontSize: 10,
     letterSpacing: 0.4,
+  },
+  wcGameBanner: {
+    marginHorizontal: 20,
+    marginBottom: 14,
+    borderRadius: 16,
+    overflow: "hidden",
+    shadowColor: "#16a34a",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  wcGameBannerBorder: {
+    position: "absolute",
+    inset: 0,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: "rgba(74,222,128,0.4)",
+  },
+  wcGameBannerInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  wcGameBannerEmoji: {
+    fontSize: 30,
+  },
+  wcGameBannerText: {
+    flex: 1,
+  },
+  wcGameBannerTitle: {
+    color: "#FFFFFF",
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 14,
+    letterSpacing: 1.2,
+  },
+  wcGameBannerSub: {
+    color: "rgba(255,255,255,0.65)",
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 12,
+    marginTop: 2,
+  },
+  wcGameBannerChevron: {
+    alignItems: "center",
+    justifyContent: "center",
   },
   sectionHeader: {
     flexDirection: "row",
