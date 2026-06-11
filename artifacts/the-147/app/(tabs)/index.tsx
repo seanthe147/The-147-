@@ -804,7 +804,7 @@ export default function HomeScreen() {
               every other case. */}
           <PersonalisedHomeCards />
 
-          <WorldCupGameBanner />
+          {__DEV__ && <WorldCupGameBanner />}
 
           <WorldCupCard />
 
