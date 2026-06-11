@@ -1859,6 +1859,19 @@ function DashboardScreen() {
           )}
         </View>
 
+        {/* Games & Prizes — visible to all staff so anyone can redeem codes */}
+        <Text style={styles.sectionLabel}>GAMES & PRIZES</Text>
+        <View style={[styles.toolsList, isTablet && styles.toolsListTablet]}>
+          <AdminTool
+            icon="sparkles"
+            title="Games & Prizes"
+            description="Redeem prize codes, view pending claims and recent winners"
+            color="#10B981"
+            onPress={() => router.push("/admin-game")}
+            testID="portal-scratch-card-game"
+          />
+        </View>
+
         {/* Admin tools — managers and owners, grouped by job. The old flat
             list of 13 tiles got long enough that finding anything took
             scrolling; splitting into FLOOR / CUSTOMERS / MARKETING /
@@ -1957,14 +1970,6 @@ function DashboardScreen() {
                 color={Colors.brand.gold}
                 onPress={() => router.push("/admin-loyalty")}
                 testID="portal-loyalty-settings"
-              />
-              <AdminTool
-                icon="sparkles"
-                title="Games & Prizes"
-                description="Scratch card + penalty game prizes, weights, schedule and winners"
-                color="#10B981"
-                onPress={() => router.push("/admin-game")}
-                testID="portal-scratch-card-game"
               />
             </View>
 

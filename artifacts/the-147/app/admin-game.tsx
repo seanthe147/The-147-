@@ -919,12 +919,12 @@ export default function AdminGameScreen() {
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { isAuthenticated, isManager, isLoading: authLoading } = useStaffAuth();
 
-  // Guard — managers only
+  // Guard — all authenticated staff
   useEffect(() => {
-    if (!authLoading && (!isAuthenticated || !isManager)) {
+    if (!authLoading && !isAuthenticated) {
       router.replace("/staff-portal");
     }
-  }, [authLoading, isAuthenticated, isManager]);
+  }, [authLoading, isAuthenticated]);
 
   // ── Config ────────────────────────────────────────────────────────────────
   const configQuery = useQuery<GameConfig>({
@@ -1159,7 +1159,7 @@ export default function AdminGameScreen() {
   const winners = (winnersQuery.data ?? []).filter(w => w.prize && w.prize.prizeType !== "none").slice(0, 20);
 
   // ── Auth guard render ─────────────────────────────────────────────────────
-  if (authLoading || !isAuthenticated || !isManager) {
+  if (authLoading || !isAuthenticated) {
     return (
       <View style={[styles.container, styles.center]}>
         <ActivityIndicator color={Colors.brand.gold} />
@@ -1182,6 +1182,9 @@ export default function AdminGameScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40, marginHorizontal: tabletPad }]}
         keyboardShouldPersistTaps="handled"
       >
+        {/* ── Manager-only sections ─────────────────────────────────────── */}
+        {isManager && (<>
+
         {/* ── Game On / Off ─────────────────────────────────────────────── */}
         <Text style={styles.sectionTitle}>Game Settings</Text>
 
@@ -1362,6 +1365,8 @@ export default function AdminGameScreen() {
           </View>
         )}
 
+        </>)}
+
         {/* ── Prize Claims ──────────────────────────────────────────────── */}
         <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Prize Claims</Text>
 
@@ -1405,7 +1410,8 @@ export default function AdminGameScreen() {
           </View>
         )}
 
-        {/* ── Recent Winners ────────────────────────────────────────────── */}
+        {/* ── Recent Winners (managers only) ────────────────────────────── */}
+        {isManager && (<>
         <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Recent Winners</Text>
 
         {winnersQuery.isLoading ? (
@@ -1441,6 +1447,7 @@ export default function AdminGameScreen() {
             })}
           </View>
         )}
+        </>)}
       </ScrollView>
     </View>
   );
