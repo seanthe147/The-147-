@@ -151,7 +151,7 @@ const WorldCupGameBanner = memo(function WorldCupGameBanner() {
     staleTime: 60_000,
   });
 
-  if (!isAuthenticated || !data || (!__DEV__ && !data.matchDay)) return null;
+  if (!isAuthenticated || !data || !data.matchDay) return null;
 
   const match = data.todayMatch;
   const alreadyPlayed = data.alreadyPlayed;
@@ -804,7 +804,7 @@ export default function HomeScreen() {
               every other case. */}
           <PersonalisedHomeCards />
 
-          {__DEV__ && <WorldCupGameBanner />}
+          <WorldCupGameBanner />
 
           <WorldCupCard />
 

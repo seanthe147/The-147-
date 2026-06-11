@@ -9316,18 +9316,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { getNextWorldCupMatch } = await import("../worldCup.js");
       const match = await getNextWorldCupMatch();
-      // TODO: RE-ENABLE BEFORE RELEASE — match day gate (bypassed in non-production for testing)
-      if (process.env.NODE_ENV === "production" && !isWcMatchDay(match)) {
+      if (!isWcMatchDay(match)) {
         return res.status(403).json({ message: "The penalty challenge is only available on World Cup match days." });
       }
 
       const londonDate = getGameLondonDate();
       const wcDate = `wc-${londonDate}`;
-      // TODO: RE-ENABLE BEFORE RELEASE — one-play-per-match-day limit (disabled for testing)
-      // const todayPlays = await storage.getGamePlaysToday(customerId, wcDate);
-      // if (todayPlays.length > 0) {
-      //   return res.status(429).json({ message: "You've already taken your shot today — come back on the next match day!", alreadyPlayed: true });
-      // }
+      const todayPlays = await storage.getGamePlaysToday(customerId, wcDate);
+      if (todayPlays.length > 0) {
+        return res.status(429).json({ message: "You've already taken your shot today — come back on the next match day!", alreadyPlayed: true });
+      }
 
       // Roll prize — 60% chance of scoring (win), 40% saved (no prize)
       // We encode this by giving a "none" prize a weight of ~40 relative to sum

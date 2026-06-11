@@ -23,7 +23,6 @@ import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useMatchBarVisible } from "@/hooks/useMatchBarVisible";
 import { ScratchCardGame } from "@/components/ScratchCardGame";
-import { PenaltyShootoutGame } from "@/components/PenaltyShootoutGame";
 
 function loyaltyUrl(path: string): string {
   return new URL(path, getApiUrl()).toString();
@@ -701,8 +700,6 @@ export default function RewardsScreen() {
           {firstName ? (
             <Text style={styles.personalIntro}>Here's where you stand, {firstName}</Text>
           ) : null}
-
-          <PenaltyShootoutGame />
 
           <ScratchCardGame
             onScratchStart={onScratchStart}
