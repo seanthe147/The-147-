@@ -9330,7 +9330,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Roll prize — 60% chance of scoring (win), 40% saved (no prize)
       // We encode this by giving a "none" prize a weight of ~40 relative to sum
       const [prizes, wonGroupPrizeIds] = await Promise.all([
-        storage.getActiveGamePrizes(),
+        storage.getActiveGamePrizesForGame("penalty"),
         storage.getCustomerWonGroupPrizeIds(customerId),
       ]);
       const eligiblePrizes = wonGroupPrizeIds.length > 0
@@ -9471,7 +9471,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const [prizes, wonGroupPrizeIds] = await Promise.all([
-        storage.getActiveGamePrizes(),
+        storage.getActiveGamePrizesForGame("scratch_card"),
         storage.getCustomerWonGroupPrizeIds(customerId),
       ]);
       // customer_group prizes are one-time-only: exclude any this customer has already won
@@ -9702,7 +9702,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/staff/game/prizes", staffAuth, managerAuth, async (req, res) => {
-    const { name, description, prizeType, value, rewardTierId, squareDiscountType, squareDiscountValue, tierPoints, giftCardAmountPence, squareCustomerGroupId, prizeExpiryHours, maxDiscountPence, weightPercent, active } = req.body ?? {};
+    const { name, description, prizeType, value, rewardTierId, squareDiscountType, squareDiscountValue, tierPoints, giftCardAmountPence, squareCustomerGroupId, prizeExpiryHours, maxDiscountPence, weightPercent, active, game } = req.body ?? {};
     if (!name || !prizeType) return res.status(400).json({ message: "name and prizeType are required" });
     if (prizeType === "reward_tier" && !rewardTierId) {
       return res.status(400).json({ message: "Please select a Square reward tier for this prize type" });
@@ -9729,6 +9729,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         maxDiscountPence: prizeType === "customer_group" && maxDiscountPence != null ? Math.round(parseFloat(maxDiscountPence) * 100) : null,
         weightPercent: weightPercent ?? 10,
         active: active !== false,
+        game: (game === "scratch_card" || game === "penalty") ? game : "both",
       });
       res.json(prize);
     } catch (err: any) {
@@ -9739,7 +9740,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/staff/game/prizes/:id", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id as string, 10);
     if (!id) return res.status(400).json({ message: "Invalid id" });
-    const { name, description, prizeType, value, rewardTierId, squareDiscountType, squareDiscountValue, tierPoints, giftCardAmountPence, squareCustomerGroupId, prizeExpiryHours, maxDiscountPence, weightPercent, active } = req.body ?? {};
+    const { name, description, prizeType, value, rewardTierId, squareDiscountType, squareDiscountValue, tierPoints, giftCardAmountPence, squareCustomerGroupId, prizeExpiryHours, maxDiscountPence, weightPercent, active, game } = req.body ?? {};
     if (prizeType === "gift_card" && (!giftCardAmountPence || parseFloat(giftCardAmountPence) <= 0)) {
       return res.status(400).json({ message: "Please enter a prize amount (in pounds) for this gift card" });
     }
@@ -9760,6 +9761,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         maxDiscountPence: prizeType === "customer_group" && maxDiscountPence != null ? Math.round(parseFloat(maxDiscountPence) * 100) : null,
         weightPercent,
         active,
+        game: (game === "scratch_card" || game === "penalty") ? game : "both",
       });
       res.json(prize);
     } catch (err: any) {

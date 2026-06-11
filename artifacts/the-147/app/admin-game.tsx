@@ -49,6 +49,7 @@ interface GamePrize {
   maxDiscountPence: number | null;
   weightPercent: number;
   active: boolean;
+  game: "scratch_card" | "penalty" | "both";
 }
 
 interface GameWinner {
@@ -88,6 +89,7 @@ function emptyDraft(): PrizeDraft {
     maxDiscountPounds: "",
     weightPercent: "10",
     active: true,
+    game: "both",
   };
 }
 
@@ -103,6 +105,7 @@ interface PrizeDraft {
   maxDiscountPounds: string;
   weightPercent: string;
   active: boolean;
+  game: "scratch_card" | "penalty" | "both";
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -158,6 +161,11 @@ function PrizeRow({ prize, onToggleActive, onEdit, saving }: PrizeRowProps) {
           <Text style={prizeRow.desc} numberOfLines={1}>{prize.description}</Text>
         )}
         <View style={prizeRow.metaRow}>
+          <Ionicons name="game-controller-outline" size={11} color="#9CA3AF" />
+          <Text style={prizeRow.meta}>
+            {prize.game === "scratch_card" ? "Scratch Card only" : prize.game === "penalty" ? "Penalty only" : "Both games"}
+          </Text>
+          <Text style={prizeRow.metaDot}>·</Text>
           <Ionicons name="scale-outline" size={11} color="#9CA3AF" />
           <Text style={prizeRow.meta}>Weight: {prize.weightPercent}</Text>
           {prize.prizeType === "loyalty_points" && !!prize.value && (
@@ -346,6 +354,30 @@ function PrizeEditor({ draft, onChange, onSave, onCancel, saving, isNew, squareT
           placeholder="Shown to customer on win screen"
           placeholderTextColor="#9CA3AF"
         />
+      </View>
+
+      <View style={editor.field}>
+        <Text style={editor.label}>Which game?</Text>
+        <View style={editor.segRow}>
+          {(["both", "scratch_card", "penalty"] as const).map((g) => (
+            <Pressable
+              key={g}
+              onPress={() => set("game", g)}
+              style={[editor.seg, draft.game === g && editor.segActive]}
+            >
+              <Text style={[editor.segText, draft.game === g && editor.segTextActive]}>
+                {g === "both" ? "Both" : g === "scratch_card" ? "Scratch Card" : "Penalty"}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={editor.hint}>
+          {draft.game === "both"
+            ? "Prize can be won in either the daily scratch card or the World Cup penalty game."
+            : draft.game === "scratch_card"
+            ? "Only available in the daily scratch card game."
+            : "Only available in the World Cup penalty shootout game."}
+        </Text>
       </View>
 
       <View style={editor.field}>
@@ -900,7 +932,7 @@ export default function AdminGameScreen() {
   const [newDraft, setNewDraft] = useState<PrizeDraft>(emptyDraft());
 
   const prizeMutation = useMutation({
-    mutationFn: async (payload: { id?: number; name: string; description?: string; prizeType: string; value?: number | null; rewardTierId?: string | null; tierPoints?: number | null; squareDiscountType?: string | null; squareDiscountValue?: number | null; giftCardAmountPence?: string | null; squareCustomerGroupId?: string | null; prizeExpiryHours?: number | null; maxDiscountPence?: string | null; weightPercent: number; active: boolean }) => {
+    mutationFn: async (payload: { id?: number; name: string; description?: string; prizeType: string; value?: number | null; rewardTierId?: string | null; tierPoints?: number | null; squareDiscountType?: string | null; squareDiscountValue?: number | null; giftCardAmountPence?: string | null; squareCustomerGroupId?: string | null; prizeExpiryHours?: number | null; maxDiscountPence?: string | null; weightPercent: number; active: boolean; game?: string }) => {
       const { id, ...body } = payload;
       const res = id
         ? await apiRequest("PUT", `/api/staff/game/prizes/${id}`, body)
@@ -959,6 +991,7 @@ export default function AdminGameScreen() {
       maxDiscountPence: draft.prizeType === "customer_group" && draft.maxDiscountPounds ? String(draft.maxDiscountPounds) : null,
       weightPercent: wp,
       active: draft.active,
+      game: draft.game,
     };
   };
 
@@ -999,11 +1032,12 @@ export default function AdminGameScreen() {
       maxDiscountPounds: p.maxDiscountPence != null ? String(p.maxDiscountPence / 100) : "",
       weightPercent: String(p.weightPercent),
       active: p.active,
+      game: (p.game === "scratch_card" || p.game === "penalty") ? p.game : "both",
     });
   };
 
   const handleTogglePrizeActive = (p: GamePrize, active: boolean) => {
-    prizeMutation.mutate({ id: p.id, name: p.name, description: p.description ?? undefined, prizeType: p.prizeType, value: p.value, rewardTierId: p.rewardTierId, giftCardAmountPence: p.giftCardAmountPence != null ? String(p.giftCardAmountPence / 100) : null, squareCustomerGroupId: p.squareCustomerGroupId, prizeExpiryHours: p.prizeExpiryHours, maxDiscountPence: p.maxDiscountPence != null ? String(p.maxDiscountPence / 100) : null, weightPercent: p.weightPercent, active });
+    prizeMutation.mutate({ id: p.id, name: p.name, description: p.description ?? undefined, prizeType: p.prizeType, value: p.value, rewardTierId: p.rewardTierId, giftCardAmountPence: p.giftCardAmountPence != null ? String(p.giftCardAmountPence / 100) : null, squareCustomerGroupId: p.squareCustomerGroupId, prizeExpiryHours: p.prizeExpiryHours, maxDiscountPence: p.maxDiscountPence != null ? String(p.maxDiscountPence / 100) : null, weightPercent: p.weightPercent, active, game: p.game ?? "both" });
   };
 
   // ── Pending claims (reward_tier prizes awaiting collection) ──────────────

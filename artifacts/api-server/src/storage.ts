@@ -646,6 +646,10 @@ export async function runStartupMigrations() {
         SELECT 'Free Soft Drink', 'You won a free soft drink — show this screen at the bar to claim it!', 'reward_tier', 10, true
         WHERE NOT EXISTS (SELECT 1 FROM game_prizes WHERE name = 'Free Soft Drink' LIMIT 1);
     `);
+    await client.query(`
+      ALTER TABLE game_prizes
+        ADD COLUMN IF NOT EXISTS game TEXT NOT NULL DEFAULT 'both';
+    `);
 
     // ── Venue Reward Tiers & Claims ──────────────────────────────────────────
     await client.query(`
@@ -3351,6 +3355,12 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(gamePrizes).where(eq(gamePrizes.active, true)).orderBy(gamePrizes.id);
   }
 
+  async getActiveGamePrizesForGame(game: "scratch_card" | "penalty"): Promise<GamePrize[]> {
+    return db.select().from(gamePrizes).where(
+      and(eq(gamePrizes.active, true), or(eq(gamePrizes.game, game), eq(gamePrizes.game, "both")))
+    ).orderBy(gamePrizes.id);
+  }
+
   async getAllGamePrizes(): Promise<GamePrize[]> {
     return db.select().from(gamePrizes).orderBy(gamePrizes.id);
   }
@@ -3371,6 +3381,7 @@ export class DatabaseStorage implements IStorage {
     maxDiscountPence?: number | null;
     weightPercent: number;
     active: boolean;
+    game?: string;
   }): Promise<GamePrize> {
     const now = new Date();
     if (data.id) {
