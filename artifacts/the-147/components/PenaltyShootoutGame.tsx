@@ -1,22 +1,28 @@
 /**
  * PenaltyShootoutGame — World Cup 2026 special event game
  *
- * Tap one of 6 corners/zones to take your penalty. A random keeper
- * animation decides if you score. If you score → prize awarded via the
- * same /api/game/wc-play endpoint that uses the existing prize backend.
+ * Flick the ball upward toward the goal. Direction + speed determine
+ * where it aims. 60% chance of scoring, 40% keeper save (server-side).
  *
- * States: idle → aiming → shooting → scored | saved | already_played | unavailable
+ * States: loading → idle → shooting → scored | saved | already_played | unavailable | error
  */
 
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, {
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+} from "react";
 import {
   StyleSheet,
   View,
   Text,
-  Pressable,
   Animated,
+  PanResponder,
   Platform,
   ActivityIndicator,
+  Pressable,
+  Dimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -25,24 +31,29 @@ import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getApiUrl } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
-import Colors from "@/constants/colors";
 
 const WC_STORAGE_KEY = "wc_penalty_result_today";
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const CARD_WIDTH = SCREEN_WIDTH - 40;
 
-// 6 goal zones — 2 rows × 3 cols
-const ZONES = [
-  { id: "tl", label: "Top\nLeft",   icon: "↖" },
-  { id: "tc", label: "Top\nCentre", icon: "↑" },
-  { id: "tr", label: "Top\nRight",  icon: "↗" },
-  { id: "bl", label: "Bot\nLeft",   icon: "↙" },
-  { id: "bc", label: "Bot\nCentre", icon: "↓" },
-  { id: "br", label: "Bot\nRight",  icon: "↘" },
-];
+// Where the ball flies based on aim (x offset, y offset from ball home)
+const GOAL_TARGETS: Record<string, { x: number; y: number }> = {
+  tl: { x: -CARD_WIDTH * 0.22, y: -260 },
+  tc: { x: 0,                  y: -265 },
+  tr: { x: CARD_WIDTH * 0.22,  y: -260 },
+  bl: { x: -CARD_WIDTH * 0.18, y: -215 },
+  bc: { x: 0,                  y: -210 },
+  br: { x: CARD_WIDTH * 0.18,  y: -215 },
+};
+
+// Keeper dive x offset for each aim column
+const KEEPER_DIVE: Record<string, number> = {
+  l: -55, c: 0, r: 55,
+};
 
 type GameState =
   | "loading"
   | "idle"
-  | "aiming"
   | "shooting"
   | "scored"
   | "saved"
@@ -68,8 +79,6 @@ interface WcStatusResult {
     awayName: string;
     homeShort: string;
     awayShort: string;
-    homeLogo: string | null;
-    awayLogo: string | null;
     kickoffIso: string | null;
     status: string;
     minute: string | null;
@@ -77,19 +86,40 @@ interface WcStatusResult {
   alreadyPlayed: boolean;
 }
 
+function calcAimZone(dx: number, vy: number): string {
+  const col = dx < -28 ? "l" : dx > 28 ? "r" : "c";
+  const row = vy < -1.2 ? "t" : "b";
+  return `${row}${col}`;
+}
+
 export function PenaltyShootoutGame() {
   const { isAuthenticated, getCustomerToken } = useCustomerAuth();
   const queryClient = useQueryClient();
 
   const [gameState, setGameState] = useState<GameState>("loading");
-  const [selectedZone, setSelectedZone] = useState<string | null>(null);
   const [result, setResult] = useState<WcPlayResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [aimedZone, setAimedZone] = useState<string>("bc");
+  const [isDragging, setIsDragging] = useState(false);
 
-  const ballAnim = useRef(new Animated.Value(0)).current;
-  const keeperAnim = useRef(new Animated.Value(0)).current;
+  const gameStateRef = useRef<GameState>("loading");
+  useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
+
+  // Ball animation
+  const ballPos = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const ballScale = useRef(new Animated.Value(1)).current;
+  const ballOpacity = useRef(new Animated.Value(1)).current;
+
+  // Keeper animation
+  const keeperX = useRef(new Animated.Value(0)).current;
+  const keeperScale = useRef(new Animated.Value(1)).current;
+
+  // Result overlay
   const resultOpacity = useRef(new Animated.Value(0)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
+
+  // Aim indicator (live during drag)
+  const aimIndicatorOpacity = useRef(new Animated.Value(0)).current;
 
   const { data: statusData, isLoading: statusLoading } = useQuery<WcStatusResult>({
     queryKey: ["/api/game/wc-status"],
@@ -106,7 +136,7 @@ export function PenaltyShootoutGame() {
     refetchOnWindowFocus: true,
   });
 
-  // Restore today's cached result from AsyncStorage
+  // Restore cached result for today
   useEffect(() => {
     if (!isAuthenticated) return;
     AsyncStorage.getItem(WC_STORAGE_KEY).then((raw) => {
@@ -126,7 +156,6 @@ export function PenaltyShootoutGame() {
   useEffect(() => {
     if (statusLoading) return;
     if (!statusData) return;
-    // Only override if we're still in loading/idle (don't clobber a cached result)
     if (gameState !== "loading" && gameState !== "idle") return;
     if (statusData.alreadyPlayed) {
       setGameState("already_played");
@@ -137,32 +166,58 @@ export function PenaltyShootoutGame() {
     }
   }, [statusData, statusLoading]);
 
-  const handleZoneSelect = useCallback((zoneId: string) => {
-    if (gameState !== "idle") return;
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setSelectedZone(zoneId);
-    setGameState("aiming");
-  }, [gameState]);
-
-  const handleShoot = useCallback(async () => {
-    if (gameState !== "aiming" || !selectedZone) return;
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    setGameState("shooting");
-
-    // Ball fly animation
-    Animated.sequence([
-      Animated.timing(ballAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
+  const resetBall = useCallback(() => {
+    Animated.parallel([
+      Animated.spring(ballPos, { toValue: { x: 0, y: 0 }, useNativeDriver: false, tension: 80, friction: 7 }),
+      Animated.spring(ballScale, { toValue: 1, useNativeDriver: true }),
+      Animated.timing(ballOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.spring(keeperX, { toValue: 0, useNativeDriver: true }),
     ]).start();
-    // Keeper dive animation
-    Animated.timing(keeperAnim, { toValue: 1, duration: 350, useNativeDriver: true }).start();
+    Animated.timing(aimIndicatorOpacity, { toValue: 0, duration: 150, useNativeDriver: true }).start();
+  }, []);
 
+  const fireShot = useCallback(async (zone: string) => {
+    const target = GOAL_TARGETS[zone] ?? GOAL_TARGETS.bc;
+    const col = zone[1] as "l" | "c" | "r";
+
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+
+    // Ball flies to goal
+    Animated.parallel([
+      Animated.timing(ballPos, {
+        toValue: { x: target.x, y: target.y },
+        duration: 380,
+        useNativeDriver: false,
+      }),
+      Animated.timing(ballScale, {
+        toValue: 0.45,
+        duration: 380,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    // Slight delay then keeper dives
+    setTimeout(() => {
+      Animated.spring(keeperX, {
+        toValue: KEEPER_DIVE[col] ?? 0,
+        useNativeDriver: true,
+        tension: 120,
+        friction: 6,
+      }).start();
+      Animated.spring(keeperScale, {
+        toValue: 1.15,
+        useNativeDriver: true,
+      }).start();
+    }, 180);
+
+    // API call
     try {
       const token = getCustomerToken();
       if (!token) throw new Error("Not authenticated");
       const res = await fetch(new URL("/api/game/wc-play", getApiUrl()).toString(), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ zone: selectedZone }),
+        body: JSON.stringify({ zone }),
       });
       const data: WcPlayResult = await res.json();
 
@@ -179,63 +234,116 @@ export function PenaltyShootoutGame() {
       const won = data.won && !data.saved;
       setResult(data);
 
-      // Cache result for today
       const today = new Date().toISOString().slice(0, 10);
       AsyncStorage.setItem(WC_STORAGE_KEY, JSON.stringify({ date: today, result: data }));
 
       setTimeout(() => {
-        setGameState(won ? "scored" : "saved");
-        if (!won) {
-          // Shake the post/keeper
-          Animated.sequence([
-            Animated.timing(shakeAnim, { toValue: 8, duration: 60, useNativeDriver: true }),
-            Animated.timing(shakeAnim, { toValue: -8, duration: 60, useNativeDriver: true }),
-            Animated.timing(shakeAnim, { toValue: 5, duration: 60, useNativeDriver: true }),
-            Animated.timing(shakeAnim, { toValue: 0, duration: 60, useNativeDriver: true }),
-          ]).start();
-        } else {
+        if (won) {
           if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          setGameState("scored");
+        } else {
+          // Keeper save shake
+          Animated.sequence([
+            Animated.timing(shakeAnim, { toValue: 10, duration: 55, useNativeDriver: true }),
+            Animated.timing(shakeAnim, { toValue: -10, duration: 55, useNativeDriver: true }),
+            Animated.timing(shakeAnim, { toValue: 6, duration: 55, useNativeDriver: true }),
+            Animated.timing(shakeAnim, { toValue: 0, duration: 55, useNativeDriver: true }),
+          ]).start();
+          if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          setGameState("saved");
         }
-        Animated.timing(resultOpacity, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+        Animated.timing(resultOpacity, { toValue: 1, duration: 500, useNativeDriver: true }).start();
         queryClient.invalidateQueries({ queryKey: ["/api/game/my-prizes"] });
         queryClient.invalidateQueries({ queryKey: ["/api/loyalty/me"] });
-      }, 600);
+      }, 550);
     } catch (e: any) {
       setErrorMsg(e.message ?? "Something went wrong");
       setGameState("error");
     }
-  }, [gameState, selectedZone, getCustomerToken, queryClient]);
+  }, [getCustomerToken, queryClient]);
 
-  const handleReset = useCallback(() => {
-    setSelectedZone(null);
-    setGameState("idle");
-    ballAnim.setValue(0);
-    keeperAnim.setValue(0);
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => gameStateRef.current === "idle",
+      onMoveShouldSetPanResponder: () => gameStateRef.current === "idle",
+      onPanResponderGrant: () => {
+        if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setIsDragging(true);
+        Animated.timing(aimIndicatorOpacity, { toValue: 1, duration: 150, useNativeDriver: true }).start();
+        ballPos.setOffset({ x: (ballPos.x as any).__getValue(), y: (ballPos.y as any).__getValue() });
+        ballPos.setValue({ x: 0, y: 0 });
+      },
+      onPanResponderMove: (_, gesture) => {
+        // Only allow upward drags
+        const clampedDy = Math.min(0, gesture.dy);
+        const clampedDx = Math.max(-80, Math.min(80, gesture.dx));
+        ballPos.setValue({ x: clampedDx, y: clampedDy });
+      },
+      onPanResponderRelease: (_, gesture) => {
+        ballPos.flattenOffset();
+        setIsDragging(false);
+        Animated.timing(aimIndicatorOpacity, { toValue: 0, duration: 100, useNativeDriver: true }).start();
+
+        const isFlick = gesture.vy < -0.5 || gesture.dy < -55;
+        if (isFlick && gameStateRef.current === "idle") {
+          const zone = calcAimZone(gesture.dx, gesture.vy);
+          setAimedZone(zone);
+          setGameState("shooting");
+          fireShot(zone);
+        } else {
+          resetBall();
+        }
+      },
+      onPanResponderTerminate: () => {
+        ballPos.flattenOffset();
+        setIsDragging(false);
+        Animated.timing(aimIndicatorOpacity, { toValue: 0, duration: 100, useNativeDriver: true }).start();
+        resetBall();
+      },
+    })
+  ).current;
+
+  // Dev-only reset (clears AsyncStorage so you can replay)
+  const devReset = useCallback(async () => {
+    await AsyncStorage.removeItem(WC_STORAGE_KEY);
+    ballPos.setValue({ x: 0, y: 0 });
+    ballScale.setValue(1);
+    ballOpacity.setValue(1);
+    keeperX.setValue(0);
+    keeperScale.setValue(1);
     resultOpacity.setValue(0);
     shakeAnim.setValue(0);
-  }, []);
+    setResult(null);
+    setGameState("idle");
+    queryClient.invalidateQueries({ queryKey: ["/api/game/wc-status"] });
+  }, [queryClient]);
 
   if (!isAuthenticated) return null;
+
   if (gameState === "loading" || statusLoading) {
     return (
       <View style={styles.card}>
-        <ActivityIndicator color="#FFFFFF" />
+        <LinearGradient colors={["#0d1f0d", "#051a0d"]} style={StyleSheet.absoluteFillObject} />
+        <View style={styles.centreWrap}>
+          <ActivityIndicator color="#4ade80" size="large" />
+        </View>
       </View>
     );
   }
+
   if (gameState === "unavailable") {
     return (
       <View style={styles.card}>
         <LinearGradient colors={["#1a2a1a", "#0d1a0d"]} style={StyleSheet.absoluteFillObject} />
-        <View style={styles.unavailableWrap}>
-          <Text style={styles.trophy}>🏆</Text>
-          <Text style={styles.unavailableTitle}>World Cup Penalty Challenge</Text>
-          <Text style={styles.unavailableDesc}>
-            Available on World Cup match days only.{"\n"}Check back on the next match day!
+        <View style={styles.centreWrap}>
+          <Text style={styles.bigEmoji}>🏆</Text>
+          <Text style={styles.stateTitle}>World Cup Penalty Challenge</Text>
+          <Text style={styles.stateDesc}>
+            Available 30 minutes before each World Cup match.{"\n"}Check back on the next match day!
           </Text>
           {statusData?.todayMatch && (
-            <View style={styles.nextMatchPill}>
-              <Text style={styles.nextMatchText}>
+            <View style={styles.nextPill}>
+              <Text style={styles.nextPillText}>
                 Next: {statusData.todayMatch.homeShort} vs {statusData.todayMatch.awayShort}
               </Text>
             </View>
@@ -253,23 +361,21 @@ export function PenaltyShootoutGame() {
           colors={won ? ["#0d2d0d", "#1a4a1a"] : ["#1a1a2e", "#16213e"]}
           style={StyleSheet.absoluteFillObject}
         />
-        <View style={styles.unavailableWrap}>
-          <Text style={styles.trophy}>{won ? "⚽" : "🧤"}</Text>
-          <Text style={styles.unavailableTitle}>
-            {won ? "GOAL! Well played!" : "Saved — better luck next match!"}
-          </Text>
+        <View style={styles.centreWrap}>
+          <Text style={styles.bigEmoji}>{won ? "⚽" : "🧤"}</Text>
+          <Text style={styles.stateTitle}>{won ? "GOAL! Well played!" : "Saved — better luck next match!"}</Text>
           {result?.prize && (
             <View style={styles.prizeBox}>
               <Text style={styles.prizeBoxName}>{result.prize.name}</Text>
-              {result.prize.description ? (
-                <Text style={styles.prizeBoxDesc}>{result.prize.description}</Text>
-              ) : null}
-              {result.giftCardGan ? (
-                <Text style={styles.prizeBoxSub}>Gift Card: {result.giftCardGan}</Text>
-              ) : null}
+              {result.prize.description ? <Text style={styles.prizeBoxDesc}>{result.prize.description}</Text> : null}
             </View>
           )}
-          <Text style={styles.unavailableDesc}>Come back tomorrow for another shot!</Text>
+          <Text style={styles.stateDesc}>Come back on the next match day for another shot!</Text>
+          {__DEV__ && (
+            <Pressable onPress={devReset} style={styles.devBtn}>
+              <Text style={styles.devBtnText}>🔧 Reset for testing</Text>
+            </Pressable>
+          )}
         </View>
       </View>
     );
@@ -283,25 +389,23 @@ export function PenaltyShootoutGame() {
           colors={won ? ["#0a2a0a", "#1a5c1a", "#0a3a0a"] : ["#1a0a0a", "#3a1010", "#1a0a0a"]}
           style={StyleSheet.absoluteFillObject}
         />
-        <View style={styles.resultWrap}>
+        <View style={styles.centreWrap}>
           <Animated.Text style={[styles.bigEmoji, { transform: [{ translateX: shakeAnim }] }]}>
             {won ? "⚽" : "🧤"}
           </Animated.Text>
-          <Text style={[styles.resultTitle, { color: won ? "#4ade80" : "#f87171" }]}>
+          <Text style={[styles.stateTitle, { color: won ? "#4ade80" : "#f87171" }]}>
             {won ? "GOAL!" : "SAVED!"}
           </Text>
-          <Text style={styles.resultSub}>
-            {won ? "You scored in the " + (ZONES.find(z => z.id === selectedZone)?.label.replace("\n", " ") ?? "") + "!" : "The keeper got there!"}
+          <Text style={styles.stateDesc}>
+            {won ? "You scored — nice penalty!" : "The keeper got there — better luck next match!"}
           </Text>
           {won && result?.prize && (
             <View style={styles.prizeBox}>
               <Text style={styles.prizeBoxLabel}>🏅 YOUR PRIZE</Text>
               <Text style={styles.prizeBoxName}>{result.prize.name}</Text>
-              {result.prize.description ? (
-                <Text style={styles.prizeBoxDesc}>{result.prize.description}</Text>
-              ) : null}
+              {result.prize.description ? <Text style={styles.prizeBoxDesc}>{result.prize.description}</Text> : null}
               {result.giftCardGan ? (
-                <View style={styles.ganBox}>
+                <View style={styles.ganRow}>
                   <Ionicons name="card-outline" size={14} color="#4ade80" />
                   <Text style={styles.ganText}>Gift Card: {result.giftCardGan}</Text>
                 </View>
@@ -311,8 +415,10 @@ export function PenaltyShootoutGame() {
               )}
             </View>
           )}
-          {!won && (
-            <Text style={styles.savedDesc}>No prize this time — come back on the next match day!</Text>
+          {__DEV__ && (
+            <Pressable onPress={devReset} style={styles.devBtn}>
+              <Text style={styles.devBtnText}>🔧 Reset for testing</Text>
+            </Pressable>
           )}
         </View>
       </Animated.View>
@@ -323,11 +429,14 @@ export function PenaltyShootoutGame() {
     return (
       <View style={styles.card}>
         <LinearGradient colors={["#2a0a0a", "#1a0505"]} style={StyleSheet.absoluteFillObject} />
-        <View style={styles.unavailableWrap}>
+        <View style={styles.centreWrap}>
           <Ionicons name="warning-outline" size={36} color="#f87171" />
-          <Text style={styles.unavailableTitle}>Something went wrong</Text>
-          <Text style={styles.unavailableDesc}>{errorMsg ?? "Please try again."}</Text>
-          <Pressable onPress={handleReset} style={styles.retryBtn}>
+          <Text style={styles.stateTitle}>Something went wrong</Text>
+          <Text style={styles.stateDesc}>{errorMsg ?? "Please try again."}</Text>
+          <Pressable
+            onPress={() => { resetBall(); setGameState("idle"); setErrorMsg(null); }}
+            style={styles.retryBtn}
+          >
             <Text style={styles.retryText}>Try Again</Text>
           </Pressable>
         </View>
@@ -335,140 +444,121 @@ export function PenaltyShootoutGame() {
     );
   }
 
-  // idle or aiming
+  // ── idle / shooting ───────────────────────────────────────────────────────
   const match = statusData?.todayMatch;
+  const isLive = match?.status === "live";
 
   return (
     <View style={styles.card}>
+      {/* Grass */}
       <LinearGradient
-        colors={["#0d1f0d", "#0a2a1a", "#051a0d"]}
+        colors={["#0d2a0d", "#0a3818", "#062010"]}
+        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFillObject}
       />
-      {/* Grass texture overlay */}
       <View style={styles.grassStripes} pointerEvents="none">
-        {Array.from({ length: 8 }).map((_, i) => (
+        {Array.from({ length: 9 }).map((_, i) => (
           <View key={i} style={[styles.grassStripe, i % 2 === 0 && styles.grassStripeDark]} />
         ))}
       </View>
 
       {/* Header */}
       <View style={styles.header}>
-        <LinearGradient
-          colors={["rgba(0,0,0,0.7)", "transparent"]}
-          style={StyleSheet.absoluteFillObject}
-        />
-        <View style={styles.headerContent}>
-          <Text style={styles.headerEmoji}>⚽</Text>
-          <View style={styles.headerTextCol}>
-            <Text style={styles.headerTitle}>PENALTY CHALLENGE</Text>
-            <Text style={styles.headerSub}>WORLD CUP 2026 · ONE SHOT PER MATCH DAY</Text>
-          </View>
+        <View style={styles.headerRow}>
+          <Text style={styles.headerTitle}>⚽  PENALTY CHALLENGE</Text>
+          {match && (
+            <View style={[styles.matchPill, isLive && styles.matchPillLive]}>
+              {isLive && <View style={styles.liveDot} />}
+              <Text style={styles.matchPillText}>
+                {isLive
+                  ? `LIVE ${match.minute ?? ""}  ${match.homeShort} vs ${match.awayShort}`
+                  : `${match.homeShort} vs ${match.awayShort}`}
+              </Text>
+            </View>
+          )}
         </View>
-        {match && (
-          <View style={styles.matchPill}>
-            <View style={styles.matchPillDot} />
-            <Text style={styles.matchPillText}>
-              {match.status === "live"
-                ? `LIVE ${match.minute ?? ""} · ${match.homeShort} ${match.homeName === match.homeShort ? "" : ""} vs ${match.awayShort}`
-                : `TODAY · ${match.homeShort} vs ${match.awayShort}`}
-            </Text>
-          </View>
-        )}
+        <Text style={styles.headerSub}>WORLD CUP 2026 · ONE SHOT PER MATCH</Text>
       </View>
 
-      {/* Goal frame */}
-      <View style={styles.goalSection}>
+      {/* Goal */}
+      <View style={styles.goalArea}>
         <View style={styles.goalPost}>
-          {/* Crossbar */}
-          <View style={styles.crossbar} />
-          {/* Left post */}
-          <View style={[styles.goalSidePost, { left: 0 }]} />
-          {/* Right post */}
-          <View style={[styles.goalSidePost, { right: 0 }]} />
-
-          {/* Zone grid */}
-          <View style={styles.zoneGrid}>
-            {ZONES.map((zone) => {
-              const isSelected = selectedZone === zone.id;
-              return (
-                <Pressable
-                  key={zone.id}
-                  onPress={() => handleZoneSelect(zone.id)}
-                  disabled={gameState === "shooting"}
-                  style={({ pressed }) => [
-                    styles.zone,
-                    isSelected && styles.zoneSelected,
-                    pressed && styles.zonePressed,
-                  ]}
-                >
-                  <Text style={styles.zoneArrow}>{zone.icon}</Text>
-                  <Text style={styles.zoneLabel}>{zone.label}</Text>
-                </Pressable>
-              );
-            })}
+          {/* Net lines */}
+          <View style={styles.netLines}>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <View key={i} style={styles.netVLine} />
+            ))}
           </View>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <View key={i} style={[styles.netHLine, { top: `${30 + i * 28}%` as any }]} />
+          ))}
+          {/* Aim zone grid — lights up while dragging */}
+          {(["tl","tc","tr","bl","bc","br"] as const).map((zone) => (
+            <Animated.View
+              key={zone}
+              style={[
+                styles.aimZoneHint,
+                {
+                  top: zone.startsWith("t") ? 0 : "50%",
+                  left: zone.endsWith("l") ? 0 : zone.endsWith("c") ? "33.3%" : "66.6%",
+                  opacity: aimIndicatorOpacity,
+                },
+              ]}
+            />
+          ))}
         </View>
 
-        {/* Goalkeeper line */}
+        {/* Keeper */}
         <View style={styles.keeperLine}>
           <Animated.Text style={[
             styles.keeperEmoji,
-            {
-              transform: [{
-                translateX: keeperAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, selectedZone?.startsWith("t") || selectedZone?.startsWith("b")
-                    ? (selectedZone?.endsWith("l") ? -40 : selectedZone?.endsWith("r") ? 40 : 0)
-                    : 0],
-                }),
-              }],
-            },
+            { transform: [{ translateX: keeperX }, { scale: keeperScale }] },
           ]}>
             🧤
           </Animated.Text>
         </View>
       </View>
 
-      {/* Ball / shoot zone */}
-      <View style={styles.pitchLine}>
+      {/* Pitch + ball */}
+      <View style={styles.pitchSection}>
+        {/* Penalty arc */}
+        <View style={styles.penaltyArc} />
         <View style={styles.penaltySpot} />
-        <Animated.View style={[
-          styles.ballWrap,
-          {
-            transform: [{
-              translateY: ballAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -100] }),
-            }, {
-              scale: ballAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.5] }),
-            }],
-          },
-        ]}>
+
+        {/* Draggable ball */}
+        <Animated.View
+          style={[
+            styles.ballWrap,
+            {
+              transform: [
+                ...ballPos.getTranslateTransform(),
+                { scale: ballScale },
+              ],
+            },
+          ]}
+          {...panResponder.panHandlers}
+        >
           <Text style={styles.ballEmoji}>⚽</Text>
+          {/* Drag handle hint */}
+          {gameState === "idle" && !isDragging && (
+            <View style={styles.dragHint}>
+              <Text style={styles.dragHintArrow}>↑</Text>
+            </View>
+          )}
         </Animated.View>
       </View>
 
-      {/* CTA */}
-      <View style={styles.ctaRow}>
+      {/* Instruction */}
+      <View style={styles.instruction}>
         {gameState === "idle" && (
-          <View style={styles.promptWrap}>
-            <Text style={styles.promptText}>👆 Tap a zone to aim your shot</Text>
-          </View>
-        )}
-        {gameState === "aiming" && (
-          <View style={styles.aimRow}>
-            <Pressable onPress={handleReset} style={styles.cancelBtn}>
-              <Text style={styles.cancelText}>Cancel</Text>
-            </Pressable>
-            <Pressable onPress={handleShoot} style={styles.shootBtn}>
-              <LinearGradient colors={["#16a34a", "#15803d"]} style={styles.shootBtnGrad}>
-                <Text style={styles.shootText}>⚽ SHOOT!</Text>
-              </LinearGradient>
-            </Pressable>
-          </View>
+          <Text style={styles.instructionText}>
+            {isDragging ? "Release to shoot! 🔥" : "Drag ⚽ upward to shoot"}
+          </Text>
         )}
         {gameState === "shooting" && (
-          <View style={styles.promptWrap}>
-            <ActivityIndicator color="#FFFFFF" />
-            <Text style={styles.promptText}>  Shooting…</Text>
+          <View style={styles.shootingRow}>
+            <ActivityIndicator color="#4ade80" size="small" />
+            <Text style={styles.instructionText}>  Flying…</Text>
           </View>
         )}
       </View>
@@ -482,7 +572,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     borderRadius: 20,
     overflow: "hidden",
-    minHeight: 380,
+    height: 430,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.5,
@@ -495,339 +585,297 @@ const styles = StyleSheet.create({
   },
   grassStripe: {
     flex: 1,
-    backgroundColor: "rgba(22,101,34,0.3)",
+    backgroundColor: "rgba(22,101,34,0.25)",
   },
   grassStripeDark: {
-    backgroundColor: "rgba(15,70,23,0.3)",
+    backgroundColor: "rgba(10,60,18,0.25)",
   },
+
+  // Header
   header: {
     paddingHorizontal: 16,
     paddingTop: 14,
     paddingBottom: 10,
-    position: "relative",
   },
-  headerContent: {
+  headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-  },
-  headerEmoji: {
-    fontSize: 28,
-  },
-  headerTextCol: {
-    flex: 1,
+    justifyContent: "space-between",
+    gap: 8,
   },
   headerTitle: {
     color: "#FFFFFF",
     fontFamily: "Montserrat_700Bold",
-    fontSize: 16,
-    letterSpacing: 1.5,
-    textShadowColor: "rgba(0,0,0,0.6)",
+    fontSize: 14,
+    letterSpacing: 1.2,
+    textShadowColor: "rgba(0,0,0,0.5)",
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+    textShadowRadius: 3,
   },
   headerSub: {
-    color: "rgba(255,255,255,0.6)",
+    color: "rgba(255,255,255,0.45)",
     fontFamily: "Montserrat_500Medium",
     fontSize: 9,
     letterSpacing: 0.8,
-    marginTop: 2,
+    marginTop: 3,
   },
   matchPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginTop: 8,
+    gap: 5,
     backgroundColor: "rgba(0,0,0,0.4)",
     borderRadius: 20,
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
     paddingVertical: 4,
-    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: "rgba(74,222,128,0.2)",
   },
-  matchPillDot: {
-    width: 6,
-    height: 6,
+  matchPillLive: {
+    borderColor: "rgba(255,59,48,0.4)",
+    backgroundColor: "rgba(255,59,48,0.1)",
+  },
+  liveDot: {
+    width: 5,
+    height: 5,
     borderRadius: 3,
-    backgroundColor: "#4ade80",
+    backgroundColor: "#ff3b30",
   },
   matchPillText: {
-    color: "rgba(255,255,255,0.85)",
+    color: "rgba(255,255,255,0.9)",
     fontFamily: "Montserrat_600SemiBold",
-    fontSize: 10,
-    letterSpacing: 0.5,
+    fontSize: 9,
+    letterSpacing: 0.4,
   },
-  goalSection: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
+
+  // Goal
+  goalArea: {
+    paddingHorizontal: 22,
   },
   goalPost: {
+    height: 130,
     borderWidth: 3,
     borderColor: "#FFFFFF",
+    borderBottomWidth: 0,
     borderRadius: 2,
-    backgroundColor: "rgba(0,0,0,0.25)",
-    position: "relative",
-    height: 140,
+    backgroundColor: "rgba(0,0,0,0.3)",
     overflow: "hidden",
+    position: "relative",
   },
-  crossbar: {
+  netLines: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: "row",
+    justifyContent: "space-around",
+    paddingHorizontal: 2,
+  },
+  netVLine: {
+    width: 1,
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    marginHorizontal: 8,
+  },
+  netHLine: {
     position: "absolute",
-    top: 0,
     left: 0,
     right: 0,
-    height: 3,
-    backgroundColor: "#FFFFFF",
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.1)",
   },
-  goalSidePost: {
+  aimZoneHint: {
     position: "absolute",
-    top: 0,
-    bottom: 0,
-    width: 3,
-    backgroundColor: "#FFFFFF",
-  },
-  zoneGrid: {
-    flex: 1,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    padding: 4,
-    gap: 3,
-  },
-  zone: {
-    width: "31.5%",
-    height: 60,
-    borderRadius: 6,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    width: "33.3%",
+    height: "50%",
+    backgroundColor: "#4ade80",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 2,
-  },
-  zoneSelected: {
-    backgroundColor: "rgba(74,222,128,0.3)",
-    borderColor: "#4ade80",
-    borderWidth: 2,
-  },
-  zonePressed: {
-    backgroundColor: "rgba(255,255,255,0.2)",
-  },
-  zoneArrow: {
-    fontSize: 16,
-    color: "#FFFFFF",
-  },
-  zoneLabel: {
-    color: "rgba(255,255,255,0.7)",
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 8,
-    textAlign: "center",
-    letterSpacing: 0.3,
+    borderColor: "rgba(74,222,128,0.6)",
   },
   keeperLine: {
+    height: 36,
     alignItems: "center",
-    marginTop: 4,
-    height: 30,
     justifyContent: "center",
+    marginTop: 2,
   },
   keeperEmoji: {
-    fontSize: 24,
+    fontSize: 26,
   },
-  pitchLine: {
+
+  // Pitch / penalty area
+  pitchSection: {
+    flex: 1,
     alignItems: "center",
-    marginTop: 8,
-    position: "relative",
-    height: 50,
     justifyContent: "flex-end",
+    paddingBottom: 12,
+    position: "relative",
   },
-  penaltySpot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "rgba(255,255,255,0.5)",
+  penaltyArc: {
+    width: 70,
+    height: 35,
+    borderRadius: 35,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.2)",
+    borderBottomWidth: 0,
     marginBottom: 4,
   },
+  penaltySpot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: "rgba(255,255,255,0.5)",
+    marginBottom: 10,
+  },
   ballWrap: {
-    position: "absolute",
-    bottom: 0,
     alignItems: "center",
+    justifyContent: "center",
+    width: 52,
+    height: 52,
   },
   ballEmoji: {
-    fontSize: 28,
+    fontSize: 36,
   },
-  ctaRow: {
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    minHeight: 60,
-    justifyContent: "center",
+  dragHint: {
+    position: "absolute",
+    top: -18,
+    backgroundColor: "rgba(74,222,128,0.8)",
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
   },
-  promptWrap: {
-    flexDirection: "row",
+  dragHintArrow: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontFamily: "Montserrat_700Bold",
+  },
+
+  // Instruction bar
+  instruction: {
+    height: 38,
     alignItems: "center",
     justifyContent: "center",
   },
-  promptText: {
-    color: "rgba(255,255,255,0.75)",
-    fontFamily: "Montserrat_500Medium",
-    fontSize: 13,
-    textAlign: "center",
-  },
-  aimRow: {
-    flexDirection: "row",
-    gap: 12,
-    alignItems: "center",
-  },
-  cancelBtn: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-  },
-  cancelText: {
-    color: "rgba(255,255,255,0.6)",
+  instructionText: {
+    color: "rgba(255,255,255,0.7)",
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 13,
+    letterSpacing: 0.3,
   },
-  shootBtn: {
+  shootingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  // Non-game states
+  centreWrap: {
     flex: 1,
-    borderRadius: 12,
-    overflow: "hidden",
-  },
-  shootBtnGrad: {
-    paddingVertical: 14,
     alignItems: "center",
     justifyContent: "center",
-  },
-  shootText: {
-    color: "#FFFFFF",
-    fontFamily: "Montserrat_700Bold",
-    fontSize: 15,
-    letterSpacing: 1,
-  },
-  // Result screens
-  resultWrap: {
     padding: 28,
-    alignItems: "center",
     gap: 10,
   },
   bigEmoji: {
-    fontSize: 56,
-    marginBottom: 6,
+    fontSize: 54,
+    marginBottom: 4,
   },
-  resultTitle: {
-    fontFamily: "Montserrat_700Bold",
-    fontSize: 32,
-    letterSpacing: 3,
-  },
-  resultSub: {
-    color: "rgba(255,255,255,0.8)",
-    fontFamily: "Montserrat_500Medium",
-    fontSize: 13,
-    textAlign: "center",
-  },
-  savedDesc: {
-    color: "rgba(255,255,255,0.5)",
-    fontFamily: "Montserrat_500Medium",
-    fontSize: 12,
-    textAlign: "center",
-    marginTop: 8,
-  },
-  prizeBox: {
-    backgroundColor: "rgba(0,0,0,0.4)",
-    borderRadius: 14,
-    padding: 16,
-    marginTop: 10,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "rgba(74,222,128,0.3)",
-    width: "100%",
-  },
-  prizeBoxLabel: {
-    color: "#4ade80",
-    fontFamily: "Montserrat_700Bold",
-    fontSize: 10,
-    letterSpacing: 1.5,
-    marginBottom: 6,
-  },
-  prizeBoxName: {
+  stateTitle: {
     color: "#FFFFFF",
     fontFamily: "Montserrat_700Bold",
     fontSize: 18,
     textAlign: "center",
-  },
-  prizeBoxDesc: {
-    color: "rgba(255,255,255,0.7)",
-    fontFamily: "Montserrat_500Medium",
-    fontSize: 13,
-    textAlign: "center",
-    marginTop: 4,
-  },
-  prizeBoxSub: {
-    color: "rgba(255,255,255,0.5)",
-    fontFamily: "Montserrat_500Medium",
-    fontSize: 11,
-    textAlign: "center",
-    marginTop: 6,
-  },
-  ganBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 8,
-  },
-  ganText: {
-    color: "#4ade80",
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 13,
-  },
-  // Unavailable / already_played
-  unavailableWrap: {
-    padding: 32,
-    alignItems: "center",
-    gap: 10,
-  },
-  trophy: {
-    fontSize: 44,
-    marginBottom: 6,
-  },
-  unavailableTitle: {
-    color: "#FFFFFF",
-    fontFamily: "Montserrat_700Bold",
-    fontSize: 16,
-    textAlign: "center",
     letterSpacing: 0.5,
   },
-  unavailableDesc: {
+  stateDesc: {
     color: "rgba(255,255,255,0.6)",
     fontFamily: "Montserrat_500Medium",
     fontSize: 13,
     textAlign: "center",
     lineHeight: 20,
+    marginTop: 2,
   },
-  nextMatchPill: {
-    marginTop: 8,
+  nextPill: {
     backgroundColor: "rgba(74,222,128,0.15)",
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 6,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: "rgba(74,222,128,0.25)",
+  },
+  nextPillText: {
+    color: "#4ade80",
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
+  },
+  prizeBox: {
+    backgroundColor: "rgba(74,222,128,0.12)",
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: "rgba(74,222,128,0.3)",
+    padding: 14,
+    gap: 4,
+    alignItems: "center",
+    width: "100%",
+    marginTop: 4,
   },
-  nextMatchText: {
+  prizeBoxLabel: {
+    color: "#4ade80",
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 10,
+    letterSpacing: 1,
+  },
+  prizeBoxName: {
+    color: "#FFFFFF",
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 16,
+    textAlign: "center",
+  },
+  prizeBoxDesc: {
+    color: "rgba(255,255,255,0.7)",
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 12,
+    textAlign: "center",
+  },
+  prizeBoxSub: {
+    color: "#4ade80",
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 11,
+    textAlign: "center",
+    marginTop: 2,
+  },
+  ganRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 2,
+  },
+  ganText: {
     color: "#4ade80",
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 12,
   },
   retryBtn: {
-    marginTop: 12,
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(248,113,113,0.2)",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
+    borderColor: "rgba(248,113,113,0.4)",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    marginTop: 6,
   },
   retryText: {
-    color: "#FFFFFF",
+    color: "#f87171",
     fontFamily: "Montserrat_600SemiBold",
-    fontSize: 14,
+    fontSize: 13,
+  },
+  devBtn: {
+    marginTop: 12,
+    backgroundColor: "rgba(255,200,0,0.15)",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,200,0,0.3)",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  devBtnText: {
+    color: "#fbbf24",
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
   },
 });
