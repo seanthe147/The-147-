@@ -9267,27 +9267,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }): boolean {
     if (match.status === "none") return false;
     if (match.status === "live") return true;
-    // Treat the day of any upcoming match (kickoff within next 24h) as a match day
-    // so the banner / game appear early enough to be useful
     if (match.kickoffIso) {
       const kickoff = new Date(match.kickoffIso);
       const now = new Date();
       const diffMs = kickoff.getTime() - now.getTime();
-      const msInDay = 24 * 60 * 60 * 1000;
-      // Show all day on the match day (kickoff within next 24h OR already past today)
-      const londonToday = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
-      const londonKickoff = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" }).format(kickoff);
-      if (londonToday === londonKickoff) return true;
-      if (diffMs > 0 && diffMs < msInDay) return true;
-    }
-    if (match.status === "finished") {
-      // Still show for a few hours after FT so punters at the bar can still play
-      if (match.kickoffIso) {
-        const kickoff = new Date(match.kickoffIso);
-        const now = new Date();
-        const msSinceKickoff = now.getTime() - kickoff.getTime();
-        return msSinceKickoff < 4 * 60 * 60 * 1000;
-      }
+      // Show from 30 minutes before kickoff
+      if (diffMs >= 0 && diffMs <= 30 * 60 * 1000) return true;
+      // Still show for 4 hours after kickoff so punters at the bar can still play
+      if (diffMs < 0 && Math.abs(diffMs) < 4 * 60 * 60 * 1000) return true;
     }
     return false;
   }
