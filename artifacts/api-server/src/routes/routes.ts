@@ -3462,12 +3462,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // mint a real Square checkout link that redirects to an attacker
         // domain after payment.
         const redirectUrl = `${getPublicAppOrigin()}/api/bookings/${booking.id}/deposit-return`;
+        // Only pass buyerEmail if it looks like a real address — Square
+        // validates the field server-side and rejects anything with an
+        // unrecognised TLD (e.g. *.test, *.local), which would fail the
+        // whole checkout-link creation for an otherwise valid booking.
+        const emailForSquare = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(parsed.data.customerEmail ?? "")
+          ? parsed.data.customerEmail
+          : undefined;
         const paymentLink = await square.createDepositPaymentLink({
           amountPence: DEPOSIT_AMOUNT_PENCE,
           description: `Dining Deposit – Booking ${bookingRef} (${guestCount} guests)`,
           referenceId: bookingRef,
           redirectUrl,
-          buyerEmail: parsed.data.customerEmail,
+          buyerEmail: emailForSquare,
         });
         // Store the Square order ID (not the link ID) so the webhook can
         // perform an exact server-side match via payment.order_id.
