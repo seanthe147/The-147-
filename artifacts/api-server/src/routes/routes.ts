@@ -9466,11 +9466,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const londonDate = getGameLondonDate();
-      // TODO: RE-ENABLE BEFORE RELEASE — one-play-per-day limit (disabled for testing)
-      // const todaysPlays = await storage.getGamePlaysToday(customerId, londonDate);
-      // if (todaysPlays.length > 0) {
-      //   return res.status(429).json({ message: "You have already played today — come back tomorrow!", alreadyPlayed: true });
-      // }
+      const todaysPlays = await storage.getGamePlaysToday(customerId, londonDate);
+      if (todaysPlays.length > 0) {
+        return res.status(429).json({ message: "You have already played today — come back tomorrow!", alreadyPlayed: true });
+      }
 
       const [prizes, wonGroupPrizeIds] = await Promise.all([
         storage.getActiveGamePrizesForGame("scratch_card"),
