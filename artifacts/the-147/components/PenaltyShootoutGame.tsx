@@ -69,6 +69,7 @@ interface WcPlayResult {
   giftCardGan: string | null;
   playId: number;
   squareRewardIssued: boolean;
+  prizeClaimCode?: string | null;
 }
 
 interface WcStatusResult {
@@ -412,6 +413,13 @@ export function PenaltyShootoutGame() {
               ) : null}
               {result.squareRewardIssued && (
                 <Text style={styles.prizeBoxSub}>✓ Reward added to your loyalty account</Text>
+              )}
+              {result.prize?.prizeType === "reward_tier" && !result.squareRewardIssued && result.prizeClaimCode && (
+                <View style={styles.wcCodeBox}>
+                  <Text style={styles.wcCodeLabel}>YOUR CLAIM CODE</Text>
+                  <Text style={styles.wcCodeText}>{result.prizeClaimCode}</Text>
+                  <Text style={styles.wcCodeHint}>Show this to staff to collect your prize</Text>
+                </View>
               )}
             </View>
           )}
@@ -838,6 +846,35 @@ const styles = StyleSheet.create({
     fontSize: 11,
     textAlign: "center",
     marginTop: 2,
+  },
+  wcCodeBox: {
+    marginTop: 10,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    borderRadius: 12,
+    padding: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(74,222,128,0.4)",
+  },
+  wcCodeLabel: {
+    color: "#4ade80",
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 10,
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  wcCodeText: {
+    color: "#fff",
+    fontFamily: "Montserrat_800ExtraBold",
+    fontSize: 26,
+    letterSpacing: 6,
+  },
+  wcCodeHint: {
+    color: "rgba(255,255,255,0.6)",
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 11,
+    marginTop: 4,
+    textAlign: "center",
   },
   ganRow: {
     flexDirection: "row",

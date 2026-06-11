@@ -9207,6 +9207,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return active[active.length - 1];
   }
 
+  function generateClaimCode(): string {
+    // No confusable characters (0/O, 1/I, 5/S, 8/B)
+    const chars = "ACDEFGHJKLMNPQRTUVWXY234679";
+    return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+  }
+
   function getGameLondonDate(): string {
     const parts = new Intl.DateTimeFormat("en-GB", {
       timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit",
@@ -9378,6 +9384,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      const wcPrizeClaimCode = (prize && prize.prizeType === "reward_tier" && !autoClaimedAt && !saved) ? generateClaimCode() : null;
       const play = await storage.createGamePlay({
         customerId,
         prizeId: prize?.id ?? null,
@@ -9387,6 +9394,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         squareGroupAddedAt,
         claimedAt: autoClaimedAt,
         londonDate: wcDate, // prefixed so daily limits don't mix with scratch card
+        prizeClaimCode: wcPrizeClaimCode,
       });
 
       req.log.info({ customerId, saved, prizeId: prize?.id, playId: play.id }, "[WC_GAME] Penalty shot played");
@@ -9399,6 +9407,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         playId: play.id,
         squareRewardIssued: !!squareRewardId,
         squareGroupAdded: !!squareGroupAddedAt,
+        prizeClaimCode: wcPrizeClaimCode,
       });
     } catch (err: any) {
       req.log.error({ err }, "[WC_GAME] Play error");
@@ -9566,6 +9575,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      const scPrizeClaimCode = (prize && prize.prizeType === "reward_tier" && !autoClaimedAt) ? generateClaimCode() : null;
       const play = await storage.createGamePlay({
         customerId,
         prizeId: prize?.id ?? null,
@@ -9575,6 +9585,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         squareGroupAddedAt,
         claimedAt: autoClaimedAt,
         londonDate,
+        prizeClaimCode: scPrizeClaimCode,
       });
 
       res.json({
@@ -9585,6 +9596,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         playId: play.id,
         squareRewardIssued: !!squareRewardId,
         squareGroupAdded: !!squareGroupAddedAt,
+        prizeClaimCode: scPrizeClaimCode,
       });
     } catch (err: any) {
       console.error("[Game] Play error:", err.message);
@@ -9614,6 +9626,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const claims = await storage.getPendingRewardClaims();
       res.json(claims);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Redeem a game prize by its 6-char claim code — staff enter this at the bar or booking screen.
+  app.post("/api/staff/game/claims/redeem-code", staffAuth, async (req: Request & { staffId?: number }, res) => {
+    const { code } = req.body as { code?: string };
+    if (!code || typeof code !== "string") return res.status(400).json({ message: "code is required" });
+    try {
+      const result = await storage.redeemGamePlayByCode(code, req.staffId!);
+      if (!result) return res.status(404).json({ message: "Code not found or already redeemed" });
+      res.json({ success: true, playId: result.id, customerName: result.customerName, prizeName: result.prizeName });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

@@ -104,6 +104,19 @@ export default function AdminBookingsScreen() {
   const { isAuthenticated, isManager, username, isLoading: authLoading } = useStaffAuth();
   const [showAddNotice, setShowAddNotice] = useState(false);
   const [newNoticeText, setNewNoticeText] = useState("");
+  const [prizeCode, setPrizeCode] = useState("");
+  const [prizeCodeResult, setPrizeCodeResult] = useState<{ prizeName: string; customerName: string | null } | null>(null);
+  const redeemCodeMutation = useMutation({
+    mutationFn: async (code: string) => {
+      const res = await apiRequest("POST", "/api/staff/game/claims/redeem-code", { code });
+      return res.json() as Promise<{ success: boolean; prizeName: string; customerName: string | null }>;
+    },
+    onSuccess: (data) => { setPrizeCodeResult({ prizeName: data.prizeName, customerName: data.customerName }); setPrizeCode(""); },
+    onError: (err: Error) => {
+      const msg = err.message || "Code not found or already redeemed";
+      if (Platform.OS === "web") window.alert(msg); else Alert.alert("Invalid code", msg);
+    },
+  });
 
   // Staff booking modal state
   const [showWalkIn, setShowWalkIn] = useState(false);
@@ -499,6 +512,42 @@ export default function AdminBookingsScreen() {
             <Ionicons name="add" size={20} color="#fff" />
           </Pressable>
         </View>
+      </View>
+
+      {/* PRIZE CODE SHORTCUT */}
+      <View style={[styles.prizeCodeBar, { marginHorizontal: tabletPad }]}>
+        <Ionicons name="ticket-outline" size={15} color="#10B981" />
+        <TextInput
+          style={styles.prizeCodeInput}
+          value={prizeCode}
+          onChangeText={(t) => { setPrizeCode(t.toUpperCase()); setPrizeCodeResult(null); }}
+          placeholder="Prize code…"
+          placeholderTextColor="#9CA3AF"
+          autoCapitalize="characters"
+          maxLength={8}
+        />
+        {prizeCodeResult ? (
+          <View style={styles.prizeCodeSuccess}>
+            <Ionicons name="checkmark-circle" size={14} color="#059669" />
+            <Text style={styles.prizeCodeSuccessText} numberOfLines={1}>
+              {prizeCodeResult.prizeName}{prizeCodeResult.customerName ? ` · ${prizeCodeResult.customerName}` : ""}
+            </Text>
+          </View>
+        ) : (
+          <Pressable
+            onPress={() => {
+              const c = prizeCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+              if (c.length < 4) return;
+              redeemCodeMutation.mutate(c);
+            }}
+            disabled={redeemCodeMutation.isPending || prizeCode.trim().length < 4}
+            style={[styles.prizeCodeBtn, (redeemCodeMutation.isPending || prizeCode.trim().length < 4) && { opacity: 0.4 }]}
+          >
+            {redeemCodeMutation.isPending
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <Text style={styles.prizeCodeBtnText}>Redeem</Text>}
+          </Pressable>
+        )}
       </View>
 
       {/* NOTICES SECTION */}
@@ -1231,6 +1280,53 @@ const styles = StyleSheet.create({
   actionText: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 12,
+  },
+  prizeCodeBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F0FDF4",
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "#BBF7D0",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    gap: 8,
+  },
+  prizeCodeInput: {
+    flex: 1,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 7,
+    paddingHorizontal: 8,
+    height: 34,
+    fontSize: 14,
+    fontFamily: "Montserrat_700Bold",
+    color: "#111827",
+    letterSpacing: 2,
+  },
+  prizeCodeBtn: {
+    backgroundColor: "#10B981",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 7,
+  },
+  prizeCodeBtnText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 12,
+    color: "#fff",
+  },
+  prizeCodeSuccess: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    flex: 1,
+  },
+  prizeCodeSuccessText: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 12,
+    color: "#059669",
+    flex: 1,
   },
   noticesSection: {
     backgroundColor: "#FEF3C7",

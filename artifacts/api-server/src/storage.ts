@@ -680,6 +680,8 @@ export async function runStartupMigrations() {
       );
     `);
 
+    await client.query(`ALTER TABLE game_plays ADD COLUMN IF NOT EXISTS prize_claim_code TEXT;`);
+
     console.log("[DB] Startup migrations applied");
   } catch (err: any) {
     console.error("[DB] Startup migration failed (non-fatal):", err.message);
@@ -3409,6 +3411,7 @@ export class DatabaseStorage implements IStorage {
     claimedAt?: Date | null;
     claimedByStaffId?: number | null;
     londonDate: string;
+    prizeClaimCode?: string | null;
   }): Promise<GamePlay> {
     const [play] = await db.insert(gamePlays).values({ ...data, playedAt: new Date() }).returning();
     return play;
@@ -3418,11 +3421,11 @@ export class DatabaseStorage implements IStorage {
   // customer_group prizes are fully automatic (added/removed by the system) and
   // never appear here — if the group add fails at win time, the play is auto-claimed
   // immediately in the game route so it never lands in this list.
-  async getPendingRewardClaims(): Promise<Array<{ id: number; customerId: number; customerName: string | null; prizeName: string; prizeType: string; playedAt: Date; londonDate: string }>> {
+  async getPendingRewardClaims(): Promise<Array<{ id: number; customerId: number; customerName: string | null; prizeName: string; prizeType: string; playedAt: Date; londonDate: string; prizeClaimCode: string | null }>> {
     const plays = await db.select().from(gamePlays)
       .where(and(isNotNull(gamePlays.prizeId), isNull(gamePlays.claimedAt)))
       .orderBy(desc(gamePlays.playedAt));
-    const result: Array<{ id: number; customerId: number; customerName: string | null; prizeName: string; prizeType: string; playedAt: Date; londonDate: string }> = [];
+    const result: Array<{ id: number; customerId: number; customerName: string | null; prizeName: string; prizeType: string; playedAt: Date; londonDate: string; prizeClaimCode: string | null }> = [];
     for (const play of plays) {
       if (!play.prizeId) continue;
       const [prize] = await db.select().from(gamePrizes).where(eq(gamePrizes.id, play.prizeId));
@@ -3438,9 +3441,31 @@ export class DatabaseStorage implements IStorage {
         prizeType: prize.prizeType,
         playedAt: play.playedAt,
         londonDate: play.londonDate,
+        prizeClaimCode: play.prizeClaimCode ?? null,
       });
     }
     return result;
+  }
+
+  async redeemGamePlayByCode(code: string, staffId: number): Promise<{ id: number; customerName: string | null; prizeName: string } | null> {
+    const normalised = code.toUpperCase().trim().replace(/[^A-Z0-9]/g, "");
+    const [play] = await db.select().from(gamePlays)
+      .where(and(eq(gamePlays.prizeClaimCode, normalised), isNull(gamePlays.claimedAt)));
+    if (!play) return null;
+    const [updated] = await db.update(gamePlays)
+      .set({ claimedAt: new Date(), claimedByStaffId: staffId })
+      .where(and(eq(gamePlays.id, play.id), isNull(gamePlays.claimedAt)))
+      .returning();
+    if (!updated) return null;
+    const prizeName = play.prizeId
+      ? (await db.select({ name: gamePrizes.name }).from(gamePrizes).where(eq(gamePrizes.id, play.prizeId)))[0]?.name ?? "Prize"
+      : "Prize";
+    const custName = (await db.select({ name: customers.name }).from(customers).where(eq(customers.id, play.customerId)))[0];
+    return {
+      id: play.id,
+      customerName: custName ? decrypt(custName.name) : null,
+      prizeName,
+    };
   }
 
   // Returns all prize IDs this customer has ever won (any status) for customer_group prizes.

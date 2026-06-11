@@ -71,6 +71,7 @@ interface GameResult {
   playId: number;
   squareRewardIssued?: boolean;
   squareGroupAdded?: boolean;
+  prizeClaimCode?: string | null;
 }
 
 interface ScratchPoint {
@@ -172,8 +173,13 @@ function PrizeContent({ result, error }: { result: GameResult | null; error: str
         <View style={prize.claimBox}>
           <Ionicons name="ticket-outline" size={16} color="#059669" />
           <View style={prize.claimTextCol}>
-            <Text style={prize.claimLabel}>Show this screen to staff to claim</Text>
-            <Text style={prize.claimRef}>Ref #{result.playId.toString().padStart(5, "0")}</Text>
+            <Text style={prize.claimLabel}>Show this code to staff to claim</Text>
+            {result.prizeClaimCode ? (
+              <Text style={prize.claimCode}>{result.prizeClaimCode}</Text>
+            ) : (
+              <Text style={prize.claimRef}>Ref #{result.playId.toString().padStart(5, "0")}</Text>
+            )}
+            <Text style={prize.claimHint}>Staff will enter this code to redeem your prize</Text>
           </View>
         </View>
       )}
@@ -747,6 +753,7 @@ const prize = StyleSheet.create({
   claimTextCol: { flex: 1, gap: 3 },
   claimLabel: { fontFamily: "Montserrat_600SemiBold", fontSize: 12, color: "#34D399" },
   claimRef:   { fontFamily: "Montserrat_700Bold", fontSize: 16, color: "#fff", letterSpacing: 1.5 },
+  claimCode:  { fontFamily: "Montserrat_800ExtraBold", fontSize: 24, color: "#fff", letterSpacing: 5, marginVertical: 4 },
   claimHint:  { fontFamily: "Montserrat_400Regular", fontSize: 11, color: "rgba(255,255,255,0.6)", lineHeight: 15 },
 });
 

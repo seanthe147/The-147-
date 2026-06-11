@@ -1050,6 +1050,10 @@ export const gamePlays = pgTable("game_plays", {
   // null = pending; non-null = claimed/removed.
   claimedAt: timestamp("claimed_at"),
   claimedByStaffId: integer("claimed_by_staff_id"),
+  // Short human-friendly code shown to the customer after winning a reward_tier prize.
+  // Staff enter this code to redeem the prize at the bar or on the booking screen.
+  // Null for auto-claimed prizes (loyalty_points, gift_card, customer_group).
+  prizeClaimCode: text("prize_claim_code"),
 });
 
 export type GamePlay = typeof gamePlays.$inferSelect;

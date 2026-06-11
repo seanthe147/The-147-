@@ -72,6 +72,7 @@ interface PendingClaim {
   prizeType: string;
   playedAt: string;
   londonDate: string;
+  prizeClaimCode: string | null;
 }
 
 // ── Empty prize template ───────────────────────────────────────────────────────
@@ -836,6 +837,80 @@ const editor = StyleSheet.create({
   },
 });
 
+// ── Redeem-by-code widget ─────────────────────────────────────────────────────
+
+function RedeemByCodeWidget({ onSuccess }: { onSuccess: () => void }) {
+  const [code, setCode] = useState("");
+  const [lastResult, setLastResult] = useState<{ customerName: string | null; prizeName: string } | null>(null);
+
+  const redeemMutation = useMutation({
+    mutationFn: async (c: string) => {
+      const res = await apiRequest("POST", "/api/staff/game/claims/redeem-code", { code: c });
+      return res.json() as Promise<{ success: boolean; customerName: string | null; prizeName: string }>;
+    },
+    onSuccess: (data) => {
+      setLastResult({ customerName: data.customerName, prizeName: data.prizeName });
+      setCode("");
+      onSuccess();
+    },
+    onError: (err: Error) => {
+      const msg = err.message || "Code not found or already redeemed";
+      if (Platform.OS === "web") window.alert(msg);
+      else Alert.alert("Invalid code", msg);
+    },
+  });
+
+  const handleRedeem = () => {
+    const trimmed = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (trimmed.length < 4) {
+      if (Platform.OS === "web") window.alert("Enter the 6-character prize code");
+      else Alert.alert("Invalid code", "Enter the 6-character prize code");
+      return;
+    }
+    redeemMutation.mutate(trimmed);
+  };
+
+  return (
+    <View style={styles.redeemWidget}>
+      <View style={styles.redeemRow}>
+        <Ionicons name="ticket-outline" size={16} color="#10B981" style={{ marginTop: 1 }} />
+        <TextInput
+          style={styles.redeemInput}
+          value={code}
+          onChangeText={(t) => { setCode(t.toUpperCase()); setLastResult(null); }}
+          placeholder="Enter prize code"
+          placeholderTextColor="#9CA3AF"
+          autoCapitalize="characters"
+          maxLength={8}
+          testID="redeem-code-input"
+        />
+        <Pressable
+          onPress={handleRedeem}
+          disabled={redeemMutation.isPending || !code.trim()}
+          style={({ pressed }) => [
+            styles.redeemBtn,
+            (redeemMutation.isPending || !code.trim()) && { opacity: 0.5 },
+            pressed && { opacity: 0.75 },
+          ]}
+          testID="redeem-code-btn"
+        >
+          {redeemMutation.isPending
+            ? <ActivityIndicator size="small" color="#fff" />
+            : <Text style={styles.redeemBtnText}>Redeem</Text>}
+        </Pressable>
+      </View>
+      {lastResult && (
+        <View style={styles.redeemSuccess}>
+          <Ionicons name="checkmark-circle" size={14} color="#059669" />
+          <Text style={styles.redeemSuccessText}>
+            ✓ Claimed — {lastResult.prizeName} for {lastResult.customerName ?? "customer"}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
 // ── Main screen ───────────────────────────────────────────────────────────────
 
 export default function AdminGameScreen() {
@@ -1290,6 +1365,11 @@ export default function AdminGameScreen() {
         {/* ── Prize Claims ──────────────────────────────────────────────── */}
         <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Prize Claims</Text>
 
+        <RedeemByCodeWidget onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["/api/staff/game/pending-claims"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/staff/game/winners"] });
+        }} />
+
         {claimsQuery.isLoading ? (
           <ActivityIndicator color={Colors.brand.gold} />
         ) : (claimsQuery.data ?? []).length === 0 ? (
@@ -1302,9 +1382,14 @@ export default function AdminGameScreen() {
               <View key={claim.id} style={styles.claimRow}>
                 <View style={styles.winnerLeft}>
                   <Text style={styles.winnerName}>{claim.customerName ?? "Unknown customer"}</Text>
-                  <Text style={styles.winnerPrize}>
-                    {claim.prizeName} · <Text style={{ color: "#34D399" }}>Ref #{claim.id.toString().padStart(5, "0")}</Text>
-                  </Text>
+                  <Text style={styles.winnerPrize}>{claim.prizeName}</Text>
+                  {claim.prizeClaimCode ? (
+                    <View style={styles.claimCodePill}>
+                      <Text style={styles.claimCodePillText}>{claim.prizeClaimCode}</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.winnerDate}>Ref #{claim.id.toString().padStart(5, "0")}</Text>
+                  )}
                   <Text style={styles.winnerDate}>{fmtDateTime(claim.playedAt)}</Text>
                 </View>
                 <Pressable
@@ -1529,6 +1614,69 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_400Regular",
     fontSize: 11,
     color: "#9CA3AF",
+  },
+  claimCodePill: {
+    alignSelf: "flex-start",
+    backgroundColor: "#065F46",
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginVertical: 2,
+  },
+  claimCodePillText: {
+    fontFamily: "Montserrat_800ExtraBold",
+    fontSize: 14,
+    color: "#fff",
+    letterSpacing: 3,
+  },
+  redeemWidget: {
+    backgroundColor: "#F0FDF4",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
+    padding: 12,
+    gap: 8,
+    marginBottom: 4,
+  },
+  redeemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  redeemInput: {
+    flex: 1,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    height: 38,
+    fontSize: 15,
+    fontFamily: "Montserrat_700Bold",
+    color: "#111827",
+    letterSpacing: 2,
+  },
+  redeemBtn: {
+    backgroundColor: "#10B981",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 8,
+  },
+  redeemBtnText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 13,
+    color: "#fff",
+  },
+  redeemSuccess: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  redeemSuccessText: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 12,
+    color: "#059669",
+    flex: 1,
   },
   gameStatusBadge: {
     paddingHorizontal: 7,
