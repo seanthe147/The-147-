@@ -1098,7 +1098,7 @@ export default function AdminGameScreen() {
         <Pressable onPress={() => router.back()} style={styles.backButton} testID="back-button">
           <Ionicons name="chevron-back" size={24} color={Colors.light.text} />
         </Pressable>
-        <Text style={styles.headerTitle}>Scratch Card Game</Text>
+        <Text style={styles.headerTitle}>Games & Prizes</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -1188,6 +1188,27 @@ export default function AdminGameScreen() {
             </View>
           </>
         )}
+
+        {/* ── World Cup Penalty Game ────────────────────────────────────── */}
+        <Text style={styles.sectionTitle}>World Cup Penalty Game</Text>
+        <View style={styles.card}>
+          <View style={styles.fieldHeader}>
+            <Text style={{ fontSize: 18 }}>⚽</Text>
+            <Text style={styles.fieldTitle}>Penalty Shootout</Text>
+            <View style={[styles.gameStatusBadge, { backgroundColor: "#D1FAE5" }]}>
+              <Text style={[styles.gameStatusText, { color: "#065F46" }]}>Auto</Text>
+            </View>
+          </View>
+          <Text style={styles.fieldDescription}>
+            Activates automatically 30 minutes before any World Cup match and stays open for 4 hours after kick-off. One shot per customer per match day. No manual toggle needed — it self-manages around the fixture list.
+          </Text>
+          <View style={[styles.hintBox, { marginTop: 4, marginBottom: 0 }]}>
+            <Ionicons name="information-circle-outline" size={14} color="#10B981" />
+            <Text style={styles.hintText}>
+              Prizes assigned to <Text style={{ fontFamily: "Montserrat_600SemiBold" }}>Penalty</Text> or <Text style={{ fontFamily: "Montserrat_600SemiBold" }}>Both games</Text> in the Prize Pool below are used for this game.
+            </Text>
+          </View>
+        </View>
 
         {/* ── Prize Pool ────────────────────────────────────────────────── */}
         <View style={styles.sectionHeaderRow}>
@@ -1310,19 +1331,29 @@ export default function AdminGameScreen() {
           </View>
         ) : (
           <View style={styles.winnerList}>
-            {winners.map((w) => (
-              <View key={w.id} style={styles.winnerRow}>
-                <View style={styles.winnerLeft}>
-                  <Text style={styles.winnerName}>{w.customerName ?? "Unknown customer"}</Text>
-                  <Text style={styles.winnerPrize}>
-                    {w.prize?.name ?? "Unknown prize"}
-                    {w.pointsAwarded ? ` · +${w.pointsAwarded} pts` : ""}
-                    {w.giftCardGan ? ` · GAN: ${w.giftCardGan}` : ""}
-                  </Text>
+            {winners.map((w) => {
+              const isPenalty = w.londonDate?.startsWith("wc-");
+              return (
+                <View key={w.id} style={styles.winnerRow}>
+                  <View style={styles.winnerLeft}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <Text style={styles.winnerName}>{w.customerName ?? "Unknown customer"}</Text>
+                      <View style={[styles.gameStatusBadge, isPenalty ? { backgroundColor: "#D1FAE5" } : { backgroundColor: "#FEF3C7" }]}>
+                        <Text style={[styles.gameStatusText, { color: isPenalty ? "#065F46" : "#92400E" }]}>
+                          {isPenalty ? "⚽ Penalty" : "🎰 Scratch Card"}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.winnerPrize}>
+                      {w.prize?.name ?? "Unknown prize"}
+                      {w.pointsAwarded ? ` · +${w.pointsAwarded} pts` : ""}
+                      {w.giftCardGan ? ` · GAN: ${w.giftCardGan}` : ""}
+                    </Text>
+                  </View>
+                  <Text style={styles.winnerDate}>{fmtDateTime(w.playedAt)}</Text>
                 </View>
-                <Text style={styles.winnerDate}>{fmtDateTime(w.playedAt)}</Text>
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
       </ScrollView>
@@ -1498,6 +1529,16 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_400Regular",
     fontSize: 11,
     color: "#9CA3AF",
+  },
+  gameStatusBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 99,
+  },
+  gameStatusText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 10,
+    letterSpacing: 0.2,
   },
   claimRow: {
     flexDirection: "row",

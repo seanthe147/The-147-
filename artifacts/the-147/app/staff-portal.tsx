@@ -1960,8 +1960,8 @@ function DashboardScreen() {
               />
               <AdminTool
                 icon="sparkles"
-                title="Scratch Card Game"
-                description="Prizes, weights, schedule and recent winners"
+                title="Games & Prizes"
+                description="Scratch card + penalty game prizes, weights, schedule and winners"
                 color="#10B981"
                 onPress={() => router.push("/admin-game")}
                 testID="portal-scratch-card-game"
