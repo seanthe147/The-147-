@@ -9322,10 +9322,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const londonDate = getGameLondonDate();
       const wcDate = `wc-${londonDate}`;
-      const todayPlays = await storage.getGamePlaysToday(customerId, wcDate);
-      if (todayPlays.length > 0) {
-        return res.status(429).json({ message: "You've already taken your shot today — come back on the next match day!", alreadyPlayed: true });
-      }
+      // TODO: RE-ENABLE BEFORE RELEASE — one-play-per-match-day limit (disabled for testing)
+      // const todayPlays = await storage.getGamePlaysToday(customerId, wcDate);
+      // if (todayPlays.length > 0) {
+      //   return res.status(429).json({ message: "You've already taken your shot today — come back on the next match day!", alreadyPlayed: true });
+      // }
 
       // Roll prize — 60% chance of scoring (win), 40% saved (no prize)
       // We encode this by giving a "none" prize a weight of ~40 relative to sum
@@ -9465,10 +9466,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const londonDate = getGameLondonDate();
-      const todaysPlays = await storage.getGamePlaysToday(customerId, londonDate);
-      if (todaysPlays.length > 0) {
-        return res.status(429).json({ message: "You have already played today — come back tomorrow!", alreadyPlayed: true });
-      }
+      // TODO: RE-ENABLE BEFORE RELEASE — one-play-per-day limit (disabled for testing)
+      // const todaysPlays = await storage.getGamePlaysToday(customerId, londonDate);
+      // if (todaysPlays.length > 0) {
+      //   return res.status(429).json({ message: "You have already played today — come back tomorrow!", alreadyPlayed: true });
+      // }
 
       const [prizes, wonGroupPrizeIds] = await Promise.all([
         storage.getActiveGamePrizesForGame("scratch_card"),
