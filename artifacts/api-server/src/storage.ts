@@ -786,6 +786,9 @@ export interface IStorage {
   setLastBirthdayPushYear(id: number, year: number): Promise<void>;
   getCustomerBySquareLoyaltyAccountId(accountId: string): Promise<Customer | undefined>;
   getCustomersInBirthdayWindow(year: number, monthDay: string): Promise<Customer[]>;
+  getCustomersInBirthdayWindowForEmail(year: number, monthDay: string): Promise<Customer[]>;
+  setLastBirthdayEmailYear(id: number, year: number): Promise<void>;
+  setLastWinBackEmailAt(id: number, date: Date): Promise<void>;
   getCustomersWithLoyaltyAccount(): Promise<Customer[]>;
   deleteCustomer(id: number): Promise<boolean>;
   createCustomerSession(token: string, customerId: number, expiresAt: Date): Promise<CustomerSession>;
@@ -1965,6 +1968,30 @@ export class DatabaseStorage implements IStorage {
 
   async setLastBirthdayPushYear(id: number, year: number): Promise<void> {
     await db.update(customers).set({ lastBirthdayPushYear: year }).where(eq(customers.id, id));
+  }
+
+  async setLastBirthdayEmailYear(id: number, year: number): Promise<void> {
+    await db.update(customers).set({ lastBirthdayEmailYear: year }).where(eq(customers.id, id));
+  }
+
+  async setLastWinBackEmailAt(id: number, date: Date): Promise<void> {
+    await db.update(customers).set({ lastWinBackEmailAt: date }).where(eq(customers.id, id));
+  }
+
+  async getCustomersInBirthdayWindowForEmail(year: number, monthDay: string): Promise<Customer[]> {
+    const isLeap = new Date(year, 1, 29).getMonth() === 1;
+    const all = await db.select().from(customers);
+    const out: Customer[] = [];
+    for (const row of all) {
+      const decrypted = decryptCustomer(row);
+      if (!decrypted.dateOfBirth) continue;
+      let md = decrypted.dateOfBirth.slice(5); // "MM-DD"
+      if (md === "02-29" && !isLeap) md = "02-28";
+      if (md !== monthDay) continue;
+      if ((decrypted.lastBirthdayEmailYear ?? 0) >= year) continue;
+      out.push(decrypted);
+    }
+    return out;
   }
 
   // Reverse lookup used by Square loyalty webhooks: given a Square loyalty

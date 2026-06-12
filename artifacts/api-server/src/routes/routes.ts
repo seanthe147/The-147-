@@ -7,7 +7,7 @@ import multer from "multer";
 import sharp from "sharp";
 import nodemailer from "nodemailer";
 import { storage, db } from "../storage";
-import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema, isSafePublicUrl, tabs, tabItems, bookings as bookingsTable, tableSessions, marketingCampaigns, customers as customersTable, membershipSubscriptions as membershipSubsTable } from "@workspace/db";
+import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema, isSafePublicUrl, tabs, tabItems, bookings as bookingsTable, tableSessions, marketingCampaigns, emailAutomations, customers as customersTable, membershipSubscriptions as membershipSubsTable } from "@workspace/db";
 import type { InsertBannerImage } from "@workspace/db";
 import { and as dAnd, eq as dEq, desc as dDesc, isNotNull as dIsNotNull, sql as dSql } from "drizzle-orm";
 import { getServerFeatureFlags } from "../featureFlags";
@@ -2724,6 +2724,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .set({ status: "failed", updatedAt: new Date() })
         .where(dEq(marketingCampaigns.id, id))
         .catch(() => {});
+    }
+  });
+
+  // ── Email Automations (manager/owner) ────────────────────────────────────
+  // One record per trigger type stored in the DB. Scheduled tasks in index.ts
+  // poll these settings daily (birthday, win-back). Welcome fires at registration.
+
+  app.get("/api/staff/email-automations", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      const rows = await db.select().from(emailAutomations).orderBy(emailAutomations.triggerType);
+      res.json(rows);
+    } catch (err: any) {
+      _req.log.error({ err }, "[email-automations] list error");
+      res.status(500).json({ message: "Failed to list automations" });
+    }
+  });
+
+  app.put("/api/staff/email-automations/:type", staffAuth, managerAuth, async (req, res) => {
+    try {
+      const triggerType = req.params.type;
+      const validTypes = ["birthday", "welcome", "win_back"];
+      if (!validTypes.includes(triggerType)) {
+        return res.status(400).json({ message: "Invalid automation type" });
+      }
+      const { enabled, subject, bodyText, winBackDays } = req.body;
+      const username = (req as any).staffUsername as string | undefined;
+      const [row] = await db.insert(emailAutomations).values({
+        triggerType,
+        enabled: Boolean(enabled),
+        subject: String(subject ?? ""),
+        bodyText: String(bodyText ?? ""),
+        winBackDays: winBackDays != null ? Number(winBackDays) : 90,
+        updatedBy: username || "staff",
+      }).onConflictDoUpdate({
+        target: emailAutomations.triggerType,
+        set: {
+          enabled: Boolean(enabled),
+          subject: String(subject ?? ""),
+          bodyText: String(bodyText ?? ""),
+          winBackDays: winBackDays != null ? Number(winBackDays) : 90,
+          updatedAt: new Date(),
+          updatedBy: username || "staff",
+        },
+      }).returning();
+      res.json(row);
+    } catch (err: any) {
+      req.log.error({ err }, "[email-automations] update error");
+      res.status(500).json({ message: "Failed to update automation" });
     }
   });
 
@@ -10367,6 +10415,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         phone: customer.phone,
         squareCustomerId: customer.squareCustomerId ?? null,
       });
+      // Non-blocking: send welcome email if the automation is enabled
+      db.select().from(emailAutomations).where(dEq(emailAutomations.triggerType, "welcome")).then(([automation]) => {
+        if (automation?.enabled && automation.subject && automation.bodyText) {
+          const html = buildMarketingEmailHtml(automation.subject, automation.bodyText);
+          sendMarketingEmail(customer.email, automation.subject, html).catch(() => {});
+        }
+      }).catch(() => {});
     } catch (err: any) {
       console.error("Customer register error:", err.message);
       res.status(500).json({ message: "Registration failed" });

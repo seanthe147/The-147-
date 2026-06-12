@@ -277,6 +277,92 @@ async function bootstrapOwner() {
   }
 }
 
+// ── Email automation schedulers ─────────────────────────────────────────────
+
+function scheduleBirthdayWeekEmails() {
+  async function runBirthdayEmails() {
+    try {
+      const { storage: store, db } = await import("./storage.js");
+      const { emailAutomations } = await import("@workspace/db");
+      const { eq } = await import("drizzle-orm");
+      const { buildMarketingEmailHtml, sendMarketingEmail } = await import("./email-helpers.js");
+      const [automation] = await db.select().from(emailAutomations).where(eq(emailAutomations.triggerType, "birthday"));
+      if (!automation?.enabled || !automation.subject || !automation.bodyText) return;
+      const { year, monthDay } = getLondonYearAndMonthDay();
+      const due = await store.getCustomersInBirthdayWindowForEmail(year, monthDay);
+      if (!due.length) return;
+      const html = buildMarketingEmailHtml(automation.subject, automation.bodyText);
+      for (const customer of due) {
+        if (!customer.email) continue;
+        try {
+          await sendMarketingEmail(customer.email, automation.subject, html);
+          await store.setLastBirthdayEmailYear(customer.id, year);
+        } catch (err) {
+          console.error(`[Birthday Email] Failed for #${customer.id}:`, err);
+        }
+      }
+      if (due.length) log(`[Birthday Email] Sent to ${due.length} customer(s)`);
+    } catch (err) {
+      console.error("[Birthday Email] Scheduler error:", err);
+    }
+  }
+  // Offset by 90 s from birthday push so they don't compete for SMTP
+  setTimeout(runBirthdayEmails, 90 * 1000);
+  setTimeout(() => {
+    runBirthdayEmails();
+    setInterval(runBirthdayEmails, 24 * 60 * 60 * 1000);
+  }, msUntilNextLondonMidnight() + 5 * 60 * 1000);
+}
+
+function scheduleWinBackEmails() {
+  async function runWinBack() {
+    try {
+      const { db } = await import("./storage.js");
+      const { emailAutomations, customers, bookings } = await import("@workspace/db");
+      const { eq, isNotNull, and, sql } = await import("drizzle-orm");
+      const { buildMarketingEmailHtml, sendMarketingEmail } = await import("./email-helpers.js");
+      const [automation] = await db.select().from(emailAutomations).where(eq(emailAutomations.triggerType, "win_back"));
+      if (!automation?.enabled || !automation.subject || !automation.bodyText) return;
+      const days = automation.winBackDays ?? 90;
+      const cutoffStr = new Date(Date.now() - days * 86_400_000).toISOString().split("T")[0];
+      // Enforce a 90-day cooldown between win-back emails per customer
+      const cooldown = new Date(Date.now() - 90 * 86_400_000).toISOString();
+      const candidates = await db.select({ id: customers.id, email: customers.email })
+        .from(customers)
+        .where(and(
+          isNotNull(customers.email),
+          sql`(${customers.lastWinBackEmailAt} IS NULL OR ${customers.lastWinBackEmailAt} < ${cooldown}::timestamptz)`
+        ));
+      if (!candidates.length) return;
+      // Build set of emails with a recent booking (so we don't contact active visitors)
+      const recentRows = await db.select({ email: bookings.customerEmail })
+        .from(bookings)
+        .where(and(isNotNull(bookings.customerEmail), sql`${bookings.date} >= ${cutoffStr}`));
+      const recentEmails = new Set(recentRows.map(r => r.email?.toLowerCase()));
+      const html = buildMarketingEmailHtml(automation.subject, automation.bodyText);
+      let sent = 0;
+      for (const c of candidates) {
+        if (!c.email || recentEmails.has(c.email.toLowerCase())) continue;
+        try {
+          const ok = await sendMarketingEmail(c.email, automation.subject, html);
+          if (ok) {
+            await db.update(customers).set({ lastWinBackEmailAt: new Date() }).where(eq(customers.id, c.id));
+            sent++;
+          }
+        } catch (err) {
+          console.error(`[Win-back Email] Failed for #${c.id}:`, err);
+        }
+        await new Promise(r => setTimeout(r, 100));
+      }
+      if (sent > 0) log(`[Win-back Email] Sent ${sent} win-back email(s)`);
+    } catch (err) {
+      console.error("[Win-back Email] Scheduler error:", err);
+    }
+  }
+  setTimeout(runWinBack, 5 * 60 * 1000);
+  setInterval(runWinBack, 24 * 60 * 60 * 1000);
+}
+
 // ── Main startup ─────────────────────────────────────────────────────────────
 (async () => {
   // Write Apple App Store Connect API key from secret to disk if present
@@ -455,6 +541,8 @@ async function bootstrapOwner() {
   scheduleOrderExpiry();
   scheduleMembershipPaymentReminders();
   scheduleBirthdayWeekPushes();
+  scheduleBirthdayWeekEmails();
+  scheduleWinBackEmails();
   scheduleDoublePointsDailyReset();
   scheduleNightlyBackup();
 })().catch((err) => {

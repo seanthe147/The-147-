@@ -327,6 +327,11 @@ export const customers = pgTable("customers", {
   // the bonus is awarded only when the customer opens the app, while the
   // push fires once at the start of the window to *invite* them in.
   lastBirthdayPushYear: integer("last_birthday_push_year"),
+  // Year in which the birthday marketing *email* was last sent. Tracked
+  // independently from lastBirthdayPushYear so the two channels are decoupled.
+  lastBirthdayEmailYear: integer("last_birthday_email_year"),
+  // Last time a "we miss you" win-back email was sent to this customer.
+  lastWinBackEmailAt: timestamp("last_win_back_email_at"),
   // ── Saved card on file (FEATURE_SAVED_CARDS) ───────────────────────────
   // Cached link to the customer's Square Customer record so we can attach a
   // card on file without searching by email each time. Created lazily the
@@ -1116,3 +1121,19 @@ export const marketingCampaigns = pgTable("marketing_campaigns", {
 
 export type MarketingCampaign = typeof marketingCampaigns.$inferSelect;
 export type InsertMarketingCampaign = typeof marketingCampaigns.$inferInsert;
+
+// ── Email Automations ─────────────────────────────────────────────────────────
+// One row per trigger type (upserted). Controls whether an automated email
+// fires for birthday, welcome, or win-back events.
+export const emailAutomations = pgTable("email_automations", {
+  id: serial("id").primaryKey(),
+  triggerType: text("trigger_type").notNull().unique(), // 'birthday'|'welcome'|'win_back'
+  enabled: boolean("enabled").notNull().default(false),
+  subject: text("subject").notNull().default(""),
+  bodyText: text("body_text").notNull().default(""),
+  winBackDays: integer("win_back_days").default(90),    // only for win_back
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  updatedBy: text("updated_by"),
+});
+
+export type EmailAutomation = typeof emailAutomations.$inferSelect;
