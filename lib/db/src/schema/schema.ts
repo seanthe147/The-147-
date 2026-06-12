@@ -1095,3 +1095,24 @@ export const venueRewardClaims = pgTable("venue_reward_claims", {
 });
 
 export type VenueRewardClaim = typeof venueRewardClaims.$inferSelect;
+
+// ── Email Marketing Campaigns ──────────────────────────────────────────────────
+// Staff-authored broadcast emails sent to customer segments.
+// The audience field determines which customers receive the message.
+export const marketingCampaigns = pgTable("marketing_campaigns", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),                        // internal name (never sent)
+  subject: text("subject").notNull(),                     // email subject line
+  bodyText: text("body_text").notNull(),                  // message body paragraphs
+  audience: text("audience").notNull().default("all"),    // 'all'|'members'|'loyalty'|'recent_30'|'recent_90'
+  status: text("status").notNull().default("draft"),      // 'draft'|'sending'|'sent'|'failed'
+  sentAt: timestamp("sent_at"),
+  sentCount: integer("sent_count"),
+  failedCount: integer("failed_count"),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type MarketingCampaign = typeof marketingCampaigns.$inferSelect;
+export type InsertMarketingCampaign = typeof marketingCampaigns.$inferInsert;

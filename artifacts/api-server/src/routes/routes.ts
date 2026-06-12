@@ -7,9 +7,9 @@ import multer from "multer";
 import sharp from "sharp";
 import nodemailer from "nodemailer";
 import { storage, db } from "../storage";
-import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema, isSafePublicUrl, tabs, tabItems, bookings as bookingsTable, tableSessions } from "@workspace/db";
+import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema, isSafePublicUrl, tabs, tabItems, bookings as bookingsTable, tableSessions, marketingCampaigns, customers as customersTable, membershipSubscriptions as membershipSubsTable } from "@workspace/db";
 import type { InsertBannerImage } from "@workspace/db";
-import { and as dAnd, eq as dEq, desc as dDesc } from "drizzle-orm";
+import { and as dAnd, eq as dEq, desc as dDesc, isNotNull as dIsNotNull, sql as dSql } from "drizzle-orm";
 import { getServerFeatureFlags } from "../featureFlags";
 import { hashPin, verifyPin, hashPassword, verifyPassword, hashEmail } from "../encryption";
 import * as square from "../square";
@@ -1446,6 +1446,103 @@ function verifyStaffCredential(
   return false;
 }
 
+// ── Email Marketing helpers ──────────────────────────────────────────────────
+
+/** Branded HTML template for marketing emails */
+function buildMarketingEmailHtml(subject: string, bodyText: string): string {
+  const bodyHtml = bodyText
+    .split(/\n\n+/)
+    .map(p => `<p style="margin:0 0 16px 0;line-height:1.75;color:rgba(255,255,255,0.87);">${p.replace(/\n/g, "<br>")}</p>`)
+    .join("");
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>${subject}</title>
+</head>
+<body style="margin:0;padding:0;background:#0a1628;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="max-width:600px;margin:0 auto;padding:24px 16px;">
+    <div style="background:linear-gradient(160deg,#0d1e35 0%,#0a1628 100%);border:1px solid rgba(212,168,67,0.25);border-radius:14px;overflow:hidden;">
+      <div style="background:linear-gradient(135deg,#0d1e35,#162640);padding:28px 32px;border-bottom:2px solid #d4a843;text-align:center;">
+        <div style="font-size:42px;font-weight:900;color:#d4a843;letter-spacing:6px;line-height:1;">147</div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.5);letter-spacing:4px;margin-top:6px;text-transform:uppercase;">The 147 Bradford</div>
+      </div>
+      <div style="padding:32px;">
+        <h2 style="margin:0 0 20px 0;font-size:21px;font-weight:700;color:#ffffff;line-height:1.3;">${subject}</h2>
+        <div style="font-size:15px;">${bodyHtml}</div>
+      </div>
+      <div style="padding:20px 32px;border-top:1px solid rgba(255,255,255,0.07);background:rgba(0,0,0,0.2);">
+        <p style="margin:0;font-size:12px;color:rgba(255,255,255,0.28);text-align:center;line-height:1.6;">
+          The 147 Bradford · Snooker &amp; Bar<br>
+          You are receiving this email as a valued customer of The 147.
+        </p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+/** Send one marketing email via SMTP → Resend fallback. Returns true on success. */
+async function sendMarketingEmail(to: string, subject: string, html: string): Promise<boolean> {
+  const smtpOk = await sendEmailViaSMTP(to, subject, html);
+  if (smtpOk) return true;
+  const resendKey = process.env.RESEND_API_KEY;
+  if (!resendKey) return false;
+  try {
+    const fromEmail = process.env.RESEND_FROM_EMAIL || "noreply@the147.co.uk";
+    const fromName  = process.env.RESEND_FROM_NAME  || "The 147 Bradford";
+    const resp = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+      body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to, subject, html }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Returns a deduplicated array of email addresses for the chosen audience segment. */
+async function getMarketingAudienceEmails(audience: string): Promise<string[]> {
+  let rows: { email: string | null }[] = [];
+
+  if (audience === "members") {
+    rows = await db
+      .select({ email: customersTable.email })
+      .from(membershipSubsTable)
+      .innerJoin(customersTable, dEq(membershipSubsTable.customerId, customersTable.id))
+      .where(dAnd(dEq(membershipSubsTable.status, "active"), dIsNotNull(customersTable.email)));
+  } else if (audience === "loyalty") {
+    rows = await db
+      .select({ email: customersTable.email })
+      .from(customersTable)
+      .where(dAnd(dIsNotNull(customersTable.squareLoyaltyAccountId), dIsNotNull(customersTable.email)));
+  } else if (audience === "recent_30" || audience === "recent_90") {
+    const days = audience === "recent_30" ? 30 : 90;
+    const cutoffStr = new Date(Date.now() - days * 86_400_000).toISOString().split("T")[0];
+    rows = await db
+      .select({ email: bookingsTable.customerEmail })
+      .from(bookingsTable)
+      .where(dAnd(dIsNotNull(bookingsTable.customerEmail), dSql`${bookingsTable.date} >= ${cutoffStr}`));
+  } else {
+    // "all" — every registered customer with an email address
+    rows = await db
+      .select({ email: customersTable.email })
+      .from(customersTable)
+      .where(dIsNotNull(customersTable.email));
+  }
+
+  const seen = new Set<string>();
+  for (const r of rows) {
+    const e = (r.email || "").toLowerCase().trim();
+    if (e.includes("@")) seen.add(e);
+  }
+  return [...seen];
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // ── One-shot kitchen-category seeder ────────────────────────────────────
   // Auto-tags obvious food categories (Burgers, Pizzas, Mains, etc.) as
@@ -2489,6 +2586,144 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: any) {
       console.error("[marketing-pages/delete]", err);
       res.status(500).json({ message: "Failed to delete page" });
+    }
+  });
+
+  // ── Email Marketing Campaigns (manager/owner) ────────────────────────────
+  // Compose and send branded broadcast emails to customer segments using the
+  // existing SMTP / Resend infrastructure. No external marketing provider needed.
+
+  app.get("/api/staff/email-campaigns/audience-count", staffAuth, managerAuth, async (req, res) => {
+    try {
+      const audience = String(req.query.audience || "all");
+      const emails = await getMarketingAudienceEmails(audience);
+      res.json({ count: emails.length });
+    } catch (err: any) {
+      req.log.error({ err }, "[email-campaigns] audience-count error");
+      res.status(500).json({ message: "Failed to count audience" });
+    }
+  });
+
+  app.get("/api/staff/email-campaigns", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      const campaigns = await db
+        .select()
+        .from(marketingCampaigns)
+        .orderBy(dDesc(marketingCampaigns.createdAt));
+      res.json(campaigns);
+    } catch (err: any) {
+      _req.log.error({ err }, "[email-campaigns] list error");
+      res.status(500).json({ message: "Failed to list campaigns" });
+    }
+  });
+
+  app.post("/api/staff/email-campaigns", staffAuth, managerAuth, async (req, res) => {
+    try {
+      const { title, subject, bodyText, audience } = req.body;
+      if (!title || !subject || !bodyText) {
+        return res.status(400).json({ message: "title, subject and bodyText are required" });
+      }
+      const username = (req as any).staffUsername as string | undefined;
+      const [campaign] = await db.insert(marketingCampaigns).values({
+        title: String(title),
+        subject: String(subject),
+        bodyText: String(bodyText),
+        audience: String(audience || "all"),
+        createdBy: username || "staff",
+      }).returning();
+      res.status(201).json(campaign);
+    } catch (err: any) {
+      req.log.error({ err }, "[email-campaigns] create error");
+      res.status(500).json({ message: "Failed to create campaign" });
+    }
+  });
+
+  app.put("/api/staff/email-campaigns/:id", staffAuth, managerAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const [existing] = await db.select().from(marketingCampaigns).where(dEq(marketingCampaigns.id, id));
+      if (!existing) return res.status(404).json({ message: "Campaign not found" });
+      if (existing.status !== "draft") return res.status(400).json({ message: "Only draft campaigns can be edited" });
+      const { title, subject, bodyText, audience } = req.body;
+      const [updated] = await db.update(marketingCampaigns).set({
+        title:    title    ? String(title)    : existing.title,
+        subject:  subject  ? String(subject)  : existing.subject,
+        bodyText: bodyText ? String(bodyText) : existing.bodyText,
+        audience: audience ? String(audience) : existing.audience,
+        updatedAt: new Date(),
+      }).where(dEq(marketingCampaigns.id, id)).returning();
+      res.json(updated);
+    } catch (err: any) {
+      req.log.error({ err }, "[email-campaigns] update error");
+      res.status(500).json({ message: "Failed to update campaign" });
+    }
+  });
+
+  app.delete("/api/staff/email-campaigns/:id", staffAuth, managerAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const [existing] = await db.select().from(marketingCampaigns).where(dEq(marketingCampaigns.id, id));
+      if (!existing) return res.status(404).json({ message: "Campaign not found" });
+      if (existing.status !== "draft") return res.status(400).json({ message: "Only draft campaigns can be deleted" });
+      await db.delete(marketingCampaigns).where(dEq(marketingCampaigns.id, id));
+      res.json({ ok: true });
+    } catch (err: any) {
+      req.log.error({ err }, "[email-campaigns] delete error");
+      res.status(500).json({ message: "Failed to delete campaign" });
+    }
+  });
+
+  app.post("/api/staff/email-campaigns/:id/send", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id);
+    try {
+      const [campaign] = await db.select().from(marketingCampaigns).where(dEq(marketingCampaigns.id, id));
+      if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+      if (campaign.status !== "draft") return res.status(400).json({ message: "Campaign already sent" });
+
+      const emails = await getMarketingAudienceEmails(campaign.audience);
+      if (emails.length === 0) {
+        return res.status(400).json({ message: "No recipients found for this audience" });
+      }
+
+      // Mark as sending and respond immediately so the app doesn't hang
+      await db.update(marketingCampaigns)
+        .set({ status: "sending", updatedAt: new Date() })
+        .where(dEq(marketingCampaigns.id, id));
+      res.json({ ok: true, recipientCount: emails.length });
+
+      // Fire-and-forget: send all emails then update final status
+      (async () => {
+        let sent = 0, failed = 0;
+        const html = buildMarketingEmailHtml(campaign.subject, campaign.bodyText);
+        for (const email of emails) {
+          try {
+            const ok = await sendMarketingEmail(email, campaign.subject, html);
+            if (ok) sent++; else failed++;
+          } catch { failed++; }
+          // Small delay to avoid throttling SMTP / Resend rate limits
+          await new Promise(r => setTimeout(r, 80));
+        }
+        await db.update(marketingCampaigns).set({
+          status: "sent",
+          sentAt: new Date(),
+          sentCount: sent,
+          failedCount: failed,
+          updatedAt: new Date(),
+        }).where(dEq(marketingCampaigns.id, id));
+      })().catch(async (err) => {
+        req.log.error({ err }, "[email-campaigns] background send error");
+        await db.update(marketingCampaigns)
+          .set({ status: "failed", updatedAt: new Date() })
+          .where(dEq(marketingCampaigns.id, id))
+          .catch(() => {});
+      });
+    } catch (err: any) {
+      req.log.error({ err }, "[email-campaigns] send setup error");
+      if (!res.headersSent) res.status(500).json({ message: "Failed to start sending" });
+      await db.update(marketingCampaigns)
+        .set({ status: "failed", updatedAt: new Date() })
+        .where(dEq(marketingCampaigns.id, id))
+        .catch(() => {});
     }
   });
 

@@ -1977,6 +1977,14 @@ function DashboardScreen() {
                 onPress={() => router.push("/admin-loyalty")}
                 testID="portal-loyalty-settings"
               />
+              <AdminTool
+                icon="mail"
+                title="Email Marketing"
+                description="Send campaigns and newsletters to customers"
+                color="#059669"
+                onPress={() => router.push("/admin-marketing")}
+                testID="portal-email-marketing"
+              />
             </View>
 
             <Text style={styles.sectionLabel}>EVENTS & OFFERS</Text>
