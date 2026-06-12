@@ -67,6 +67,7 @@ interface AutomationConfig {
   defaultSubject: string;
   defaultBody: string;
   showDaysConfig?: boolean;
+  showGiftCardConfig?: boolean;
 }
 
 const AUTOMATION_CONFIGS: AutomationConfig[] = [
@@ -78,6 +79,7 @@ const AUTOMATION_CONFIGS: AutomationConfig[] = [
     icon: "gift",
     defaultSubject: "🎂 Happy Birthday from The 147!",
     defaultBody: "Hi there,\n\nWishing you a wonderful birthday from all of us at The 147 Bradford!\n\nAs a little birthday treat, why not come in for a frame this week? We'd love to celebrate with you.\n\nSee you at the table,\nThe 147 Team",
+    showGiftCardConfig: true,
   },
   {
     type: "welcome",
@@ -105,6 +107,7 @@ interface AutomationForm {
   subject: string;
   bodyText: string;
   winBackDays: number;
+  giftCardAmountPence: number; // birthday only — 0 means no gift card
 }
 
 // ── Screen ─────────────────────────────────────────────────────────────────────
@@ -165,10 +168,11 @@ export default function AdminMarketingScreen() {
     for (const cfg of AUTOMATION_CONFIGS) {
       const saved = automationsQuery.data.find(a => a.triggerType === cfg.type);
       next[cfg.type] = {
-        enabled:    saved?.enabled    ?? false,
-        subject:    saved?.subject    || cfg.defaultSubject,
-        bodyText:   saved?.bodyText   || cfg.defaultBody,
-        winBackDays: saved?.winBackDays ?? 90,
+        enabled:             saved?.enabled             ?? false,
+        subject:             saved?.subject             || cfg.defaultSubject,
+        bodyText:            saved?.bodyText            || cfg.defaultBody,
+        winBackDays:         saved?.winBackDays         ?? 90,
+        giftCardAmountPence: saved?.giftCardAmountPence ?? 0,
       };
     }
     setAutoForms(next);
@@ -569,6 +573,41 @@ export default function AdminMarketingScreen() {
                         </View>
                       )}
 
+                      {/* Birthday Square gift card config */}
+                      {cfg.showGiftCardConfig && (
+                        <View style={styles.fieldGroup}>
+                          <Text style={styles.fieldLabel}>Birthday Gift Card Value</Text>
+                          <Text style={styles.fieldHint}>
+                            A real Square digital gift card will be created and emailed to each customer on their birthday. Leave at £0 to send the email only (no card).
+                          </Text>
+                          <View style={styles.giftCardRow}>
+                            <View style={[styles.giftCardIconWrap, (f.giftCardAmountPence ?? 0) > 0 && styles.giftCardIconWrapActive]}>
+                              <Ionicons name="card" size={18} color={(f.giftCardAmountPence ?? 0) > 0 ? Colors.brand.gold : "rgba(255,255,255,0.35)"} />
+                            </View>
+                            <Text style={styles.giftCardCurrency}>£</Text>
+                            <TextInput
+                              style={[styles.input, styles.giftCardInput]}
+                              value={f.giftCardAmountPence > 0 ? String(f.giftCardAmountPence / 100) : ""}
+                              onChangeText={t => {
+                                const pounds = parseFloat(t) || 0;
+                                patchAutoForm(cfg.type, { giftCardAmountPence: Math.round(pounds * 100) });
+                              }}
+                              keyboardType="decimal-pad"
+                              placeholder="0"
+                              placeholderTextColor="rgba(255,255,255,0.3)"
+                            />
+                          </View>
+                          {(f.giftCardAmountPence ?? 0) > 0 && (
+                            <View style={styles.giftCardNote}>
+                              <Ionicons name="information-circle-outline" size={14} color={Colors.brand.gold} />
+                              <Text style={styles.giftCardNoteText}>
+                                A £{(f.giftCardAmountPence / 100).toFixed(2)} Square gift card will be created in your Square account and linked to the customer. The GAN code appears in the email.
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      )}
+
                       <View style={styles.fieldGroup}>
                         <Text style={styles.fieldLabel}>Subject Line</Text>
                         <TextInput
@@ -746,6 +785,23 @@ const styles = StyleSheet.create({
     paddingTop: 14, gap: 4,
   },
   autoBodyInput: { minHeight: 160, lineHeight: 22 },
+
+  // ── Gift card config ───────────────────────────────────────────────────────
+  giftCardRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
+  giftCardIconWrap: {
+    width: 38, height: 38, borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    alignItems: "center", justifyContent: "center",
+  },
+  giftCardIconWrapActive: { backgroundColor: "rgba(212,168,67,0.12)" },
+  giftCardCurrency: { fontSize: 18, fontWeight: "700", color: "rgba(255,255,255,0.6)" },
+  giftCardInput: { flex: 1, marginTop: 0 },
+  giftCardNote: {
+    flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: 8,
+    padding: 10, backgroundColor: "rgba(212,168,67,0.08)",
+    borderRadius: 8, borderWidth: 1, borderColor: "rgba(212,168,67,0.2)",
+  },
+  giftCardNoteText: { flex: 1, fontSize: 12, color: "rgba(255,255,255,0.55)", lineHeight: 17 },
 
   // ── Compose view ───────────────────────────────────────────────────────────
   composeScroll: { paddingHorizontal: 16 },

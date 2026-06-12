@@ -1131,7 +1131,8 @@ export const emailAutomations = pgTable("email_automations", {
   enabled: boolean("enabled").notNull().default(false),
   subject: text("subject").notNull().default(""),
   bodyText: text("body_text").notNull().default(""),
-  winBackDays: integer("win_back_days").default(90),    // only for win_back
+  winBackDays: integer("win_back_days").default(90),       // only for win_back
+  giftCardAmountPence: integer("gift_card_amount_pence"),  // only for birthday — pence value to load onto a Square digital gift card (0/null = no card)
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   updatedBy: text("updated_by"),
 });

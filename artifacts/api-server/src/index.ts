@@ -291,17 +291,35 @@ function scheduleBirthdayWeekEmails() {
       const { year, monthDay } = getLondonYearAndMonthDay();
       const due = await store.getCustomersInBirthdayWindowForEmail(year, monthDay);
       if (!due.length) return;
-      const html = buildMarketingEmailHtml(automation.subject, automation.bodyText);
+      const amountPence = automation.giftCardAmountPence ?? 0;
+      const issueGiftCards = amountPence > 0;
       for (const customer of due) {
         if (!customer.email) continue;
         try {
+          let gan: string | null = null;
+          if (issueGiftCards) {
+            try {
+              const { issueGiftCardPrize, isConfigured } = await import("./square.js");
+              if (isConfigured()) {
+                const idempotencyKey = `birthday-email-gift-${customer.id}-${year}`;
+                gan = await issueGiftCardPrize(customer.squareCustomerId ?? null, amountPence, idempotencyKey);
+              }
+            } catch (giftErr: any) {
+              console.error(`[Birthday Email] Gift card failed for #${customer.id}:`, giftErr?.message ?? giftErr);
+            }
+          }
+          const html = buildMarketingEmailHtml(
+            automation.subject,
+            automation.bodyText,
+            gan ? { giftCard: { gan, amountPence } } : {},
+          );
           await sendMarketingEmail(customer.email, automation.subject, html);
           await store.setLastBirthdayEmailYear(customer.id, year);
         } catch (err) {
           console.error(`[Birthday Email] Failed for #${customer.id}:`, err);
         }
       }
-      if (due.length) log(`[Birthday Email] Sent to ${due.length} customer(s)`);
+      if (due.length) log(`[Birthday Email] Sent to ${due.length} customer(s)${issueGiftCards ? ` with £${(amountPence / 100).toFixed(2)} gift cards` : ""}`);
     } catch (err) {
       console.error("[Birthday Email] Scheduler error:", err);
     }

@@ -2748,14 +2748,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!validTypes.includes(triggerType)) {
         return res.status(400).json({ message: "Invalid automation type" });
       }
-      const { enabled, subject, bodyText, winBackDays } = req.body;
+      const { enabled, subject, bodyText, winBackDays, giftCardAmountPence } = req.body;
       const username = (req as any).staffUsername as string | undefined;
+      const giftPence = giftCardAmountPence != null ? Number(giftCardAmountPence) : null;
       const [row] = await db.insert(emailAutomations).values({
         triggerType,
         enabled: Boolean(enabled),
         subject: String(subject ?? ""),
         bodyText: String(bodyText ?? ""),
         winBackDays: winBackDays != null ? Number(winBackDays) : 90,
+        giftCardAmountPence: giftPence,
         updatedBy: username || "staff",
       }).onConflictDoUpdate({
         target: emailAutomations.triggerType,
@@ -2764,6 +2766,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           subject: String(subject ?? ""),
           bodyText: String(bodyText ?? ""),
           winBackDays: winBackDays != null ? Number(winBackDays) : 90,
+          giftCardAmountPence: giftPence,
           updatedAt: new Date(),
           updatedBy: username || "staff",
         },

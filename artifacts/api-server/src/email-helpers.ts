@@ -4,12 +4,25 @@
  */
 import nodemailer from "nodemailer";
 
+interface MarketingEmailOptions {
+  /** If set, renders a prominent gift-card box above the footer */
+  giftCard?: { gan: string; amountPence: number };
+}
+
 /** Branded HTML email template with The 147's dark/gold styling */
-export function buildMarketingEmailHtml(subject: string, bodyText: string): string {
+export function buildMarketingEmailHtml(subject: string, bodyText: string, options: MarketingEmailOptions = {}): string {
   const bodyHtml = bodyText
     .split(/\n\n+/)
     .map(p => `<p style="margin:0 0 16px 0;line-height:1.75;color:rgba(255,255,255,0.87);">${p.replace(/\n/g, "<br>")}</p>`)
     .join("");
+  const amountGBP = options.giftCard ? `£${(options.giftCard.amountPence / 100).toFixed(2)}` : "";
+  const giftCardBlock = options.giftCard ? `
+      <div style="margin:0 32px 28px 32px;background:rgba(212,168,67,0.08);border:2px solid rgba(212,168,67,0.4);border-radius:12px;padding:20px;text-align:center;">
+        <div style="font-size:11px;color:rgba(255,255,255,0.45);letter-spacing:3px;text-transform:uppercase;margin-bottom:10px;">Your Birthday Gift Card</div>
+        <div style="font-size:28px;font-weight:900;color:#d4a843;letter-spacing:4px;font-family:monospace;">${options.giftCard.gan}</div>
+        <div style="font-size:15px;color:#ffffff;font-weight:700;margin-top:8px;">${amountGBP} loaded and ready to use</div>
+        <div style="font-size:12px;color:rgba(255,255,255,0.45);margin-top:10px;line-height:1.6;">Show this code at the till when you visit.<br>Valid on food, drinks, and table bookings.</div>
+      </div>` : "";
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -28,6 +41,7 @@ export function buildMarketingEmailHtml(subject: string, bodyText: string): stri
         <h2 style="margin:0 0 20px 0;font-size:21px;font-weight:700;color:#ffffff;line-height:1.3;">${subject}</h2>
         <div style="font-size:15px;">${bodyHtml}</div>
       </div>
+      ${giftCardBlock}
       <div style="padding:20px 32px;border-top:1px solid rgba(255,255,255,0.07);background:rgba(0,0,0,0.2);">
         <p style="margin:0;font-size:12px;color:rgba(255,255,255,0.28);text-align:center;line-height:1.6;">
           The 147 Bradford · Snooker &amp; Bar<br>
