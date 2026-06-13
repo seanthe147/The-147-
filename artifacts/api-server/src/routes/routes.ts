@@ -9571,8 +9571,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const diffMs = kickoff.getTime() - now.getTime();
       // Show from 30 minutes before kickoff
       if (diffMs >= 0 && diffMs <= 30 * 60 * 1000) return true;
-      // Still show for 4 hours after kickoff so punters at the bar can still play
-      if (diffMs < 0 && Math.abs(diffMs) < 4 * 60 * 60 * 1000) return true;
+      // Show for 1 hour after kickoff
+      if (diffMs < 0 && Math.abs(diffMs) < 60 * 60 * 1000) return true;
     }
     return false;
   }
@@ -9583,8 +9583,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const customerId = req.customerId!;
       const { getNextWorldCupMatch } = await import("../worldCup.js");
-      const match = await getNextWorldCupMatch();
+      const [match, penaltyEnabledSetting] = await Promise.all([
+        getNextWorldCupMatch(),
+        storage.getSetting("penalty_enabled"),
+      ]);
+      const penaltyEnabled = penaltyEnabledSetting === "true";
       const matchDay = isWcMatchDay(match);
+      const available = matchDay && penaltyEnabled;
       const londonDate = getGameLondonDate();
       const todayWcPlays = await storage.getGamePlaysToday(customerId, `wc-${londonDate}`);
       const alreadyPlayed = todayWcPlays.length > 0;
@@ -9600,7 +9605,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         minute: match.minute,
         stage: match.stage,
       } : null;
-      res.json({ available: matchDay, matchDay, todayMatch, alreadyPlayed });
+      res.json({ available, matchDay, penaltyEnabled, todayMatch, alreadyPlayed });
     } catch (err: any) {
       req.log.error({ err }, "[WC_GAME] Status error");
       res.status(500).json({ available: false, matchDay: false, todayMatch: null, alreadyPlayed: false });
