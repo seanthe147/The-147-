@@ -52,14 +52,27 @@ export function NextMatchBar() {
     queryKey: ["/api/world-cup/next-match"],
     refetchInterval: pollMs,
     refetchOnWindowFocus: true,
+    refetchOnMount: true,
     staleTime: 25_000,
   });
 
-  // Speed polling up to 30s when a match is live.
+  // Poll every 30s when live, every 60s when kickoff is within 90 min,
+  // otherwise every 5 min.
   useEffect(() => {
     if (!data) return;
-    setPollMs(data.status === "live" ? 30_000 : 5 * 60_000);
-  }, [data?.status]);
+    if (data.status === "live" || data.status === "finished") {
+      setPollMs(30_000);
+      return;
+    }
+    if (data.kickoffIso) {
+      const minsToKickoff = (new Date(data.kickoffIso).getTime() - Date.now()) / 60_000;
+      if (minsToKickoff <= 90) {
+        setPollMs(60_000);
+        return;
+      }
+    }
+    setPollMs(5 * 60_000);
+  }, [data?.status, data?.kickoffIso]);
 
   if (isKioskMode) return null;
   if (error || !data || data.status === "none") return null;

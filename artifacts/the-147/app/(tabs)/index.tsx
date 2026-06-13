@@ -149,7 +149,10 @@ const WorldCupGameBanner = memo(function WorldCupGameBanner() {
       return res.json();
     },
     enabled: isAuthenticated,
-    staleTime: 60_000,
+    staleTime: 30_000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+    refetchInterval: 60_000,
   });
 
   // Show whenever there is a match today — even before the window opens
