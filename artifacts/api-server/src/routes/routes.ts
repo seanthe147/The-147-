@@ -9237,10 +9237,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/staff", (_req, res) => {
     const templatePath = path.join(__dirname, "../src/templates", "staff-dashboard.html");
     const html = fs.readFileSync(templatePath, "utf-8");
+    // Inject a unique nonce so every response has a different body and ETag,
+    // busting any CDN or reverse-proxy cache that ignores Cache-Control.
+    const busted = html.replace("</head>", `<!-- v=${Date.now()} --></head>`);
+    res.removeHeader("ETag");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     res.setHeader("Pragma", "no-cache");
-    res.status(200).send(html);
+    res.setHeader("Expires", "0");
+    res.setHeader("Surrogate-Control", "no-store");
+    res.status(200).send(busted);
   });
 
   // iPad kiosk ordering page — card-payment-only self-service ordering terminal.
