@@ -156,7 +156,8 @@ overrides:
   "@expo/ngrok-bin>@expo/ngrok-bin-win32-x64": "-"
   # drizzle-kit uses esbuild internally on an older version that's vulnerable, this overrides it
   "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
-  # Security: esbuild <0.28.1 has RCE via NPM_CONFIG_REGISTRY + arbitrary file read (GHSA-gv7w-rqvm-qjhr, GHSA-g7r4-m6w7-qqqr)
+  # Security: esbuild <=0.27.7 has RCE via NPM_CONFIG_REGISTRY (GHSA-gv7w-rqvm-qjhr, High) + arbitrary file read (GHSA-g7r4-m6w7-qqqr, Low)
+  # Affected reported versions: 0.25.12, 0.27.7 — override forces all dependents to 0.28.1+
   esbuild: "0.28.1"
   # Security: uuid <11.1.1 has missing buffer bounds check (GHSA-w5hq-g745-h8pq)
   uuid: "^11.1.1"
@@ -164,5 +165,6 @@ overrides:
   qs: "^6.15.2"
   # Security: postcss <8.5.10 has XSS via unescaped </style> (GHSA-qx2v-qp2m-jg93)
   postcss: "^8.5.10"
-  # Security: shell-quote <=1.8.3 has ReDoS / argument injection (GHSA-w7jw-789q-3m8p)
+  # Security: shell-quote <=1.8.3 has ReDoS / argument injection (GHSA-w7jw-789q-3m8p, High)
+  # Affected reported version: 1.8.3 — override forces all dependents to 1.8.4+
   shell-quote: "^1.8.4"
