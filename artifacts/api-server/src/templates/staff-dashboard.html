@@ -3431,6 +3431,9 @@
 
   function navigateTo(page){
     closeSidebar();
+    // Persist the active section in the URL hash so a page refresh or a
+    // shared link lands on the same section (e.g. /staff#memberships).
+    try{window.location.hash=page;}catch(_){}
     // Manager-only pages: redirect non-managers back to Bookings if they
     // try to deep-link directly via #hash or programmatic navigation.
     const managerOnlyPages=['gdpr','auditlog','settings','payments','deals'];
@@ -6805,7 +6808,10 @@
         </div>
         <div style="padding:12px 14px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px">
-            <span style="font-size:11px;color:var(--text-2);font-weight:600">Display order: ${idx+1} of ${total}</span>
+            <div style="display:flex;flex-direction:column;gap:1px">
+              <span style="font-size:11px;color:var(--text-2);font-weight:600">Display order: ${idx+1} of ${total}</span>
+              ${b.updatedAt?`<span style="font-size:10px;color:var(--text-3)">Updated ${timeAgo(b.updatedAt)}</span>`:''}
+            </div>
             <div style="display:flex;gap:4px">
               <button type="button" onclick="moveBanner(${b.id},-1)" ${idx===0?'disabled':''} title="Move up (show earlier)" aria-label="Move banner up" style="width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);background:${idx===0?'var(--bg2)':'var(--bg)'};color:${idx===0?'var(--text-2)':'var(--text-1)'};border-radius:6px;cursor:${idx===0?'not-allowed':'pointer'};opacity:${idx===0?'.45':'1'};padding:0">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
@@ -8361,7 +8367,7 @@
       membershipsData={plans,subs};
       renderMemberships(stats,plans,subs);
       if(state.role==='owner')loadWixMigration();
-      if(state.role==='manager'||state.role==='owner'){loadLeftoverOneTime();loadOnboardingGap();loadLoyaltyBackfill();}
+      if(state.role==='manager'||state.role==='owner'){loadLeftoverOneTime();loadOnboardingGap();loadLoyaltyBackfill();loadMembershipAuditLogPanel();loadPwResetHistoryPanel();}
     }catch(e){
       if(e.message!=='Session expired')el('membershipsContent').innerHTML='<div class="empty-state"><div class="empty-title">Failed to load memberships</div></div>';
     }
@@ -8613,6 +8619,8 @@
       </button>`;
     });
     html+=`</div><div id="memberListContainer"></div>`;
+    html+=`<div id="membershipAuditLogPanel" style="margin-top:28px"></div>`;
+    html+=`<div id="pwResetHistoryPanel" style="margin-top:16px"></div>`;
     el('membershipsContent').innerHTML=html;
 
     function cardHtml(sub){
@@ -9853,6 +9861,128 @@
       if(btn){btn.disabled=false;btn.innerHTML='Link Loyalty Accounts';}
     }
   };
+
+  /* ── Membership Audit Log panel (manager+) ── */
+  async function loadMembershipAuditLogPanel(){
+    const panel=el('membershipAuditLogPanel');if(!panel)return;
+    const ACTION_LABELS={refund_cancel:'Refund & cancel',payment_link_sent:'Payment link sent',cancelled:'Cancelled',paused:'Paused',resumed:'Resumed',plan_changed:'Plan changed',expiry_changed:'Expiry changed',status_changed:'Status changed',created:'Created',updated:'Updated'};
+    const subsMap={};
+    (membershipsData&&membershipsData.subs||[]).forEach(s=>{if(s.id)subsMap[s.id]=s;});
+    panel.innerHTML=`
+      <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">
+        <button type="button" id="memberAuditToggle" onclick="window.toggleMemberAuditLog()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:var(--surface);border:none;cursor:pointer;font-size:13px;font-weight:700;color:var(--text)">
+          <span style="display:flex;align-items:center;gap:8px">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
+            Membership Audit Log
+          </span>
+          <span id="memberAuditCaret" style="font-size:14px;color:var(--text-2)">▾</span>
+        </button>
+        <div id="memberAuditBody" style="display:none;padding:0 18px 16px;background:var(--surface)">
+          <div id="memberAuditContent" style="font-size:12px;line-height:1.5"><div class="loading-state" style="padding:24px 0"><div class="spinner"></div>Loading…</div></div>
+        </div>
+      </div>`;
+    window.toggleMemberAuditLog=function(){
+      const body=el('memberAuditBody');const caret=el('memberAuditCaret');
+      const open=body.style.display!=='none';
+      body.style.display=open?'none':'';
+      caret.textContent=open?'▾':'▴';
+    };
+    try{
+      const r=await api('/api/staff/membership/audit-log?limit=100');
+      const content=el('memberAuditContent');
+      if(!content)return;
+      if(!r.ok){content.innerHTML='<div style="color:var(--red);padding:12px 0">Could not load audit log.</div>';return;}
+      const rows=await r.json();
+      if(!Array.isArray(rows)||rows.length===0){content.innerHTML='<div style="color:var(--text-3);font-style:italic;padding:12px 0">No membership actions recorded yet.</div>';return;}
+      const html=`<table style="width:100%;border-collapse:collapse;margin-top:4px">
+        <thead><tr style="border-bottom:1px solid var(--border)">
+          <th style="text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);padding:6px 8px">Member</th>
+          <th style="text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);padding:6px 8px">Action</th>
+          <th style="text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);padding:6px 8px">By</th>
+          <th style="text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);padding:6px 8px">When</th>
+          <th style="text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);padding:6px 8px">Notes</th>
+        </tr></thead>
+        <tbody>
+        ${rows.map(row=>{
+          const sub=subsMap[row.subscriptionId];
+          const memberName=sub&&sub.customer?esc(sub.customer.name):'<span style="color:var(--text-3)">—</span>';
+          const label=esc(ACTION_LABELS[row.action]||row.action);
+          const amt=row.amountPence?' · £'+(row.amountPence/100).toFixed(2):'';
+          const when=new Date(row.createdAt).toLocaleString('en-GB',{dateStyle:'short',timeStyle:'short'});
+          const note=row.note?esc(row.note)+(row.refundId?' <span style="font-family:monospace;font-size:10px;color:var(--text-3)">'+esc(row.refundId)+'</span>':''):(row.refundId?'<span style="font-family:monospace;font-size:10px;color:var(--text-3)">'+esc(row.refundId)+'</span>':'<span style="color:var(--text-3)">—</span>');
+          return `<tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:7px 8px;font-size:12px;font-weight:600;color:var(--text)">${memberName}</td>
+            <td style="padding:7px 8px;font-size:12px;color:var(--text)">${label}${amt?`<span style="color:var(--text-2)">${amt}</span>`:''}</td>
+            <td style="padding:7px 8px;font-size:12px;color:var(--text-2)">@${esc(row.staffUsername||'staff')}</td>
+            <td style="padding:7px 8px;font-size:12px;color:var(--text-2);white-space:nowrap">${when}</td>
+            <td style="padding:7px 8px;font-size:12px;color:var(--text-2)">${note}</td>
+          </tr>`;
+        }).join('')}
+        </tbody>
+      </table>`;
+      content.innerHTML=html;
+    }catch(e){const content=el('memberAuditContent');if(content&&e.message!=='Session expired')content.innerHTML='<div style="color:var(--red);padding:12px 0">Network error loading audit log.</div>';}
+  }
+
+  /* ── Password Reset History panel (manager+) ── */
+  async function loadPwResetHistoryPanel(){
+    const panel=el('pwResetHistoryPanel');if(!panel)return;
+    const OUTCOME_LABELS={sent:'Sent',not_found:'Not found',email_not_verified:'Email not verified',rate_limited:'Rate limited',rate_limited_recent_send:'Rate limited (recent)',send_failed:'Send failed',error:'Error'};
+    const OUTCOME_COLORS={sent:'var(--green)',not_found:'var(--amber)',email_not_verified:'var(--amber)',rate_limited:'var(--red)',rate_limited_recent_send:'var(--red)',send_failed:'var(--red)',error:'var(--red)'};
+    panel.innerHTML=`
+      <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">
+        <button type="button" id="pwResetToggle" onclick="window.togglePwResetHistory()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:var(--surface);border:none;cursor:pointer;font-size:13px;font-weight:700;color:var(--text)">
+          <span style="display:flex;align-items:center;gap:8px">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Customer Password Reset History
+          </span>
+          <span id="pwResetCaret" style="font-size:14px;color:var(--text-2)">▾</span>
+        </button>
+        <div id="pwResetBody" style="display:none;padding:0 18px 16px;background:var(--surface)">
+          <div id="pwResetContent" style="font-size:12px;line-height:1.5"><div class="loading-state" style="padding:24px 0"><div class="spinner"></div>Loading…</div></div>
+        </div>
+      </div>`;
+    window.togglePwResetHistory=function(){
+      const body=el('pwResetBody');const caret=el('pwResetCaret');
+      const open=body.style.display!=='none';
+      body.style.display=open?'none':'';
+      caret.textContent=open?'▾':'▴';
+    };
+    try{
+      const r=await api('/api/staff/customers/password-reset-history?limit=50');
+      const content=el('pwResetContent');
+      if(!content)return;
+      if(!r.ok){content.innerHTML='<div style="color:var(--red);padding:12px 0">Could not load password reset history.</div>';return;}
+      const rows=await r.json();
+      if(!Array.isArray(rows)||rows.length===0){content.innerHTML='<div style="color:var(--text-3);font-style:italic;padding:12px 0">No password reset attempts recorded yet.</div>';return;}
+      const html=`<table style="width:100%;border-collapse:collapse;margin-top:4px">
+        <thead><tr style="border-bottom:1px solid var(--border)">
+          <th style="text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);padding:6px 8px">Customer</th>
+          <th style="text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);padding:6px 8px">Email</th>
+          <th style="text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);padding:6px 8px">Actor</th>
+          <th style="text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);padding:6px 8px">Outcome</th>
+          <th style="text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);padding:6px 8px">When</th>
+        </tr></thead>
+        <tbody>
+        ${rows.map(row=>{
+          const name=row.customerName?esc(row.customerName):'<span style="color:var(--text-3)">—</span>';
+          const email=row.customerEmail?esc(row.customerEmail):'<span style="color:var(--text-3)">—</span>';
+          const outcomeLabel=OUTCOME_LABELS[row.outcome]||esc(row.outcome);
+          const outcomeColor=OUTCOME_COLORS[row.outcome]||'var(--text-2)';
+          const when=new Date(row.createdAt).toLocaleString('en-GB',{dateStyle:'short',timeStyle:'short'});
+          return `<tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:7px 8px;font-size:12px;font-weight:600;color:var(--text)">${name}</td>
+            <td style="padding:7px 8px;font-size:12px;color:var(--text-2)">${email}</td>
+            <td style="padding:7px 8px;font-size:12px;color:var(--text-2)">@${esc(row.staffUsername||'staff')}</td>
+            <td style="padding:7px 8px;font-size:12px;font-weight:600;color:${outcomeColor}">${outcomeLabel}</td>
+            <td style="padding:7px 8px;font-size:12px;color:var(--text-2);white-space:nowrap">${when}</td>
+          </tr>`;
+        }).join('')}
+        </tbody>
+      </table>`;
+      content.innerHTML=html;
+    }catch(e){const content=el('pwResetContent');if(content&&e.message!=='Session expired')content.innerHTML='<div style="color:var(--red);padding:12px 0">Network error loading reset history.</div>';}
+  }
 
   window.leftoverRefundCancel=async function(id){
     const it=leftoverOneTimeCache.find(x=>x.subscriptionId===id);

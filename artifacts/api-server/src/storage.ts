@@ -2728,6 +2728,12 @@ export class DatabaseStorage implements IStorage {
       .limit(limit);
   }
 
+  async listMembershipAuditLogRecent(limit = 100): Promise<MembershipAuditEntry[]> {
+    return db.select().from(membershipAuditLog)
+      .orderBy(desc(membershipAuditLog.createdAt))
+      .limit(limit);
+  }
+
   // ── Booking audit log ─────────────────────────────────────────────────────
   // Never throws — audit logging must not break the request that triggered it.
   // Errors are logged and swallowed so the booking action still succeeds.

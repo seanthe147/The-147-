@@ -13073,6 +13073,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Per-subscription audit log feed for the staff dashboard history drawer.
+  app.get("/api/staff/membership/audit-log", staffAuth, managerAuth, async (req, res) => {
+    const limitRaw = parseInt(String(req.query.limit ?? "100"), 10);
+    const limit = isNaN(limitRaw) ? 100 : Math.min(Math.max(limitRaw, 1), 500);
+    try {
+      const entries = await storage.listMembershipAuditLogRecent(limit);
+      res.json(entries);
+    } catch (err: any) {
+      console.error("[MEMBERSHIP] global audit log fetch failed:", err?.message ?? err);
+      res.status(500).json({ message: "Could not load membership audit log" });
+    }
+  });
+
   app.get("/api/staff/membership/subscriptions/:id/audit-log", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id as string);
     if (!id) return res.status(400).json({ message: "Invalid subscription id" });
