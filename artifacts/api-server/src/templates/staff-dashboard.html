@@ -2235,6 +2235,14 @@
           <span>&#x2713;</span> <span id="gamePrizeLinkedText">Linked to Square — reward issues automatically on win</span>
         </div>
       </div>
+      <div class="form-group">
+        <label class="form-label">Available in</label>
+        <select class="form-input" id="gamePrizeGame" style="max-width:280px">
+          <option value="both">Both games (Scratch Card &amp; Penalty)</option>
+          <option value="scratch_card">Scratch Card only</option>
+          <option value="penalty">Penalty Challenge only</option>
+        </select>
+      </div>
       <div style="display:flex;gap:16px;flex-wrap:wrap">
         <div class="form-group" style="flex:1;min-width:100px">
           <label class="form-label">Weight</label>
@@ -3922,126 +3930,163 @@
     if(!body)return;
     const prizes=cfg.prizes||[];
 
-    // Total weight for probability display
-    const totalWeight=prizes.filter(p=>p.active).reduce((s,p)=>s+(p.weightPercent||0),0);
-    const pct=(p)=>totalWeight>0?Math.round((p.weightPercent/totalWeight)*100)+'%':'—';
+    const scratchPrizes=prizes.filter(p=>p.game==='scratch_card'||p.game==='both');
+    const penaltyPrizes=prizes.filter(p=>p.game==='penalty'||p.game==='both');
 
-    const PRIZE_TYPE_LABEL={'none':'No prize','loyalty_points':'Loyalty Points','reward_tier':'Reward Voucher'};
+    const PRIZE_TYPE_LABEL={'none':'No prize','loyalty_points':'Loyalty Points','reward_tier':'Reward Voucher','gift_card':'Gift Card','customer_group':'Customer Group'};
+
+    function makePrizeTable(list){
+      const tw=list.filter(p=>p.active).reduce((s,p)=>s+(p.weightPercent||0),0);
+      const pct=(p)=>tw>0&&p.active?Math.round((p.weightPercent/tw)*100)+'%':'—';
+      if(!list.length)return '<p style="font-size:13px;color:var(--text-2);margin:0 0 8px">No prizes yet for this game.</p>';
+      return`<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px">
+        <thead><tr style="border-bottom:2px solid var(--border)">
+          <th style="text-align:left;padding:6px 8px;color:var(--text-2);font-weight:600">Name</th>
+          <th style="text-align:left;padding:6px 8px;color:var(--text-2);font-weight:600">Type</th>
+          <th style="text-align:right;padding:6px 8px;color:var(--text-2);font-weight:600">Weight</th>
+          <th style="text-align:right;padding:6px 8px;color:var(--text-2);font-weight:600">Chance</th>
+          <th style="text-align:center;padding:6px 8px;color:var(--text-2);font-weight:600">Active</th>
+          <th style="padding:6px 8px"></th>
+        </tr></thead>
+        <tbody>${list.map((p,i)=>`
+          <tr style="border-bottom:1px solid var(--border);background:${i%2===0?'var(--surface)':'transparent'}">
+            <td style="padding:8px 8px;color:var(--text);font-weight:500">
+              ${esc(p.name)}
+              ${p.game==='both'?'<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:var(--bg);border:1px solid var(--border);color:var(--text-2);margin-left:4px">Both</span>':''}
+            </td>
+            <td style="padding:8px 8px;color:var(--text-2)">
+              ${esc(PRIZE_TYPE_LABEL[p.prizeType]||p.prizeType)}
+              ${p.prizeType==='loyalty_points'&&p.value?`<span style="margin-left:4px;font-size:11px;color:var(--text-2)">(${p.value} pts)</span>`:''}
+              ${p.prizeType==='reward_tier'&&p.squareDiscountType?`<span style="margin-left:4px;font-size:11px;color:var(--green,#166534);font-weight:600">${p.squareDiscountType==='FIXED_PERCENTAGE'?p.squareDiscountValue+'% off':p.squareDiscountValue?'£'+(p.squareDiscountValue/100).toFixed(2)+' off':''}</span>`:''}
+              ${p.prizeType==='reward_tier'&&p.rewardTierId?`<span title="Square tier ID: ${esc(p.rewardTierId)}" style="margin-left:4px;font-size:11px;color:var(--green,#166534)">&#x2713; Linked</span>`:''}
+              ${p.prizeType==='reward_tier'&&!p.rewardTierId?`<span style="margin-left:4px;font-size:11px;color:var(--amber,#b45309)">&#x26A0; Not linked to Square yet</span>`:''}
+            </td>
+            <td style="padding:8px 8px;text-align:right;color:var(--text-2)">${p.weightPercent}</td>
+            <td style="padding:8px 8px;text-align:right;color:var(--text-2)">${pct(p)}</td>
+            <td style="padding:8px 8px;text-align:center">
+              <span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;background:${p.active?'var(--green-light,#f0fdf4)':'var(--surface)'};color:${p.active?'var(--green)':'var(--text-2)'}">
+                ${p.active?'Yes':'No'}
+              </span>
+            </td>
+            <td style="padding:8px 8px;text-align:right">
+              <button class="btn btn-secondary btn-sm" onclick="openGamePrizeModal(${JSON.stringify(p).replace(/"/g,'&quot;')})" style="font-size:12px;padding:4px 10px">Edit</button>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+    }
 
     // Parse saved days (e.g. "1,6,7") into a Set for checkbox rendering
     const savedDays=new Set((cfg.scheduleDays||'').split(',').map(d=>d.trim()).filter(Boolean).map(Number));
-
     const DAYS=[
       {iso:1,label:'Mon'},{iso:2,label:'Tue'},{iso:3,label:'Wed'},
       {iso:4,label:'Thu'},{iso:5,label:'Fri'},{iso:6,label:'Sat'},{iso:7,label:'Sun'},
     ];
 
     body.innerHTML=`
-      <!-- Enable ───────────────────────────────────────────────────────── -->
-      <div style="margin-bottom:20px">
-        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:600;color:var(--text)">
-          <input type="checkbox" id="gameEnabled" ${cfg.enabled?'checked':''} style="width:18px;height:18px;accent-color:var(--blue)">
-          Game enabled
+      <!-- ── PENALTY CHALLENGE ──────────────────────────────────────────── -->
+      <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:24px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <span style="font-size:20px">⚽</span>
+          <div style="font-size:15px;font-weight:700;color:var(--text)">Penalty Challenge</div>
+          <span style="font-size:11px;padding:2px 8px;border-radius:4px;background:#f0fdf4;color:#166534;font-weight:600;border:1px solid #bbf7d0">World Cup 2026</span>
+        </div>
+
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px">
+          <input type="checkbox" id="penaltyEnabled" ${cfg.penaltyEnabled?'checked':''} style="width:18px;height:18px;accent-color:var(--blue)">
+          Penalty game enabled
         </label>
-        <p style="font-size:13px;color:var(--text-2);margin:6px 0 0 28px">
-          When ticked, the game button appears in the app for signed-in customers.
-          Untick to hide it completely — e.g. while setting up prizes.
+        <p style="font-size:13px;color:var(--text-2);margin:0 0 16px 28px">
+          When ticked, customers can play the penalty shootout during World Cup matches.
+          The game window opens <strong>30 minutes before kick-off</strong> and closes <strong>1 hour after kick-off</strong>.
+          One shot per customer per match day.
         </p>
-      </div>
 
-      <!-- Time window ──────────────────────────────────────────────────── -->
-      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Daily time window</div>
-      <p style="font-size:13px;color:var(--text-2);margin:0 0 10px">The game is only available to customers during these hours (London time).</p>
-      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px">
-        <div class="form-group" style="margin:0;flex:1;min-width:130px">
-          <label class="form-label">From</label>
-          <input class="form-input" type="time" id="gameWindowStart" value="${esc(cfg.windowStart||'00:00')}" style="max-width:140px">
-        </div>
-        <div class="form-group" style="margin:0;flex:1;min-width:130px">
-          <label class="form-label">Until</label>
-          <input class="form-input" type="time" id="gameWindowEnd" value="${esc(cfg.windowEnd||'23:59')}" style="max-width:140px">
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px">Penalty Prizes</div>
+        <p style="font-size:13px;color:var(--text-2);margin:0 0 10px">
+          Prizes listed below are entered into the penalty draw. Prizes set to <em>Both games</em> also appear here.
+          Use the <strong>Available in</strong> field in the prize editor to control which game each prize can be won in.
+        </p>
+        ${makePrizeTable(penaltyPrizes)}
+        <button class="btn btn-secondary" onclick="openGamePrizeModal(null,'penalty')" style="margin-bottom:18px">+ Add Penalty Prize</button>
+
+        <div>
+          <button class="btn btn-primary" id="penaltySaveBtn" onclick="savePenaltyConfig()">Save Penalty Settings</button>
         </div>
       </div>
 
-      <!-- Days of the week ─────────────────────────────────────────────── -->
-      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Days available</div>
-      <p style="font-size:13px;color:var(--text-2);margin:0 0 10px">Tick the days the game should run. Leave all unticked to run every day.</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">
-        ${DAYS.map(d=>`
-          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;font-weight:500;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);user-select:none">
-            <input type="checkbox" class="gameDayChk" data-iso="${d.iso}" ${savedDays.has(d.iso)?'checked':''}
-              style="width:15px;height:15px;accent-color:var(--blue)">
-            ${d.label}
-          </label>`).join('')}
+      <!-- ── SCRATCH CARD GAME ──────────────────────────────────────────── -->
+      <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:24px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <span style="font-size:20px">🎯</span>
+          <div style="font-size:15px;font-weight:700;color:var(--text)">Scratch Card Game</div>
+        </div>
+
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px">
+          <input type="checkbox" id="gameEnabled" ${cfg.enabled?'checked':''} style="width:18px;height:18px;accent-color:var(--blue)">
+          Scratch Card enabled
+        </label>
+        <p style="font-size:13px;color:var(--text-2);margin:0 0 16px 28px">
+          When ticked, the scratch card button appears in the app for signed-in customers.
+          Untick to hide it completely — e.g. while setting up prizes. One play per customer per day.
+        </p>
+
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Daily time window</div>
+        <p style="font-size:13px;color:var(--text-2);margin:0 0 10px">The game is only available to customers during these hours (London time).</p>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px">
+          <div class="form-group" style="margin:0;flex:1;min-width:130px">
+            <label class="form-label">From</label>
+            <input class="form-input" type="time" id="gameWindowStart" value="${esc(cfg.windowStart||'00:00')}" style="max-width:140px">
+          </div>
+          <div class="form-group" style="margin:0;flex:1;min-width:130px">
+            <label class="form-label">Until</label>
+            <input class="form-input" type="time" id="gameWindowEnd" value="${esc(cfg.windowEnd||'23:59')}" style="max-width:140px">
+          </div>
+        </div>
+
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Days available</div>
+        <p style="font-size:13px;color:var(--text-2);margin:0 0 10px">Tick the days the game should run. Leave all unticked to run every day.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">
+          ${DAYS.map(d=>`
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;font-weight:500;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);user-select:none">
+              <input type="checkbox" class="gameDayChk" data-iso="${d.iso}" ${savedDays.has(d.iso)?'checked':''}
+                style="width:15px;height:15px;accent-color:var(--blue)">
+              ${d.label}
+            </label>`).join('')}
+        </div>
+
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Date range <span style="font-weight:400;color:var(--text-2)">(optional)</span></div>
+        <p style="font-size:13px;color:var(--text-2);margin:0 0 10px">Limit the game to a specific period — e.g. a promotion. Leave both blank to run indefinitely.</p>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px">
+          <div class="form-group" style="margin:0;flex:1;min-width:150px">
+            <label class="form-label">Start date</label>
+            <input class="form-input" type="date" id="gameScheduleFrom" value="${esc(cfg.scheduleFrom||'')}" style="max-width:170px">
+          </div>
+          <div class="form-group" style="margin:0;flex:1;min-width:150px">
+            <label class="form-label">End date</label>
+            <input class="form-input" type="date" id="gameScheduleTo" value="${esc(cfg.scheduleTo||'')}" style="max-width:170px">
+          </div>
+        </div>
+
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px">Scratch Card Prizes</div>
+        <p style="font-size:13px;color:var(--text-2);margin:0 0 10px">
+          Prizes listed below are entered into the scratch card draw. Prizes set to <em>Both games</em> also appear here.
+        </p>
+        ${makePrizeTable(scratchPrizes)}
+        <button class="btn btn-secondary" onclick="openGamePrizeModal(null,'scratch_card')" style="margin-bottom:18px">+ Add Scratch Card Prize</button>
+
+        <div>
+          <button class="btn btn-primary" id="gameSaveBtn" onclick="saveGameConfig()">Save Scratch Card Settings</button>
+        </div>
       </div>
 
-      <!-- Date range ───────────────────────────────────────────────────── -->
-      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Date range <span style="font-weight:400;color:var(--text-2)">(optional)</span></div>
-      <p style="font-size:13px;color:var(--text-2);margin:0 0 10px">Limit the game to a specific period — e.g. a promotion. Leave both blank to run indefinitely.</p>
-      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:24px">
-        <div class="form-group" style="margin:0;flex:1;min-width:150px">
-          <label class="form-label">Start date</label>
-          <input class="form-input" type="date" id="gameScheduleFrom" value="${esc(cfg.scheduleFrom||'')}" style="max-width:170px">
-        </div>
-        <div class="form-group" style="margin:0;flex:1;min-width:150px">
-          <label class="form-label">End date</label>
-          <input class="form-input" type="date" id="gameScheduleTo" value="${esc(cfg.scheduleTo||'')}" style="max-width:170px">
-        </div>
-      </div>
-
-      <button class="btn btn-primary" id="gameSaveBtn" onclick="saveGameConfig()" style="margin-bottom:28px">Save Settings</button>
-
-      <!-- Prize table ──────────────────────────────────────────────────── -->
-      <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px">Prize Table</div>
-      <p style="font-size:13px;color:var(--text-2);margin:0 0 12px">
-        Each prize has a <strong>weight</strong> that controls how likely it is relative to the others.
-        Higher weight = more likely. The percentages shown are the approximate real-world chances.
-        Click a prize row to edit it.
-      </p>
-      ${prizes.length===0?'<p style="font-size:13px;color:var(--text-2)">No prizes yet.</p>':`
-        <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">
-          <thead>
-            <tr style="border-bottom:2px solid var(--border)">
-              <th style="text-align:left;padding:6px 8px;color:var(--text-2);font-weight:600">Name</th>
-              <th style="text-align:left;padding:6px 8px;color:var(--text-2);font-weight:600">Type</th>
-              <th style="text-align:right;padding:6px 8px;color:var(--text-2);font-weight:600">Weight</th>
-              <th style="text-align:right;padding:6px 8px;color:var(--text-2);font-weight:600">Chance</th>
-              <th style="text-align:center;padding:6px 8px;color:var(--text-2);font-weight:600">Active</th>
-              <th style="padding:6px 8px"></th>
-            </tr>
-          </thead>
-          <tbody>
-            ${prizes.map((p,i)=>`
-              <tr style="border-bottom:1px solid var(--border);background:${i%2===0?'var(--surface)':'transparent'}">
-                <td style="padding:8px 8px;color:var(--text);font-weight:500">${esc(p.name)}</td>
-                <td style="padding:8px 8px;color:var(--text-2)">
-                  ${esc(PRIZE_TYPE_LABEL[p.prizeType]||p.prizeType)}
-                  ${p.prizeType==='loyalty_points'&&p.value?`<span style="margin-left:4px;font-size:11px;color:var(--text-2)">(${p.value} pts)</span>`:''}
-                  ${p.prizeType==='reward_tier'&&p.squareDiscountType?`<span style="margin-left:4px;font-size:11px;color:var(--green,#166534);font-weight:600">${p.squareDiscountType==='FIXED_PERCENTAGE'?p.squareDiscountValue+'% off':p.squareDiscountValue?'£'+(p.squareDiscountValue/100).toFixed(2)+' off':''}</span>`:''}
-                  ${p.prizeType==='reward_tier'&&p.rewardTierId?`<span title="Square tier ID: ${esc(p.rewardTierId)}" style="margin-left:4px;font-size:11px;color:var(--green,#166534)">&#x2713; Linked</span>`:''}
-                  ${p.prizeType==='reward_tier'&&!p.rewardTierId?`<span style="margin-left:4px;font-size:11px;color:var(--amber,#b45309)">&#x26A0; Not linked to Square yet</span>`:''}
-                </td>
-                <td style="padding:8px 8px;text-align:right;color:var(--text-2)">${p.weightPercent}</td>
-                <td style="padding:8px 8px;text-align:right;color:var(--text-2)">${p.active?pct(p):'—'}</td>
-                <td style="padding:8px 8px;text-align:center">
-                  <span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;background:${p.active?'var(--green-light,#f0fdf4)':'var(--surface)'};color:${p.active?'var(--green)':'var(--text-2)'}">
-                    ${p.active?'Yes':'No'}
-                  </span>
-                </td>
-                <td style="padding:8px 8px;text-align:right">
-                  <button class="btn btn-secondary btn-sm" onclick="openGamePrizeModal(${JSON.stringify(p).replace(/"/g,'&quot;')})" style="font-size:12px;padding:4px 10px">Edit</button>
-                </td>
-              </tr>`).join('')}
-          </tbody>
-        </table>`}
-      <button class="btn btn-secondary" onclick="openGamePrizeModal(null)" style="margin-bottom:24px">+ Add Prize</button>
-
-      <!-- Recent winners ────────────────────────────────────────────────── -->
+      <!-- ── RECENT WINNERS ─────────────────────────────────────────────── -->
       <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px">Recent Winners</div>
       <div id="gameWinnersBody"><span style="font-size:13px;color:var(--text-2)">Loading…</span></div>
     `;
     loadGameWinners();
   }
+
 
   async function saveGameConfig(){
     const btn=el('gameSaveBtn');
@@ -4062,10 +4107,27 @@
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({enabled,windowStart,windowEnd,scheduleDays:checkedDays,scheduleFrom,scheduleTo}),
       });
-      if(r.ok){toast('Game settings saved','success');}
+      if(r.ok){toast('Scratch Card settings saved','success');}
       else{const d=await r.json().catch(()=>({}));toast(d.message||'Save failed','error');}
     }catch(e){toast('Save failed','error');}
-    finally{btn.disabled=false;btn.textContent='Save Settings';}
+    finally{btn.disabled=false;btn.textContent='Save Scratch Card Settings';}
+  }
+
+  async function savePenaltyConfig(){
+    const btn=el('penaltySaveBtn');
+    if(!btn||btn.disabled)return;
+    btn.disabled=true;btn.textContent='Saving…';
+    try{
+      const penaltyEnabled=el('penaltyEnabled')?.checked||false;
+      const r=await api('/api/staff/game/config',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({penaltyEnabled}),
+      });
+      if(r.ok){toast('Penalty settings saved','success');}
+      else{const d=await r.json().catch(()=>({}));toast(d.message||'Save failed','error');}
+    }catch(e){toast('Save failed','error');}
+    finally{btn.disabled=false;btn.textContent='Save Penalty Settings';}
   }
 
   async function loadGameWinners(){
@@ -4162,7 +4224,7 @@
     }
   }
 
-  function openGamePrizeModal(prize){
+  function openGamePrizeModal(prize, defaultGame){
     const isNew=!prize;
     el('gamePrizeModalTitle').textContent=isNew?'Add Prize':'Edit Prize';
     el('gamePrizeName').value=prize?.name||'';
@@ -4172,6 +4234,8 @@
     el('gamePrizeWeight').value=prize?.weightPercent??10;
     el('gamePrizeActive').checked=prize==null?true:!!prize.active;
     el('gamePrizeId').value=prize?.id||'';
+    const gameEl=el('gamePrizeGame');
+    if(gameEl)gameEl.value=prize?.game||(defaultGame||'both');
     // Reset hidden tier fields (will be repopulated by loadGamePrizeTiers)
     el('gamePrizeDiscountType').value=prize?.squareDiscountType||'';
     el('gamePrizeDiscountValue').value=prize?.squareDiscountValue??'';
@@ -4214,6 +4278,7 @@
           ?parseInt(el('gamePrizeTierPoints').value)||0:0,
         weightPercent:parseInt(el('gamePrizeWeight')?.value||'10')||10,
         active:el('gamePrizeActive')?.checked||false,
+        game:el('gamePrizeGame')?.value||'both',
       };
       if(!payload.name){toast('Prize name is required','error');return;}
       const url=id?`/api/staff/game/prizes/${id}`:'/api/staff/game/prizes';
@@ -4233,6 +4298,7 @@
   window.openGamePrizeModal=openGamePrizeModal;
   window.saveGamePrize=saveGamePrize;
   window.saveGameConfig=saveGameConfig;
+  window.savePenaltyConfig=savePenaltyConfig;
   window.updateGamePrizeTypeFields=updateGamePrizeTypeFields;
   window.updateDiscountPreview=updateDiscountPreview;
   window.onGamePrizeTierSelected=onGamePrizeTierSelected;

@@ -9617,6 +9617,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/game/wc-play", customerAuth, async (req: Request & { customerId?: number }, res) => {
     const customerId = req.customerId!;
     try {
+      const penaltyEnabledSetting = await storage.getSetting("penalty_enabled");
+      if (penaltyEnabledSetting !== "true") {
+        return res.status(403).json({ message: "The penalty challenge is currently disabled." });
+      }
       const { getNextWorldCupMatch } = await import("../worldCup.js");
       const match = await getNextWorldCupMatch();
       if (!isWcMatchDay(match)) {
@@ -9717,13 +9721,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public config — lets the app know whether to show the game button at all.
   app.get("/api/game/config", async (_req, res) => {
     try {
-      const [enabled, windowStart, windowEnd, scheduleDays, scheduleFrom, scheduleTo] = await Promise.all([
+      const [enabled, windowStart, windowEnd, scheduleDays, scheduleFrom, scheduleTo, penaltyEnabled] = await Promise.all([
         storage.getSetting("game_enabled"),
         storage.getSetting("game_window_start"),
         storage.getSetting("game_window_end"),
         storage.getSetting("game_schedule_days"),
         storage.getSetting("game_schedule_from"),
         storage.getSetting("game_schedule_to"),
+        storage.getSetting("penalty_enabled"),
       ]);
       const start = windowStart ?? "00:00";
       const end   = windowEnd   ?? "23:59";
@@ -9738,6 +9743,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         scheduleFrom: from,
         scheduleTo: to,
         withinWindow: enabled === "true" && isGameScheduleActive(start, end, days, from, to),
+        penaltyEnabled: penaltyEnabled === "true",
       });
     } catch {
       res.json({ enabled: false, withinWindow: false });
@@ -9970,13 +9976,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/staff/game/config", staffAuth, async (_req, res) => {
     try {
-      const [enabled, windowStart, windowEnd, scheduleDays, scheduleFrom, scheduleTo] = await Promise.all([
+      const [enabled, windowStart, windowEnd, scheduleDays, scheduleFrom, scheduleTo, penaltyEnabled] = await Promise.all([
         storage.getSetting("game_enabled"),
         storage.getSetting("game_window_start"),
         storage.getSetting("game_window_end"),
         storage.getSetting("game_schedule_days"),
         storage.getSetting("game_schedule_from"),
         storage.getSetting("game_schedule_to"),
+        storage.getSetting("penalty_enabled"),
       ]);
       const prizes = await storage.getAllGamePrizes();
       res.json({
@@ -9986,6 +9993,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         scheduleDays: scheduleDays ?? "",
         scheduleFrom: scheduleFrom ?? "",
         scheduleTo: scheduleTo ?? "",
+        penaltyEnabled: penaltyEnabled === "true",
         prizes,
       });
     } catch (err: any) {
@@ -9994,10 +10002,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/staff/game/config", staffAuth, managerAuth, async (req, res) => {
-    const { enabled, windowStart, windowEnd, scheduleDays, scheduleFrom, scheduleTo } = req.body ?? {};
+    const { enabled, windowStart, windowEnd, scheduleDays, scheduleFrom, scheduleTo, penaltyEnabled } = req.body ?? {};
     try {
       await Promise.all([
-        storage.setSetting("game_enabled",       enabled ? "true" : "false"),
+        enabled        != null && storage.setSetting("game_enabled",         enabled ? "true" : "false"),
+        penaltyEnabled != null && storage.setSetting("penalty_enabled",      penaltyEnabled ? "true" : "false"),
         windowStart    != null && storage.setSetting("game_window_start",    String(windowStart)),
         windowEnd      != null && storage.setSetting("game_window_end",      String(windowEnd)),
         // scheduleDays can be an empty string (= every day), so we save even empty values
