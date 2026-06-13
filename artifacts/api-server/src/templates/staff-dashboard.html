@@ -2530,6 +2530,16 @@
         </div>
       </div>
 
+      <!-- Account access -->
+      <div style="border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:700;color:var(--text-2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Account Access</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="flex:1;font-size:12px;color:var(--text-2);line-height:1.5">Send the customer a password reset link by email.</div>
+          <button class="btn btn-secondary btn-sm" id="msPwResetBtn" onclick="window.sendPwReset()">Send Password Reset</button>
+        </div>
+        <div id="msPwResetMsg" style="display:none;margin-top:8px;font-size:12px;line-height:1.4;border-radius:6px;padding:7px 10px"></div>
+      </div>
+
       <!-- Danger zone -->
       <div style="border:1px solid var(--red-light,#FEE2E2);border-radius:10px;padding:12px 16px">
         <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Danger Zone</div>
@@ -8928,13 +8938,20 @@
     // Disable cancel btn if already cancelled
     el('msCancelBtn').disabled=sub.status==='cancelled';
 
-    // Store current sub id
+    // Store current sub id and customer info
     el('manageSubModal').dataset.subId=id;
+    el('manageSubModal').dataset.custEmail=cust?cust.email||'':'';
+    el('manageSubModal').dataset.custId=cust?String(cust.id||''):'';
     el('manageSubModal').dataset.historyLoaded='';
     el('msErr').classList.remove('show');
     el('msHistoryBody').style.display='none';
     el('msHistoryCaret').textContent='▾';
     el('msHistoryContent').innerHTML='Loading…';
+    // Reset pw reset section
+    const pwMsg=el('msPwResetMsg');
+    if(pwMsg){pwMsg.style.display='none';pwMsg.textContent='';}
+    const pwBtn=el('msPwResetBtn');
+    if(pwBtn){pwBtn.disabled=false;}
     openOverlay('manageSubModal');
   };
 
@@ -8979,6 +8996,47 @@
 
   window.msResetHours=function(){ el('msHoursUsed').value=0; };
   window.msResetGuests=function(){ el('msGuestPasses').value=0; };
+
+  window.sendPwReset=async function(){
+    const modal=el('manageSubModal');
+    const email=modal.dataset.custEmail||'';
+    const custId=modal.dataset.custId?parseInt(modal.dataset.custId):null;
+    if(!email){
+      const msg=el('msPwResetMsg');
+      msg.style.display='';
+      msg.style.background='#FEF2F2';msg.style.color='var(--red)';
+      msg.textContent='No email address on file for this customer.';
+      return;
+    }
+    if(!confirm('Send a password reset email to '+email+'?'))return;
+    const btn=el('msPwResetBtn');
+    const msg=el('msPwResetMsg');
+    btn.disabled=true;
+    msg.style.display='none';
+    try{
+      const body=custId?{customerId:custId}:{email};
+      const r=await api('/api/staff/customers/forgot-password',{method:'POST',body:JSON.stringify(body)});
+      const data=await r.json();
+      msg.style.display='';
+      if(r.ok&&data.success){
+        msg.style.background='#F0FDF4';msg.style.color='var(--green,#16a34a)';
+        msg.textContent='Password reset email sent to '+esc(data.email||email)+'.';
+        loadPwResetHistoryPanel();
+      }else{
+        msg.style.background='#FEF2F2';msg.style.color='var(--red)';
+        msg.textContent=data.message||'Failed to send reset email.';
+        btn.disabled=false;
+      }
+    }catch(e){
+      if(e.message!=='Session expired'){
+        const msg2=el('msPwResetMsg');
+        msg2.style.display='';
+        msg2.style.background='#FEF2F2';msg2.style.color='var(--red)';
+        msg2.textContent='Network error. Please try again.';
+        btn.disabled=false;
+      }
+    }
+  };
 
   window.msCancelSubscription=async function(){
     const id=parseInt(el('manageSubModal').dataset.subId);
