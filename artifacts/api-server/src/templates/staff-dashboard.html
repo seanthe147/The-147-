@@ -11159,6 +11159,20 @@
     }
   }
 
+  /* ── CRM global bindings (onclick handlers run in window scope) ── */
+  window.switchCrmTab=switchCrmTab;
+  window.loadCrmCampaigns=loadCrmCampaigns;
+  window.loadCrmAutomations=loadCrmAutomations;
+  window.debounceCrmSearch=debounceCrmSearch;
+  window.crmSendPasswordReset=crmSendPasswordReset;
+  window.openCrmCampaignForm=openCrmCampaignForm;
+  window.closeCrmCampaignForm=closeCrmCampaignForm;
+  window.crmUpdateAudienceCount=crmUpdateAudienceCount;
+  window.saveCrmCampaign=saveCrmCampaign;
+  window.crmSendCampaign=crmSendCampaign;
+  window.crmDeleteCampaign=crmDeleteCampaign;
+  window.saveCrmAutomation=saveCrmAutomation;
+
   /* ── Init ── */
   updateDateUI();
   if(getToken()){bootApp()}else{showLogin()}
