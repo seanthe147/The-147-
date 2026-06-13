@@ -10826,10 +10826,10 @@
     statsEl.innerHTML='<div class="loading-state"><div class="spinner"></div>Loading…</div>';
     try{
       const [allRes,membersRes,loyaltyRes,campaigns]=await Promise.all([
-        api('/api/staff/email-campaigns/audience-count?audience=all'),
-        api('/api/staff/email-campaigns/audience-count?audience=members'),
-        api('/api/staff/email-campaigns/audience-count?audience=loyalty'),
-        api('/api/staff/email-campaigns'),
+        api('/api/staff/email-campaigns/audience-count?audience=all').then(r=>r.json()),
+        api('/api/staff/email-campaigns/audience-count?audience=members').then(r=>r.json()),
+        api('/api/staff/email-campaigns/audience-count?audience=loyalty').then(r=>r.json()),
+        api('/api/staff/email-campaigns').then(r=>r.json()),
       ]);
       const sentCampaigns=(campaigns||[]).filter(c=>c.status==='sent').length;
       const draftCampaigns=(campaigns||[]).filter(c=>c.status==='draft').length;
@@ -10915,7 +10915,7 @@
     if(!listEl)return;
     listEl.innerHTML='<div class="loading-state"><div class="spinner"></div>Loading campaigns…</div>';
     try{
-      const campaigns=await api('/api/staff/email-campaigns');
+      const campaigns=await api('/api/staff/email-campaigns').then(r=>r.json());
       if(!campaigns||!campaigns.length){
         listEl.innerHTML='<p style="font-size:13px;color:var(--text-3);margin-top:4px">No campaigns yet — click <strong>New Campaign</strong> to create one.</p>';
         return;
@@ -10975,7 +10975,7 @@
     let prefill={title:'',subject:'',bodyText:'',audience:'all'};
     if(editId){
       try{
-        const campaigns=await api('/api/staff/email-campaigns');
+        const campaigns=await api('/api/staff/email-campaigns').then(r=>r.json());
         const found=(campaigns||[]).find(function(c){return c.id===editId;});
         if(found)prefill=found;
       }catch(_){}
@@ -11019,7 +11019,7 @@
     if(!audEl||!countEl)return;
     countEl.textContent='Counting…';
     try{
-      const r=await api('/api/staff/email-campaigns/audience-count?audience='+encodeURIComponent(audEl.value||'all'));
+      const r=await api('/api/staff/email-campaigns/audience-count?audience='+encodeURIComponent(audEl.value||'all')).then(res=>res.json());
       countEl.textContent=r.count.toLocaleString()+' recipient'+(r.count!==1?'s':'');
     }catch(_){countEl.textContent='Unable to count recipients';}
   }
@@ -11046,7 +11046,7 @@
   async function crmSendCampaign(id,title){
     if(!confirm('Send "'+title+'" now?\n\nThis emails all recipients immediately and cannot be undone.'))return;
     try{
-      const r=await api('/api/staff/email-campaigns/'+id+'/send',{method:'POST'});
+      const r=await api('/api/staff/email-campaigns/'+id+'/send',{method:'POST'}).then(res=>res.json());
       toast('Sending to '+r.recipientCount.toLocaleString()+' recipient'+(r.recipientCount!==1?'s':'')+'…');
       setTimeout(function(){loadCrmCampaigns();},1500);
     }catch(e){toast((e&&e.message)||'Failed to send campaign','error');}
@@ -11067,7 +11067,7 @@
     if(!cardsEl)return;
     cardsEl.innerHTML='<div class="loading-state"><div class="spinner"></div>Loading automations…</div>';
     try{
-      const rows=await api('/api/staff/email-automations');
+      const rows=await api('/api/staff/email-automations').then(r=>r.json());
       const byType={};
       (rows||[]).forEach(function(r){byType[r.triggerType]=r;});
       const defs=[
