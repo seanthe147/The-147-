@@ -6301,9 +6301,9 @@
     try{
       const r=await api('/api/staff/kiosk-settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});
       if(!r.ok)throw new Error('Failed');
-      showToast(enabled?'Kiosk ordering enabled':'Kiosk ordering paused','success');
+      toast(enabled?'Kiosk ordering enabled':'Kiosk ordering paused','success');
     }catch(e){
-      showToast('Failed to update kiosk status','error');
+      toast('Failed to update kiosk status','error');
       const toggle=el('kioskMasterToggle');
       if(toggle)toggle.checked=!enabled;
     }
@@ -6319,9 +6319,9 @@
         if(cat)cat.kioskHidden=kioskHidden;
         renderKioskMenu(kioskMenuData);
       }
-      showToast(`"${catName}" ${kioskHidden?'hidden on kiosk':'visible on kiosk'}`,'success');
+      toast(`"${catName}" ${kioskHidden?'hidden on kiosk':'visible on kiosk'}`,'success');
     }catch(e){
-      showToast('Failed to update category','error');
+      toast('Failed to update category','error');
       loadKioskSettings(true);
     }
   }
@@ -6338,9 +6338,9 @@
         }
         renderKioskMenu(kioskMenuData);
       }
-      showToast(`"${name}" ${kioskHidden?'hidden on kiosk':'visible on kiosk'}`,'success');
+      toast(`"${name}" ${kioskHidden?'hidden on kiosk':'visible on kiosk'}`,'success');
     }catch(e){
-      showToast('Failed to update item','error');
+      toast('Failed to update item','error');
       loadKioskSettings(true);
     }
   }
@@ -6451,9 +6451,9 @@
       // Also sync the existing menu tab toggle if it exists
       const oldToggle=el('kioskMasterToggle');
       if(oldToggle)oldToggle.checked=enabled;
-      showToast(enabled?'Kiosk ordering enabled — iPad is now live':'Kiosk ordering paused — iPad will prompt counter orders','success');
+      toast(enabled?'Kiosk ordering enabled — iPad is now live':'Kiosk ordering paused — iPad will prompt counter orders','success');
     }catch(e){
-      showToast('Failed to update kiosk status','error');
+      toast('Failed to update kiosk status','error');
       const toggle=el('kioskPageMasterToggle');
       if(toggle)toggle.checked=!enabled;
     }
@@ -6474,9 +6474,9 @@
         const cat=kioskMenuData.find(c=>c.id===catId);
         if(cat)cat.kioskHidden=kioskHidden;
       }
-      showToast(`"${catName}" ${kioskHidden?'hidden on kiosk':'visible on kiosk'}`,'success');
+      toast(`"${catName}" ${kioskHidden?'hidden on kiosk':'visible on kiosk'}`,'success');
     }catch(e){
-      showToast('Failed to update category','error');
+      toast('Failed to update category','error');
       loadKioskPage(true);
     }
   }
@@ -6500,9 +6500,9 @@
           if(item){item.kioskHidden=kioskHidden;break;}
         }
       }
-      showToast(`"${name}" ${kioskHidden?'hidden on kiosk':'visible on kiosk'}`,'success');
+      toast(`"${name}" ${kioskHidden?'hidden on kiosk':'visible on kiosk'}`,'success');
     }catch(e){
-      showToast('Failed to update item','error');
+      toast('Failed to update item','error');
       loadKioskPage(true);
     }
   }
@@ -10903,9 +10903,9 @@
     if(!confirm('Send a password reset email to '+email+'?'))return;
     try{
       await api('/api/staff/customers/forgot-password',{method:'POST',body:JSON.stringify({email})});
-      showToast('Password reset sent to '+email);
+      toast('Password reset sent to '+email);
     }catch(e){
-      showToast((e&&e.message)||'Failed to send reset','error');
+      toast((e&&e.message)||'Failed to send reset','error');
     }
   }
 
@@ -11037,7 +11037,7 @@
       await api(url,{method:crmCampaignEditId?'PUT':'POST',body:JSON.stringify({title,subject,bodyText,audience})});
       closeCrmCampaignForm();
       loadCrmCampaigns();
-      showToast(crmCampaignEditId?'Campaign updated.':'Campaign saved as draft.');
+      toast(crmCampaignEditId?'Campaign updated.':'Campaign saved as draft.');
     }catch(e){
       if(errEl){errEl.textContent=(e&&e.message)||'Failed to save campaign.';errEl.style.display='';}
     }
@@ -11047,9 +11047,9 @@
     if(!confirm('Send "'+title+'" now?\n\nThis emails all recipients immediately and cannot be undone.'))return;
     try{
       const r=await api('/api/staff/email-campaigns/'+id+'/send',{method:'POST'});
-      showToast('Sending to '+r.recipientCount.toLocaleString()+' recipient'+(r.recipientCount!==1?'s':'')+'…');
+      toast('Sending to '+r.recipientCount.toLocaleString()+' recipient'+(r.recipientCount!==1?'s':'')+'…');
       setTimeout(function(){loadCrmCampaigns();},1500);
-    }catch(e){showToast((e&&e.message)||'Failed to send campaign','error');}
+    }catch(e){toast((e&&e.message)||'Failed to send campaign','error');}
   }
 
   async function crmDeleteCampaign(id){
@@ -11057,8 +11057,8 @@
     try{
       await api('/api/staff/email-campaigns/'+id,{method:'DELETE'});
       loadCrmCampaigns();
-      showToast('Campaign deleted.');
-    }catch(e){showToast((e&&e.message)||'Failed to delete','error');}
+      toast('Campaign deleted.');
+    }catch(e){toast((e&&e.message)||'Failed to delete','error');}
   }
 
   /* ── Automations tab ── */
@@ -11153,7 +11153,7 @@
       await api('/api/staff/email-automations/'+type,{method:'PUT',body:JSON.stringify(payload)});
       const savedEl=el('crmAutoSaved_'+type);
       if(savedEl){savedEl.style.display='';setTimeout(function(){if(savedEl)savedEl.style.display='none';},2500);}
-      showToast(type.replace(/_/g,' ')+' automation saved.');
+      toast(type.replace(/_/g,' ')+' automation saved.');
     }catch(e){
       if(errEl){errEl.textContent=(e&&e.message)||'Failed to save automation.';errEl.style.display='';}
     }
