@@ -538,6 +538,10 @@
           Communications
           <span class="nav-badge hidden" id="noticesBadge">0</span>
         </div>
+        <div class="nav-item hidden" data-page="crm" id="navCrm">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          CRM &amp; Marketing
+        </div>
 
         <div class="nav-section hidden" id="navSectionEvents" style="margin-top:8px">Events &amp; Offers</div>
         <div class="nav-item hidden" data-page="payments" id="navPayments">
@@ -920,6 +924,70 @@
                 <div id="notifHistory"></div>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CRM & MARKETING PAGE (manager/owner only) -->
+      <div class="page" id="pageCrm">
+        <div class="page-body">
+          <div class="menu-tabs" id="crmTabBar">
+            <button class="menu-tab active" onclick="switchCrmTab('overview')" id="crmTabOverview">Overview</button>
+            <button class="menu-tab" onclick="switchCrmTab('customers')" id="crmTabCustomers">Customers</button>
+            <button class="menu-tab" onclick="switchCrmTab('campaigns')" id="crmTabCampaigns">Email Campaigns</button>
+            <button class="menu-tab" onclick="switchCrmTab('automations')" id="crmTabAutomations">Automations</button>
+          </div>
+
+          <!-- OVERVIEW TAB -->
+          <div id="crmTabPanelOverview">
+            <div id="crmOverviewStats" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px;margin-bottom:24px">
+              <div class="loading-state"><div class="spinner"></div>Loading…</div>
+            </div>
+            <div style="display:flex;gap:12px;flex-wrap:wrap">
+              <button class="btn btn-primary" onclick="switchCrmTab('campaigns');loadCrmCampaigns()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                New Campaign
+              </button>
+              <button class="btn btn-secondary" onclick="switchCrmTab('automations');loadCrmAutomations()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+                Configure Automations
+              </button>
+            </div>
+          </div>
+
+          <!-- CUSTOMERS TAB -->
+          <div id="crmTabPanelCustomers" style="display:none">
+            <div class="settings-section" style="max-width:none">
+              <div class="settings-title">Customer Search</div>
+              <div class="settings-desc">Search all registered app customers. Use the password reset button to send a reset link directly from here.</div>
+              <div style="display:flex;gap:8px;margin-bottom:16px">
+                <input class="form-input" type="search" id="crmCustomerSearch" placeholder="Search by name, email or phone…" oninput="debounceCrmSearch()" style="flex:1;max-width:440px" autocomplete="off">
+              </div>
+              <div id="crmCustomerResults"><p style="font-size:13px;color:var(--text-3)">Start typing to search customers…</p></div>
+            </div>
+          </div>
+
+          <!-- CAMPAIGNS TAB -->
+          <div id="crmTabPanelCampaigns" style="display:none">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+              <div>
+                <div style="font-size:15px;font-weight:700;color:var(--text)">Email Campaigns</div>
+                <div style="font-size:13px;color:var(--text-2);margin-top:2px">One-off emails sent to a customer segment. Campaigns are sent immediately once confirmed.</div>
+              </div>
+              <button class="btn btn-primary" onclick="openCrmCampaignForm()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                New Campaign
+              </button>
+            </div>
+            <div id="crmCampaignForm" style="display:none;margin-bottom:20px"></div>
+            <div id="crmCampaignList"><div class="loading-state"><div class="spinner"></div>Loading…</div></div>
+          </div>
+
+          <!-- AUTOMATIONS TAB -->
+          <div id="crmTabPanelAutomations" style="display:none">
+            <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px">Email Automations</div>
+            <div style="font-size:13px;color:var(--text-2);margin-bottom:20px">Automated emails triggered by customer actions or schedules. Changes take effect on the next scheduled run.</div>
+            <div id="crmAutomationCards"><div class="loading-state"><div class="spinner"></div>Loading…</div></div>
           </div>
         </div>
       </div>
@@ -3210,7 +3278,7 @@
     // — like the weekly leftover-membership audit email — can open straight
     // onto the right tab. Falls back to Bookings for everyone (floor staff
     // included — they need the calendar for daily shift work).
-    const tabNavIds={bookings:'navBookings',messages:'navMessages',comms:'navComms',staff:'navStaff',memberships:'navMemberships',menu:'navMenu',kiosk:'navKiosk',website:'navWebsite',banners:'navBanners',offers:'navOffers',deals:'navDeals',loyaltygame:'navLoyaltyGame',venuerewards:'navVenueRewards',payments:'navPayments',hr:'navHR',gdpr:'navGDPR',auditlog:'navAuditLog',settings:'navSettings'};
+    const tabNavIds={bookings:'navBookings',messages:'navMessages',comms:'navComms',crm:'navCrm',staff:'navStaff',memberships:'navMemberships',menu:'navMenu',kiosk:'navKiosk',website:'navWebsite',banners:'navBanners',offers:'navOffers',deals:'navDeals',loyaltygame:'navLoyaltyGame',venuerewards:'navVenueRewards',payments:'navPayments',hr:'navHR',gdpr:'navGDPR',auditlog:'navAuditLog',settings:'navSettings'};
     let initialPage='bookings';
     try{
       const hash=(window.location.hash||'').replace(/^#/,'').toLowerCase();
@@ -3260,6 +3328,7 @@
     el('navBookings').classList.remove('hidden');
     el('navMessages').classList.remove('hidden');
     el('navComms').classList.toggle('hidden',!isManager);
+    el('navCrm').classList.toggle('hidden',!isManager);
     el('navStaff').classList.toggle('hidden',!isOwner);
     // Memberships endpoints (stats, list, signup) are now manager-only on the
     // server. Hide the nav entry for ordinary staff so they do not get a
@@ -3446,13 +3515,13 @@
     try{window.location.hash=page;}catch(_){}
     // Manager-only pages: redirect non-managers back to Bookings if they
     // try to deep-link directly via #hash or programmatic navigation.
-    const managerOnlyPages=['gdpr','auditlog','settings','payments','deals'];
+    const managerOnlyPages=['gdpr','auditlog','settings','payments','deals','crm'];
     if(managerOnlyPages.indexOf(page)>=0&&state.role!=='manager'&&state.role!=='owner'){
       page='bookings';
     }
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page'+cap(page)));
-    const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',kiosk:'Kiosk Control',website:'Website',banners:'App Banners',offers:'Offers',deals:'Current Deals',loyaltygame:'Loyalty Game',venuerewards:'Venue Rewards',payments:'Events & Payments',hr:'HR & Attendance',gdpr:'GDPR & Compliance',auditlog:'Audit Log'};
+    const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',crm:'CRM & Marketing',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',kiosk:'Kiosk Control',website:'Website',banners:'App Banners',offers:'Offers',deals:'Current Deals',loyaltygame:'Loyalty Game',venuerewards:'Venue Rewards',payments:'Events & Payments',hr:'HR & Attendance',gdpr:'GDPR & Compliance',auditlog:'Audit Log'};
     el('topbarTitle').textContent=titles[page]||'';
     el('topbarSub').textContent='';
     if(page==='bookings'){el('topbarActions').style.display='';switchBookingsTab('bookings');loadBookings();loadUpcomingDates();loadDashboardNotices();startBookingsPolling();}
@@ -3476,6 +3545,7 @@
     if(page==='hr')loadHR();
     if(page==='payments')loadPaymentsPage();
     if(page==='auditlog')loadAuditLog();
+    if(page==='crm')loadCrmPage();
   }
   function cap(s){return s.charAt(0).toUpperCase()+s.slice(1)}
 
@@ -10727,6 +10797,367 @@
   };
 
   window.loadWebsiteEditor=loadWebsiteEditor;
+
+  /* ══════════════════════════════════════════════════════════
+     CRM & MARKETING PAGE
+  ══════════════════════════════════════════════════════════ */
+  let crmCurrentTab='overview';
+  let crmCustomerSearchTimer=null;
+  let crmCampaignEditId=null;
+
+  function switchCrmTab(tab){
+    crmCurrentTab=tab;
+    ['overview','customers','campaigns','automations'].forEach(t=>{
+      const btn=el('crmTab'+t.charAt(0).toUpperCase()+t.slice(1));
+      const panel=el('crmTabPanel'+t.charAt(0).toUpperCase()+t.slice(1));
+      if(btn)btn.classList.toggle('active',t===tab);
+      if(panel)panel.style.display=t===tab?'':'none';
+    });
+  }
+
+  async function loadCrmPage(){
+    switchCrmTab('overview');
+    loadCrmOverview();
+  }
+
+  async function loadCrmOverview(){
+    const statsEl=el('crmOverviewStats');
+    if(!statsEl)return;
+    statsEl.innerHTML='<div class="loading-state"><div class="spinner"></div>Loading…</div>';
+    try{
+      const [allRes,membersRes,loyaltyRes,campaigns]=await Promise.all([
+        api('/api/staff/email-campaigns/audience-count?audience=all'),
+        api('/api/staff/email-campaigns/audience-count?audience=members'),
+        api('/api/staff/email-campaigns/audience-count?audience=loyalty'),
+        api('/api/staff/email-campaigns'),
+      ]);
+      const sentCampaigns=(campaigns||[]).filter(c=>c.status==='sent').length;
+      const draftCampaigns=(campaigns||[]).filter(c=>c.status==='draft').length;
+      const totalEmailsSent=(campaigns||[]).filter(c=>c.status==='sent').reduce((a,c)=>a+(c.sentCount||0),0);
+      statsEl.innerHTML=
+        crmStatCard('App Customers','#2563EB',allRes.count,'Total registered app users')+
+        crmStatCard('Members','#7C3AED',membersRes.count,'Active membership holders')+
+        crmStatCard('Loyalty Members','#D97706',loyaltyRes.count,'Customers with loyalty points')+
+        crmStatCard('Emails Delivered','#059669',totalEmailsSent,'Across all sent campaigns')+
+        crmStatCard('Campaigns','#6B7280',sentCampaigns+' sent / '+draftCampaigns+' draft','');
+    }catch(e){
+      statsEl.innerHTML='<p style="color:var(--red);font-size:13px">Failed to load overview.</p>';
+    }
+  }
+
+  function crmStatCard(label,color,value,sub){
+    const display=typeof value==='number'?value.toLocaleString():esc(String(value));
+    return '<div class="settings-section" style="max-width:none;margin:0;padding:18px 20px">'+
+      '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-bottom:8px">'+esc(label)+'</div>'+
+      '<div style="font-size:28px;font-weight:800;color:'+esc(color)+';line-height:1;word-break:break-all">'+display+'</div>'+
+      (sub?'<div style="font-size:12px;color:var(--text-3);margin-top:5px">'+esc(sub)+'</div>':'')+
+      '</div>';
+  }
+
+  /* ── Customers tab ── */
+  function debounceCrmSearch(){
+    clearTimeout(crmCustomerSearchTimer);
+    crmCustomerSearchTimer=setTimeout(()=>loadCrmCustomers(),300);
+  }
+
+  async function loadCrmCustomers(){
+    const q=((el('crmCustomerSearch')||{}).value||'').trim();
+    const resultsEl=el('crmCustomerResults');
+    if(!resultsEl)return;
+    if(q.length<2){resultsEl.innerHTML='<p style="font-size:13px;color:var(--text-3)">Type at least 2 characters to search…</p>';return;}
+    resultsEl.innerHTML='<div class="loading-state"><div class="spinner"></div>Searching…</div>';
+    try{
+      const data=await api('/api/staff/customers/search?q='+encodeURIComponent(q));
+      const customers=data.customers||data||[];
+      if(!customers.length){resultsEl.innerHTML='<p style="font-size:13px;color:var(--text-3)">No customers found for "'+esc(q)+'".</p>';return;}
+      let rows='';
+      customers.forEach(function(c){
+        rows+='<tr style="border-bottom:1px solid var(--border)">'+
+          '<td style="padding:10px 12px;font-weight:600;white-space:nowrap">'+esc(c.name||'—')+'</td>'+
+          '<td style="padding:10px 12px;color:var(--text-2)">'+esc(c.email||'—')+'</td>'+
+          '<td style="padding:10px 12px;color:var(--text-2);white-space:nowrap">'+esc(c.phone||'—')+'</td>'+
+          '<td style="padding:10px 12px">'+
+            (c.membershipPlan?'<span style="background:rgba(124,58,237,.1);color:#7C3AED;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700">'+esc(c.membershipPlan)+'</span>':'<span style="color:var(--text-3)">None</span>')+
+          '</td>'+
+          '<td style="padding:10px 12px;white-space:nowrap">'+
+            (c.email?'<button class="btn btn-ghost btn-sm" onclick="crmSendPasswordReset('+JSON.stringify(c.email)+')">Reset password</button>':'—')+
+          '</td>'+
+        '</tr>';
+      });
+      resultsEl.innerHTML='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
+        '<thead><tr style="border-bottom:2px solid var(--border)">'+
+          '<th style="text-align:left;padding:8px 12px;color:var(--text-2);font-weight:600">Name</th>'+
+          '<th style="text-align:left;padding:8px 12px;color:var(--text-2);font-weight:600">Email</th>'+
+          '<th style="text-align:left;padding:8px 12px;color:var(--text-2);font-weight:600">Phone</th>'+
+          '<th style="text-align:left;padding:8px 12px;color:var(--text-2);font-weight:600">Membership</th>'+
+          '<th style="text-align:left;padding:8px 12px;color:var(--text-2);font-weight:600">Actions</th>'+
+        '</tr></thead>'+
+        '<tbody>'+rows+'</tbody>'+
+      '</table></div>';
+    }catch(e){
+      resultsEl.innerHTML='<p style="color:var(--red);font-size:13px">Search failed. Please try again.</p>';
+    }
+  }
+
+  async function crmSendPasswordReset(email){
+    if(!confirm('Send a password reset email to '+email+'?'))return;
+    try{
+      await api('/api/staff/customers/forgot-password',{method:'POST',body:JSON.stringify({email})});
+      showToast('Password reset sent to '+email);
+    }catch(e){
+      showToast((e&&e.message)||'Failed to send reset','error');
+    }
+  }
+
+  /* ── Campaigns tab ── */
+  async function loadCrmCampaigns(){
+    const listEl=el('crmCampaignList');
+    if(!listEl)return;
+    listEl.innerHTML='<div class="loading-state"><div class="spinner"></div>Loading campaigns…</div>';
+    try{
+      const campaigns=await api('/api/staff/email-campaigns');
+      if(!campaigns||!campaigns.length){
+        listEl.innerHTML='<p style="font-size:13px;color:var(--text-3);margin-top:4px">No campaigns yet — click <strong>New Campaign</strong> to create one.</p>';
+        return;
+      }
+      let rows='';
+      campaigns.forEach(function(c){rows+=crmCampaignRow(c);});
+      listEl.innerHTML='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
+        '<thead><tr style="border-bottom:2px solid var(--border)">'+
+          '<th style="text-align:left;padding:8px 12px;color:var(--text-2);font-weight:600">Campaign</th>'+
+          '<th style="text-align:left;padding:8px 12px;color:var(--text-2);font-weight:600;white-space:nowrap">Audience</th>'+
+          '<th style="text-align:left;padding:8px 12px;color:var(--text-2);font-weight:600">Status</th>'+
+          '<th style="text-align:left;padding:8px 12px;color:var(--text-2);font-weight:600;white-space:nowrap">Results</th>'+
+          '<th style="text-align:left;padding:8px 12px;color:var(--text-2);font-weight:600">Actions</th>'+
+        '</tr></thead>'+
+        '<tbody>'+rows+'</tbody></table></div>';
+    }catch(e){
+      listEl.innerHTML='<p style="color:var(--red);font-size:13px">Failed to load campaigns.</p>';
+    }
+  }
+
+  function crmCampaignRow(c){
+    const statusStyles={draft:{color:'var(--text-2)',bg:'var(--surface)'},sending:{color:'var(--blue)',bg:'rgba(37,99,235,.08)'},sent:{color:'var(--green)',bg:'var(--green-light)'},failed:{color:'var(--red)',bg:'#FFF1F2'}};
+    const ss=statusStyles[c.status]||statusStyles.draft;
+    const audienceLabel={all:'All Customers',members:'Members Only',loyalty:'Loyalty Members'}[c.audience]||c.audience;
+    const resultsText=c.status==='sent'?((c.sentCount||0).toLocaleString()+' sent'+(c.failedCount?', '+c.failedCount+' failed':'')):'—';
+    const sentDate=c.sentAt?new Date(c.sentAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'';
+    let actions='';
+    if(c.status==='draft'){
+      actions='<button class="btn btn-ghost btn-sm" onclick="openCrmCampaignForm('+c.id+')">Edit</button> '+
+               '<button class="btn btn-primary btn-sm" onclick="crmSendCampaign('+c.id+','+JSON.stringify(c.title)+')">Send</button> '+
+               '<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="crmDeleteCampaign('+c.id+')">Delete</button>';
+    }else if(c.status==='sending'){
+      actions='<span style="font-size:12px;color:var(--blue)">Sending…</span>';
+    }
+    return '<tr style="border-bottom:1px solid var(--border)">'+
+      '<td style="padding:10px 12px">'+
+        '<div style="font-weight:600">'+esc(c.title)+'</div>'+
+        '<div style="font-size:12px;color:var(--text-2);margin-top:2px">'+esc(c.subject)+'</div>'+
+        '<div style="font-size:11px;color:var(--text-3);margin-top:2px">By '+esc(c.createdBy||'staff')+(sentDate?' · '+sentDate:'')+'</div>'+
+      '</td>'+
+      '<td style="padding:10px 12px;color:var(--text-2);white-space:nowrap">'+esc(audienceLabel)+'</td>'+
+      '<td style="padding:10px 12px"><span style="background:'+ss.bg+';color:'+ss.color+';padding:2px 9px;border-radius:4px;font-size:11px;font-weight:700;text-transform:capitalize">'+esc(c.status)+'</span></td>'+
+      '<td style="padding:10px 12px;color:var(--text-2);font-size:12px;white-space:nowrap">'+esc(resultsText)+'</td>'+
+      '<td style="padding:10px 12px"><div style="display:flex;gap:6px;flex-wrap:wrap">'+actions+'</div></td>'+
+    '</tr>';
+  }
+
+  async function openCrmCampaignForm(editId){
+    crmCampaignEditId=editId||null;
+    const formEl=el('crmCampaignForm');
+    if(!formEl)return;
+    formEl.style.display='';
+    formEl.className='settings-section';
+    formEl.style.maxWidth='none';
+    formEl.style.marginBottom='20px';
+    formEl.innerHTML='<div class="loading-state"><div class="spinner"></div>Loading…</div>';
+    let prefill={title:'',subject:'',bodyText:'',audience:'all'};
+    if(editId){
+      try{
+        const campaigns=await api('/api/staff/email-campaigns');
+        const found=(campaigns||[]).find(function(c){return c.id===editId;});
+        if(found)prefill=found;
+      }catch(_){}
+    }
+    formEl.innerHTML=
+      '<div class="settings-title" style="margin-bottom:12px">'+(editId?'Edit Campaign':'New Campaign')+'</div>'+
+      '<div id="crmCampaignFormErr" class="modal-err"></div>'+
+      '<div class="form-group"><label class="form-label">Campaign Title <span style="color:var(--text-3);font-weight:400">(internal label)</span></label>'+
+        '<input class="form-input" id="crmCTitle" value="'+esc(prefill.title)+'" placeholder="e.g. July Newsletter" maxlength="120"></div>'+
+      '<div class="form-group"><label class="form-label">Email Subject Line</label>'+
+        '<input class="form-input" id="crmCSubject" value="'+esc(prefill.subject)+'" placeholder="e.g. Big news from The 147!" maxlength="200"></div>'+
+      '<div class="form-group"><label class="form-label">Email Body</label>'+
+        '<textarea class="form-input" id="crmCBody" style="min-height:160px;resize:vertical" maxlength="4000" placeholder="Write your message here…">'+esc(prefill.bodyText)+'</textarea></div>'+
+      '<div class="form-group"><label class="form-label">Audience</label>'+
+        '<select class="form-input" id="crmCAudience" onchange="crmUpdateAudienceCount()" style="max-width:260px">'+
+          '<option value="all"'+(prefill.audience==='all'?' selected':'')+'>All Customers</option>'+
+          '<option value="members"'+(prefill.audience==='members'?' selected':'')+'>Members Only</option>'+
+          '<option value="loyalty"'+(prefill.audience==='loyalty'?' selected':'')+'>Loyalty Members</option>'+
+        '</select>'+
+        '<div id="crmAudienceCount" style="font-size:12px;color:var(--text-2);margin-top:5px">Counting recipients…</div></div>'+
+      '<div style="display:flex;gap:8px;align-items:center">'+
+        '<button class="btn btn-primary" onclick="saveCrmCampaign()">'+(editId?'Save Changes':'Save as Draft')+'</button>'+
+        '<button class="btn btn-ghost" onclick="closeCrmCampaignForm()">Cancel</button>'+
+      '</div>';
+    formEl.scrollIntoView({behavior:'smooth',block:'nearest'});
+    crmUpdateAudienceCount();
+  }
+
+  function closeCrmCampaignForm(){
+    const formEl=el('crmCampaignForm');
+    if(!formEl)return;
+    formEl.style.display='none';
+    formEl.innerHTML='';
+    formEl.className='';
+    crmCampaignEditId=null;
+  }
+
+  async function crmUpdateAudienceCount(){
+    const audEl=el('crmCAudience');
+    const countEl=el('crmAudienceCount');
+    if(!audEl||!countEl)return;
+    countEl.textContent='Counting…';
+    try{
+      const r=await api('/api/staff/email-campaigns/audience-count?audience='+encodeURIComponent(audEl.value||'all'));
+      countEl.textContent=r.count.toLocaleString()+' recipient'+(r.count!==1?'s':'');
+    }catch(_){countEl.textContent='Unable to count recipients';}
+  }
+
+  async function saveCrmCampaign(){
+    const errEl=el('crmCampaignFormErr');
+    if(errEl)errEl.style.display='none';
+    const title=((el('crmCTitle')||{}).value||'').trim();
+    const subject=((el('crmCSubject')||{}).value||'').trim();
+    const bodyText=((el('crmCBody')||{}).value||'').trim();
+    const audience=((el('crmCAudience')||{}).value)||'all';
+    if(!title||!subject||!bodyText){if(errEl){errEl.textContent='Title, subject and body are all required.';errEl.style.display='';}return;}
+    try{
+      const url=crmCampaignEditId?'/api/staff/email-campaigns/'+crmCampaignEditId:'/api/staff/email-campaigns';
+      await api(url,{method:crmCampaignEditId?'PUT':'POST',body:JSON.stringify({title,subject,bodyText,audience})});
+      closeCrmCampaignForm();
+      loadCrmCampaigns();
+      showToast(crmCampaignEditId?'Campaign updated.':'Campaign saved as draft.');
+    }catch(e){
+      if(errEl){errEl.textContent=(e&&e.message)||'Failed to save campaign.';errEl.style.display='';}
+    }
+  }
+
+  async function crmSendCampaign(id,title){
+    if(!confirm('Send "'+title+'" now?\n\nThis emails all recipients immediately and cannot be undone.'))return;
+    try{
+      const r=await api('/api/staff/email-campaigns/'+id+'/send',{method:'POST'});
+      showToast('Sending to '+r.recipientCount.toLocaleString()+' recipient'+(r.recipientCount!==1?'s':'')+'…');
+      setTimeout(function(){loadCrmCampaigns();},1500);
+    }catch(e){showToast((e&&e.message)||'Failed to send campaign','error');}
+  }
+
+  async function crmDeleteCampaign(id){
+    if(!confirm('Delete this draft campaign?\nThis cannot be undone.'))return;
+    try{
+      await api('/api/staff/email-campaigns/'+id,{method:'DELETE'});
+      loadCrmCampaigns();
+      showToast('Campaign deleted.');
+    }catch(e){showToast((e&&e.message)||'Failed to delete','error');}
+  }
+
+  /* ── Automations tab ── */
+  async function loadCrmAutomations(){
+    const cardsEl=el('crmAutomationCards');
+    if(!cardsEl)return;
+    cardsEl.innerHTML='<div class="loading-state"><div class="spinner"></div>Loading automations…</div>';
+    try{
+      const rows=await api('/api/staff/email-automations');
+      const byType={};
+      (rows||[]).forEach(function(r){byType[r.triggerType]=r;});
+      const defs=[
+        {type:'welcome',label:'Welcome Email',desc:'Sent automatically when a customer creates their app account for the first time.',showGift:false,showWinBack:false},
+        {type:'birthday',label:'Birthday Email',desc:'Sent to customers in the week of their birthday. Can include a Square gift card loaded with a credit reward.',showGift:true,showWinBack:false},
+        {type:'win_back',label:'Win-Back Email',desc:'Sent to customers who haven\'t made a booking in a set number of days.',showGift:false,showWinBack:true},
+      ];
+      cardsEl.innerHTML=defs.map(function(def){return crmAutomationCard(def,byType[def.type]||{});}).join('');
+    }catch(e){
+      cardsEl.innerHTML='<p style="color:var(--red);font-size:13px">Failed to load automations.</p>';
+    }
+  }
+
+  function crmAutomationCard(def,row){
+    const t=def.type;
+    const enabled=!!row.enabled;
+    const winBackDays=row.winBackDays||90;
+    const giftPence=row.giftCardAmountPence||0;
+    const lastUpdated=row.updatedAt?
+      new Date(row.updatedAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})+' by '+(row.updatedBy||'staff'):
+      'Never configured';
+    return '<div class="settings-section" style="max-width:none;margin-bottom:20px" id="crmAutoCard_'+t+'">'+
+      '<div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:10px;flex-wrap:wrap">'+
+        '<div>'+
+          '<div style="display:flex;align-items:center;gap:10px">'+
+            '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none">'+
+              '<input type="checkbox" id="crmAutoEnabled_'+t+'" '+(enabled?'checked':'')+' style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">'+
+              '<span style="font-size:15px;font-weight:700;color:var(--text)">'+esc(def.label)+'</span>'+
+            '</label>'+
+            '<span id="crmAutoStatusBadge_'+t+'" style="font-size:11px;padding:2px 8px;border-radius:4px;font-weight:700;background:'+(enabled?'var(--green-light)':'var(--surface)')+';color:'+(enabled?'var(--green)':'var(--text-3)')+'">'+
+              (enabled?'ENABLED':'DISABLED')+
+            '</span>'+
+          '</div>'+
+          '<div style="font-size:13px;color:var(--text-2);margin-top:6px;max-width:560px">'+esc(def.desc)+'</div>'+
+          '<div style="font-size:11px;color:var(--text-3);margin-top:4px">Last saved: '+esc(lastUpdated)+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="form-group"><label class="form-label">Subject Line</label>'+
+        '<input class="form-input" id="crmAutoSubject_'+t+'" value="'+esc(row.subject||'')+'" placeholder="e.g. Happy Birthday from The 147!" maxlength="200"></div>'+
+      '<div class="form-group"><label class="form-label">Email Body</label>'+
+        '<textarea class="form-input" id="crmAutoBody_'+t+'" style="min-height:120px;resize:vertical" maxlength="4000" placeholder="Write your automated email message here…">'+esc(row.bodyText||'')+'</textarea></div>'+
+      (def.showWinBack?
+        '<div class="form-group"><label class="form-label">Days Since Last Booking</label>'+
+          '<input class="form-input" type="number" id="crmAutoWinBack_'+t+'" value="'+winBackDays+'" min="14" max="365" style="max-width:120px">'+
+          '<div style="font-size:12px;color:var(--text-2);margin-top:4px">Email customers who haven\'t booked in this many days (min 14).</div></div>':'')+
+      (def.showGift?
+        '<div class="form-group"><label class="form-label">Gift Card Reward (£)</label>'+
+          '<input class="form-input" type="number" id="crmAutoGift_'+t+'" value="'+(giftPence?(giftPence/100).toFixed(2):'0.00')+'" min="0" max="200" step="0.01" style="max-width:140px" placeholder="0.00">'+
+          '<div style="font-size:12px;color:var(--text-2);margin-top:4px">Amount to load onto a Square gift card sent with the birthday email. Set to 0.00 for no gift card.</div></div>':'')+
+      '<div id="crmAutoErr_'+t+'" class="modal-err"></div>'+
+      '<div style="display:flex;gap:10px;align-items:center;margin-top:4px">'+
+        '<button class="btn btn-primary" onclick="saveCrmAutomation(\''+t+'\')">Save</button>'+
+        '<span id="crmAutoSaved_'+t+'" style="display:none;font-size:13px;color:var(--green);font-weight:600">✓ Saved</span>'+
+      '</div>'+
+    '</div>';
+  }
+
+  document.addEventListener('change',function(e){
+    if(!e.target||!e.target.id)return;
+    const m=e.target.id.match(/^crmAutoEnabled_(\w+)$/);
+    if(!m)return;
+    const t=m[1];const enabled=e.target.checked;
+    const badge=el('crmAutoStatusBadge_'+t);
+    if(badge){badge.textContent=enabled?'ENABLED':'DISABLED';badge.style.background=enabled?'var(--green-light)':'var(--surface)';badge.style.color=enabled?'var(--green)':'var(--text-3)';}
+  });
+
+  async function saveCrmAutomation(type){
+    const errEl=el('crmAutoErr_'+type);
+    if(errEl)errEl.style.display='none';
+    const enabledEl=el('crmAutoEnabled_'+type);
+    const subjectEl=el('crmAutoSubject_'+type);
+    const bodyEl=el('crmAutoBody_'+type);
+    if(!enabledEl||!subjectEl||!bodyEl)return;
+    const subject=subjectEl.value.trim();
+    const bodyText=bodyEl.value.trim();
+    if(!subject||!bodyText){if(errEl){errEl.textContent='Subject and body are required before saving.';errEl.style.display='';}return;}
+    const payload={enabled:enabledEl.checked,subject,bodyText};
+    const winBackEl=el('crmAutoWinBack_'+type);
+    if(winBackEl)payload.winBackDays=Math.max(14,parseInt(winBackEl.value)||90);
+    const giftEl=el('crmAutoGift_'+type);
+    if(giftEl)payload.giftCardAmountPence=Math.round(parseFloat(giftEl.value||'0')*100)||0;
+    try{
+      await api('/api/staff/email-automations/'+type,{method:'PUT',body:JSON.stringify(payload)});
+      const savedEl=el('crmAutoSaved_'+type);
+      if(savedEl){savedEl.style.display='';setTimeout(function(){if(savedEl)savedEl.style.display='none';},2500);}
+      showToast(type.replace(/_/g,' ')+' automation saved.');
+    }catch(e){
+      if(errEl){errEl.textContent=(e&&e.message)||'Failed to save automation.';errEl.style.display='';}
+    }
+  }
 
   /* ── Init ── */
   updateDateUI();
