@@ -132,11 +132,12 @@ function formatMatchDate(iso: string | null): string {
 }
 
 // ── World Cup Penalty Game Banner ─────────────────────────────────────────────
-// Shown only on match days (when /api/game/wc-status returns matchDay:true).
-// Tapping it goes straight to the Rewards tab where the penalty game lives.
+// Shown whenever there is a match today (todayMatch != null), even before the
+// window opens — shows "Opens at HH:MM" pill until 30 min before kickoff, then
+// "TAP TO PLAY" once available. Tapping navigates to /world-cup-game.
 const WorldCupGameBanner = memo(function WorldCupGameBanner() {
   const { isAuthenticated, getCustomerToken } = useCustomerAuth();
-  const { data } = useQuery<{ available: boolean; matchDay: boolean; alreadyPlayed: boolean; todayMatch: { homeShort: string; awayShort: string; status: string } | null }>({
+  const { data } = useQuery<{ available: boolean; matchDay: boolean; alreadyPlayed: boolean; todayMatch: { homeShort: string; awayShort: string; status: string; kickoffIso: string | null } | null }>({
     queryKey: ["/api/game/wc-status"],
     queryFn: async () => {
       const token = getCustomerToken();
@@ -151,10 +152,24 @@ const WorldCupGameBanner = memo(function WorldCupGameBanner() {
     staleTime: 60_000,
   });
 
-  if (!isAuthenticated || !data || !data.matchDay) return null;
+  // Show whenever there is a match today — even before the window opens
+  if (!isAuthenticated || !data || !data.todayMatch) return null;
 
   const match = data.todayMatch;
   const alreadyPlayed = data.alreadyPlayed;
+  const available = data.available;
+
+  // Compute "Opens at HH:MM" label — 30 min before kickoff
+  let opensAtLabel: string | null = null;
+  if (!available && !alreadyPlayed && match.kickoffIso && match.status !== "live") {
+    const kickoff = new Date(match.kickoffIso);
+    const opensAt = new Date(kickoff.getTime() - 30 * 60 * 1000);
+    if (opensAt > new Date()) {
+      opensAtLabel = opensAt.toLocaleTimeString("en-GB", {
+        hour: "2-digit", minute: "2-digit", timeZone: "Europe/London",
+      });
+    }
+  }
 
   return (
     <Pressable
@@ -187,21 +202,31 @@ const WorldCupGameBanner = memo(function WorldCupGameBanner() {
               <Text style={styles.wcGameBannerPlayedText}>PLAYED</Text>
             </View>
           )}
+          {!alreadyPlayed && opensAtLabel && (
+            <View style={[styles.wcGameBannerPlayedPill, { backgroundColor: "rgba(251,191,36,0.15)", borderColor: "rgba(251,191,36,0.3)" }]}>
+              <Ionicons name="time-outline" size={11} color="#fbbf24" />
+              <Text style={[styles.wcGameBannerPlayedText, { color: "#fbbf24" }]}>OPENS {opensAtLabel}</Text>
+            </View>
+          )}
         </View>
         {/* Centre: big matchup */}
         <View style={styles.wcGameBannerCentre}>
           <Text style={styles.wcGameBannerBigEmoji}>⚽</Text>
           <Text style={styles.wcGameBannerMainTitle}>PENALTY CHALLENGE</Text>
-          {match ? (
-            <Text style={styles.wcGameBannerMatchup}>
-              {match.homeShort} vs {match.awayShort}
-            </Text>
-          ) : null}
+          <Text style={styles.wcGameBannerMatchup}>
+            {match.homeShort} vs {match.awayShort}
+          </Text>
         </View>
         {/* Bottom CTA */}
         <View style={styles.wcGameBannerCta}>
           <Text style={styles.wcGameBannerCtaText}>
-            {alreadyPlayed ? "View your result" : "TAP TO PLAY"}
+            {alreadyPlayed
+              ? "View your result"
+              : available
+              ? "TAP TO PLAY"
+              : opensAtLabel
+              ? `Opens at ${opensAtLabel}`
+              : "Coming soon"}
           </Text>
           <Ionicons name="arrow-forward" size={13} color="#4ade80" />
         </View>
