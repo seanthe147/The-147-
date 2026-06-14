@@ -9840,13 +9840,16 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   app.get("/api/game/wc-status", customerAuth, async (req: Request & { customerId?: number }, res) => {
     try {
       const customerId = req.customerId!;
-      const { getNextWorldCupMatch } = await import("../worldCup.js");
+      const { getNextWorldCupMatch, getWcTestOverride } = await import("../worldCup.js");
       const [match, penaltyEnabledSetting] = await Promise.all([
         getNextWorldCupMatch(),
         storage.getSetting("penalty_enabled"),
       ]);
-      const penaltyEnabled = penaltyEnabledSetting === "true";
-      const matchDay = isWcMatchDay(match);
+      // When a staff test override is active, the game is always available
+      // regardless of the penalty_enabled setting or match window timing.
+      const isTestActive = !!getWcTestOverride();
+      const penaltyEnabled = isTestActive || penaltyEnabledSetting === "true";
+      const matchDay = isTestActive || isWcMatchDay(match);
       const available = matchDay && penaltyEnabled;
       const londonDate = getGameLondonDate();
       const todayWcPlays = await storage.getGamePlaysToday(customerId, `wc-${londonDate}`);
@@ -9875,13 +9878,16 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   app.post("/api/game/wc-play", customerAuth, async (req: Request & { customerId?: number }, res) => {
     const customerId = req.customerId!;
     try {
-      const penaltyEnabledSetting = await storage.getSetting("penalty_enabled");
-      if (penaltyEnabledSetting !== "true") {
-        return res.status(403).json({ message: "The penalty challenge is currently disabled." });
+      const { getNextWorldCupMatch, getWcTestOverride } = await import("../worldCup.js");
+      const isTestActive = !!getWcTestOverride();
+      if (!isTestActive) {
+        const penaltyEnabledSetting = await storage.getSetting("penalty_enabled");
+        if (penaltyEnabledSetting !== "true") {
+          return res.status(403).json({ message: "The penalty challenge is currently disabled." });
+        }
       }
-      const { getNextWorldCupMatch } = await import("../worldCup.js");
       const match = await getNextWorldCupMatch();
-      if (!isWcMatchDay(match)) {
+      if (!isTestActive && !isWcMatchDay(match)) {
         return res.status(403).json({ message: "The penalty challenge is only available on World Cup match days." });
       }
 

@@ -17,13 +17,37 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/query-client";
+import { apiRequest, queryClient, getApiUrl } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useMatchBarVisible } from "@/hooks/useMatchBarVisible";
 import Colors from "@/constants/colors";
 import { TABLE_TYPES } from "@/lib/data";
+
+interface VenueRewardTier {
+  id: number;
+  name: string;
+  description: string | null;
+  category: string;
+  pointsCost: number;
+  active: boolean;
+}
+
+interface VenueRewardClaim {
+  id: number;
+  tierId: number;
+  claimCode: string;
+  status: string;
+  pointsDeducted: number;
+  expiresAt: string;
+  tierName?: string;
+}
+
+interface VenueRewardsResponse {
+  tiers: VenueRewardTier[];
+  pendingClaims: VenueRewardClaim[];
+}
 
 const BOOKING_HOURS = [
   "10:00", "10:15", "10:30", "10:45",
@@ -115,7 +139,7 @@ export default function BookScreen() {
   const [gdprConsent, setGdprConsent] = useState(false);
   const [weekOffset, setWeekOffset] = useState(0);
   const [depositPaymentUrl, setDepositPaymentUrl] = useState<string | null>(null);
-  const { isAuthenticated, customer, login, register } = useCustomerAuth();
+  const { isAuthenticated, customer, login, register, getCustomerToken } = useCustomerAuth();
   const { greeting } = useCustomerGreeting();
   const [autoFilled, setAutoFilled] = useState(false);
 
@@ -211,6 +235,49 @@ export default function BookScreen() {
       if (reqStart < slotEnd && reqEnd > slotStart) return true;
     }
     return false;
+  };
+
+  const [isClaiming, setIsClaiming] = useState(false);
+
+  const venueRewardsQuery = useQuery<VenueRewardsResponse>({
+    queryKey: ["/api/venue-rewards", customer?.id],
+    queryFn: async () => {
+      const token = getCustomerToken();
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const res = await fetch(new URL("/api/venue-rewards", getApiUrl()).toString(), { headers });
+      if (!res.ok) throw new Error("Failed to load rewards");
+      return res.json();
+    },
+    enabled: isAuthenticated && step === "success",
+    staleTime: 30_000,
+  });
+
+  const handleVenueClaim = async (tier: VenueRewardTier) => {
+    if (isClaiming) return;
+    const token = getCustomerToken();
+    if (!token) return;
+    setIsClaiming(true);
+    try {
+      const res = await fetch(new URL(`/api/venue-rewards/${tier.id}/claim`, getApiUrl()).toString(), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        Alert.alert("Couldn't claim reward", data.message || "Please try again.");
+        return;
+      }
+      await venueRewardsQuery.refetch();
+      Alert.alert(
+        "Reward Claimed! 🎉",
+        `Your claim code is: ${data.claim?.claimCode ?? ""}\n\nShow this to a member of staff. Valid for 24 hours.`
+      );
+    } catch {
+      Alert.alert("Error", "Something went wrong. Please try again.");
+    } finally {
+      setIsClaiming(false);
+    }
   };
 
   const bookMutation = useMutation({
@@ -944,6 +1011,71 @@ export default function BookScreen() {
               <Text style={styles.successNote}>
                 You'll receive a confirmation at {email}. Please arrive 5 minutes before your slot.
               </Text>
+
+              {/* ── Venue Rewards ── */}
+              {isAuthenticated && venueRewardsQuery.data && (
+                (() => {
+                  const { tiers, pendingClaims } = venueRewardsQuery.data;
+                  if (tiers.length === 0 && pendingClaims.length === 0) return null;
+                  return (
+                    <View style={styles.rewardsSection}>
+                      <View style={styles.rewardsSectionHeader}>
+                        <Ionicons name="gift-outline" size={18} color="#7C3AED" />
+                        <Text style={styles.rewardsSectionTitle}>Redeem Your Points</Text>
+                      </View>
+                      <Text style={styles.rewardsSubtitle}>Claim a reward while you're here — show the code to any member of staff.</Text>
+
+                      {/* Active claim codes */}
+                      {pendingClaims.map((claim) => {
+                        const expiresAt = new Date(claim.expiresAt);
+                        const minutesLeft = Math.max(0, Math.round((expiresAt.getTime() - Date.now()) / 60000));
+                        const hoursLeft = Math.floor(minutesLeft / 60);
+                        const minsLeft = minutesLeft % 60;
+                        const expiry = hoursLeft > 0 ? `${hoursLeft}h ${minsLeft}m left` : `${minutesLeft}m left`;
+                        return (
+                          <View key={claim.id} style={styles.claimCodeCard}>
+                            <View style={styles.claimCodeLeft}>
+                              <Text style={styles.claimCodeTierName}>{claim.tierName ?? "Venue Reward"}</Text>
+                              <Text style={styles.claimCodeExpiry}>{expiry}</Text>
+                            </View>
+                            <View style={styles.claimCodeBadge}>
+                              <Text style={styles.claimCodeText}>{claim.claimCode}</Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+
+                      {/* Available tiers to claim */}
+                      {tiers.map((tier) => {
+                        const alreadyPending = pendingClaims.some((c) => c.tierId === tier.id);
+                        return (
+                          <View key={tier.id} style={styles.rewardTierCard}>
+                            <View style={styles.rewardTierBody}>
+                              <Text style={styles.rewardTierName}>{tier.name}</Text>
+                              {tier.description ? <Text style={styles.rewardTierDesc}>{tier.description}</Text> : null}
+                              <Text style={styles.rewardTierPoints}>{tier.pointsCost} points</Text>
+                            </View>
+                            <Pressable
+                              onPress={() => handleVenueClaim(tier)}
+                              disabled={isClaiming || alreadyPending}
+                              style={({ pressed }) => [
+                                styles.rewardClaimBtn,
+                                alreadyPending && styles.rewardClaimBtnClaimed,
+                                pressed && !alreadyPending && { opacity: 0.75 },
+                              ]}
+                            >
+                              <Text style={[styles.rewardClaimBtnText, alreadyPending && styles.rewardClaimBtnTextClaimed]}>
+                                {alreadyPending ? "Claimed ✓" : "Claim"}
+                              </Text>
+                            </Pressable>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  );
+                })()
+              )}
+
               <Pressable onPress={resetForm} style={styles.newBookingButton} testID="book-new-booking">
                 <Ionicons name="add-circle" size={20} color={Colors.brand.blue} />
                 <Text style={styles.newBookingText}>Make Another Booking</Text>
@@ -1684,5 +1816,117 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_700Bold",
     fontSize: 15,
     color: "#FFFFFF",
+  },
+  rewardsSection: {
+    marginTop: 24,
+    backgroundColor: "#F5F3FF",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#DDD6FE",
+    padding: 16,
+    gap: 12,
+  },
+  rewardsSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  rewardsSectionTitle: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 15,
+    color: "#5B21B6",
+  },
+  rewardsSubtitle: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 13,
+    color: "#6B7280",
+    marginTop: -4,
+  },
+  claimCodeCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#EDE9FE",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: "#C4B5FD",
+  },
+  claimCodeLeft: {
+    flex: 1,
+    marginRight: 12,
+  },
+  claimCodeTierName: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: "#3730A3",
+  },
+  claimCodeExpiry: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 11,
+    color: "#7C3AED",
+    marginTop: 2,
+  },
+  claimCodeBadge: {
+    backgroundColor: "#7C3AED",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  claimCodeText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 14,
+    color: "#FFFFFF",
+    letterSpacing: 2,
+  },
+  rewardTierCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  rewardTierBody: {
+    flex: 1,
+    marginRight: 12,
+  },
+  rewardTierName: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 13,
+    color: Colors.light.text,
+  },
+  rewardTierDesc: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginTop: 2,
+  },
+  rewardTierPoints: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 11,
+    color: "#7C3AED",
+    marginTop: 4,
+  },
+  rewardClaimBtn: {
+    backgroundColor: "#7C3AED",
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  rewardClaimBtnClaimed: {
+    backgroundColor: "#D1FAE5",
+  },
+  rewardClaimBtnText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 13,
+    color: "#FFFFFF",
+  },
+  rewardClaimBtnTextClaimed: {
+    color: "#065F46",
   },
 });

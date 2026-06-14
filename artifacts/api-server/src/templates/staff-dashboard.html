@@ -11164,10 +11164,19 @@
     const emailEl=el('crmTestEmail_'+id);
     const email=(emailEl&&emailEl.value||'').trim();
     if(!email||!email.includes('@')){toast('Enter a valid email address first','error');return;}
+    const panel=el('crmTestSendPanel_'+id);
+    const btn=panel?panel.querySelector('button[onclick]'):null;
+    if(btn){btn.disabled=true;btn.textContent='Sending…';}
     try{
-      await api('/api/staff/email-campaigns/'+id+'/test-send',{method:'POST',body:JSON.stringify({email})});
-      toast('Test email sent to '+email+' ✓');
+      const r=await api('/api/staff/email-campaigns/'+id+'/test-send',{method:'POST',body:JSON.stringify({email})});
+      if(r.ok){
+        toast('Test email sent to '+email+' ✓','success');
+      }else{
+        const d=await r.json().catch(()=>({}));
+        toast(d.message||'Test send failed — check SMTP settings','error');
+      }
     }catch(e){toast((e&&e.message)||'Test send failed','error');}
+    finally{if(btn){btn.disabled=false;btn.textContent='Send test';}}
   }
 
   async function openCrmCampaignForm(editId){
