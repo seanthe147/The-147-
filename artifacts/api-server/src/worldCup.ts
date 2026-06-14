@@ -234,7 +234,26 @@ export async function getNextWorldCupMatch(): Promise<CachedMatch> {
   // 3. If both failed, serve stale cache if we have any.
   if (data.status === "none" && cache) return cache.data;
 
-  const ttl = data.status === "live" ? 30_000 : 5 * 60_000;
+  // Cache TTL: be aggressive near kickoff so we pick up "live" status quickly.
+  //   live            → 30s
+  //   finished        → 90s (might roll over to next match)
+  //   kickoff < 90min → 30s (ESPN can be slow to flip "pre" → "in")
+  //   kickoff < 4hrs  → 60s
+  //   otherwise       → 5min
+  let ttl: number;
+  if (data.status === "live") {
+    ttl = 30_000;
+  } else if (data.status === "finished") {
+    ttl = 90_000;
+  } else if (data.kickoffIso) {
+    const minsToKickoff = (Date.parse(data.kickoffIso) - now) / 60_000;
+    if (minsToKickoff <= 90) ttl = 30_000;
+    else if (minsToKickoff <= 240) ttl = 60_000;
+    else ttl = 5 * 60_000;
+  } else {
+    ttl = 5 * 60_000;
+  }
+
   cache = { at: now, ttl, data };
   return data;
 }
