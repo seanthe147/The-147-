@@ -2607,10 +2607,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Compose and send branded broadcast emails to customer segments using the
   // existing SMTP / Resend infrastructure. No external marketing provider needed.
 
-  app.get("/api/staff/email-campaigns/audience-count", staffAuth, managerAuth, async (req, res) => {
+  app.get("/api/staff/email-campaigns/audience-count", staffAuth, async (req, res) => {
     try {
       const audience = String(req.query.audience || "all");
       const emails = await getMarketingAudienceEmails(audience);
+      req.log.info({ audience, count: emails.length }, "[email-campaigns] audience-count");
       res.json({ count: emails.length });
     } catch (err: any) {
       req.log.error({ err }, "[email-campaigns] audience-count error");

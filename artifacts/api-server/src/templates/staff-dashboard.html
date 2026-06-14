@@ -10994,11 +10994,12 @@
       const sentCampaigns=(campaigns||[]).filter(c=>c.status==='sent').length;
       const draftCampaigns=(campaigns||[]).filter(c=>c.status==='draft').length;
       const totalEmailsSent=(campaigns||[]).filter(c=>c.status==='sent').reduce((a,c)=>a+(c.sentCount||0),0);
+      function safeCount(res){return typeof res==='object'&&res!==null&&typeof res.count==='number'?res.count:'—';}
       statsEl.innerHTML=
-        crmStatCard('Total Reachable','#2563EB',allRes.count,'App + Square customers combined')+
-        crmStatCard('Square Customers','#10B981',squareRes.count,'Customers in Square POS')+
-        crmStatCard('Members','#7C3AED',membersRes.count,'Active membership holders')+
-        crmStatCard('Loyalty Members','#D97706',loyaltyRes.count,'Customers with loyalty points')+
+        crmStatCard('Total Reachable','#2563EB',safeCount(allRes),'App + Square customers combined')+
+        crmStatCard('Square Customers','#10B981',safeCount(squareRes),'Customers in Square POS')+
+        crmStatCard('Members','#7C3AED',safeCount(membersRes),'Active membership holders')+
+        crmStatCard('Loyalty Members','#D97706',safeCount(loyaltyRes),'Customers with loyalty points')+
         crmStatCard('Emails Delivered','#059669',totalEmailsSent,'Across all sent campaigns')+
         crmStatCard('Campaigns','#6B7280',sentCampaigns+' sent / '+draftCampaigns+' draft','');
     }catch(e){
