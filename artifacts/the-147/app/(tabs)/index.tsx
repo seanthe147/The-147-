@@ -384,7 +384,6 @@ const BannerCarousel = memo(function BannerCarousel({ images }: { images: Banner
         onMomentumScrollEnd={onScrollEnd}
         scrollEnabled={images.length > 1}
         scrollEventThrottle={16}
-        removeClippedSubviews
       >
         {images.map((item) => {
           const hasLink = !!item.linkType;
@@ -808,7 +807,6 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
-        removeClippedSubviews={Platform.OS === "android"}
       >
         <View style={styles.heroBanner}>
           {bannerImageUrl ? (
