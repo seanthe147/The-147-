@@ -1546,7 +1546,9 @@ export class DatabaseStorage implements IStorage {
         const phone = dec.phone || "";
         if (name === "ANONYMIZED" || email.includes("@removed.local")) continue;
         const emailLower = email.toLowerCase();
-        if (seen.has(emailLower)) continue;
+        // Only dedup on email if the customer actually has one — customers
+        // without emails must not all collapse behind the first emailless row.
+        if (emailLower && seen.has(emailLower)) continue;
         const nameLower = name.toLowerCase();
         const phoneLower = phone.toLowerCase().replace(/\s/g, "");
         const emailMatch = emailLower.includes(q);
@@ -1554,7 +1556,7 @@ export class DatabaseStorage implements IStorage {
         const nameMatch = words.every((w) => nameLower.includes(w));
         const phoneMatch = qClean.length > 0 && phoneLower.includes(qClean);
         if (nameMatch || phoneMatch || emailMatch) {
-          seen.add(emailLower);
+          if (emailLower) seen.add(emailLower);
           const score =
             (nameLower.startsWith(words[0]) ? 2 : 0) +
             (phoneMatch ? 1 : 0) +

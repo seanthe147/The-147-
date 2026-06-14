@@ -11041,8 +11041,10 @@
     if(q.length<2){resultsEl.innerHTML='<p style="font-size:13px;color:var(--text-3)">Type at least 2 characters to search…</p>';return;}
     resultsEl.innerHTML='<div class="loading-state"><div class="spinner"></div>Searching…</div>';
     try{
-      const data=await api('/api/staff/customers/search?q='+encodeURIComponent(q));
-      const customers=data.customers||data||[];
+      const resp=await api('/api/staff/customers/search?q='+encodeURIComponent(q));
+      if(!resp.ok){resultsEl.innerHTML='<p style="color:var(--red);font-size:13px">Search failed. Please try again.</p>';return;}
+      const data=await resp.json();
+      const customers=Array.isArray(data)?data:(data.customers||[]);
       if(!customers.length){resultsEl.innerHTML='<p style="font-size:13px;color:var(--text-3)">No customers found for "'+esc(q)+'".</p>';return;}
       let rows='';
       customers.forEach(function(c){
@@ -11051,7 +11053,7 @@
           '<td style="padding:10px 12px;color:var(--text-2)">'+esc(c.email||'—')+'</td>'+
           '<td style="padding:10px 12px;color:var(--text-2);white-space:nowrap">'+esc(c.phone||'—')+'</td>'+
           '<td style="padding:10px 12px">'+
-            (c.membershipPlan?'<span style="background:rgba(124,58,237,.1);color:#7C3AED;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700">'+esc(c.membershipPlan)+'</span>':'<span style="color:var(--text-3)">None</span>')+
+            (c.membership&&c.membership.planName?'<span style="background:rgba(124,58,237,.1);color:#7C3AED;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700">'+esc(c.membership.planName)+'</span>':'<span style="color:var(--text-3)">None</span>')+
           '</td>'+
           '<td style="padding:10px 12px;white-space:nowrap">'+
             (c.email?'<button class="btn btn-ghost btn-sm" onclick="crmSendPasswordReset('+JSON.stringify(c.email)+')">Reset password</button>':'—')+
