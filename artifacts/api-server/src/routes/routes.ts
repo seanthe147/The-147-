@@ -11,7 +11,7 @@ import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertCo
 import type { InsertBannerImage } from "@workspace/db";
 import { and as dAnd, eq as dEq, desc as dDesc, isNotNull as dIsNotNull, sql as dSql } from "drizzle-orm";
 import { getServerFeatureFlags } from "../featureFlags";
-import { hashPin, verifyPin, hashPassword, verifyPassword, hashEmail } from "../encryption";
+import { hashPin, verifyPin, hashPassword, verifyPassword, hashEmail, decrypt } from "../encryption";
 import * as square from "../square";
 import * as teya from "../teya";
 import { buildReorderPayload, type ReorderMenuItem, type ReorderRawItem } from "../reorder-matching";
@@ -1537,7 +1537,8 @@ async function getMarketingAudienceEmails(audience: string): Promise<string[]> {
 
   const seen = new Set<string>();
   for (const r of rows) {
-    const e = (r.email || "").toLowerCase().trim();
+    const raw = r.email || "";
+    const e = decrypt(raw).toLowerCase().trim();
     if (e.includes("@")) seen.add(e);
   }
   return [...seen];
