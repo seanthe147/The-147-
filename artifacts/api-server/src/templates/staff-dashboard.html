@@ -981,6 +981,16 @@
             </div>
             <div id="crmCampaignForm" style="display:none;margin-bottom:20px"></div>
             <div id="crmCampaignList"><div class="loading-state"><div class="spinner"></div>Loading…</div></div>
+            <!-- Send audit log -->
+            <div style="margin-top:28px">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer;user-select:none" onclick="toggleCrmSendLog()">
+                <div style="font-size:14px;font-weight:700;color:var(--text)">Send History &amp; Audit Trail</div>
+                <span id="crmSendLogToggleIcon" style="font-size:13px;color:var(--text-3)">▼</span>
+              </div>
+              <div id="crmSendLogPanel" style="display:none">
+                <div id="crmSendLogList"><div class="loading-state"><div class="spinner"></div>Loading…</div></div>
+              </div>
+            </div>
           </div>
 
           <!-- AUTOMATIONS TAB -->
@@ -10984,24 +10994,26 @@
     if(!statsEl)return;
     statsEl.innerHTML='<div class="loading-state"><div class="spinner"></div>Loading…</div>';
     try{
-      const [allRes,squareRes,membersRes,loyaltyRes,campaigns]=await Promise.all([
+      const [allRes,squareRes,membersRes,loyaltyRes,campaigns,unsubRes]=await Promise.all([
         api('/api/staff/email-campaigns/audience-count?audience=all').then(r=>r.json()),
         api('/api/staff/email-campaigns/audience-count?audience=square').then(r=>r.json()),
         api('/api/staff/email-campaigns/audience-count?audience=members').then(r=>r.json()),
         api('/api/staff/email-campaigns/audience-count?audience=loyalty').then(r=>r.json()),
         api('/api/staff/email-campaigns').then(r=>r.json()),
+        api('/api/staff/email-unsubscribes/count').then(r=>r.json()).catch(()=>({count:0})),
       ]);
       const sentCampaigns=(campaigns||[]).filter(c=>c.status==='sent').length;
       const draftCampaigns=(campaigns||[]).filter(c=>c.status==='draft').length;
       const totalEmailsSent=(campaigns||[]).filter(c=>c.status==='sent').reduce((a,c)=>a+(c.sentCount||0),0);
       function safeCount(res){return typeof res==='object'&&res!==null&&typeof res.count==='number'?res.count:'—';}
       statsEl.innerHTML=
-        crmStatCard('Total Reachable','#2563EB',safeCount(allRes),'App + Square customers combined')+
+        crmStatCard('Total Reachable','#2563EB',safeCount(allRes),'App + Square customers (opt-outs excluded)')+
         crmStatCard('Square Customers','#10B981',safeCount(squareRes),'Customers in Square POS')+
         crmStatCard('Members','#7C3AED',safeCount(membersRes),'Active membership holders')+
         crmStatCard('Loyalty Members','#D97706',safeCount(loyaltyRes),'Customers with loyalty points')+
         crmStatCard('Emails Delivered','#059669',totalEmailsSent,'Across all sent campaigns')+
-        crmStatCard('Campaigns','#6B7280',sentCampaigns+' sent / '+draftCampaigns+' draft','');
+        crmStatCard('Campaigns','#6B7280',sentCampaigns+' sent / '+draftCampaigns+' draft','')+
+        crmStatCard('Unsubscribed','#EF4444',safeCount(unsubRes),'GDPR opt-outs — excluded from all sends');
     }catch(e){
       statsEl.innerHTML='<p style="color:var(--red);font-size:13px">Failed to load overview.</p>';
     }
@@ -11101,28 +11113,59 @@
   function crmCampaignRow(c){
     const statusStyles={draft:{color:'var(--text-2)',bg:'var(--surface)'},sending:{color:'var(--blue)',bg:'rgba(37,99,235,.08)'},sent:{color:'var(--green)',bg:'var(--green-light)'},failed:{color:'var(--red)',bg:'#FFF1F2'}};
     const ss=statusStyles[c.status]||statusStyles.draft;
-    const audienceLabel={all:'All Customers',members:'Members Only',loyalty:'Loyalty Members'}[c.audience]||c.audience;
+    const audienceLabels={all:'All Customers',members:'Members Only',loyalty:'Loyalty Members',loyalty_only:'Loyalty Only',recent_30:'Booked (30d)',recent_90:'Booked (90d)',square:'Square POS'};
+    const audienceLabel=audienceLabels[c.audience]||c.audience;
     const resultsText=c.status==='sent'?((c.sentCount||0).toLocaleString()+' sent'+(c.failedCount?', '+c.failedCount+' failed':'')):'—';
     const sentDate=c.sentAt?new Date(c.sentAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'';
+    const sentByLine=c.sentBy?' · Sent by '+esc(c.sentBy):'';
+    const imgIndicator=c.headerImageUrl?'<span title="Has header image" style="font-size:11px;color:var(--text-3);margin-left:6px">🖼</span>':'';
     let actions='';
     if(c.status==='draft'){
       actions='<button class="btn btn-ghost btn-sm" onclick="openCrmCampaignForm('+c.id+')">Edit</button> '+
                '<button class="btn btn-primary btn-sm" onclick="crmSendCampaign('+c.id+','+JSON.stringify(c.title)+')">Send</button> '+
+               '<button class="btn btn-secondary btn-sm" onclick="openCrmTestSend('+c.id+','+JSON.stringify(c.title)+')">Test</button> '+
                '<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="crmDeleteCampaign('+c.id+')">Delete</button>';
     }else if(c.status==='sending'){
       actions='<span style="font-size:12px;color:var(--blue)">Sending…</span>';
+    }else if(c.status==='sent'){
+      actions='<button class="btn btn-ghost btn-sm" onclick="openCrmTestSend('+c.id+','+JSON.stringify(c.title)+')">Test resend</button>';
     }
-    return '<tr style="border-bottom:1px solid var(--border)">'+
+    return '<tr data-cid="'+c.id+'" style="border-bottom:1px solid var(--border)">'+
       '<td style="padding:10px 12px">'+
-        '<div style="font-weight:600">'+esc(c.title)+'</div>'+
+        '<div style="font-weight:600">'+esc(c.title)+imgIndicator+'</div>'+
         '<div style="font-size:12px;color:var(--text-2);margin-top:2px">'+esc(c.subject)+'</div>'+
-        '<div style="font-size:11px;color:var(--text-3);margin-top:2px">By '+esc(c.createdBy||'staff')+(sentDate?' · '+sentDate:'')+'</div>'+
+        '<div style="font-size:11px;color:var(--text-3);margin-top:2px">By '+esc(c.createdBy||'staff')+(sentDate?' · '+sentDate:'')+sentByLine+'</div>'+
       '</td>'+
       '<td style="padding:10px 12px;color:var(--text-2);white-space:nowrap">'+esc(audienceLabel)+'</td>'+
       '<td style="padding:10px 12px"><span style="background:'+ss.bg+';color:'+ss.color+';padding:2px 9px;border-radius:4px;font-size:11px;font-weight:700;text-transform:capitalize">'+esc(c.status)+'</span></td>'+
       '<td style="padding:10px 12px;color:var(--text-2);font-size:12px;white-space:nowrap">'+esc(resultsText)+'</td>'+
       '<td style="padding:10px 12px"><div style="display:flex;gap:6px;flex-wrap:wrap">'+actions+'</div></td>'+
     '</tr>';
+  }
+
+  function openCrmTestSend(id,title){
+    const el2=el('crmTestSendPanel_'+id);
+    if(el2){el2.style.display=el2.style.display==='none'?'':'none';return;}
+    const row=document.querySelector('[data-cid="'+id+'"]');
+    const cell=row?row.querySelector('td:last-child'):null;
+    if(!cell)return;
+    const panel=document.createElement('div');
+    panel.id='crmTestSendPanel_'+id;
+    panel.style.cssText='margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap';
+    panel.innerHTML='<input class="form-input" id="crmTestEmail_'+id+'" type="email" placeholder="your@email.com" style="width:220px;padding:6px 10px;font-size:13px">'+
+      '<button class="btn btn-secondary btn-sm" onclick="crmTestSend('+id+')">Send test</button>'+
+      '<span style="font-size:12px;color:var(--text-3)">Subject will be prefixed [TEST]</span>';
+    cell.appendChild(panel);
+  }
+
+  async function crmTestSend(id){
+    const emailEl=el('crmTestEmail_'+id);
+    const email=(emailEl&&emailEl.value||'').trim();
+    if(!email||!email.includes('@')){toast('Enter a valid email address first','error');return;}
+    try{
+      await api('/api/staff/email-campaigns/'+id+'/test-send',{method:'POST',body:JSON.stringify({email})});
+      toast('Test email sent to '+email+' ✓');
+    }catch(e){toast((e&&e.message)||'Test send failed','error');}
   }
 
   async function openCrmCampaignForm(editId){
@@ -11134,7 +11177,7 @@
     formEl.style.maxWidth='none';
     formEl.style.marginBottom='20px';
     formEl.innerHTML='<div class="loading-state"><div class="spinner"></div>Loading…</div>';
-    let prefill={title:'',subject:'',bodyText:'',audience:'all'};
+    let prefill={title:'',subject:'',bodyText:'',audience:'all',headerImageUrl:''};
     if(editId){
       try{
         const campaigns=await api('/api/staff/email-campaigns').then(r=>r.json());
@@ -11146,17 +11189,21 @@
       '<div class="settings-title" style="margin-bottom:12px">'+(editId?'Edit Campaign':'New Campaign')+'</div>'+
       '<div id="crmCampaignFormErr" class="modal-err"></div>'+
       '<div class="form-group"><label class="form-label">Campaign Title <span style="color:var(--text-3);font-weight:400">(internal label)</span></label>'+
-        '<input class="form-input" id="crmCTitle" value="'+esc(prefill.title)+'" placeholder="e.g. July Newsletter" maxlength="120"></div>'+
+        '<input class="form-input" id="crmCTitle" value="'+esc(prefill.title||'')+'" placeholder="e.g. July Newsletter" maxlength="120"></div>'+
       '<div class="form-group"><label class="form-label">Email Subject Line</label>'+
-        '<input class="form-input" id="crmCSubject" value="'+esc(prefill.subject)+'" placeholder="e.g. Big news from The 147!" maxlength="200"></div>'+
+        '<input class="form-input" id="crmCSubject" value="'+esc(prefill.subject||'')+'" placeholder="e.g. Big news from The 147!" maxlength="200"></div>'+
       '<div class="form-group"><label class="form-label">Email Body</label>'+
-        '<textarea class="form-input" id="crmCBody" style="min-height:160px;resize:vertical" maxlength="4000" placeholder="Write your message here…">'+esc(prefill.bodyText)+'</textarea></div>'+
+        '<textarea class="form-input" id="crmCBody" style="min-height:160px;resize:vertical" maxlength="4000" placeholder="Write your message here…">'+esc(prefill.bodyText||'')+'</textarea></div>'+
+      '<div class="form-group"><label class="form-label">Header Image URL <span style="color:var(--text-3);font-weight:400">(optional — full https:// URL to a banner image)</span></label>'+
+        '<input class="form-input" id="crmCImageUrl" type="url" value="'+esc(prefill.headerImageUrl||'')+'" placeholder="https://example.com/banner.jpg" maxlength="500"></div>'+
       '<div class="form-group"><label class="form-label">Audience</label>'+
-        '<select class="form-input" id="crmCAudience" onchange="crmUpdateAudienceCount()" style="max-width:260px">'+
+        '<select class="form-input" id="crmCAudience" onchange="crmUpdateAudienceCount()" style="max-width:280px">'+
           '<option value="all"'+(prefill.audience==='all'?' selected':'')+'>All Customers (app + Square)</option>'+
           '<option value="square"'+(prefill.audience==='square'?' selected':'')+'>Square POS Customers</option>'+
           '<option value="members"'+(prefill.audience==='members'?' selected':'')+'>Members Only</option>'+
           '<option value="loyalty"'+(prefill.audience==='loyalty'?' selected':'')+'>Loyalty Members</option>'+
+          '<option value="recent_30"'+(prefill.audience==='recent_30'?' selected':'')+'>Booked in last 30 days</option>'+
+          '<option value="recent_90"'+(prefill.audience==='recent_90'?' selected':'')+'>Booked in last 90 days</option>'+
         '</select>'+
         '<div id="crmAudienceCount" style="font-size:12px;color:var(--text-2);margin-top:5px">Counting recipients…</div></div>'+
       '<div style="display:flex;gap:8px;align-items:center">'+
@@ -11194,10 +11241,11 @@
     const subject=((el('crmCSubject')||{}).value||'').trim();
     const bodyText=((el('crmCBody')||{}).value||'').trim();
     const audience=((el('crmCAudience')||{}).value)||'all';
+    const headerImageUrl=((el('crmCImageUrl')||{}).value||'').trim();
     if(!title||!subject||!bodyText){if(errEl){errEl.textContent='Title, subject and body are all required.';errEl.style.display='';}return;}
     try{
       const url=crmCampaignEditId?'/api/staff/email-campaigns/'+crmCampaignEditId:'/api/staff/email-campaigns';
-      await api(url,{method:crmCampaignEditId?'PUT':'POST',body:JSON.stringify({title,subject,bodyText,audience})});
+      await api(url,{method:crmCampaignEditId?'PUT':'POST',body:JSON.stringify({title,subject,bodyText,audience,headerImageUrl:headerImageUrl||null})});
       closeCrmCampaignForm();
       loadCrmCampaigns();
       toast(crmCampaignEditId?'Campaign updated.':'Campaign saved as draft.');
@@ -11322,6 +11370,57 @@
     }
   }
 
+  /* ── Send log / audit trail ── */
+  let crmSendLogOpen=false;
+
+  function toggleCrmSendLog(){
+    crmSendLogOpen=!crmSendLogOpen;
+    const panel=el('crmSendLogPanel');
+    const icon=el('crmSendLogToggleIcon');
+    if(panel)panel.style.display=crmSendLogOpen?'':'none';
+    if(icon)icon.textContent=crmSendLogOpen?'▲':'▼';
+    if(crmSendLogOpen)loadCrmSendLog();
+  }
+
+  async function loadCrmSendLog(){
+    const listEl=el('crmSendLogList');
+    if(!listEl)return;
+    listEl.innerHTML='<div class="loading-state"><div class="spinner"></div>Loading audit trail…</div>';
+    try{
+      const rows=await api('/api/staff/email-campaigns/send-log').then(r=>r.json());
+      if(!rows||!rows.length){
+        listEl.innerHTML='<p style="font-size:13px;color:var(--text-3)">No sends recorded yet.</p>';
+        return;
+      }
+      let tbody='';
+      rows.forEach(function(r){
+        const d=new Date(r.sentAt).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+        const badge=r.isTestSend?'<span style="font-size:10px;background:rgba(37,99,235,.12);color:var(--blue);padding:2px 7px;border-radius:4px;font-weight:700;margin-left:4px">TEST</span>':'';
+        const resultText=r.isTestSend?'1 sent':(r.recipientCount.toLocaleString()+' sent'+(r.failedCount?', '+r.failedCount+' failed':''));
+        tbody+='<tr style="border-bottom:1px solid var(--border)">'+
+          '<td style="padding:8px 10px;white-space:nowrap;font-size:12px;color:var(--text-2)">'+esc(d)+'</td>'+
+          '<td style="padding:8px 10px;font-size:13px">'+esc(r.campaignTitle||'—')+badge+'</td>'+
+          '<td style="padding:8px 10px;color:var(--text-2);font-size:12px">'+esc(r.audience)+'</td>'+
+          '<td style="padding:8px 10px;color:var(--text-2);font-size:12px;white-space:nowrap">'+esc(resultText)+'</td>'+
+          '<td style="padding:8px 10px;color:var(--text-2);font-size:12px">'+esc(r.sentBy)+'</td>'+
+          '<td style="padding:8px 10px;color:var(--text-3);font-size:11px">'+esc(r.notes||'')+'</td>'+
+        '</tr>';
+      });
+      listEl.innerHTML='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
+        '<thead><tr style="border-bottom:2px solid var(--border)">'+
+          '<th style="text-align:left;padding:8px 10px;color:var(--text-2);font-weight:600;white-space:nowrap">Date / Time</th>'+
+          '<th style="text-align:left;padding:8px 10px;color:var(--text-2);font-weight:600">Campaign</th>'+
+          '<th style="text-align:left;padding:8px 10px;color:var(--text-2);font-weight:600">Audience</th>'+
+          '<th style="text-align:left;padding:8px 10px;color:var(--text-2);font-weight:600">Result</th>'+
+          '<th style="text-align:left;padding:8px 10px;color:var(--text-2);font-weight:600">Sent by</th>'+
+          '<th style="text-align:left;padding:8px 10px;color:var(--text-2);font-weight:600">Notes</th>'+
+        '</tr></thead>'+
+        '<tbody>'+tbody+'</tbody></table></div>';
+    }catch(e){
+      listEl.innerHTML='<p style="color:var(--red);font-size:13px">Failed to load audit trail.</p>';
+    }
+  }
+
   /* ── CRM global bindings (onclick handlers run in window scope) ── */
   window.switchCrmTab=switchCrmTab;
   window.loadCrmCampaigns=loadCrmCampaigns;
@@ -11335,6 +11434,9 @@
   window.crmSendCampaign=crmSendCampaign;
   window.crmDeleteCampaign=crmDeleteCampaign;
   window.saveCrmAutomation=saveCrmAutomation;
+  window.openCrmTestSend=openCrmTestSend;
+  window.crmTestSend=crmTestSend;
+  window.toggleCrmSendLog=toggleCrmSendLog;
 
   /* ── Init ── */
   updateDateUI();

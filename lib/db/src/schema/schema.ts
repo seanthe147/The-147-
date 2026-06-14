@@ -1109,9 +1109,11 @@ export const marketingCampaigns = pgTable("marketing_campaigns", {
   title: text("title").notNull(),                        // internal name (never sent)
   subject: text("subject").notNull(),                     // email subject line
   bodyText: text("body_text").notNull(),                  // message body paragraphs
-  audience: text("audience").notNull().default("all"),    // 'all'|'members'|'loyalty'|'recent_30'|'recent_90'
+  audience: text("audience").notNull().default("all"),    // 'all'|'members'|'loyalty'|'loyalty_only'|'recent_30'|'recent_90'|'square'
+  headerImageUrl: text("header_image_url"),               // optional hero image URL
   status: text("status").notNull().default("draft"),      // 'draft'|'sending'|'sent'|'failed'
   sentAt: timestamp("sent_at"),
+  sentBy: text("sent_by"),                                // staff username who triggered the send
   sentCount: integer("sent_count"),
   failedCount: integer("failed_count"),
   createdBy: text("created_by").notNull(),
@@ -1121,6 +1123,38 @@ export const marketingCampaigns = pgTable("marketing_campaigns", {
 
 export type MarketingCampaign = typeof marketingCampaigns.$inferSelect;
 export type InsertMarketingCampaign = typeof marketingCampaigns.$inferInsert;
+
+// ── Email Unsubscribes (GDPR opt-out) ─────────────────────────────────────────
+// Stores SHA-256 hashes of emails that have unsubscribed — never plaintext.
+export const emailUnsubscribes = pgTable("email_unsubscribes", {
+  id: serial("id").primaryKey(),
+  emailHash: text("email_hash").notNull().unique(),        // SHA-256(lower(email))
+  unsubscribedAt: timestamp("unsubscribed_at").defaultNow().notNull(),
+  source: text("source").notNull().default("link"),        // 'link'|'staff'|'gdpr_request'
+}, (table) => ({
+  emailHashIdx: index("email_unsubscribes_hash_idx").on(table.emailHash),
+}));
+
+export type EmailUnsubscribe = typeof emailUnsubscribes.$inferSelect;
+
+// ── Email Send Log (audit trail) ──────────────────────────────────────────────
+// One row per campaign send or test send. Campaign-level — not per-recipient.
+export const emailSendLog = pgTable("email_send_log", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").references(() => marketingCampaigns.id),
+  sentBy: text("sent_by").notNull(),                       // staff username
+  audience: text("audience").notNull(),                    // audience key or 'test'
+  notes: text("notes"),                                    // e.g. 'Test to john@example.com'
+  recipientCount: integer("recipient_count").notNull().default(0),
+  failedCount: integer("failed_count").notNull().default(0),
+  isTestSend: boolean("is_test_send").notNull().default(false),
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+}, (table) => ({
+  campaignIdx: index("email_send_log_campaign_id_idx").on(table.campaignId),
+  sentAtIdx: index("email_send_log_sent_at_idx").on(table.sentAt),
+}));
+
+export type EmailSendLog = typeof emailSendLog.$inferSelect;
 
 // ── Email Automations ─────────────────────────────────────────────────────────
 // One row per trigger type (upserted). Controls whether an automated email

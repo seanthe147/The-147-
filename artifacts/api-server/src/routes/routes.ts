@@ -7,7 +7,7 @@ import multer from "multer";
 import sharp from "sharp";
 import nodemailer from "nodemailer";
 import { storage, db } from "../storage";
-import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema, isSafePublicUrl, tabs, tabItems, bookings as bookingsTable, tableSessions, marketingCampaigns, emailAutomations, customers as customersTable, membershipSubscriptions as membershipSubsTable } from "@workspace/db";
+import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema, isSafePublicUrl, tabs, tabItems, bookings as bookingsTable, tableSessions, marketingCampaigns, emailAutomations, emailUnsubscribes, emailSendLog, customers as customersTable, membershipSubscriptions as membershipSubsTable } from "@workspace/db";
 import type { InsertBannerImage } from "@workspace/db";
 import { and as dAnd, eq as dEq, desc as dDesc, isNotNull as dIsNotNull, sql as dSql } from "drizzle-orm";
 import { getServerFeatureFlags } from "../featureFlags";
@@ -1449,11 +1449,40 @@ function verifyStaffCredential(
 // ── Email Marketing helpers ──────────────────────────────────────────────────
 
 /** Branded HTML template for marketing emails */
-function buildMarketingEmailHtml(subject: string, bodyText: string): string {
+// ── Unsubscribe helpers (GDPR opt-out) ────────────────────────────────────────
+function hashEmailForUnsub(email: string): string {
+  return createHash("sha256").update(email.toLowerCase().trim()).digest("hex");
+}
+function signUnsubToken(emailHash: string): string {
+  return createHmac("sha256", process.env.ENCRYPTION_KEY || "unsub-key")
+    .update("unsub:" + emailHash).digest("base64url");
+}
+function verifyUnsubToken(emailHash: string, token: string): boolean {
+  return signUnsubToken(emailHash) === token;
+}
+function buildUnsubscribeUrl(email: string): string {
+  const h = hashEmailForUnsub(email);
+  const t = signUnsubToken(h);
+  const domain = (process.env.REPLIT_DOMAINS || "").split(",")[0]?.trim();
+  const base = domain ? `https://${domain}` : "";
+  return `${base}/api/email/unsubscribe?h=${encodeURIComponent(h)}&t=${encodeURIComponent(t)}`;
+}
+
+function buildMarketingEmailHtml(
+  subject: string,
+  bodyText: string,
+  opts: { headerImageUrl?: string | null; unsubscribeUrl?: string } = {}
+): string {
   const bodyHtml = bodyText
     .split(/\n\n+/)
     .map(p => `<p style="margin:0 0 16px 0;line-height:1.75;color:rgba(255,255,255,0.87);">${p.replace(/\n/g, "<br>")}</p>`)
     .join("");
+  const heroBlock = opts.headerImageUrl
+    ? `<div style="margin:0;"><img src="${opts.headerImageUrl}" alt="" style="width:100%;max-height:260px;object-fit:cover;display:block;" /></div>`
+    : "";
+  const unsubLine = opts.unsubscribeUrl
+    ? `<br><a href="${opts.unsubscribeUrl}" style="color:rgba(255,255,255,0.28);font-size:11px;">Unsubscribe from marketing emails</a>`
+    : "";
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1468,6 +1497,7 @@ function buildMarketingEmailHtml(subject: string, bodyText: string): string {
         <div style="font-size:42px;font-weight:900;color:#d4a843;letter-spacing:6px;line-height:1;">147</div>
         <div style="font-size:11px;color:rgba(255,255,255,0.5);letter-spacing:4px;margin-top:6px;text-transform:uppercase;">The 147 Bradford</div>
       </div>
+      ${heroBlock}
       <div style="padding:32px;">
         <h2 style="margin:0 0 20px 0;font-size:21px;font-weight:700;color:#ffffff;line-height:1.3;">${subject}</h2>
         <div style="font-size:15px;">${bodyHtml}</div>
@@ -1475,7 +1505,7 @@ function buildMarketingEmailHtml(subject: string, bodyText: string): string {
       <div style="padding:20px 32px;border-top:1px solid rgba(255,255,255,0.07);background:rgba(0,0,0,0.2);">
         <p style="margin:0;font-size:12px;color:rgba(255,255,255,0.28);text-align:center;line-height:1.6;">
           The 147 Bradford · Snooker &amp; Bar<br>
-          You are receiving this email as a valued customer of The 147.
+          You are receiving this email as a valued customer of The 147.${unsubLine}
         </p>
       </div>
     </div>
@@ -1505,7 +1535,8 @@ async function sendMarketingEmail(to: string, subject: string, html: string): Pr
   }
 }
 
-/** Returns a deduplicated array of email addresses for the chosen audience segment. */
+/** Returns a deduplicated array of email addresses for the chosen audience segment,
+ *  with GDPR opt-outs already removed. */
 async function getMarketingAudienceEmails(audience: string): Promise<string[]> {
   const seen = new Set<string>();
 
@@ -1523,7 +1554,7 @@ async function getMarketingAudienceEmails(audience: string): Promise<string[]> {
       .where(dAnd(dEq(membershipSubsTable.status, "active"), dIsNotNull(customersTable.email)));
     rows.forEach(r => addEmail(r.email));
 
-  } else if (audience === "loyalty") {
+  } else if (audience === "loyalty" || audience === "loyalty_only") {
     const rows = await db
       .select({ email: customersTable.email })
       .from(customersTable)
@@ -1540,7 +1571,6 @@ async function getMarketingAudienceEmails(audience: string): Promise<string[]> {
     rows.forEach(r => addEmail(r.email));
 
   } else if (audience === "square") {
-    // Square-only: customers from Square POS (not necessarily app-registered)
     const squareCustomers = await square.listAllSquareCustomers();
     squareCustomers.forEach(c => { if (c.email_address) seen.add(c.email_address.toLowerCase().trim()); });
 
@@ -1552,6 +1582,15 @@ async function getMarketingAudienceEmails(audience: string): Promise<string[]> {
     ]);
     rows.forEach(r => addEmail(r.email));
     squareCustomers.forEach(c => { if (c.email_address) seen.add(c.email_address.toLowerCase().trim()); });
+  }
+
+  // Filter out GDPR opt-outs by email hash
+  if (seen.size > 0) {
+    const unsubRows = await db.select({ emailHash: emailUnsubscribes.emailHash }).from(emailUnsubscribes);
+    const unsubSet = new Set(unsubRows.map(r => r.emailHash));
+    for (const email of seen) {
+      if (unsubSet.has(hashEmailForUnsub(email))) seen.delete(email);
+    }
   }
 
   return [...seen];
@@ -2603,6 +2642,95 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Public email unsubscribe (GDPR opt-out) ──────────────────────────────
+  // No auth — anyone with a valid HMAC token in their email link can opt out.
+
+  app.get("/api/email/unsubscribe", async (req, res) => {
+    const h = String(req.query.h || "");
+    const t = String(req.query.t || "");
+    const valid = h && t && verifyUnsubToken(h, t);
+    const already = valid
+      ? (await db.select().from(emailUnsubscribes).where(dEq(emailUnsubscribes.emailHash, h))).length > 0
+      : false;
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Unsubscribe – The 147</title>
+<style>body{margin:0;padding:40px 16px;background:#0a1628;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#fff;text-align:center;}
+.card{max-width:460px;margin:0 auto;background:#0d1e35;border:1px solid rgba(212,168,67,0.3);border-radius:14px;padding:40px 32px;}
+h1{color:#d4a843;font-size:28px;margin:0 0 12px;}
+p{color:rgba(255,255,255,0.7);line-height:1.6;margin:0 0 24px;}
+.btn{display:inline-block;padding:12px 32px;background:#d4a843;color:#0a1628;font-weight:700;border-radius:8px;text-decoration:none;cursor:pointer;border:none;font-size:15px;}
+.btn:disabled,.btn.done{background:#4a7a4a;color:#fff;cursor:default;}
+.err{color:#e05050;margin-top:12px;}</style></head>
+<body><div class="card">
+<h1>The 147 Bradford</h1>
+${!valid ? `<p>This unsubscribe link is invalid or has expired.</p>` :
+  already ? `<p>You have already been removed from our marketing list. No further action needed.</p>` :
+  `<p>Click the button below to stop receiving marketing emails from The 147 Bradford.</p>
+<p style="font-size:12px;color:rgba(255,255,255,0.4);">Your email address is never stored in plain text on our servers.</p>
+<form method="POST" action="/api/email/unsubscribe" style="margin:0;">
+<input type="hidden" name="h" value="${h}"><input type="hidden" name="t" value="${t}">
+<button type="submit" class="btn">Unsubscribe me</button>
+</form>`}
+</div></body></html>`);
+  });
+
+  app.post("/api/email/unsubscribe", async (req, res) => {
+    const h = String(req.body?.h || req.query.h || "");
+    const t = String(req.body?.t || req.query.t || "");
+    if (!h || !t || !verifyUnsubToken(h, t)) {
+      return res.status(400).send("Invalid unsubscribe token.");
+    }
+    try {
+      await db.insert(emailUnsubscribes)
+        .values({ emailHash: h, source: "link" })
+        .onConflictDoNothing();
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.send(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Unsubscribed – The 147</title>
+<style>body{margin:0;padding:40px 16px;background:#0a1628;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;text-align:center;}
+.card{max-width:460px;margin:0 auto;background:#0d1e35;border:1px solid rgba(212,168,67,0.3);border-radius:14px;padding:40px 32px;}
+h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);line-height:1.6;}</style></head>
+<body><div class="card"><h1>You're unsubscribed</h1>
+<p>You've been removed from The 147's marketing list. You won't receive any further promotional emails.</p>
+<p style="color:rgba(255,255,255,0.4);font-size:13px;">Transactional emails (booking confirmations, receipts) are unaffected.</p>
+</div></body></html>`);
+    } catch (err: any) {
+      req.log.error({ err }, "[unsubscribe] DB write failed");
+      res.status(500).send("Something went wrong. Please try again later.");
+    }
+  });
+
+  // ── Staff: unsubscribe management ────────────────────────────────────────
+  app.get("/api/staff/email-unsubscribes/count", staffAuth, async (_req, res) => {
+    try {
+      const rows = await db.select({ emailHash: emailUnsubscribes.emailHash }).from(emailUnsubscribes);
+      res.json({ count: rows.length });
+    } catch {
+      res.json({ count: 0 });
+    }
+  });
+
+  app.post("/api/staff/email-unsubscribes", staffAuth, managerAuth, async (req, res) => {
+    // Manually mark a customer as unsubscribed (staff GDPR request handling)
+    const { email } = req.body;
+    if (!email || !String(email).includes("@")) {
+      return res.status(400).json({ message: "Valid email required" });
+    }
+    try {
+      const h = hashEmailForUnsub(String(email));
+      await db.insert(emailUnsubscribes)
+        .values({ emailHash: h, source: "staff" })
+        .onConflictDoNothing();
+      res.json({ ok: true });
+    } catch (err: any) {
+      req.log.error({ err }, "[unsubscribes] manual add error");
+      res.status(500).json({ message: "Failed to add unsubscribe" });
+    }
+  });
+
   // ── Email Marketing Campaigns (manager/owner) ────────────────────────────
   // Compose and send branded broadcast emails to customer segments using the
   // existing SMTP / Resend infrastructure. No external marketing provider needed.
@@ -2634,9 +2762,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/staff/email-campaigns", staffAuth, managerAuth, async (req, res) => {
     try {
-      const { title, subject, bodyText, audience } = req.body;
+      const { title, subject, bodyText, audience, headerImageUrl } = req.body;
       if (!title || !subject || !bodyText) {
         return res.status(400).json({ message: "title, subject and bodyText are required" });
+      }
+      if (headerImageUrl && !isSafePublicUrl(String(headerImageUrl))) {
+        return res.status(400).json({ message: "headerImageUrl must be a safe public URL" });
       }
       const username = (req as any).staffUsername as string | undefined;
       const [campaign] = await db.insert(marketingCampaigns).values({
@@ -2644,6 +2775,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         subject: String(subject),
         bodyText: String(bodyText),
         audience: String(audience || "all"),
+        headerImageUrl: headerImageUrl ? String(headerImageUrl) : null,
         createdBy: username || "staff",
       }).returning();
       res.status(201).json(campaign);
@@ -2659,12 +2791,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const [existing] = await db.select().from(marketingCampaigns).where(dEq(marketingCampaigns.id, id));
       if (!existing) return res.status(404).json({ message: "Campaign not found" });
       if (existing.status !== "draft") return res.status(400).json({ message: "Only draft campaigns can be edited" });
-      const { title, subject, bodyText, audience } = req.body;
+      const { title, subject, bodyText, audience, headerImageUrl } = req.body;
+      if (headerImageUrl && !isSafePublicUrl(String(headerImageUrl))) {
+        return res.status(400).json({ message: "headerImageUrl must be a safe public URL" });
+      }
       const [updated] = await db.update(marketingCampaigns).set({
-        title:    title    ? String(title)    : existing.title,
-        subject:  subject  ? String(subject)  : existing.subject,
-        bodyText: bodyText ? String(bodyText) : existing.bodyText,
-        audience: audience ? String(audience) : existing.audience,
+        title:          title          ? String(title)          : existing.title,
+        subject:        subject        ? String(subject)        : existing.subject,
+        bodyText:       bodyText       ? String(bodyText)       : existing.bodyText,
+        audience:       audience       ? String(audience)       : existing.audience,
+        headerImageUrl: headerImageUrl !== undefined ? (headerImageUrl ? String(headerImageUrl) : null) : existing.headerImageUrl,
         updatedAt: new Date(),
       }).where(dEq(marketingCampaigns.id, id)).returning();
       res.json(updated);
@@ -2690,6 +2826,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/staff/email-campaigns/:id/send", staffAuth, managerAuth, async (req, res) => {
     const id = parseInt(req.params.id);
+    const username = (req as any).staffUsername as string || "staff";
     try {
       const [campaign] = await db.select().from(marketingCampaigns).where(dEq(marketingCampaigns.id, id));
       if (!campaign) return res.status(404).json({ message: "Campaign not found" });
@@ -2702,29 +2839,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Mark as sending and respond immediately so the app doesn't hang
       await db.update(marketingCampaigns)
-        .set({ status: "sending", updatedAt: new Date() })
+        .set({ status: "sending", sentBy: username, updatedAt: new Date() })
         .where(dEq(marketingCampaigns.id, id));
       res.json({ ok: true, recipientCount: emails.length });
 
       // Fire-and-forget: send all emails then update final status
       (async () => {
         let sent = 0, failed = 0;
-        const html = buildMarketingEmailHtml(campaign.subject, campaign.bodyText);
         for (const email of emails) {
           try {
+            const html = buildMarketingEmailHtml(campaign.subject, campaign.bodyText, {
+              headerImageUrl: campaign.headerImageUrl,
+              unsubscribeUrl: buildUnsubscribeUrl(email),
+            });
             const ok = await sendMarketingEmail(email, campaign.subject, html);
             if (ok) sent++; else failed++;
           } catch { failed++; }
           // Small delay to avoid throttling SMTP / Resend rate limits
           await new Promise(r => setTimeout(r, 80));
         }
+        const now = new Date();
         await db.update(marketingCampaigns).set({
           status: "sent",
-          sentAt: new Date(),
+          sentAt: now,
           sentCount: sent,
           failedCount: failed,
-          updatedAt: new Date(),
+          updatedAt: now,
         }).where(dEq(marketingCampaigns.id, id));
+        await db.insert(emailSendLog).values({
+          campaignId: id,
+          sentBy: username,
+          audience: campaign.audience,
+          recipientCount: sent,
+          failedCount: failed,
+          isTestSend: false,
+          sentAt: now,
+        });
+        req.log.info({ campaignId: id, sent, failed }, "[email-campaigns] send complete");
       })().catch(async (err) => {
         req.log.error({ err }, "[email-campaigns] background send error");
         await db.update(marketingCampaigns)
@@ -2739,6 +2890,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .set({ status: "failed", updatedAt: new Date() })
         .where(dEq(marketingCampaigns.id, id))
         .catch(() => {});
+    }
+  });
+
+  app.post("/api/staff/email-campaigns/:id/test-send", staffAuth, managerAuth, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const username = (req as any).staffUsername as string || "staff";
+    try {
+      const [campaign] = await db.select().from(marketingCampaigns).where(dEq(marketingCampaigns.id, id));
+      if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+      const { email } = req.body;
+      if (!email || !String(email).includes("@")) {
+        return res.status(400).json({ message: "Valid email address required" });
+      }
+      const toEmail = String(email).toLowerCase().trim();
+      const html = buildMarketingEmailHtml(campaign.subject, campaign.bodyText, {
+        headerImageUrl: campaign.headerImageUrl,
+        unsubscribeUrl: buildUnsubscribeUrl(toEmail),
+      });
+      const ok = await sendMarketingEmail(toEmail, `[TEST] ${campaign.subject}`, html);
+      if (!ok) return res.status(502).json({ message: "Email could not be delivered — check SMTP settings" });
+      await db.insert(emailSendLog).values({
+        campaignId: id,
+        sentBy: username,
+        audience: "test",
+        notes: `Test send to ${toEmail}`,
+        recipientCount: 1,
+        failedCount: 0,
+        isTestSend: true,
+        sentAt: new Date(),
+      });
+      req.log.info({ campaignId: id, to: toEmail, sentBy: username }, "[email-campaigns] test-send ok");
+      res.json({ ok: true });
+    } catch (err: any) {
+      req.log.error({ err }, "[email-campaigns] test-send error");
+      res.status(500).json({ message: "Failed to send test email" });
+    }
+  });
+
+  app.get("/api/staff/email-campaigns/send-log", staffAuth, managerAuth, async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(String(req.query.limit || "50")), 200);
+      const rows = await db
+        .select({
+          id: emailSendLog.id,
+          campaignId: emailSendLog.campaignId,
+          campaignTitle: marketingCampaigns.title,
+          sentBy: emailSendLog.sentBy,
+          audience: emailSendLog.audience,
+          notes: emailSendLog.notes,
+          recipientCount: emailSendLog.recipientCount,
+          failedCount: emailSendLog.failedCount,
+          isTestSend: emailSendLog.isTestSend,
+          sentAt: emailSendLog.sentAt,
+        })
+        .from(emailSendLog)
+        .leftJoin(marketingCampaigns, dEq(emailSendLog.campaignId, marketingCampaigns.id))
+        .orderBy(dDesc(emailSendLog.sentAt))
+        .limit(limit);
+      res.json(rows);
+    } catch (err: any) {
+      req.log.error({ err }, "[email-campaigns] send-log error");
+      res.status(500).json({ message: "Failed to load send log" });
     }
   });
 
