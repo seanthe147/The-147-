@@ -795,6 +795,20 @@ export async function getCustomerGroupIds(customerId: string): Promise<string[]>
  * only want to (re-)sync customers actually affected by the new mapping,
  * not every app account.
  */
+export async function listAllSquareCustomers(): Promise<Array<{ id: string; email_address?: string; given_name?: string; family_name?: string; phone_number?: string; created_at?: string }>> {
+  const out: Array<{ id: string; email_address?: string; given_name?: string; family_name?: string; phone_number?: string; created_at?: string }> = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < 50; page++) {
+    const path = `/v2/customers?limit=200${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+    const data = await squareRequest("GET", path);
+    const batch = (data.customers as Array<{ id: string; email_address?: string; given_name?: string; family_name?: string; phone_number?: string; created_at?: string }>) || [];
+    out.push(...batch);
+    cursor = data.cursor;
+    if (!cursor) break;
+  }
+  return out;
+}
+
 export async function listCustomersInGroup(groupId: string): Promise<Array<{ id: string; email_address?: string; given_name?: string; family_name?: string; phone_number?: string; created_at?: string }>> {
   const out: Array<{ id: string; email_address?: string; given_name?: string; family_name?: string; phone_number?: string; created_at?: string }> = [];
   let cursor: string | undefined;

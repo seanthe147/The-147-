@@ -10984,8 +10984,9 @@
     if(!statsEl)return;
     statsEl.innerHTML='<div class="loading-state"><div class="spinner"></div>Loading…</div>';
     try{
-      const [allRes,membersRes,loyaltyRes,campaigns]=await Promise.all([
+      const [allRes,squareRes,membersRes,loyaltyRes,campaigns]=await Promise.all([
         api('/api/staff/email-campaigns/audience-count?audience=all').then(r=>r.json()),
+        api('/api/staff/email-campaigns/audience-count?audience=square').then(r=>r.json()),
         api('/api/staff/email-campaigns/audience-count?audience=members').then(r=>r.json()),
         api('/api/staff/email-campaigns/audience-count?audience=loyalty').then(r=>r.json()),
         api('/api/staff/email-campaigns').then(r=>r.json()),
@@ -10994,7 +10995,8 @@
       const draftCampaigns=(campaigns||[]).filter(c=>c.status==='draft').length;
       const totalEmailsSent=(campaigns||[]).filter(c=>c.status==='sent').reduce((a,c)=>a+(c.sentCount||0),0);
       statsEl.innerHTML=
-        crmStatCard('App Customers','#2563EB',allRes.count,'Total registered app users')+
+        crmStatCard('Total Reachable','#2563EB',allRes.count,'App + Square customers combined')+
+        crmStatCard('Square Customers','#10B981',squareRes.count,'Customers in Square POS')+
         crmStatCard('Members','#7C3AED',membersRes.count,'Active membership holders')+
         crmStatCard('Loyalty Members','#D97706',loyaltyRes.count,'Customers with loyalty points')+
         crmStatCard('Emails Delivered','#059669',totalEmailsSent,'Across all sent campaigns')+
@@ -11150,7 +11152,8 @@
         '<textarea class="form-input" id="crmCBody" style="min-height:160px;resize:vertical" maxlength="4000" placeholder="Write your message here…">'+esc(prefill.bodyText)+'</textarea></div>'+
       '<div class="form-group"><label class="form-label">Audience</label>'+
         '<select class="form-input" id="crmCAudience" onchange="crmUpdateAudienceCount()" style="max-width:260px">'+
-          '<option value="all"'+(prefill.audience==='all'?' selected':'')+'>All Customers</option>'+
+          '<option value="all"'+(prefill.audience==='all'?' selected':'')+'>All Customers (app + Square)</option>'+
+          '<option value="square"'+(prefill.audience==='square'?' selected':'')+'>Square POS Customers</option>'+
           '<option value="members"'+(prefill.audience==='members'?' selected':'')+'>Members Only</option>'+
           '<option value="loyalty"'+(prefill.audience==='loyalty'?' selected':'')+'>Loyalty Members</option>'+
         '</select>'+

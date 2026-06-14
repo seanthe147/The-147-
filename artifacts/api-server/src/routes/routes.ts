@@ -1507,40 +1507,53 @@ async function sendMarketingEmail(to: string, subject: string, html: string): Pr
 
 /** Returns a deduplicated array of email addresses for the chosen audience segment. */
 async function getMarketingAudienceEmails(audience: string): Promise<string[]> {
-  let rows: { email: string | null }[] = [];
+  const seen = new Set<string>();
+
+  function addEmail(raw: string | null | undefined) {
+    if (!raw) return;
+    const e = decrypt(raw).toLowerCase().trim();
+    if (e.includes("@")) seen.add(e);
+  }
 
   if (audience === "members") {
-    rows = await db
+    const rows = await db
       .select({ email: customersTable.email })
       .from(membershipSubsTable)
       .innerJoin(customersTable, dEq(membershipSubsTable.customerId, customersTable.id))
       .where(dAnd(dEq(membershipSubsTable.status, "active"), dIsNotNull(customersTable.email)));
+    rows.forEach(r => addEmail(r.email));
+
   } else if (audience === "loyalty") {
-    rows = await db
+    const rows = await db
       .select({ email: customersTable.email })
       .from(customersTable)
       .where(dAnd(dIsNotNull(customersTable.squareLoyaltyAccountId), dIsNotNull(customersTable.email)));
+    rows.forEach(r => addEmail(r.email));
+
   } else if (audience === "recent_30" || audience === "recent_90") {
     const days = audience === "recent_30" ? 30 : 90;
     const cutoffStr = new Date(Date.now() - days * 86_400_000).toISOString().split("T")[0];
-    rows = await db
+    const rows = await db
       .select({ email: bookingsTable.customerEmail })
       .from(bookingsTable)
       .where(dAnd(dIsNotNull(bookingsTable.customerEmail), dSql`${bookingsTable.date} >= ${cutoffStr}`));
+    rows.forEach(r => addEmail(r.email));
+
+  } else if (audience === "square") {
+    // Square-only: customers from Square POS (not necessarily app-registered)
+    const squareCustomers = await square.listAllSquareCustomers();
+    squareCustomers.forEach(c => { if (c.email_address) seen.add(c.email_address.toLowerCase().trim()); });
+
   } else {
-    // "all" — every registered customer with an email address
-    rows = await db
-      .select({ email: customersTable.email })
-      .from(customersTable)
-      .where(dIsNotNull(customersTable.email));
+    // "all" — app-registered customers + Square POS customers, deduped
+    const [rows, squareCustomers] = await Promise.all([
+      db.select({ email: customersTable.email }).from(customersTable).where(dIsNotNull(customersTable.email)),
+      square.listAllSquareCustomers().catch(() => [] as Awaited<ReturnType<typeof square.listAllSquareCustomers>>),
+    ]);
+    rows.forEach(r => addEmail(r.email));
+    squareCustomers.forEach(c => { if (c.email_address) seen.add(c.email_address.toLowerCase().trim()); });
   }
 
-  const seen = new Set<string>();
-  for (const r of rows) {
-    const raw = r.email || "";
-    const e = decrypt(raw).toLowerCase().trim();
-    if (e.includes("@")) seen.add(e);
-  }
   return [...seen];
 }
 
