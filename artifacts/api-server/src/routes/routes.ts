@@ -5163,6 +5163,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Staff: World Cup test-mode override ──────────────────────────────────
+  // GET  /api/staff/game/wc-test   → { active, override }
+  // POST /api/staff/game/wc-test   → activate with { homeShort, awayShort, homeScore, awayScore, minute }
+  // DELETE /api/staff/game/wc-test → clear override
+
+  app.get("/api/staff/game/wc-test", staffAuth, async (_req, res) => {
+    const { getWcTestOverride } = await import("../worldCup.js");
+    const override = getWcTestOverride();
+    res.json({ active: !!override, override });
+  });
+
+  app.post("/api/staff/game/wc-test", staffAuth, async (req, res) => {
+    const { setWcTestOverride } = await import("../worldCup.js");
+    const { homeShort, awayShort, homeScore, awayScore, minute } = req.body ?? {};
+    setWcTestOverride({
+      homeShort: String(homeShort || "Home"),
+      awayShort: String(awayShort || "Away"),
+      homeScore: Number(homeScore ?? 0),
+      awayScore: Number(awayScore ?? 0),
+      minute: String(minute || "45'"),
+    });
+    res.json({ ok: true });
+  });
+
+  app.delete("/api/staff/game/wc-test", staffAuth, async (_req, res) => {
+    const { setWcTestOverride } = await import("../worldCup.js");
+    setWcTestOverride(null);
+    res.json({ ok: true });
+  });
+
   // Next N England fixtures for the home-screen "WORLD CUP 2026" card.
   // Defaults to 2. Caches internally for 10 minutes (30s if any are live).
   app.get("/api/world-cup/england-next", async (req, res) => {

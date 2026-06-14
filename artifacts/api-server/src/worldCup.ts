@@ -29,6 +29,20 @@ type CachedMatch = {
 let cache: { at: number; ttl: number; data: CachedMatch } | null = null;
 let englandCache: { at: number; ttl: number; data: CachedMatch[] } | null = null;
 
+// ── Test-mode override ───────────────────────────────────────────────────────
+// When set, every call to getNextWorldCupMatch() returns this fake live match
+// instead of hitting ESPN. Staff can activate this from the dashboard.
+export type WcTestOverride = {
+  homeShort: string;
+  awayShort: string;
+  homeScore: number;
+  awayScore: number;
+  minute: string;
+};
+let testOverride: WcTestOverride | null = null;
+export function setWcTestOverride(data: WcTestOverride | null): void { testOverride = data; }
+export function getWcTestOverride(): WcTestOverride | null { return testOverride; }
+
 const ESPN_SCOREBOARD =
   "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard";
 const SPORTSDB_SEASON =
@@ -204,6 +218,27 @@ async function fetchSportsDb(): Promise<CachedMatch> {
 // ── Public API ──────────────────────────────────────────────────────────────
 
 export async function getNextWorldCupMatch(): Promise<CachedMatch> {
+  // Test-mode short-circuit — returns a fake live match with no ESPN call.
+  if (testOverride) {
+    const fakeKickoff = new Date(Date.now() - 30 * 60_000).toISOString(); // 30 min ago
+    return {
+      status: "live",
+      matchId: "test",
+      homeName: testOverride.homeShort,
+      homeShort: testOverride.homeShort,
+      homeLogo: null,
+      homeScore: testOverride.homeScore,
+      awayName: testOverride.awayShort,
+      awayShort: testOverride.awayShort,
+      awayLogo: null,
+      awayScore: testOverride.awayScore,
+      kickoffIso: fakeKickoff,
+      minute: testOverride.minute,
+      stage: "Test Mode",
+      source: "espn",
+    };
+  }
+
   const now = Date.now();
   if (cache && now - cache.at < cache.ttl) return cache.data;
 
