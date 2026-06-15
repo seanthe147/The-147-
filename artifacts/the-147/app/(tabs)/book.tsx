@@ -271,7 +271,7 @@ export default function BookScreen() {
       await venueRewardsQuery.refetch();
       Alert.alert(
         "Reward Claimed! 🎉",
-        `Your claim code is: ${data.claim?.claimCode ?? ""}\n\nShow this to a member of staff. Valid for 24 hours.`
+        `Your claim code is: ${data.claim?.claimCode ?? ""}\n\nShow this to a member of staff. Valid for 7 days.`
       );
     } catch {
       Alert.alert("Error", "Something went wrong. Please try again.");

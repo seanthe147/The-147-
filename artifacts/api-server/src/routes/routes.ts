@@ -10593,7 +10593,8 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       }
       const ok = await storage.redeemVenueRewardClaim(claim.id, req.staffId!);
       if (!ok) return res.status(409).json({ message: "Could not redeem claim — it may have already been used" });
-      res.json({ success: true, claim: { ...claim, status: "redeemed" } });
+      const [tier] = await db.select({ name: venueRewardTiers.name }).from(venueRewardTiers).where(eq(venueRewardTiers.id, claim.tierId));
+      res.json({ success: true, claim: { ...claim, status: "redeemed", tierName: tier?.name ?? null } });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

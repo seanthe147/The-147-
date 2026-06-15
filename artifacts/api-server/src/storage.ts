@@ -3654,7 +3654,7 @@ export class DatabaseStorage implements IStorage {
     for (let i = 0; i < 6; i++) {
       code += chars[Math.floor(Math.random() * chars.length)];
     }
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     const [claim] = await db.insert(venueRewardClaims).values({
       ...data,
       claimCode: code,

@@ -153,7 +153,7 @@ function VenueRewardsSection({
             <Text style={styles.sectionTitle}>Your Active Claim Codes</Text>
           </View>
           <Text style={styles.venuePendingSubtitle}>
-            Show these codes to a member of staff to claim your reward. Valid for 24 hours.
+            Show these codes to a member of staff to claim your reward. Valid for 7 days.
           </Text>
           {pendingClaims.map((claim) => {
             const expiresAt = new Date(claim.expiresAt);
@@ -563,7 +563,7 @@ export default function RewardsScreen() {
       await Promise.all([venueRewardsQuery.refetch(), meQuery.refetch()]);
       Alert.alert(
         "Reward claimed! 🎉",
-        `Your claim code is: ${data.claim?.claimCode ?? ""}\n\nShow this to a member of staff. Valid for 24 hours.`
+        `Your claim code is: ${data.claim?.claimCode ?? ""}\n\nShow this to a member of staff. Valid for 7 days.`
       );
     } catch {
       Alert.alert("Error", "Something went wrong. Please try again.");
