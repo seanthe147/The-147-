@@ -356,6 +356,7 @@ export const customers = pgTable("customers", {
   // Nut-Free). Stored as plain text rather than text[] so the existing
   // drizzle / zod / encryption tooling doesn't need a new array codec.
   dietaryFilters: text("dietary_filters"),
+  staffNotes: text("staff_notes"),
 });
 
 export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true, createdAt: true });

@@ -769,7 +769,8 @@ export interface IStorage {
   setMustChangePassword(username: string, mustChange: boolean): Promise<StaffUser | undefined>;
   migrateEncryptExistingBookings(): Promise<number>;
   migrateEncryptExistingPII(): Promise<void>;
-  searchCustomers(query: string, limit?: number): Promise<Array<{ id?: number; name: string; phone: string; email: string }>>;
+  searchCustomers(query: string, limit?: number): Promise<Array<{ id?: number; name: string; phone: string; email: string; staffNotes?: string | null }>>;
+  appendCustomerStaffNote(email: string, note: string): Promise<void>;
   createCustomer(email: string, name: string, phone: string | null, passwordHash: string, opts?: { emailVerifyTokenHash?: string; emailVerifyTokenExpiresAt?: Date; dateOfBirth?: string | null }): Promise<Customer>;
   setEmailVerificationToken(id: number, tokenHash: string, expiresAt: Date): Promise<void>;
   getCustomerByVerifyTokenHash(tokenHash: string): Promise<Customer | undefined>;
@@ -1561,12 +1562,20 @@ export class DatabaseStorage implements IStorage {
             (nameLower.startsWith(words[0]) ? 2 : 0) +
             (phoneMatch ? 1 : 0) +
             (words.length > 1 && nameMatch ? 1 : 0); // bonus for multi-word hits
-          matches.push({ id: dec.id, name, phone, email, score });
+          matches.push({ id: dec.id, name, phone, email, score, staffNotes: raw.staffNotes ?? null });
         }
       } catch { continue; }
     }
     matches.sort((a, b) => b.score - a.score);
-    return matches.slice(0, limit).map(({ id, name, phone, email }) => ({ id, name, phone, email }));
+    return matches.slice(0, limit).map(({ id, name, phone, email, staffNotes }) => ({ id, name, phone, email, staffNotes }));
+  }
+
+  async appendCustomerStaffNote(email: string, note: string): Promise<void> {
+    const customer = await this.getCustomerByEmail(email);
+    if (!customer) return;
+    const existing = customer.staffNotes ?? null;
+    const updated = existing ? `${existing}\n${note}` : note;
+    await db.update(customers).set({ staffNotes: updated }).where(eq(customers.id, customer.id));
   }
 
   async getEvents(): Promise<Event[]> {

@@ -5032,7 +5032,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     const booking = await storage.getBooking(id);
     if (!booking) return res.status(404).json({ message: "Booking not found" });
     await storage.updateBooking(id, { status: "no_show" } as Parameters<typeof storage.updateBooking>[1]);
-    console.log(`[NO-SHOW] Booking #${id} marked as no-show — deposit retained`);
+    req.log.info(`[NO-SHOW] Booking #${id} marked as no-show — deposit retained`);
     {
       const u = (req as any).staffUser;
       void storage.logBookingAction({
@@ -5044,6 +5044,14 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         toValue: { status: "no_show" },
         note: booking.depositPaid ? "Deposit retained" : null,
       });
+    }
+    // Log the no-show on the customer's account so staff can see a history
+    if (booking.customerEmail) {
+      const dateStr = new Date().toLocaleDateString("en-GB", {
+        day: "2-digit", month: "short", year: "numeric",
+      });
+      const noteText = `${dateStr} — No Show (Booking #${id}: ${booking.date} ${booking.startTime}${booking.depositPaid ? ", deposit retained" : ""})`;
+      void storage.appendCustomerStaffNote(booking.customerEmail, noteText);
     }
     res.json({ message: "Booking marked as no-show" });
   });
