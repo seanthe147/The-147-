@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Image, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -43,36 +43,30 @@ function formatKickoff(iso: string | null): string {
   return `${day} ${time}`;
 }
 
+// Adaptive poll interval: 30s when live/just finished, 60s within 90 min of
+// kickoff, 5 min otherwise. Runs as a function so React Query re-evaluates
+// it on every successful fetch without needing a separate useState/useEffect.
+function matchPollMs(match: Match | undefined): number {
+  if (!match) return 5 * 60_000;
+  if (match.status === "live" || match.status === "finished") return 30_000;
+  if (match.kickoffIso) {
+    const minsToKickoff = (new Date(match.kickoffIso).getTime() - Date.now()) / 60_000;
+    if (minsToKickoff <= 90) return 60_000;
+  }
+  return 5 * 60_000;
+}
+
 export function NextMatchBar() {
   const insets = useSafeAreaInsets();
   const { isKioskMode } = useKiosk();
-  const [pollMs, setPollMs] = useState(5 * 60_000);
 
   const { data, error } = useQuery<Match>({
     queryKey: ["/api/world-cup/next-match"],
-    refetchInterval: pollMs,
+    refetchInterval: (query) => matchPollMs(query.state.data),
     refetchOnWindowFocus: true,
     refetchOnMount: true,
     staleTime: 25_000,
   });
-
-  // Poll every 30s when live, every 60s when kickoff is within 90 min,
-  // otherwise every 5 min.
-  useEffect(() => {
-    if (!data) return;
-    if (data.status === "live" || data.status === "finished") {
-      setPollMs(30_000);
-      return;
-    }
-    if (data.kickoffIso) {
-      const minsToKickoff = (new Date(data.kickoffIso).getTime() - Date.now()) / 60_000;
-      if (minsToKickoff <= 90) {
-        setPollMs(60_000);
-        return;
-      }
-    }
-    setPollMs(5 * 60_000);
-  }, [data?.status, data?.kickoffIso]);
 
   if (isKioskMode) return null;
   if (error || !data || data.status === "none") return null;

@@ -149,10 +149,20 @@ const WorldCupGameBanner = memo(function WorldCupGameBanner() {
       return res.json();
     },
     enabled: isAuthenticated,
-    staleTime: 30_000,
+    staleTime: 25_000,
     refetchOnMount: true,
     refetchOnWindowFocus: true,
-    refetchInterval: 60_000,
+    // 30s when a match is live, 60s within 90 min of kickoff, 5 min otherwise
+    refetchInterval: (query) => {
+      const d = query.state.data as typeof query.state.data;
+      if (!d?.todayMatch) return 5 * 60_000;
+      if (d.todayMatch.status === "live") return 30_000;
+      if (d.todayMatch.kickoffIso) {
+        const mins = (new Date(d.todayMatch.kickoffIso).getTime() - Date.now()) / 60_000;
+        if (mins <= 90) return 60_000;
+      }
+      return 5 * 60_000;
+    },
   });
 
   // Show whenever there is a match today — even before the window opens
