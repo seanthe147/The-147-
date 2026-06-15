@@ -11176,6 +11176,7 @@
   let crmCampaignEditId=null;
 
   function switchCrmTab(tab){
+    const prev=crmCurrentTab;
     crmCurrentTab=tab;
     ['overview','customers','campaigns','automations'].forEach(t=>{
       const btn=el('crmTab'+t.charAt(0).toUpperCase()+t.slice(1));
@@ -11183,6 +11184,8 @@
       if(btn)btn.classList.toggle('active',t===tab);
       if(panel)panel.style.display=t===tab?'':'none';
     });
+    if(tab==='campaigns'&&prev!=='campaigns')loadCrmCampaigns();
+    if(tab==='automations'&&prev!=='automations')loadCrmAutomations();
   }
 
   async function loadCrmPage(){
