@@ -4169,10 +4169,15 @@
         </div>
       </div>
 
+      <!-- ── PENDING PRIZES ─────────────────────────────────────────────── -->
+      <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px;margin-top:28px">Pending Prizes <span style="font-size:12px;font-weight:400;color:var(--text-3)">(unclaimed — customer must show code or name)</span></div>
+      <div id="gamePendingClaimsBody"><span style="font-size:13px;color:var(--text-2)">Loading…</span></div>
+
       <!-- ── RECENT WINNERS ─────────────────────────────────────────────── -->
-      <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px">Recent Winners</div>
+      <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px;margin-top:28px">Recent Winners</div>
       <div id="gameWinnersBody"><span style="font-size:13px;color:var(--text-2)">Loading…</span></div>
     `;
+    loadPendingGameClaims();
     loadGameWinners();
     loadWcTestState();
   }
@@ -4269,6 +4274,70 @@
         }
       }
     }catch(_){}
+  }
+
+  async function loadPendingGameClaims(){
+    const div=el('gamePendingClaimsBody');
+    if(!div)return;
+    try{
+      const r=await api('/api/staff/game/pending-claims');
+      if(!r.ok){div.innerHTML='<span style="font-size:13px;color:var(--red)">Could not load pending prizes.</span>';return;}
+      const claims=await r.json();
+      if(!claims||!claims.length){
+        div.innerHTML='<p style="font-size:13px;color:var(--text-2);margin:0">No unclaimed prizes right now.</p>';
+        return;
+      }
+      div.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px">
+        <thead><tr style="border-bottom:2px solid var(--border)">
+          <th style="text-align:left;padding:6px 8px;color:var(--text-2);font-weight:600">Code</th>
+          <th style="text-align:left;padding:6px 8px;color:var(--text-2);font-weight:600">Customer</th>
+          <th style="text-align:left;padding:6px 8px;color:var(--text-2);font-weight:600">Prize</th>
+          <th style="text-align:right;padding:6px 8px;color:var(--text-2);font-weight:600">Won</th>
+          <th style="text-align:right;padding:6px 8px;color:var(--text-2);font-weight:600"></th>
+        </tr></thead>
+        <tbody>${claims.map((c,i)=>{
+          const d=new Date(c.playedAt).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+          return`<tr style="border-bottom:1px solid var(--border);background:${i%2===0?'var(--surface)':'transparent'}" id="pending-claim-row-${c.id}">
+            <td style="padding:8px 8px;font-weight:800;letter-spacing:2px;font-size:14px;color:var(--accent,#2563EB)">${esc(c.prizeClaimCode||'—')}</td>
+            <td style="padding:8px 8px;color:var(--text)">${esc(c.customerName||'Unknown')}</td>
+            <td style="padding:8px 8px;color:var(--text-2)">${esc(c.prizeName||'—')}</td>
+            <td style="padding:8px 8px;text-align:right;color:var(--text-2)">${esc(d)}</td>
+            <td style="padding:8px 8px;text-align:right">
+              <button class="btn btn-sm" style="background:var(--success,#166534);color:#fff;padding:4px 14px;border:none;border-radius:6px;cursor:pointer;font-size:12px"
+                onclick="claimGamePlay(${c.id},this)">Mark Claimed</button>
+            </td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>`;
+    }catch(e){
+      if(e.message==='Session expired')return;
+      div.innerHTML='<span style="font-size:13px;color:var(--red)">Unable to load.</span>';
+    }
+  }
+
+  async function claimGamePlay(playId,btn){
+    if(!confirm('Mark this prize as claimed by the customer?'))return;
+    if(btn){btn.disabled=true;btn.textContent='...';}
+    try{
+      const r=await api(`/api/staff/game/plays/${playId}/claim`,{method:'POST'});
+      if(r.ok){
+        const row=el('pending-claim-row-'+playId);
+        if(row){
+          row.style.opacity='0.4';
+          row.style.textDecoration='line-through';
+          if(btn){btn.textContent='Claimed ✓';btn.style.background='var(--text-3)';}
+          setTimeout(()=>row.remove(),1200);
+        }
+        toast('Prize marked as claimed','success');
+      }else{
+        const d=await r.json().catch(()=>({}));
+        toast(d.message||'Could not claim','error');
+        if(btn){btn.disabled=false;btn.textContent='Mark Claimed';}
+      }
+    }catch(e){
+      if(e.message!=='Session expired')toast('Network error','error');
+      if(btn){btn.disabled=false;btn.textContent='Mark Claimed';}
+    }
   }
 
   async function loadGameWinners(){
@@ -4940,9 +5009,10 @@
     const inp=el('redeem-input-'+id);
     const resultEl=el('redeem-result-'+id);
     if(!inp||!resultEl)return;
-    const code=(inp.value||'').trim().toUpperCase();
+    // Normalise: strip non-alphanumeric (e.g. leading #, dashes) and uppercase
+    const code=(inp.value||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
     if(!code){resultEl.innerHTML='<span style="color:var(--warning)">Enter a code first.</span>';return;}
-    const submitBtn=el('bcard-'+id)&&document.querySelector(`#bcard-${id} [data-action="redeem-submit"]`);
+    const submitBtn=document.querySelector(`#bcard-${id} [data-action="redeem-submit"]`);
     if(submitBtn){submitBtn.disabled=true;submitBtn.textContent='...';}
     resultEl.innerHTML='<span style="color:var(--text-3)">Checking…</span>';
     try{
@@ -4955,6 +5025,11 @@
         return;
       }
       const e1=await r1.json().catch(()=>({}));
+      // 409 from game code = already redeemed — no need to try venue rewards
+      if(r1.status===409){
+        resultEl.innerHTML=`<span style="color:var(--warning)">⚠ ${esc(e1.message||'This code has already been redeemed.')}</span>`;
+        return;
+      }
       // Try venue reward claim code
       const r2=await api('/api/staff/venue-rewards/claims/redeem',{method:'POST',body:JSON.stringify({code})});
       if(r2.ok){
@@ -4965,8 +5040,12 @@
         return;
       }
       const e2=await r2.json().catch(()=>({}));
+      if(r2.status===409){
+        resultEl.innerHTML=`<span style="color:var(--warning)">⚠ ${esc(e2.message||'This code has already been redeemed.')}</span>`;
+        return;
+      }
       // Both failed — show most specific error
-      const msg=e2.message||e1.message||'Code not found or already redeemed';
+      const msg=e2.message||e1.message||'Code not found — check the code and try again';
       resultEl.innerHTML=`<span style="color:var(--danger)">${esc(msg)}</span>`;
     }catch(e){
       resultEl.innerHTML=`<span style="color:var(--danger)">Network error — try again.</span>`;

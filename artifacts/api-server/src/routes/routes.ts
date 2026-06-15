@@ -10216,9 +10216,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     if (!code || typeof code !== "string") return res.status(400).json({ message: "code is required" });
     try {
       const result = await storage.redeemGamePlayByCode(code, req.staffId!);
-      if (!result) return res.status(404).json({ message: "Code not found or already redeemed" });
+      if (!result) return res.status(404).json({ message: "Code not found — check the code and try again" });
       res.json({ success: true, playId: result.id, customerName: result.customerName, prizeName: result.prizeName });
     } catch (err: any) {
+      if ((err as any).alreadyClaimed) return res.status(409).json({ message: "This code has already been redeemed" });
       res.status(500).json({ message: err.message });
     }
   });
@@ -10230,9 +10231,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     if (!code || typeof code !== "string") return res.status(400).json({ message: "code is required" });
     try {
       const result = await storage.redeemGamePlayByCode(code, 0);
-      if (!result) return res.status(404).json({ message: "Code not found or already redeemed" });
+      if (!result) return res.status(404).json({ message: "Code not found — check the code and try again" });
       res.json({ success: true, customerName: result.customerName, prizeName: result.prizeName });
     } catch (err: any) {
+      if ((err as any).alreadyClaimed) return res.status(409).json({ message: "This code has already been redeemed" });
       res.status(500).json({ message: err.message });
     }
   });
@@ -10597,8 +10599,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       return res.status(400).json({ message: "code is required" });
     }
     try {
-      const claim = await storage.getVenueRewardClaimByCode(code.toUpperCase().trim());
-      if (!claim) return res.status(404).json({ message: "Claim code not found" });
+      // Normalise: strip leading/trailing whitespace and any non-alphanumeric chars
+      // (e.g. a leading # or a dash the customer copied from the display)
+      const claim = await storage.getVenueRewardClaimByCode(code);
+      if (!claim) return res.status(404).json({ message: "Code not found — check the code and try again" });
       if (claim.status === "redeemed") return res.status(409).json({ message: "Already redeemed", claim });
       if (claim.status === "expired" || claim.expiresAt < new Date()) {
         return res.status(410).json({ message: "Claim has expired" });

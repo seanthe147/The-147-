@@ -1,3 +1,4 @@
 - [The 147 workspace structure](the-147-structure.md) — key non-obvious decisions made during the migration from a monolithic repo to pnpm workspace
 - [Square payment system bugs](square-payment-bugs.md) — confirmed root causes and fixes for "Payment Screen Issue" + loyalty reward issues
 - [EAS OTA push from Replit](eas-ota-limit.md) — Metro bundling alone takes ~2 min, exceeds bash 120s limit; OTA must be run from user's terminal
+- [Prize code redemption](prize-code-redemption.md) — two code systems with subtle bugs; normalisation and alphabet must match between generation and lookup

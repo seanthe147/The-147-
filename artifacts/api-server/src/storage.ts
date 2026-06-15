@@ -3496,20 +3496,24 @@ export class DatabaseStorage implements IStorage {
 
   async redeemGamePlayByCode(code: string, staffId: number): Promise<{ id: number; customerName: string | null; prizeName: string } | null> {
     const normalised = code.toUpperCase().trim().replace(/[^A-Z0-9]/g, "");
-    const [play] = await db.select().from(gamePlays)
-      .where(and(eq(gamePlays.prizeClaimCode, normalised), isNull(gamePlays.claimedAt)));
-    if (!play) return null;
+    // Check if the code exists at all (claimed or not) so we can give a precise error
+    const [anyPlay] = await db.select().from(gamePlays)
+      .where(eq(gamePlays.prizeClaimCode, normalised));
+    if (!anyPlay) return null;
+    // Code exists but already redeemed — throw so the caller can return 409
+    if (anyPlay.claimedAt) throw Object.assign(new Error("already_claimed"), { alreadyClaimed: true });
     const [updated] = await db.update(gamePlays)
       .set({ claimedAt: new Date(), claimedByStaffId: staffId })
-      .where(and(eq(gamePlays.id, play.id), isNull(gamePlays.claimedAt)))
+      .where(and(eq(gamePlays.id, anyPlay.id), isNull(gamePlays.claimedAt)))
       .returning();
-    if (!updated) return null;
-    const prizeName = play.prizeId
-      ? (await db.select({ name: gamePrizes.name }).from(gamePrizes).where(eq(gamePrizes.id, play.prizeId)))[0]?.name ?? "Prize"
+    // Race condition — another request claimed it between the select and the update
+    if (!updated) throw Object.assign(new Error("already_claimed"), { alreadyClaimed: true });
+    const prizeName = anyPlay.prizeId
+      ? (await db.select({ name: gamePrizes.name }).from(gamePrizes).where(eq(gamePrizes.id, anyPlay.prizeId)))[0]?.name ?? "Prize"
       : "Prize";
-    const custName = (await db.select({ name: customers.name }).from(customers).where(eq(customers.id, play.customerId)))[0];
+    const custName = (await db.select({ name: customers.name }).from(customers).where(eq(customers.id, anyPlay.customerId)))[0];
     return {
-      id: play.id,
+      id: anyPlay.id,
       customerName: custName ? decrypt(custName.name) : null,
       prizeName,
     };
@@ -3661,7 +3665,8 @@ export class DatabaseStorage implements IStorage {
     tierId: number;
     pointsDeducted: number;
   }): Promise<VenueRewardClaim> {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    // Same confusable-free alphabet as generateClaimCode() — no 0/O, 1/I, 5/S, 8/B
+    const chars = "ACDEFGHJKLMNPQRTUVWXY234679";
     let code = "";
     for (let i = 0; i < 6; i++) {
       code += chars[Math.floor(Math.random() * chars.length)];
@@ -3687,8 +3692,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getVenueRewardClaimByCode(code: string): Promise<VenueRewardClaim | null> {
+    // Normalise the same way as redeemGamePlayByCode so that stray # or spaces
+    // from copy-paste never cause a miss.
+    const normalised = code.toUpperCase().trim().replace(/[^A-Z0-9]/g, "");
     const [claim] = await db.select().from(venueRewardClaims)
-      .where(eq(venueRewardClaims.claimCode, code.toUpperCase().trim()));
+      .where(eq(venueRewardClaims.claimCode, normalised));
     return claim ?? null;
   }
 
