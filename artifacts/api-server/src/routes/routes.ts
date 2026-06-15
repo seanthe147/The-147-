@@ -9960,18 +9960,14 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
             giftCardGan = await square.issueGiftCardPrize(customer2?.squareCustomerId ?? null, prize.giftCardAmountPence, `wc-gc-${customerId}-${Date.now()}`);
           } catch (e: any) { req.log.warn({ err: e }, "[WC_GAME] Gift card failed"); }
         }
-        if (prize.prizeType === "customer_group" && prize.squareCustomerGroupId) {
-          const customer3 = await storage.getCustomerById(customerId);
-          if (customer3?.squareCustomerId && square.isConfigured()) {
-            try {
-              await square.addCustomerToGroup(customer3.squareCustomerId, prize.squareCustomerGroupId);
-              squareGroupAddedAt = new Date();
-            } catch (e: any) { req.log.warn({ err: e }, "[WC_GAME] Group add failed"); autoClaimedAt = new Date(); }
-          } else { autoClaimedAt = new Date(); }
-        }
+        // customer_group: generate a claim code staff enter at the bar.
+        // Staff apply the discount manually at POS and redeem the code in
+        // the portal to record it. No Square customer-group manipulation
+        // needed — simpler and requires no Square Dashboard pricing rules.
+        // (prizeClaimCode is set below alongside reward_tier)
       }
 
-      const wcPrizeClaimCode = (prize && prize.prizeType === "reward_tier" && !autoClaimedAt && !saved) ? generateClaimCode() : null;
+      const wcPrizeClaimCode = (prize && (prize.prizeType === "reward_tier" || prize.prizeType === "customer_group") && !autoClaimedAt && !saved) ? generateClaimCode() : null;
       const play = await storage.createGamePlay({
         customerId,
         prizeId: prize?.id ?? null,
@@ -10140,31 +10136,14 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
           }
         }
 
-        // customer_group: add winner to the designated Square customer group so the
-        // associated CatalogPricingRule fires automatically at POS when they pay.
-        // The group membership is removed automatically via payment webhook or expiry job.
-        // If the add fails (no Square account, or API error) the play is auto-claimed
-        // immediately so no discount was ever granted — staff never need to intervene.
-        if (prize.prizeType === "customer_group" && prize.squareCustomerGroupId) {
-          const sqCustId = customer?.squareCustomerId;
-          if (sqCustId && square.isConfigured()) {
-            try {
-              await square.addCustomerToGroup(sqCustId, prize.squareCustomerGroupId);
-              squareGroupAddedAt = new Date();
-              console.log(`[Game] Added customer ${sqCustId} to group ${prize.squareCustomerGroupId} for prize "${prize.name}"`);
-            } catch (e: any) {
-              console.warn("[Game] Group add failed — auto-claiming play (no discount granted):", e.message);
-              autoClaimedAt = new Date(); // nothing to track; keep plays table clean
-            }
-          } else {
-            // No Square account linked — can't add to group; auto-claim silently
-            console.warn(`[Game] customer_group prize but no squareCustomerId for customer ${customerId} — auto-claiming`);
-            autoClaimedAt = new Date();
-          }
-        }
+        // customer_group: generate a claim code staff enter at the bar.
+        // Staff apply the discount manually at POS and redeem the code in
+        // the portal to record it. No Square customer-group manipulation
+        // needed — simpler and requires no Square Dashboard pricing rules.
+        // (prizeClaimCode is set below alongside reward_tier)
       }
 
-      const scPrizeClaimCode = (prize && prize.prizeType === "reward_tier" && !autoClaimedAt) ? generateClaimCode() : null;
+      const scPrizeClaimCode = (prize && (prize.prizeType === "reward_tier" || prize.prizeType === "customer_group") && !autoClaimedAt) ? generateClaimCode() : null;
       const play = await storage.createGamePlay({
         customerId,
         prizeId: prize?.id ?? null,

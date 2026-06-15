@@ -414,7 +414,7 @@ export function PenaltyShootoutGame() {
               {result.squareRewardIssued && (
                 <Text style={styles.prizeBoxSub}>✓ Reward added to your loyalty account</Text>
               )}
-              {result.prize?.prizeType === "reward_tier" && !result.squareRewardIssued && result.prizeClaimCode && (
+              {(result.prize?.prizeType === "reward_tier" || result.prize?.prizeType === "customer_group") && !result.squareRewardIssued && result.prizeClaimCode && (
                 <View style={styles.wcCodeBox}>
                   <Text style={styles.wcCodeLabel}>YOUR CLAIM CODE</Text>
                   <Text style={styles.wcCodeText}>{result.prizeClaimCode}</Text>

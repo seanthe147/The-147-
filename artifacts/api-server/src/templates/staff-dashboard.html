@@ -3983,7 +3983,7 @@
     const scratchPrizes=prizes.filter(p=>p.game==='scratch_card'||p.game==='both');
     const penaltyPrizes=prizes.filter(p=>p.game==='penalty'||p.game==='both');
 
-    const PRIZE_TYPE_LABEL={'none':'No prize','loyalty_points':'Loyalty Points','reward_tier':'Reward Voucher','gift_card':'Gift Card','customer_group':'Customer Group'};
+    const PRIZE_TYPE_LABEL={'none':'No prize','loyalty_points':'Loyalty Points','reward_tier':'Reward Voucher','gift_card':'Gift Card','customer_group':'Offer (claim code)'};
 
     function makePrizeTable(list){
       const tw=list.filter(p=>p.active).reduce((s,p)=>s+(p.weightPercent||0),0);

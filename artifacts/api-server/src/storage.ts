@@ -3452,10 +3452,11 @@ export class DatabaseStorage implements IStorage {
     return play;
   }
 
-  // Returns all unclaimed reward_tier wins that need manual staff action, newest first.
-  // customer_group prizes are fully automatic (added/removed by the system) and
-  // never appear here — if the group add fails at win time, the play is auto-claimed
-  // immediately in the game route so it never lands in this list.
+  // Returns all unclaimed wins that need manual staff action, newest first.
+  // Includes reward_tier prizes (staff redeem Square reward) and customer_group
+  // prizes that have a prizeClaimCode (staff apply discount manually and enter
+  // the code to record it). Loyalty-points and gift-card prizes are fully
+  // automatic and never appear here.
   async getPendingRewardClaims(): Promise<Array<{ id: number; customerId: number; customerName: string | null; prizeName: string; prizeType: string; playedAt: Date; londonDate: string; prizeClaimCode: string | null }>> {
     const plays = await db.select().from(gamePlays)
       .where(and(isNotNull(gamePlays.prizeId), isNull(gamePlays.claimedAt)))
@@ -3464,9 +3465,11 @@ export class DatabaseStorage implements IStorage {
     for (const play of plays) {
       if (!play.prizeId) continue;
       const [prize] = await db.select().from(gamePrizes).where(eq(gamePrizes.id, play.prizeId));
-      // Only reward_tier prizes need manual staff action at the bar.
-      // customer_group prizes are handled entirely by the system.
-      if (!prize || prize.prizeType !== "reward_tier") continue;
+      // Only reward_tier and customer_group (with a claim code) need staff action.
+      if (!prize) continue;
+      if (prize.prizeType !== "reward_tier" && prize.prizeType !== "customer_group") continue;
+      // Old customer_group plays (auto-added to Square group, no claim code) are skipped.
+      if (prize.prizeType === "customer_group" && !play.prizeClaimCode) continue;
       const [cust] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, play.customerId));
       result.push({
         id: play.id,
