@@ -110,6 +110,13 @@ export function PenaltyShootoutGame() {
   const ballPos = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const ballScale = useRef(new Animated.Value(1)).current;
   const ballOpacity = useRef(new Animated.Value(1)).current;
+  // Tracks the current absolute ball position so onPanResponderGrant can set
+  // the pan offset without using the private __getValue() internal API.
+  const ballPosRef = useRef({ x: 0, y: 0 });
+  useEffect(() => {
+    const id = ballPos.addListener(({ x, y }) => { ballPosRef.current = { x, y }; });
+    return () => ballPos.removeListener(id);
+  }, []);
 
   // Keeper animation
   const keeperX = useRef(new Animated.Value(0)).current;
@@ -170,7 +177,7 @@ export function PenaltyShootoutGame() {
   const resetBall = useCallback(() => {
     Animated.parallel([
       Animated.spring(ballPos, { toValue: { x: 0, y: 0 }, useNativeDriver: false, tension: 80, friction: 7 }),
-      Animated.spring(ballScale, { toValue: 1, useNativeDriver: true }),
+      Animated.spring(ballScale, { toValue: 1, useNativeDriver: false }),
       Animated.timing(ballOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
       Animated.spring(keeperX, { toValue: 0, useNativeDriver: true }),
     ]).start();
@@ -193,7 +200,7 @@ export function PenaltyShootoutGame() {
       Animated.timing(ballScale, {
         toValue: 0.45,
         duration: 380,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
     ]).start();
 
@@ -271,7 +278,7 @@ export function PenaltyShootoutGame() {
         if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         setIsDragging(true);
         Animated.timing(aimIndicatorOpacity, { toValue: 1, duration: 150, useNativeDriver: true }).start();
-        ballPos.setOffset({ x: (ballPos.x as any).__getValue(), y: (ballPos.y as any).__getValue() });
+        ballPos.setOffset(ballPosRef.current);
         ballPos.setValue({ x: 0, y: 0 });
       },
       onPanResponderMove: (_, gesture) => {
