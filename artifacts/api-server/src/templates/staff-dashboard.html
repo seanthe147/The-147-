@@ -662,6 +662,22 @@
         <div id="bookingsTabPanelBookings">
           <div class="page-body" style="padding-top:0">
             <div id="dashboardNotices" style="display:none;margin-bottom:16px"></div>
+
+            <!-- ── Prize / Reward code redemption shortcut ── -->
+            <div style="background:linear-gradient(135deg,rgba(124,58,237,.08),rgba(79,70,229,.06));border:1.5px solid rgba(124,58,237,.25);border-radius:16px;padding:16px 20px;margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+              <div style="flex-shrink:0">
+                <div style="font-size:13px;font-weight:700;color:#5B21B6;margin-bottom:2px">🎁 Redeem Prize / Reward Code</div>
+                <div style="font-size:11px;color:var(--text-3)">Enter a customer's prize or reward claim code</div>
+              </div>
+              <div style="display:flex;gap:8px;flex:1;min-width:220px;max-width:420px">
+                <input id="quickRedeemInput" type="text" maxlength="8" placeholder="e.g. ABC123" autocapitalize="characters"
+                  style="flex:1;padding:9px 13px;border-radius:10px;border:1.5px solid rgba(124,58,237,.35);background:var(--surface);color:var(--text-1);font-size:14px;font-family:monospace;text-transform:uppercase;letter-spacing:1px;outline:none"
+                  onkeydown="if(event.key==='Enter')quickRedeem()" />
+                <button onclick="quickRedeem()" id="quickRedeemBtn" class="btn btn-primary" style="background:#7C3AED;border-color:#7C3AED;white-space:nowrap">Redeem</button>
+              </div>
+              <div id="quickRedeemResult" style="width:100%;margin-top:-4px;font-size:13px;display:none"></div>
+            </div>
+
             <div class="summary-row" id="summaryRow">
               <div class="stat-card"><div class="stat-label">Total Today</div><div class="stat-value" id="statTotal">—</div><div class="stat-sub">bookings</div></div>
               <div class="stat-card"><div class="stat-label">Confirmed</div><div class="stat-value" id="statConfirmed" style="color:var(--green)">—</div><div class="stat-sub">active</div></div>
@@ -4802,6 +4818,45 @@
         else if(action==='redeem-submit')redeemBookingCode(id);
       });
     });
+  }
+
+  async function quickRedeem(){
+    const inp=el('quickRedeemInput');
+    const resultEl=el('quickRedeemResult');
+    const btn=el('quickRedeemBtn');
+    if(!inp||!resultEl)return;
+    const code=(inp.value||'').trim().toUpperCase();
+    if(!code){resultEl.style.display='block';resultEl.innerHTML='<span style="color:var(--warning)">Enter a code first.</span>';return;}
+    btn.disabled=true;btn.textContent='Checking…';
+    resultEl.style.display='block';
+    resultEl.innerHTML='<span style="color:var(--text-3)">Looking up code…</span>';
+    try{
+      // Try game prize code first
+      const r1=await api('/api/kiosk/redeem-prize-code',{method:'POST',body:JSON.stringify({code})});
+      if(r1.ok){
+        const d=await r1.json();
+        resultEl.innerHTML=`<span style="color:var(--success)">✓ Game prize redeemed! <strong>${esc(d.prizeName||'Prize')}</strong> for <strong>${esc(d.customerName||'customer')}</strong>.</span>`;
+        inp.value='';
+        return;
+      }
+      const e1=await r1.json().catch(()=>({}));
+      // Try venue reward claim code
+      const r2=await api('/api/staff/venue-rewards/claims/redeem',{method:'POST',body:JSON.stringify({code})});
+      if(r2.ok){
+        const d=await r2.json();
+        const tierName=d.claim?.tierName||'Venue reward';
+        resultEl.innerHTML=`<span style="color:var(--success)">✓ Reward redeemed! <strong>${esc(String(tierName))}</strong> marked as used.</span>`;
+        inp.value='';
+        return;
+      }
+      const e2=await r2.json().catch(()=>({}));
+      const msg=e2.message||e1.message||'Code not found or already redeemed';
+      resultEl.innerHTML=`<span style="color:var(--danger)">✗ ${esc(msg)}</span>`;
+    }catch(e){
+      resultEl.innerHTML=`<span style="color:var(--danger)">✗ Network error — try again.</span>`;
+    }finally{
+      btn.disabled=false;btn.textContent='Redeem';
+    }
   }
 
   async function redeemBookingCode(id){
