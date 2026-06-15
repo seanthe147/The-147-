@@ -247,6 +247,8 @@
     .b-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
     .b-actions-col{flex-direction:column;align-items:flex-end;gap:6px}
     .b-arrival-row{display:flex;gap:6px}
+    .b-redeem-panel{margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+    .b-redeem-inner{background:rgba(124,58,237,.06);border:1px solid rgba(124,58,237,.2);border-radius:10px;padding:10px 12px}
 
     /* ── Empty / loading ── */
     .empty-state{text-align:center;padding:80px 20px}
@@ -4727,7 +4729,8 @@
                 :'<span class="pill pill-green">Confirmed</span>';
       const typePill=b.tableType==='snooker'?'pill-blue':b.tableType==='pool'?'pill-purple':'pill-gold';
       const tableLabel=cap(b.tableType)+((b.tableType==='snooker'||b.tableType==='pool')&&b.tableNumber?' #'+b.tableNumber:'');
-      html+=`<div class="${cardClass}">
+      const showRedeem=!isCanc&&!isNoShow;
+      html+=`<div class="${cardClass}" id="bcard-${b.id}">
         <div class="booking-time-col"><div class="b-time">${esc(b.startTime)}</div><div class="b-duration">${b.duration}h</div></div>
         <div class="b-main">
           <div class="b-top">
@@ -4741,6 +4744,16 @@
             ${b.customerEmail?`<span class="b-detail">✉ ${esc(b.customerEmail)}</span>`:''}
           </div>
           ${b.notes?`<div class="b-notes">${esc(b.notes)}</div>`:''}
+          ${showRedeem?`<div class="b-redeem-panel" id="redeem-panel-${b.id}" style="display:none">
+            <div class="b-redeem-inner">
+              <span style="font-size:12px;font-weight:600;color:var(--text-2)">🎁 Prize / Reward Code</span>
+              <div style="display:flex;gap:6px;margin-top:6px">
+                <input id="redeem-input-${b.id}" type="text" maxlength="8" placeholder="e.g. ABC123" autocapitalize="characters" style="flex:1;padding:7px 10px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-1);font-size:13px;font-family:monospace;text-transform:uppercase" />
+                <button class="btn btn-success btn-sm" data-id="${b.id}" data-action="redeem-submit">Redeem</button>
+              </div>
+              <div id="redeem-result-${b.id}" style="margin-top:6px;font-size:12px"></div>
+            </div>
+          </div>`:''}
         </div>
         <div class="b-actions${isConf||isArrived||isNoShow?' b-actions-col':''}">
           ${isConf?`<div class="b-arrival-row">
@@ -4754,6 +4767,9 @@
             ${!isCanc&&!isArrived&&!isNoShow?`<button class="btn btn-warning btn-sm" data-id="${b.id}" data-action="cancel">Cancel</button>`:''}
             ${isManager?`<button class="btn btn-danger btn-sm" data-id="${b.id}" data-action="delete">Delete</button>`:''}
           </div>
+          ${showRedeem?`<div class="b-arrival-row">
+            <button class="btn btn-sm" data-id="${b.id}" data-action="redeem-toggle" style="background:rgba(124,58,237,0.12);color:#7c3aed;border:1px solid rgba(124,58,237,0.3);font-weight:600">🎁 Redeem</button>
+          </div>`:''}
         </div>
       </div>`;
     }
@@ -4770,8 +4786,61 @@
         else if(action==='delete')deleteBooking(id);
         else if(action==='showed-up')showedUpBooking(id,booking);
         else if(action==='no-show')noShowBooking(id,booking);
+        else if(action==='redeem-toggle'){
+          const panel=el('redeem-panel-'+id);
+          if(!panel)return;
+          const open=panel.style.display==='none';
+          panel.style.display=open?'block':'none';
+          btn.textContent=open?'✕ Close':'🎁 Redeem';
+          if(open){
+            const inp=el('redeem-input-'+id);
+            if(inp){inp.value='';setTimeout(()=>inp.focus(),50);}
+            const res=el('redeem-result-'+id);
+            if(res)res.innerHTML='';
+          }
+        }
+        else if(action==='redeem-submit')redeemBookingCode(id);
       });
     });
+  }
+
+  async function redeemBookingCode(id){
+    const inp=el('redeem-input-'+id);
+    const resultEl=el('redeem-result-'+id);
+    if(!inp||!resultEl)return;
+    const code=(inp.value||'').trim().toUpperCase();
+    if(!code){resultEl.innerHTML='<span style="color:var(--warning)">Enter a code first.</span>';return;}
+    const submitBtn=el('bcard-'+id)&&document.querySelector(`#bcard-${id} [data-action="redeem-submit"]`);
+    if(submitBtn){submitBtn.disabled=true;submitBtn.textContent='...';}
+    resultEl.innerHTML='<span style="color:var(--text-3)">Checking…</span>';
+    try{
+      // Try game prize code first
+      const r1=await api('/api/kiosk/redeem-prize-code',{method:'POST',body:JSON.stringify({code})});
+      if(r1.ok){
+        const d=await r1.json();
+        resultEl.innerHTML=`<span style="color:var(--success)">✓ Game prize redeemed! <strong>${esc(d.prizeName||'Prize')}</strong> for <strong>${esc(d.customerName||'customer')}</strong>.</span>`;
+        inp.value='';
+        return;
+      }
+      const e1=await r1.json().catch(()=>({}));
+      // Try venue reward claim code
+      const r2=await api('/api/staff/venue-rewards/claims/redeem',{method:'POST',body:JSON.stringify({code})});
+      if(r2.ok){
+        const d=await r2.json();
+        const tierName=d.claim?.tierName||d.claim?.tierId||'Venue reward';
+        resultEl.innerHTML=`<span style="color:var(--success)">✓ Reward redeemed! <strong>${esc(String(tierName))}</strong> marked as used.</span>`;
+        inp.value='';
+        return;
+      }
+      const e2=await r2.json().catch(()=>({}));
+      // Both failed — show most specific error
+      const msg=e2.message||e1.message||'Code not found or already redeemed';
+      resultEl.innerHTML=`<span style="color:var(--danger)">${esc(msg)}</span>`;
+    }catch(e){
+      resultEl.innerHTML=`<span style="color:var(--danger)">Network error — try again.</span>`;
+    }finally{
+      if(submitBtn){submitBtn.disabled=false;submitBtn.textContent='Redeem';}
+    }
   }
 
   async function cancelBooking(id){
