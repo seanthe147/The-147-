@@ -7,7 +7,7 @@ import multer from "multer";
 import sharp from "sharp";
 import nodemailer from "nodemailer";
 import { storage, db } from "../storage";
-import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema, isSafePublicUrl, tabs, tabItems, bookings as bookingsTable, tableSessions, marketingCampaigns, emailAutomations, emailUnsubscribes, emailSendLog, customers as customersTable, membershipSubscriptions as membershipSubsTable } from "@workspace/db";
+import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema, isSafePublicUrl, tabs, tabItems, bookings as bookingsTable, tableSessions, marketingCampaigns, emailAutomations, emailUnsubscribes, emailSendLog, customers as customersTable, membershipSubscriptions as membershipSubsTable, venueRewardClaims, venueRewardTiers, venueRewardTiers as venueRewardTiersT, gamePlays, gamePrizes, staffUsers as staffUsersTable } from "@workspace/db";
 import type { InsertBannerImage } from "@workspace/db";
 import { and as dAnd, eq as dEq, desc as dDesc, isNotNull as dIsNotNull, sql as dSql } from "drizzle-orm";
 import { getServerFeatureFlags } from "../featureFlags";
@@ -10595,6 +10595,72 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       if (!ok) return res.status(409).json({ message: "Could not redeem claim — it may have already been used" });
       const [tier] = await db.select({ name: venueRewardTiers.name }).from(venueRewardTiers).where(eq(venueRewardTiers.id, claim.tierId));
       res.json({ success: true, claim: { ...claim, status: "redeemed", tierName: tier?.name ?? null } });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Staff: combined redemption audit log (game prizes + venue reward claims)
+  app.get("/api/staff/redemption-audit", staffAuth, async (req, res) => {
+    const limit = Math.min(parseInt(String(req.query.limit || "100"), 10), 500);
+    try {
+      const staffAlias = staffUsersTable;
+      // Venue reward claims that have been redeemed
+      const venueClaims = await db
+        .select({
+          kind: dSql<string>`'venue_reward'`.as("kind"),
+          redeemedAt: venueRewardClaims.redeemedAt,
+          code: venueRewardClaims.claimCode,
+          what: venueRewardTiersT.name,
+          customerName: customersTable.name,
+          staffDisplay: staffAlias.displayName,
+          staffUsername: staffAlias.username,
+        })
+        .from(venueRewardClaims)
+        .innerJoin(venueRewardTiersT, dEq(venueRewardClaims.tierId, venueRewardTiersT.id))
+        .leftJoin(customersTable, dEq(venueRewardClaims.customerId, customersTable.id))
+        .leftJoin(staffAlias, dEq(venueRewardClaims.redeemedByStaffId, staffAlias.id))
+        .where(dIsNotNull(venueRewardClaims.redeemedAt))
+        .orderBy(dDesc(venueRewardClaims.redeemedAt))
+        .limit(limit);
+
+      // Game prize codes that have been claimed by staff
+      const gameClaims = await db
+        .select({
+          kind: dSql<string>`'game_prize'`.as("kind"),
+          redeemedAt: gamePlays.claimedAt,
+          code: gamePlays.prizeClaimCode,
+          what: gamePrizes.name,
+          customerName: customersTable.name,
+          staffDisplay: staffAlias.displayName,
+          staffUsername: staffAlias.username,
+        })
+        .from(gamePlays)
+        .innerJoin(gamePrizes, dEq(gamePlays.prizeId, gamePrizes.id))
+        .leftJoin(customersTable, dEq(gamePlays.customerId, customersTable.id))
+        .leftJoin(staffAlias, dEq(gamePlays.claimedByStaffId, staffAlias.id))
+        .where(dAnd(dIsNotNull(gamePlays.claimedAt), dIsNotNull(gamePlays.prizeClaimCode)))
+        .orderBy(dDesc(gamePlays.claimedAt))
+        .limit(limit);
+
+      // Merge and sort combined list by time descending
+      const combined = [...venueClaims, ...gameClaims]
+        .sort((a, b) => {
+          const at = a.redeemedAt ? new Date(a.redeemedAt).getTime() : 0;
+          const bt = b.redeemedAt ? new Date(b.redeemedAt).getTime() : 0;
+          return bt - at;
+        })
+        .slice(0, limit)
+        .map(row => ({
+          kind: row.kind,
+          redeemedAt: row.redeemedAt,
+          code: row.code,
+          what: row.what,
+          customerName: row.customerName ?? "Unknown",
+          redeemedBy: row.staffDisplay || row.staffUsername || "Staff",
+        }));
+
+      res.json(combined);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
