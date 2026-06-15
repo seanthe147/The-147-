@@ -3399,7 +3399,7 @@
     el('navOffers').classList.toggle('hidden',!isManager);
     el('navDeals').classList.toggle('hidden',!isManager);
     el('navLoyaltyGame').classList.toggle('hidden',!isManager);
-    el('navVenueRewards').classList.toggle('hidden',!isManager);
+    el('navVenueRewards').classList.remove('hidden'); // all staff can redeem prizes/rewards
     // Payment endpoints (Stripe + Square charge/intent/finalize) are manager-only
     // server-side, so hide the nav entry for non-managers to avoid a confusing 403.
     el('navPayments').classList.toggle('hidden',!isManager);
