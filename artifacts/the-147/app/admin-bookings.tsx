@@ -251,6 +251,8 @@ export default function AdminBookingsScreen() {
   const bookingsQuery = useQuery<Booking[]>({
     queryKey: ["/api/bookings", `?date=${selectedDate}`],
     enabled: isAuthenticated,
+    staleTime: 0,
+    refetchInterval: 30_000,
   });
 
   const cancelMutation = useMutation({

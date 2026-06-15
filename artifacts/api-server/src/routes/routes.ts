@@ -9877,8 +9877,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       ]);
       // When a staff test override is active, the game is always available
       // regardless of the penalty_enabled setting or match window timing.
+      // penalty_enabled defaults to ON (null or "true") — only "false" disables it,
+      // matching the "Auto" description shown in admin-game.
       const isTestActive = !!getWcTestOverride();
-      const penaltyEnabled = isTestActive || penaltyEnabledSetting === "true";
+      const penaltyEnabled = isTestActive || penaltyEnabledSetting !== "false";
       const matchDay = isTestActive || isWcMatchDay(match);
       const available = matchDay && penaltyEnabled;
       const londonDate = getGameLondonDate();
@@ -9912,7 +9914,8 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       const isTestActive = !!getWcTestOverride();
       if (!isTestActive) {
         const penaltyEnabledSetting = await storage.getSetting("penalty_enabled");
-        if (penaltyEnabledSetting !== "true") {
+        // null (never set) → enabled by default; only "false" disables
+        if (penaltyEnabledSetting === "false") {
           return res.status(403).json({ message: "The penalty challenge is currently disabled." });
         }
       }
