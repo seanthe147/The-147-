@@ -1571,7 +1571,7 @@ async function getMarketingAudienceEmails(audience: string): Promise<string[]> {
     rows.forEach(r => addEmail(r.email));
 
   } else if (audience === "square") {
-    const squareCustomers = await square.listAllSquareCustomers();
+    const squareCustomers = await square.listAllSquareCustomers().catch(() => [] as Awaited<ReturnType<typeof square.listAllSquareCustomers>>);
     squareCustomers.forEach(c => { if (c.email_address) seen.add(c.email_address.toLowerCase().trim()); });
 
   } else {

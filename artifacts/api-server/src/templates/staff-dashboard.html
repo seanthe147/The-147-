@@ -11195,17 +11195,18 @@
     if(!statsEl)return;
     statsEl.innerHTML='<div class="loading-state"><div class="spinner"></div>Loading…</div>';
     try{
-      const [allRes,squareRes,membersRes,loyaltyRes,campaigns,unsubRes]=await Promise.all([
-        api('/api/staff/email-campaigns/audience-count?audience=all').then(r=>r.json()),
-        api('/api/staff/email-campaigns/audience-count?audience=square').then(r=>r.json()),
-        api('/api/staff/email-campaigns/audience-count?audience=members').then(r=>r.json()),
-        api('/api/staff/email-campaigns/audience-count?audience=loyalty').then(r=>r.json()),
-        api('/api/staff/email-campaigns').then(r=>r.json()),
+      const [allRes,squareRes,membersRes,loyaltyRes,campaignsRaw,unsubRes]=await Promise.all([
+        api('/api/staff/email-campaigns/audience-count?audience=all').then(r=>r.json()).catch(()=>({count:0})),
+        api('/api/staff/email-campaigns/audience-count?audience=square').then(r=>r.json()).catch(()=>({count:0})),
+        api('/api/staff/email-campaigns/audience-count?audience=members').then(r=>r.json()).catch(()=>({count:0})),
+        api('/api/staff/email-campaigns/audience-count?audience=loyalty').then(r=>r.json()).catch(()=>({count:0})),
+        api('/api/staff/email-campaigns').then(r=>r.json()).catch(()=>[]),
         api('/api/staff/email-unsubscribes/count').then(r=>r.json()).catch(()=>({count:0})),
       ]);
-      const sentCampaigns=(campaigns||[]).filter(c=>c.status==='sent').length;
-      const draftCampaigns=(campaigns||[]).filter(c=>c.status==='draft').length;
-      const totalEmailsSent=(campaigns||[]).filter(c=>c.status==='sent').reduce((a,c)=>a+(c.sentCount||0),0);
+      const campaigns=Array.isArray(campaignsRaw)?campaignsRaw:[];
+      const sentCampaigns=campaigns.filter(c=>c.status==='sent').length;
+      const draftCampaigns=campaigns.filter(c=>c.status==='draft').length;
+      const totalEmailsSent=campaigns.filter(c=>c.status==='sent').reduce((a,c)=>a+(c.sentCount||0),0);
       function safeCount(res){return typeof res==='object'&&res!==null&&typeof res.count==='number'?res.count:'—';}
       statsEl.innerHTML=
         crmStatCard('Total Reachable','#2563EB',safeCount(allRes),'App + Square customers (opt-outs excluded)')+
