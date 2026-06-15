@@ -31,10 +31,27 @@ description: Root causes and fixes for "Payment Screen Issue" alert and loyalty 
 
 **Fix**: `updateOrderWithLoyaltyDiscount` function in `square.ts` PUTs a `FIXED_AMOUNT` discount with uid `LOYALTY-REWARD` to the Square order; returns Square's confirmed new total. `redeemIssuedLoyaltyReward` fixed to use `location_id` not `order_id`.
 
+## Bug 4 — Free order (100% loyalty reward) never reaches Square KDS
+
+**Root cause**: `POST /api/orders/:id/complete-free` — used when a loyalty reward covers the entire order total (e.g. £5 reward on a £4.80 Stella → £0.00 due) — marked the order paid in the app DB but never called any Square API. Square KDS never received the order because:
+1. No `createCardPayment` was called (Square rejects amount=0 payments).
+2. `payOrderWithCashTender` has a guard: bails on `amountPence <= 0`.
+3. `redeemIssuedLoyaltyReward` was also missing from this path (reward not marked consumed).
+
+**Fix**:
+- `square.ts`: Added `completeSquareOrderAsFree(orderId)` — mirrors `cancelSquareOrder` pattern: GET current version, then PUT `state: "COMPLETED"`. Non-throwing.
+- `routes.ts complete-free`: After marking paid in DB, now fires (non-blocking):
+  1. `square.completeSquareOrderAsFree()` → Square KDS sees the order
+  2. `square.redeemIssuedLoyaltyReward()` → reward properly consumed
+
+**Why**: Square KDS only sees orders that have been paid (card/cash tender) or explicitly set to COMPLETED. Free orders skip both paths without this fix.
+
 ## Payment flow summary (for quick reference)
 1. Client: POST /api/orders/create → returns appOrderId, amountPence, squareOrderId
-2. Client: opens SquarePaymentSheet WebView with amountPence
-3. WebView: Square SDK card form → tokenize → verifyBuyer (SCA) → postMessage({type:"token", sourceId, verificationToken})
-4. Client: POST /api/orders/:id/pay → server calls Square /v2/payments
-5. Server: marks app_orders.status = "paid", redeems loyalty reward (if any), accrues points
-6. Client: routes to /order-confirmation, polls GET /api/orders/:id/confirmation
+2a. amountPence > 0: Client opens SquarePaymentSheet WebView
+    WebView: Square SDK card form → tokenize → verifyBuyer (SCA) → postMessage({type:"token"})
+    Client: POST /api/orders/:id/pay → server calls Square /v2/payments
+    Server: marks paid, redeems loyalty reward, accrues points
+2b. amountPence = 0: Client calls POST /api/orders/:id/complete-free (no payment sheet)
+    Server: marks paid, redeems loyalty reward, calls completeSquareOrderAsFree → KDS
+3. Client: routes to /order-confirmation, polls GET /api/orders/:id/confirmation

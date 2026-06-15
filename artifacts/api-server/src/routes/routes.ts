@@ -7640,6 +7640,28 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         reason: "Free order — 100% loyalty reward discount applied",
       }).catch((e: any) => console.error("[ORDER] Audit log failed:", e.message));
       console.log(`[ORDER] Free-completed order #${order.id} (loyalty reward covered full amount)`);
+
+      // ── Loyalty reward redemption (non-blocking) ───────────────────────────
+      // Mirror what /pay does: mark the reward consumed only after the order
+      // is confirmed paid, so a failed free-complete doesn't burn the reward.
+      if (order.loyaltyRewardId && order.squareOrderId && square.isConfigured()) {
+        square.redeemIssuedLoyaltyReward(order.loyaltyRewardId, order.squareOrderId).catch((e: any) => {
+          console.error("[LOYALTY] Failed to mark free-order reward redeemed:", e?.message);
+        });
+      }
+
+      // ── Square KDS routing (non-blocking) ─────────────────────────────────
+      // A free order never goes through createCardPayment, so Square never
+      // gets a payment event and Square KDS never sees the order. Fix: mark
+      // the Square order COMPLETED directly (PUT /v2/orders/:id state=COMPLETED),
+      // which routes it to KDS exactly as a paid order would. Non-fatal — the
+      // app DB is the source of truth; a Square failure is logged and skipped.
+      if (order.squareOrderId && square.isConfigured()) {
+        square.completeSquareOrderAsFree(order.squareOrderId).catch((e: any) => {
+          console.error("[ORDER] Square KDS routing failed for free order:", e?.message);
+        });
+      }
+
       res.json({ ok: true, appOrderId: order.id });
     } catch (err: any) {
       console.error("[ORDER] Complete-free failed:", err.message);

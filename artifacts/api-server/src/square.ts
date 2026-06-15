@@ -480,6 +480,30 @@ export async function cancelSquareOrder(orderId: string): Promise<boolean> {
   }
 }
 
+// Mark a fully-discounted (£0 total) Square order as COMPLETED so it flows
+// through to Square KDS exactly like a paid order would. Square rejects
+// payment requests with amount=0, so we transition state directly via PUT
+// instead of attaching a tender.
+//
+// Follows the same GET-then-PUT pattern as cancelSquareOrder. Non-throwing:
+// a Square failure here is logged but must not block the customer response —
+// the app DB already reflects "paid" by the time this is called.
+export async function completeSquareOrderAsFree(orderId: string): Promise<boolean> {
+  try {
+    const order = await getOrder(orderId);
+    if (!order) return false;
+    if (order.state === "COMPLETED" || order.state === "CANCELED") return true;
+    await squareRequest("PUT", `/v2/orders/${orderId}`, {
+      order: { version: order.version, state: "COMPLETED", location_id: order.location_id },
+    });
+    console.log(`[SQUARE] completeSquareOrderAsFree: order ${orderId} → COMPLETED`);
+    return true;
+  } catch (err: any) {
+    console.error(`[SQUARE] completeSquareOrderAsFree(${orderId}) failed:`, err?.message || err);
+    return false;
+  }
+}
+
 export async function getPayment(paymentId: string): Promise<any | null> {
   try {
     const data = await squareRequest("GET", `/v2/payments/${paymentId}`);
