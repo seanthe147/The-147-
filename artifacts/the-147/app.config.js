@@ -134,6 +134,7 @@ module.exports = {
     favicon: "./assets/images/favicon.png",
   },
   plugins: [
+    "./plugins/withSquareGooglePay",
     [
       "expo-router",
       {

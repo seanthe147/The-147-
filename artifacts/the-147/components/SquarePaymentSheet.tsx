@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Modal,
   View,
@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import Colors from "@/constants/colors";
 import { buildPaymentSheetHtml } from "@/components/squarePaymentSheetHtml";
 import { getApiUrl } from "@/lib/query-client";
+import { useSquareGooglePay } from "@/hooks/useSquareGooglePay";
 
 export interface SquarePaymentSheetProps {
   visible: boolean;
@@ -91,8 +92,34 @@ function postDiagnostic(payload: Record<string, unknown>) {
 export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
   const insets = useSafeAreaInsets();
   const [internalError, setInternalError] = useState<string | null>(null);
+  const [isGooglePayProcessing, setIsGooglePayProcessing] = useState(false);
   const webRef = useRef<WebViewType | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  const { canUseGooglePay, requestNonce } = useSquareGooglePay({
+    applicationId: props.applicationId,
+    locationId: props.locationId,
+    environment: props.environment,
+  });
+
+  const handleGooglePay = useCallback(async () => {
+    if (isGooglePayProcessing || props.inProgress) return;
+    setIsGooglePayProcessing(true);
+    setInternalError(null);
+    try {
+      const nonce = await requestNonce({
+        amountPence: props.amountPence,
+        currency: props.currency || "GBP",
+      });
+      if (nonce) {
+        props.onTokenized({ sourceId: nonce, verificationToken: null });
+      }
+    } catch {
+      setInternalError("Google Pay failed. Please try entering your card details instead.");
+    } finally {
+      setIsGooglePayProcessing(false);
+    }
+  }, [isGooglePayProcessing, props, requestNonce]);
 
   const html = useMemo(() => {
     if (!props.applicationId || !props.locationId) return null;
@@ -216,6 +243,35 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
             <Ionicons name="close" size={22} color={Colors.light.text} />
           </Pressable>
         </View>
+
+        {canUseGooglePay && (
+          <>
+            <View style={styles.googlePaySection}>
+              <Pressable
+                onPress={handleGooglePay}
+                disabled={isGooglePayProcessing || props.inProgress}
+                style={({ pressed }) => [
+                  styles.googlePayButton,
+                  { opacity: (pressed || isGooglePayProcessing || props.inProgress) ? 0.75 : 1 },
+                ]}
+              >
+                {isGooglePayProcessing ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <Text style={styles.googlePayG}>G</Text>
+                    <Text style={styles.googlePayText}>Pay with Google Pay</Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+            <View style={styles.orDivider}>
+              <View style={styles.orLine} />
+              <Text style={styles.orText}>OR ENTER CARD DETAILS</Text>
+              <View style={styles.orLine} />
+            </View>
+          </>
+        )}
 
         {!html ? (
           <View style={styles.errorBox}>
@@ -360,4 +416,26 @@ const styles = StyleSheet.create({
   processingOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "center" as const, justifyContent: "center" as const, backgroundColor: "rgba(10,22,40,0.92)" },
   processingCard: { padding: 22, borderRadius: 16, alignItems: "center" as const, gap: 10, backgroundColor: "rgba(19,39,66,0.98)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)", shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 20, elevation: 8 },
   processingText: { fontSize: 14, color: "#FFFFFF", fontWeight: "600" as const },
+  googlePaySection: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 },
+  googlePayButton: {
+    height: 52,
+    borderRadius: 12,
+    backgroundColor: "#000",
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    gap: 10,
+    elevation: 2,
+  },
+  googlePayG: {
+    fontSize: 18,
+    fontWeight: "700" as const,
+    color: "#4285F4",
+    letterSpacing: -0.5,
+    fontStyle: "italic" as const,
+  },
+  googlePayText: { fontSize: 15, fontWeight: "600" as const, color: "#fff", letterSpacing: 0.1 },
+  orDivider: { flexDirection: "row" as const, alignItems: "center" as const, paddingHorizontal: 20, paddingVertical: 10, gap: 10 },
+  orLine: { flex: 1, height: 1, backgroundColor: "rgba(255,255,255,0.12)" },
+  orText: { fontSize: 10, fontWeight: "600" as const, color: "rgba(255,255,255,0.35)", letterSpacing: 1.2 },
 });
