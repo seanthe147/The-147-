@@ -138,7 +138,8 @@ type Tab = "deliveries" | "count" | "report" | "catalogue";
 
 export default function AdminStockScreen() {
   const insets = useSafeAreaInsets();
-  const { isAuthenticated, isManager, isLoading: authLoading } = useStaffAuth();
+  const { isAuthenticated, isManager, isOwner, isLoading: authLoading } = useStaffAuth();
+  const canManage = isManager || isOwner;
   const [tab, setTab] = useState<Tab>("count");
 
   React.useEffect(() => {
@@ -180,7 +181,7 @@ export default function AdminStockScreen() {
 
       {/* Tab bar */}
       <View style={styles.tabBar}>
-        {(isManager
+        {(canManage
           ? (["deliveries", "count", "report", "catalogue"] as Tab[])
           : (["count"] as Tab[])
         ).map((t) => (
@@ -193,10 +194,10 @@ export default function AdminStockScreen() {
       </View>
 
       {/* Tab content */}
-      {tab === "deliveries" && isManager && <DeliveriesTab items={items} categories={categories} />}
+      {tab === "deliveries" && canManage && <DeliveriesTab items={items} categories={categories} />}
       {tab === "count" && <CountTab items={items} categories={categories} />}
-      {tab === "report" && isManager && <ReportTab categories={categories} />}
-      {tab === "catalogue" && isManager && <CatalogueTab items={items} categories={categories} />}
+      {tab === "report" && canManage && <ReportTab categories={categories} />}
+      {tab === "catalogue" && canManage && <CatalogueTab items={items} categories={categories} />}
     </View>
   );
 }
