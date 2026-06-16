@@ -2078,6 +2078,100 @@ export async function getTerminalCheckout(checkoutId: string): Promise<{
   }
 }
 
+// ── Stock reconciliation helpers ─────────────────────────────────────────────
+
+export interface CatalogVariation {
+  variationId: string;
+  variationName: string;   // e.g. "Regular", "Pint", "Bottle"
+  itemName: string;        // parent item name e.g. "Peroni"
+  displayName: string;     // "Peroni – Bottle 330ml"
+}
+
+let catalogVariationsCache: { data: CatalogVariation[]; expiry: number } | null = null;
+
+/** Fetch all Square catalog ITEM_VARIATIONs. Cached for 10 min. */
+export async function listCatalogVariations(): Promise<CatalogVariation[]> {
+  if (catalogVariationsCache && Date.now() < catalogVariationsCache.expiry) {
+    return catalogVariationsCache.data;
+  }
+  if (!isConfigured()) return [];
+
+  let allObjects: any[] = [];
+  let cursor: string | null = null;
+  do {
+    const url = `/v2/catalog/list?types=ITEM${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+    const data = await squareRequest("GET", url);
+    allObjects = allObjects.concat(data.objects || []);
+    cursor = data.cursor || null;
+  } while (cursor);
+
+  const result: CatalogVariation[] = [];
+  for (const obj of allObjects) {
+    if (obj.type !== "ITEM") continue;
+    const itemName: string = obj.item_data?.name || "Unknown";
+    const variations: any[] = obj.item_data?.variations || [];
+    for (const v of variations) {
+      const variationName: string = v.item_variation_data?.name || "";
+      const displayName = variationName && variationName !== "Regular" && variationName !== itemName
+        ? `${itemName} – ${variationName}`
+        : itemName;
+      result.push({ variationId: v.id, variationName, itemName, displayName });
+    }
+  }
+
+  catalogVariationsCache = { data: result, expiry: Date.now() + 10 * 60 * 1000 };
+  return result;
+}
+
+export function clearCatalogVariationsCache(): void {
+  catalogVariationsCache = null;
+}
+
+/**
+ * Returns units sold per Square catalog variation ID for COMPLETED orders
+ * in the given ISO-8601 date range. Paginates automatically.
+ */
+export async function getSalesByVariation(
+  startAt: string,
+  endAt: string,
+): Promise<Map<string, number>> {
+  if (!isConfigured()) return new Map();
+  const locationId = getLocationId();
+  const totals = new Map<string, number>();
+  let cursor: string | undefined;
+
+  do {
+    const body: any = {
+      location_ids: [locationId],
+      query: {
+        filter: {
+          state_filter: { states: ["COMPLETED"] },
+          date_time_filter: {
+            closed_at: { start_at: startAt, end_at: endAt },
+          },
+        },
+        sort: { sort_field: "CLOSED_AT", sort_order: "ASC" },
+      },
+      limit: 500,
+    };
+    if (cursor) body.cursor = cursor;
+
+    const data = await squareRequest("POST", "/v2/orders/search", body);
+    const orders: any[] = data.orders || [];
+    for (const order of orders) {
+      for (const line of (order.line_items || [])) {
+        const varId: string | undefined = line.catalog_object_id;
+        if (!varId) continue;
+        const qty = parseFloat(line.quantity || "1");
+        totals.set(varId, (totals.get(varId) ?? 0) + qty);
+      }
+    }
+    cursor = data.cursor;
+  } while (cursor);
+
+  return totals;
+}
+
 // Cancels a pending / in-progress terminal checkout. Used if staff need to
 // abort a charge (e.g. customer changed their mind). Errors are swallowed
 // because the local DB cancel is the source of truth.

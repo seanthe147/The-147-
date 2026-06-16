@@ -38,7 +38,27 @@ interface StockItem {
   containerSize: string | null;
   caseSize: number | null;
   servesPerUnit: string | null;
+  squareCatalogVariationId: string | null;
+  squareCatalogVariationName: string | null;
   active: boolean;
+}
+
+interface CatalogVariation {
+  variationId: string;
+  variationName: string;
+  itemName: string;
+  displayName: string;
+}
+
+interface AutoMatchResult {
+  stockItemId: number;
+  stockItemName: string;
+  currentVariationId: string | null;
+  currentVariationName: string | null;
+  suggestedVariationId: string | null;
+  suggestedVariationName: string | null;
+  confidence: "high" | "medium" | "low" | "none";
+  score: number;
 }
 
 interface DeliveryLine {
@@ -78,10 +98,13 @@ interface ReportLine {
   countUnit: string;
   containerSize: string | null;
   categoryName: string;
+  squareLinked: boolean;
   opening: number;
   delivered: number;
   closing: number;
   consumed: number;
+  sold: number | null;
+  variance: number | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -522,19 +545,36 @@ function ReportTab({ categories }: { categories: StockCategory[] }) {
   };
 
   const data = reportQuery.data ?? [];
-  const grouped = categories.map((c) => ({ cat: c, lines: data.filter((l) => l.categoryName === c.name) })).filter((g) => g.lines.length > 0);
+  const grouped = categories
+    .map((c) => ({ cat: c, lines: data.filter((l) => l.categoryName === c.name) }))
+    .filter((g) => g.lines.length > 0);
+  const hasSquareData = data.some((l) => l.squareLinked);
+  const linkedCount = data.filter((l) => l.squareLinked).length;
 
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
-      <Text style={styles.formTitle}>Consumption Report</Text>
-      <Text style={styles.fieldHint}>Shows what was consumed in a period: opening stock + deliveries − closing count</Text>
+      <Text style={styles.formTitle}>Stock Reconciliation Report</Text>
+      <Text style={styles.fieldHint}>
+        Opens + Deliveries − Closing = Used (physical).{"\n"}
+        Sold = Square POS units. Variance = Used − Sold.
+      </Text>
 
       <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Period Start</Text>
-      <TextInput style={styles.input} value={periodStart} onChangeText={v => { setPeriodStart(v); setFetched(false); }} placeholder="YYYY-MM-DDTHH:MM" placeholderTextColor="#666" />
-
+      <TextInput
+        style={styles.input}
+        value={periodStart}
+        onChangeText={v => { setPeriodStart(v); setFetched(false); }}
+        placeholder="YYYY-MM-DDTHH:MM"
+        placeholderTextColor="#666"
+      />
       <Text style={styles.fieldLabel}>Period End</Text>
-      <TextInput style={styles.input} value={periodEnd} onChangeText={v => { setPeriodEnd(v); setFetched(false); }} placeholder="YYYY-MM-DDTHH:MM" placeholderTextColor="#666" />
-
+      <TextInput
+        style={styles.input}
+        value={periodEnd}
+        onChangeText={v => { setPeriodEnd(v); setFetched(false); }}
+        placeholder="YYYY-MM-DDTHH:MM"
+        placeholderTextColor="#666"
+      />
       <Pressable style={[styles.saveBtn, { marginTop: 12, alignSelf: "stretch" }]} onPress={handleRun}>
         <Text style={styles.saveBtnText}>Run Report</Text>
       </Pressable>
@@ -544,34 +584,71 @@ function ReportTab({ categories }: { categories: StockCategory[] }) {
       {fetched && !reportQuery.isLoading && data.length === 0 && (
         <View style={styles.emptyState}>
           <Text style={styles.emptyText}>No data for this period</Text>
-          <Text style={styles.emptyHint}>Make sure you have at least one submitted stock count and some delivery records</Text>
+          <Text style={styles.emptyHint}>You need at least one submitted stock count and some delivery records for this date range.</Text>
+        </View>
+      )}
+
+      {fetched && data.length > 0 && (
+        <View style={styles.reportSummaryBanner}>
+          {hasSquareData
+            ? <><Ionicons name="link" size={14} color="#22C55E" /><Text style={styles.reportSummaryText}> {linkedCount} of {data.length} items linked to Square POS</Text></>
+            : <><Ionicons name="alert-circle-outline" size={14} color="#F59E0B" /><Text style={[styles.reportSummaryText, { color: "#F59E0B" }]}> No items linked to Square POS — link items in the Catalogue tab to see Sold & Variance</Text></>
+          }
         </View>
       )}
 
       {grouped.map(({ cat, lines }) => (
         <View key={cat.id} style={{ marginTop: 20 }}>
           <Text style={styles.catHeader}>{cat.name}</Text>
-          <View style={styles.reportTable}>
-            <View style={styles.reportHeaderRow}>
-              <Text style={[styles.reportCell, styles.reportItemCol, styles.reportHeader]}>Item</Text>
-              <Text style={[styles.reportCell, styles.reportNumCol, styles.reportHeader]}>Open</Text>
-              <Text style={[styles.reportCell, styles.reportNumCol, styles.reportHeader]}>+Del</Text>
-              <Text style={[styles.reportCell, styles.reportNumCol, styles.reportHeader]}>Close</Text>
-              <Text style={[styles.reportCell, styles.reportNumCol, styles.reportHeader]}>Used</Text>
-            </View>
-            {lines.map((l) => (
-              <View key={l.itemId} style={styles.reportRow}>
-                <View style={[styles.reportCell, styles.reportItemCol]}>
-                  <Text style={styles.reportItemName}>{l.itemName}</Text>
-                  <Text style={styles.reportItemUnit}>{l.containerSize} · {l.countUnit}</Text>
-                </View>
-                <Text style={[styles.reportCell, styles.reportNumCol, styles.reportNum]}>{l.opening}</Text>
-                <Text style={[styles.reportCell, styles.reportNumCol, styles.reportNum]}>{l.delivered}</Text>
-                <Text style={[styles.reportCell, styles.reportNumCol, styles.reportNum]}>{l.closing}</Text>
-                <Text style={[styles.reportCell, styles.reportNumCol, styles.reportNum, l.consumed < 0 ? styles.reportNeg : {}]}>{l.consumed}</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.reportTable}>
+              {/* Header */}
+              <View style={styles.reportHeaderRow}>
+                <Text style={[styles.reportCell, styles.reportItemCol, styles.reportHeader]}>Item</Text>
+                <Text style={[styles.reportCell, styles.reportNumCol, styles.reportHeader]}>Open</Text>
+                <Text style={[styles.reportCell, styles.reportNumCol, styles.reportHeader]}>+Del</Text>
+                <Text style={[styles.reportCell, styles.reportNumCol, styles.reportHeader]}>Close</Text>
+                <Text style={[styles.reportCell, styles.reportNumCol, styles.reportHeader]}>Used</Text>
+                <Text style={[styles.reportCell, styles.reportNumColWide, styles.reportHeader]}>Sold{"\n"}(Square)</Text>
+                <Text style={[styles.reportCell, styles.reportNumColWide, styles.reportHeader]}>Variance</Text>
               </View>
-            ))}
-          </View>
+              {lines.map((l) => {
+                const varColor = l.variance === null ? "#555"
+                  : l.variance === 0 ? "#22C55E"
+                  : l.variance > 0 ? "#F59E0B"   // used more than sold → wastage/spillage
+                  : "#EF4444";                    // used less than sold → count discrepancy
+                return (
+                  <View key={l.itemId} style={styles.reportRow}>
+                    <View style={[styles.reportCell, styles.reportItemCol]}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                        <Text style={styles.reportItemName}>{l.itemName}</Text>
+                        {l.squareLinked && <Ionicons name="link" size={10} color="#22C55E" />}
+                      </View>
+                      <Text style={styles.reportItemUnit}>{l.containerSize} · {l.countUnit}</Text>
+                    </View>
+                    <Text style={[styles.reportCell, styles.reportNumCol, styles.reportNum]}>{l.opening}</Text>
+                    <Text style={[styles.reportCell, styles.reportNumCol, styles.reportNum]}>{l.delivered}</Text>
+                    <Text style={[styles.reportCell, styles.reportNumCol, styles.reportNum]}>{l.closing}</Text>
+                    <Text style={[styles.reportCell, styles.reportNumCol, styles.reportNum, l.consumed < 0 ? styles.reportNeg : {}]}>{l.consumed}</Text>
+                    <Text style={[styles.reportCell, styles.reportNumColWide, styles.reportNum, { color: l.sold !== null ? Colors.light.text : "#555" }]}>
+                      {l.sold !== null ? l.sold : "–"}
+                    </Text>
+                    <Text style={[styles.reportCell, styles.reportNumColWide, styles.reportNum, { color: varColor, fontWeight: "700" }]}>
+                      {l.variance !== null ? (l.variance > 0 ? `+${l.variance}` : String(l.variance)) : "–"}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </ScrollView>
+          {/* Variance legend */}
+          {lines.some((l) => l.squareLinked) && (
+            <View style={styles.varianceLegend}>
+              <Text style={[styles.varianceLegendItem, { color: "#F59E0B" }]}>+n = wastage/spillage</Text>
+              <Text style={[styles.varianceLegendItem, { color: "#22C55E" }]}>0 = perfect</Text>
+              <Text style={[styles.varianceLegendItem, { color: "#EF4444" }]}>−n = count discrepancy</Text>
+            </View>
+          )}
         </View>
       ))}
     </ScrollView>
@@ -580,10 +657,25 @@ function ReportTab({ categories }: { categories: StockCategory[] }) {
 
 // ── Catalogue Tab ─────────────────────────────────────────────────────────────
 
+type CatView = "list" | "edit" | "autoMatch";
+
 function CatalogueTab({ items, categories }: { items: StockItem[]; categories: StockCategory[] }) {
+  const [view, setView] = useState<CatView>("list");
   const [editItem, setEditItem] = useState<StockItem | null>(null);
   const [editServes, setEditServes] = useState("");
   const [editActive, setEditActive] = useState(true);
+  // POS link state in edit view
+  const [variationSearch, setVariationSearch] = useState("");
+  const [pendingVarId, setPendingVarId] = useState<string | null>(null);
+  const [pendingVarName, setPendingVarName] = useState<string | null>(null);
+  // Auto-match state
+  const [autoResults, setAutoResults] = useState<AutoMatchResult[]>([]);
+  const [confirmed, setConfirmed] = useState<Record<number, boolean>>({});
+
+  const variationsQuery = useQuery<CatalogVariation[]>({
+    queryKey: ["/api/staff/stock/square-variations"],
+    staleTime: 10 * 60 * 1000,
+  });
 
   const patchMutation = useMutation({
     mutationFn: async (payload: { id: number; servesPerUnit?: string; active?: boolean }) => {
@@ -592,67 +684,227 @@ function CatalogueTab({ items, categories }: { items: StockItem[]; categories: S
       if (!res.ok) throw new Error((await res.json()).error ?? "Failed");
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/stock/items"] });
-      setEditItem(null);
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/stock/items"] }); setView("list"); },
+    onError: (e: Error) => Alert.alert("Error", e.message),
+  });
+
+  const mappingMutation = useMutation({
+    mutationFn: async ({ id, variationId, variationName }: { id: number; variationId: string | null; variationName: string | null }) => {
+      const res = await apiRequest("PATCH", `/api/staff/stock/items/${id}/square-mapping`, { squareCatalogVariationId: variationId, squareCatalogVariationName: variationName });
+      if (!res.ok) throw new Error((await res.json()).error ?? "Failed");
+      return res.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/stock/items"] }),
+    onError: (e: Error) => Alert.alert("Error", e.message),
+  });
+
+  const autoMatchMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/staff/stock/auto-match", {});
+      if (!res.ok) throw new Error((await res.json()).error ?? "Failed");
+      return res.json() as Promise<AutoMatchResult[]>;
+    },
+    onSuccess: (results) => {
+      setAutoResults(results.filter((r) => r.confidence !== "none"));
+      const initial: Record<number, boolean> = {};
+      results.forEach((r) => { if (r.confidence === "high") initial[r.stockItemId] = true; });
+      setConfirmed(initial);
+      setView("autoMatch");
     },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
+
+  const applyAutoMatch = useCallback(async () => {
+    const toSave = autoResults.filter((r) => confirmed[r.stockItemId] && r.suggestedVariationId);
+    for (const r of toSave) {
+      await mappingMutation.mutateAsync({ id: r.stockItemId, variationId: r.suggestedVariationId, variationName: r.suggestedVariationName });
+    }
+    queryClient.invalidateQueries({ queryKey: ["/api/stock/items"] });
+    setView("list");
+  }, [autoResults, confirmed]);
 
   const handleEdit = (item: StockItem) => {
     setEditItem(item);
     setEditServes(item.servesPerUnit ?? "");
     setEditActive(item.active);
+    setVariationSearch("");
+    setPendingVarId(item.squareCatalogVariationId ?? null);
+    setPendingVarName(item.squareCatalogVariationName ?? null);
+    setView("edit");
   };
 
   const handleSave = () => {
     if (!editItem) return;
-    patchMutation.mutate({
-      id: editItem.id,
-      servesPerUnit: editServes || undefined,
-      active: editActive,
-    });
+    patchMutation.mutate({ id: editItem.id, servesPerUnit: editServes || undefined, active: editActive });
+    if (pendingVarId !== editItem.squareCatalogVariationId) {
+      mappingMutation.mutate({ id: editItem.id, variationId: pendingVarId, variationName: pendingVarName });
+    }
   };
 
-  if (editItem) {
+  const filteredVariations = (variationsQuery.data ?? []).filter((v) =>
+    v.displayName.toLowerCase().includes(variationSearch.toLowerCase())
+  ).slice(0, 30);
+
+  // ── Auto-match review screen ─────────────────────────────────────────────
+  if (view === "autoMatch") {
+    const highCount = autoResults.filter((r) => r.confidence === "high").length;
+    const applyCount = autoResults.filter((r) => confirmed[r.stockItemId]).length;
     return (
       <ScrollView style={styles.formScroll} contentContainerStyle={{ paddingBottom: 40 }}>
-        <Text style={styles.formTitle}>{editItem.name}</Text>
-        <Text style={styles.fieldHint}>{editItem.containerSize} · {editItem.countUnit} · case of {editItem.caseSize ?? "N/A"}</Text>
-
-        {editItem.countUnit === "keg" && (
-          <>
-            <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Pints per keg (your actual yield)</Text>
-            <TextInput style={styles.input} value={editServes} onChangeText={setEditServes} keyboardType="decimal-pad" placeholder="e.g. 88" placeholderTextColor="#666" />
-            <Text style={styles.fieldHint}>Standard: 50L = 88 pints, 100L = 176 pints — adjust to match your actual pour</Text>
-          </>
-        )}
-
-        <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Active in stock counts</Text>
-        <Pressable style={[styles.toggleRow]} onPress={() => setEditActive(!editActive)}>
-          <View style={[styles.toggle, editActive && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, editActive && styles.toggleKnobOn]} />
-          </View>
-          <Text style={styles.toggleLabel}>{editActive ? "Active — shown in counts & deliveries" : "Inactive — hidden from counts"}</Text>
-        </Pressable>
-
-        <View style={styles.formActions}>
-          <Pressable style={styles.cancelBtn} onPress={() => setEditItem(null)}>
+        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}>
+          <Pressable onPress={() => setView("list")} hitSlop={12}>
+            <Ionicons name="arrow-back" size={20} color={Colors.brand.gold} />
+          </Pressable>
+          <Text style={[styles.formTitle, { marginBottom: 0, marginLeft: 10 }]}>POS Auto-Link Results</Text>
+        </View>
+        <Text style={styles.fieldHint}>
+          {highCount} high-confidence matches found. Review and confirm which to apply. Tick to include, untick to skip.
+        </Text>
+        {["high", "medium", "low"].map((conf) => {
+          const group = autoResults.filter((r) => r.confidence === conf);
+          if (!group.length) return null;
+          const confColor = conf === "high" ? "#22C55E" : conf === "medium" ? "#F59E0B" : "#6B7280";
+          const confLabel = conf === "high" ? "HIGH" : conf === "medium" ? "MEDIUM" : "LOW";
+          return (
+            <View key={conf} style={{ marginTop: 16 }}>
+              <Text style={[styles.catHeader, { color: confColor }]}>{confLabel} CONFIDENCE</Text>
+              {group.map((r) => (
+                <Pressable
+                  key={r.stockItemId}
+                  style={[styles.autoMatchRow, confirmed[r.stockItemId] && styles.autoMatchRowSelected]}
+                  onPress={() => setConfirmed((prev) => ({ ...prev, [r.stockItemId]: !prev[r.stockItemId] }))}
+                >
+                  <View style={[styles.autoMatchCheck, confirmed[r.stockItemId] && styles.autoMatchCheckOn]}>
+                    {confirmed[r.stockItemId] && <Ionicons name="checkmark" size={14} color="#000" />}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.autoMatchStock}>{r.stockItemName}</Text>
+                    <Text style={styles.autoMatchSquare}>→ {r.suggestedVariationName}</Text>
+                  </View>
+                  <Text style={[styles.autoMatchScore, { color: confColor }]}>{r.score}%</Text>
+                </Pressable>
+              ))}
+            </View>
+          );
+        })}
+        <View style={[styles.formActions, { marginTop: 24 }]}>
+          <Pressable style={styles.cancelBtn} onPress={() => setView("list")}>
             <Text style={styles.cancelBtnText}>Cancel</Text>
           </Pressable>
-          <Pressable style={styles.saveBtn} onPress={handleSave} disabled={patchMutation.isPending}>
-            {patchMutation.isPending ? <ActivityIndicator color="#000" /> : <Text style={styles.saveBtnText}>Save</Text>}
+          <Pressable style={styles.saveBtn} onPress={applyAutoMatch} disabled={applyCount === 0 || mappingMutation.isPending}>
+            {mappingMutation.isPending
+              ? <ActivityIndicator color="#000" />
+              : <Text style={styles.saveBtnText}>Apply {applyCount} Link{applyCount !== 1 ? "s" : ""}</Text>}
           </Pressable>
         </View>
       </ScrollView>
     );
   }
 
+  // ── Item edit screen ──────────────────────────────────────────────────────
+  if (view === "edit" && editItem) {
+    return (
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <ScrollView style={styles.formScroll} contentContainerStyle={{ paddingBottom: 40 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+            <Pressable onPress={() => setView("list")} hitSlop={12}>
+              <Ionicons name="arrow-back" size={20} color={Colors.brand.gold} />
+            </Pressable>
+            <Text style={[styles.formTitle, { marginBottom: 0, marginLeft: 10 }]}>{editItem.name}</Text>
+          </View>
+          <Text style={styles.fieldHint}>{editItem.containerSize} · {editItem.countUnit}{editItem.caseSize ? ` · case of ${editItem.caseSize}` : ""}</Text>
+
+          {editItem.countUnit === "keg" && (
+            <>
+              <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Pints per keg (your actual yield)</Text>
+              <TextInput style={styles.input} value={editServes} onChangeText={setEditServes} keyboardType="decimal-pad" placeholder="e.g. 88" placeholderTextColor="#666" />
+              <Text style={styles.fieldHint}>Standard: 50L = 88 pints, 100L = 176 pints</Text>
+            </>
+          )}
+
+          <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Active in stock counts</Text>
+          <Pressable style={styles.toggleRow} onPress={() => setEditActive(!editActive)}>
+            <View style={[styles.toggle, editActive && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, editActive && styles.toggleKnobOn]} />
+            </View>
+            <Text style={styles.toggleLabel}>{editActive ? "Active — shown in counts & deliveries" : "Inactive — hidden from counts"}</Text>
+          </Pressable>
+
+          {/* POS Link section */}
+          <Text style={[styles.fieldLabel, { marginTop: 20 }]}>Square POS Link</Text>
+          {pendingVarId ? (
+            <View style={styles.posLinkedBadge}>
+              <Ionicons name="link" size={14} color="#22C55E" />
+              <Text style={styles.posLinkedText} numberOfLines={1}>{pendingVarName}</Text>
+              <Pressable onPress={() => { setPendingVarId(null); setPendingVarName(null); }} hitSlop={8}>
+                <Ionicons name="close-circle" size={18} color="#EF4444" />
+              </Pressable>
+            </View>
+          ) : (
+            <Text style={styles.fieldHint}>Not linked — sales won't appear in the reconciliation report</Text>
+          )}
+          <TextInput
+            style={[styles.input, { marginTop: 8 }]}
+            value={variationSearch}
+            onChangeText={setVariationSearch}
+            placeholder="Search Square POS items…"
+            placeholderTextColor="#666"
+          />
+          {variationSearch.length > 0 && (
+            <View style={styles.variationList}>
+              {variationsQuery.isLoading && <ActivityIndicator color={Colors.brand.gold} style={{ margin: 12 }} />}
+              {filteredVariations.length === 0 && !variationsQuery.isLoading && (
+                <Text style={[styles.fieldHint, { padding: 12 }]}>No matches</Text>
+              )}
+              {filteredVariations.map((v) => (
+                <Pressable
+                  key={v.variationId}
+                  style={[styles.variationRow, pendingVarId === v.variationId && styles.variationRowSelected]}
+                  onPress={() => { setPendingVarId(v.variationId); setPendingVarName(v.displayName); setVariationSearch(""); }}
+                >
+                  <Text style={styles.variationName}>{v.displayName}</Text>
+                  {pendingVarId === v.variationId && <Ionicons name="checkmark-circle" size={16} color="#22C55E" />}
+                </Pressable>
+              ))}
+            </View>
+          )}
+
+          <View style={styles.formActions}>
+            <Pressable style={styles.cancelBtn} onPress={() => setView("list")}>
+              <Text style={styles.cancelBtnText}>Cancel</Text>
+            </Pressable>
+            <Pressable style={styles.saveBtn} onPress={handleSave} disabled={patchMutation.isPending}>
+              {patchMutation.isPending ? <ActivityIndicator color="#000" /> : <Text style={styles.saveBtnText}>Save</Text>}
+            </Pressable>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  // ── List view ─────────────────────────────────────────────────────────────
   const grouped = categories.map((c) => ({ cat: c, items: items.filter((i) => i.categoryId === c.id) })).filter((g) => g.items.length > 0);
+  const linkedCount = items.filter((i) => i.squareCatalogVariationId).length;
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
-      <Text style={styles.fieldHint}>Tap any item to edit its pint yield or active status. Items from your Molson Coors invoices are pre-loaded.</Text>
+      {/* Auto-link banner */}
+      <View style={styles.posLinkBanner}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.posLinkBannerTitle}>Square POS Reconciliation</Text>
+          <Text style={styles.posLinkBannerSub}>{linkedCount}/{items.length} items linked to Square POS</Text>
+        </View>
+        <Pressable
+          style={styles.autoLinkBtn}
+          onPress={() => autoMatchMutation.mutate()}
+          disabled={autoMatchMutation.isPending}
+        >
+          {autoMatchMutation.isPending
+            ? <ActivityIndicator color="#000" size="small" />
+            : <Text style={styles.autoLinkBtnText}>Auto-Link</Text>}
+        </Pressable>
+      </View>
+
       {grouped.map(({ cat, items: catItems }) => (
         <View key={cat.id} style={{ marginBottom: 8 }}>
           <Text style={styles.catHeader}>{cat.name}</Text>
@@ -666,7 +918,10 @@ function CatalogueTab({ items, categories }: { items: StockItem[]; categories: S
                   {item.servesPerUnit ? ` · ${item.servesPerUnit} pints/keg` : ""}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={16} color="#666" />
+              {item.squareCatalogVariationId
+                ? <View style={styles.posLinkedPill}><Ionicons name="link" size={10} color="#22C55E" /><Text style={styles.posLinkedPillText}>POS</Text></View>
+                : <View style={styles.posUnlinkedPill}><Text style={styles.posUnlinkedPillText}>No POS</Text></View>}
+              <Ionicons name="chevron-forward" size={16} color="#666" style={{ marginLeft: 6 }} />
             </Pressable>
           ))}
         </View>
@@ -742,4 +997,34 @@ const styles = StyleSheet.create({
   toggleKnob: { width: 20, height: 20, borderRadius: 10, backgroundColor: "#9CA3AF" },
   toggleKnobOn: { alignSelf: "flex-end", backgroundColor: "#000" },
   toggleLabel: { fontSize: 13, color: Colors.light.text, flex: 1 },
+  // POS link styles
+  posLinkBanner: { flexDirection: "row", alignItems: "center", backgroundColor: "#0F1B2D", borderRadius: 10, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: "#1E3A5F", gap: 12 },
+  posLinkBannerTitle: { fontSize: 13, fontWeight: "700", color: Colors.light.text },
+  posLinkBannerSub: { fontSize: 11, color: "#888", marginTop: 2 },
+  autoLinkBtn: { backgroundColor: Colors.brand.gold, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
+  autoLinkBtnText: { fontSize: 13, fontWeight: "700", color: "#000" },
+  posLinkedPill: { flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "#14532D", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  posLinkedPillText: { fontSize: 10, color: "#22C55E", fontWeight: "600" },
+  posUnlinkedPill: { backgroundColor: "#1F2937", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  posUnlinkedPillText: { fontSize: 10, color: "#6B7280" },
+  posLinkedBadge: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#14532D30", borderRadius: 8, padding: 10, borderWidth: 1, borderColor: "#22C55E40" },
+  posLinkedText: { flex: 1, fontSize: 13, color: "#22C55E", fontWeight: "500" },
+  variationList: { backgroundColor: "#0F1B2D", borderRadius: 8, borderWidth: 1, borderColor: "#1E293B", marginTop: 4, maxHeight: 220, overflow: "hidden" },
+  variationRow: { paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#1E293B", flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  variationRowSelected: { backgroundColor: "#14532D30" },
+  variationName: { fontSize: 13, color: Colors.light.text, flex: 1 },
+  // Auto-match styles
+  autoMatchRow: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#0F1B2D", borderRadius: 8, padding: 12, marginBottom: 6, borderWidth: 1, borderColor: "#1E293B" },
+  autoMatchRowSelected: { borderColor: Colors.brand.gold + "60" },
+  autoMatchCheck: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: "#374151", alignItems: "center", justifyContent: "center" },
+  autoMatchCheckOn: { backgroundColor: Colors.brand.gold, borderColor: Colors.brand.gold },
+  autoMatchStock: { fontSize: 13, color: Colors.light.text, fontWeight: "600" },
+  autoMatchSquare: { fontSize: 12, color: "#888", marginTop: 2 },
+  autoMatchScore: { fontSize: 12, fontWeight: "700" },
+  // Report extras
+  reportNumColWide: { width: 68, textAlign: "center" as const },
+  reportSummaryBanner: { flexDirection: "row", alignItems: "center", backgroundColor: "#0F1B2D", borderRadius: 8, padding: 10, marginTop: 12, borderWidth: 1, borderColor: "#1E293B" },
+  reportSummaryText: { fontSize: 12, color: "#AAB4C8", flex: 1 },
+  varianceLegend: { flexDirection: "row", gap: 12, marginTop: 6, paddingHorizontal: 4, flexWrap: "wrap" as const },
+  varianceLegendItem: { fontSize: 10, fontWeight: "600" },
 });

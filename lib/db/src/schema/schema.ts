@@ -1193,6 +1193,8 @@ export const stockItems = pgTable("stock_items", {
   containerSize: text("container_size"),           // "50L", "330ml", "700ml" etc.
   caseSize: integer("case_size"),                 // units per case (e.g. 24)
   servesPerUnit: numeric("serves_per_unit"),       // pints per keg (editable)
+  squareCatalogVariationId: text("square_catalog_variation_id"),    // Square ITEM_VARIATION id for sales reconciliation
+  squareCatalogVariationName: text("square_catalog_variation_name"), // display name of the linked variation
   active: boolean("active").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),

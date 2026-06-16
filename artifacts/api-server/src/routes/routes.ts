@@ -15607,7 +15607,80 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  // Consumption Report
+  // Square catalog variations — for POS linking in Catalogue tab
+  app.get("/api/staff/stock/square-variations", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      const variations = await square.listCatalogVariations();
+      res.json(variations);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Auto-match stock items to Square variations by name similarity
+  app.post("/api/staff/stock/auto-match", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      const [allItems, variations] = await Promise.all([
+        db.select().from(stockItems).where(dEq(stockItems.active, true)),
+        square.listCatalogVariations(),
+      ]);
+
+      function tokenize(s: string): string[] {
+        return s
+          .toLowerCase()
+          .replace(/[^a-z0-9 ]/g, " ")
+          .split(/\s+/)
+          .filter((t) => t.length > 1 && !["the", "and", "for", "per", "with"].includes(t));
+      }
+      function jaccard(a: string[], b: string[]): number {
+        const sa = new Set(a), sb = new Set(b);
+        const inter = [...sa].filter((x) => sb.has(x)).length;
+        const union = new Set([...sa, ...sb]).size;
+        return union === 0 ? 0 : inter / union;
+      }
+
+      const results = allItems.map((item) => {
+        const itemTokens = tokenize(item.name);
+        let best: { variationId: string; displayName: string; score: number } | null = null;
+        for (const v of variations) {
+          const score = jaccard(itemTokens, tokenize(v.displayName));
+          if (!best || score > best.score) best = { variationId: v.variationId, displayName: v.displayName, score };
+        }
+        const confidence = !best || best.score < 0.2 ? "none"
+          : best.score < 0.4 ? "low"
+          : best.score < 0.6 ? "medium"
+          : "high";
+        return {
+          stockItemId: item.id,
+          stockItemName: item.name,
+          currentVariationId: item.squareCatalogVariationId,
+          currentVariationName: item.squareCatalogVariationName,
+          suggestedVariationId: confidence !== "none" ? best!.variationId : null,
+          suggestedVariationName: confidence !== "none" ? best!.displayName : null,
+          confidence,
+          score: best ? Math.round(best.score * 100) : 0,
+        };
+      });
+
+      res.json(results);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Save or clear the Square catalog variation mapping for a stock item
+  app.patch("/api/staff/stock/items/:id/square-mapping", staffAuth, managerAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { squareCatalogVariationId, squareCatalogVariationName } = req.body as {
+        squareCatalogVariationId: string | null;
+        squareCatalogVariationName: string | null;
+      };
+      await db
+        .update(stockItems)
+        .set({ squareCatalogVariationId: squareCatalogVariationId ?? null, squareCatalogVariationName: squareCatalogVariationName ?? null, updatedAt: new Date() })
+        .where(dEq(stockItems.id, id));
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Consumption Report (now includes Square POS sales where mapped)
   app.get("/api/stock/report", staffAuth, managerAuth, async (req, res) => {
     try {
       const { periodStart, periodEnd } = req.query as { periodStart?: string; periodEnd?: string };
@@ -15654,23 +15727,34 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
         .innerJoin(stockDeliveries, dEq(stockDeliveryLines.deliveryId, stockDeliveries.id))
         .where(dAnd(dGte(stockDeliveries.deliveredAt, start), dLte(stockDeliveries.deliveredAt, end)));
 
+      // Fetch Square POS sales for mapped items
+      const salesMap = square.isConfigured()
+        ? await square.getSalesByVariation(start.toISOString(), end.toISOString()).catch(() => new Map<string, number>())
+        : new Map<string, number>();
+
       const report = itemRows.map(({ item, cat }) => {
         const opening = parseFloat(openingLines.find((l) => l.stockItemId === item.id)?.quantityUnits ?? "0");
         const closing = parseFloat(closingLines.find((l) => l.stockItemId === item.id)?.quantityUnits ?? "0");
         const delivered = deliveryRows
           .filter((r) => r.line.stockItemId === item.id)
           .reduce((sum, r) => sum + parseFloat(r.line.quantityUnits), 0);
-        const consumed = opening + delivered - closing;
+        const consumed = Math.round((opening + delivered - closing) * 10) / 10;
+        const rawSold = item.squareCatalogVariationId ? (salesMap.get(item.squareCatalogVariationId) ?? 0) : null;
+        const sold = rawSold !== null ? Math.round(rawSold * 10) / 10 : null;
+        const variance = sold !== null ? Math.round((consumed - sold) * 10) / 10 : null;
         return {
           itemId: item.id,
           itemName: item.name,
           countUnit: item.countUnit,
           containerSize: item.containerSize,
           categoryName: cat.name,
+          squareLinked: !!item.squareCatalogVariationId,
           opening: Math.round(opening * 10) / 10,
           delivered: Math.round(delivered * 10) / 10,
           closing: Math.round(closing * 10) / 10,
-          consumed: Math.round(consumed * 10) / 10,
+          consumed,
+          sold,
+          variance,
         };
       }).filter((r) => r.opening > 0 || r.delivered > 0 || r.closing > 0);
 
