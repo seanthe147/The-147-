@@ -1,10 +1,23 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import {
-  SQIPCore,
-  SQIPGooglePay,
-  GooglePayEnvironment,
-  GooglePayPriceStatus,
-} from "react-native-square-in-app-payments";
+
+// Dynamic require with try/catch — TurboModuleRegistry.getEnforcing throws in
+// Expo Go because the native SQIPGooglePay module is only available in a full
+// EAS build. Catching here lets the app run normally in Expo Go (canUseGooglePay
+// stays false) and enables Google Pay in production builds transparently.
+let SQIPCore: any = null;
+let SQIPGooglePay: any = null;
+let GooglePayEnvironment: Record<string, any> = {};
+let GooglePayPriceStatus: Record<string, any> = {};
+
+try {
+  const sq = require("react-native-square-in-app-payments");
+  SQIPCore = sq.SQIPCore ?? null;
+  SQIPGooglePay = sq.SQIPGooglePay ?? null;
+  GooglePayEnvironment = sq.GooglePayEnvironment ?? {};
+  GooglePayPriceStatus = sq.GooglePayPriceStatus ?? {};
+} catch {
+  // Native module unavailable (Expo Go) — Google Pay will be disabled
+}
 
 export function useSquareGooglePay(opts: {
   applicationId: string | null;
@@ -18,6 +31,7 @@ export function useSquareGooglePay(opts: {
   const initialized = useRef(false);
 
   useEffect(() => {
+    if (!SQIPCore || !SQIPGooglePay) return;
     if (!opts.applicationId || !opts.locationId) return;
     if (initialized.current) return;
     initialized.current = true;
@@ -30,7 +44,7 @@ export function useSquareGooglePay(opts: {
           : GooglePayEnvironment.EnvironmentTest;
       SQIPGooglePay.initializeGooglePay(opts.locationId, envType);
       SQIPGooglePay.canUseGooglePay()
-        .then((can) => setCanUseGooglePay(can))
+        .then((can: boolean) => setCanUseGooglePay(can))
         .catch(() => setCanUseGooglePay(false));
     } catch {
       setCanUseGooglePay(false);
@@ -39,6 +53,7 @@ export function useSquareGooglePay(opts: {
 
   const requestNonce = useCallback(
     async (params: { amountPence: number; currency: string }): Promise<string | null> => {
+      if (!SQIPGooglePay) return null;
       const price = (params.amountPence / 100).toFixed(2);
       return new Promise<string | null>((resolve) => {
         try {
@@ -46,9 +61,9 @@ export function useSquareGooglePay(opts: {
             {
               price,
               currencyCode: params.currency,
-              priceStatus: GooglePayPriceStatus.TotalPriceStatusFinal,
+              priceStatus: GooglePayPriceStatus.TotalPriceStatusFinal ?? 3,
             },
-            (cardDetails) => resolve(cardDetails.nonce ?? null),
+            (cardDetails: any) => resolve(cardDetails.nonce ?? null),
             () => resolve(null),
             () => resolve(null),
           ).catch(() => resolve(null));
