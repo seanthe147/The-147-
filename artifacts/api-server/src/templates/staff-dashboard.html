@@ -573,6 +573,12 @@
           App Banners
         </div>
 
+        <div class="nav-section hidden" id="navSectionStock" style="margin-top:8px">Stock</div>
+        <div class="nav-item hidden" data-page="stock" id="navStock">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          Stock Management
+        </div>
+
         <div class="nav-section" id="navSectionHR" style="margin-top:8px">HR &amp; Rota</div>
         <div class="nav-item" data-page="hr" id="navHR">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>
@@ -3374,6 +3380,8 @@
     // staff; the rest are gated to manager/owner. Mirrors the Expo grouping.
     el('navSectionFloor').classList.remove('hidden');
     el('navSectionHR').classList.remove('hidden');
+    el('navSectionStock').classList.remove('hidden');
+    el('navStock').classList.remove('hidden');
     el('navSectionCustomers').classList.toggle('hidden',!isManager);
     el('navSectionEvents').classList.toggle('hidden',!isManager);
     el('navSectionContent').classList.toggle('hidden',!isManager);
@@ -3568,6 +3576,8 @@
 
   function navigateTo(page){
     closeSidebar();
+    // Stock management lives in the Expo web app — redirect straight there.
+    if(page==='stock'){window.location.href='/admin-stock';return;}
     // Persist the active section in the URL hash so a page refresh or a
     // shared link lands on the same section (e.g. /staff#memberships).
     try{window.location.hash=page;}catch(_){}
@@ -3579,7 +3589,7 @@
     }
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page'+cap(page)));
-    const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',crm:'CRM & Marketing',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',kiosk:'Kiosk Control',website:'Website',banners:'App Banners',offers:'Offers',deals:'Current Deals',loyaltygame:'Loyalty Game',venuerewards:'Venue Rewards',payments:'Events & Payments',hr:'HR & Attendance',gdpr:'GDPR & Compliance',auditlog:'Audit Log'};
+    const titles={bookings:'Bookings',messages:'Messages',comms:'Communications',crm:'CRM & Marketing',staff:'Staff Accounts',settings:'Settings',memberships:'Memberships',menu:'Orders & Menu',kiosk:'Kiosk Control',website:'Website',banners:'App Banners',offers:'Offers',deals:'Current Deals',loyaltygame:'Loyalty Game',venuerewards:'Venue Rewards',payments:'Events & Payments',hr:'HR & Attendance',gdpr:'GDPR & Compliance',auditlog:'Audit Log',stock:'Stock Management'};
     el('topbarTitle').textContent=titles[page]||'';
     el('topbarSub').textContent='';
     if(page==='bookings'){el('topbarActions').style.display='';switchBookingsTab('bookings');loadBookings();loadUpcomingDates();loadDashboardNotices();startBookingsPolling();}
