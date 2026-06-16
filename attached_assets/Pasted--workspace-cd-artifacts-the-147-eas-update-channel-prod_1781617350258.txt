@@ -1,0 +1,24 @@
+~/workspace$ cd artifacts/the-147
+eas update --channel production
+Unable to resolve a valid config plugin for ./plugins/withSquareGooglePay.
+• No "app.plugin.js" file found in ./plugins/withSquareGooglePay: config plugins are typically exported from an "app.plugin.js" file in the package root.
+• main export of ./plugins/withSquareGooglePay does not appear to be a config plugin: the following error was thrown when importing /home/runner/workspace/artifacts/the-147/plugins/withSquareGooglePay.js: Cannot find module '@expo/config-plugins'
+Require stack:
+- /home/runner/workspace/artifacts/the-147/plugins/withSquareGooglePay.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/eas-cli/node_modules/@expo/config-plugins/build/utils/plugin-resolver.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/eas-cli/node_modules/@expo/config-plugins/build/plugins/withStaticPlugin.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/eas-cli/node_modules/@expo/config-plugins/build/plugins/withPlugins.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/eas-cli/node_modules/@expo/config-plugins/build/index.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/eas-cli/build/project/publish.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/eas-cli/build/commands/update/index.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/eas-cli/node_modules/@oclif/core/lib/module-loader.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/eas-cli/node_modules/@oclif/core/lib/help/index.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/eas-cli/node_modules/@oclif/core/lib/errors/handle.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/eas-cli/node_modules/@oclif/core/lib/errors/index.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/eas-cli/node_modules/@oclif/core/lib/config/config.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/eas-cli/node_modules/@oclif/core/lib/config/index.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/eas-cli/node_modules/@oclif/core/lib/command.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/eas-cli/node_modules/@oclif/core/lib/index.js
+- /home/runner/workspace/.config/npm/node_global/lib/node_modules/eas-cli/bin/run MODULE_NOT_FOUND
+Verify that ./plugins/withSquareGooglePay includes a config plugin. If it does not, then remove the entry from plugins in your app config file. Learn more: https://docs.expo.dev/guides/config-plugins/
+    Error: update command failed.
