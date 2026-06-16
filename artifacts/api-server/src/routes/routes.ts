@@ -15264,9 +15264,12 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     { cat: "Draught Beer & Cider", name: "San Miguel", containerSize: "50L", countUnit: "keg", caseSize: null, servesPerUnit: "88", supplierCode: "2011028" },
     { cat: "Draught Beer & Cider", name: "Carling Black Fruit Cider 3.4%", containerSize: "50L", countUnit: "keg", caseSize: null, servesPerUnit: "88", supplierCode: "5006007" },
     { cat: "Draught Beer & Cider", name: "Coors 3.4%", containerSize: "50L", countUnit: "keg", caseSize: null, servesPerUnit: "88", supplierCode: "5005796" },
+    { cat: "Draught Beer & Cider", name: "Caffreys Black", containerSize: "30L", countUnit: "keg", caseSize: null, servesPerUnit: "53", supplierCode: "5006194" },
+    { cat: "Draught Beer & Cider", name: "Pravha", containerSize: "50L", countUnit: "keg", caseSize: null, servesPerUnit: "88", supplierCode: "5002567" },
     { cat: "Draught Beer & Cider", name: "Carling", containerSize: "100L", countUnit: "keg", caseSize: null, servesPerUnit: "176", supplierCode: "5000004" },
     { cat: "Draught Beer & Cider", name: "Carling", containerSize: "50L", countUnit: "keg", caseSize: null, servesPerUnit: "88", supplierCode: "5000002" },
     { cat: "Draught Beer & Cider", name: "Peroni Nastro Azzuro 5%", containerSize: "50L", countUnit: "keg", caseSize: null, servesPerUnit: "88", supplierCode: "2009495" },
+    { cat: "Bottled Beer & Cider", name: "Budweiser 4.5% 330ml", containerSize: "330ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2006931" },
     { cat: "Bottled Beer & Cider", name: "Peroni Nastro Azzuro 5% 330ml", containerSize: "330ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2009497" },
     { cat: "Bottled Beer & Cider", name: "Peroni Gluten Free 5% 330ml", containerSize: "330ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2009496" },
     { cat: "Bottled Beer & Cider", name: "Corona Extra 330ml", containerSize: "330ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2005104" },
@@ -15296,6 +15299,20 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     { cat: "Spirits", name: "Southern Comfort 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2000593" },
     { cat: "Spirits", name: "Jagermeister 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2000600" },
     { cat: "Spirits", name: "Monkey Shoulder 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2001804" },
+    { cat: "Spirits", name: "Antica Sambuca Classic 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2001111" },
+    { cat: "Spirits", name: "Antica Sambuca Liquorice 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2001614" },
+    { cat: "Spirits", name: "Archers Schnapps 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2001027" },
+    { cat: "Spirits", name: "AU Vodka Juicy Peach 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2011539" },
+    { cat: "Spirits", name: "Baileys 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2004246" },
+    { cat: "Spirits", name: "Captain Morgan Dark Rum 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2000188" },
+    { cat: "Spirits", name: "Captain Morgan Spiced Rum 1.5L", containerSize: "1.5L", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2003746" },
+    { cat: "Spirits", name: "Captain Morgan White Rum 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2005357" },
+    { cat: "Spirits", name: "Corky's Apple Sour 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2000651" },
+    { cat: "Spirits", name: "Corky's Blueberry Sour 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2000811" },
+    { cat: "Spirits", name: "Corky's Cherry Sour 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2000652" },
+    { cat: "Spirits", name: "Corky's Raspberry Sour 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2005714" },
+    { cat: "Spirits", name: "Kahlua 16% 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2000621" },
+    { cat: "Spirits", name: "Malibu 1.5L", containerSize: "1.5L", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2010172" },
     { cat: "Wine & Prosecco", name: "Pier 42 Merlot 750ml", containerSize: "750ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2009208" },
     { cat: "Wine & Prosecco", name: "Pier 42 Pinot Grigio 750ml", containerSize: "750ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2010283" },
     { cat: "Wine & Prosecco", name: "Pier 42 Zinfandel Rosé 750ml", containerSize: "750ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2010284" },
@@ -15306,9 +15323,9 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     { cat: "Wine & Prosecco", name: "Mionetto Lux Rosé Prosecco 750ml", containerSize: "750ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2010343" },
     { cat: "Soft Drinks & Mixers", name: "Coca-Cola 330ml", containerSize: "330ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2000458" },
     { cat: "Soft Drinks & Mixers", name: "Coca-Cola BIB 7L", containerSize: "7L", countUnit: "bib", caseSize: null, servesPerUnit: null, supplierCode: "2001891" },
-    { cat: "Soft Drinks & Mixers", name: "Diet Coke BIB 7L", containerSize: "7L", countUnit: "bib", caseSize: null, servesPerUnit: null, supplierCode: "INT-DIETCOKE-BIB7L" },
-    { cat: "Soft Drinks & Mixers", name: "Coke Zero BIB 7L", containerSize: "7L", countUnit: "bib", caseSize: null, servesPerUnit: null, supplierCode: "INT-COKEZERO-BIB7L" },
-    { cat: "Soft Drinks & Mixers", name: "Fanta Zero BIB 7L", containerSize: "7L", countUnit: "bib", caseSize: null, servesPerUnit: null, supplierCode: "INT-FANTAZERO-BIB7L" },
+    { cat: "Soft Drinks & Mixers", name: "Diet Coke BIB 7L", containerSize: "7L", countUnit: "bib", caseSize: null, servesPerUnit: null, supplierCode: "2001889" },
+    { cat: "Soft Drinks & Mixers", name: "Coca-Cola Zero BIB 7L", containerSize: "7L", countUnit: "bib", caseSize: null, servesPerUnit: null, supplierCode: "2006233" },
+    { cat: "Soft Drinks & Mixers", name: "Fanta Orange BIB 7L", containerSize: "7L", countUnit: "bib", caseSize: null, servesPerUnit: null, supplierCode: "2004031" },
     { cat: "Soft Drinks & Mixers", name: "Appletise 275ml", containerSize: "275ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2000822" },
     { cat: "Soft Drinks & Mixers", name: "Schweppes Lemonade BIB 7L", containerSize: "7L", countUnit: "bib", caseSize: null, servesPerUnit: null, supplierCode: "2001892" },
     { cat: "Soft Drinks & Mixers", name: "Sunpride Orange Juice 1L", containerSize: "1L", countUnit: "bottle", caseSize: 12, servesPerUnit: null, supplierCode: "2003132" },
@@ -15334,6 +15351,16 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     if (missingCats.length) await db.insert(stockCategories).values(missingCats);
     const allCats = await db.select().from(stockCategories);
     const catMap = Object.fromEntries(allCats.map((c) => [c.name, c.id]));
+
+    // Fix up any INT placeholder codes with real Molson Coors codes
+    const intCodeFixes: Record<string, string> = {
+      "INT-DIETCOKE-BIB7L": "2001889",
+      "INT-COKEZERO-BIB7L": "2006233",
+      "INT-FANTAZERO-BIB7L": "2004031",
+    };
+    for (const [oldCode, newCode] of Object.entries(intCodeFixes)) {
+      await db.update(stockItems).set({ supplierCode: newCode }).where(eq(stockItems.supplierCode, oldCode));
+    }
 
     // Insert only items whose supplierCode doesn't exist yet
     const existingCodes = await db.select({ code: stockItems.supplierCode }).from(stockItems);
