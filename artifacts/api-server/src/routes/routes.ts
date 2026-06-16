@@ -15263,6 +15263,10 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     { cat: "Draught Beer & Cider", name: "Hawkstone Lager", containerSize: "50L", countUnit: "keg", caseSize: null, servesPerUnit: "88", supplierCode: "2001762" },
     { cat: "Draught Beer & Cider", name: "San Miguel", containerSize: "50L", countUnit: "keg", caseSize: null, servesPerUnit: "88", supplierCode: "2011028" },
     { cat: "Draught Beer & Cider", name: "Carling Black Fruit Cider 3.4%", containerSize: "50L", countUnit: "keg", caseSize: null, servesPerUnit: "88", supplierCode: "5006007" },
+    { cat: "Draught Beer & Cider", name: "Coors 3.4%", containerSize: "50L", countUnit: "keg", caseSize: null, servesPerUnit: "88", supplierCode: "5005796" },
+    { cat: "Draught Beer & Cider", name: "Carling", containerSize: "100L", countUnit: "keg", caseSize: null, servesPerUnit: "176", supplierCode: "5000004" },
+    { cat: "Draught Beer & Cider", name: "Carling", containerSize: "50L", countUnit: "keg", caseSize: null, servesPerUnit: "88", supplierCode: "5000002" },
+    { cat: "Draught Beer & Cider", name: "Peroni Nastro Azzuro 5%", containerSize: "50L", countUnit: "keg", caseSize: null, servesPerUnit: "88", supplierCode: "2009495" },
     { cat: "Bottled Beer & Cider", name: "Peroni Nastro Azzuro 5% 330ml", containerSize: "330ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2009497" },
     { cat: "Bottled Beer & Cider", name: "Peroni Gluten Free 5% 330ml", containerSize: "330ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2009496" },
     { cat: "Bottled Beer & Cider", name: "Corona Extra 330ml", containerSize: "330ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2005104" },
@@ -15272,6 +15276,14 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     { cat: "Bottled Beer & Cider", name: "Rekorderlig Strawberry Lime 500ml", containerSize: "500ml", countUnit: "bottle", caseSize: 15, servesPerUnit: null, supplierCode: "5005688" },
     { cat: "Bottled Beer & Cider", name: "Rekorderlig Wild Berries 500ml", containerSize: "500ml", countUnit: "bottle", caseSize: 15, servesPerUnit: null, supplierCode: "5005706" },
     { cat: "Bottled Beer & Cider", name: "Rekorderlig Peach Raspberry 500ml", containerSize: "500ml", countUnit: "bottle", caseSize: 15, servesPerUnit: null, supplierCode: "5005410" },
+    { cat: "Bottled Beer & Cider", name: "Rekorderlig Passionfruit 500ml", containerSize: "500ml", countUnit: "bottle", caseSize: 15, servesPerUnit: null, supplierCode: "5005708" },
+    { cat: "Bottled Beer & Cider", name: "Rekorderlig Pineapple Kiwi 500ml", containerSize: "500ml", countUnit: "bottle", caseSize: 15, servesPerUnit: null, supplierCode: "5006103" },
+    { cat: "Bottled Beer & Cider", name: "Desperados Beer 330ml", containerSize: "330ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2001762" },
+    { cat: "Bottled Beer & Cider", name: "Madri 0% 330ml", containerSize: "330ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "5005496" },
+    { cat: "Bottled Beer & Cider", name: "Guinness 0% Microdraught CAN 558ml", containerSize: "558ml", countUnit: "can", caseSize: 24, servesPerUnit: null, supplierCode: "2010513" },
+    { cat: "Bottled Beer & Cider", name: "Newcastle Brown Ale 550ml", containerSize: "550ml", countUnit: "bottle", caseSize: 12, servesPerUnit: null, supplierCode: "2001378" },
+    { cat: "Bottled Beer & Cider", name: "Stella Artois 0% 330ml", containerSize: "330ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2008716" },
+    { cat: "Bottled Beer & Cider", name: "Kopparberg 0% Strawberry Lime 500ml", containerSize: "500ml", countUnit: "bottle", caseSize: 8, servesPerUnit: null, supplierCode: "2005712" },
     { cat: "Spirits", name: "Smirnoff Red 1.5L", containerSize: "1.5L", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2000276" },
     { cat: "Spirits", name: "Smirnoff Vanilla 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2003920" },
     { cat: "Spirits", name: "Smirnoff Cherry Drop 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2012189" },
@@ -15283,12 +15295,15 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     { cat: "Spirits", name: "Disaronno Amaretto 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2000587" },
     { cat: "Spirits", name: "Southern Comfort 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2000593" },
     { cat: "Spirits", name: "Jagermeister 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2000600" },
+    { cat: "Spirits", name: "Monkey Shoulder 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2001804" },
     { cat: "Wine & Prosecco", name: "Pier 42 Merlot 750ml", containerSize: "750ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2009208" },
     { cat: "Wine & Prosecco", name: "Pier 42 Pinot Grigio 750ml", containerSize: "750ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2010283" },
     { cat: "Wine & Prosecco", name: "Pier 42 Zinfandel Rosé 750ml", containerSize: "750ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2010284" },
     { cat: "Wine & Prosecco", name: "Il Cortigiano Prosecco 750ml", containerSize: "750ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2010469" },
     { cat: "Wine & Prosecco", name: "Freixenet Sparkling Rosé 750ml", containerSize: "750ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2007178" },
     { cat: "Wine & Prosecco", name: "Freixenet Prosecco 750ml", containerSize: "750ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2006335" },
+    { cat: "Wine & Prosecco", name: "Pier 42 Sauvignon Blanc 750ml", containerSize: "750ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2010147" },
+    { cat: "Wine & Prosecco", name: "Mionetto Lux Rosé Prosecco 750ml", containerSize: "750ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2010343" },
     { cat: "Soft Drinks & Mixers", name: "Coca-Cola 330ml", containerSize: "330ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2000458" },
     { cat: "Soft Drinks & Mixers", name: "Coca-Cola BIB 7L", containerSize: "7L", countUnit: "bib", caseSize: null, servesPerUnit: null, supplierCode: "2001891" },
     { cat: "Soft Drinks & Mixers", name: "Appletise 275ml", containerSize: "275ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2000822" },
@@ -15298,25 +15313,42 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     { cat: "Soft Drinks & Mixers", name: "Au Cherryade 330ml", containerSize: "330ml", countUnit: "can", caseSize: 12, servesPerUnit: null, supplierCode: "2011388" },
     { cat: "Soft Drinks & Mixers", name: "Funkin Passionfruit Martini 1L", containerSize: "1L", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2005882" },
     { cat: "Soft Drinks & Mixers", name: "Funkin Sour Mix 950ml", containerSize: "950ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2005962" },
+    { cat: "Soft Drinks & Mixers", name: "Coca-Cola Cherry CAN 330ml", containerSize: "330ml", countUnit: "can", caseSize: 24, servesPerUnit: null, supplierCode: "2012066" },
+    { cat: "Soft Drinks & Mixers", name: "Red Bull CAN 250ml", containerSize: "250ml", countUnit: "can", caseSize: 24, servesPerUnit: null, supplierCode: "2000734" },
+    { cat: "Soft Drinks & Mixers", name: "J2O Dragon Berry 275ml", containerSize: "275ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2011125" },
+    { cat: "Soft Drinks & Mixers", name: "J2O Apple & Mango 275ml", containerSize: "275ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2002630" },
+    { cat: "Soft Drinks & Mixers", name: "J2O Apple & Raspberry 275ml", containerSize: "275ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2000907" },
+    { cat: "Soft Drinks & Mixers", name: "J2O Orange & Passionfruit 275ml", containerSize: "275ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2002628" },
+    { cat: "Soft Drinks & Mixers", name: "Oasis Exotic Fruits Zero CAN 330ml", containerSize: "330ml", countUnit: "can", caseSize: 24, servesPerUnit: null, supplierCode: "2011040" },
+    { cat: "Soft Drinks & Mixers", name: "Oasis Summer Fruits CAN 330ml", containerSize: "330ml", countUnit: "can", caseSize: 24, servesPerUnit: null, supplierCode: "2011097" },
   ];
 
   async function ensureStockDefaults() {
-    const existing = await db.select().from(stockCategories).limit(1);
-    if (existing.length > 0) return;
-    const inserted = await db.insert(stockCategories).values(STOCK_DEFAULT_CATEGORIES).returning();
-    const catMap = Object.fromEntries(inserted.map((c) => [c.name, c.id]));
-    const itemRows = STOCK_DEFAULT_ITEMS.map((item, idx) => ({
-      categoryId: catMap[item.cat]!,
-      name: item.name,
-      supplier: "Molson Coors",
-      supplierCode: item.supplierCode,
-      countUnit: item.countUnit,
-      containerSize: item.containerSize,
-      caseSize: item.caseSize,
-      servesPerUnit: item.servesPerUnit,
-      sortOrder: idx,
-    }));
-    await db.insert(stockItems).values(itemRows);
+    // Ensure all categories exist
+    const existingCats = await db.select().from(stockCategories);
+    const existingCatNames = new Set(existingCats.map((c) => c.name));
+    const missingCats = STOCK_DEFAULT_CATEGORIES.filter((c) => !existingCatNames.has(c.name));
+    if (missingCats.length) await db.insert(stockCategories).values(missingCats);
+    const allCats = await db.select().from(stockCategories);
+    const catMap = Object.fromEntries(allCats.map((c) => [c.name, c.id]));
+
+    // Insert only items whose supplierCode doesn't exist yet
+    const existingCodes = await db.select({ code: stockItems.supplierCode }).from(stockItems);
+    const codeSet = new Set(existingCodes.map((r) => r.code).filter(Boolean));
+    const newItems = STOCK_DEFAULT_ITEMS
+      .filter((item) => item.supplierCode && !codeSet.has(item.supplierCode) && catMap[item.cat])
+      .map((item, idx) => ({
+        categoryId: catMap[item.cat]!,
+        name: item.name,
+        supplier: "Molson Coors",
+        supplierCode: item.supplierCode,
+        countUnit: item.countUnit,
+        containerSize: item.containerSize,
+        caseSize: item.caseSize,
+        servesPerUnit: item.servesPerUnit,
+        sortOrder: 900 + idx,
+      }));
+    if (newItems.length) await db.insert(stockItems).values(newItems);
   }
 
   app.get("/api/stock/categories", staffAuth, managerAuth, async (_req, res) => {
