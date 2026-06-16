@@ -77,6 +77,7 @@ function RootLayoutNav() {
             <Stack.Screen name="admin-tabs" options={{ headerShown: false, presentation: "modal" }} />
             <Stack.Screen name="admin-tables-live" options={{ headerShown: false, presentation: "modal" }} />
             <Stack.Screen name="admin-game" options={{ headerShown: false, presentation: "modal" }} />
+            <Stack.Screen name="admin-stock" options={{ headerShown: false, presentation: "modal" }} />
           </>
         )}
         <Stack.Screen name="world-cup-game" options={{ headerShown: false }} />

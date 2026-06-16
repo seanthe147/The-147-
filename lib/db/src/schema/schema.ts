@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, timestamp, boolean, integer, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, timestamp, boolean, integer, index, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 // drizzle-zod >=0.8 emits Zod v4 schemas, so any `z.xxx()` we splice into
 // those schemas via `.extend(...)` MUST also come from `zod/v4`. Importing the
@@ -1173,3 +1173,72 @@ export const emailAutomations = pgTable("email_automations", {
 });
 
 export type EmailAutomation = typeof emailAutomations.$inferSelect;
+
+// ── Stock Management ──────────────────────────────────────────────────────────
+export const stockCategories = pgTable("stock_categories", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type StockCategory = typeof stockCategories.$inferSelect;
+
+export const stockItems = pgTable("stock_items", {
+  id: serial("id").primaryKey(),
+  categoryId: integer("category_id").references(() => stockCategories.id).notNull(),
+  name: text("name").notNull(),
+  supplier: text("supplier").default("Molson Coors"),
+  supplierCode: text("supplier_code"),
+  countUnit: text("count_unit").notNull(),        // "keg" | "bottle" | "can" | "bib"
+  containerSize: text("container_size"),           // "50L", "330ml", "700ml" etc.
+  caseSize: integer("case_size"),                 // units per case (e.g. 24)
+  servesPerUnit: numeric("serves_per_unit"),       // pints per keg (editable)
+  active: boolean("active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type StockItem = typeof stockItems.$inferSelect;
+export const insertStockItemSchema = createInsertSchema(stockItems).omit({ id: true, createdAt: true, updatedAt: true });
+
+export const stockDeliveries = pgTable("stock_deliveries", {
+  id: serial("id").primaryKey(),
+  deliveredAt: timestamp("delivered_at").notNull(),  // actual arrival — backdatable
+  supplier: text("supplier"),
+  invoiceRef: text("invoice_ref"),
+  notes: text("notes"),
+  enteredBy: text("entered_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type StockDelivery = typeof stockDeliveries.$inferSelect;
+
+export const stockDeliveryLines = pgTable("stock_delivery_lines", {
+  id: serial("id").primaryKey(),
+  deliveryId: integer("delivery_id").references(() => stockDeliveries.id, { onDelete: "cascade" }).notNull(),
+  stockItemId: integer("stock_item_id").references(() => stockItems.id).notNull(),
+  quantityCases: numeric("quantity_cases"),           // optional: cases received
+  quantityUnits: numeric("quantity_units").notNull(), // in countUnit
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type StockDeliveryLine = typeof stockDeliveryLines.$inferSelect;
+
+export const stockCounts = pgTable("stock_counts", {
+  id: serial("id").primaryKey(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  countedBy: text("counted_by").notNull(),
+  status: text("status").notNull().default("draft"), // "draft" | "submitted"
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  submittedAt: timestamp("submitted_at"),
+});
+export type StockCount = typeof stockCounts.$inferSelect;
+
+export const stockCountLines = pgTable("stock_count_lines", {
+  id: serial("id").primaryKey(),
+  countId: integer("count_id").references(() => stockCounts.id, { onDelete: "cascade" }).notNull(),
+  stockItemId: integer("stock_item_id").references(() => stockItems.id).notNull(),
+  quantityUnits: numeric("quantity_units").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});

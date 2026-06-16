@@ -7,9 +7,9 @@ import multer from "multer";
 import sharp from "sharp";
 import nodemailer from "nodemailer";
 import { storage, db } from "../storage";
-import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema, isSafePublicUrl, tabs, tabItems, bookings as bookingsTable, tableSessions, marketingCampaigns, emailAutomations, emailUnsubscribes, emailSendLog, customers as customersTable, membershipSubscriptions as membershipSubsTable, venueRewardClaims, venueRewardTiers, venueRewardTiers as venueRewardTiersT, gamePlays, gamePrizes, staffUsers as staffUsersTable } from "@workspace/db";
+import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema, isSafePublicUrl, tabs, tabItems, bookings as bookingsTable, tableSessions, marketingCampaigns, emailAutomations, emailUnsubscribes, emailSendLog, customers as customersTable, membershipSubscriptions as membershipSubsTable, venueRewardClaims, venueRewardTiers, venueRewardTiers as venueRewardTiersT, gamePlays, gamePrizes, staffUsers as staffUsersTable, stockCategories, stockItems, stockDeliveries, stockDeliveryLines, stockCounts, stockCountLines } from "@workspace/db";
 import type { InsertBannerImage } from "@workspace/db";
-import { and as dAnd, eq as dEq, desc as dDesc, isNotNull as dIsNotNull, sql as dSql } from "drizzle-orm";
+import { and as dAnd, eq as dEq, desc as dDesc, isNotNull as dIsNotNull, sql as dSql, gte as dGte, lte as dLte, asc as dAsc, lt as dLt } from "drizzle-orm";
 import { getServerFeatureFlags } from "../featureFlags";
 import { hashPin, verifyPin, hashPassword, verifyPassword, hashEmail, decrypt } from "../encryption";
 import * as square from "../square";
@@ -15243,6 +15243,317 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     setInterval(() => { void expireGroupPrizes(); }, 30 * 60 * 1000);
     setTimeout(() => { void expireGroupPrizes(); }, 10_000);
   }
+
+  // ── Stock Management ──────────────────────────────────────────────────────
+
+  const STOCK_DEFAULT_CATEGORIES = [
+    { name: "Draught Beer & Cider", sortOrder: 1 },
+    { name: "Bottled Beer & Cider", sortOrder: 2 },
+    { name: "Spirits", sortOrder: 3 },
+    { name: "Wine & Prosecco", sortOrder: 4 },
+    { name: "Soft Drinks & Mixers", sortOrder: 5 },
+  ];
+
+  type DefaultItem = { cat: string; name: string; containerSize: string; countUnit: string; caseSize: number | null; servesPerUnit: string | null; supplierCode: string };
+  const STOCK_DEFAULT_ITEMS: DefaultItem[] = [
+    { cat: "Draught Beer & Cider", name: "Guinness", containerSize: "50L", countUnit: "keg", caseSize: null, servesPerUnit: "88", supplierCode: "2000068" },
+    { cat: "Draught Beer & Cider", name: "Madri Excepcional", containerSize: "100L", countUnit: "keg", caseSize: null, servesPerUnit: "176", supplierCode: "5004846" },
+    { cat: "Draught Beer & Cider", name: "Caffreys 3.4%", containerSize: "50L", countUnit: "keg", caseSize: null, servesPerUnit: "88", supplierCode: "5005998" },
+    { cat: "Draught Beer & Cider", name: "Coors 3.4%", containerSize: "100L", countUnit: "keg", caseSize: null, servesPerUnit: "176", supplierCode: "5005797" },
+    { cat: "Draught Beer & Cider", name: "Hawkstone Lager", containerSize: "50L", countUnit: "keg", caseSize: null, servesPerUnit: "88", supplierCode: "2001762" },
+    { cat: "Draught Beer & Cider", name: "San Miguel", containerSize: "50L", countUnit: "keg", caseSize: null, servesPerUnit: "88", supplierCode: "2011028" },
+    { cat: "Draught Beer & Cider", name: "Carling Black Fruit Cider 3.4%", containerSize: "50L", countUnit: "keg", caseSize: null, servesPerUnit: "88", supplierCode: "5006007" },
+    { cat: "Bottled Beer & Cider", name: "Peroni Nastro Azzuro 5% 330ml", containerSize: "330ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2009497" },
+    { cat: "Bottled Beer & Cider", name: "Peroni Gluten Free 5% 330ml", containerSize: "330ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2009496" },
+    { cat: "Bottled Beer & Cider", name: "Corona Extra 330ml", containerSize: "330ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2005104" },
+    { cat: "Bottled Beer & Cider", name: "Corona Cero 330ml", containerSize: "330ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2009389" },
+    { cat: "Bottled Beer & Cider", name: "Stella Artois 4.6% 330ml", containerSize: "330ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2008564" },
+    { cat: "Bottled Beer & Cider", name: "Black Sheep Ale 500ml", containerSize: "500ml", countUnit: "bottle", caseSize: 8, servesPerUnit: null, supplierCode: "2002752" },
+    { cat: "Bottled Beer & Cider", name: "Rekorderlig Strawberry Lime 500ml", containerSize: "500ml", countUnit: "bottle", caseSize: 15, servesPerUnit: null, supplierCode: "5005688" },
+    { cat: "Bottled Beer & Cider", name: "Rekorderlig Wild Berries 500ml", containerSize: "500ml", countUnit: "bottle", caseSize: 15, servesPerUnit: null, supplierCode: "5005706" },
+    { cat: "Bottled Beer & Cider", name: "Rekorderlig Peach Raspberry 500ml", containerSize: "500ml", countUnit: "bottle", caseSize: 15, servesPerUnit: null, supplierCode: "5005410" },
+    { cat: "Spirits", name: "Smirnoff Red 1.5L", containerSize: "1.5L", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2000276" },
+    { cat: "Spirits", name: "Smirnoff Vanilla 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2003920" },
+    { cat: "Spirits", name: "Smirnoff Cherry Drop 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2012189" },
+    { cat: "Spirits", name: "Smirnoff Miami Peach 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2012191" },
+    { cat: "Spirits", name: "Jack Daniels 1.5L", containerSize: "1.5L", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2000324" },
+    { cat: "Spirits", name: "Jack Daniels 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2000331" },
+    { cat: "Spirits", name: "Jack Daniels Blackberry 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2011934" },
+    { cat: "Spirits", name: "Tequila Rose 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2002905" },
+    { cat: "Spirits", name: "Disaronno Amaretto 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2000587" },
+    { cat: "Spirits", name: "Southern Comfort 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2000593" },
+    { cat: "Spirits", name: "Jagermeister 700ml", containerSize: "700ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2000600" },
+    { cat: "Wine & Prosecco", name: "Pier 42 Merlot 750ml", containerSize: "750ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2009208" },
+    { cat: "Wine & Prosecco", name: "Pier 42 Pinot Grigio 750ml", containerSize: "750ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2010283" },
+    { cat: "Wine & Prosecco", name: "Pier 42 Zinfandel Rosé 750ml", containerSize: "750ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2010284" },
+    { cat: "Wine & Prosecco", name: "Il Cortigiano Prosecco 750ml", containerSize: "750ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2010469" },
+    { cat: "Wine & Prosecco", name: "Freixenet Sparkling Rosé 750ml", containerSize: "750ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2007178" },
+    { cat: "Wine & Prosecco", name: "Freixenet Prosecco 750ml", containerSize: "750ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2006335" },
+    { cat: "Soft Drinks & Mixers", name: "Coca-Cola 330ml", containerSize: "330ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2000458" },
+    { cat: "Soft Drinks & Mixers", name: "Coca-Cola BIB 7L", containerSize: "7L", countUnit: "bib", caseSize: null, servesPerUnit: null, supplierCode: "2001891" },
+    { cat: "Soft Drinks & Mixers", name: "Appletise 275ml", containerSize: "275ml", countUnit: "bottle", caseSize: 24, servesPerUnit: null, supplierCode: "2000822" },
+    { cat: "Soft Drinks & Mixers", name: "Schweppes Lemonade BIB 7L", containerSize: "7L", countUnit: "bib", caseSize: null, servesPerUnit: null, supplierCode: "2001892" },
+    { cat: "Soft Drinks & Mixers", name: "Sunpride Orange Juice 1L", containerSize: "1L", countUnit: "bottle", caseSize: 12, servesPerUnit: null, supplierCode: "2003132" },
+    { cat: "Soft Drinks & Mixers", name: "Simply Fruity Orange 330ml", containerSize: "330ml", countUnit: "bottle", caseSize: 12, servesPerUnit: null, supplierCode: "2002005" },
+    { cat: "Soft Drinks & Mixers", name: "Au Cherryade 330ml", containerSize: "330ml", countUnit: "can", caseSize: 12, servesPerUnit: null, supplierCode: "2011388" },
+    { cat: "Soft Drinks & Mixers", name: "Funkin Passionfruit Martini 1L", containerSize: "1L", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2005882" },
+    { cat: "Soft Drinks & Mixers", name: "Funkin Sour Mix 950ml", containerSize: "950ml", countUnit: "bottle", caseSize: 6, servesPerUnit: null, supplierCode: "2005962" },
+  ];
+
+  async function ensureStockDefaults() {
+    const existing = await db.select().from(stockCategories).limit(1);
+    if (existing.length > 0) return;
+    const inserted = await db.insert(stockCategories).values(STOCK_DEFAULT_CATEGORIES).returning();
+    const catMap = Object.fromEntries(inserted.map((c) => [c.name, c.id]));
+    const itemRows = STOCK_DEFAULT_ITEMS.map((item, idx) => ({
+      categoryId: catMap[item.cat]!,
+      name: item.name,
+      supplier: "Molson Coors",
+      supplierCode: item.supplierCode,
+      countUnit: item.countUnit,
+      containerSize: item.containerSize,
+      caseSize: item.caseSize,
+      servesPerUnit: item.servesPerUnit,
+      sortOrder: idx,
+    }));
+    await db.insert(stockItems).values(itemRows);
+  }
+
+  app.get("/api/stock/categories", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      await ensureStockDefaults();
+      const cats = await db.select().from(stockCategories).orderBy(dAsc(stockCategories.sortOrder));
+      res.json(cats);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get("/api/stock/items", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      await ensureStockDefaults();
+      const items = await db.select().from(stockItems).orderBy(dAsc(stockItems.categoryId), dAsc(stockItems.sortOrder));
+      res.json(items);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/stock/items", staffAuth, managerAuth, async (req: any, res) => {
+    try {
+      const { categoryId, name, countUnit, containerSize, caseSize, servesPerUnit, supplier, supplierCode } = req.body;
+      if (!categoryId || !name || !countUnit) return res.status(400).json({ error: "categoryId, name and countUnit are required" });
+      const [item] = await db.insert(stockItems).values({ categoryId, name, countUnit, containerSize, caseSize, servesPerUnit, supplier, supplierCode, sortOrder: 999 }).returning();
+      res.json(item);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.patch("/api/stock/items/:id", staffAuth, managerAuth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const { servesPerUnit, active, name, containerSize, caseSize, supplier } = req.body;
+      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      if (servesPerUnit !== undefined) updates.servesPerUnit = servesPerUnit;
+      if (active !== undefined) updates.active = active;
+      if (name !== undefined) updates.name = name;
+      if (containerSize !== undefined) updates.containerSize = containerSize;
+      if (caseSize !== undefined) updates.caseSize = caseSize;
+      if (supplier !== undefined) updates.supplier = supplier;
+      const [item] = await db.update(stockItems).set(updates).where(dEq(stockItems.id, id)).returning();
+      if (!item) return res.status(404).json({ error: "Item not found" });
+      res.json(item);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Deliveries
+  app.get("/api/stock/deliveries", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      const deliveries = await db.select().from(stockDeliveries).orderBy(dDesc(stockDeliveries.deliveredAt)).limit(100);
+      const allLines = deliveries.length
+        ? await db.select({ line: stockDeliveryLines, item: stockItems })
+            .from(stockDeliveryLines)
+            .innerJoin(stockItems, dEq(stockDeliveryLines.stockItemId, stockItems.id))
+            .where(dAnd(...deliveries.map((d) => dEq(stockDeliveryLines.deliveryId, d.id))))
+        : [];
+      const result = deliveries.map((d) => ({
+        ...d,
+        lines: allLines
+          .filter((l) => l.line.deliveryId === d.id)
+          .map((l) => ({ ...l.line, itemName: l.item.name, countUnit: l.item.countUnit })),
+      }));
+      res.json(result);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/stock/deliveries", staffAuth, managerAuth, async (req: any, res) => {
+    try {
+      const { deliveredAt, supplier, invoiceRef, notes, lines } = req.body;
+      if (!deliveredAt || !lines?.length) return res.status(400).json({ error: "deliveredAt and lines are required" });
+      const username = (req as any).staffUser?.username ?? "unknown";
+      const [delivery] = await db.insert(stockDeliveries).values({
+        deliveredAt: new Date(deliveredAt),
+        supplier,
+        invoiceRef,
+        notes,
+        enteredBy: username,
+      }).returning();
+      const lineRows = (lines as Array<{ stockItemId: number; quantityUnits: string; quantityCases?: string }>).map((l) => ({
+        deliveryId: delivery.id,
+        stockItemId: l.stockItemId,
+        quantityUnits: String(l.quantityUnits),
+        quantityCases: l.quantityCases ? String(l.quantityCases) : null,
+      }));
+      await db.insert(stockDeliveryLines).values(lineRows);
+      res.json({ id: delivery.id });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.delete("/api/stock/deliveries/:id", staffAuth, managerAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      await db.delete(stockDeliveryLines).where(dEq(stockDeliveryLines.deliveryId, id));
+      await db.delete(stockDeliveries).where(dEq(stockDeliveries.id, id));
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Stock Counts
+  app.get("/api/stock/counts", staffAuth, managerAuth, async (_req, res) => {
+    try {
+      const counts = await db.select().from(stockCounts).orderBy(dDesc(stockCounts.periodEnd)).limit(24);
+      const allLines = counts.length
+        ? await db.select({ line: stockCountLines, item: stockItems })
+            .from(stockCountLines)
+            .innerJoin(stockItems, dEq(stockCountLines.stockItemId, stockItems.id))
+            .where(dAnd(...counts.map((c) => dEq(stockCountLines.countId, c.id))))
+        : [];
+      const result = counts.map((c) => ({
+        ...c,
+        lines: allLines
+          .filter((l) => l.line.countId === c.id)
+          .map((l) => ({ ...l.line, itemName: l.item.name, countUnit: l.item.countUnit })),
+      }));
+      res.json(result);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/stock/counts", staffAuth, managerAuth, async (req: any, res) => {
+    try {
+      const { periodStart, periodEnd, notes, status, lines } = req.body;
+      if (!periodStart || !periodEnd) return res.status(400).json({ error: "periodStart and periodEnd are required" });
+      const username = (req as any).staffUser?.username ?? "unknown";
+      const [count] = await db.insert(stockCounts).values({
+        periodStart: new Date(periodStart),
+        periodEnd: new Date(periodEnd),
+        countedBy: username,
+        notes,
+        status: status ?? "draft",
+        submittedAt: status === "submitted" ? new Date() : null,
+      }).returning();
+      if (lines?.length) {
+        const lineRows = (lines as Array<{ stockItemId: number; quantityUnits: string }>).map((l) => ({
+          countId: count.id,
+          stockItemId: l.stockItemId,
+          quantityUnits: String(l.quantityUnits),
+        }));
+        await db.insert(stockCountLines).values(lineRows);
+      }
+      res.json({ id: count.id });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.patch("/api/stock/counts/:id", staffAuth, managerAuth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const { periodStart, periodEnd, notes, status, lines } = req.body;
+      const [existing] = await db.select().from(stockCounts).where(dEq(stockCounts.id, id));
+      if (!existing) return res.status(404).json({ error: "Count not found" });
+      if (existing.status === "submitted") return res.status(400).json({ error: "Submitted counts cannot be edited" });
+      const updates: Record<string, unknown> = {};
+      if (periodStart) updates.periodStart = new Date(periodStart);
+      if (periodEnd) updates.periodEnd = new Date(periodEnd);
+      if (notes !== undefined) updates.notes = notes;
+      if (status) { updates.status = status; if (status === "submitted") updates.submittedAt = new Date(); }
+      if (Object.keys(updates).length) await db.update(stockCounts).set(updates).where(dEq(stockCounts.id, id));
+      if (lines?.length) {
+        await db.delete(stockCountLines).where(dEq(stockCountLines.countId, id));
+        const lineRows = (lines as Array<{ stockItemId: number; quantityUnits: string }>).map((l) => ({
+          countId: id,
+          stockItemId: l.stockItemId,
+          quantityUnits: String(l.quantityUnits),
+        }));
+        await db.insert(stockCountLines).values(lineRows);
+      }
+      res.json({ id });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Consumption Report
+  app.get("/api/stock/report", staffAuth, managerAuth, async (req, res) => {
+    try {
+      const { periodStart, periodEnd } = req.query as { periodStart?: string; periodEnd?: string };
+      if (!periodStart || !periodEnd) return res.status(400).json({ error: "periodStart and periodEnd query params required" });
+      const start = new Date(periodStart);
+      const end = new Date(periodEnd);
+
+      // All active items with their category
+      const itemRows = await db
+        .select({ item: stockItems, cat: stockCategories })
+        .from(stockItems)
+        .innerJoin(stockCategories, dEq(stockItems.categoryId, stockCategories.id))
+        .where(dEq(stockItems.active, true))
+        .orderBy(dAsc(stockCategories.sortOrder), dAsc(stockItems.sortOrder));
+
+      // Last submitted count BEFORE periodStart (opening stock)
+      const [openingCount] = await db
+        .select()
+        .from(stockCounts)
+        .where(dAnd(dEq(stockCounts.status, "submitted"), dLt(stockCounts.periodEnd, start)))
+        .orderBy(dDesc(stockCounts.periodEnd))
+        .limit(1);
+
+      const openingLines = openingCount
+        ? await db.select().from(stockCountLines).where(dEq(stockCountLines.countId, openingCount.id))
+        : [];
+
+      // First submitted count at or after periodEnd (closing stock)
+      const [closingCount] = await db
+        .select()
+        .from(stockCounts)
+        .where(dAnd(dEq(stockCounts.status, "submitted"), dGte(stockCounts.periodEnd, end)))
+        .orderBy(dAsc(stockCounts.periodEnd))
+        .limit(1);
+
+      const closingLines = closingCount
+        ? await db.select().from(stockCountLines).where(dEq(stockCountLines.countId, closingCount.id))
+        : [];
+
+      // Deliveries within the period (by actual delivery date)
+      const deliveryRows = await db
+        .select({ line: stockDeliveryLines })
+        .from(stockDeliveryLines)
+        .innerJoin(stockDeliveries, dEq(stockDeliveryLines.deliveryId, stockDeliveries.id))
+        .where(dAnd(dGte(stockDeliveries.deliveredAt, start), dLte(stockDeliveries.deliveredAt, end)));
+
+      const report = itemRows.map(({ item, cat }) => {
+        const opening = parseFloat(openingLines.find((l) => l.stockItemId === item.id)?.quantityUnits ?? "0");
+        const closing = parseFloat(closingLines.find((l) => l.stockItemId === item.id)?.quantityUnits ?? "0");
+        const delivered = deliveryRows
+          .filter((r) => r.line.stockItemId === item.id)
+          .reduce((sum, r) => sum + parseFloat(r.line.quantityUnits), 0);
+        const consumed = opening + delivered - closing;
+        return {
+          itemId: item.id,
+          itemName: item.name,
+          countUnit: item.countUnit,
+          containerSize: item.containerSize,
+          categoryName: cat.name,
+          opening: Math.round(opening * 10) / 10,
+          delivered: Math.round(delivered * 10) / 10,
+          closing: Math.round(closing * 10) / 10,
+          consumed: Math.round(consumed * 10) / 10,
+        };
+      }).filter((r) => r.opening > 0 || r.delivered > 0 || r.closing > 0);
+
+      res.json(report);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
 
   const httpServer = createServer(app);
   return httpServer;

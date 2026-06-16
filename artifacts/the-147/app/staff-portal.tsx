@@ -1884,6 +1884,18 @@ function DashboardScreen() {
             CONTENT / OWNER mirrors how the day actually breaks down. */}
         {isManager && (
           <>
+            <Text style={styles.sectionLabel}>STOCK</Text>
+            <View style={[styles.toolsList, isTablet && styles.toolsListTablet]}>
+              <AdminTool
+                icon="cube"
+                title="Stock Management"
+                description="Log deliveries, do monthly counts and view consumption reports"
+                color="#D97706"
+                onPress={() => router.push("/admin-stock")}
+                testID="portal-stock-management"
+              />
+            </View>
+
             <Text style={styles.sectionLabel}>FLOOR</Text>
             <View style={[styles.toolsList, isTablet && styles.toolsListTablet]}>
               <AdminTool
