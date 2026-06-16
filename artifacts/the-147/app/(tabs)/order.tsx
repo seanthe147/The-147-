@@ -837,6 +837,18 @@ function CartSheet({
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
 
+  // If the customer modifies their cart after closing the payment sheet, clear
+  // any stale pendingOrder so that tapping "Continue" creates a fresh order
+  // with the correct items and total rather than reusing the old one.
+  const itemsFingerprint = items.map(i => `${i.variationId}:${i.quantity}`).join("|");
+  const prevItemsFingerprintRef = React.useRef(itemsFingerprint);
+  React.useEffect(() => {
+    if (prevItemsFingerprintRef.current !== itemsFingerprint) {
+      prevItemsFingerprintRef.current = itemsFingerprint;
+      if (pendingOrder) setPendingOrder(null);
+    }
+  }, [itemsFingerprint]);
+
   // FEATURE_SAVED_CARDS: snapshot of the customer's stored card, if any.
   // Only fetched when both the flag is on AND the customer is authenticated
   // (anonymous orders have no account to attach a card to). The endpoint
@@ -1228,6 +1240,15 @@ function CartSheet({
       // Web Payments SDK not available — fall back to hosted checkout
       return fallbackToHostedCheckout();
     }
+    // If a pending order already exists (the customer closed the payment sheet
+    // and is retrying), reopen the sheet against the same server-side order
+    // instead of creating a duplicate. This prevents orphaned pending orders
+    // that would otherwise sit in the DB until the 30-min expiry job clears them.
+    if (pendingOrder) {
+      setPaySheetKey(k => k + 1); // remount the SDK cleanly
+      setPaymentSheetVisible(true);
+      return;
+    }
     setLoading(true);
     setPayError(null);
     try {
@@ -1407,9 +1428,10 @@ function CartSheet({
   const handleClosePaymentSheet = () => {
     if (paying) return;
     setPaymentSheetVisible(false);
-    // Keep pendingOrder so the user could retry — but for safety, clear it.
-    // The Square Order itself stays "pending" and is benign.
-    setPendingOrder(null);
+    // Intentionally keep pendingOrder so that tapping "Continue" again reopens
+    // the payment sheet against the same server-side Square order rather than
+    // creating a duplicate. The order is cleared on success, on cart change,
+    // or when the user explicitly cancels via the Cancel alert button.
     setPayError(null);
     // Inline cancellation message so the user knows what happened. The cart
     // is intentionally left intact so they can retry or change their order.
