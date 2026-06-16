@@ -9859,8 +9859,8 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       const diffMs = kickoff.getTime() - now.getTime();
       // Show from 30 minutes before kickoff
       if (diffMs >= 0 && diffMs <= 30 * 60 * 1000) return true;
-      // Show for 1 hour after kickoff
-      if (diffMs < 0 && Math.abs(diffMs) < 60 * 60 * 1000) return true;
+      // Show for 3 hours after kickoff (covers 90 min match + extra time + penalties)
+      if (diffMs < 0 && Math.abs(diffMs) < 3 * 60 * 60 * 1000) return true;
     }
     return false;
   }
