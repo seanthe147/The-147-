@@ -1705,6 +1705,111 @@
         </div>
       </div>
 
+      <!-- STOCK PAGE -->
+      <div class="page" id="pageStock">
+        <div class="page-body">
+          <div class="menu-tabs" style="margin-bottom:20px">
+            <button class="menu-tab active" data-stock="counts" onclick="switchStockTab('counts')">Stock Counts</button>
+            <button class="menu-tab" data-stock="deliveries" onclick="switchStockTab('deliveries')">Deliveries</button>
+            <button class="menu-tab" data-stock="report" onclick="switchStockTab('report')">Consumption Report</button>
+          </div>
+
+          <!-- COUNTS TAB -->
+          <div id="stockTabCounts">
+            <div class="menu-refresh-bar" style="margin-bottom:16px">
+              <p style="font-size:13px;color:var(--text-2);margin:0">Record current stock quantities per item. Submit to finalise a count period.</p>
+              <button class="btn btn-primary btn-sm" onclick="startNewStockCount()">+ New Count</button>
+            </div>
+
+            <!-- New count form (hidden until + New Count clicked) -->
+            <div id="stockCountForm" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px">
+              <div style="font-size:15px;font-weight:700;margin-bottom:14px">New Stock Count</div>
+              <div id="stockCountFormErr" class="modal-err" style="display:none"></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Period Start</label>
+                  <input class="form-input" type="date" id="stockCountStart">
+                </div>
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Period End</label>
+                  <input class="form-input" type="date" id="stockCountEnd">
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom:16px">
+                <label class="form-label">Notes (optional)</label>
+                <input class="form-input" type="text" id="stockCountNotes" placeholder="e.g. End of week count">
+              </div>
+              <div id="stockCountItems" style="margin-bottom:16px"></div>
+              <div style="display:flex;gap:8px;justify-content:flex-end">
+                <button class="btn btn-secondary btn-sm" onclick="cancelStockCount()">Cancel</button>
+                <button class="btn btn-secondary btn-sm" onclick="submitStockCount('draft')">Save as Draft</button>
+                <button class="btn btn-primary btn-sm" onclick="submitStockCount('submitted')">Submit Count</button>
+              </div>
+            </div>
+
+            <div id="stockCountsContent"><div class="loading-state"><div class="spinner"></div>Loading counts…</div></div>
+          </div>
+
+          <!-- DELIVERIES TAB -->
+          <div id="stockTabDeliveries" style="display:none">
+            <div class="menu-refresh-bar" style="margin-bottom:16px">
+              <p style="font-size:13px;color:var(--text-2);margin:0">Record stock deliveries. These are used in the consumption report.</p>
+              <button class="btn btn-primary btn-sm" onclick="startNewDelivery()">+ Log Delivery</button>
+            </div>
+
+            <div id="stockDeliveryForm" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px">
+              <div style="font-size:15px;font-weight:700;margin-bottom:14px">Log Delivery</div>
+              <div id="stockDeliveryFormErr" class="modal-err" style="display:none"></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Delivery Date</label>
+                  <input class="form-input" type="date" id="deliveryDate">
+                </div>
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Supplier</label>
+                  <input class="form-input" type="text" id="deliverySupplier" placeholder="e.g. Matthew Clark">
+                </div>
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Invoice Ref (optional)</label>
+                  <input class="form-input" type="text" id="deliveryInvoice">
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom:14px">
+                <label class="form-label">Notes (optional)</label>
+                <input class="form-input" type="text" id="deliveryNotes">
+              </div>
+              <div style="font-size:13px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">Items Delivered</div>
+              <div id="deliveryItemsWrap"></div>
+              <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+                <button class="btn btn-secondary btn-sm" onclick="cancelDelivery()">Cancel</button>
+                <button class="btn btn-primary btn-sm" onclick="saveDelivery()">Save Delivery</button>
+              </div>
+            </div>
+
+            <div id="stockDeliveriesContent"><div class="loading-state"><div class="spinner"></div>Loading deliveries…</div></div>
+          </div>
+
+          <!-- REPORT TAB -->
+          <div id="stockTabReport" style="display:none">
+            <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px">
+              <div style="font-size:15px;font-weight:700;margin-bottom:14px">Consumption Report</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:flex-end">
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Period Start</label>
+                  <input class="form-input" type="date" id="reportPeriodStart">
+                </div>
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Period End</label>
+                  <input class="form-input" type="date" id="reportPeriodEnd">
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="runStockReport()" style="height:38px">Run Report</button>
+              </div>
+            </div>
+            <div id="stockReportContent"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- HR PAGE -->
       <div class="page" id="pageHr">
         <div class="page-body">
@@ -3576,8 +3681,7 @@
 
   function navigateTo(page){
     closeSidebar();
-    // Stock management lives in the Expo web app — redirect straight there.
-    if(page==='stock'){window.location.href='/admin-stock';return;}
+    if(page==='stock')loadStockPage();
     // Persist the active section in the URL hash so a page refresh or a
     // shared link lands on the same section (e.g. /staff#memberships).
     try{window.location.hash=page;}catch(_){}
@@ -8165,6 +8269,228 @@
     });
   }
   window.renderAuditLog=renderAuditLog;
+
+  /* ── Stock Management ── */
+  var _stockItems=[], _stockCategories=[];
+
+  function switchStockTab(tab){
+    ['counts','deliveries','report'].forEach(t=>{
+      var el2=el('stockTab'+t.charAt(0).toUpperCase()+t.slice(1));
+      if(el2)el2.style.display=t===tab?'':'none';
+    });
+    document.querySelectorAll('[data-stock]').forEach(b=>b.classList.toggle('active',b.dataset.stock===tab));
+  }
+
+  async function loadStockPage(){
+    switchStockTab('counts');
+    try{
+      var [items,cats]=await Promise.all([
+        api('/api/stock/items'),
+        api('/api/stock/categories'),
+      ]);
+      _stockItems=items||[];
+      _stockCategories=cats||[];
+    }catch(e){_stockItems=[];_stockCategories=[];}
+    renderStockCounts();
+  }
+
+  async function renderStockCounts(){
+    var wrap=el('stockCountsContent');
+    if(!wrap)return;
+    wrap.innerHTML='<div class="loading-state"><div class="spinner"></div>Loading counts…</div>';
+    try{
+      var counts=await api('/api/stock/counts');
+      if(!counts||!counts.length){wrap.innerHTML='<p style="color:var(--text-2);font-size:13px">No counts yet. Use "+ New Count" to record your first.</p>';return;}
+      var html='<div style="display:flex;flex-direction:column;gap:10px">';
+      counts.forEach(function(c){
+        var dateStr=c.periodEnd?new Date(c.periodEnd).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):'';
+        var badge=c.status==='submitted'
+          ?'<span style="background:#16A34A20;color:#16A34A;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;text-transform:uppercase">Submitted</span>'
+          :'<span style="background:#F59E0B20;color:#D97706;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;text-transform:uppercase">Draft</span>';
+        var lineCount=c.lines?c.lines.length:0;
+        html+='<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px">'+
+          '<div>'+
+            '<div style="font-weight:700;font-size:14px">Period ending '+dateStr+'</div>'+
+            '<div style="font-size:12px;color:var(--text-2);margin-top:3px">'+lineCount+' item'+(lineCount===1?'':'s')+' counted'+(c.countedBy?' · by '+escHtml(c.countedBy):'')+(c.notes?' · '+escHtml(c.notes):'')+' '+badge+'</div>'+
+          '</div>'+
+        '</div>';
+      });
+      html+='</div>';
+      wrap.innerHTML=html;
+    }catch(e){wrap.innerHTML='<p style="color:var(--red)">Failed to load counts: '+escHtml(e.message||'unknown error')+'</p>';}
+  }
+
+  function startNewStockCount(){
+    el('stockCountForm').style.display='';
+    var today=new Date().toISOString().slice(0,10);
+    el('stockCountEnd').value=today;
+    var weekAgo=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+    el('stockCountStart').value=weekAgo;
+    el('stockCountNotes').value='';
+    el('stockCountFormErr').style.display='none';
+    // Build items grouped by category
+    var html='';
+    _stockCategories.forEach(function(cat){
+      var catItems=_stockItems.filter(function(i){return i.categoryId===cat.id&&i.active!==false;});
+      if(!catItems.length)return;
+      html+='<div style="margin-bottom:16px"><div style="font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">'+escHtml(cat.name)+'</div>';
+      html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">';
+      catItems.forEach(function(item){
+        html+='<div style="display:flex;align-items:center;gap:8px;background:#F8FAFC;border:1px solid var(--border);border-radius:8px;padding:8px 10px">'+
+          '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(item.name)+'</div></div>'+
+          '<input type="number" min="0" step="0.1" style="width:70px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:13px;text-align:right" data-item-id="'+item.id+'" placeholder="0">'+
+          '<span style="font-size:12px;color:var(--text-2);white-space:nowrap">'+escHtml(item.countUnit||'')+'</span>'+
+        '</div>';
+      });
+      html+='</div></div>';
+    });
+    el('stockCountItems').innerHTML=html||'<p style="color:var(--text-2);font-size:13px">No stock items found. Add items first.</p>';
+  }
+
+  function cancelStockCount(){el('stockCountForm').style.display='none';}
+
+  async function submitStockCount(status){
+    var start=el('stockCountStart').value, end=el('stockCountEnd').value;
+    var errEl=el('stockCountFormErr');
+    errEl.style.display='none';
+    if(!start||!end){errEl.textContent='Please set both period dates.';errEl.style.display='';return;}
+    var lines=[];
+    document.querySelectorAll('#stockCountItems [data-item-id]').forEach(function(inp){
+      var val=parseFloat(inp.value);
+      if(!isNaN(val)&&val>=0){lines.push({stockItemId:parseInt(inp.dataset.itemId),quantityUnits:String(val)});}
+    });
+    if(!lines.length){errEl.textContent='Enter at least one quantity.';errEl.style.display='';return;}
+    try{
+      await api('/api/stock/counts',{method:'POST',body:JSON.stringify({periodStart:start,periodEnd:end,notes:el('stockCountNotes').value,status,lines})});
+      el('stockCountForm').style.display='none';
+      renderStockCounts();
+    }catch(e){errEl.textContent='Failed: '+(e.message||'unknown error');errEl.style.display='';}
+  }
+
+  async function renderStockDeliveries(){
+    var wrap=el('stockDeliveriesContent');
+    if(!wrap)return;
+    wrap.innerHTML='<div class="loading-state"><div class="spinner"></div>Loading deliveries…</div>';
+    try{
+      var deliveries=await api('/api/stock/deliveries');
+      if(!deliveries||!deliveries.length){wrap.innerHTML='<p style="color:var(--text-2);font-size:13px">No deliveries logged yet.</p>';return;}
+      var html='<div style="display:flex;flex-direction:column;gap:10px">';
+      deliveries.forEach(function(d){
+        var dateStr=d.deliveredAt?new Date(d.deliveredAt).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):'';
+        var lineCount=d.lines?d.lines.length:0;
+        var totalUnits=d.lines?d.lines.reduce(function(s,l){return s+parseFloat(l.quantityUnits||0);},0):0;
+        html+='<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px">'+
+          '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px">'+
+            '<div style="font-weight:700;font-size:14px">'+escHtml(d.supplier||'Delivery')+' — '+dateStr+'</div>'+
+            '<button class="btn btn-secondary btn-sm" style="color:var(--red);border-color:var(--red)" onclick="deleteDelivery('+d.id+')">Delete</button>'+
+          '</div>'+
+          '<div style="font-size:12px;color:var(--text-2)">'+lineCount+' item'+(lineCount===1?'':'s')+(d.invoiceRef?' · Inv: '+escHtml(d.invoiceRef):'')+(d.enteredBy?' · by '+escHtml(d.enteredBy):'')+' · '+Math.round(totalUnits*10)/10+' units total</div>'+
+          (d.notes?'<div style="font-size:12px;color:var(--text-2);margin-top:4px">'+escHtml(d.notes)+'</div>':'')+
+        '</div>';
+      });
+      html+='</div>';
+      wrap.innerHTML=html;
+    }catch(e){wrap.innerHTML='<p style="color:var(--red)">Failed to load deliveries.</p>';}
+  }
+
+  function startNewDelivery(){
+    el('stockDeliveryForm').style.display='';
+    el('deliveryDate').value=new Date().toISOString().slice(0,10);
+    el('deliverySupplier').value='';el('deliveryInvoice').value='';el('deliveryNotes').value='';
+    el('stockDeliveryFormErr').style.display='none';
+    var html='';
+    _stockCategories.forEach(function(cat){
+      var catItems=_stockItems.filter(function(i){return i.categoryId===cat.id&&i.active!==false;});
+      if(!catItems.length)return;
+      html+='<div style="font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.8px;margin:10px 0 6px">'+escHtml(cat.name)+'</div>';
+      html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-bottom:4px">';
+      catItems.forEach(function(item){
+        html+='<div style="display:flex;align-items:center;gap:8px;background:#F8FAFC;border:1px solid var(--border);border-radius:8px;padding:8px 10px">'+
+          '<div style="flex:1;min-width:0;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(item.name)+'</div>'+
+          '<input type="number" min="0" step="0.1" style="width:70px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:13px;text-align:right" data-del-item-id="'+item.id+'" placeholder="0">'+
+          '<span style="font-size:12px;color:var(--text-2);white-space:nowrap">'+escHtml(item.countUnit||'')+'</span>'+
+        '</div>';
+      });
+      html+='</div>';
+    });
+    el('deliveryItemsWrap').innerHTML=html;
+  }
+
+  function cancelDelivery(){el('stockDeliveryForm').style.display='none';}
+
+  async function deleteDelivery(id){
+    if(!confirm('Delete this delivery? This cannot be undone.'))return;
+    try{await api('/api/stock/deliveries/'+id,{method:'DELETE'});renderStockDeliveries();}
+    catch(e){alert('Failed to delete: '+(e.message||'unknown error'));}
+  }
+
+  async function saveDelivery(){
+    var errEl=el('stockDeliveryFormErr');errEl.style.display='none';
+    var deliveredAt=el('deliveryDate').value;
+    if(!deliveredAt){errEl.textContent='Please set the delivery date.';errEl.style.display='';return;}
+    var lines=[];
+    document.querySelectorAll('#deliveryItemsWrap [data-del-item-id]').forEach(function(inp){
+      var val=parseFloat(inp.value);
+      if(!isNaN(val)&&val>0)lines.push({stockItemId:parseInt(inp.dataset.delItemId),quantityUnits:String(val)});
+    });
+    if(!lines.length){errEl.textContent='Enter at least one delivery quantity.';errEl.style.display='';return;}
+    try{
+      await api('/api/stock/deliveries',{method:'POST',body:JSON.stringify({deliveredAt,supplier:el('deliverySupplier').value,invoiceRef:el('deliveryInvoice').value,notes:el('deliveryNotes').value,lines})});
+      el('stockDeliveryForm').style.display='none';
+      renderStockDeliveries();
+    }catch(e){errEl.textContent='Failed: '+(e.message||'unknown error');errEl.style.display='';}
+  }
+
+  async function runStockReport(){
+    var start=el('reportPeriodStart').value, end=el('reportPeriodEnd').value;
+    var wrap=el('stockReportContent');
+    if(!start||!end){wrap.innerHTML='<p style="color:var(--red);font-size:13px">Please set both period dates.</p>';return;}
+    wrap.innerHTML='<div class="loading-state"><div class="spinner"></div>Running report…</div>';
+    try{
+      var data=await api('/api/stock/report?periodStart='+encodeURIComponent(start)+'&periodEnd='+encodeURIComponent(end));
+      if(!data||!data.length){wrap.innerHTML='<p style="color:var(--text-2);font-size:13px">No data for this period. Ensure stock counts have been submitted.</p>';return;}
+      var lastCat='';
+      var html='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
+        '<thead><tr style="border-bottom:2px solid var(--border);text-align:left">'+
+          '<th style="padding:8px 10px;color:var(--text-2);font-weight:700">Item</th>'+
+          '<th style="padding:8px 10px;color:var(--text-2);font-weight:700;text-align:right">Opening</th>'+
+          '<th style="padding:8px 10px;color:var(--text-2);font-weight:700;text-align:right">Delivered</th>'+
+          '<th style="padding:8px 10px;color:var(--text-2);font-weight:700;text-align:right">Closing</th>'+
+          '<th style="padding:8px 10px;color:var(--text-2);font-weight:700;text-align:right">Consumed</th>'+
+          '<th style="padding:8px 10px;color:var(--text-2);font-weight:700;text-align:right">Sold (POS)</th>'+
+          '<th style="padding:8px 10px;color:var(--text-2);font-weight:700;text-align:right">Variance</th>'+
+        '</tr></thead><tbody>';
+      data.forEach(function(row){
+        if(row.categoryName!==lastCat){
+          lastCat=row.categoryName;
+          html+='<tr><td colspan="7" style="padding:10px 10px 4px;font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.8px;background:#F8FAFC">'+escHtml(row.categoryName)+'</td></tr>';
+        }
+        var varColor=row.variance===null?'var(--text-2)':row.variance>1?'#DC2626':row.variance<-1?'#16A34A':'var(--text)';
+        html+='<tr style="border-bottom:1px solid var(--border)">'+
+          '<td style="padding:8px 10px;font-weight:500">'+escHtml(row.itemName)+'<span style="color:var(--text-2);font-size:11px;margin-left:4px">'+escHtml(row.countUnit||'')+'</span></td>'+
+          '<td style="padding:8px 10px;text-align:right">'+row.opening+'</td>'+
+          '<td style="padding:8px 10px;text-align:right">'+row.delivered+'</td>'+
+          '<td style="padding:8px 10px;text-align:right">'+row.closing+'</td>'+
+          '<td style="padding:8px 10px;text-align:right;font-weight:600">'+row.consumed+'</td>'+
+          '<td style="padding:8px 10px;text-align:right;color:var(--text-2)">'+
+            (row.sold!==null?row.sold:'<span style="color:var(--border);font-size:11px">not linked</span>')+
+          '</td>'+
+          '<td style="padding:8px 10px;text-align:right;font-weight:600;color:'+varColor+'">'+
+            (row.variance!==null?(row.variance>0?'+':'')+row.variance:'—')+
+          '</td>'+
+        '</tr>';
+      });
+      html+='</tbody></table></div>';
+      wrap.innerHTML=html;
+    }catch(e){wrap.innerHTML='<p style="color:var(--red)">Report failed: '+escHtml(e.message||'unknown error')+'</p>';}
+  }
+
+  // Wire up deliveries tab load when it's first opened
+  var _stockDeliveriesLoaded=false;
+  document.querySelector('[data-stock="deliveries"]')&&document.querySelector('[data-stock="deliveries"]').addEventListener('click',function(){
+    if(!_stockDeliveriesLoaded){_stockDeliveriesLoaded=true;renderStockDeliveries();}
+  });
+  /* ── END Stock Management ── */
 
   async function loadHR(){
     const isMgrHR=state.role==='manager'||state.role==='owner';
