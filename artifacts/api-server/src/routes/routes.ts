@@ -1,5 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "node:http";
+import { logger } from "../lib/logger";
 import { randomBytes, timingSafeEqual, createHash, createHmac } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -2698,7 +2699,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
 <p style="color:rgba(255,255,255,0.4);font-size:13px;">Transactional emails (booking confirmations, receipts) are unaffected.</p>
 </div></body></html>`);
     } catch (err: any) {
-      req.log.error({ err }, "[unsubscribe] DB write failed");
+      logger.error({ err }, "[unsubscribe] DB write failed");
       res.status(500).send("Something went wrong. Please try again later.");
     }
   });
@@ -2726,7 +2727,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         .onConflictDoNothing();
       res.json({ ok: true });
     } catch (err: any) {
-      req.log.error({ err }, "[unsubscribes] manual add error");
+      logger.error({ err }, "[unsubscribes] manual add error");
       res.status(500).json({ message: "Failed to add unsubscribe" });
     }
   });
@@ -2739,10 +2740,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     try {
       const audience = String(req.query.audience || "all");
       const emails = await getMarketingAudienceEmails(audience);
-      req.log.info({ audience, count: emails.length }, "[email-campaigns] audience-count");
+      logger.info({ audience, count: emails.length }, "[email-campaigns] audience-count");
       res.json({ count: emails.length });
     } catch (err: any) {
-      req.log.error({ err }, "[email-campaigns] audience-count error");
+      logger.error({ err }, "[email-campaigns] audience-count error");
       res.status(500).json({ message: "Failed to count audience" });
     }
   });
@@ -2755,7 +2756,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         .orderBy(dDesc(marketingCampaigns.createdAt));
       res.json(campaigns);
     } catch (err: any) {
-      _req.log.error({ err }, "[email-campaigns] list error");
+      logger.error({ err }, "[email-campaigns] list error");
       res.status(500).json({ message: "Failed to list campaigns" });
     }
   });
@@ -2780,7 +2781,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       }).returning();
       res.status(201).json(campaign);
     } catch (err: any) {
-      req.log.error({ err }, "[email-campaigns] create error");
+      logger.error({ err }, "[email-campaigns] create error");
       res.status(500).json({ message: "Failed to create campaign" });
     }
   });
@@ -2805,7 +2806,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       }).where(dEq(marketingCampaigns.id, id)).returning();
       res.json(updated);
     } catch (err: any) {
-      req.log.error({ err }, "[email-campaigns] update error");
+      logger.error({ err }, "[email-campaigns] update error");
       res.status(500).json({ message: "Failed to update campaign" });
     }
   });
@@ -2819,7 +2820,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       await db.delete(marketingCampaigns).where(dEq(marketingCampaigns.id, id));
       res.json({ ok: true });
     } catch (err: any) {
-      req.log.error({ err }, "[email-campaigns] delete error");
+      logger.error({ err }, "[email-campaigns] delete error");
       res.status(500).json({ message: "Failed to delete campaign" });
     }
   });
@@ -2875,16 +2876,16 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
           isTestSend: false,
           sentAt: now,
         });
-        req.log.info({ campaignId: id, sent, failed }, "[email-campaigns] send complete");
+        logger.info({ campaignId: id, sent, failed }, "[email-campaigns] send complete");
       })().catch(async (err) => {
-        req.log.error({ err }, "[email-campaigns] background send error");
+        logger.error({ err }, "[email-campaigns] background send error");
         await db.update(marketingCampaigns)
           .set({ status: "failed", updatedAt: new Date() })
           .where(dEq(marketingCampaigns.id, id))
           .catch(() => {});
       });
     } catch (err: any) {
-      req.log.error({ err }, "[email-campaigns] send setup error");
+      logger.error({ err }, "[email-campaigns] send setup error");
       if (!res.headersSent) res.status(500).json({ message: "Failed to start sending" });
       await db.update(marketingCampaigns)
         .set({ status: "failed", updatedAt: new Date() })
@@ -2920,10 +2921,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         isTestSend: true,
         sentAt: new Date(),
       });
-      req.log.info({ campaignId: id, to: toEmail, sentBy: username }, "[email-campaigns] test-send ok");
+      logger.info({ campaignId: id, to: toEmail, sentBy: username }, "[email-campaigns] test-send ok");
       res.json({ ok: true });
     } catch (err: any) {
-      req.log.error({ err }, "[email-campaigns] test-send error");
+      logger.error({ err }, "[email-campaigns] test-send error");
       res.status(500).json({ message: "Failed to send test email" });
     }
   });
@@ -2950,7 +2951,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         .limit(limit);
       res.json(rows);
     } catch (err: any) {
-      req.log.error({ err }, "[email-campaigns] send-log error");
+      logger.error({ err }, "[email-campaigns] send-log error");
       res.status(500).json({ message: "Failed to load send log" });
     }
   });
@@ -2964,7 +2965,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       const rows = await db.select().from(emailAutomations).orderBy(emailAutomations.triggerType);
       res.json(rows);
     } catch (err: any) {
-      _req.log.error({ err }, "[email-automations] list error");
+      logger.error({ err }, "[email-automations] list error");
       res.status(500).json({ message: "Failed to list automations" });
     }
   });
@@ -3001,7 +3002,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       }).returning();
       res.json(row);
     } catch (err: any) {
-      req.log.error({ err }, "[email-automations] update error");
+      logger.error({ err }, "[email-automations] update error");
       res.status(500).json({ message: "Failed to update automation" });
     }
   });
@@ -5032,7 +5033,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     const booking = await storage.getBooking(id);
     if (!booking) return res.status(404).json({ message: "Booking not found" });
     await storage.updateBooking(id, { status: "no_show" } as Parameters<typeof storage.updateBooking>[1]);
-    req.log.info(`[NO-SHOW] Booking #${id} marked as no-show — deposit retained`);
+    logger.info(`[NO-SHOW] Booking #${id} marked as no-show — deposit retained`);
     {
       const u = (req as any).staffUser;
       void storage.logBookingAction({
@@ -5912,7 +5913,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       square.invalidateMenuCache();
       res.json({ ok: true, kioskHidden });
     } catch (err: any) {
-      req.log.error({ err }, "[STAFF KIOSK] Category kiosk-hidden toggle error");
+      logger.error({ err }, "[STAFF KIOSK] Category kiosk-hidden toggle error");
       res.status(500).json({ message: "Failed to update category" });
     }
   });
@@ -5928,7 +5929,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       square.invalidateMenuCache();
       res.json({ ok: true, kioskHidden });
     } catch (err: any) {
-      req.log.error({ err }, "[STAFF KIOSK] Item kiosk-hidden toggle error");
+      logger.error({ err }, "[STAFF KIOSK] Item kiosk-hidden toggle error");
       res.status(500).json({ message: "Failed to update item" });
     }
   });
@@ -5950,7 +5951,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     try {
       await storage.setSetting("kiosk_ordering_enabled", String(enabled));
       const who = req.staffUser?.username ?? "staff";
-      req.log.info({ enabled, who }, "[KIOSK] Kiosk ordering toggled");
+      logger.info({ enabled, who }, "[KIOSK] Kiosk ordering toggled");
       res.json({ enabled });
     } catch (err: any) {
       res.status(500).json({ message: "Failed to update kiosk settings" });
@@ -9900,7 +9901,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       } : null;
       res.json({ available, matchDay, penaltyEnabled, todayMatch, alreadyPlayed });
     } catch (err: any) {
-      req.log.error({ err }, "[WC_GAME] Status error");
+      logger.error({ err }, "[WC_GAME] Status error");
       res.status(500).json({ available: false, matchDay: false, todayMatch: null, alreadyPlayed: false });
     }
   });
@@ -9957,19 +9958,19 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
           try {
             await square.adjustLoyaltyPoints(customer.squareLoyaltyAccountId, prize.value, "WC Penalty prize", `wc-prize-${customerId}-${Date.now()}`);
             pointsAwarded = prize.value;
-          } catch (e: any) { req.log.warn({ err: e }, "[WC_GAME] Points award failed"); }
+          } catch (e: any) { logger.warn({ err: e }, "[WC_GAME] Points award failed"); }
         }
         if (prize.prizeType === "reward_tier" && prize.rewardTierId && customer?.squareLoyaltyAccountId) {
           try {
             const reward = await square.issueFreeGameReward(customer.squareLoyaltyAccountId, prize.rewardTierId, prize.tierPoints ?? 0, `wc-reward-${customerId}-${Date.now()}`);
             if (reward?.id) { squareRewardId = reward.id; autoClaimedAt = new Date(); }
-          } catch (e: any) { req.log.warn({ err: e }, "[WC_GAME] Reward issue failed"); }
+          } catch (e: any) { logger.warn({ err: e }, "[WC_GAME] Reward issue failed"); }
         }
         if (prize.prizeType === "gift_card" && prize.giftCardAmountPence && prize.giftCardAmountPence > 0) {
           try {
             const customer2 = await storage.getCustomerById(customerId);
             giftCardGan = await square.issueGiftCardPrize(customer2?.squareCustomerId ?? null, prize.giftCardAmountPence, `wc-gc-${customerId}-${Date.now()}`);
-          } catch (e: any) { req.log.warn({ err: e }, "[WC_GAME] Gift card failed"); }
+          } catch (e: any) { logger.warn({ err: e }, "[WC_GAME] Gift card failed"); }
         }
         // customer_group: generate a claim code staff enter at the bar.
         // Staff apply the discount manually at POS and redeem the code in
@@ -9991,7 +9992,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         prizeClaimCode: wcPrizeClaimCode,
       });
 
-      req.log.info({ customerId, saved, prizeId: prize?.id, playId: play.id }, "[WC_GAME] Penalty shot played");
+      logger.info({ customerId, saved, prizeId: prize?.id, playId: play.id }, "[WC_GAME] Penalty shot played");
       res.json({
         won: !saved && prize?.prizeType !== "none" && !!prize,
         saved,
@@ -10004,7 +10005,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         prizeClaimCode: wcPrizeClaimCode,
       });
     } catch (err: any) {
-      req.log.error({ err }, "[WC_GAME] Play error");
+      logger.error({ err }, "[WC_GAME] Play error");
       res.status(500).json({ message: "Something went wrong — please try again." });
     }
   });
