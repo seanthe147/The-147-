@@ -8,6 +8,7 @@ import {
   TextInput,
   Platform,
   Alert,
+  Modal,
   ActivityIndicator,
   KeyboardAvoidingView,
   Switch,
@@ -115,7 +116,7 @@ interface AutomationForm {
 export default function AdminMarketingScreen() {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const { isAuthenticated, isManager, isOwner, isLoading: authLoading } = useStaffAuth();
+  const { isAuthenticated, isManager, isOwner, isLoading: authLoading, username } = useStaffAuth();
   const canManage = isManager || isOwner;
 
   // ── Tab state ──────────────────────────────────────────────────────────────
@@ -126,6 +127,12 @@ export default function AdminMarketingScreen() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<CampaignForm>(EMPTY_FORM);
   const [showAudiencePicker, setShowAudiencePicker] = useState(false);
+
+  // ── Modal state ─────────────────────────────────────────────────────────────
+  const [sendModal, setSendModal] = useState<{ id: number; audienceLabel: string } | null>(null);
+  const [testModal, setTestModal] = useState<{ id: number } | null>(null);
+  const [testEmail, setTestEmail] = useState("");
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   // ── Automation state ───────────────────────────────────────────────────────
   const [expandedAuto, setExpandedAuto] = useState<string | null>(null);
@@ -204,16 +211,33 @@ export default function AdminMarketingScreen() {
       return res.json();
     },
     onSuccess: (data) => {
+      setSendModal(null);
       queryClient.refetchQueries({ queryKey: ["/api/staff/email-campaigns"] });
       Alert.alert("Sending!", `Campaign is being sent to ${data.recipientCount ?? "your"} recipients.`);
     },
-    onError: (err: any) => Alert.alert("Send failed", err?.message || "Please try again."),
+    onError: (err: any) => {
+      setSendModal(null);
+      Alert.alert("Send failed", err?.message || "Please try again.");
+    },
   });
 
   const deleteCampaign = useMutation({
     mutationFn: async (id: number) => { await apiRequest("DELETE", `/api/staff/email-campaigns/${id}`); },
     onSuccess: () => queryClient.refetchQueries({ queryKey: ["/api/staff/email-campaigns"] }),
     onError: (err: any) => Alert.alert("Delete failed", err?.message || "Please try again."),
+  });
+
+  const testSendCampaign = useMutation({
+    mutationFn: async ({ id, email }: { id: number; email: string }) => {
+      const res = await apiRequest("POST", `/api/staff/email-campaigns/${id}/test-send`, { email });
+      return res.json();
+    },
+    onSuccess: () => {
+      setTestResult({ ok: true, message: "Test email sent — check your inbox." });
+    },
+    onError: (err: any) => {
+      setTestResult({ ok: false, message: err?.message || "Failed to send test email." });
+    },
   });
 
   // ── Automation mutation ────────────────────────────────────────────────────
@@ -243,11 +267,8 @@ export default function AdminMarketingScreen() {
   }, []);
 
   const confirmSend = useCallback((id: number, audienceLabel: string) => {
-    Alert.alert("Send campaign?", `This will email ${audienceLabel}. This cannot be undone.`, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Send now", style: "destructive", onPress: () => sendCampaign.mutate(id) },
-    ]);
-  }, [sendCampaign]);
+    setSendModal({ id, audienceLabel });
+  }, []);
 
   const confirmDelete = useCallback((id: number) => {
     Alert.alert("Delete draft?", "This draft will be permanently removed.", [
@@ -489,6 +510,17 @@ export default function AdminMarketingScreen() {
                                   : <Ionicons name="send" size={14} color="#fff" />}
                                 <Text style={[styles.cardActionText, { color: "#fff" }]}>Send</Text>
                               </Pressable>
+                              <Pressable
+                                style={[styles.cardActionBtn, styles.cardActionTest]}
+                                onPress={() => {
+                                  setTestEmail(username?.includes("@") ? username : "");
+                                  setTestResult(null);
+                                  setTestModal({ id: c.id });
+                                }}
+                              >
+                                <Ionicons name="flask-outline" size={14} color="#fff" />
+                                <Text style={[styles.cardActionText, { color: "#fff" }]}>Test</Text>
+                              </Pressable>
                               <Pressable style={styles.cardActionBtn} onPress={() => confirmDelete(c.id)}>
                                 <Ionicons name="trash-outline" size={15} color="#DC2626" />
                               </Pressable>
@@ -666,6 +698,104 @@ export default function AdminMarketingScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* ── Send confirmation modal ─────────────────────────────────────── */}
+      <Modal
+        visible={!!sendModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSendModal(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={styles.modalIconRow}>
+              <View style={styles.modalIconWrap}>
+                <Ionicons name="send" size={22} color="#fff" />
+              </View>
+            </View>
+            <Text style={styles.modalTitle}>Send campaign?</Text>
+            <Text style={styles.modalBody}>
+              This will email <Text style={{ color: "#fff", fontWeight: "700" }}>{sendModal?.audienceLabel}</Text>.{"\n"}This cannot be undone.
+            </Text>
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalBtnCancel} onPress={() => setSendModal(null)}>
+                <Text style={styles.modalBtnCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalBtnConfirm, styles.modalBtnSend, sendCampaign.isPending && styles.btnDisabled]}
+                disabled={sendCampaign.isPending}
+                onPress={() => { if (sendModal) sendCampaign.mutate(sendModal.id); }}
+              >
+                {sendCampaign.isPending
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : (<>
+                      <Ionicons name="send" size={16} color="#fff" />
+                      <Text style={styles.modalBtnConfirmText}>Send now</Text>
+                    </>)}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Test email modal ────────────────────────────────────────────── */}
+      <Modal
+        visible={!!testModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { setTestModal(null); setTestResult(null); }}
+      >
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalBox}>
+              <View style={styles.modalIconRow}>
+                <View style={[styles.modalIconWrap, { backgroundColor: "rgba(212,168,67,0.3)" }]}>
+                  <Ionicons name="flask-outline" size={22} color={Colors.brand.gold} />
+                </View>
+              </View>
+              <Text style={styles.modalTitle}>Send test email</Text>
+              <Text style={styles.modalBody}>Enter the email address to send the test to.</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={testEmail}
+                onChangeText={t => { setTestEmail(t); setTestResult(null); }}
+                placeholder="you@example.com"
+                placeholderTextColor="rgba(255,255,255,0.3)"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {testResult && (
+                <View style={[styles.testResultBanner, testResult.ok ? styles.testResultOk : styles.testResultErr]}>
+                  <Ionicons name={testResult.ok ? "checkmark-circle" : "alert-circle"} size={16} color={testResult.ok ? "#059669" : "#DC2626"} />
+                  <Text style={[styles.testResultText, { color: testResult.ok ? "#059669" : "#DC2626" }]}>{testResult.message}</Text>
+                </View>
+              )}
+              <View style={styles.modalActions}>
+                <Pressable style={styles.modalBtnCancel} onPress={() => { setTestModal(null); setTestResult(null); }}>
+                  <Text style={styles.modalBtnCancelText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.modalBtnConfirm, (!testEmail.trim() || testSendCampaign.isPending) && styles.btnDisabled]}
+                  disabled={!testEmail.trim() || testSendCampaign.isPending}
+                  onPress={() => {
+                    if (!testModal) return;
+                    setTestResult(null);
+                    testSendCampaign.mutate({ id: testModal.id, email: testEmail.trim() });
+                  }}
+                >
+                  {testSendCampaign.isPending
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : (<>
+                        <Ionicons name="paper-plane-outline" size={16} color="#fff" />
+                        <Text style={styles.modalBtnConfirmText}>Send test</Text>
+                      </>)}
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -746,6 +876,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.06)",
   },
   cardActionSend: { backgroundColor: "#059669" },
+  cardActionTest: { backgroundColor: "#6366F1" },
   cardActionText: { fontSize: 13, fontWeight: "600" },
   sendingRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   sendingText: { fontSize: 13, color: Colors.brand.gold, fontStyle: "italic" },
@@ -866,4 +997,53 @@ const styles = StyleSheet.create({
   },
   saveBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
   btnDisabled: { opacity: 0.4 },
+
+  // ── Modals ─────────────────────────────────────────────────────────────────
+  modalOverlay: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.7)",
+    alignItems: "center", justifyContent: "center",
+    padding: 24,
+  },
+  modalBox: {
+    width: "100%", maxWidth: 360,
+    backgroundColor: "#0d1e35",
+    borderRadius: 16, borderWidth: 1, borderColor: "rgba(255,255,255,0.12)",
+    padding: 24, gap: 12,
+  },
+  modalIconRow: { alignItems: "center", marginBottom: 4 },
+  modalIconWrap: {
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: "rgba(5,150,105,0.3)",
+    alignItems: "center", justifyContent: "center",
+  },
+  modalTitle: { fontSize: 18, fontWeight: "700", color: "#fff", textAlign: "center" },
+  modalBody: { fontSize: 14, color: "rgba(255,255,255,0.55)", textAlign: "center", lineHeight: 20 },
+  modalInput: {
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.12)",
+    borderRadius: 10, padding: 13, color: "#fff", fontSize: 15,
+    marginTop: 4,
+  },
+  modalActions: { flexDirection: "row", gap: 10, marginTop: 4 },
+  modalBtnCancel: {
+    flex: 1, paddingVertical: 13, borderRadius: 10, alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.1)",
+  },
+  modalBtnCancelText: { color: "rgba(255,255,255,0.7)", fontSize: 15, fontWeight: "600" },
+  modalBtnConfirm: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7,
+    paddingVertical: 13, borderRadius: 10,
+    backgroundColor: Colors.brand.blue,
+  },
+  modalBtnSend: { backgroundColor: "#059669" },
+  modalBtnConfirmText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  testResultBanner: {
+    flexDirection: "row", alignItems: "flex-start", gap: 8,
+    padding: 10, borderRadius: 8,
+    borderWidth: 1,
+  },
+  testResultOk: { backgroundColor: "rgba(5,150,105,0.1)", borderColor: "rgba(5,150,105,0.3)" },
+  testResultErr: { backgroundColor: "rgba(220,38,38,0.1)", borderColor: "rgba(220,38,38,0.3)" },
+  testResultText: { flex: 1, fontSize: 13, lineHeight: 18 },
 });
