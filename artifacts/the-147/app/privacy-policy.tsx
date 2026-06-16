@@ -103,8 +103,10 @@ export default function PrivacyPolicyScreen() {
               data is automatically anonymised after 12 months.
             </Text>
             <Text style={styles.bulletItem}>
-              Push notifications: If you opt in, your device token is stored to
-              send you venue updates. You can unsubscribe at any time.
+              Push notifications: If you opt in, your Expo push token is stored
+              on our servers to send you venue updates and promotions. You can
+              unsubscribe at any time by adjusting your device notification
+              settings.
             </Text>
             <Text style={styles.bulletItem}>
               Contact form messages: When you use the contact form, we collect
@@ -122,9 +124,18 @@ export default function PrivacyPolicyScreen() {
               My Account screen.
             </Text>
             <Text style={styles.bulletItem}>
-              Food and drink ordering: Ordering is provided through OrderTab
-              (ordertab.menu) embedded within the app. Their privacy policy
-              applies to those transactions.
+              Food and drink ordering: When you place an order in the app we
+              collect your table number and order details. Orders are processed
+              directly by The 147 and payment is handled by Square (square.com).
+              Square's privacy policy applies to payment card data, which we
+              never store ourselves.
+            </Text>
+            <Text style={styles.bulletItem}>
+              Loyalty programme: To enrol in our loyalty programme we collect
+              your mobile phone number to identify your account. We store your
+              points balance, redemption history, and visit activity. This data
+              is linked to your Square loyalty account. You can request deletion
+              of your loyalty data at any time by contacting us.
             </Text>
             <Text style={styles.bulletItem}>
               Event tickets: Ticket purchases are handled by TicketSource
@@ -147,41 +158,61 @@ export default function PrivacyPolicyScreen() {
               reservation request and manage your account (Article 6(1)(b)).
             </Text>
             <Text style={styles.bulletItem}>
+              Contract: Processing your order details is necessary to prepare
+              and deliver your food and drink order (Article 6(1)(b)).
+            </Text>
+            <Text style={styles.bulletItem}>
               Consent: When you submit the contact form, we process your data
               based on your explicit consent given via the checkbox (Article
               6(1)(a)). You may withdraw consent at any time.
             </Text>
             <Text style={styles.bulletItem}>
-              Legitimate interests: Operating the app and providing you with
-              venue information, offers, and event listings (Article 6(1)(f)).
+              Consent: For push notifications, optional analytics, or marketing
+              communications, we rely on your explicit consent which you can
+              withdraw at any time (Article 6(1)(a)).
             </Text>
             <Text style={styles.bulletItem}>
-              Consent: For push notifications, optional analytics, or marketing
-              data processing, we rely on your explicit consent which you can
-              withdraw at any time (Article 6(1)(a)).
+              Consent: Enrolment in the loyalty programme is entirely voluntary.
+              By providing your phone number to join, you consent to us storing
+              your points balance and activity. You may request deletion at
+              any time (Article 6(1)(a)).
+            </Text>
+            <Text style={styles.bulletItem}>
+              Legitimate interests: Operating the app and providing you with
+              venue information, offers, and event listings (Article 6(1)(f)).
             </Text>
           </View>
         </Section>
 
         <Section title="4. Third-Party Services">
           <Text style={styles.bodyText}>
-            This app integrates with the following third-party services. When
-            you use these services, their respective privacy policies apply:
+            This app integrates with the following third-party services. Where
+            those services process your personal data, their respective privacy
+            policies apply:
           </Text>
           <View style={styles.bulletList}>
             <Text style={styles.bulletItem}>
-              The 147 Website (the147.co.uk) - for online table bookings
+              Square (squareup.com) — payment processing, loyalty programme
+              management, and point-of-sale integration. Square processes
+              payment card data on our behalf and operates its own loyalty
+              platform. Square's Privacy Policy applies to all payment and
+              loyalty transactions.
             </Text>
             <Text style={styles.bulletItem}>
-              OrderTab (ordertab.menu) - for food and drink ordering
+              Expo (expo.dev) — push notification delivery infrastructure.
+              Your device push token is shared with Expo solely to deliver
+              notifications you have consented to receive.
             </Text>
             <Text style={styles.bulletItem}>
-              TicketSource (ticketsource.com) - for event ticket purchases
+              TicketSource (ticketsource.com) — event ticket purchases.
+              TicketSource's privacy policy applies to any data you submit
+              when purchasing event tickets.
             </Text>
           </View>
           <Text style={styles.bodyText}>
-            We recommend reviewing their privacy policies before submitting
-            personal data through those services.
+            We recommend reviewing each third party's privacy policy before
+            submitting personal data through those services. We do not sell
+            your personal data to any third party.
           </Text>
         </Section>
 
@@ -252,13 +283,25 @@ export default function PrivacyPolicyScreen() {
             permanently removed.
           </Text>
           <Text style={styles.bodyText}>
+            Loyalty programme data (phone number, points balance, redemption
+            and visit history) is retained for as long as your loyalty account
+            is active. You may request deletion of your loyalty data at any
+            time by contacting us. Deleting your customer account also removes
+            your associated loyalty data from our systems.
+          </Text>
+          <Text style={styles.bodyText}>
             Push notification device tokens are retained until you unsubscribe
             or uninstall the app.
           </Text>
           <Text style={styles.bodyText}>
-            Data submitted through third-party services (orders, ticket
-            purchases) is retained by those third parties in accordance with
-            their own retention policies.
+            Payment card data is never stored by The 147. All card transactions
+            are processed and stored by Square in accordance with their PCI-DSS
+            obligations and their own data retention policy.
+          </Text>
+          <Text style={styles.bodyText}>
+            Data submitted through TicketSource for event ticket purchases is
+            retained by TicketSource in accordance with their own retention
+            policy.
           </Text>
         </Section>
 

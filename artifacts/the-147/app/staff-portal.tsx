@@ -1889,7 +1889,7 @@ function DashboardScreen() {
               <AdminTool
                 icon="cube"
                 title="Stock Management"
-                description="Log deliveries, do monthly counts and view consumption reports"
+                description="Do stock counts (all staff) · log deliveries and view reports (managers)"
                 color="#D97706"
                 onPress={() => router.push("/admin-stock")}
                 testID="portal-stock-management"

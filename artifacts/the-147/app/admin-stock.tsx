@@ -116,13 +116,13 @@ type Tab = "deliveries" | "count" | "report" | "catalogue";
 export default function AdminStockScreen() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isManager, isLoading: authLoading } = useStaffAuth();
-  const [tab, setTab] = useState<Tab>("deliveries");
+  const [tab, setTab] = useState<Tab>("count");
 
   React.useEffect(() => {
-    if (!authLoading && (!isAuthenticated || !isManager)) {
+    if (!authLoading && !isAuthenticated) {
       router.replace("/staff-portal");
     }
-  }, [authLoading, isAuthenticated, isManager]);
+  }, [authLoading, isAuthenticated]);
 
   const categoriesQuery = useQuery<StockCategory[]>({
     queryKey: ["/api/stock/categories"],
@@ -157,7 +157,10 @@ export default function AdminStockScreen() {
 
       {/* Tab bar */}
       <View style={styles.tabBar}>
-        {(["deliveries", "count", "report", "catalogue"] as Tab[]).map((t) => (
+        {(isManager
+          ? (["deliveries", "count", "report", "catalogue"] as Tab[])
+          : (["count"] as Tab[])
+        ).map((t) => (
           <Pressable key={t} onPress={() => setTab(t)} style={[styles.tabItem, tab === t && styles.tabItemActive]}>
             <Text style={[styles.tabLabel, tab === t && styles.tabLabelActive]}>
               {t === "deliveries" ? "Deliveries" : t === "count" ? "Stock Count" : t === "report" ? "Report" : "Catalogue"}
@@ -167,10 +170,10 @@ export default function AdminStockScreen() {
       </View>
 
       {/* Tab content */}
-      {tab === "deliveries" && <DeliveriesTab items={items} categories={categories} />}
+      {tab === "deliveries" && isManager && <DeliveriesTab items={items} categories={categories} />}
       {tab === "count" && <CountTab items={items} categories={categories} />}
-      {tab === "report" && <ReportTab categories={categories} />}
-      {tab === "catalogue" && <CatalogueTab items={items} categories={categories} />}
+      {tab === "report" && isManager && <ReportTab categories={categories} />}
+      {tab === "catalogue" && isManager && <CatalogueTab items={items} categories={categories} />}
     </View>
   );
 }
