@@ -388,7 +388,7 @@ function ActiveRewardsSection({
         });
         return (
           <View key={reward.id} style={styles.activeRewardCard}>
-            <LinearGradient colors={["#FFF9E6", "#FFF3CC"]} style={styles.activeRewardInner}>
+            <LinearGradient colors={["#162840", "#0A1628"]} style={styles.activeRewardInner}>
               <View style={styles.activeRewardIconWrap}>
                 <Ionicons name="gift" size={28} color={Colors.brand.gold} />
               </View>
