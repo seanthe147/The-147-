@@ -1878,24 +1878,22 @@ function DashboardScreen() {
           />
         </View>
 
-        {/* Admin tools — managers and owners, grouped by job. The old flat
-            list of 13 tiles got long enough that finding anything took
-            scrolling; splitting into FLOOR / CUSTOMERS / MARKETING /
-            CONTENT / OWNER mirrors how the day actually breaks down. */}
+        {/* Stock — visible to ALL staff (count tab); managers also see deliveries, report, catalogue */}
+        <Text style={styles.sectionLabel}>STOCK</Text>
+        <View style={[styles.toolsList, isTablet && styles.toolsListTablet]}>
+          <AdminTool
+            icon="cube"
+            title="Stock Management"
+            description="Do stock counts (all staff) · log deliveries and view reports (managers)"
+            color="#D97706"
+            onPress={() => router.push("/admin-stock")}
+            testID="portal-stock-management"
+          />
+        </View>
+
+        {/* Admin tools — managers and owners, grouped by job. */}
         {isManager && (
           <>
-            <Text style={styles.sectionLabel}>STOCK</Text>
-            <View style={[styles.toolsList, isTablet && styles.toolsListTablet]}>
-              <AdminTool
-                icon="cube"
-                title="Stock Management"
-                description="Do stock counts (all staff) · log deliveries and view reports (managers)"
-                color="#D97706"
-                onPress={() => router.push("/admin-stock")}
-                testID="portal-stock-management"
-              />
-            </View>
-
             <Text style={styles.sectionLabel}>FLOOR</Text>
             <View style={[styles.toolsList, isTablet && styles.toolsListTablet]}>
               <AdminTool
