@@ -150,6 +150,10 @@ export default function AdminMarketingScreen() {
     queryKey: ["/api/staff/email-campaigns"],
     enabled: isAuthenticated && canManage,
     refetchOnMount: "always",
+    refetchInterval: (query) => {
+      const data = query.state.data as MarketingCampaign[] | undefined;
+      return data?.some(c => c.status === "sending") ? 3000 : false;
+    },
   });
 
   const audienceCountQuery = useQuery<{ count: number }>({
@@ -478,19 +482,6 @@ export default function AdminMarketingScreen() {
                       <View style={styles.campaignMeta}>
                         <Ionicons name={audienceInfo.icon as any} size={13} color="rgba(255,255,255,0.4)" />
                         <Text style={styles.campaignMetaText}>{audienceInfo.label}</Text>
-                        {isSent && (
-                          <>
-                            <Text style={styles.campaignMetaDot}>·</Text>
-                            <Ionicons name="checkmark-circle-outline" size={13} color="#059669" />
-                            <Text style={[styles.campaignMetaText, { color: "#059669" }]}>{c.sentCount ?? 0} delivered</Text>
-                            {(c.failedCount ?? 0) > 0 && (
-                              <>
-                                <Text style={styles.campaignMetaDot}>·</Text>
-                                <Text style={[styles.campaignMetaText, { color: "#DC2626" }]}>{c.failedCount} failed</Text>
-                              </>
-                            )}
-                          </>
-                        )}
                       </View>
                       {(isDraft || isSending) && (
                         <View style={styles.campaignActions}>
@@ -529,9 +520,44 @@ export default function AdminMarketingScreen() {
                           {isSending && (
                             <View style={styles.sendingRow}>
                               <ActivityIndicator size="small" color={Colors.brand.gold} />
-                              <Text style={styles.sendingText}>Sending to {audienceInfo.label.toLowerCase()}…</Text>
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.sendingText}>Sending to {audienceInfo.label.toLowerCase()}…</Text>
+                                {(c.sentCount ?? 0) > 0 && (
+                                  <Text style={styles.sendingCount}>{c.sentCount} sent so far</Text>
+                                )}
+                              </View>
                             </View>
                           )}
+                        </View>
+                      )}
+                      {(isSent || c.status === "failed") && (
+                        <View style={[
+                          styles.deliverySummary,
+                          c.status === "failed" && (c.sentCount ?? 0) === 0
+                            ? styles.deliverySummaryFailed
+                            : (c.failedCount ?? 0) > 0
+                              ? styles.deliverySummaryPartial
+                              : styles.deliverySummaryOk,
+                        ]}>
+                          <View style={styles.deliverySummaryRow}>
+                            <Ionicons
+                              name="checkmark-circle"
+                              size={14}
+                              color="#059669"
+                            />
+                            <Text style={styles.deliverySummaryDelivered}>
+                              {c.sentCount ?? 0} delivered
+                            </Text>
+                            {(c.failedCount ?? 0) > 0 && (
+                              <>
+                                <Text style={styles.deliverySummaryDot}>·</Text>
+                                <Ionicons name="alert-circle" size={14} color="#DC2626" />
+                                <Text style={styles.deliverySummaryFail}>
+                                  {c.failedCount} failed
+                                </Text>
+                              </>
+                            )}
+                          </View>
                         </View>
                       )}
                     </View>
@@ -878,8 +904,30 @@ const styles = StyleSheet.create({
   cardActionSend: { backgroundColor: "#059669" },
   cardActionTest: { backgroundColor: "#6366F1" },
   cardActionText: { fontSize: 13, fontWeight: "600" },
-  sendingRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  sendingRow: { flexDirection: "row", alignItems: "center", gap: 8, flex: 1 },
   sendingText: { fontSize: 13, color: Colors.brand.gold, fontStyle: "italic" },
+  sendingCount: { fontSize: 11, color: "rgba(212,168,67,0.65)", marginTop: 2 },
+
+  deliverySummary: {
+    marginTop: 6, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12,
+    borderWidth: 1,
+  },
+  deliverySummaryOk: {
+    backgroundColor: "rgba(5,150,105,0.1)",
+    borderColor: "rgba(5,150,105,0.25)",
+  },
+  deliverySummaryPartial: {
+    backgroundColor: "rgba(245,158,11,0.08)",
+    borderColor: "rgba(245,158,11,0.2)",
+  },
+  deliverySummaryFailed: {
+    backgroundColor: "rgba(220,38,38,0.08)",
+    borderColor: "rgba(220,38,38,0.2)",
+  },
+  deliverySummaryRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  deliverySummaryDelivered: { fontSize: 12, fontWeight: "600", color: "#059669" },
+  deliverySummaryFail: { fontSize: 12, fontWeight: "600", color: "#DC2626" },
+  deliverySummaryDot: { fontSize: 12, color: "rgba(255,255,255,0.2)" },
 
   // ── Automations ────────────────────────────────────────────────────────────
   autoList: { padding: 16, gap: 12 },
