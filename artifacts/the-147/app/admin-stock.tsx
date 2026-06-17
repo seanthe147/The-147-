@@ -161,7 +161,7 @@ export default function AdminStockScreen() {
   const items = itemsQuery.data ?? [];
   const categories = categoriesQuery.data ?? [];
 
-  if (authLoading || categoriesQuery.isLoading) {
+  if (authLoading || categoriesQuery.isLoading || itemsQuery.isLoading) {
     return (
       <View style={[styles.center, { paddingTop: insets.top + 20 }]}>
         <ActivityIndicator color={Colors.brand.gold} />

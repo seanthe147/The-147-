@@ -270,6 +270,15 @@ export function PenaltyShootoutGame() {
     }
   }, [getCustomerToken, queryClient]);
 
+  // Stable refs so the panResponder (created once) always calls the latest callbacks.
+  const fireShotRef = useRef(fireShot);
+  const resetBallRef = useRef(resetBall);
+  useEffect(() => { fireShotRef.current = fireShot; }, [fireShot]);
+  useEffect(() => { resetBallRef.current = resetBall; }, [resetBall]);
+
+  // Flatten offset on unmount to clean up any mid-drag animation state.
+  useEffect(() => () => { ballPos.flattenOffset(); }, []);
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => gameStateRef.current === "idle",
@@ -278,6 +287,7 @@ export function PenaltyShootoutGame() {
         if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         setIsDragging(true);
         Animated.timing(aimIndicatorOpacity, { toValue: 1, duration: 150, useNativeDriver: true }).start();
+        ballPos.flattenOffset();
         ballPos.setOffset(ballPosRef.current);
         ballPos.setValue({ x: 0, y: 0 });
       },
@@ -297,16 +307,16 @@ export function PenaltyShootoutGame() {
           const zone = calcAimZone(gesture.dx, gesture.vy);
           setAimedZone(zone);
           setGameState("shooting");
-          fireShot(zone);
+          fireShotRef.current(zone);
         } else {
-          resetBall();
+          resetBallRef.current();
         }
       },
       onPanResponderTerminate: () => {
         ballPos.flattenOffset();
         setIsDragging(false);
         Animated.timing(aimIndicatorOpacity, { toValue: 0, duration: 100, useNativeDriver: true }).start();
-        resetBall();
+        resetBallRef.current();
       },
     })
   ).current;

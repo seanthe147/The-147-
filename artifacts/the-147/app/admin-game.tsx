@@ -841,15 +841,15 @@ const editor = StyleSheet.create({
 
 function RedeemByCodeWidget({ onSuccess }: { onSuccess: () => void }) {
   const [code, setCode] = useState("");
-  const [lastResult, setLastResult] = useState<{ customerName: string | null; prizeName: string } | null>(null);
+  const [lastResult, setLastResult] = useState<{ customerName: string | null; prizeName: string; tierName: string | null } | null>(null);
 
   const redeemMutation = useMutation({
     mutationFn: async (c: string) => {
-      const res = await apiRequest("POST", "/api/staff/game/claims/redeem-code", { code: c });
-      return res.json() as Promise<{ success: boolean; customerName: string | null; prizeName: string }>;
+      const res = await apiRequest("POST", "/api/staff/redeem-code", { code: c });
+      return res.json() as Promise<{ success: boolean; kind: "game_prize" | "venue_reward"; customerName: string | null; prizeName: string; tierName: string | null }>;
     },
     onSuccess: (data) => {
-      setLastResult({ customerName: data.customerName, prizeName: data.prizeName });
+      setLastResult({ customerName: data.customerName, prizeName: data.prizeName, tierName: data.tierName });
       setCode("");
       onSuccess();
     },
@@ -903,7 +903,7 @@ function RedeemByCodeWidget({ onSuccess }: { onSuccess: () => void }) {
         <View style={styles.redeemSuccess}>
           <Ionicons name="checkmark-circle" size={14} color="#059669" />
           <Text style={styles.redeemSuccessText}>
-            ✓ Claimed — {lastResult.prizeName} for {lastResult.customerName ?? "customer"}
+            ✓ Claimed — {lastResult.tierName ? `${lastResult.tierName} reward` : lastResult.prizeName} for {lastResult.customerName ?? "customer"}
           </Text>
         </View>
       )}

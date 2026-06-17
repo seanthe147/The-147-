@@ -10225,6 +10225,48 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     }
   });
 
+  // Unified staff code redemption — handles both game prize codes and venue reward claim codes.
+  app.post("/api/staff/redeem-code", staffAuth, async (req: Request & { staffId?: number }, res) => {
+    const { code } = req.body as { code?: string };
+    if (!code || typeof code !== "string") return res.status(400).json({ message: "code is required" });
+    try {
+      // Try game prize code first
+      const gameResult = await storage.redeemGamePlayByCode(code, req.staffId!);
+      if (gameResult) {
+        return res.json({
+          success: true,
+          kind: "game_prize",
+          customerName: gameResult.customerName,
+          prizeName: gameResult.prizeName,
+          tierName: null,
+        });
+      }
+    } catch (err: any) {
+      if ((err as any).alreadyClaimed) return res.status(409).json({ message: "This code has already been redeemed" });
+      return res.status(500).json({ message: err.message });
+    }
+    // Fall back to venue reward claim code
+    try {
+      const claim = await storage.getVenueRewardClaimByCode(code);
+      if (!claim) return res.status(404).json({ message: "Code not found — check the code and try again" });
+      if (claim.status === "redeemed") return res.status(409).json({ message: "This code has already been redeemed" });
+      if (claim.status === "expired" || claim.expiresAt < new Date()) return res.status(410).json({ message: "This code has expired" });
+      const ok = await storage.redeemVenueRewardClaim(claim.id, req.staffId!);
+      if (!ok) return res.status(409).json({ message: "This code has already been redeemed" });
+      const [tier] = await db.select({ name: venueRewardTiers.name }).from(venueRewardTiers).where(eq(venueRewardTiers.id, claim.tierId));
+      const [cust] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, claim.customerId));
+      return res.json({
+        success: true,
+        kind: "venue_reward",
+        customerName: cust ? decrypt(cust.name) : null,
+        prizeName: tier?.name ?? "Reward",
+        tierName: tier?.name ?? null,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ message: err.message });
+    }
+  });
+
   // Kiosk prize code redemption — no staff session required.
   // Security: the 6-char code is the credential; staff must have entered kiosk PIN to reach this UI.
   app.post("/api/kiosk/redeem-prize-code", async (req, res) => {
