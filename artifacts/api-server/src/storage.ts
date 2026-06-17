@@ -1527,7 +1527,7 @@ export class DatabaseStorage implements IStorage {
     console.log("[GDPR] Existing PII encryption migration complete");
   }
 
-  async searchCustomers(query: string, limit = 6): Promise<Array<{ id?: number; name: string; phone: string; email: string }>> {
+  async searchCustomers(query: string, limit = 6): Promise<Array<{ id?: number; name: string; phone: string; email: string; staffNotes?: string | null }>> {
     if (!query || query.trim().length < 2) return [];
     const q = query.trim().toLowerCase();
     const qClean = q.replace(/\s/g, "");
@@ -1538,7 +1538,7 @@ export class DatabaseStorage implements IStorage {
     // Data is encrypted at rest, so we decrypt and filter in-memory.
     const allCustomers = await db.select().from(customers).orderBy(customers.id);
     const seen = new Set<string>();
-    const matches: Array<{ id: number; name: string; phone: string; email: string; score: number }> = [];
+    const matches: Array<{ id: number; name: string; phone: string; email: string; score: number; staffNotes: string | null }> = [];
     for (const raw of allCustomers) {
       try {
         const dec = decryptCustomer(raw);

@@ -2788,7 +2788,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
 
   app.put("/api/staff/email-campaigns/:id", staffAuth, managerAuth, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(String(req.params.id), 10);
       const [existing] = await db.select().from(marketingCampaigns).where(dEq(marketingCampaigns.id, id));
       if (!existing) return res.status(404).json({ message: "Campaign not found" });
       if (existing.status !== "draft") return res.status(400).json({ message: "Only draft campaigns can be edited" });
@@ -2813,7 +2813,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
 
   app.delete("/api/staff/email-campaigns/:id", staffAuth, managerAuth, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(String(req.params.id), 10);
       const [existing] = await db.select().from(marketingCampaigns).where(dEq(marketingCampaigns.id, id));
       if (!existing) return res.status(404).json({ message: "Campaign not found" });
       if (existing.status !== "draft") return res.status(400).json({ message: "Only draft campaigns can be deleted" });
@@ -2826,7 +2826,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   });
 
   app.post("/api/staff/email-campaigns/:id/send", staffAuth, managerAuth, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id), 10);
     const username = (req as any).staffUsername as string || "staff";
     try {
       const [campaign] = await db.select().from(marketingCampaigns).where(dEq(marketingCampaigns.id, id));
@@ -2895,7 +2895,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   });
 
   app.post("/api/staff/email-campaigns/:id/test-send", staffAuth, managerAuth, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id), 10);
     const username = (req as any).staffUsername as string || "staff";
     try {
       const [campaign] = await db.select().from(marketingCampaigns).where(dEq(marketingCampaigns.id, id));
@@ -2972,7 +2972,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
 
   app.put("/api/staff/email-automations/:type", staffAuth, managerAuth, async (req, res) => {
     try {
-      const triggerType = req.params.type;
+      const triggerType = String(req.params.type);
       const validTypes = ["birthday", "welcome", "win_back"];
       if (!validTypes.includes(triggerType)) {
         return res.status(400).json({ message: "Invalid automation type" });
@@ -10253,8 +10253,8 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       if (claim.status === "expired" || claim.expiresAt < new Date()) return res.status(410).json({ message: "This code has expired" });
       const ok = await storage.redeemVenueRewardClaim(claim.id, req.staffId!);
       if (!ok) return res.status(409).json({ message: "This code has already been redeemed" });
-      const [tier] = await db.select({ name: venueRewardTiers.name }).from(venueRewardTiers).where(eq(venueRewardTiers.id, claim.tierId));
-      const [cust] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, claim.customerId));
+      const [tier] = await db.select({ name: venueRewardTiers.name }).from(venueRewardTiers).where(dEq(venueRewardTiers.id, claim.tierId));
+      const [cust] = await db.select({ name: customersTable.name }).from(customersTable).where(dEq(customersTable.id, claim.customerId));
       return res.json({
         success: true,
         kind: "venue_reward",
@@ -10652,7 +10652,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       }
       const ok = await storage.redeemVenueRewardClaim(claim.id, req.staffId!);
       if (!ok) return res.status(409).json({ message: "Could not redeem claim — it may have already been used" });
-      const [tier] = await db.select({ name: venueRewardTiers.name }).from(venueRewardTiers).where(eq(venueRewardTiers.id, claim.tierId));
+      const [tier] = await db.select({ name: venueRewardTiers.name }).from(venueRewardTiers).where(dEq(venueRewardTiers.id, claim.tierId));
       res.json({ success: true, claim: { ...claim, status: "redeemed", tierName: tier?.name ?? null } });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -15461,10 +15461,10 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       "INT-FANTAZERO-BIB7L": "2004031",
     };
     for (const [oldCode, newCode] of Object.entries(intCodeFixes)) {
-      await db.update(stockItems).set({ supplierCode: newCode }).where(eq(stockItems.supplierCode, oldCode));
+      await db.update(stockItems).set({ supplierCode: newCode }).where(dEq(stockItems.supplierCode, oldCode));
     }
     // Fix Hawkstone keg which was incorrectly assigned Desperados' code (2001762 → 2011873)
-    await db.update(stockItems).set({ supplierCode: "2011873" }).where(and(eq(stockItems.supplierCode, "2001762"), eq(stockItems.countUnit, "keg")));
+    await db.update(stockItems).set({ supplierCode: "2011873" }).where(dAnd(dEq(stockItems.supplierCode, "2001762"), dEq(stockItems.countUnit, "keg")));
 
     // Insert only items whose supplierCode doesn't exist yet
     const existingCodes = await db.select({ code: stockItems.supplierCode }).from(stockItems);
@@ -15572,7 +15572,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
 
   app.delete("/api/stock/deliveries/:id", staffAuth, managerAuth, async (req, res) => {
     try {
-      const id = parseInt(req.params.id, 10);
+      const id = parseInt(String(req.params.id), 10);
       await db.delete(stockDeliveryLines).where(dEq(stockDeliveryLines.deliveryId, id));
       await db.delete(stockDeliveries).where(dEq(stockDeliveries.id, id));
       res.json({ ok: true });
@@ -15710,7 +15710,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
   // Save or clear the Square catalog variation mapping for a stock item
   app.patch("/api/staff/stock/items/:id/square-mapping", staffAuth, managerAuth, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(String(req.params.id), 10);
       const { squareCatalogVariationId, squareCatalogVariationName } = req.body as {
         squareCatalogVariationId: string | null;
         squareCatalogVariationName: string | null;
