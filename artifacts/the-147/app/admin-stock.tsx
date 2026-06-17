@@ -18,7 +18,12 @@ import { router } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
+import { DatePicker } from "@/components/DateTimePickers";
 import Colors from "@/constants/colors";
+
+function localDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -127,11 +132,6 @@ function fmtDateTime(iso: string) {
   return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
-function toISOLocal(d: Date) {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 // ── Main Screen ───────────────────────────────────────────────────────────────
 
 type Tab = "deliveries" | "count" | "report" | "catalogue";
@@ -206,7 +206,7 @@ export default function AdminStockScreen() {
 
 function DeliveriesTab({ items, categories }: { items: StockItem[]; categories: StockCategory[] }) {
   const [showForm, setShowForm] = useState(false);
-  const [deliveredAt, setDeliveredAt] = useState(toISOLocal(new Date()));
+  const [deliveredAt, setDeliveredAt] = useState(() => localDateStr(new Date()));
   const [supplier, setSupplier] = useState("Molson Coors");
   const [invoiceRef, setInvoiceRef] = useState("");
   const [notes, setNotes] = useState("");
@@ -250,14 +250,8 @@ function DeliveriesTab({ items, categories }: { items: StockItem[]; categories: 
         <ScrollView style={styles.formScroll} contentContainerStyle={{ paddingBottom: 40 }}>
           <Text style={styles.formTitle}>Log Delivery</Text>
 
-          <Text style={styles.fieldLabel}>Arrived (date & time)</Text>
-          <TextInput
-            style={styles.input}
-            value={deliveredAt}
-            onChangeText={setDeliveredAt}
-            placeholder="YYYY-MM-DDTHH:MM"
-            placeholderTextColor="#666"
-          />
+          <Text style={styles.fieldLabel}>Arrived</Text>
+          <DatePicker value={deliveredAt} onChange={setDeliveredAt} placeholder="Select delivery date" />
           <Text style={styles.fieldHint}>Backdate if logging after the fact</Text>
 
           <Text style={styles.fieldLabel}>Supplier</Text>
@@ -358,8 +352,12 @@ function DeliveriesTab({ items, categories }: { items: StockItem[]; categories: 
 
 function CountTab({ items, categories }: { items: StockItem[]; categories: StockCategory[] }) {
   const [showForm, setShowForm] = useState(false);
-  const [periodStart, setPeriodStart] = useState("");
-  const [periodEnd, setPeriodEnd] = useState(toISOLocal(new Date()));
+  const [periodStart, setPeriodStart] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return localDateStr(d);
+  });
+  const [periodEnd, setPeriodEnd] = useState(() => localDateStr(new Date()));
   const [notes, setNotes] = useState("");
   const [counts, setCounts] = useState<Record<number, string>>({});
   const [draftId, setDraftId] = useState<number | null>(null);
@@ -433,10 +431,10 @@ function CountTab({ items, categories }: { items: StockItem[]; categories: Stock
           <Text style={styles.formTitle}>{draftId ? "Continue Count" : "New Stock Count"}</Text>
 
           <Text style={styles.fieldLabel}>Period Start</Text>
-          <TextInput style={styles.input} value={periodStart} onChangeText={setPeriodStart} placeholder="YYYY-MM-DDTHH:MM" placeholderTextColor="#666" />
+          <DatePicker value={periodStart} onChange={setPeriodStart} placeholder="Select start date" />
 
           <Text style={styles.fieldLabel}>Period End</Text>
-          <TextInput style={styles.input} value={periodEnd} onChangeText={setPeriodEnd} placeholder="YYYY-MM-DDTHH:MM" placeholderTextColor="#666" />
+          <DatePicker value={periodEnd} onChange={setPeriodEnd} placeholder="Select end date" />
 
           <Text style={styles.fieldLabel}>Notes</Text>
           <TextInput style={[styles.input, { height: 56 }]} value={notes} onChangeText={setNotes} multiline placeholderTextColor="#666" placeholder="Optional" />
@@ -530,8 +528,12 @@ function CountTab({ items, categories }: { items: StockItem[]; categories: Stock
 // ── Report Tab ────────────────────────────────────────────────────────────────
 
 function ReportTab({ categories }: { categories: StockCategory[] }) {
-  const [periodStart, setPeriodStart] = useState("");
-  const [periodEnd, setPeriodEnd] = useState(toISOLocal(new Date()));
+  const [periodStart, setPeriodStart] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return localDateStr(d);
+  });
+  const [periodEnd, setPeriodEnd] = useState(() => localDateStr(new Date()));
   const [fetched, setFetched] = useState(false);
 
   const reportQuery = useQuery<ReportLine[]>({
@@ -561,21 +563,9 @@ function ReportTab({ categories }: { categories: StockCategory[] }) {
       </Text>
 
       <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Period Start</Text>
-      <TextInput
-        style={styles.input}
-        value={periodStart}
-        onChangeText={v => { setPeriodStart(v); setFetched(false); }}
-        placeholder="YYYY-MM-DDTHH:MM"
-        placeholderTextColor="#666"
-      />
+      <DatePicker value={periodStart} onChange={v => { setPeriodStart(v); setFetched(false); }} placeholder="Select start date" />
       <Text style={styles.fieldLabel}>Period End</Text>
-      <TextInput
-        style={styles.input}
-        value={periodEnd}
-        onChangeText={v => { setPeriodEnd(v); setFetched(false); }}
-        placeholder="YYYY-MM-DDTHH:MM"
-        placeholderTextColor="#666"
-      />
+      <DatePicker value={periodEnd} onChange={v => { setPeriodEnd(v); setFetched(false); }} placeholder="Select end date" />
       <Pressable style={[styles.saveBtn, { marginTop: 12, alignSelf: "stretch" }]} onPress={handleRun}>
         <Text style={styles.saveBtnText}>Run Report</Text>
       </Pressable>
