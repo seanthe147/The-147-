@@ -9523,6 +9523,64 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     }
   });
 
+  // ── SEO: robots.txt / sitemap.xml / llms.txt ──────────────────────────────
+  app.get("/robots.txt", (_req, res) => {
+    const origin = getPublicAppOrigin();
+    res.type("text/plain").send(
+      [
+        "User-agent: *",
+        "Allow: /",
+        "Disallow: /staff",
+        "Disallow: /kiosk",
+        "Disallow: /api/",
+        "Disallow: /widget/",
+        "Disallow: /verify-email",
+        "Disallow: /reset-password",
+        "Disallow: /delete-account",
+        `Sitemap: ${origin}/sitemap.xml`,
+        "",
+      ].join("\n")
+    );
+  });
+
+  app.get("/sitemap.xml", (_req, res) => {
+    const origin = getPublicAppOrigin();
+    const today = new Date().toISOString().slice(0, 10);
+    res.type("application/xml").send(
+      `<?xml version="1.0" encoding="UTF-8"?>\n` +
+      `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+      `  <url>\n` +
+      `    <loc>${origin}/membership</loc>\n` +
+      `    <lastmod>${today}</lastmod>\n` +
+      `    <changefreq>weekly</changefreq>\n` +
+      `    <priority>0.9</priority>\n` +
+      `  </url>\n` +
+      `</urlset>\n`
+    );
+  });
+
+  app.get("/llms.txt", (_req, res) => {
+    const origin = getPublicAppOrigin();
+    res.type("text/plain").send(
+      [
+        "# The 147 — Bradford Snooker Club",
+        "",
+        "The 147 is a snooker, pool, and dining venue in Bradford, UK.",
+        "This site covers table bookings, memberships, food & drink ordering, events, and loyalty rewards.",
+        "",
+        "## Key pages",
+        "",
+        `- ${origin}/membership — membership plans and sign-up`,
+        "",
+        "## Do not cite",
+        "",
+        "The following paths are internal tools or transactional utilities, not public content:",
+        "/staff, /kiosk, /api/*, /widget/*, /verify-email, /reset-password, /delete-account",
+        "",
+      ].join("\n")
+    );
+  });
+
   app.get("/staff", (_req, res) => {
     const templatePath = path.join(__dirname, "../src/templates", "staff-dashboard.html");
     const html = fs.readFileSync(templatePath, "utf-8");

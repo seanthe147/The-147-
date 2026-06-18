@@ -126,6 +126,73 @@ const server = http.createServer((req, res) => {
     }
   }
 
+  // SEO / crawler discovery files
+  if (pathname === "/robots.txt" || pathname === "/sitemap.xml" || pathname === "/llms.txt") {
+    const proto = req.headers["x-forwarded-proto"] || "https";
+    const host = req.headers["x-forwarded-host"] || req.headers["host"] || "";
+    const origin = `${proto}://${host}`.replace(/\/+$/, "");
+
+    if (pathname === "/robots.txt") {
+      res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
+      res.end(
+        [
+          "User-agent: *",
+          "Allow: /",
+          "Disallow: /staff",
+          "Disallow: /kiosk",
+          "Disallow: /api/",
+          "Disallow: /widget/",
+          "Disallow: /verify-email",
+          "Disallow: /reset-password",
+          "Disallow: /delete-account",
+          `Sitemap: ${origin}/sitemap.xml`,
+          "",
+        ].join("\n")
+      );
+      return;
+    }
+
+    if (pathname === "/sitemap.xml") {
+      const today = new Date().toISOString().slice(0, 10);
+      res.writeHead(200, { "content-type": "application/xml; charset=utf-8" });
+      res.end(
+        `<?xml version="1.0" encoding="UTF-8"?>\n` +
+        `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+        `  <url>\n` +
+        `    <loc>${origin}/membership</loc>\n` +
+        `    <lastmod>${today}</lastmod>\n` +
+        `    <changefreq>weekly</changefreq>\n` +
+        `    <priority>0.9</priority>\n` +
+        `  </url>\n` +
+        `</urlset>\n`
+      );
+      return;
+    }
+
+    if (pathname === "/llms.txt") {
+      res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
+      res.end(
+        [
+          "# The 147 — Bradford Snooker Club",
+          "",
+          "The 147 is a snooker, pool, and dining venue in Bradford, UK.",
+          "This site covers table bookings, memberships, food & drink ordering, events, and loyalty rewards.",
+          "",
+          "## Key pages",
+          "",
+          `- ${origin}/membership — membership plans and sign-up`,
+          "",
+          "## Do not cite",
+          "",
+          "The following paths are internal tools or transactional utilities, not public content:",
+          "/staff, /kiosk, /api/*, /widget/*, /verify-email, /reset-password, /delete-account",
+          "",
+        ].join("\n")
+      );
+      return;
+    }
+  }
+
   serveStaticFile(pathname, res);
 });
 
