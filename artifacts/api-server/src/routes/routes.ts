@@ -10648,9 +10648,26 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     if (!code || typeof code !== "string") {
       return res.status(400).json({ message: "code is required" });
     }
+    // Try game prize code first (belt-and-braces: direct callers of this endpoint
+    // should also resolve game prize codes without returning a false 404)
     try {
-      // Normalise: strip leading/trailing whitespace and any non-alphanumeric chars
-      // (e.g. a leading # or a dash the customer copied from the display)
+      const gameResult = await storage.redeemGamePlayByCode(code, req.staffId!);
+      if (gameResult) {
+        return res.json({
+          success: true,
+          kind: "game_prize",
+          customerName: gameResult.customerName,
+          prizeName: gameResult.prizeName,
+          tierName: null,
+        });
+      }
+    } catch (err: any) {
+      if ((err as any).alreadyClaimed) return res.status(409).json({ message: "This code has already been redeemed" });
+      if ((err as any).expired) return res.status(410).json({ message: "This prize code has expired" });
+      return res.status(500).json({ message: err.message });
+    }
+    // Fall back to venue reward claim code
+    try {
       const claim = await storage.getVenueRewardClaimByCode(code);
       if (!claim) return res.status(404).json({ message: "Code not found — check the code and try again" });
       if (claim.status === "redeemed") return res.status(409).json({ message: "Already redeemed", claim });
@@ -10660,7 +10677,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       const ok = await storage.redeemVenueRewardClaim(claim.id, req.staffId!);
       if (!ok) return res.status(409).json({ message: "Could not redeem claim — it may have already been used" });
       const [tier] = await db.select({ name: venueRewardTiers.name }).from(venueRewardTiers).where(dEq(venueRewardTiers.id, claim.tierId));
-      res.json({ success: true, claim: { ...claim, status: "redeemed", tierName: tier?.name ?? null } });
+      res.json({ success: true, kind: "venue_reward", claim: { ...claim, status: "redeemed", tierName: tier?.name ?? null } });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

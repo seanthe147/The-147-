@@ -1283,8 +1283,8 @@
         <div class="page-body">
           <!-- Redemption desk: look up a claim code -->
           <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:24px">
-            <h3 style="margin:0 0 4px;font-size:15px;font-weight:700">Redeem a Claim Code</h3>
-            <p style="margin:0 0 14px;font-size:13px;color:var(--text-2)">A customer shows you their 6-character code from the app. Enter it here to mark the reward as given.</p>
+            <h3 style="margin:0 0 4px;font-size:15px;font-weight:700">Redeem any prize or reward code</h3>
+            <p style="margin:0 0 14px;font-size:13px;color:var(--text-2)">Enter the 6-character code from the customer's app — works for game prize codes and venue reward codes.</p>
             <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
               <div style="flex:1;min-width:160px">
                 <label class="form-label">Claim Code</label>
@@ -4855,11 +4855,14 @@
     if(!code||code.length<6){toast('Please enter the 6-character claim code','error');return;}
     resultEl.style.display='none';
     try{
-      const r=await api('/api/staff/venue-rewards/claims/redeem',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
+      const r=await api('/api/staff/redeem-code',{method:'POST',body:JSON.stringify({code})});
       const d=await r.json().catch(()=>({}));
       if(r.ok){
+        const desc=d.kind==='game_prize'
+          ?`Game prize redeemed! <strong>${esc(d.prizeName||'Prize')}</strong> for <strong>${esc(d.customerName||'customer')}</strong>.`
+          :`Venue reward redeemed! <strong>${esc(d.prizeName||d.tierName||'Reward')}</strong> for <strong>${esc(d.customerName||'customer')}</strong>.`;
         resultEl.style.cssText='display:block;padding:12px 16px;background:#DCFCE7;border:1px solid #86EFAC;border-radius:8px;color:#166534;font-size:13px;font-weight:600';
-        resultEl.innerHTML='✓ Reward redeemed successfully! You can now give the customer their item.';
+        resultEl.innerHTML=`✓ ${desc} You can now give the customer their item.`;
         el('venueRedeemCodeInput').value='';
         await loadVenueRewardClaims();
       }else if(r.status===409){
@@ -4867,7 +4870,7 @@
         resultEl.innerHTML='⚠ This code has already been redeemed.';
       }else if(r.status===410){
         resultEl.style.cssText='display:block;padding:12px 16px;background:#F3F4F6;border:1px solid var(--border);border-radius:8px;color:#6B7280;font-size:13px';
-        resultEl.innerHTML='This claim code has expired (older than 24 hours).';
+        resultEl.innerHTML='This claim code has expired.';
       }else if(r.status===404){
         resultEl.style.cssText='display:block;padding:12px 16px;background:#FEE2E2;border:1px solid #FCA5A5;border-radius:8px;color:#991B1B;font-size:13px';
         resultEl.innerHTML='Code not found — double-check it and try again.';
