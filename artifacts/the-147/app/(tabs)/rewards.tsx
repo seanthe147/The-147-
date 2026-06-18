@@ -119,6 +119,23 @@ interface LoyaltyMeResponse {
   };
 }
 
+interface GamePrizeClaim {
+  id: number;
+  customerId: number;
+  customerName: string | null;
+  prizeName: string;
+  prizeType: string;
+  playedAt: string;
+  londonDate: string;
+  prizeClaimCode: string | null;
+}
+
+interface GameMyPrizesResponse {
+  playedToday: boolean;
+  plays: unknown[];
+  pendingClaims: GamePrizeClaim[];
+}
+
 function categoryIcon(cat: string): React.ComponentProps<typeof Ionicons>["name"] {
   switch (cat) {
     case "food": return "restaurant-outline";
@@ -129,103 +146,142 @@ function categoryIcon(cat: string): React.ComponentProps<typeof Ionicons>["name"
   }
 }
 
-function VenueRewardsSection({
-  tiers,
-  pendingClaims,
-  balance,
-  onClaim,
-  isClaiming,
+function formatExpiry(isoDate: string): string {
+  const expiresAt = new Date(isoDate);
+  const minutesLeft = Math.max(0, Math.round((expiresAt.getTime() - Date.now()) / 60000));
+  const hoursLeft = Math.floor(minutesLeft / 60);
+  const minsLeft = minutesLeft % 60;
+  const daysLeft = Math.floor(hoursLeft / 24);
+  if (daysLeft > 0) return `${daysLeft}d ${hoursLeft % 24}h left`;
+  if (hoursLeft > 0) return `${hoursLeft}h ${minsLeft}m left`;
+  return `${minutesLeft}m left`;
+}
+
+// ── Wallet ─────────────────────────────────────────────────────────────────────
+// Shows all redeemable prizes/vouchers a customer can hand to staff right now.
+// Excludes: loyalty_points (auto-applied, no code needed).
+
+function VoucherCard({
+  accentColor,
+  typeLabel,
+  icon,
+  name,
+  code,
+  footer,
 }: {
-  tiers: VenueRewardTierItem[];
-  pendingClaims: VenueRewardClaimItem[];
-  balance: number;
-  onClaim: (tier: VenueRewardTierItem) => void;
-  isClaiming: boolean;
+  accentColor: string;
+  typeLabel: string;
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  name: string;
+  code?: string | null;
+  footer: string;
 }) {
-  if (tiers.length === 0 && pendingClaims.length === 0) return null;
+  return (
+    <View style={[styles.voucherOuter, { borderColor: accentColor }]}>
+      <View style={[styles.voucherAccent, { backgroundColor: accentColor }]} />
+      <View style={styles.voucherInner}>
+        <View style={styles.voucherTopRow}>
+          <View style={[styles.voucherIconWrap, { backgroundColor: `${accentColor}22` }]}>
+            <Ionicons name={icon} size={20} color={accentColor} />
+          </View>
+          <View style={styles.voucherMeta}>
+            <Text style={[styles.voucherTypeLabel, { color: accentColor }]}>{typeLabel}</Text>
+            <Text style={styles.voucherName} numberOfLines={2}>{name}</Text>
+          </View>
+        </View>
+        {code ? (
+          <View style={styles.voucherCodeWrap}>
+            <View style={styles.voucherCodeDash} />
+            <View style={[styles.voucherCodePill, { backgroundColor: accentColor }]}>
+              <Text style={styles.voucherCodeText}>{code}</Text>
+            </View>
+            <View style={styles.voucherCodeDash} />
+          </View>
+        ) : null}
+        <View style={styles.voucherFooterRow}>
+          <Ionicons name="people-outline" size={13} color={Colors.light.textSecondary} />
+          <Text style={styles.voucherFooterText}>{footer}</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function WalletSection({
+  gameClaims,
+  venueClaims,
+  squareRewards,
+  program,
+}: {
+  gameClaims: GamePrizeClaim[];
+  venueClaims: VenueRewardClaimItem[];
+  squareRewards: IssuedReward[];
+  program: LoyaltyProgram | null;
+}) {
+  const totalCount = gameClaims.length + venueClaims.length + squareRewards.length;
 
   return (
-    <View style={styles.venueSection}>
-      {pendingClaims.length > 0 && (
-        <View style={styles.venuePendingWrap}>
-          <View style={styles.sectionTitleRow}>
-            <Ionicons name="ticket-outline" size={18} color="#7C3AED" />
-            <Text style={styles.sectionTitle}>Your Active Claim Codes</Text>
+    <View style={styles.walletSection}>
+      <View style={styles.walletHeader}>
+        <View style={styles.walletTitleRow}>
+          <Ionicons name="wallet-outline" size={20} color={Colors.brand.gold} />
+          <Text style={styles.walletTitle}>Your Wallet</Text>
+        </View>
+        {totalCount > 0 && (
+          <View style={styles.walletBadge}>
+            <Text style={styles.walletBadgeText}>{totalCount}</Text>
           </View>
-          <Text style={styles.venuePendingSubtitle}>
-            Show these codes to a member of staff to claim your reward. Valid for 7 days.
-          </Text>
-          {pendingClaims.map((claim) => {
-            const expiresAt = new Date(claim.expiresAt);
-            const minutesLeft = Math.max(0, Math.round((expiresAt.getTime() - Date.now()) / 60000));
-            const hoursLeft = Math.floor(minutesLeft / 60);
-            const minsLeft = minutesLeft % 60;
-            const expiryStr = hoursLeft > 0
-              ? `${hoursLeft}h ${minsLeft}m left`
-              : `${minutesLeft}m left`;
+        )}
+      </View>
+
+      {totalCount === 0 ? (
+        <View style={styles.walletEmpty}>
+          <Ionicons name="ticket-outline" size={32} color={Colors.light.textSecondary} />
+          <Text style={styles.walletEmptyTitle}>No active vouchers</Text>
+          <Text style={styles.walletEmptyText}>Play the scratch card or spend points to earn prizes and vouchers.</Text>
+        </View>
+      ) : (
+        <View style={styles.walletCards}>
+          {gameClaims.map((claim) => (
+            <VoucherCard
+              key={`game-${claim.id}`}
+              accentColor={Colors.brand.gold}
+              typeLabel="🎰 GAME PRIZE"
+              icon="trophy-outline"
+              name={claim.prizeName}
+              code={claim.prizeClaimCode}
+              footer={`Show code to staff · Won ${new Date(claim.playedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`}
+            />
+          ))}
+          {venueClaims.map((claim) => (
+            <VoucherCard
+              key={`venue-${claim.id}`}
+              accentColor="#7C3AED"
+              typeLabel="🎟️ VENUE REWARD"
+              icon={categoryIcon(claim.tierCategory ?? "other")}
+              name={claim.tierName ?? "Venue Reward"}
+              code={claim.claimCode}
+              footer={`Show code to staff · ${formatExpiry(claim.expiresAt)}`}
+            />
+          ))}
+          {squareRewards.map((reward) => {
+            const tier = program?.reward_tiers?.find((t) => t.id === reward.reward_tier_id);
+            const earned = new Date(reward.created_at).toLocaleDateString("en-GB", {
+              day: "numeric", month: "short",
+            });
             return (
-              <View key={claim.id} style={styles.claimCodeCard}>
-                <View style={styles.claimCodeIconWrap}>
-                  <Ionicons name={categoryIcon(claim.tierCategory ?? "other")} size={24} color="#7C3AED" />
-                </View>
-                <View style={styles.claimCodeBody}>
-                  <Text style={styles.claimCodeTierName}>{claim.tierName ?? "Venue Reward"}</Text>
-                  <Text style={styles.claimCodeExpiry}>{expiryStr}</Text>
-                </View>
-                <View style={styles.claimCodeBadgeWrap}>
-                  <Text style={styles.claimCodeText}>{claim.claimCode}</Text>
-                </View>
-              </View>
+              <VoucherCard
+                key={`square-${reward.id}`}
+                accentColor={Colors.brand.blue}
+                typeLabel="⭐ LOYALTY REWARD"
+                icon="gift-outline"
+                name={tier?.name ?? "Loyalty Reward"}
+                code={null}
+                footer={`Show this screen to staff · Issued ${earned}`}
+              />
             );
           })}
         </View>
-      )}
-
-      {tiers.length > 0 && (
-        <>
-          <View style={styles.sectionTitleRow}>
-            <Ionicons name="storefront-outline" size={18} color="#7C3AED" />
-            <Text style={styles.sectionTitle}>Venue Rewards</Text>
-          </View>
-          <Text style={styles.venueSubtitle}>
-            Spend your points on venue experiences — drinks, food, table time, and more.
-          </Text>
-          {tiers.map((tier) => {
-            const canClaim = balance >= tier.pointsCost;
-            const alreadyPending = pendingClaims.some((c) => c.tierId === tier.id);
-            return (
-              <View key={tier.id} style={[styles.venueTierCard, canClaim && styles.venueTierCardReady]}>
-                <View style={styles.venueTierIconWrap}>
-                  <Ionicons
-                    name={categoryIcon(tier.category)}
-                    size={26}
-                    color={canClaim ? "#7C3AED" : Colors.light.textSecondary}
-                  />
-                </View>
-                <View style={styles.venueTierBody}>
-                  <Text style={styles.venueTierName}>{tier.name}</Text>
-                  {tier.description ? (
-                    <Text style={styles.venueTierDesc}>{tier.description}</Text>
-                  ) : null}
-                  <Text style={styles.venueTierPoints}>{tier.pointsCost} points</Text>
-                </View>
-                <Pressable
-                  onPress={() => onClaim(tier)}
-                  disabled={!canClaim || isClaiming || alreadyPending}
-                  style={({ pressed }) => [
-                    styles.venueClaimBtn,
-                    canClaim && !alreadyPending && styles.venueClaimBtnActive,
-                    (pressed && canClaim) && { opacity: 0.8 },
-                  ]}
-                >
-                  <Text style={[styles.venueClaimBtnText, canClaim && !alreadyPending && styles.venueClaimBtnTextActive]}>
-                    {alreadyPending ? "Claimed" : canClaim ? "Claim" : `${tier.pointsCost - balance} more`}
-                  </Text>
-                </Pressable>
-              </View>
-            );
-          })}
-        </>
       )}
     </View>
   );
@@ -364,46 +420,62 @@ function BirthdayBanner({
   return null;
 }
 
-function ActiveRewardsSection({
-  rewards,
-  program,
+function VenueRewardsSection({
+  tiers,
+  pendingClaims,
+  balance,
+  onClaim,
+  isClaiming,
 }: {
-  rewards: IssuedReward[];
-  program: LoyaltyProgram | null;
+  tiers: VenueRewardTierItem[];
+  pendingClaims: VenueRewardClaimItem[];
+  balance: number;
+  onClaim: (tier: VenueRewardTierItem) => void;
+  isClaiming: boolean;
 }) {
-  if (!rewards.length) return null;
+  if (tiers.length === 0) return null;
+
   return (
-    <View style={styles.activeRewardsSection}>
+    <View style={styles.venueSection}>
       <View style={styles.sectionTitleRow}>
-        <Ionicons name="gift" size={18} color={Colors.brand.gold} />
-        <Text style={styles.sectionTitle}>Your Active Rewards</Text>
+        <Ionicons name="storefront-outline" size={18} color="#7C3AED" />
+        <Text style={styles.sectionTitle}>Venue Rewards</Text>
       </View>
-      <Text style={styles.activeRewardsSubtitle}>
-        You have {rewards.length} reward{rewards.length !== 1 ? "s" : ""} ready to use — show this screen to a member of staff.
+      <Text style={styles.venueSubtitle}>
+        Spend your points on venue experiences — drinks, food, table time, and more.
       </Text>
-      {rewards.map((reward) => {
-        const tier = program?.reward_tiers?.find((t) => t.id === reward.reward_tier_id);
-        const earned = new Date(reward.created_at).toLocaleDateString("en-GB", {
-          day: "numeric", month: "short", year: "numeric",
-        });
+      {tiers.map((tier) => {
+        const canClaim = balance >= tier.pointsCost;
+        const alreadyPending = pendingClaims.some((c) => c.tierId === tier.id);
         return (
-          <View key={reward.id} style={styles.activeRewardCard}>
-            <LinearGradient colors={["#162840", "#0A1628"]} style={styles.activeRewardInner}>
-              <View style={styles.activeRewardIconWrap}>
-                <Ionicons name="gift" size={28} color={Colors.brand.gold} />
-              </View>
-              <View style={styles.activeRewardText}>
-                <Text style={styles.activeRewardName}>{tier?.name ?? "Reward"}</Text>
-                <Text style={styles.activeRewardDate}>Issued {earned}</Text>
-              </View>
-              <View style={styles.activeRewardBadge}>
-                <Text style={styles.activeRewardBadgeText}>READY</Text>
-              </View>
-            </LinearGradient>
-            <View style={styles.showToStaffBanner}>
-              <Ionicons name="people" size={14} color={Colors.brand.blue} />
-              <Text style={styles.showToStaffText}>Show this to a member of staff to redeem</Text>
+          <View key={tier.id} style={[styles.venueTierCard, canClaim && styles.venueTierCardReady]}>
+            <View style={styles.venueTierIconWrap}>
+              <Ionicons
+                name={categoryIcon(tier.category)}
+                size={26}
+                color={canClaim ? "#7C3AED" : Colors.light.textSecondary}
+              />
             </View>
+            <View style={styles.venueTierBody}>
+              <Text style={styles.venueTierName}>{tier.name}</Text>
+              {tier.description ? (
+                <Text style={styles.venueTierDesc}>{tier.description}</Text>
+              ) : null}
+              <Text style={styles.venueTierPoints}>{tier.pointsCost} points</Text>
+            </View>
+            <Pressable
+              onPress={() => onClaim(tier)}
+              disabled={!canClaim || isClaiming || alreadyPending}
+              style={({ pressed }) => [
+                styles.venueClaimBtn,
+                canClaim && !alreadyPending && styles.venueClaimBtnActive,
+                (pressed && canClaim) && { opacity: 0.8 },
+              ]}
+            >
+              <Text style={[styles.venueClaimBtnText, canClaim && !alreadyPending && styles.venueClaimBtnTextActive]}>
+                {alreadyPending ? "Claimed" : canClaim ? "Claim" : `${tier.pointsCost - balance} more`}
+              </Text>
+            </Pressable>
           </View>
         );
       })}
@@ -520,9 +592,6 @@ export default function RewardsScreen() {
   const matchBarVisible = useMatchBarVisible();
   const queryClient = useQueryClient();
 
-  // Disable the parent ScrollView while the user is scratching so the card
-  // doesn't shift position mid-stroke (which would offset the brush positions
-  // and make scratching feel broken).
   const [scratchActive, setScratchActive] = useState(false);
   const onScratchStart = useCallback(() => setScratchActive(true), []);
   const onScratchEnd   = useCallback(() => setScratchActive(false), []);
@@ -543,6 +612,23 @@ export default function RewardsScreen() {
     },
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
+    enabled: isAuthenticated,
+  });
+
+  const gamePrizesQuery = useQuery<GameMyPrizesResponse>({
+    queryKey: ["/api/game/my-prizes", customer?.id],
+    queryFn: async () => {
+      const token = getCustomerToken();
+      if (!token) return { playedToday: false, plays: [], pendingClaims: [] };
+      const res = await fetch(new URL("/api/game/my-prizes", getApiUrl()).toString(), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return { playedToday: false, plays: [], pendingClaims: [] };
+      return res.json();
+    },
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
+    enabled: isAuthenticated,
   });
 
   const handleVenueClaim = useCallback(async (tier: VenueRewardTierItem) => {
@@ -587,6 +673,12 @@ export default function RewardsScreen() {
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
   });
+
+  const handleRefresh = useCallback(() => {
+    meQuery.refetch();
+    venueRewardsQuery.refetch();
+    gamePrizesQuery.refetch();
+  }, [meQuery, venueRewardsQuery, gamePrizesQuery]);
 
   return (
     <ScrollView
@@ -701,6 +793,14 @@ export default function RewardsScreen() {
             <Text style={styles.personalIntro}>Here's where you stand, {firstName}</Text>
           ) : null}
 
+          {/* ── Wallet — active vouchers/prizes ─────────────────────────────── */}
+          <WalletSection
+            gameClaims={gamePrizesQuery.data?.pendingClaims ?? []}
+            venueClaims={venueRewardsQuery.data?.pendingClaims ?? []}
+            squareRewards={meQuery.data.rewards ?? []}
+            program={meQuery.data.program ?? null}
+          />
+
           <ScratchCardGame
             onScratchStart={onScratchStart}
             onScratchEnd={onScratchEnd}
@@ -750,10 +850,13 @@ export default function RewardsScreen() {
             </View>
           </View>
 
-          {meQuery.data.rewards && meQuery.data.rewards.length > 0 && (
-            <ActiveRewardsSection
-              rewards={meQuery.data.rewards}
-              program={meQuery.data.program ?? null}
+          {venueRewardsQuery.data && (
+            <VenueRewardsSection
+              tiers={venueRewardsQuery.data.tiers}
+              pendingClaims={venueRewardsQuery.data.pendingClaims}
+              balance={meQuery.data.account.balance}
+              onClaim={handleVenueClaim}
+              isClaiming={isClaiming}
             />
           )}
 
@@ -777,16 +880,6 @@ export default function RewardsScreen() {
             </View>
           )}
 
-          {venueRewardsQuery.data && (
-            <VenueRewardsSection
-              tiers={venueRewardsQuery.data.tiers}
-              pendingClaims={venueRewardsQuery.data.pendingClaims}
-              balance={meQuery.data.account.balance}
-              onClaim={handleVenueClaim}
-              isClaiming={isClaiming}
-            />
-          )}
-
           {meQuery.data.events && meQuery.data.events.length > 0 && (
             <ActivityFeed
               events={meQuery.data.events.slice(0, 5)}
@@ -796,8 +889,8 @@ export default function RewardsScreen() {
 
           <View style={styles.actionRow}>
             <Pressable
-              onPress={() => meQuery.refetch()}
-              disabled={meQuery.isFetching}
+              onPress={handleRefresh}
+              disabled={meQuery.isFetching || venueRewardsQuery.isFetching || gamePrizesQuery.isFetching}
               style={({ pressed }) => [styles.refreshButton, { opacity: pressed ? 0.85 : 1 }]}
             >
               <Ionicons name="refresh" size={18} color={Colors.brand.blue} />
@@ -866,18 +959,6 @@ const styles = StyleSheet.create({
   statCard: { flex: 1, backgroundColor: Colors.light.surface, borderRadius: 12, padding: 16, alignItems: "center", gap: 4, elevation: 1 },
   statValue: { fontSize: 16, fontWeight: "700", color: Colors.light.text, fontFamily: "Montserrat_700Bold" },
   statLabel: { fontSize: 11, color: Colors.light.textSecondary, textAlign: "center", fontFamily: "Montserrat_400Regular" },
-  activeRewardsSection: { marginHorizontal: 20, marginTop: 20 },
-  activeRewardsSubtitle: { fontSize: 13, color: Colors.light.textSecondary, marginBottom: 12, fontFamily: "Montserrat_400Regular", lineHeight: 18 },
-  activeRewardCard: { borderRadius: 14, borderWidth: 2, borderColor: Colors.brand.gold, overflow: "hidden", marginBottom: 10, elevation: 3 },
-  activeRewardInner: { flexDirection: "row", alignItems: "center", padding: 16, gap: 14 },
-  activeRewardIconWrap: { width: 48, height: 48, borderRadius: 24, backgroundColor: "rgba(212,168,67,0.15)", alignItems: "center", justifyContent: "center" },
-  activeRewardText: { flex: 1 },
-  activeRewardName: { fontSize: 16, fontWeight: "700", color: Colors.light.text, fontFamily: "Montserrat_700Bold" },
-  activeRewardDate: { fontSize: 12, color: Colors.light.textSecondary, marginTop: 2, fontFamily: "Montserrat_400Regular" },
-  activeRewardBadge: { backgroundColor: Colors.brand.gold, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
-  activeRewardBadgeText: { color: "#FFF", fontSize: 11, fontWeight: "700", fontFamily: "Montserrat_700Bold", letterSpacing: 0.5 },
-  showToStaffBanner: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "rgba(59,130,246,0.08)", borderTopWidth: 1, borderTopColor: "rgba(212,168,67,0.2)" },
-  showToStaffText: { fontSize: 12, color: Colors.brand.blue, fontWeight: "600", fontFamily: "Montserrat_600SemiBold" },
   rewardsSection: { marginHorizontal: 20, marginTop: 20 },
   tierCard: { backgroundColor: Colors.light.surface, borderRadius: 14, padding: 16, marginBottom: 10, elevation: 1 },
   tierCardRedeemable: { borderWidth: 1.5, borderColor: Colors.brand.gold },
@@ -904,17 +985,34 @@ const styles = StyleSheet.create({
   infoCard: { margin: 20, padding: 16, backgroundColor: Colors.light.surface, borderRadius: 12 },
   infoRow: { flexDirection: "row", gap: 10 },
   infoText: { fontSize: 12, color: Colors.light.textSecondary, flex: 1, lineHeight: 18, fontFamily: "Montserrat_400Regular" },
-  // ── Venue Rewards ──────────────────────────────────────────────────────────
+  // ── Wallet ──────────────────────────────────────────────────────────────────
+  walletSection: { marginHorizontal: 20, marginTop: 20 },
+  walletHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
+  walletTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  walletTitle: { fontSize: 18, fontWeight: "700", color: Colors.light.text, fontFamily: "Montserrat_700Bold" },
+  walletBadge: { backgroundColor: Colors.brand.gold, borderRadius: 12, minWidth: 24, height: 24, paddingHorizontal: 8, alignItems: "center", justifyContent: "center" },
+  walletBadgeText: { color: "#FFF", fontSize: 13, fontWeight: "700", fontFamily: "Montserrat_700Bold" },
+  walletEmpty: { backgroundColor: Colors.light.surface, borderRadius: 16, padding: 28, alignItems: "center", gap: 10, borderWidth: 1, borderColor: Colors.light.border, borderStyle: "dashed" },
+  walletEmptyTitle: { fontSize: 15, fontWeight: "600", color: Colors.light.text, fontFamily: "Montserrat_600SemiBold" },
+  walletEmptyText: { fontSize: 13, color: Colors.light.textSecondary, textAlign: "center", lineHeight: 18, fontFamily: "Montserrat_400Regular" },
+  walletCards: { gap: 12 },
+  // ── Voucher card ────────────────────────────────────────────────────────────
+  voucherOuter: { flexDirection: "row", borderRadius: 16, borderWidth: 1.5, overflow: "hidden", backgroundColor: Colors.light.surface, elevation: 3 },
+  voucherAccent: { width: 6 },
+  voucherInner: { flex: 1, padding: 14, gap: 10 },
+  voucherTopRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  voucherIconWrap: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  voucherMeta: { flex: 1 },
+  voucherTypeLabel: { fontSize: 10, fontWeight: "700", fontFamily: "Montserrat_700Bold", letterSpacing: 1.2, textTransform: "uppercase" },
+  voucherName: { fontSize: 16, fontWeight: "700", color: Colors.light.text, fontFamily: "Montserrat_700Bold", marginTop: 2, lineHeight: 20 },
+  voucherCodeWrap: { flexDirection: "row", alignItems: "center", gap: 8 },
+  voucherCodeDash: { flex: 1, height: 1, borderTopWidth: 1, borderTopColor: Colors.light.border, borderStyle: "dashed" },
+  voucherCodePill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10 },
+  voucherCodeText: { fontSize: 22, fontWeight: "800", color: "#FFF", fontFamily: "Montserrat_700Bold", letterSpacing: 4 },
+  voucherFooterRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  voucherFooterText: { fontSize: 12, color: Colors.light.textSecondary, fontFamily: "Montserrat_400Regular" },
+  // ── Venue Rewards (spend section) ───────────────────────────────────────────
   venueSection: { marginHorizontal: 20, marginTop: 20, gap: 0 },
-  venuePendingWrap: { marginBottom: 20 },
-  venuePendingSubtitle: { fontSize: 13, color: Colors.light.textSecondary, marginBottom: 12, fontFamily: "Montserrat_400Regular", lineHeight: 18 },
-  claimCodeCard: { flexDirection: "row", alignItems: "center", backgroundColor: Colors.light.surface, borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 2, borderColor: "#7C3AED", gap: 12, elevation: 2 },
-  claimCodeIconWrap: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(124,58,237,0.2)", alignItems: "center", justifyContent: "center" },
-  claimCodeBody: { flex: 1 },
-  claimCodeTierName: { fontSize: 14, fontWeight: "700", color: Colors.light.text, fontFamily: "Montserrat_700Bold" },
-  claimCodeExpiry: { fontSize: 11, color: Colors.light.textSecondary, marginTop: 2, fontFamily: "Montserrat_400Regular" },
-  claimCodeBadgeWrap: { backgroundColor: "#7C3AED", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
-  claimCodeText: { fontSize: 18, fontWeight: "800", color: "#FFF", fontFamily: "Montserrat_700Bold", letterSpacing: 3 },
   venueSubtitle: { fontSize: 13, color: Colors.light.textSecondary, marginBottom: 12, fontFamily: "Montserrat_400Regular", lineHeight: 18 },
   venueTierCard: { flexDirection: "row", alignItems: "center", backgroundColor: Colors.light.surface, borderRadius: 14, padding: 14, marginBottom: 10, gap: 12, elevation: 1 },
   venueTierCardReady: { borderWidth: 1.5, borderColor: "#7C3AED" },
