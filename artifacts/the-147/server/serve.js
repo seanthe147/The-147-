@@ -69,6 +69,11 @@ const ROUTE_META = {
     description:
       "Claim your prize and venue rewards at The 147 Bradford snooker club.",
   },
+  "/membership": {
+    title: "Membership — The 147 Bradford",
+    description:
+      "Join The 147 Bradford as a member. Enjoy exclusive benefits, priority bookings, and loyalty perks with a monthly or annual membership.",
+  },
 };
 
 const MIME_TYPES = {
@@ -130,7 +135,9 @@ function serveLandingPage(req, res, landingPageTemplate, appName, meta) {
   const title = routeMeta.title || appName;
   const description = routeMeta.description || "";
   const canonicalPath = routeMeta.canonicalPath || "";
-  const canonicalUrl = `${baseUrl}${canonicalPath}`;
+  // basePath is stripped when routing but must be re-included in canonicals
+  // so that search engines index the correct fully-qualified URL.
+  const canonicalUrl = `${baseUrl}${basePath}${canonicalPath}`;
 
   const structuredData = JSON.stringify({
     "@context": "https://schema.org",
