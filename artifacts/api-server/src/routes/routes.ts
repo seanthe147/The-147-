@@ -10722,7 +10722,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
           redeemedAt: row.redeemedAt,
           code: row.code,
           what: row.what,
-          customerName: row.customerName ?? "Unknown",
+          customerName: row.customerName ? decrypt(row.customerName) : "Unknown",
           redeemedBy: row.staffDisplay || row.staffUsername || "Staff",
         }));
 
