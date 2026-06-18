@@ -83,6 +83,9 @@ export function createApp(): Express {
     } else {
       res.setHeader("X-Frame-Options", "DENY");
     }
+    if (req.path === "/test-site" || req.path.startsWith("/test-site/")) {
+      res.setHeader("X-Robots-Tag", "noindex, nofollow");
+    }
     if (!req.path.startsWith("/api")) {
       res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
       res.setHeader("Pragma", "no-cache");

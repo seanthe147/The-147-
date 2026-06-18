@@ -617,6 +617,7 @@ export function renderCustomPage(page: CustomPageInput): string {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
 <title>${metaTitle}</title>
 <meta name="description" content="${metaDesc}" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
