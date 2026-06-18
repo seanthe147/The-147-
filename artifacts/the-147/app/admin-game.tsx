@@ -86,7 +86,7 @@ function emptyDraft(): PrizeDraft {
     rewardTierId: "",
     giftCardAmountPounds: "",
     squareCustomerGroupId: "",
-    prizeExpiryHours: "72",
+    prizeExpiryHours: "168",
     maxDiscountPounds: "",
     weightPercent: "10",
     active: true,
@@ -502,6 +502,23 @@ function PrizeEditor({ draft, onChange, onSave, onCancel, saving, isNew, squareT
           )}
           <Text style={editor.hint}>
             The reward is issued automatically to the customer's Square account. Net points change is zero — the tier's point cost is gifted then immediately spent by the reward creation.
+          </Text>
+        </View>
+      )}
+
+      {draft.prizeType === "reward_tier" && (
+        <View style={editor.field}>
+          <Text style={editor.label}>Code Valid For (hours)</Text>
+          <TextInput
+            style={editor.input}
+            value={draft.prizeExpiryHours}
+            onChangeText={(v) => set("prizeExpiryHours", v)}
+            placeholder="168"
+            placeholderTextColor="#9CA3AF"
+            keyboardType="number-pad"
+          />
+          <Text style={editor.hint}>
+            How long the claim code is valid after winning. Default is 168 hours (7 days). The code expires automatically and cannot be redeemed after this time.
           </Text>
         </View>
       )}
@@ -1062,7 +1079,7 @@ export default function AdminGameScreen() {
       squareDiscountValue: selectedTier ? selectedTier.discountValue : undefined,
       giftCardAmountPence: draft.prizeType === "gift_card" ? String(draft.giftCardAmountPounds) : null,
       squareCustomerGroupId: draft.prizeType === "customer_group" ? draft.squareCustomerGroupId.trim() || null : null,
-      prizeExpiryHours: draft.prizeType === "customer_group" && draft.prizeExpiryHours ? parseInt(draft.prizeExpiryHours, 10) || 72 : null,
+      prizeExpiryHours: (draft.prizeType === "customer_group" || draft.prizeType === "reward_tier") && draft.prizeExpiryHours ? parseInt(draft.prizeExpiryHours, 10) || 168 : null,
       maxDiscountPence: draft.prizeType === "customer_group" && draft.maxDiscountPounds ? String(draft.maxDiscountPounds) : null,
       weightPercent: wp,
       active: draft.active,
@@ -1103,7 +1120,7 @@ export default function AdminGameScreen() {
       rewardTierId: p.rewardTierId ?? "",
       giftCardAmountPounds: p.giftCardAmountPence != null ? String(p.giftCardAmountPence / 100) : "",
       squareCustomerGroupId: p.squareCustomerGroupId ?? "",
-      prizeExpiryHours: p.prizeExpiryHours != null ? String(p.prizeExpiryHours) : "72",
+      prizeExpiryHours: p.prizeExpiryHours != null ? String(p.prizeExpiryHours) : "168",
       maxDiscountPounds: p.maxDiscountPence != null ? String(p.maxDiscountPence / 100) : "",
       weightPercent: String(p.weightPercent),
       active: p.active,

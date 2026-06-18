@@ -1023,7 +1023,7 @@ export const gamePrizes = pgTable("game_prizes", {
   tierPoints: integer("tier_points"),          // points cost of the Square reward tier (used to pre-fund the customer before issuing)
   giftCardAmountPence: integer("gift_card_amount_pence"), // pence to load onto a Square digital gift card (prizeType='gift_card')
   squareCustomerGroupId: text("square_customer_group_id"), // Square customer group ID (prizeType='customer_group') — winner auto-added; discount pricing rule fires at POS; auto-removed after payment or expiry
-  prizeExpiryHours: integer("prize_expiry_hours").default(72), // hours after win before group membership auto-expires (prizeType='customer_group')
+  prizeExpiryHours: integer("prize_expiry_hours").default(168), // hours the prize claim code (reward_tier/customer_group) stays valid; also the Square group membership expiry for customer_group prizes (default 168 = 7 days)
   maxDiscountPence: integer("max_discount_pence"),        // optional cap on the prize discount in pence (e.g. 600 = £6 max) — must also be set on the CatalogPricingRule in Square Dashboard
   weightPercent: integer("weight_percent").notNull().default(10), // probability weight (relative)
   active: boolean("active").notNull().default(true),
@@ -1058,8 +1058,11 @@ export const gamePlays = pgTable("game_plays", {
   claimedByStaffId: integer("claimed_by_staff_id"),
   // Short human-friendly code shown to the customer after winning a reward_tier prize.
   // Staff enter this code to redeem the prize at the bar or on the booking screen.
-  // Null for auto-claimed prizes (loyalty_points, gift_card, customer_group).
+  // Null for auto-claimed prizes (loyalty_points, gift_card, customer_group without code).
   prizeClaimCode: text("prize_claim_code"),
+  // When the claim code expires. Set at play-creation time from prize.prizeExpiryHours (default 168h = 7 days).
+  // Expired codes are hidden from pending claims and rejected on redeem.
+  prizeClaimExpiresAt: timestamp("prize_claim_expires_at"),
 });
 
 export type GamePlay = typeof gamePlays.$inferSelect;

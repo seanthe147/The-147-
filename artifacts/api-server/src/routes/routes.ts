@@ -9980,6 +9980,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       }
 
       const wcPrizeClaimCode = (prize && (prize.prizeType === "reward_tier" || prize.prizeType === "customer_group") && !autoClaimedAt && !saved) ? generateClaimCode() : null;
+      const wcClaimExpiresAt = wcPrizeClaimCode ? new Date(Date.now() + (prize!.prizeExpiryHours ?? 168) * 3600 * 1000) : null;
       const play = await storage.createGamePlay({
         customerId,
         prizeId: prize?.id ?? null,
@@ -9990,6 +9991,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         claimedAt: autoClaimedAt,
         londonDate: wcDate, // prefixed so daily limits don't mix with scratch card
         prizeClaimCode: wcPrizeClaimCode,
+        prizeClaimExpiresAt: wcClaimExpiresAt,
       });
 
       logger.info({ customerId, saved, prizeId: prize?.id, playId: play.id }, "[WC_GAME] Penalty shot played");
@@ -10156,6 +10158,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       }
 
       const scPrizeClaimCode = (prize && (prize.prizeType === "reward_tier" || prize.prizeType === "customer_group") && !autoClaimedAt) ? generateClaimCode() : null;
+      const scClaimExpiresAt = scPrizeClaimCode ? new Date(Date.now() + (prize!.prizeExpiryHours ?? 168) * 3600 * 1000) : null;
       const play = await storage.createGamePlay({
         customerId,
         prizeId: prize?.id ?? null,
@@ -10166,6 +10169,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         claimedAt: autoClaimedAt,
         londonDate,
         prizeClaimCode: scPrizeClaimCode,
+        prizeClaimExpiresAt: scClaimExpiresAt,
       });
 
       res.json({
@@ -10221,6 +10225,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       res.json({ success: true, playId: result.id, customerName: result.customerName, prizeName: result.prizeName });
     } catch (err: any) {
       if ((err as any).alreadyClaimed) return res.status(409).json({ message: "This code has already been redeemed" });
+      if ((err as any).expired) return res.status(410).json({ message: "This prize code has expired" });
       res.status(500).json({ message: err.message });
     }
   });
@@ -10243,6 +10248,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       }
     } catch (err: any) {
       if ((err as any).alreadyClaimed) return res.status(409).json({ message: "This code has already been redeemed" });
+      if ((err as any).expired) return res.status(410).json({ message: "This prize code has expired" });
       return res.status(500).json({ message: err.message });
     }
     // Fall back to venue reward claim code
@@ -10278,6 +10284,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       res.json({ success: true, customerName: result.customerName, prizeName: result.prizeName });
     } catch (err: any) {
       if ((err as any).alreadyClaimed) return res.status(409).json({ message: "This code has already been redeemed" });
+      if ((err as any).expired) return res.status(410).json({ message: "This prize code has expired" });
       res.status(500).json({ message: err.message });
     }
   });
@@ -10391,7 +10398,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         tierPoints: prizeType === "reward_tier" && tierPoints != null ? parseInt(tierPoints, 10) : null,
         giftCardAmountPence: prizeType === "gift_card" && giftCardAmountPence != null ? Math.round(parseFloat(giftCardAmountPence) * 100) : null,
         squareCustomerGroupId: prizeType === "customer_group" ? (squareCustomerGroupId?.trim() ?? null) : null,
-        prizeExpiryHours: prizeType === "customer_group" && prizeExpiryHours != null ? parseInt(prizeExpiryHours, 10) : null,
+        prizeExpiryHours: (prizeType === "customer_group" || prizeType === "reward_tier") && prizeExpiryHours != null ? parseInt(prizeExpiryHours, 10) : null,
         maxDiscountPence: prizeType === "customer_group" && maxDiscountPence != null ? Math.round(parseFloat(maxDiscountPence) * 100) : null,
         weightPercent: weightPercent ?? 10,
         active: active !== false,
@@ -10423,7 +10430,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         tierPoints: prizeType === "reward_tier" && tierPoints != null ? parseInt(tierPoints, 10) : null,
         giftCardAmountPence: prizeType === "gift_card" && giftCardAmountPence != null ? Math.round(parseFloat(giftCardAmountPence) * 100) : null,
         squareCustomerGroupId: prizeType === "customer_group" ? (squareCustomerGroupId?.trim() ?? null) : null,
-        prizeExpiryHours: prizeType === "customer_group" && prizeExpiryHours != null ? parseInt(prizeExpiryHours, 10) : null,
+        prizeExpiryHours: (prizeType === "customer_group" || prizeType === "reward_tier") && prizeExpiryHours != null ? parseInt(prizeExpiryHours, 10) : null,
         maxDiscountPence: prizeType === "customer_group" && maxDiscountPence != null ? Math.round(parseFloat(maxDiscountPence) * 100) : null,
         weightPercent,
         active,

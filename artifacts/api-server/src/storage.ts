@@ -3456,6 +3456,7 @@ export class DatabaseStorage implements IStorage {
     claimedByStaffId?: number | null;
     londonDate: string;
     prizeClaimCode?: string | null;
+    prizeClaimExpiresAt?: Date | null;
   }): Promise<GamePlay> {
     const [play] = await db.insert(gamePlays).values({ ...data, playedAt: new Date() }).returning();
     return play;
@@ -3466,11 +3467,12 @@ export class DatabaseStorage implements IStorage {
   // prizes that have a prizeClaimCode (staff apply discount manually and enter
   // the code to record it). Loyalty-points and gift-card prizes are fully
   // automatic and never appear here.
-  async getPendingRewardClaims(): Promise<Array<{ id: number; customerId: number; customerName: string | null; prizeName: string; prizeType: string; playedAt: Date; londonDate: string; prizeClaimCode: string | null }>> {
+  async getPendingRewardClaims(): Promise<Array<{ id: number; customerId: number; customerName: string | null; prizeName: string; prizeType: string; playedAt: Date; londonDate: string; prizeClaimCode: string | null; prizeClaimExpiresAt: Date | null }>> {
+    const now = new Date();
     const plays = await db.select().from(gamePlays)
       .where(and(isNotNull(gamePlays.prizeId), isNull(gamePlays.claimedAt)))
       .orderBy(desc(gamePlays.playedAt));
-    const result: Array<{ id: number; customerId: number; customerName: string | null; prizeName: string; prizeType: string; playedAt: Date; londonDate: string; prizeClaimCode: string | null }> = [];
+    const result: Array<{ id: number; customerId: number; customerName: string | null; prizeName: string; prizeType: string; playedAt: Date; londonDate: string; prizeClaimCode: string | null; prizeClaimExpiresAt: Date | null }> = [];
     for (const play of plays) {
       if (!play.prizeId) continue;
       const [prize] = await db.select().from(gamePrizes).where(eq(gamePrizes.id, play.prizeId));
@@ -3479,6 +3481,8 @@ export class DatabaseStorage implements IStorage {
       if (prize.prizeType !== "reward_tier" && prize.prizeType !== "customer_group") continue;
       // Old customer_group plays (auto-added to Square group, no claim code) are skipped.
       if (prize.prizeType === "customer_group" && !play.prizeClaimCode) continue;
+      // Skip expired codes — they can no longer be redeemed.
+      if (play.prizeClaimExpiresAt && play.prizeClaimExpiresAt < now) continue;
       const [cust] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, play.customerId));
       result.push({
         id: play.id,
@@ -3489,6 +3493,7 @@ export class DatabaseStorage implements IStorage {
         playedAt: play.playedAt,
         londonDate: play.londonDate,
         prizeClaimCode: play.prizeClaimCode ?? null,
+        prizeClaimExpiresAt: play.prizeClaimExpiresAt ?? null,
       });
     }
     return result;
@@ -3502,6 +3507,10 @@ export class DatabaseStorage implements IStorage {
     if (!anyPlay) return null;
     // Code exists but already redeemed — throw so the caller can return 409
     if (anyPlay.claimedAt) throw Object.assign(new Error("already_claimed"), { alreadyClaimed: true });
+    // Code exists but expired
+    if (anyPlay.prizeClaimExpiresAt && anyPlay.prizeClaimExpiresAt < new Date()) {
+      throw Object.assign(new Error("expired"), { expired: true });
+    }
     const [updated] = await db.update(gamePlays)
       .set({ claimedAt: new Date(), claimedByStaffId: staffId })
       .where(and(eq(gamePlays.id, anyPlay.id), isNull(gamePlays.claimedAt)))

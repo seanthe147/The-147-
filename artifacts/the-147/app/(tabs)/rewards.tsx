@@ -128,6 +128,7 @@ interface GamePrizeClaim {
   playedAt: string;
   londonDate: string;
   prizeClaimCode: string | null;
+  prizeClaimExpiresAt: string | null;
 }
 
 interface GameMyPrizesResponse {
@@ -242,17 +243,22 @@ function WalletSection({
         </View>
       ) : (
         <View style={styles.walletCards}>
-          {gameClaims.map((claim) => (
-            <VoucherCard
-              key={`game-${claim.id}`}
-              accentColor={Colors.brand.gold}
-              typeLabel="🎰 GAME PRIZE"
-              icon="trophy-outline"
-              name={claim.prizeName}
-              code={claim.prizeClaimCode}
-              footer={`Show code to staff · Won ${new Date(claim.playedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`}
-            />
-          ))}
+          {gameClaims.map((claim) => {
+            const expiryStr = claim.prizeClaimExpiresAt ? formatExpiry(claim.prizeClaimExpiresAt) : null;
+            return (
+              <VoucherCard
+                key={`game-${claim.id}`}
+                accentColor={Colors.brand.gold}
+                typeLabel="🎰 GAME PRIZE"
+                icon="trophy-outline"
+                name={claim.prizeName}
+                code={claim.prizeClaimCode}
+                footer={expiryStr
+                  ? `Show code to staff · ${expiryStr}`
+                  : `Show code to staff · Won ${new Date(claim.playedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`}
+              />
+            );
+          })}
           {venueClaims.map((claim) => (
             <VoucherCard
               key={`venue-${claim.id}`}
