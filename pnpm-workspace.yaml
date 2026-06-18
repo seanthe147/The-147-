@@ -186,3 +186,6 @@ overrides:
   # Security: shell-quote <=1.8.3 has ReDoS / argument injection (GHSA-w7jw-789q-3m8p, High)
   # Affected reported version: 1.8.3 — override forces all dependents to 1.8.4+
   shell-quote: "^1.8.4"
+  # Security: http-proxy-middleware <=3.0.5 has host-header bypass (GHSA-gcq2-9pq2-cxqm, High)
+  # and websocket hijack (GHSA-64mm-vxmg-q3vj, Medium). Fixed in 3.0.6+.
+  http-proxy-middleware: ">=3.0.6"
