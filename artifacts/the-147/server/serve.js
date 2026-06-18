@@ -17,6 +17,60 @@ const STATIC_ROOT = path.resolve(__dirname, "..", "static-build");
 const TEMPLATE_PATH = path.resolve(__dirname, "templates", "landing-page.html");
 const basePath = (process.env.BASE_PATH || "/").replace(/\/+$/, "");
 
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+// Per-route SEO metadata for known public Expo routes.
+// These routes have no static-build HTML file, so serve.js renders the landing
+// page template with route-specific head tags so crawlers see real content.
+const ROUTE_META = {
+  "/": {
+    title: "The 147 Bradford — Snooker, Pool & Dining",
+    description:
+      "Book snooker and pool tables, order food and drinks, join our membership, and earn loyalty rewards at The 147 Bradford.",
+  },
+  "/book": {
+    title: "Book a Table — The 147 Bradford",
+    description:
+      "Reserve a snooker or pool table at The 147 Bradford. Check live availability and book online in seconds.",
+  },
+  "/about": {
+    title: "About — The 147 Bradford",
+    description:
+      "Learn about The 147 Bradford snooker club — our venue, facilities, and everything we offer.",
+  },
+  "/events": {
+    title: "Events — The 147 Bradford",
+    description:
+      "Browse upcoming events and competitions at The 147 Bradford snooker club.",
+  },
+  "/contact": {
+    title: "Contact — The 147 Bradford",
+    description:
+      "Get in touch with The 147 Bradford. Find our contact details and send us a message.",
+  },
+  "/order": {
+    title: "Food & Drink — The 147 Bradford",
+    description:
+      "Order food and drinks to your table at The 147 Bradford. Browse the full menu and place your order.",
+  },
+  "/loyalty": {
+    title: "Loyalty Rewards — The 147 Bradford",
+    description:
+      "Earn and spend loyalty points at The 147 Bradford. Sign up and start earning rewards on every visit.",
+  },
+  "/rewards": {
+    title: "Rewards — The 147 Bradford",
+    description:
+      "Claim your prize and venue rewards at The 147 Bradford snooker club.",
+  },
+};
+
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
@@ -65,17 +119,41 @@ function serveManifest(platform, res) {
   res.end(manifest);
 }
 
-function serveLandingPage(req, res, landingPageTemplate, appName) {
+function serveLandingPage(req, res, landingPageTemplate, appName, meta) {
   const forwardedProto = req.headers["x-forwarded-proto"];
   const protocol = forwardedProto || "https";
   const host = req.headers["x-forwarded-host"] || req.headers["host"];
   const baseUrl = `${protocol}://${host}`;
   const expsUrl = `${host}`;
 
+  const routeMeta = meta || ROUTE_META["/"];
+  const title = routeMeta.title || appName;
+  const description = routeMeta.description || "";
+  const canonicalPath = routeMeta.canonicalPath || "";
+  const canonicalUrl = `${baseUrl}${canonicalPath}`;
+
+  const structuredData = JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "SportsActivityLocation",
+    "name": "The 147 Bradford",
+    "description": "Snooker, pool, and dining venue in Bradford, UK.",
+    "url": baseUrl,
+    "address": {
+      "@type": "PostalAddress",
+      "addressLocality": "Bradford",
+      "addressRegion": "West Yorkshire",
+      "addressCountry": "GB",
+    },
+  });
+
   const html = landingPageTemplate
     .replace(/BASE_URL_PLACEHOLDER/g, baseUrl)
     .replace(/EXPS_URL_PLACEHOLDER/g, expsUrl)
-    .replace(/APP_NAME_PLACEHOLDER/g, appName);
+    .replace(/APP_NAME_PLACEHOLDER/g, appName)
+    .replace(/META_TITLE_PLACEHOLDER/g, escHtml(title))
+    .replace(/META_DESCRIPTION_PLACEHOLDER/g, escHtml(description))
+    .replace(/CANONICAL_URL_PLACEHOLDER/g, canonicalUrl)
+    .replace(/STRUCTURED_DATA_PLACEHOLDER/g, structuredData);
 
   res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
   res.end(html);
@@ -122,7 +200,7 @@ const server = http.createServer((req, res) => {
     }
 
     if (pathname === "/") {
-      return serveLandingPage(req, res, landingPageTemplate, appName);
+      return serveLandingPage(req, res, landingPageTemplate, appName, { ...ROUTE_META["/"], canonicalPath: "/" });
     }
   }
 
@@ -191,6 +269,16 @@ const server = http.createServer((req, res) => {
       );
       return;
     }
+  }
+
+  // Known public Expo routes — serve landing page with route-specific metadata
+  // so crawlers that don't execute JavaScript still see real head content.
+  // (These routes have no static-build HTML file; without this they would 404.)
+  if (ROUTE_META[pathname]) {
+    return serveLandingPage(req, res, landingPageTemplate, appName, {
+      ...ROUTE_META[pathname],
+      canonicalPath: pathname,
+    });
   }
 
   serveStaticFile(pathname, res);
