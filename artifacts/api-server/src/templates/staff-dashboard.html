@@ -1727,6 +1727,7 @@
             <button class="menu-tab active" data-stock="counts" onclick="switchStockTab('counts')">Stock Counts</button>
             <button class="menu-tab" data-stock="deliveries" onclick="switchStockTab('deliveries')">Deliveries</button>
             <button class="menu-tab" data-stock="report" onclick="switchStockTab('report')">Consumption Report</button>
+            <button class="menu-tab" data-stock="catalogue" onclick="switchStockTab('catalogue')">Catalogue</button>
           </div>
 
           <!-- COUNTS TAB -->
@@ -1821,6 +1822,85 @@
               </div>
             </div>
             <div id="stockReportContent"></div>
+          </div>
+
+          <!-- CATALOGUE TAB -->
+          <div id="stockTabCatalogue" style="display:none">
+            <div class="menu-refresh-bar" style="margin-bottom:16px">
+              <p style="font-size:13px;color:var(--text-2);margin:0">Add and manage stock items. Link items to Square POS to track sold vs consumed in the Consumption Report.</p>
+              <button class="btn btn-primary btn-sm" onclick="showAddStockItemForm()">+ Add Item</button>
+            </div>
+
+            <!-- Add Item Form -->
+            <div id="stockAddItemForm" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px">
+              <div style="font-size:15px;font-weight:700;margin-bottom:14px">Add Stock Item</div>
+              <div id="stockAddItemErr" class="modal-err" style="display:none"></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Category</label>
+                  <select class="form-input" id="addItemCategory"></select>
+                </div>
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Item Name</label>
+                  <input class="form-input" type="text" id="addItemName" placeholder="e.g. Estrella Damm">
+                </div>
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Count Unit</label>
+                  <input class="form-input" type="text" id="addItemUnit" placeholder="e.g. bottle, keg, kg">
+                </div>
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Container Size (optional)</label>
+                  <input class="form-input" type="text" id="addItemContainer" placeholder="e.g. 330ml, 70cl">
+                </div>
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Case Size (optional)</label>
+                  <input class="form-input" type="number" id="addItemCase" placeholder="e.g. 24">
+                </div>
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Supplier (optional)</label>
+                  <input class="form-input" type="text" id="addItemSupplier" placeholder="e.g. Matthew Clark">
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;justify-content:flex-end">
+                <button class="btn btn-secondary btn-sm" onclick="cancelAddStockItem()">Cancel</button>
+                <button class="btn btn-primary btn-sm" onclick="saveNewStockItem()">Save Item</button>
+              </div>
+            </div>
+
+            <!-- Edit Item Form -->
+            <div id="stockEditItemForm" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px">
+              <div style="font-size:15px;font-weight:700;margin-bottom:14px">Edit Item</div>
+              <div id="stockEditItemErr" class="modal-err" style="display:none"></div>
+              <input type="hidden" id="editItemId">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Item Name</label>
+                  <input class="form-input" type="text" id="editItemName">
+                </div>
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Container Size</label>
+                  <input class="form-input" type="text" id="editItemContainer" placeholder="e.g. 330ml">
+                </div>
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Case Size</label>
+                  <input class="form-input" type="number" id="editItemCase" placeholder="e.g. 24">
+                </div>
+                <div class="form-group" style="margin:0">
+                  <label class="form-label">Serves per Unit</label>
+                  <input class="form-input" type="number" step="0.1" id="editItemServes" placeholder="e.g. 1">
+                </div>
+                <div class="form-group" style="margin:0;grid-column:span 2">
+                  <label class="form-label">Supplier</label>
+                  <input class="form-input" type="text" id="editItemSupplier">
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;justify-content:flex-end">
+                <button class="btn btn-secondary btn-sm" onclick="cancelEditStockItem()">Cancel</button>
+                <button class="btn btn-primary btn-sm" onclick="saveEditStockItem()">Save Changes</button>
+              </div>
+            </div>
+
+            <div id="stockCatalogueContent"><div class="loading-state"><div class="spinner"></div>Loading items…</div></div>
           </div>
         </div>
       </div>
@@ -8297,11 +8377,12 @@
   var _stockItems=[], _stockCategories=[];
 
   function switchStockTab(tab){
-    ['counts','deliveries','report'].forEach(t=>{
+    ['counts','deliveries','report','catalogue'].forEach(t=>{
       var el2=el('stockTab'+t.charAt(0).toUpperCase()+t.slice(1));
       if(el2)el2.style.display=t===tab?'':'none';
     });
     document.querySelectorAll('[data-stock]').forEach(b=>b.classList.toggle('active',b.dataset.stock===tab));
+    if(tab==='catalogue')renderStockCatalogue();
   }
 
   async function loadStockPage(){
@@ -8513,6 +8594,131 @@
   document.querySelector('[data-stock="deliveries"]')&&document.querySelector('[data-stock="deliveries"]').addEventListener('click',function(){
     if(!_stockDeliveriesLoaded){_stockDeliveriesLoaded=true;renderStockDeliveries();}
   });
+
+  /* ── Stock Catalogue ── */
+  function renderStockCatalogue(){
+    var wrap=el('stockCatalogueContent');
+    if(!wrap)return;
+    if(!_stockCategories.length&&!_stockItems.length){
+      wrap.innerHTML='<p style="color:var(--text-2);font-size:13px">No items yet. Click "+ Add Item" to get started.</p>';return;
+    }
+    var html='<div style="display:flex;flex-direction:column;gap:20px">';
+    var hasAny=false;
+    _stockCategories.forEach(function(cat){
+      var catItems=_stockItems.filter(function(i){return i.categoryId===cat.id;});
+      if(!catItems.length)return;
+      hasAny=true;
+      html+='<div>';
+      html+='<div style="font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">'+escHtml(cat.name)+'</div>';
+      html+='<div style="display:flex;flex-direction:column;gap:6px">';
+      catItems.forEach(function(item){
+        var linked=item.squareCatalogVariationId
+          ?'<span style="background:#16A34A20;color:#16A34A;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap">✓ '+escHtml(item.squareCatalogVariationName||'POS linked')+'</span>'
+          :'<span style="background:#F59E0B20;color:#D97706;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px">Not linked to POS</span>';
+        var inactiveBadge=item.active===false?'<span style="background:#DC262620;color:#DC2626;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;margin-left:4px">Inactive</span>':'';
+        var meta=[];
+        if(item.containerSize)meta.push(escHtml(item.containerSize));
+        if(item.caseSize)meta.push('Case/'+item.caseSize);
+        if(item.supplier)meta.push(escHtml(item.supplier));
+        html+='<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px">'+
+          '<div style="flex:1;min-width:0">'+
+            '<div style="font-weight:600;font-size:14px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">'+
+              escHtml(item.name)+
+              '<span style="font-weight:400;color:var(--text-2);font-size:12px">'+escHtml(item.countUnit||'')+'</span>'+
+              inactiveBadge+
+            '</div>'+
+            '<div style="font-size:12px;color:var(--text-2);margin-top:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+              (meta.length?'<span>'+meta.join(' · ')+'</span>':'')+
+              linked+
+            '</div>'+
+          '</div>'+
+          '<button class="btn btn-secondary btn-sm" onclick="openEditStockItem('+item.id+')" style="flex-shrink:0">Edit</button>'+
+          '<button class="btn btn-secondary btn-sm" style="flex-shrink:0;color:'+(item.active===false?'#16A34A':'var(--red)')+';border-color:'+(item.active===false?'#16A34A':'var(--red)')+'" onclick="toggleStockItemActive('+item.id+','+(item.active===false?'true':'false')+')">'+
+            (item.active===false?'Activate':'Deactivate')+
+          '</button>'+
+        '</div>';
+      });
+      html+='</div></div>';
+    });
+    if(!hasAny)html+='<p style="color:var(--text-2);font-size:13px">No items yet. Click "+ Add Item" to get started.</p>';
+    html+='</div>';
+    wrap.innerHTML=html;
+  }
+
+  function showAddStockItemForm(){
+    var sel=el('addItemCategory');
+    sel.innerHTML='';
+    _stockCategories.forEach(function(c){
+      var opt=document.createElement('option');opt.value=c.id;opt.textContent=c.name;sel.appendChild(opt);
+    });
+    el('addItemName').value='';el('addItemUnit').value='';el('addItemContainer').value='';el('addItemCase').value='';el('addItemSupplier').value='';
+    el('stockAddItemErr').style.display='none';
+    el('stockAddItemForm').style.display='';
+    el('stockEditItemForm').style.display='none';
+  }
+
+  function cancelAddStockItem(){el('stockAddItemForm').style.display='none';}
+
+  async function saveNewStockItem(){
+    var errEl=el('stockAddItemErr');errEl.style.display='none';
+    var catId=parseInt(el('addItemCategory').value);
+    var name=el('addItemName').value.trim();
+    var unit=el('addItemUnit').value.trim();
+    if(!catId||!name||!unit){errEl.textContent='Category, name, and count unit are all required.';errEl.style.display='';return;}
+    var body={categoryId:catId,name,countUnit:unit};
+    if(el('addItemContainer').value.trim())body.containerSize=el('addItemContainer').value.trim();
+    if(el('addItemCase').value)body.caseSize=parseInt(el('addItemCase').value);
+    if(el('addItemSupplier').value.trim())body.supplier=el('addItemSupplier').value.trim();
+    try{
+      var item=await api('/api/stock/items',{method:'POST',body:JSON.stringify(body)});
+      _stockItems.push(item);
+      el('stockAddItemForm').style.display='none';
+      renderStockCatalogue();
+      toast('Item added');
+    }catch(e){errEl.textContent='Failed: '+(e.message||'unknown error');errEl.style.display='';}
+  }
+
+  function openEditStockItem(id){
+    var item=_stockItems.find(function(i){return i.id===id;});
+    if(!item)return;
+    el('editItemId').value=id;
+    el('editItemName').value=item.name||'';
+    el('editItemContainer').value=item.containerSize||'';
+    el('editItemCase').value=item.caseSize||'';
+    el('editItemServes').value=item.servesPerUnit||'';
+    el('editItemSupplier').value=item.supplier||'';
+    el('stockEditItemErr').style.display='none';
+    el('stockEditItemForm').style.display='';
+    el('stockAddItemForm').style.display='none';
+    el('stockEditItemForm').scrollIntoView({behavior:'smooth',block:'nearest'});
+  }
+
+  function cancelEditStockItem(){el('stockEditItemForm').style.display='none';}
+
+  async function saveEditStockItem(){
+    var errEl=el('stockEditItemErr');errEl.style.display='none';
+    var id=parseInt(el('editItemId').value);
+    var name=el('editItemName').value.trim();
+    if(!name){errEl.textContent='Item name is required.';errEl.style.display='';return;}
+    var body={name,containerSize:el('editItemContainer').value.trim()||null,caseSize:el('editItemCase').value?parseInt(el('editItemCase').value):null,servesPerUnit:el('editItemServes').value?parseFloat(el('editItemServes').value):null,supplier:el('editItemSupplier').value.trim()||null};
+    try{
+      var updated=await api('/api/stock/items/'+id,{method:'PATCH',body:JSON.stringify(body)});
+      var idx=_stockItems.findIndex(function(i){return i.id===id;});
+      if(idx>=0)_stockItems[idx]=Object.assign({},_stockItems[idx],updated);
+      el('stockEditItemForm').style.display='none';
+      renderStockCatalogue();
+      toast('Item updated');
+    }catch(e){errEl.textContent='Failed: '+(e.message||'unknown error');errEl.style.display='';}
+  }
+
+  async function toggleStockItemActive(id,active){
+    try{
+      var updated=await api('/api/stock/items/'+id,{method:'PATCH',body:JSON.stringify({active})});
+      var idx=_stockItems.findIndex(function(i){return i.id===id;});
+      if(idx>=0)_stockItems[idx]=Object.assign({},_stockItems[idx],updated);
+      renderStockCatalogue();
+    }catch(e){alert('Failed to update: '+(e.message||'unknown error'));}
+  }
   /* ── END Stock Management ── */
 
   async function loadHR(){
@@ -12108,6 +12314,13 @@
   window.deleteDelivery=deleteDelivery;
   window.saveDelivery=saveDelivery;
   window.runStockReport=runStockReport;
+  window.showAddStockItemForm=showAddStockItemForm;
+  window.cancelAddStockItem=cancelAddStockItem;
+  window.saveNewStockItem=saveNewStockItem;
+  window.openEditStockItem=openEditStockItem;
+  window.cancelEditStockItem=cancelEditStockItem;
+  window.saveEditStockItem=saveEditStockItem;
+  window.toggleStockItemActive=toggleStockItemActive;
   window.quickRedeem=quickRedeem;
   window.claimGamePlay=claimGamePlay;
   window.closeOrderAuthModal=closeOrderAuthModal;
