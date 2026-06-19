@@ -8665,12 +8665,14 @@
     var name=el('addItemName').value.trim();
     var unit=el('addItemUnit').value.trim();
     if(!catId||!name||!unit){errEl.textContent='Category, name, and count unit are all required.';errEl.style.display='';return;}
-    var body={categoryId:catId,name,countUnit:unit};
+    var body={categoryId:catId,name:name,countUnit:unit};
     if(el('addItemContainer').value.trim())body.containerSize=el('addItemContainer').value.trim();
     if(el('addItemCase').value)body.caseSize=parseInt(el('addItemCase').value);
     if(el('addItemSupplier').value.trim())body.supplier=el('addItemSupplier').value.trim();
     try{
-      var item=await api('/api/stock/items',{method:'POST',body:JSON.stringify(body)});
+      var r=await api('/api/stock/items',{method:'POST',body:JSON.stringify(body)});
+      var item=await r.json();
+      if(!r.ok){errEl.textContent='Failed: '+(item.error||'unknown error');errEl.style.display='';return;}
       _stockItems.push(item);
       el('stockAddItemForm').style.display='none';
       renderStockCatalogue();
@@ -8700,9 +8702,11 @@
     var id=parseInt(el('editItemId').value);
     var name=el('editItemName').value.trim();
     if(!name){errEl.textContent='Item name is required.';errEl.style.display='';return;}
-    var body={name,containerSize:el('editItemContainer').value.trim()||null,caseSize:el('editItemCase').value?parseInt(el('editItemCase').value):null,servesPerUnit:el('editItemServes').value?parseFloat(el('editItemServes').value):null,supplier:el('editItemSupplier').value.trim()||null};
+    var body={name:name,containerSize:el('editItemContainer').value.trim()||null,caseSize:el('editItemCase').value?parseInt(el('editItemCase').value):null,servesPerUnit:el('editItemServes').value?parseFloat(el('editItemServes').value):null,supplier:el('editItemSupplier').value.trim()||null};
     try{
-      var updated=await api('/api/stock/items/'+id,{method:'PATCH',body:JSON.stringify(body)});
+      var r=await api('/api/stock/items/'+id,{method:'PATCH',body:JSON.stringify(body)});
+      var updated=await r.json();
+      if(!r.ok){errEl.textContent='Failed: '+(updated.error||'unknown error');errEl.style.display='';return;}
       var idx=_stockItems.findIndex(function(i){return i.id===id;});
       if(idx>=0)_stockItems[idx]=Object.assign({},_stockItems[idx],updated);
       el('stockEditItemForm').style.display='none';
@@ -8713,7 +8717,9 @@
 
   async function toggleStockItemActive(id,active){
     try{
-      var updated=await api('/api/stock/items/'+id,{method:'PATCH',body:JSON.stringify({active})});
+      var r=await api('/api/stock/items/'+id,{method:'PATCH',body:JSON.stringify({active:active})});
+      var updated=await r.json();
+      if(!r.ok){alert('Failed to update: '+(updated.error||'unknown error'));return;}
       var idx=_stockItems.findIndex(function(i){return i.id===id;});
       if(idx>=0)_stockItems[idx]=Object.assign({},_stockItems[idx],updated);
       renderStockCatalogue();
