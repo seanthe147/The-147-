@@ -8388,12 +8388,12 @@
   async function loadStockPage(){
     switchStockTab('counts');
     try{
-      var [items,cats]=await Promise.all([
+      var [itemsR,catsR]=await Promise.all([
         api('/api/stock/items'),
         api('/api/stock/categories'),
       ]);
-      _stockItems=items||[];
-      _stockCategories=cats||[];
+      _stockItems=(await itemsR.json())||[];
+      _stockCategories=(await catsR.json())||[];
     }catch(e){_stockItems=[];_stockCategories=[];}
     renderStockCounts();
   }
@@ -8403,7 +8403,7 @@
     if(!wrap)return;
     wrap.innerHTML='<div class="loading-state"><div class="spinner"></div>Loading counts…</div>';
     try{
-      var counts=await api('/api/stock/counts');
+      var counts=await (await api('/api/stock/counts')).json();
       if(!counts||!counts.length){wrap.innerHTML='<p style="color:var(--text-2);font-size:13px">No counts yet. Use "+ New Count" to record your first.</p>';return;}
       var html='<div style="display:flex;flex-direction:column;gap:10px">';
       counts.forEach(function(c){
@@ -8476,7 +8476,7 @@
     if(!wrap)return;
     wrap.innerHTML='<div class="loading-state"><div class="spinner"></div>Loading deliveries…</div>';
     try{
-      var deliveries=await api('/api/stock/deliveries');
+      var deliveries=await (await api('/api/stock/deliveries')).json();
       if(!deliveries||!deliveries.length){wrap.innerHTML='<p style="color:var(--text-2);font-size:13px">No deliveries logged yet.</p>';return;}
       var html='<div style="display:flex;flex-direction:column;gap:10px">';
       deliveries.forEach(function(d){
@@ -8551,7 +8551,7 @@
     if(!start||!end){wrap.innerHTML='<p style="color:var(--red);font-size:13px">Please set both period dates.</p>';return;}
     wrap.innerHTML='<div class="loading-state"><div class="spinner"></div>Running report…</div>';
     try{
-      var data=await api('/api/stock/report?periodStart='+encodeURIComponent(start)+'&periodEnd='+encodeURIComponent(end));
+      var data=await (await api('/api/stock/report?periodStart='+encodeURIComponent(start)+'&periodEnd='+encodeURIComponent(end))).json();
       if(!data||!data.length){wrap.innerHTML='<p style="color:var(--text-2);font-size:13px">No data for this period. Ensure stock counts have been submitted.</p>';return;}
       var lastCat='';
       var html='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
