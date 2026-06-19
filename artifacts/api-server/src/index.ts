@@ -405,6 +405,17 @@ function scheduleWinBackEmails() {
 
   const app = createApp();
 
+  // Compute the canonical site origin used in SEO meta tags for public HTML
+  // templates. Prefers the first domain from REPLIT_DOMAINS (set in production);
+  // falls back to a known default so local/dev serves have valid canonicals.
+  const siteOrigin = (() => {
+    const domains = (process.env.REPLIT_DOMAINS ?? "")
+      .split(",")
+      .map((d) => d.trim())
+      .filter(Boolean);
+    return domains.length > 0 ? `https://${domains[0]}` : "https://the147bradford.replit.app";
+  })();
+
   // Widget route — reads fresh from disk on every request
   const widgetHtmlPath = templatePath("booking-widget.html");
   if (fs.existsSync(widgetHtmlPath)) {
@@ -422,7 +433,8 @@ function scheduleWinBackEmails() {
   const privacyPolicyHtmlPath = templatePath("privacy-policy.html");
   if (fs.existsSync(privacyPolicyHtmlPath)) {
     const privacyPolicyHtml = fs.readFileSync(privacyPolicyHtmlPath, "utf-8")
-      .replace("{{PRIVACY_POLICY_DATE}}", POLICY_DATES.privacyPolicy);
+      .replace("{{PRIVACY_POLICY_DATE}}", POLICY_DATES.privacyPolicy)
+      .replace(/\{\{BASE_URL\}\}/g, siteOrigin);
     app.get("/privacy-policy", (_req, res) => {
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.status(200).send(privacyPolicyHtml);
@@ -432,7 +444,8 @@ function scheduleWinBackEmails() {
   // Terms & Conditions
   const termsHtmlPath = templatePath("terms-of-service.html");
   if (fs.existsSync(termsHtmlPath)) {
-    const termsHtml = fs.readFileSync(termsHtmlPath, "utf-8");
+    const termsHtml = fs.readFileSync(termsHtmlPath, "utf-8")
+      .replace(/\{\{BASE_URL\}\}/g, siteOrigin);
     app.get("/terms", (_req, res) => {
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.status(200).send(termsHtml);
@@ -453,7 +466,8 @@ function scheduleWinBackEmails() {
   const gdprRightsHtmlPath = templatePath("gdpr-rights.html");
   if (fs.existsSync(gdprRightsHtmlPath)) {
     const gdprRightsHtml = fs.readFileSync(gdprRightsHtmlPath, "utf-8")
-      .replace("{{GDPR_RIGHTS_DATE}}", POLICY_DATES.gdprRights);
+      .replace("{{GDPR_RIGHTS_DATE}}", POLICY_DATES.gdprRights)
+      .replace(/\{\{BASE_URL\}\}/g, siteOrigin);
     app.get("/gdpr-rights", (_req, res) => {
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.status(200).send(gdprRightsHtml);
@@ -464,7 +478,8 @@ function scheduleWinBackEmails() {
   const cookiePolicyHtmlPath = templatePath("cookie-policy.html");
   if (fs.existsSync(cookiePolicyHtmlPath)) {
     const cookiePolicyHtml = fs.readFileSync(cookiePolicyHtmlPath, "utf-8")
-      .replace("{{COOKIE_POLICY_DATE}}", POLICY_DATES.cookiePolicy);
+      .replace("{{COOKIE_POLICY_DATE}}", POLICY_DATES.cookiePolicy)
+      .replace(/\{\{BASE_URL\}\}/g, siteOrigin);
     app.get("/cookie-policy", (_req, res) => {
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.status(200).send(cookiePolicyHtml);
@@ -475,7 +490,8 @@ function scheduleWinBackEmails() {
   const cancellationPolicyHtmlPath = templatePath("cancellation-policy.html");
   if (fs.existsSync(cancellationPolicyHtmlPath)) {
     const cancellationPolicyHtml = fs.readFileSync(cancellationPolicyHtmlPath, "utf-8")
-      .replace("{{CANCELLATION_POLICY_DATE}}", POLICY_DATES.cancellationPolicy);
+      .replace("{{CANCELLATION_POLICY_DATE}}", POLICY_DATES.cancellationPolicy)
+      .replace(/\{\{BASE_URL\}\}/g, siteOrigin);
     app.get("/cancellation-policy", (_req, res) => {
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.status(200).send(cancellationPolicyHtml);

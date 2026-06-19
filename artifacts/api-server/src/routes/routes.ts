@@ -11735,11 +11735,16 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
   };
-  const serveMembershipPage = (_req: Request, res: Response) => {
+  const serveMembershipPage = (req: Request, res: Response) => {
     const pagePath = path.join(__dirname, "../src/templates", "membership-page.html");
     membershipPageHeaders(res);
     try {
-      const html = fs.readFileSync(pagePath, "utf-8");
+      const proto = (req.headers["x-forwarded-proto"] as string | undefined) || "https";
+      const host = (req.headers["x-forwarded-host"] as string | undefined) || (req.headers["host"] as string | undefined) || "";
+      const siteOrigin = `${proto}://${host}`;
+      const html = fs.readFileSync(pagePath, "utf-8")
+        .replace(/\{\{CANONICAL_URL\}\}/g, `${siteOrigin}/membership`)
+        .replace(/\{\{SITE_ORIGIN\}\}/g, siteOrigin);
       res.send(html);
     } catch {
       res.status(500).send("Page unavailable");
@@ -13649,12 +13654,16 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   });
 
   // Data deletion page — required by Apple App Store & Google Play
-  app.get("/delete-account", (_req, res) => {
+  app.get("/delete-account", (req, res) => {
     const pagePath = path.join(__dirname, "../src/templates", "delete-account.html");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "no-store");
     try {
-      const html = fs.readFileSync(pagePath, "utf-8");
+      const proto = (req.headers["x-forwarded-proto"] as string | undefined) || "https";
+      const host = (req.headers["x-forwarded-host"] as string | undefined) || (req.headers["host"] as string | undefined) || "";
+      const siteOrigin = `${proto}://${host}`;
+      const html = fs.readFileSync(pagePath, "utf-8")
+        .replace(/\{\{BASE_URL\}\}/g, siteOrigin);
       res.send(html);
     } catch (err) {
       res.status(500).send("Page unavailable");
