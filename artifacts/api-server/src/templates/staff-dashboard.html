@@ -1755,12 +1755,24 @@
                 <label class="form-label">Notes (optional)</label>
                 <input class="form-input" type="text" id="stockCountNotes" placeholder="e.g. End of week count">
               </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+                <div style="font-size:12px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.6px">Items</div>
+                <button class="btn btn-secondary btn-sm" onclick="openBarcodeScan()" title="Scan a barcode to jump to that item">📷 Scan Barcode</button>
+              </div>
               <div id="stockCountItems" style="margin-bottom:16px"></div>
               <div style="display:flex;gap:8px;justify-content:flex-end">
                 <button class="btn btn-secondary btn-sm" onclick="cancelStockCount()">Cancel</button>
                 <button class="btn btn-secondary btn-sm" onclick="submitStockCount('draft')">Save as Draft</button>
                 <button class="btn btn-primary btn-sm" onclick="submitStockCount('submitted')">Submit Count</button>
               </div>
+            </div>
+
+            <!-- Barcode scanner overlay -->
+            <div id="barcodeScanOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;flex-direction:column;align-items:center;justify-content:center;gap:16px">
+              <div style="color:#fff;font-size:16px;font-weight:700">Barcode Scanner</div>
+              <video id="barcodeScanVideo" style="width:min(480px,90vw);border-radius:12px;background:#000" playsinline muted></video>
+              <div id="barcodeScanStatus" style="color:#ddd;font-size:13px;text-align:center;max-width:380px">Starting camera…</div>
+              <button class="btn btn-secondary btn-sm" onclick="closeBarcodeScanner()" style="color:#fff;border-color:#fff">Close</button>
             </div>
 
             <div id="stockCountsContent"><div class="loading-state"><div class="spinner"></div>Loading counts…</div></div>
@@ -1828,7 +1840,11 @@
           <div id="stockTabCatalogue" style="display:none">
             <div class="menu-refresh-bar" style="margin-bottom:16px">
               <p style="font-size:13px;color:var(--text-2);margin:0">Add and manage stock items. Link items to Square POS to track sold vs consumed in the Consumption Report.</p>
-              <button class="btn btn-primary btn-sm" onclick="showAddStockItemForm()">+ Add Item</button>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-secondary btn-sm" onclick="openAutoLink()">🔗 Auto-link POS</button>
+                <button class="btn btn-secondary btn-sm" onclick="openPOSImport()">📥 Import from POS</button>
+                <button class="btn btn-primary btn-sm" onclick="showAddStockItemForm()">+ Add Item</button>
+              </div>
             </div>
 
             <!-- Add Item Form -->
@@ -1894,9 +1910,46 @@
                   <input class="form-input" type="text" id="editItemSupplier">
                 </div>
               </div>
-              <div style="display:flex;gap:8px;justify-content:flex-end">
+              <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:14px">
+                <div style="font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Square POS Link</div>
+                <div id="editItemPOSStatus" style="font-size:13px;color:var(--text-2);margin-bottom:8px">Not linked</div>
+                <div id="editItemPOSPicker" style="display:none;margin-bottom:8px">
+                  <input class="form-input" id="editItemPOSSearch" type="text" placeholder="Search POS variations…" oninput="filterPOSVariations()" style="margin-bottom:6px">
+                  <select class="form-input" id="editItemPOSSelect" size="5" style="height:auto"></select>
+                </div>
+                <div style="display:flex;gap:8px">
+                  <button class="btn btn-secondary btn-sm" id="editItemPOSChangeBtn" onclick="togglePOSPicker()">Change link</button>
+                  <button class="btn btn-secondary btn-sm" id="editItemPOSUnlinkBtn" onclick="unlinkItemVariation()" style="display:none;color:var(--red);border-color:var(--red)">Unlink</button>
+                  <button class="btn btn-primary btn-sm" id="editItemPOSSaveBtn" onclick="savePOSLink()" style="display:none">Save Link</button>
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
                 <button class="btn btn-secondary btn-sm" onclick="cancelEditStockItem()">Cancel</button>
                 <button class="btn btn-primary btn-sm" onclick="saveEditStockItem()">Save Changes</button>
+              </div>
+            </div>
+
+            <!-- Import from POS panel -->
+            <div id="stockPOSImportPanel" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px">
+              <div style="font-size:15px;font-weight:700;margin-bottom:4px">Import from Square POS</div>
+              <div style="font-size:13px;color:var(--text-2);margin-bottom:14px">Select Square catalog items to add to your stock catalogue. Pick a category and count unit for each, then click Import.</div>
+              <div id="stockPOSImportErr" class="modal-err" style="display:none"></div>
+              <div id="stockPOSImportList"><div class="loading-state"><div class="spinner"></div>Loading Square catalog…</div></div>
+              <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+                <button class="btn btn-secondary btn-sm" onclick="closePOSImport()">Cancel</button>
+                <button class="btn btn-primary btn-sm" onclick="savePOSImport()">Import Selected</button>
+              </div>
+            </div>
+
+            <!-- Auto-link panel -->
+            <div id="stockAutoLinkPanel" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px">
+              <div style="font-size:15px;font-weight:700;margin-bottom:4px">Auto-link to Square POS</div>
+              <div style="font-size:13px;color:var(--text-2);margin-bottom:14px">Review AI-suggested matches between your stock items and Square variations. Tick the ones that look right, then save.</div>
+              <div id="stockAutoLinkErr" class="modal-err" style="display:none"></div>
+              <div id="stockAutoLinkList"><div class="loading-state"><div class="spinner"></div>Matching…</div></div>
+              <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+                <button class="btn btn-secondary btn-sm" onclick="closeAutoLink()">Cancel</button>
+                <button class="btn btn-primary btn-sm" onclick="saveAutoLinks()">Save Confirmed Links</button>
               </div>
             </div>
 
@@ -8690,6 +8743,21 @@
     el('editItemServes').value=item.servesPerUnit||'';
     el('editItemSupplier').value=item.supplier||'';
     el('stockEditItemErr').style.display='none';
+    // POS link status
+    el('editItemPOSPicker').style.display='none';
+    el('editItemPOSSaveBtn').style.display='none';
+    if(item.squareCatalogVariationId){
+      el('editItemPOSStatus').innerHTML='<span style="color:#16A34A;font-weight:600">✓ Linked: '+escHtml(item.squareCatalogVariationName||item.squareCatalogVariationId)+'</span>';
+      el('editItemPOSUnlinkBtn').style.display='';
+      el('editItemPOSChangeBtn').textContent='Change link';
+    }else{
+      el('editItemPOSStatus').textContent='Not linked to Square POS';
+      el('editItemPOSUnlinkBtn').style.display='none';
+      el('editItemPOSChangeBtn').textContent='Link to POS';
+    }
+    _posVariationsForEdit=null;
+    el('stockPOSImportPanel').style.display='none';
+    el('stockAutoLinkPanel').style.display='none';
     el('stockEditItemForm').style.display='';
     el('stockAddItemForm').style.display='none';
     el('stockEditItemForm').scrollIntoView({behavior:'smooth',block:'nearest'});
@@ -8724,6 +8792,276 @@
       if(idx>=0)_stockItems[idx]=Object.assign({},_stockItems[idx],updated);
       renderStockCatalogue();
     }catch(e){alert('Failed to update: '+(e.message||'unknown error'));}
+  }
+  /* ── POS Import ── */
+  var _posVariations=[];
+  async function openPOSImport(){
+    el('stockPOSImportPanel').style.display='';
+    el('stockAutoLinkPanel').style.display='none';
+    el('stockAddItemForm').style.display='none';
+    el('stockEditItemForm').style.display='none';
+    el('stockPOSImportErr').style.display='none';
+    el('stockPOSImportList').innerHTML='<div class="loading-state"><div class="spinner"></div>Loading Square catalog…</div>';
+    try{
+      var r=await api('/api/staff/stock/square-variations');
+      _posVariations=await r.json();
+      var linkedIds=new Set(_stockItems.filter(function(i){return i.squareCatalogVariationId;}).map(function(i){return i.squareCatalogVariationId;}));
+      var alreadyNamed=new Set(_stockItems.map(function(i){return i.name.toLowerCase();}));
+      var unimported=_posVariations.filter(function(v){return !linkedIds.has(v.variationId);});
+      if(!unimported.length){el('stockPOSImportList').innerHTML='<p style="color:var(--text-2);font-size:13px">All Square catalog items are already in your stock catalogue.</p>';return;}
+      var catOpts=_stockCategories.map(function(c){return '<option value="'+c.id+'">'+escHtml(c.name)+'</option>';}).join('');
+      if(!catOpts)catOpts='<option value="">— Add categories first —</option>';
+      var html='<div style="display:flex;flex-direction:column;gap:8px">';
+      unimported.forEach(function(v,i){
+        var exists=alreadyNamed.has(v.displayName.toLowerCase());
+        html+='<div style="display:flex;align-items:center;gap:10px;background:#F8FAFC;border:1px solid var(--border);border-radius:8px;padding:10px 12px">'+
+          '<input type="checkbox" id="posImport_'+i+'" data-variation-id="'+escHtml(v.variationId)+'" data-variation-name="'+escHtml(v.displayName)+'" style="width:16px;height:16px;flex-shrink:0"'+(exists?'':' checked')+'>'+
+          '<div style="flex:1;min-width:0">'+
+            '<div style="font-size:13px;font-weight:600">'+escHtml(v.displayName)+'</div>'+
+            (exists?'<div style="font-size:11px;color:#D97706">Similar item may already exist</div>':'')+
+          '</div>'+
+          '<select class="form-input" style="width:130px;font-size:12px;padding:4px 6px" data-cat-for="'+i+'">'+catOpts+'</select>'+
+          '<input class="form-input" type="text" placeholder="Unit" style="width:80px;font-size:12px;padding:4px 6px" data-unit-for="'+i+'" value="unit">'+
+        '</div>';
+      });
+      html+='</div>';
+      el('stockPOSImportList').innerHTML=html;
+    }catch(e){
+      el('stockPOSImportErr').textContent='Failed to load Square catalog: '+(e.message||'unknown error');
+      el('stockPOSImportErr').style.display='';
+      el('stockPOSImportList').innerHTML='';
+    }
+  }
+  function closePOSImport(){el('stockPOSImportPanel').style.display='none';}
+  async function savePOSImport(){
+    var errEl=el('stockPOSImportErr');errEl.style.display='none';
+    var checks=document.querySelectorAll('#stockPOSImportList input[type=checkbox]:checked');
+    if(!checks.length){errEl.textContent='Select at least one item to import.';errEl.style.display='';return;}
+    var failures=[],successes=0;
+    for(var i=0;i<checks.length;i++){
+      var cb=checks[i];
+      var idx=cb.id.replace('posImport_','');
+      var catSel=document.querySelector('[data-cat-for="'+idx+'"]');
+      var unitInp=document.querySelector('[data-unit-for="'+idx+'"]');
+      var catId=catSel?parseInt(catSel.value):0;
+      var unit=unitInp?unitInp.value.trim():'unit';
+      var name=cb.dataset.variationName;
+      var variationId=cb.dataset.variationId;
+      if(!catId){failures.push(name+' (no category)');continue;}
+      if(!unit){failures.push(name+' (no unit)');continue;}
+      try{
+        var r=await api('/api/stock/items',{method:'POST',body:JSON.stringify({categoryId:catId,name:name,countUnit:unit})});
+        var item=await r.json();
+        if(!r.ok){failures.push(name+': '+(item.error||'error'));continue;}
+        if(item.id){
+          await api('/api/staff/stock/items/'+item.id+'/square-mapping',{method:'PATCH',body:JSON.stringify({squareCatalogVariationId:variationId,squareCatalogVariationName:name})});
+          item.squareCatalogVariationId=variationId;item.squareCatalogVariationName=name;
+        }
+        _stockItems.push(item);successes++;
+      }catch(e){failures.push(name+': '+(e.message||'error'));}
+    }
+    closePOSImport();renderStockCatalogue();
+    if(failures.length){toast(successes+' imported, '+failures.length+' failed: '+failures.slice(0,2).join(', '),'error',6000);}
+    else{toast(successes+' item'+(successes===1?'':'s')+' imported and linked to Square POS');}
+  }
+
+  /* ── Auto-link ── */
+  async function openAutoLink(){
+    el('stockAutoLinkPanel').style.display='';
+    el('stockPOSImportPanel').style.display='none';
+    el('stockAddItemForm').style.display='none';
+    el('stockEditItemForm').style.display='none';
+    el('stockAutoLinkErr').style.display='none';
+    el('stockAutoLinkList').innerHTML='<div class="loading-state"><div class="spinner"></div>Matching items to Square POS…</div>';
+    try{
+      var r=await api('/api/staff/stock/auto-match',{method:'POST'});
+      var results=await r.json();
+      var withSugg=results.filter(function(m){return m.suggestedVariationId&&m.confidence!=='none';});
+      if(!withSugg.length){el('stockAutoLinkList').innerHTML='<p style="color:var(--text-2);font-size:13px">No confident matches found. Items may already be linked, or names differ too much from POS variations. Use "Import from POS" or link items individually via Edit.</p>';return;}
+      var colMap={high:'#16A34A',medium:'#D97706',low:'#6B7280'};
+      var html='<div style="display:flex;flex-direction:column;gap:8px">';
+      withSugg.forEach(function(m,i){
+        var col=colMap[m.confidence]||'#6B7280';
+        var alreadyLinked=m.currentVariationId?'<span style="font-size:11px;color:#6B7280;margin-left:4px">(currently: '+escHtml(m.currentVariationName||m.currentVariationId)+')</span>':'';
+        html+='<div style="display:flex;align-items:center;gap:10px;background:#F8FAFC;border:1px solid var(--border);border-radius:8px;padding:10px 12px">'+
+          '<input type="checkbox" id="autoLink_'+i+'" data-stock-id="'+m.stockItemId+'" data-variation-id="'+escHtml(m.suggestedVariationId)+'" data-variation-name="'+escHtml(m.suggestedVariationName||'')+'" style="width:16px;height:16px;flex-shrink:0"'+(m.confidence==='high'?' checked':'')+'>'+
+          '<div style="flex:1;min-width:0">'+
+            '<div style="font-size:13px;font-weight:600">'+escHtml(m.stockItemName)+alreadyLinked+'</div>'+
+            '<div style="font-size:12px;color:var(--text-2);margin-top:2px">→ '+escHtml(m.suggestedVariationName||'')+'</div>'+
+          '</div>'+
+          '<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:'+col+'20;color:'+col+'">'+m.confidence.toUpperCase()+'</span>'+
+        '</div>';
+      });
+      html+='</div>';
+      el('stockAutoLinkList').innerHTML=html;
+    }catch(e){
+      el('stockAutoLinkErr').textContent='Failed: '+(e.message||'unknown error');
+      el('stockAutoLinkErr').style.display='';
+      el('stockAutoLinkList').innerHTML='';
+    }
+  }
+  function closeAutoLink(){el('stockAutoLinkPanel').style.display='none';}
+  async function saveAutoLinks(){
+    var errEl=el('stockAutoLinkErr');errEl.style.display='none';
+    var checks=document.querySelectorAll('#stockAutoLinkList input[type=checkbox]:checked');
+    if(!checks.length){errEl.textContent='Tick at least one match to save.';errEl.style.display='';return;}
+    var saved=0;
+    for(var i=0;i<checks.length;i++){
+      var cb=checks[i];
+      var stockId=parseInt(cb.dataset.stockId);
+      var variationId=cb.dataset.variationId;
+      var variationName=cb.dataset.variationName;
+      try{
+        await api('/api/staff/stock/items/'+stockId+'/square-mapping',{method:'PATCH',body:JSON.stringify({squareCatalogVariationId:variationId,squareCatalogVariationName:variationName})});
+        var idx=_stockItems.findIndex(function(i){return i.id===stockId;});
+        if(idx>=0){_stockItems[idx].squareCatalogVariationId=variationId;_stockItems[idx].squareCatalogVariationName=variationName;}
+        saved++;
+      }catch(e){}
+    }
+    closeAutoLink();renderStockCatalogue();
+    toast(saved+' POS link'+(saved===1?'':'s')+' saved');
+  }
+
+  /* ── Edit item POS link picker ── */
+  var _posVariationsForEdit=null;
+  async function togglePOSPicker(){
+    var picker=el('editItemPOSPicker');
+    if(picker.style.display!=='none'){picker.style.display='none';el('editItemPOSSaveBtn').style.display='none';return;}
+    el('editItemPOSSaveBtn').style.display='';
+    if(_posVariationsForEdit){picker.style.display='';return;}
+    el('editItemPOSStatus').textContent='Loading POS variations…';
+    try{
+      var r=await api('/api/staff/stock/square-variations');
+      _posVariationsForEdit=await r.json();
+      var id=parseInt(el('editItemId').value);
+      var item=_stockItems.find(function(i){return i.id===id;});
+      el('editItemPOSStatus').innerHTML=item&&item.squareCatalogVariationId
+        ?'<span style="color:#16A34A;font-weight:600">✓ Linked: '+escHtml(item.squareCatalogVariationName||item.squareCatalogVariationId)+'</span>'
+        :'Not linked to Square POS';
+      filterPOSVariations();
+      picker.style.display='';
+    }catch(e){el('editItemPOSStatus').textContent='Failed to load: '+(e.message||'error');}
+  }
+  function filterPOSVariations(){
+    var q=(el('editItemPOSSearch').value||'').toLowerCase();
+    var sel=el('editItemPOSSelect');
+    sel.innerHTML='';
+    (_posVariationsForEdit||[]).filter(function(v){return !q||v.displayName.toLowerCase().includes(q);}).forEach(function(v){
+      var opt=document.createElement('option');
+      opt.value=v.variationId;opt.textContent=v.displayName;
+      sel.appendChild(opt);
+    });
+  }
+  async function savePOSLink(){
+    var sel=el('editItemPOSSelect');
+    if(!sel.value){return;}
+    var variationId=sel.value;
+    var variationName=sel.options[sel.selectedIndex]?sel.options[sel.selectedIndex].text:'';
+    var id=parseInt(el('editItemId').value);
+    try{
+      await api('/api/staff/stock/items/'+id+'/square-mapping',{method:'PATCH',body:JSON.stringify({squareCatalogVariationId:variationId,squareCatalogVariationName:variationName})});
+      var idx=_stockItems.findIndex(function(i){return i.id===id;});
+      if(idx>=0){_stockItems[idx].squareCatalogVariationId=variationId;_stockItems[idx].squareCatalogVariationName=variationName;}
+      el('editItemPOSStatus').innerHTML='<span style="color:#16A34A;font-weight:600">✓ Linked: '+escHtml(variationName)+'</span>';
+      el('editItemPOSUnlinkBtn').style.display='';
+      el('editItemPOSPicker').style.display='none';
+      el('editItemPOSSaveBtn').style.display='none';
+      renderStockCatalogue();
+      toast('POS link saved');
+    }catch(e){toast('Failed: '+(e.message||'error'),'error');}
+  }
+  async function unlinkItemVariation(){
+    var id=parseInt(el('editItemId').value);
+    try{
+      await api('/api/staff/stock/items/'+id+'/square-mapping',{method:'PATCH',body:JSON.stringify({squareCatalogVariationId:null,squareCatalogVariationName:null})});
+      var idx=_stockItems.findIndex(function(i){return i.id===id;});
+      if(idx>=0){_stockItems[idx].squareCatalogVariationId=null;_stockItems[idx].squareCatalogVariationName=null;}
+      el('editItemPOSStatus').textContent='Not linked to Square POS';
+      el('editItemPOSUnlinkBtn').style.display='none';
+      el('editItemPOSPicker').style.display='none';
+      el('editItemPOSSaveBtn').style.display='none';
+      el('editItemPOSChangeBtn').textContent='Link to POS';
+      renderStockCatalogue();
+      toast('POS link removed');
+    }catch(e){toast('Failed: '+(e.message||'error'),'error');}
+  }
+
+  /* ── Barcode scanner (BarcodeDetector API — Chrome on Android/desktop) ── */
+  var _barcodeStream=null,_barcodeAnimFrame=null,_barcodeDetector=null,_barcodeScanning=false;
+  async function openBarcodeScan(){
+    var overlay=el('barcodeScanOverlay');
+    overlay.style.display='flex';
+    var statusEl=el('barcodeScanStatus');
+    statusEl.textContent='Starting camera…';
+    _barcodeScanning=true;
+    if(!('BarcodeDetector' in window)){
+      statusEl.textContent='⚠ Barcode scanning requires Chrome on Android or desktop. Not supported in this browser.';
+      return;
+    }
+    try{
+      _barcodeDetector=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code']});
+      _barcodeStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}});
+      var video=el('barcodeScanVideo');
+      video.srcObject=_barcodeStream;
+      await video.play();
+      statusEl.textContent='Point camera at a barcode…';
+      _scanBarcodeFrame();
+    }catch(e){statusEl.textContent='Camera error: '+(e.message||'access denied or unavailable');}
+  }
+  async function _scanBarcodeFrame(){
+    if(!_barcodeScanning||!_barcodeDetector)return;
+    var video=el('barcodeScanVideo');
+    if(!video||!_barcodeStream){return;}
+    try{
+      var codes=await _barcodeDetector.detect(video);
+      if(codes.length>0){
+        var raw=codes[0].rawValue;
+        el('barcodeScanStatus').textContent='Found '+raw+' — looking up…';
+        _barcodeScanning=false;
+        // Look up product name via Open Food Facts
+        var productName='';
+        try{
+          var resp=await fetch('https://world.openfoodfacts.org/api/v2/product/'+encodeURIComponent(raw)+'.json?fields=product_name,brands',{signal:AbortSignal.timeout(5000)});
+          var data=await resp.json();
+          if(data.status===1&&data.product){productName=data.product.product_name||'';}
+        }catch(e2){}
+        closeBarcodeScanner();
+        _highlightCountItem(raw,productName);
+        return;
+      }
+    }catch(e){}
+    if(_barcodeScanning)_barcodeAnimFrame=requestAnimationFrame(_scanBarcodeFrame);
+  }
+  function closeBarcodeScanner(){
+    _barcodeScanning=false;
+    if(_barcodeStream){_barcodeStream.getTracks().forEach(function(t){t.stop();});_barcodeStream=null;}
+    if(_barcodeAnimFrame){cancelAnimationFrame(_barcodeAnimFrame);_barcodeAnimFrame=null;}
+    var overlay=el('barcodeScanOverlay');
+    if(overlay)overlay.style.display='none';
+  }
+  function _highlightCountItem(barcode,productName){
+    function tokenScore(a,b){
+      var at=a.toLowerCase().split(/\s+/),bt=b.toLowerCase().split(/\s+/);
+      var inter=at.filter(function(t){return bt.includes(t);}).length;
+      var union=new Set(at.concat(bt)).size;
+      return union?inter/union:0;
+    }
+    var best=null,bestScore=0;
+    _stockItems.forEach(function(item){
+      var s=productName?tokenScore(productName,item.name):0;
+      if(s>bestScore){bestScore=s;best=item;}
+    });
+    var inp=best&&bestScore>0.15?document.querySelector('#stockCountItems [data-item-id="'+best.id+'"]'):null;
+    if(!inp){
+      toast(productName?'Could not match "'+productName+'" to a stock item (barcode: '+barcode+')':'Barcode '+barcode+' not found in Open Food Facts database','error',5000);
+      return;
+    }
+    inp.scrollIntoView({behavior:'smooth',block:'center'});
+    inp.style.outline='3px solid var(--accent)';
+    inp.style.boxShadow='0 0 0 4px '+((getComputedStyle(document.documentElement).getPropertyValue('--accent'))||'#3B82F6')+'33';
+    inp.focus();
+    setTimeout(function(){inp.style.outline='';inp.style.boxShadow='';},3000);
+    toast('Matched: '+best.name+(productName?' ('+productName+')':''));
   }
   /* ── END Stock Management ── */
 
@@ -12327,6 +12665,18 @@
   window.cancelEditStockItem=cancelEditStockItem;
   window.saveEditStockItem=saveEditStockItem;
   window.toggleStockItemActive=toggleStockItemActive;
+  window.openPOSImport=openPOSImport;
+  window.closePOSImport=closePOSImport;
+  window.savePOSImport=savePOSImport;
+  window.openAutoLink=openAutoLink;
+  window.closeAutoLink=closeAutoLink;
+  window.saveAutoLinks=saveAutoLinks;
+  window.togglePOSPicker=togglePOSPicker;
+  window.filterPOSVariations=filterPOSVariations;
+  window.savePOSLink=savePOSLink;
+  window.unlinkItemVariation=unlinkItemVariation;
+  window.openBarcodeScan=openBarcodeScan;
+  window.closeBarcodeScanner=closeBarcodeScanner;
   window.quickRedeem=quickRedeem;
   window.claimGamePlay=claimGamePlay;
   window.closeOrderAuthModal=closeOrderAuthModal;
