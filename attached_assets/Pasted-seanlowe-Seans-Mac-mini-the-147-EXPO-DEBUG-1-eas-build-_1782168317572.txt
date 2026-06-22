@@ -1,0 +1,55 @@
+seanlowe@Seans-Mac-mini the-147 % EXPO_DEBUG=1 eas build --platform android 2>&1 | head -80
+Error: Cannot find module 'expo-dev-client/package.json'
+Require stack:
+- /Users/seanlowe/Desktop/The-147/The-147/artifacts/the-147/noop.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1456:15)
+    at resolveFileName (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/resolve-from/index.js:29:39)
+    at resolveFrom (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/resolve-from/index.js:43:9)
+    at module.exports (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/resolve-from/index.js:46:47)
+    at isExpoDevClientInstalled (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/build/build/utils/devClient.js:77:36)
+    at detectExpoGoProdBuildAsync (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/build/project/discourageExpoGoForProdAsync.js:37:71)
+    at discourageExpoGoForProdAsync (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/build/project/discourageExpoGoForProdAsync.js:15:41)
+    at runBuildAndSubmitAsync (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/build/build/runBuildAndSubmit.js:70:75)
+    at async Build.runAsync (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/build/commands/build/index.js:129:35)
+    at async Build.run (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/build/commandUtils/EasCommand.js:176:16) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/seanlowe/Desktop/The-147/The-147/artifacts/the-147/noop.js'
+  ]
+}
+
+⚠️ Detected that your app uses Expo Go for development, this is not recommended when building production apps.
+Learn more: https://expo.fyi/why-not-build-expo-go-for-production
+To suppress this warning, set EAS_BUILD_NO_EXPO_GO_WARNING=true.
+
+Error: Cannot find module 'expo-dev-client/package.json'
+Require stack:
+- /Users/seanlowe/Desktop/The-147/The-147/artifacts/the-147/noop.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1456:15)
+    at resolveFileName (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/resolve-from/index.js:29:39)
+    at resolveFrom (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/resolve-from/index.js:43:9)
+    at module.exports (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/resolve-from/index.js:46:47)
+    at isExpoDevClientInstalled (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/build/build/utils/devClient.js:77:36)
+    at ensureExpoDevClientInstalledForDevClientBuildsAsync (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/build/build/utils/devClient.js:18:9)
+    at runBuildAndSubmitAsync (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/build/build/runBuildAndSubmit.js:87:79)
+    at async Build.runAsync (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/build/commands/build/index.js:129:35)
+    at async Build.run (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/build/commandUtils/EasCommand.js:176:16)
+    at async Build._run (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/@oclif/core/lib/command.js:183:22) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/Users/seanlowe/Desktop/The-147/The-147/artifacts/the-147/noop.js'
+  ]
+}
+(0 , _validate(...).validateSchema) is not a function
+TypeError: (0 , _validate(...).validateSchema) is not a function
+    at validate (/Users/seanlowe/Desktop/The-147/The-147/node_modules/.pnpm/@expo+schema-utils@0.1.8/node_modules/@expo/schema-utils/build/index.js:84:45)
+    at withRouter (/Users/seanlowe/Desktop/The-147/The-147/node_modules/.pnpm/expo-router@6.0.24_@types+react-dom@19.1.11_@types+react@19.1.17__@types+react@19.1.17__4094ee48018c5b5c8f1246009fce9036/node_modules/expo-router/plugin/build/index.js:26:33)
+    at withStaticPlugin (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/@expo/config-plugins/build/plugins/withStaticPlugin.js:146:12)
+    at /Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/@expo/config-plugins/build/plugins/withPlugins.js:30:84
+    at Array.reduce (<anonymous>)
+    at withPlugins (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/@expo/config-plugins/build/plugins/withPlugins.js:30:18)
+    at withConfigPlugins (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/@expo/config/build/plugins/withConfigPlugins.js:35:47)
+    at fillAndReturnConfig (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/@expo/config/build/Config.js:236:78)
+    at getConfig (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/node_modules/@expo/config/build/Config.js:293:10)
+    at getExpoConfigInternalAsync (/Users/seanlowe/.npm-global/lib/node_modules/eas-cli/build/project/expoConfig.js:41:42)
+    Error: build command failed.

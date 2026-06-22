@@ -8440,6 +8440,10 @@
 
   async function loadStockPage(){
     switchStockTab('counts');
+    // Pre-warm the Square variations cache in the background so Import/Auto-link are instant
+    api('/api/staff/stock/square-variations').then(function(r){
+      r.json().then(function(v){_posVariations=v||[];}).catch(function(){});
+    }).catch(function(){});
     try{
       var [itemsR,catsR]=await Promise.all([
         api('/api/stock/items'),
@@ -8801,10 +8805,14 @@
     el('stockAddItemForm').style.display='none';
     el('stockEditItemForm').style.display='none';
     el('stockPOSImportErr').style.display='none';
-    el('stockPOSImportList').innerHTML='<div class="loading-state"><div class="spinner"></div>Loading Square catalog…</div>';
+    if(!_posVariations.length){
+      el('stockPOSImportList').innerHTML='<div class="loading-state"><div class="spinner"></div>Loading Square catalog…</div>';
+    }
     try{
-      var r=await api('/api/staff/stock/square-variations');
-      _posVariations=await r.json();
+      if(!_posVariations.length){
+        var r=await api('/api/staff/stock/square-variations');
+        _posVariations=await r.json();
+      }
       var linkedIds=new Set(_stockItems.filter(function(i){return i.squareCatalogVariationId;}).map(function(i){return i.squareCatalogVariationId;}));
       var alreadyNamed=new Set(_stockItems.map(function(i){return i.name.toLowerCase();}));
       var unimported=_posVariations.filter(function(v){return !linkedIds.has(v.variationId);});
