@@ -1,0 +1,32 @@
+
+Hello sean ,
+
+You’re receiving this communication because you are a user of Firebase Studio, which launched as a preview product in 2025.
+
+To streamline our AI-driven development tools, we’re writing to remind you that we’ll be turning off new workspace creation on June 22, 2026. and shutting down Firebase Studio on March 22, 2027. Since its core capabilities are already built into Google AI Studio and Google Antigravity, we recommend you transfer your Firebase Studio projects to these products.
+
+We have provided additional information below to help you navigate this transition and ensure your projects are migrated before the deadline.
+
+What you need to know
+Key changes and timelines:
+
+June 22, 2026: Final date to create new workspaces or register new accounts. These features will be disabled after this date to prepare for the final shutdown.
+March 22, 2027: Firebase Studio will be shut down and will no longer be accessible via the Firebase Studio product URL. This is the final deadline to transfer or archive your data before all remaining code becomes inaccessible.
+Potential impact:
+
+Migration: You can transfer projects to Google AI studio or Google Antigravity until March 22, 2027. Any code not migrated by this date will be inaccessible.
+Data Limitations: Agent chat history (trajectories) cannot be migrated to the new platforms.
+Service Continuity: Core Firebase services (Firestore, Auth, App Hosting) are not affected and will continue to operate normally.
+What you need to do
+Action advised:
+
+Start new workspaces or projects elsewhere: We strongly recommend that you start new workspaces or projects directly in AI Studio (if you want to use a web IDE) or Google Antigravity (for desktop app users).
+Workspaces started through the App Prototyping agent: We recommend moving apps created or vibe coded with the App Prototyping agent to Google AI Studio. To facilitate this, we will be rolling out a new "Transfer to AI Studio" button within your workspace. While we don’t have exact timing for this rollout, the feature will appear in your workspace once the update is live.
+Workspaces started through the App Prototyping agent, Firebase Studio template or a blank workspace: For projects requiring an IDE experience, we recommend transitioning to Google Antigravity. You can use the Zip & Download feature to save your workspace to your computer. Once saved, you can open your code in Google Antigravity.
+Refer to the Firebase Studio Migration Guide to move your projects to Google AI Studio or Antigravity.
+
+We’re here to help
+If you have any questions or require assistance, please contact Firebase support or the Community Forum.
+
+Thanks,
+The Firebase Studio team
