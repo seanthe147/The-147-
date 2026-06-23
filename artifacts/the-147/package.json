@@ -12,7 +12,8 @@
     "build:android:preview": "EAS_SKIP_AUTO_FINGERPRINT=1 eas build --platform android --profile preview --non-interactive",
     "update:production": "EAS_SKIP_AUTO_FINGERPRINT=1 eas update --channel production --message",
     "update:preview": "EAS_SKIP_AUTO_FINGERPRINT=1 eas update --channel preview --message",
-    "check-expo-config": "expo config --type introspect"
+    "check-expo-config": "expo config --type introspect",
+    "check-expo-deps": "expo install --check"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

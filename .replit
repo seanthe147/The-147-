@@ -32,6 +32,10 @@ args = "typecheck-api-server"
 task = "workflow.run"
 args = "check-expo-config"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "check-expo-deps"
+
 [[workflows.workflow]]
 name = "Start Kiosk"
 author = "agent"
@@ -72,6 +76,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm --filter @workspace/the-147 run check-expo-config"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "check-expo-deps"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/the-147 run check-expo-deps"
 
 [workflows.workflow.metadata]
 isValidation = true
