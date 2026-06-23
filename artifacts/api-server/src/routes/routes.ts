@@ -10,7 +10,7 @@ import nodemailer from "nodemailer";
 import { storage, db } from "../storage";
 import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema, isSafePublicUrl, tabs, tabItems, bookings as bookingsTable, tableSessions, marketingCampaigns, emailAutomations, emailUnsubscribes, emailSendLog, customers as customersTable, membershipSubscriptions as membershipSubsTable, venueRewardClaims, venueRewardTiers, venueRewardTiers as venueRewardTiersT, gamePlays, gamePrizes, staffUsers as staffUsersTable, stockCategories, stockItems, stockDeliveries, stockDeliveryLines, stockCounts, stockCountLines } from "@workspace/db";
 import type { InsertBannerImage } from "@workspace/db";
-import { and as dAnd, eq as dEq, desc as dDesc, isNotNull as dIsNotNull, sql as dSql, gte as dGte, lte as dLte, asc as dAsc, lt as dLt } from "drizzle-orm";
+import { and as dAnd, eq as dEq, desc as dDesc, isNotNull as dIsNotNull, sql as dSql, gte as dGte, lte as dLte, asc as dAsc, lt as dLt, inArray as dInArray } from "drizzle-orm";
 import { getServerFeatureFlags } from "../featureFlags";
 import { hashPin, verifyPin, hashPassword, verifyPassword, hashEmail, decrypt } from "../encryption";
 import * as square from "../square";
@@ -15536,7 +15536,9 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     { cat: "Alcopops & RTD", name: "AU Pink Lemonade RTD CAN 330ml", containerSize: "330ml", countUnit: "can", caseSize: 12, servesPerUnit: null, supplierCode: "2011389" },
   ];
 
+  let _stockDefaultsSeeded = false;
   async function ensureStockDefaults() {
+    if (_stockDefaultsSeeded) return;
     // Ensure all categories exist
     const existingCats = await db.select().from(stockCategories);
     const existingCatNames = new Set(existingCats.map((c) => c.name));
@@ -15574,6 +15576,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
         sortOrder: 900 + idx,
       }));
     if (newItems.length) await db.insert(stockItems).values(newItems);
+    _stockDefaultsSeeded = true;
   }
 
   app.get("/api/stock/categories", staffAuth, managerAuth, async (_req, res) => {
@@ -15626,7 +15629,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
         ? await db.select({ line: stockDeliveryLines, item: stockItems })
             .from(stockDeliveryLines)
             .innerJoin(stockItems, dEq(stockDeliveryLines.stockItemId, stockItems.id))
-            .where(dAnd(...deliveries.map((d) => dEq(stockDeliveryLines.deliveryId, d.id))))
+            .where(dInArray(stockDeliveryLines.deliveryId, deliveries.map((d) => d.id)))
         : [];
       const result = deliveries.map((d) => ({
         ...d,
@@ -15678,7 +15681,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
         ? await db.select({ line: stockCountLines, item: stockItems })
             .from(stockCountLines)
             .innerJoin(stockItems, dEq(stockCountLines.stockItemId, stockItems.id))
-            .where(dAnd(...counts.map((c) => dEq(stockCountLines.countId, c.id))))
+            .where(dInArray(stockCountLines.countId, counts.map((c) => c.id)))
         : [];
       const result = counts.map((c) => ({
         ...c,
