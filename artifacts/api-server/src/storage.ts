@@ -826,6 +826,9 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  private _settingsCache = new Map<string, { value: string | null; expiry: number }>();
+  private readonly _SETTINGS_TTL = 30_000;
+
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
@@ -1645,13 +1648,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getSetting(key: string): Promise<string | null> {
+    const cached = this._settingsCache.get(key);
+    if (cached && Date.now() < cached.expiry) return cached.value;
     const [row] = await db.select().from(siteSettings).where(eq(siteSettings.key, key));
-    return row?.value ?? null;
+    const value = row?.value ?? null;
+    this._settingsCache.set(key, { value, expiry: Date.now() + this._SETTINGS_TTL });
+    return value;
   }
 
   async setSetting(key: string, value: string): Promise<void> {
     await db.insert(siteSettings).values({ key, value, updatedAt: new Date() })
       .onConflictDoUpdate({ target: siteSettings.key, set: { value, updatedAt: new Date() } });
+    this._settingsCache.delete(key);
   }
 
   async getAllSettings(): Promise<Record<string, string>> {

@@ -6675,13 +6675,17 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       const activeTerminal = (await storage.getSetting("active_kiosk_terminal")) || "square";
       let terminalReady = false;
       if (activeTerminal === "teya") {
-        const teyaEnabled = await storage.getSetting("teya_enabled");
-        const teyaStoreId = await storage.getSetting("teya_store_id");
-        const teyaTerminalId = await storage.getSetting("teya_terminal_id");
+        const [teyaEnabled, teyaStoreId, teyaTerminalId] = await Promise.all([
+          storage.getSetting("teya_enabled"),
+          storage.getSetting("teya_store_id"),
+          storage.getSetting("teya_terminal_id"),
+        ]);
         terminalReady = teyaEnabled === "true" && !!teyaStoreId && !!teyaTerminalId;
       } else if (activeTerminal === "square") {
-        const sqEnabled = await storage.getSetting("square_terminal_enabled");
-        const sqDeviceId = await storage.getSetting("square_terminal_device_id");
+        const [sqEnabled, sqDeviceId] = await Promise.all([
+          storage.getSetting("square_terminal_enabled"),
+          storage.getSetting("square_terminal_device_id"),
+        ]);
         terminalReady = sqEnabled === "true" && !!sqDeviceId;
       }
       if (!terminalReady) {
@@ -6835,9 +6839,11 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       try {
         const activeTerminal = (await storage.getSetting("active_kiosk_terminal")) || "square";
         if (activeTerminal === "teya") {
-          const teyaEnabled = await storage.getSetting("teya_enabled");
-          const teyaStoreId = await storage.getSetting("teya_store_id");
-          const teyaTerminalId = await storage.getSetting("teya_terminal_id");
+          const [teyaEnabled, teyaStoreId, teyaTerminalId] = await Promise.all([
+            storage.getSetting("teya_enabled"),
+            storage.getSetting("teya_store_id"),
+            storage.getSetting("teya_terminal_id"),
+          ]);
           if (teyaEnabled === "true" && teyaStoreId && teyaTerminalId) {
             const pr = await teya.createPaymentRequest({
               storeId: teyaStoreId,
@@ -7144,12 +7150,14 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   // verifies the signature and timestamp before accepting the code.
   app.get("/api/staff/teya/status", staffAuth, managerAuth, async (_req, res) => {
     try {
-      const conn = await teya.getConnectionInfo();
-      const enabled = await storage.getSetting("teya_enabled");
-      const storeId = await storage.getSetting("teya_store_id");
-      const terminalId = await storage.getSetting("teya_terminal_id");
-      const terminalName = await storage.getSetting("teya_terminal_name");
-      const printReceipt = await storage.getSetting("teya_print_receipt");
+      const [conn, enabled, storeId, terminalId, terminalName, printReceipt] = await Promise.all([
+        teya.getConnectionInfo(),
+        storage.getSetting("teya_enabled"),
+        storage.getSetting("teya_store_id"),
+        storage.getSetting("teya_terminal_id"),
+        storage.getSetting("teya_terminal_name"),
+        storage.getSetting("teya_print_receipt"),
+      ]);
       res.json({
         configured: teya.isConfigured(),
         connected: conn.connected,
@@ -13904,9 +13912,11 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
 
   // ── Geofence settings ────────────────────────────────────────────────────────
   app.get("/api/hr/geofence", staffAuth, async (_req, res) => {
-    const lat = await storage.getSetting("geofence_lat");
-    const lng = await storage.getSetting("geofence_lng");
-    const radius = await storage.getSetting("geofence_radius");
+    const [lat, lng, radius] = await Promise.all([
+      storage.getSetting("geofence_lat"),
+      storage.getSetting("geofence_lng"),
+      storage.getSetting("geofence_radius"),
+    ]);
     res.json({ lat: lat ?? null, lng: lng ?? null, radius: radius ? Number(radius) : 200 });
   });
 
@@ -14077,9 +14087,11 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     req: any,
     res: any,
   ): Promise<{ lat: string; lng: string; audit: GeofenceAudit } | null> {
-    const cfgLat = await storage.getSetting("geofence_lat");
-    const cfgLng = await storage.getSetting("geofence_lng");
-    const cfgRadius = await storage.getSetting("geofence_radius");
+    const [cfgLat, cfgLng, cfgRadius] = await Promise.all([
+      storage.getSetting("geofence_lat"),
+      storage.getSetting("geofence_lng"),
+      storage.getSetting("geofence_radius"),
+    ]);
     const flags: string[] = [];
 
     // ── Rotating venue clock code validation ─────────────────────────────────
