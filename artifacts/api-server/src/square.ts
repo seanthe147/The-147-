@@ -21,10 +21,20 @@ function getHeaders(): Record<string, string> {
 
 async function squareRequest(method: string, path: string, body?: unknown): Promise<any> {
   const url = `${SQUARE_BASE_URL}${path}`;
-  const options: RequestInit = { method, headers: getHeaders() };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
+  const options: RequestInit = { method, headers: getHeaders(), signal: controller.signal };
   if (body) options.body = JSON.stringify(body);
 
-  const response = await fetch(url, options);
+  let response: Response;
+  try {
+    response = await fetch(url, options);
+  } catch (err: any) {
+    clearTimeout(timer);
+    if (err?.name === "AbortError") throw new SquareError("Square API request timed out (15 s)", "TIMEOUT", 504);
+    throw err;
+  }
+  clearTimeout(timer);
   const data: any = await response.json();
 
   if (!response.ok) {
