@@ -46,6 +46,7 @@ import { KioskCheckoutSheet } from "@/components/KioskCheckoutSheet";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { getApiUrl, prefetchSquarePaymentSdk } from "@/lib/query-client";
 import { SquarePaymentSheet } from "@/components/SquarePaymentSheet";
+import { useSquareGooglePay } from "@/hooks/useSquareGooglePay";
 import * as LocalAuthentication from "expo-local-authentication";
 import { getBiometricKind, biometricLabel, shouldPromptForPaymentBiometric } from "@/lib/biometric";
 import {
@@ -881,6 +882,20 @@ function CartSheet({
   } | null>({
     queryKey: ["/api/public/square-config"],
     staleTime: 60 * 60 * 1000,
+  });
+
+  // Initialise Google Pay at the screen level (not inside SquarePaymentSheet)
+  // so the canUseGooglePay() async check resolves BEFORE the payment modal
+  // opens. Without this, the check ran after paySheetKey incremented (remount)
+  // and the async result came back after the slide-in animation, causing the
+  // Google Pay button to appear late or not at all on Android.
+  const {
+    canUseGooglePay: screenCanUseGooglePay,
+    requestNonce: screenGooglePayRequestNonce,
+  } = useSquareGooglePay({
+    applicationId: squareConfig?.applicationId ?? null,
+    locationId: squareConfig?.locationId ?? null,
+    environment: squareConfig?.environment ?? "sandbox",
   });
 
   // Issued loyalty rewards — only fetched when customer is signed in
@@ -2138,6 +2153,8 @@ function CartSheet({
         buyerEmail={customer?.email || guestEmail.trim() || null}
         inProgress={paying}
         errorMessage={payError}
+        googlePayAvailable={screenCanUseGooglePay}
+        googlePayRequestNonce={screenGooglePayRequestNonce}
         // FEATURE_SAVED_CARDS: opt-in checkbox is only shown when (a) the flag
         // is on, (b) the buyer is signed in, AND (c) they don't already have
         // a saved card. CHARGE_AND_STORE intent triggers a 3DS challenge if

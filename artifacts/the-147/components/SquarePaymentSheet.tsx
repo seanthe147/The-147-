@@ -31,6 +31,18 @@ export interface SquarePaymentSheetProps {
   inProgress?: boolean; // parent is charging the token
   errorMessage?: string | null;
   /**
+   * Pre-computed Google Pay availability from a parent-level useSquareGooglePay
+   * call. When provided, the sheet skips its own async canUseGooglePay() check
+   * (which would otherwise run AFTER the modal slide-in animation, causing the
+   * button to appear late or not at all on Android).
+   */
+  googlePayAvailable?: boolean;
+  /**
+   * Pre-computed requestNonce function from a parent-level useSquareGooglePay
+   * call. Paired with googlePayAvailable — both must be provided together.
+   */
+  googlePayRequestNonce?: (p: { amountPence: number; currency: string }) => Promise<string | null>;
+  /**
    * Square verifyBuyer intent. Defaults to "CHARGE" for one-off payments. Use
    * "STORE" when saving a card on file for recurring billing (memberships) so
    * SCA/3DS is performed up front and the verification token is forwarded.
@@ -96,11 +108,25 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
   const webRef = useRef<WebViewType | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
-  const { canUseGooglePay, requestNonce } = useSquareGooglePay({
+  const hookResult = useSquareGooglePay({
     applicationId: props.applicationId,
     locationId: props.locationId,
     environment: props.environment,
   });
+
+  // If the parent pre-computed Google Pay availability (order.tsx level), use
+  // that directly — it was resolved before the modal animation started so the
+  // button appears immediately. Fall back to the hook's own async result when
+  // the pre-computed props are not provided (e.g. SquarePaymentSheet used
+  // standalone outside the order flow).
+  const canUseGooglePay =
+    props.googlePayAvailable !== undefined
+      ? props.googlePayAvailable
+      : hookResult.canUseGooglePay;
+  const requestNonce =
+    props.googlePayRequestNonce !== undefined
+      ? props.googlePayRequestNonce
+      : hookResult.requestNonce;
 
   const handleGooglePay = useCallback(async () => {
     if (isGooglePayProcessing || props.inProgress) return;

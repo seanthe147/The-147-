@@ -55,3 +55,15 @@ description: Root causes and fixes for "Payment Screen Issue" alert and loyalty 
 2b. amountPence = 0: Client calls POST /api/orders/:id/complete-free (no payment sheet)
     Server: marks paid, redeems loyalty reward, calls completeSquareOrderAsFree → KDS
 3. Client: routes to /order-confirmation, polls GET /api/orders/:id/confirmation
+
+## Bug 5 — Google Pay button missing / appearing late on Android
+
+**Root cause**: `SquarePaymentSheet` is remounted on every payment open via `paySheetKey` increment. `useSquareGooglePay` was called INSIDE the sheet, so its async `canUseGooglePay()` check ran after the modal slide-in animation. Android users saw no Google Pay button (check hadn't resolved) or saw it flicker in late.
+
+**Fix**: 
+- Added `googlePayAvailable?: boolean` and `googlePayRequestNonce?` props to `SquarePaymentSheet`
+- Moved `useSquareGooglePay` call to `order.tsx` (screen level) — initialises once when `squareConfig` loads
+- Passes pre-computed `screenCanUseGooglePay` / `screenGooglePayRequestNonce` down to the sheet
+- Sheet uses these props directly (no async delay); falls back to internal hook if props not provided
+
+**Deploy**: Mobile code — requires `eas update --channel production` OTA push from user's terminal.
