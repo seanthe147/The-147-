@@ -143,6 +143,8 @@ externalPort = 3003
 
 [userenv.shared]
 SQUARE_ENVIRONMENT = "production"
+SMTP_HOST = "smtp.gmail.com"
+SMTP_PORT = "587"
 
 [nix]
 channel = "stable-25_05"
