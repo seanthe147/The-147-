@@ -10880,11 +10880,24 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         if (notifyRl.allowed) {
           const domain = process.env.REPLIT_DOMAINS?.split(",")[0] ?? "";
           const origin = domain ? `https://${domain}` : "";
-          sendEmailViaSMTP(
-            existing.email,
-            "Someone tried to register with your email",
-            `<p>Hi ${existing.name},</p><p>Someone attempted to create a new account at The 147 Club using your email address. If this was you, you already have an account — simply <a href="${origin}/account">sign in</a>. If it was not you, no action is needed.</p>`
-          ).catch(() => {});
+          const notifySubject = "Someone tried to register with your email";
+          const notifyHtml = `<p>Hi ${existing.name},</p><p>Someone attempted to create a new account at The 147 Club using your email address. If this was you, you already have an account — simply <a href="${origin}/account">sign in</a>. If it was not you, no action is needed.</p>`;
+          // Try SMTP, fall back to Resend so this notification works regardless of which sender is configured
+          sendEmailViaSMTP(existing.email, notifySubject, notifyHtml).then(sent => {
+            if (!sent) {
+              const resendKey = process.env.RESEND_API_KEY;
+              if (resendKey) {
+                const fromEmail = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+                const fromName = process.env.RESEND_FROM_NAME || "The 147";
+                fetch("https://api.resend.com/emails", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+                  body: JSON.stringify({ from: `${fromName} <${fromEmail}>`, to: existing.email, subject: notifySubject, html: notifyHtml }),
+                  signal: AbortSignal.timeout(10_000),
+                }).catch(() => {});
+              }
+            }
+          }).catch(() => {});
         }
         return res.status(200).json({ success: true });
       }
@@ -10905,7 +10918,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       // via response content or status code differences.
       res.status(200).json({ success: true });
       // Non-blocking: send verification email
-      sendVerificationEmail({ name: customer.name, email: customer.email, tokenRaw: verifyTokenRaw });
+      sendVerificationEmail({ name: customer.name, email: customer.email, tokenRaw: verifyTokenRaw }).catch(() => {});
       // Non-blocking: auto-link any existing Square membership for this email
       syncSquareMembershipForCustomer(customer.id, customer.email);
       // Non-blocking: create/link Square customer profile, add to "The 147
@@ -11011,7 +11024,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     const verifyTokenHash = createHash("sha256").update(verifyTokenRaw).digest("hex");
     const verifyExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     await storage.setEmailVerificationToken(customerId, verifyTokenHash, verifyExpiresAt);
-    sendVerificationEmail({ name: customer.name, email: customer.email, tokenRaw: verifyTokenRaw });
+    sendVerificationEmail({ name: customer.name, email: customer.email, tokenRaw: verifyTokenRaw }).catch(() => {});
     res.json({ success: true });
   });
 
@@ -11055,7 +11068,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
           const verifyTokenHash = createHash("sha256").update(verifyTokenRaw).digest("hex");
           const verifyExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
           await storage.setEmailVerificationToken(customer.id, verifyTokenHash, verifyExpiresAt);
-          sendVerificationEmail({ name: customer.name, email: customer.email, tokenRaw: verifyTokenRaw });
+          sendVerificationEmail({ name: customer.name, email: customer.email, tokenRaw: verifyTokenRaw }).catch(() => {});
         }
       }
     } catch (err: any) {
@@ -11098,7 +11111,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
           const verifyTokenHash = createHash("sha256").update(verifyTokenRaw).digest("hex");
           const verifyExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
           await storage.setEmailVerificationToken(customer.id, verifyTokenHash, verifyExpiresAt);
-          sendVerificationEmail({ name: customer.name, email: customer.email, tokenRaw: verifyTokenRaw });
+          sendVerificationEmail({ name: customer.name, email: customer.email, tokenRaw: verifyTokenRaw }).catch(() => {});
         }
         return res.json({ success: true });
       }
@@ -11112,7 +11125,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       const tokenHash = createHash("sha256").update(tokenRaw).digest("hex");
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
       await storage.setPasswordResetToken(customer.id, tokenHash, expiresAt);
-      sendPasswordResetEmail({ name: customer.name, email: customer.email, tokenRaw });
+      sendPasswordResetEmail({ name: customer.name, email: customer.email, tokenRaw }).catch(() => {});
       res.json({ success: true });
     } catch (err: any) {
       console.error("Forgot password error:", err.message);
