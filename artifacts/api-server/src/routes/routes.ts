@@ -2455,7 +2455,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.patch("/api/staff/approve", staffAuth, ownerAuth, async (req, res) => {
-    console.log("[approve] req.body:", JSON.stringify(req.body));
     // Accept both formats: {username, approvalStatus} (new) and {id, status} (legacy)
     const username = req.body.username;
     const id = req.body.id;
@@ -3729,10 +3728,8 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     if (raw.tableNumber !== undefined) raw.tableNumber = String(raw.tableNumber);
     // Coerce duration to number
     if (raw.duration !== undefined) raw.duration = Number(raw.duration);
-    console.log("[booking] raw body keys:", Object.keys(req.body), "tableNumber type:", typeof raw.tableNumber, "value:", raw.tableNumber);
     const parsed = insertBookingSchema.safeParse(raw);
     if (!parsed.success) {
-      console.log("[booking] validation failed:", JSON.stringify(parsed.error.flatten()));
       return res.status(400).json({ message: "Invalid booking data", errors: parsed.error.flatten() });
     }
     if (!parsed.data.gdprConsent) {
@@ -6061,7 +6058,8 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
 
   app.put("/api/staff/menu/availability/:id", staffAuth, managerAuth, async (req: any, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid rule ID" });
       const { daysOfWeek, startTime, endTime, startDate, endDate, note, enabled } = req.body;
       const updated = await storage.updateAvailabilityRule(id, {
         ...(daysOfWeek !== undefined ? { daysOfWeek: daysOfWeek ? JSON.stringify(daysOfWeek) : null } : {}),
@@ -6082,7 +6080,8 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
 
   app.delete("/api/staff/menu/availability/:id", staffAuth, managerAuth, async (req: any, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid rule ID" });
       const ok = await storage.deleteAvailabilityRule(id);
       if (!ok) return res.status(404).json({ message: "Rule not found" });
       square.invalidateMenuCache();
@@ -14383,7 +14382,8 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
   });
 
   app.patch("/api/hr/time-entries/:id/amend", staffAuth, managerAuth, async (req: any, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid entry ID" });
     const { reason, clockedInAt, clockedOutAt } = req.body;
     if (!reason) return res.status(400).json({ message: "Amendment reason required" });
     const updates: any = {};
@@ -14412,7 +14412,8 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
 
   // Upload a document to a staff profile
   app.post("/api/hr/staff/:id/documents", staffAuth, managerAuth, async (req: any, res) => {
-    const staffId = parseInt(req.params.id);
+    const staffId = parseInt(req.params.id, 10);
+    if (isNaN(staffId)) return res.status(400).json({ message: "Invalid staff ID" });
     const { category, fileName, fileType, fileData, fileSizeBytes, notes, expiresAt } = req.body;
     if (!fileName || !fileType || !fileData || !fileSizeBytes) {
       return res.status(400).json({ message: "fileName, fileType, fileData and fileSizeBytes are required" });
@@ -14535,7 +14536,8 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
   });
 
   app.patch("/api/hr/leave-requests/:id/review", staffAuth, managerAuth, async (req: any, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid leave request ID" });
     const { status, reviewNotes } = req.body;
     if (!["approved", "rejected"].includes(status)) return res.status(400).json({ message: "status must be approved or rejected" });
     const updated = await storage.reviewLeaveRequest(id, req.staffUser.id, status, reviewNotes);
@@ -14692,7 +14694,8 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
   });
 
   app.patch("/api/hr/incidents/:id/status", staffAuth, managerAuth, async (req: any, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid incident ID" });
     const { status } = req.body;
     if (!["open", "under_review", "closed"].includes(status)) return res.status(400).json({ message: "Invalid status" });
     const incident = await storage.updateIncidentStatus(id, status, req.staffUser.id);
@@ -14773,7 +14776,8 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
 
   // Delete a rota shift
   app.delete("/api/hr/rota/shifts/:id", staffAuth, managerAuth, async (req: any, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid shift ID" });
     const deleted = await storage.deleteRotaShift(id);
     if (!deleted) return res.status(404).json({ message: "Shift not found" });
     res.status(204).send();
