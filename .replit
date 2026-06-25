@@ -145,6 +145,8 @@ externalPort = 3003
 SQUARE_ENVIRONMENT = "production"
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = "587"
+PUBLIC_FROM_EMAIL = "DONOTREPLY@the147.co.uk"
+RESEND_FROM_EMAIL = "DONOTREPLY@the147.co.uk"
 
 [nix]
 channel = "stable-25_05"
