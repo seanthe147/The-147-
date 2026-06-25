@@ -78,6 +78,7 @@ export default function AdminNotificationsScreen() {
     onSuccess: () => {
       queryClient.refetchQueries({ queryKey: ["/api/push-tokens"] });
     },
+    onError: (err: Error) => Alert.alert("Error", err.message || "Failed to remove device token"),
   });
 
   const handleSend = () => {

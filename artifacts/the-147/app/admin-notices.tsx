@@ -53,6 +53,7 @@ export default function AdminNoticesScreen() {
       setShowForm(false);
       queryClient.refetchQueries({ queryKey: ["/api/staff-notices"] });
     },
+    onError: (err: Error) => Alert.alert("Error", err.message || "Failed to add notice"),
   });
 
   const deleteMutation = useMutation({
@@ -62,6 +63,7 @@ export default function AdminNoticesScreen() {
     onSuccess: () => {
       queryClient.refetchQueries({ queryKey: ["/api/staff-notices"] });
     },
+    onError: (err: Error) => Alert.alert("Error", err.message || "Failed to remove notice"),
   });
 
   const handleDelete = (notice: StaffNotice) => {

@@ -100,6 +100,7 @@ export default function AdminAvailabilityScreen() {
   const deleteMutation = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/blocked-periods/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/blocked-periods"] }),
+    onError: (e: any) => setError(e.message ?? "Failed to remove block"),
   });
 
   const handleCreate = () => {

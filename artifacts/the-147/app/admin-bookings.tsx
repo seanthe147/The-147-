@@ -183,6 +183,7 @@ export default function AdminBookingsScreen() {
       setShowAddNotice(false);
       queryClient.refetchQueries({ queryKey: ["/api/staff-notices"] });
     },
+    onError: (err: Error) => Alert.alert("Error", err.message || "Failed to add notice"),
   });
 
   const deleteNoticeMutation = useMutation({
@@ -192,6 +193,7 @@ export default function AdminBookingsScreen() {
     onSuccess: () => {
       queryClient.refetchQueries({ queryKey: ["/api/staff-notices"] });
     },
+    onError: (err: Error) => Alert.alert("Error", err.message || "Failed to remove notice"),
   });
 
   const handleAddNotice = () => {
@@ -260,6 +262,7 @@ export default function AdminBookingsScreen() {
     onSuccess: () => {
       queryClient.refetchQueries({ queryKey: ["/api/bookings"] });
     },
+    onError: (err: Error) => Alert.alert("Error", err.message || "Failed to cancel booking"),
   });
 
   const completeMutation = useMutation({
@@ -277,6 +280,7 @@ export default function AdminBookingsScreen() {
         queryClient.refetchQueries({ queryKey: ["/api/bookings"] });
       }
     },
+    onError: (err: Error) => Alert.alert("Error", err.message || "Failed to complete booking"),
   });
 
   const noShowMutation = useMutation({
@@ -284,6 +288,7 @@ export default function AdminBookingsScreen() {
     onSuccess: () => {
       queryClient.refetchQueries({ queryKey: ["/api/bookings"] });
     },
+    onError: (err: Error) => Alert.alert("Error", err.message || "Failed to mark as no-show"),
   });
 
   const deleteMutation = useMutation({
@@ -291,6 +296,7 @@ export default function AdminBookingsScreen() {
     onSuccess: () => {
       queryClient.refetchQueries({ queryKey: ["/api/bookings"] });
     },
+    onError: (err: Error) => Alert.alert("Error", err.message || "Failed to delete booking"),
   });
 
   const walkInMutation = useMutation({
