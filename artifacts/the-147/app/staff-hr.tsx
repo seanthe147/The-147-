@@ -176,7 +176,9 @@ export default function StaffHRScreen() {
       try {
         const { status } = await Notifications.requestPermissionsAsync();
         if (status !== "granted") return;
-        const tokenData = await Notifications.getExpoPushTokenAsync();
+        const tokenData = await Notifications.getExpoPushTokenAsync({
+          projectId: "3f31dfb1-b149-43ca-ab9a-91b6d7cb230a",
+        });
         const pushToken = tokenData.data;
         await hrApi("/api/hr/staff-push-token", { method: "POST", body: JSON.stringify({ token: pushToken }) });
       } catch {
