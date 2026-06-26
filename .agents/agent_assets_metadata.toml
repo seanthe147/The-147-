@@ -1,5 +1,4 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "edKyCTSABbHCjWCQ9Celg"
@@ -66,3 +65,9 @@ id = "L2dsD32GfVNSFqGNkcYLN"
 uri = "file://artifacts/the-147-kiosk/assets/images/icon.png"
 type = "image"
 title = "147 kiosk icon"
+
+[[outputs]]
+id = "Rx-6UNyBeSwY3ILmJBvcK"
+uri = "file://the-147-kiosk-standalone.zip"
+type = "unspecified"
+title = "The 147 Kiosk — Standalone Project"
