@@ -1247,7 +1247,7 @@ export async function getSquareDeals(): Promise<Deal[]> {
         ...(applicableVariationIds ? { applicableVariationIds } : {}),
       });
     }
-    dealsCache = { data: deals, expiry: Date.now() + 5 * 60 * 1000 };
+    dealsCache = { data: deals, expiry: Date.now() + 60 * 1000 };
     return deals;
   } catch {
     return dealsCache?.data ?? [];
