@@ -3,3 +3,4 @@
 - [EAS OTA push from Replit](eas-ota-limit.md) — Metro bundling alone takes ~2 min, exceeds bash 120s limit; OTA must be run from user's terminal
 - [Stock management system](stock-management.md) — delivery log, monthly counts, consumption report; seeding, backdating, router.d.ts gotcha
 - [Prize code redemption](prize-code-redemption.md) — two code systems with subtle bugs; normalisation and alphabet must match between generation and lookup
+- [Square deals visibility](square-deals-visibility.md) — Square discounts have no active flag; pricing-rule date window is the on/off switch; 60s cache

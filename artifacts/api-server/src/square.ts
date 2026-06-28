@@ -1191,22 +1191,24 @@ export async function getSquareDeals(): Promise<Deal[]> {
       }
     }
 
-    // Build maps from pricing rules: discount_id -> expiry date + applicable IDs
+    // Build maps from pricing rules: discount_id -> validity windows + applicable IDs
+    // A discount's pricing rule schedule is treated as its on/off switch: the deal
+    // is only shown while today falls inside at least one rule's
+    // [valid_from_date, valid_until_date] window. Setting a schedule end date in the
+    // past (or start date in the future) in Square therefore DEACTIVATES the deal on
+    // the app without deleting it — extend or clear the dates to reactivate it later.
     // applicableIds includes both the product set IDs AND parent item IDs of any variations,
     // so matching at checkout works for ALL sizes of an item (Pint + Half, etc.)
-    const expiryByDiscountId = new Map<string, string>();
+    const rulesByDiscountId = new Map<string, { from?: string; until?: string }[]>();
     const variationsByDiscountId = new Map<string, string[]>();
     for (const o of (ruleData.objects || []) as any[]) {
       if (o.type !== "PRICING_RULE" || o.is_deleted) continue;
       const pd = o.pricing_rule_data || {};
       if (!pd.discount_id) continue;
-      // Expiry date
-      if (pd.valid_until_date) {
-        const existing = expiryByDiscountId.get(pd.discount_id);
-        if (!existing || pd.valid_until_date < existing) {
-          expiryByDiscountId.set(pd.discount_id, pd.valid_until_date);
-        }
-      }
+      // Validity window for this rule
+      const windows = rulesByDiscountId.get(pd.discount_id) || [];
+      windows.push({ from: pd.valid_from_date, until: pd.valid_until_date });
+      rulesByDiscountId.set(pd.discount_id, windows);
       // Applicable product IDs: include original IDs + parent item IDs for any variations
       if (pd.match_products_id) {
         const ids = productSetMap.get(pd.match_products_id) || [];
@@ -1222,7 +1224,11 @@ export async function getSquareDeals(): Promise<Deal[]> {
       }
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    // Use UK business-local date (venue timezone) so schedule cutovers happen at
+    // local midnight, not UTC midnight (off-by-up-to-an-hour during BST otherwise).
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/London",
+    }).format(new Date());
     const seen = new Set<string>();
     const deals: Deal[] = [];
     for (const o of (discountData.objects || []) as any[]) {
@@ -1233,9 +1239,19 @@ export async function getSquareDeals(): Promise<Deal[]> {
       if (DEAL_EXCLUDE_PATTERNS.some((p) => p.test(name))) continue;
       const key = name.toLowerCase();
       if (seen.has(key)) continue;
+      // Schedule check: if the discount has any pricing rules, today must fall inside
+      // at least one rule's [from, until] window for the deal to be considered active.
+      // Discounts with no pricing rule are always-on (manual discounts, unchanged).
+      const windows = rulesByDiscountId.get(o.id);
+      let expiresOn: string | undefined;
+      if (windows && windows.length > 0) {
+        const activeWindow = windows.find(
+          (w) => (!w.from || w.from <= today) && (!w.until || w.until >= today),
+        );
+        if (!activeWindow) continue; // scheduled, but not currently active -> deactivated
+        expiresOn = activeWindow.until;
+      }
       seen.add(key);
-      const expiresOn = expiryByDiscountId.get(o.id);
-      if (expiresOn && expiresOn < today) continue;
       const applicableVariationIds = variationsByDiscountId.get(o.id);
       deals.push({
         id: o.id,
