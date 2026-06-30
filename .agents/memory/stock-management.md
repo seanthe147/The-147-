@@ -11,7 +11,9 @@ Full stock management system: delivery log, monthly counts, consumption report.
 Required adding `numeric` to the drizzle-orm/pg-core import in schema.ts — it was missing.
 
 ## Auto-seeding
-`ensureStockDefaults()` runs on the first call to GET /api/stock/categories or /api/stock/items. Seeds 5 categories and 42 items from Molson Coors invoices. Safe to call repeatedly (no-ops if categories already exist).
+`ensureStockDefaults()` runs on the first call to GET /api/stock/categories or /api/stock/items. Seeds 6 categories and ~143 items from Molson Coors invoices. Safe to call repeatedly (no-ops on existing — categories keyed by name, items by supplierCode).
+
+**Gotcha — "0 products load on stocktake":** seeding is guarded by an in-memory `_stockDefaultsSeeded` flag set per server process. If the stock data is wiped while the server is running (e.g. `db push-force`, manual delete), the flag stays `true` and the running process never re-seeds → stocktake shows 0 products. Stocktake reads `/api/stock/items` (DB table), NOT Square — so a healthy Square catalog does not help. Fix: restart the API server (resets the flag so the next manager GET re-seeds), or seed the table directly. The Square catalog (`listCatalogVariations`) is a separate concern and works independently.
 
 ## Delivery backdating
 Deliveries have `deliveredAt` (actual arrival, editable) and `createdAt` (system time). Report uses `deliveredAt` for the period maths — critical for mid-shift top-up accuracy.
