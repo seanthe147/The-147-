@@ -45,12 +45,21 @@ interface StockItem {
   servesPerUnit: string | null;
   squareCatalogVariationId: string | null;
   squareCatalogVariationName: string | null;
+  posLinks?: PosLink[];
   active: boolean;
+}
+
+interface PosLink {
+  id?: number;
+  squareVariationId: string;
+  squareVariationName: string | null;
+  soldUnitFactor: number;
 }
 
 interface CatalogVariation {
   variationId: string;
   variationName: string;
+  itemId?: string;
   itemName: string;
   displayName: string;
 }
@@ -101,6 +110,7 @@ interface ReportLine {
   itemId: number;
   itemName: string;
   countUnit: string;
+  baseUnit: string;
   containerSize: string | null;
   categoryName: string;
   squareLinked: boolean;
@@ -121,6 +131,37 @@ const UNIT_LABEL: Record<string, string> = {
   bib: "BIB(s)",
   case: "case(s)",
 };
+
+// ── POS link helpers (multi-size: pint + half count as 1 + 0.5) ──
+function deriveSoldFactor(name: string | null | undefined): number {
+  return /(\bhalf\b|½|1\/2)/i.test(name ?? "") ? 0.5 : 1;
+}
+function isDraughtSizeName(name: string | null | undefined): boolean {
+  return /(\bpint\b|\bhalf\b|½)/i.test(name ?? "");
+}
+// Build the link set for a chosen Square variation. If its Square item has a
+// half-pint sibling size, link pint + half together; otherwise link just it.
+function buildPosLinks(variationId: string, vars: CatalogVariation[]): PosLink[] {
+  const chosen = vars.find((v) => v.variationId === variationId);
+  if (!chosen) return [{ squareVariationId: variationId, squareVariationName: null, soldUnitFactor: 1 }];
+  const siblings = vars.filter((v) => v.itemId && chosen.itemId && v.itemId === chosen.itemId);
+  const hasHalf = siblings.some((v) => deriveSoldFactor(v.variationName) === 0.5);
+  if (siblings.length > 1 && hasHalf && isDraughtSizeName(chosen.variationName)) {
+    return siblings
+      .filter((v) => isDraughtSizeName(v.variationName))
+      .map((v) => ({ squareVariationId: v.variationId, squareVariationName: v.displayName, soldUnitFactor: deriveSoldFactor(v.variationName) }));
+  }
+  return [{ squareVariationId: chosen.variationId, squareVariationName: chosen.displayName, soldUnitFactor: deriveSoldFactor(chosen.variationName) }];
+}
+function itemIsLinked(item: StockItem): boolean {
+  return !!((item.posLinks && item.posLinks.length > 0) || item.squareCatalogVariationId);
+}
+function itemLinkLabel(item: StockItem): string {
+  if (item.posLinks && item.posLinks.length) {
+    return item.posLinks.map((l) => `${l.squareVariationName ?? "POS"}${Number(l.soldUnitFactor) !== 1 ? ` ×${l.soldUnitFactor}` : ""}`).join(", ");
+  }
+  return item.squareCatalogVariationName ?? "POS linked";
+}
 
 function fmtDate(iso: string) {
   const d = new Date(iso);
@@ -236,7 +277,12 @@ function DeliveriesTab({ items, categories }: { items: StockItem[]; categories: 
   const handleSave = () => {
     const lineItems = Object.entries(lines)
       .filter(([, qty]) => qty && parseFloat(qty) > 0)
-      .map(([id, qty]) => ({ stockItemId: Number(id), quantityUnits: qty }));
+      .map(([id, qty]) => {
+        const item = items.find((i) => i.id === Number(id));
+        // Case-packed items are entered in cases; the server multiplies by caseSize.
+        if (item?.caseSize) return { stockItemId: Number(id), quantityCases: qty };
+        return { stockItemId: Number(id), quantityUnits: qty };
+      });
     if (!lineItems.length) return Alert.alert("Enter quantities", "Add at least one item quantity.");
     createMutation.mutate({ deliveredAt: new Date(deliveredAt).toISOString(), supplier, invoiceRef, notes, lines: lineItems });
   };
@@ -615,7 +661,7 @@ function ReportTab({ categories }: { categories: StockCategory[] }) {
                         <Text style={styles.reportItemName}>{l.itemName}</Text>
                         {l.squareLinked && <Ionicons name="link" size={10} color="#22C55E" />}
                       </View>
-                      <Text style={styles.reportItemUnit}>{l.containerSize} · {l.countUnit}</Text>
+                      <Text style={styles.reportItemUnit}>{l.containerSize} · in {l.baseUnit === "pint" ? "pints" : l.baseUnit}</Text>
                     </View>
                     <Text style={[styles.reportCell, styles.reportNumCol, styles.reportNum]}>{l.opening}</Text>
                     <Text style={[styles.reportCell, styles.reportNumCol, styles.reportNum]}>{l.delivered}</Text>
@@ -679,9 +725,9 @@ function CatalogueTab({ items, categories }: { items: StockItem[]; categories: S
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
 
-  const mappingMutation = useMutation({
-    mutationFn: async ({ id, variationId, variationName }: { id: number; variationId: string | null; variationName: string | null }) => {
-      const res = await apiRequest("PATCH", `/api/staff/stock/items/${id}/square-mapping`, { squareCatalogVariationId: variationId, squareCatalogVariationName: variationName });
+  const linksMutation = useMutation({
+    mutationFn: async ({ id, links }: { id: number; links: PosLink[] }) => {
+      const res = await apiRequest("PUT", `/api/staff/stock/items/${id}/square-links`, { links });
       if (!res.ok) throw new Error((await res.json()).error ?? "Failed");
       return res.json();
     },
@@ -707,12 +753,14 @@ function CatalogueTab({ items, categories }: { items: StockItem[]; categories: S
 
   const applyAutoMatch = useCallback(async () => {
     const toSave = autoResults.filter((r) => confirmed[r.stockItemId] && r.suggestedVariationId);
+    const vars = variationsQuery.data ?? [];
     for (const r of toSave) {
-      await mappingMutation.mutateAsync({ id: r.stockItemId, variationId: r.suggestedVariationId, variationName: r.suggestedVariationName });
+      const links = buildPosLinks(r.suggestedVariationId!, vars);
+      await linksMutation.mutateAsync({ id: r.stockItemId, links });
     }
     queryClient.invalidateQueries({ queryKey: ["/api/stock/items"] });
     setView("list");
-  }, [autoResults, confirmed]);
+  }, [autoResults, confirmed, variationsQuery.data]);
 
   const handleEdit = (item: StockItem) => {
     setEditItem(item);
@@ -728,7 +776,8 @@ function CatalogueTab({ items, categories }: { items: StockItem[]; categories: S
     if (!editItem) return;
     patchMutation.mutate({ id: editItem.id, servesPerUnit: editServes || undefined, active: editActive });
     if (pendingVarId !== editItem.squareCatalogVariationId) {
-      mappingMutation.mutate({ id: editItem.id, variationId: pendingVarId, variationName: pendingVarName });
+      const links = pendingVarId ? buildPosLinks(pendingVarId, variationsQuery.data ?? []) : [];
+      linksMutation.mutate({ id: editItem.id, links });
     }
   };
 
@@ -782,8 +831,8 @@ function CatalogueTab({ items, categories }: { items: StockItem[]; categories: S
           <Pressable style={styles.cancelBtn} onPress={() => setView("list")}>
             <Text style={styles.cancelBtnText}>Cancel</Text>
           </Pressable>
-          <Pressable style={styles.saveBtn} onPress={applyAutoMatch} disabled={applyCount === 0 || mappingMutation.isPending}>
-            {mappingMutation.isPending
+          <Pressable style={styles.saveBtn} onPress={applyAutoMatch} disabled={applyCount === 0 || linksMutation.isPending}>
+            {linksMutation.isPending
               ? <ActivityIndicator color="#000" />
               : <Text style={styles.saveBtnText}>Apply {applyCount} Link{applyCount !== 1 ? "s" : ""}</Text>}
           </Pressable>
@@ -875,7 +924,7 @@ function CatalogueTab({ items, categories }: { items: StockItem[]; categories: S
 
   // ── List view ─────────────────────────────────────────────────────────────
   const grouped = categories.map((c) => ({ cat: c, items: items.filter((i) => i.categoryId === c.id) })).filter((g) => g.items.length > 0);
-  const linkedCount = items.filter((i) => i.squareCatalogVariationId).length;
+  const linkedCount = items.filter((i) => itemIsLinked(i)).length;
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
@@ -909,8 +958,8 @@ function CatalogueTab({ items, categories }: { items: StockItem[]; categories: S
                   {item.servesPerUnit ? ` · ${item.servesPerUnit} pints/keg` : ""}
                 </Text>
               </View>
-              {item.squareCatalogVariationId
-                ? <View style={styles.posLinkedPill}><Ionicons name="link" size={10} color="#22C55E" /><Text style={styles.posLinkedPillText}>POS</Text></View>
+              {itemIsLinked(item)
+                ? <View style={styles.posLinkedPill}><Ionicons name="link" size={10} color="#22C55E" /><Text style={styles.posLinkedPillText}>POS{item.posLinks && item.posLinks.length > 1 ? ` ×${item.posLinks.length}` : ""}</Text></View>
                 : <View style={styles.posUnlinkedPill}><Text style={styles.posUnlinkedPillText}>No POS</Text></View>}
               <Ionicons name="chevron-forward" size={16} color="#666" style={{ marginLeft: 6 }} />
             </Pressable>

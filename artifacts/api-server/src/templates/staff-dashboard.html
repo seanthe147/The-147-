@@ -8566,10 +8566,12 @@
       html+='<div style="font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.8px;margin:10px 0 6px">'+escHtml(cat.name)+'</div>';
       html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-bottom:4px">';
       catItems.forEach(function(item){
+        var cs=item.caseSize||0;
+        var unitLabel=cs?('cases ×'+cs):(item.countUnit||'');
         html+='<div style="display:flex;align-items:center;gap:8px;background:#F8FAFC;border:1px solid var(--border);border-radius:8px;padding:8px 10px">'+
           '<div style="flex:1;min-width:0;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(item.name)+'</div>'+
-          '<input type="number" min="0" step="0.1" style="width:70px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:13px;text-align:right" data-del-item-id="'+item.id+'" placeholder="0">'+
-          '<span style="font-size:12px;color:var(--text-2);white-space:nowrap">'+escHtml(item.countUnit||'')+'</span>'+
+          '<input type="number" min="0" step="0.1" style="width:70px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:13px;text-align:right" data-del-item-id="'+item.id+'" data-case-size="'+cs+'" placeholder="0">'+
+          '<span style="font-size:12px;color:var(--text-2);white-space:nowrap">'+escHtml(unitLabel)+'</span>'+
         '</div>';
       });
       html+='</div>';
@@ -8592,7 +8594,11 @@
     var lines=[];
     document.querySelectorAll('#deliveryItemsWrap [data-del-item-id]').forEach(function(inp){
       var val=parseFloat(inp.value);
-      if(!isNaN(val)&&val>0)lines.push({stockItemId:parseInt(inp.dataset.delItemId),quantityUnits:String(val)});
+      if(!isNaN(val)&&val>0){
+        var cs=parseInt(inp.dataset.caseSize||'0');
+        if(cs>0)lines.push({stockItemId:parseInt(inp.dataset.delItemId),quantityCases:String(val)});
+        else lines.push({stockItemId:parseInt(inp.dataset.delItemId),quantityUnits:String(val)});
+      }
     });
     if(!lines.length){errEl.textContent='Enter at least one delivery quantity.';errEl.style.display='';return;}
     try{
@@ -8628,7 +8634,7 @@
         }
         var varColor=row.variance===null?'var(--text-2)':row.variance>1?'#DC2626':row.variance<-1?'#16A34A':'var(--text)';
         html+='<tr style="border-bottom:1px solid var(--border)">'+
-          '<td style="padding:8px 10px;font-weight:500">'+escHtml(row.itemName)+'<span style="color:var(--text-2);font-size:11px;margin-left:4px">'+escHtml(row.countUnit||'')+'</span></td>'+
+          '<td style="padding:8px 10px;font-weight:500">'+escHtml(row.itemName)+'<span style="color:var(--text-2);font-size:11px;margin-left:4px">'+escHtml(row.baseUnit||row.countUnit||'')+(row.baseUnit==='pint'?'s':'')+'</span></td>'+
           '<td style="padding:8px 10px;text-align:right">'+row.opening+'</td>'+
           '<td style="padding:8px 10px;text-align:right">'+row.delivered+'</td>'+
           '<td style="padding:8px 10px;text-align:right">'+row.closing+'</td>'+
@@ -8669,8 +8675,8 @@
       html+='<div style="font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">'+escHtml(cat.name)+'</div>';
       html+='<div style="display:flex;flex-direction:column;gap:6px">';
       catItems.forEach(function(item){
-        var linked=item.squareCatalogVariationId
-          ?'<span style="background:#16A34A20;color:#16A34A;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap">✓ '+escHtml(item.squareCatalogVariationName||'POS linked')+'</span>'
+        var linked=itemIsLinked(item)
+          ?'<span style="background:#16A34A20;color:#16A34A;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap">✓ '+itemLinkLabel(item)+'</span>'
           :'<span style="background:#F59E0B20;color:#D97706;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px">Not linked to POS</span>';
         var inactiveBadge=item.active===false?'<span style="background:#DC262620;color:#DC2626;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;margin-left:4px">Inactive</span>':'';
         var meta=[];
@@ -8750,8 +8756,8 @@
     // POS link status
     el('editItemPOSPicker').style.display='none';
     el('editItemPOSSaveBtn').style.display='none';
-    if(item.squareCatalogVariationId){
-      el('editItemPOSStatus').innerHTML='<span style="color:#16A34A;font-weight:600">✓ Linked: '+escHtml(item.squareCatalogVariationName||item.squareCatalogVariationId)+'</span>';
+    if(itemIsLinked(item)){
+      el('editItemPOSStatus').innerHTML='<span style="color:#16A34A;font-weight:600">✓ Linked: '+itemLinkLabel(item)+'</span>';
       el('editItemPOSUnlinkBtn').style.display='';
       el('editItemPOSChangeBtn').textContent='Change link';
     }else{
@@ -8943,8 +8949,8 @@
       _posVariationsForEdit=await r.json();
       var id=parseInt(el('editItemId').value);
       var item=_stockItems.find(function(i){return i.id===id;});
-      el('editItemPOSStatus').innerHTML=item&&item.squareCatalogVariationId
-        ?'<span style="color:#16A34A;font-weight:600">✓ Linked: '+escHtml(item.squareCatalogVariationName||item.squareCatalogVariationId)+'</span>'
+      el('editItemPOSStatus').innerHTML=item&&itemIsLinked(item)
+        ?'<span style="color:#16A34A;font-weight:600">✓ Linked: '+itemLinkLabel(item)+'</span>'
         :'Not linked to Square POS';
       filterPOSVariations();
       picker.style.display='';
@@ -8960,30 +8966,57 @@
       sel.appendChild(opt);
     });
   }
+  /* ── POS link helpers (multi-size: pint + half) ── */
+  function deriveSoldFactor(name){return /(\bhalf\b|½|1\/2)/i.test(name||'')?0.5:1;}
+  function isDraughtSizeName(name){return /(\bpint\b|\bhalf\b|½)/i.test(name||'');}
+  // Build the link set for a chosen variation. If its Square item has a half-pint
+  // sibling size, link pint + half together with the right factors; else link just it.
+  function buildPosLinks(variationId,vars){
+    var chosen=(vars||[]).find(function(v){return v.variationId===variationId;});
+    if(!chosen)return[{squareVariationId:variationId,squareVariationName:'',soldUnitFactor:1}];
+    var siblings=(vars||[]).filter(function(v){return v.itemId&&chosen.itemId&&v.itemId===chosen.itemId;});
+    var hasHalf=siblings.some(function(v){return deriveSoldFactor(v.variationName)===0.5;});
+    if(siblings.length>1&&hasHalf&&isDraughtSizeName(chosen.variationName)){
+      return siblings.filter(function(v){return isDraughtSizeName(v.variationName);})
+        .map(function(v){return{squareVariationId:v.variationId,squareVariationName:v.displayName,soldUnitFactor:deriveSoldFactor(v.variationName)};});
+    }
+    return[{squareVariationId:chosen.variationId,squareVariationName:chosen.displayName,soldUnitFactor:deriveSoldFactor(chosen.variationName)}];
+  }
+  function itemIsLinked(item){return!!(item&&((item.posLinks&&item.posLinks.length>0)||item.squareCatalogVariationId));}
+  function itemLinkLabel(item){
+    if(item&&item.posLinks&&item.posLinks.length){
+      return item.posLinks.map(function(l){return escHtml(l.squareVariationName||'POS')+(Number(l.soldUnitFactor)!==1?' ×'+l.soldUnitFactor:'');}).join(', ');
+    }
+    return item&&item.squareCatalogVariationName?escHtml(item.squareCatalogVariationName):'POS linked';
+  }
   async function savePOSLink(){
     var sel=el('editItemPOSSelect');
     if(!sel.value){return;}
-    var variationId=sel.value;
-    var variationName=sel.options[sel.selectedIndex]?sel.options[sel.selectedIndex].text:'';
     var id=parseInt(el('editItemId').value);
+    var links=buildPosLinks(sel.value,_posVariationsForEdit||_posVariations);
     try{
-      await api('/api/staff/stock/items/'+id+'/square-mapping',{method:'PATCH',body:JSON.stringify({squareCatalogVariationId:variationId,squareCatalogVariationName:variationName})});
+      await api('/api/staff/stock/items/'+id+'/square-links',{method:'PUT',body:JSON.stringify({links:links})});
       var idx=_stockItems.findIndex(function(i){return i.id===id;});
-      if(idx>=0){_stockItems[idx].squareCatalogVariationId=variationId;_stockItems[idx].squareCatalogVariationName=variationName;}
-      el('editItemPOSStatus').innerHTML='<span style="color:#16A34A;font-weight:600">✓ Linked: '+escHtml(variationName)+'</span>';
+      if(idx>=0){
+        _stockItems[idx].posLinks=links.map(function(l){return{squareVariationId:l.squareVariationId,squareVariationName:l.squareVariationName,soldUnitFactor:l.soldUnitFactor};});
+        var primary=links.find(function(l){return Number(l.soldUnitFactor)===1;})||links[0];
+        _stockItems[idx].squareCatalogVariationId=primary?primary.squareVariationId:null;
+        _stockItems[idx].squareCatalogVariationName=primary?primary.squareVariationName:null;
+      }
+      el('editItemPOSStatus').innerHTML='<span style="color:#16A34A;font-weight:600">✓ Linked: '+itemLinkLabel(_stockItems[idx])+'</span>';
       el('editItemPOSUnlinkBtn').style.display='';
       el('editItemPOSPicker').style.display='none';
       el('editItemPOSSaveBtn').style.display='none';
       renderStockCatalogue();
-      toast('POS link saved');
+      toast(links.length>1?'Linked '+links.length+' sizes (pint + half)':'POS link saved');
     }catch(e){toast('Failed: '+(e.message||'error'),'error');}
   }
   async function unlinkItemVariation(){
     var id=parseInt(el('editItemId').value);
     try{
-      await api('/api/staff/stock/items/'+id+'/square-mapping',{method:'PATCH',body:JSON.stringify({squareCatalogVariationId:null,squareCatalogVariationName:null})});
+      await api('/api/staff/stock/items/'+id+'/square-links',{method:'PUT',body:JSON.stringify({links:[]})});
       var idx=_stockItems.findIndex(function(i){return i.id===id;});
-      if(idx>=0){_stockItems[idx].squareCatalogVariationId=null;_stockItems[idx].squareCatalogVariationName=null;}
+      if(idx>=0){_stockItems[idx].posLinks=[];_stockItems[idx].squareCatalogVariationId=null;_stockItems[idx].squareCatalogVariationName=null;}
       el('editItemPOSStatus').textContent='Not linked to Square POS';
       el('editItemPOSUnlinkBtn').style.display='none';
       el('editItemPOSPicker').style.display='none';

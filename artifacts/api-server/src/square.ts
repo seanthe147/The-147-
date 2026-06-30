@@ -2109,6 +2109,7 @@ export async function getTerminalCheckout(checkoutId: string): Promise<{
 export interface CatalogVariation {
   variationId: string;
   variationName: string;   // e.g. "Regular", "Pint", "Bottle"
+  itemId: string;          // parent Square ITEM id (groups sibling sizes)
   itemName: string;        // parent item name e.g. "Peroni"
   displayName: string;     // "Peroni – Bottle 330ml"
 }
@@ -2141,7 +2142,7 @@ export async function listCatalogVariations(): Promise<CatalogVariation[]> {
       const displayName = variationName && variationName !== "Regular" && variationName !== itemName
         ? `${itemName} – ${variationName}`
         : itemName;
-      result.push({ variationId: v.id, variationName, itemName, displayName });
+      result.push({ variationId: v.id, variationName, itemId: obj.id, itemName, displayName });
     }
   }
 

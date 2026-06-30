@@ -8,7 +8,7 @@ import multer from "multer";
 import sharp from "sharp";
 import nodemailer from "nodemailer";
 import { storage, db } from "../storage";
-import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema, isSafePublicUrl, tabs, tabItems, bookings as bookingsTable, tableSessions, marketingCampaigns, emailAutomations, emailUnsubscribes, emailSendLog, customers as customersTable, membershipSubscriptions as membershipSubsTable, venueRewardClaims, venueRewardTiers, venueRewardTiers as venueRewardTiersT, gamePlays, gamePrizes, staffUsers as staffUsersTable, stockCategories, stockItems, stockDeliveries, stockDeliveryLines, stockCounts, stockCountLines } from "@workspace/db";
+import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema, isSafePublicUrl, tabs, tabItems, bookings as bookingsTable, tableSessions, marketingCampaigns, emailAutomations, emailUnsubscribes, emailSendLog, customers as customersTable, membershipSubscriptions as membershipSubsTable, venueRewardClaims, venueRewardTiers, venueRewardTiers as venueRewardTiersT, gamePlays, gamePrizes, staffUsers as staffUsersTable, stockCategories, stockItems, stockDeliveries, stockDeliveryLines, stockCounts, stockCountLines, stockItemPosLinks } from "@workspace/db";
 import type { InsertBannerImage } from "@workspace/db";
 import { and as dAnd, eq as dEq, desc as dDesc, isNotNull as dIsNotNull, sql as dSql, gte as dGte, lte as dLte, asc as dAsc, lt as dLt, inArray as dInArray } from "drizzle-orm";
 import { getServerFeatureFlags } from "../featureFlags";
@@ -15620,7 +15620,16 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     try {
       await ensureStockDefaults();
       const items = await db.select().from(stockItems).orderBy(dAsc(stockItems.categoryId), dAsc(stockItems.sortOrder));
-      res.json(items);
+      const links = items.length
+        ? await db.select().from(stockItemPosLinks).where(dInArray(stockItemPosLinks.stockItemId, items.map((i) => i.id)))
+        : [];
+      const result = items.map((item) => ({
+        ...item,
+        posLinks: links
+          .filter((l) => l.stockItemId === item.id)
+          .map((l) => ({ id: l.id, squareVariationId: l.squareVariationId, squareVariationName: l.squareVariationName, soldUnitFactor: parseFloat(l.soldUnitFactor) })),
+      }));
+      res.json(result);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -15682,12 +15691,39 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
         notes,
         enteredBy: username,
       }).returning();
-      const lineRows = (lines as Array<{ stockItemId: number; quantityUnits: string; quantityCases?: string }>).map((l) => ({
-        deliveryId: delivery.id,
-        stockItemId: l.stockItemId,
-        quantityUnits: String(l.quantityUnits),
-        quantityCases: l.quantityCases ? String(l.quantityCases) : null,
-      }));
+      // Resolve case sizes so deliveries entered in cases are stored as single units.
+      const lineItemIds = (lines as Array<{ stockItemId: number }>).map((l) => l.stockItemId);
+      const lineItems = lineItemIds.length
+        ? await db.select().from(stockItems).where(dInArray(stockItems.id, lineItemIds))
+        : [];
+      const caseSizeById = new Map(lineItems.map((i) => [i.id, i.caseSize]));
+      const num = (v: unknown): number | null => {
+        if (v == null || v === "") return null;
+        const n = parseFloat(String(v));
+        return Number.isFinite(n) && n >= 0 ? n : null;
+      };
+      const lineRows = (lines as Array<{ stockItemId: number; quantityUnits?: string; quantityCases?: string }>).map((l) => {
+        const caseSize = caseSizeById.get(l.stockItemId) ?? null;
+        const casesIn = num(l.quantityCases);
+        const unitsIn = num(l.quantityUnits);
+        let cases: number | null = null;
+        let units: number;
+        if (caseSize && caseSize > 0) {
+          // Case-packed item: prefer cases (× caseSize); fall back to raw units if only units given.
+          if (casesIn != null) { cases = casesIn; units = casesIn * caseSize; }
+          else { units = unitsIn ?? 0; cases = units / caseSize; }
+        } else {
+          // Non-case item: use units; tolerate a stray quantityCases by treating it as units.
+          units = unitsIn != null ? unitsIn : (casesIn ?? 0);
+        }
+        return {
+          deliveryId: delivery.id,
+          stockItemId: l.stockItemId,
+          quantityUnits: String(units),
+          quantityCases: cases != null ? String(cases) : null,
+        };
+      }).filter((r) => parseFloat(r.quantityUnits) > 0);
+      if (!lineRows.length) { res.status(400).json({ error: "No valid delivery quantities" }); return; }
       await db.insert(stockDeliveryLines).values(lineRows);
       res.json({ id: delivery.id });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -15846,6 +15882,43 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  // Get the Square variation links (sizes) for a stock item
+  app.get("/api/staff/stock/items/:id/square-links", staffAuth, managerAuth, async (req, res) => {
+    try {
+      const id = parseInt(String(req.params.id), 10);
+      const links = await db.select().from(stockItemPosLinks).where(dEq(stockItemPosLinks.stockItemId, id));
+      res.json(links.map((l) => ({ id: l.id, squareVariationId: l.squareVariationId, squareVariationName: l.squareVariationName, soldUnitFactor: parseFloat(l.soldUnitFactor) })));
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Replace the full set of Square variation links for a stock item.
+  // Body: { links: [{ squareVariationId, squareVariationName, soldUnitFactor }] }
+  // soldUnitFactor = base units per Square sale (pint=1, half=0.5, bottle=1).
+  app.put("/api/staff/stock/items/:id/square-links", staffAuth, managerAuth, async (req, res) => {
+    try {
+      const id = parseInt(String(req.params.id), 10);
+      const { links } = req.body as { links: Array<{ squareVariationId: string; squareVariationName?: string | null; soldUnitFactor?: number | string }> };
+      await db.delete(stockItemPosLinks).where(dEq(stockItemPosLinks.stockItemId, id));
+      const clean = (links ?? []).filter((l) => l.squareVariationId);
+      if (clean.length) {
+        await db.insert(stockItemPosLinks).values(clean.map((l) => ({
+          stockItemId: id,
+          squareVariationId: l.squareVariationId,
+          squareVariationName: l.squareVariationName ?? null,
+          soldUnitFactor: String(l.soldUnitFactor ?? "1"),
+        })));
+      }
+      // Mirror the primary (factor closest to 1) link to legacy columns for back-compat.
+      const primary = clean.find((l) => Number(l.soldUnitFactor ?? 1) === 1) ?? clean[0] ?? null;
+      await db.update(stockItems).set({
+        squareCatalogVariationId: primary?.squareVariationId ?? null,
+        squareCatalogVariationName: primary?.squareVariationName ?? null,
+        updatedAt: new Date(),
+      }).where(dEq(stockItems.id, id));
+      res.json({ ok: true, count: clean.length });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
   // Consumption Report (now includes Square POS sales where mapped)
   app.get("/api/stock/report", staffAuth, managerAuth, async (req, res) => {
     try {
@@ -15893,31 +15966,57 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
         .innerJoin(stockDeliveries, dEq(stockDeliveryLines.deliveryId, stockDeliveries.id))
         .where(dAnd(dGte(stockDeliveries.deliveredAt, start), dLte(stockDeliveries.deliveredAt, end)));
 
+      // Square POS variation links per item (one item may map to pint + half sizes)
+      const allLinks = itemRows.length
+        ? await db.select().from(stockItemPosLinks).where(dInArray(stockItemPosLinks.stockItemId, itemRows.map((r) => r.item.id)))
+        : [];
+
       // Fetch Square POS sales for mapped items
       const salesMap = square.isConfigured()
         ? await square.getSalesByVariation(start.toISOString(), end.toISOString()).catch(() => new Map<string, number>())
         : new Map<string, number>();
 
+      const round1 = (n: number) => Math.round(n * 10) / 10;
+
       const report = itemRows.map(({ item, cat }) => {
-        const opening = parseFloat(openingLines.find((l) => l.stockItemId === item.id)?.quantityUnits ?? "0");
-        const closing = parseFloat(closingLines.find((l) => l.stockItemId === item.id)?.quantityUnits ?? "0");
-        const delivered = deliveryRows
+        // Base unit: kegs reconcile in pints (× serves/keg); everything else in its own count unit.
+        const pintsPerKeg = item.countUnit === "keg" ? parseFloat(item.servesPerUnit ?? "0") || 0 : 0;
+        const toBase = pintsPerKeg > 0 ? (units: number) => units * pintsPerKeg : (units: number) => units;
+        const baseUnit = pintsPerKeg > 0 ? "pint" : item.countUnit;
+
+        const openingUnits = parseFloat(openingLines.find((l) => l.stockItemId === item.id)?.quantityUnits ?? "0");
+        const closingUnits = parseFloat(closingLines.find((l) => l.stockItemId === item.id)?.quantityUnits ?? "0");
+        const deliveredUnits = deliveryRows
           .filter((r) => r.line.stockItemId === item.id)
           .reduce((sum, r) => sum + parseFloat(r.line.quantityUnits), 0);
-        const consumed = Math.round((opening + delivered - closing) * 10) / 10;
-        const rawSold = item.squareCatalogVariationId ? (salesMap.get(item.squareCatalogVariationId) ?? 0) : null;
-        const sold = rawSold !== null ? Math.round(rawSold * 10) / 10 : null;
-        const variance = sold !== null ? Math.round((consumed - sold) * 10) / 10 : null;
+
+        const opening = round1(toBase(openingUnits));
+        const delivered = round1(toBase(deliveredUnits));
+        const closing = round1(toBase(closingUnits));
+        const consumed = round1(toBase(openingUnits + deliveredUnits - closingUnits));
+
+        // Links (multi-size). Fall back to legacy single column if no links exist yet.
+        const itemLinks = allLinks.filter((l) => l.stockItemId === item.id);
+        const effectiveLinks = itemLinks.length
+          ? itemLinks.map((l) => ({ variationId: l.squareVariationId, factor: parseFloat(l.soldUnitFactor) || 1 }))
+          : (item.squareCatalogVariationId ? [{ variationId: item.squareCatalogVariationId, factor: 1 }] : []);
+        const squareLinked = effectiveLinks.length > 0;
+        const sold = squareLinked
+          ? round1(effectiveLinks.reduce((sum, lk) => sum + (salesMap.get(lk.variationId) ?? 0) * lk.factor, 0))
+          : null;
+        const variance = sold !== null ? round1(consumed - sold) : null;
+
         return {
           itemId: item.id,
           itemName: item.name,
           countUnit: item.countUnit,
           containerSize: item.containerSize,
+          baseUnit,
           categoryName: cat.name,
-          squareLinked: !!item.squareCatalogVariationId,
-          opening: Math.round(opening * 10) / 10,
-          delivered: Math.round(delivered * 10) / 10,
-          closing: Math.round(closing * 10) / 10,
+          squareLinked,
+          opening,
+          delivered,
+          closing,
           consumed,
           sold,
           variance,

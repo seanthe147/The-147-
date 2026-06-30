@@ -1247,3 +1247,16 @@ export const stockCountLines = pgTable("stock_count_lines", {
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// Links a stock item to one or more Square catalog variations (sizes) for sales reconciliation.
+// soldUnitFactor = how many of the item's BASE unit one Square sale of this variation equals
+// (e.g. a pint = 1, a half pint = 0.5, a single bottle = 1).
+export const stockItemPosLinks = pgTable("stock_item_pos_links", {
+  id: serial("id").primaryKey(),
+  stockItemId: integer("stock_item_id").references(() => stockItems.id, { onDelete: "cascade" }).notNull(),
+  squareVariationId: text("square_variation_id").notNull(),
+  squareVariationName: text("square_variation_name"),
+  soldUnitFactor: numeric("sold_unit_factor").notNull().default("1"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type StockItemPosLink = typeof stockItemPosLinks.$inferSelect;
