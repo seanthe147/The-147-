@@ -24,6 +24,8 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useMatchBarVisible } from "@/hooks/useMatchBarVisible";
 import { ScratchCardGame } from "@/components/ScratchCardGame";
 
+const SHOW_SQUARE_REWARD_TIERS = false;
+
 function loyaltyUrl(path: string): string {
   return new URL(path, getApiUrl()).toString();
 }
@@ -817,11 +819,13 @@ export default function RewardsScreen() {
             terminology={meQuery.data.program?.terminology}
           />
 
-          <NextRewardCard
-            balance={meQuery.data.account.balance}
-            rewardTiers={meQuery.data.program?.reward_tiers ?? []}
-            terminology={meQuery.data.program?.terminology}
-          />
+          {SHOW_SQUARE_REWARD_TIERS && (
+            <NextRewardCard
+              balance={meQuery.data.account.balance}
+              rewardTiers={meQuery.data.program?.reward_tiers ?? []}
+              terminology={meQuery.data.program?.terminology}
+            />
+          )}
 
           {meQuery.data.promo?.doublePointsToday && (
             <View style={styles.doublePointsBanner}>
@@ -866,7 +870,7 @@ export default function RewardsScreen() {
             />
           )}
 
-          {meQuery.data.program?.reward_tiers && meQuery.data.program.reward_tiers.length > 0 && (
+          {SHOW_SQUARE_REWARD_TIERS && meQuery.data.program?.reward_tiers && meQuery.data.program.reward_tiers.length > 0 && (
             <View style={styles.rewardsSection}>
               <View style={styles.sectionTitleRow}>
                 <Ionicons name="ribbon" size={18} color={Colors.brand.gold} />
