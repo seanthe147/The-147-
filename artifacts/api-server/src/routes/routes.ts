@@ -3776,19 +3776,32 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       }
     }
 
-    // Dining restrictions: Wednesday–Sunday only, 12:00–20:00.
-    // Staff can override — they take walk-ins and phone bookings outside
-    // normal dining hours (private events, early/late parties).
+    // Dining restrictions: Wednesday–Sunday only, 12:00–20:00 by default,
+    // unless staff have set a per-date override (extended/reduced hours or
+    // closed) for events. Staff themselves bypass these rules entirely —
+    // they take walk-ins and phone bookings outside normal dining hours.
     if (parsed.data.tableType === "dining" && !requestStaffUser) {
-      const bookingDate = new Date(parsed.data.date + "T00:00:00");
-      const dow = bookingDate.getDay(); // 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
-      if (![0, 3, 4, 5, 6].includes(dow)) {
-        return res.status(400).json({ message: "Dining is only available Wednesday to Sunday" });
-      }
+      const override = (await getDiningOverrides()).find(o => o.date === parsed.data.date);
       const startMins = toSlotMins(parsed.data.startTime);
       const endMins = startMins + (parsed.data.duration ?? 1) * 60;
-      if (startMins < 12 * 60 || endMins > 20 * 60) {
-        return res.status(400).json({ message: "Dining bookings must be between 12:00 and 20:00" });
+      if (override) {
+        if (override.closed) {
+          return res.status(400).json({ message: "Dining is closed on this date" });
+        }
+        const oStart = toSlotMins(override.startTime || "12:00");
+        const oEnd = toSlotMins(override.endTime || "20:00");
+        if (startMins < oStart || endMins > oEnd) {
+          return res.status(400).json({ message: `Dining bookings on this date must be between ${override.startTime || "12:00"} and ${override.endTime || "20:00"}` });
+        }
+      } else {
+        const bookingDate = new Date(parsed.data.date + "T00:00:00");
+        const dow = bookingDate.getDay(); // 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
+        if (![0, 3, 4, 5, 6].includes(dow)) {
+          return res.status(400).json({ message: "Dining is only available Wednesday to Sunday" });
+        }
+        if (startMins < 12 * 60 || endMins > 20 * 60) {
+          return res.status(400).json({ message: "Dining bookings must be between 12:00 and 20:00" });
+        }
       }
     }
 
