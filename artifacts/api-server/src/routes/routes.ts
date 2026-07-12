@@ -3742,8 +3742,44 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     const DINING_TABLE_START = 18;
     let finalTableNumber = parsed.data.tableNumber ?? null;
 
-    // Dining restrictions: Wednesday–Sunday only, 12:00–20:00
-    if (parsed.data.tableType === "dining") {
+    // Resolve staff session (if any) up front. A valid staff login unlocks
+    // overrides on this otherwise-public route: bypassing the dining day/time
+    // business rules (walk-ins, special events) and the staff-only
+    // depositHandling field further down. Invalid/absent tokens simply mean
+    // "not staff" — we never 401 here because the public widget must work.
+    let requestStaffUser: any = null;
+    {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        const token = authHeader.slice(7);
+        if (token.length >= 32 && token.length <= 128) {
+          try {
+            const session = await storage.validateStaffSession(token);
+            if (session?.staffUsername) {
+              const user = await storage.getStaffUserByUsername(session.staffUsername);
+              if (
+                user &&
+                user.active !== false &&
+                user.approvalStatus !== "rejected" &&
+                user.approvalStatus !== "pending"
+              ) {
+                requestStaffUser = user;
+                (req as any).staffUser = user;
+                (req as any).staffUsername = session.staffUsername;
+                (req as any).staffRole = user.role || "staff";
+              }
+            }
+          } catch {
+            // Treat any session-validation error as no-staff and fall through.
+          }
+        }
+      }
+    }
+
+    // Dining restrictions: Wednesday–Sunday only, 12:00–20:00.
+    // Staff can override — they take walk-ins and phone bookings outside
+    // normal dining hours (private events, early/late parties).
+    if (parsed.data.tableType === "dining" && !requestStaffUser) {
       const bookingDate = new Date(parsed.data.date + "T00:00:00");
       const dow = bookingDate.getDay(); // 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
       if (![0, 3, 4, 5, 6].includes(dow)) {
@@ -3848,34 +3884,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     // widget requests must continue to work — we just silently downgrade
     // to the normal deposit flow.
     const requestedDepositHandling = (req.body as { depositHandling?: string }).depositHandling;
-    let staffUserForDeposit: any = null;
-    if (requestedDepositHandling === "mark_paid" || requestedDepositHandling === "send_link") {
-      const authHeader = req.headers.authorization;
-      if (authHeader && authHeader.startsWith("Bearer ")) {
-        const token = authHeader.slice(7);
-        if (token.length >= 32 && token.length <= 128) {
-          try {
-            const session = await storage.validateStaffSession(token);
-            if (session?.staffUsername) {
-              const user = await storage.getStaffUserByUsername(session.staffUsername);
-              if (
-                user &&
-                user.active !== false &&
-                user.approvalStatus !== "rejected" &&
-                user.approvalStatus !== "pending"
-              ) {
-                staffUserForDeposit = user;
-                (req as any).staffUser = user;
-                (req as any).staffUsername = session.staffUsername;
-                (req as any).staffRole = user.role || "staff";
-              }
-            }
-          } catch {
-            // Treat any session-validation error as no-staff and fall through.
-          }
-        }
-      }
-    }
+    const staffUserForDeposit =
+      requestedDepositHandling === "mark_paid" || requestedDepositHandling === "send_link"
+        ? requestStaffUser
+        : null;
     const depositHandling = staffUserForDeposit ? requestedDepositHandling : undefined;
     if (requestedDepositHandling && !staffUserForDeposit) {
       console.warn(
