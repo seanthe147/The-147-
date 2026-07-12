@@ -178,6 +178,29 @@ export default function BookScreen() {
   const bookedSlots = availabilityQuery.data?.slots ?? [];
   const totalTables = availabilityQuery.data?.totalTables ?? 1;
 
+  // Per-date dining hours overrides set by staff (extend/reduce/close for events)
+  const diningHoursQuery = useQuery<{
+    default: { days: number[]; startTime: string; endTime: string };
+    overrides: Array<{ date: string; closed: boolean; startTime?: string; endTime?: string; note?: string }>;
+  }>({
+    queryKey: ["/api/dining-hours"],
+    enabled: isDining,
+  });
+  const diningOverrides = diningHoursQuery.data?.overrides ?? [];
+
+  // Effective dining window for a date: staff override wins, else Wed–Sun 12:00–20:00.
+  // Returns null when dining is unavailable that day.
+  const getDiningWindow = (dateStr: string): { start: string; end: string; isOverride: boolean } | null => {
+    const o = diningOverrides.find((x) => x.date === dateStr);
+    if (o) return o.closed ? null : { start: o.startTime || "12:00", end: o.endTime || "20:00", isOverride: true };
+    return isDiningDay(dateStr) ? { start: "12:00", end: "20:00", isOverride: false } : null;
+  };
+  const selectedDiningOverride = isDining && selectedDate ? diningOverrides.find((x) => x.date === selectedDate) : undefined;
+  const toMins = (t: string) => {
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + (m || 0);
+  };
+
   const isSlotBooked = (time: string, dur: number) => {
     const reqStart = parseInt(time.replace(":", ""));
     const reqEnd = reqStart + dur * 100;
@@ -355,7 +378,7 @@ export default function BookScreen() {
                       setSelectedTable(table.id);
                       setSelectedTableNumber(null);
                       if (table.id !== "snooker" && duration > 3) setDuration(3);
-                      if (table.id === "dining" && selectedDate && !isDiningDay(selectedDate)) {
+                      if (table.id === "dining" && selectedDate && !getDiningWindow(selectedDate)) {
                         setSelectedDate(null);
                         setSelectedTime(null);
                       }
@@ -471,7 +494,13 @@ export default function BookScreen() {
               {isDining && (
                 <View style={styles.diningNotice}>
                   <Ionicons name="information-circle-outline" size={16} color="#92400e" />
-                  <Text style={styles.diningNoticeText}>Dining available Wednesday–Sunday, 12pm–8pm only</Text>
+                  <Text style={styles.diningNoticeText}>
+                    {selectedDiningOverride
+                      ? selectedDiningOverride.closed
+                        ? `Dining is closed on this date${selectedDiningOverride.note ? ` (${selectedDiningOverride.note})` : ""}`
+                        : `Special dining hours on this date: ${selectedDiningOverride.startTime}–${selectedDiningOverride.endTime}${selectedDiningOverride.note ? ` (${selectedDiningOverride.note})` : ""}`
+                      : "Dining available Wednesday–Sunday, 12pm–8pm only"}
+                  </Text>
                 </View>
               )}
 
@@ -515,7 +544,7 @@ export default function BookScreen() {
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.daysRow}>
                 {days.map((day) => {
                   const isSelected = selectedDate === day.date;
-                  const diningRestricted = isDining && !isDiningDay(day.date);
+                  const diningRestricted = isDining && !getDiningWindow(day.date);
                   return (
                     <Pressable
                       key={day.date}
@@ -560,10 +589,12 @@ export default function BookScreen() {
                       {BOOKING_HOURS.filter((time) => {
                         const [slotH, slotM] = time.split(":").map(Number);
                         const slotMins = slotH * 60 + slotM;
-                        // Dining: only 12:00–20:00, slot must end by 20:00
+                        // Dining: effective window (default 12:00–20:00, or staff per-date override)
                         if (isDining) {
+                          const win = selectedDate ? getDiningWindow(selectedDate) : null;
+                          if (!win) return false;
                           const slotEndMins = slotMins + duration * 60;
-                          if (slotMins < 12 * 60 || slotEndMins > 20 * 60) return false;
+                          if (slotMins < toMins(win.start) || slotEndMins > toMins(win.end)) return false;
                         }
                         // Past-time filter for today
                         if (!selectedDate) return true;

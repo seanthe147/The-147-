@@ -6547,6 +6547,87 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     res.json({ success: true });
   });
 
+  // ── Dining Hours Overrides ──────────────────────────────────────────────────
+  // Per-date overrides of the default dining booking window (Wed–Sun,
+  // 12:00–20:00) so staff can extend, reduce, or close dining for events.
+  // Stored as a JSON array under the `dining_hours_overrides` settings key,
+  // mirroring the ordering-overrides pattern.
+  interface DiningOverride { date: string; closed: boolean; startTime?: string; endTime?: string; note?: string; }
+  const DINING_DEFAULTS = { days: [0, 3, 4, 5, 6], startTime: "12:00", endTime: "20:00" };
+
+  async function getDiningOverrides(): Promise<DiningOverride[]> {
+    try {
+      const raw = await storage.getSetting("dining_hours_overrides");
+      if (!raw) return [];
+      const parsedJson = JSON.parse(raw);
+      if (!Array.isArray(parsedJson)) return [];
+      // Normalise: drop malformed entries so corrupted settings can't break booking rules
+      const isDate = (s: unknown) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+      const isTime = (s: unknown) => typeof s === "string" && /^\d{2}:\d{2}$/.test(s);
+      return parsedJson.filter((o: any) =>
+        o && isDate(o.date) && (o.closed === true || (isTime(o.startTime) && isTime(o.endTime)))
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  // Public: customer booking UIs read the default rule + overrides to render
+  // day availability and time slots. No auth — same data the widget enforces.
+  app.get("/api/dining-hours", async (_req, res) => {
+    const overrides = await getDiningOverrides();
+    // Venue-local (UK) date, not UTC — avoids off-by-one around midnight
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" });
+    res.set("Cache-Control", "no-store");
+    res.json({
+      default: DINING_DEFAULTS,
+      overrides: overrides.filter(o => o.date >= today),
+    });
+  });
+
+  app.get("/api/staff/dining-overrides", staffAuth, async (_req, res) => {
+    res.json(await getDiningOverrides());
+  });
+
+  app.post("/api/staff/dining-overrides", staffAuth, async (req: any, res) => {
+    const { date, closed, startTime, endTime, note } = req.body;
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ message: "A valid date (YYYY-MM-DD) is required" });
+    }
+    const isTime = (t: unknown) => typeof t === "string" && /^\d{2}:\d{2}$/.test(t);
+    if (!closed) {
+      if (!isTime(startTime) || !isTime(endTime)) {
+        return res.status(400).json({ message: "startTime and endTime (HH:MM) are required unless closed" });
+      }
+      if (startTime >= endTime) {
+        return res.status(400).json({ message: "startTime must be before endTime" });
+      }
+    }
+    const overrides = await getDiningOverrides();
+    const entry: DiningOverride = {
+      date,
+      closed: !!closed,
+      startTime: closed ? undefined : startTime,
+      endTime: closed ? undefined : endTime,
+      note: typeof note === "string" && note.trim() ? note.trim().slice(0, 80) : undefined,
+    };
+    const idx = overrides.findIndex(o => o.date === date);
+    if (idx >= 0) overrides[idx] = entry; else overrides.push(entry);
+    overrides.sort((a, b) => a.date.localeCompare(b.date));
+    await storage.setSetting("dining_hours_overrides", JSON.stringify(overrides));
+    const who = req.staffUsername || "staff";
+    console.log(`[DINING] Hours override saved by ${who}: ${JSON.stringify(entry)}`);
+    res.json(entry);
+  });
+
+  app.delete("/api/staff/dining-overrides/:date", staffAuth, async (req, res) => {
+    const { date } = req.params;
+    const overrides = await getDiningOverrides();
+    const filtered = overrides.filter(o => o.date !== date);
+    await storage.setSetting("dining_hours_overrides", JSON.stringify(filtered));
+    res.json({ success: true });
+  });
+
   // ── Order Checkout ─────────────────────────────────────────────────────────
   app.post("/api/orders/checkout", async (req, res) => {
     const { items, tableNote, orderNote, customer, pushToken, loyaltyRewardId } = req.body;

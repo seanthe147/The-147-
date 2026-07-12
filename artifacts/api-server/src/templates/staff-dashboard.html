@@ -797,8 +797,39 @@
 
               <div style="display:flex;align-items:flex-start;gap:10px;background:#EFF6FF;border-radius:12px;padding:14px;margin-top:8px">
                 <span style="font-size:16px;flex-shrink:0">ℹ️</span>
-                <span style="font-size:12px;color:var(--blue);line-height:1.6">Dining is automatically restricted to Wednesday–Sunday, 12pm–8pm as a business rule. Use blocks above for additional closures or event days.</span>
+                <span style="font-size:12px;color:var(--blue);line-height:1.6">Dining is automatically restricted to Wednesday–Sunday, 12pm–8pm as a business rule. Use blocks above for additional closures, or set custom dining hours for a specific day below (e.g. extend or shorten hours for an event).</span>
               </div>
+
+              <div class="section-label" style="font-size:11px;font-weight:700;color:#8B9AB0;letter-spacing:.8px;margin:24px 0 12px">DINING HOURS OVERRIDES</div>
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:14px">
+                <div style="font-size:13px;color:var(--text-2);margin-bottom:14px">Temporarily change the dining booking window for one date — customers will see (and be limited to) these hours instead of the usual Wed–Sun 12pm–8pm rule. Remove the override to restore normal hours.</div>
+                <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+                  <div style="flex:1;min-width:150px">
+                    <label style="display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:6px">Date</label>
+                    <input type="date" id="dhoDate" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);box-sizing:border-box">
+                  </div>
+                  <div style="flex:1;min-width:120px" id="dhoStartWrap">
+                    <label style="display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:6px">Opens at</label>
+                    <input type="time" id="dhoStart" value="12:00" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);box-sizing:border-box">
+                  </div>
+                  <div style="flex:1;min-width:120px" id="dhoEndWrap">
+                    <label style="display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:6px">Closes at</label>
+                    <input type="time" id="dhoEnd" value="20:00" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);box-sizing:border-box">
+                  </div>
+                </div>
+                <div style="margin-bottom:14px">
+                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text)">
+                    <input type="checkbox" id="dhoClosed" onchange="dhoToggleClosed()"> Dining closed all day
+                  </label>
+                </div>
+                <div style="margin-bottom:14px">
+                  <label style="display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:6px">Note <span style="font-weight:400">(optional)</span></label>
+                  <input type="text" id="dhoNote" placeholder="e.g. Exhibition night, Private party…" maxlength="80" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;color:var(--text);background:var(--bg);box-sizing:border-box">
+                </div>
+                <div id="dhoErr" style="display:none;background:#FEF2F2;border-radius:8px;padding:10px;color:#DC2626;font-size:13px;margin-bottom:12px"></div>
+                <button onclick="dhoSave()" id="dhoSaveBtn" class="btn btn-primary" style="width:100%">🍽️ Save Dining Hours Override</button>
+              </div>
+              <div id="dhoList"></div>
             </div>
           </div>
         </div>
@@ -6324,6 +6355,7 @@
       const blocks=await r.json();
       renderAvBlocks(blocks);
     }catch(e){if(e.message!=='Session expired')el('avBlocksList').innerHTML='<div class="empty-state">Network error</div>';}
+    loadDiningOverrides();
   }
 
   function renderAvBlocks(blocks){
@@ -6381,12 +6413,87 @@
     }catch(e){if(e.message!=='Session expired')toast('Network error','error');}
   }
 
+  /* ── Dining hours overrides (per-date extend/reduce/close) ── */
+  function dhoToggleClosed(){
+    const closed=el('dhoClosed').checked;
+    el('dhoStartWrap').style.opacity=closed?'.4':'1';
+    el('dhoEndWrap').style.opacity=closed?'.4':'1';
+    el('dhoStart').disabled=closed;
+    el('dhoEnd').disabled=closed;
+  }
+
+  function dhoFormatDate(s){
+    const d=new Date(s+'T00:00:00');
+    return d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+  }
+
+  async function loadDiningOverrides(){
+    try{
+      const r=await api('/api/staff/dining-overrides');
+      if(!r.ok){el('dhoList').innerHTML='<div class="empty-state">Failed to load dining overrides</div>';return;}
+      renderDiningOverrides(await r.json());
+    }catch(e){if(e.message!=='Session expired')el('dhoList').innerHTML='<div class="empty-state">Network error</div>';}
+  }
+
+  function renderDiningOverrides(list){
+    if(!list.length){
+      el('dhoList').innerHTML='<div class="av-block-row" style="justify-content:center;color:var(--text-2);font-size:14px">Normal dining hours apply every day (Wed–Sun, 12pm–8pm)</div>';
+      return;
+    }
+    el('dhoList').innerHTML=list.map(o=>`
+      <div class="av-block-row">
+        <div class="av-block-icon">${o.closed?'🚫':'🍽️'}</div>
+        <div style="flex:1">
+          <div class="av-block-main">${esc(dhoFormatDate(o.date))} · ${o.closed?'Dining closed':esc((o.startTime||'12:00')+'–'+(o.endTime||'20:00'))}</div>
+          ${o.note?`<div class="av-block-sub">${esc(o.note)}</div>`:''}
+        </div>
+        <button onclick="dhoDelete('${o.date}')" class="btn btn-danger btn-sm" style="flex-shrink:0">Remove</button>
+      </div>
+    `).join('');
+  }
+
+  async function dhoSave(){
+    const errEl=el('dhoErr');
+    errEl.style.display='none';
+    const date=el('dhoDate').value;
+    const closed=el('dhoClosed').checked;
+    const startTime=el('dhoStart').value;
+    const endTime=el('dhoEnd').value;
+    const note=el('dhoNote').value.trim();
+    if(!date){errEl.textContent='Please select a date.';errEl.style.display='';return;}
+    if(!closed&&(!startTime||!endTime)){errEl.textContent='Please set both opening and closing times.';errEl.style.display='';return;}
+    if(!closed&&startTime>=endTime){errEl.textContent='Opening time must be before closing time.';errEl.style.display='';return;}
+    el('dhoSaveBtn').disabled=true;
+    el('dhoSaveBtn').textContent='Saving…';
+    try{
+      const r=await api('/api/staff/dining-overrides',{method:'POST',body:JSON.stringify({date,closed,startTime,endTime,note:note||undefined})});
+      if(!r.ok){const d=await r.json();errEl.textContent=d.message||'Failed to save';errEl.style.display='';return;}
+      el('dhoDate').value='';el('dhoNote').value='';el('dhoClosed').checked=false;dhoToggleClosed();
+      toast('Dining hours override saved','success');
+      loadDiningOverrides();
+    }catch(e){if(e.message!=='Session expired'){errEl.textContent='Network error';errEl.style.display='';}}
+    finally{el('dhoSaveBtn').disabled=false;el('dhoSaveBtn').textContent='🍽️ Save Dining Hours Override';}
+  }
+
+  async function dhoDelete(date){
+    if(!confirm('Remove the dining hours override for '+dhoFormatDate(date)+'?\n\nNormal hours (Wed–Sun, 12pm–8pm) will apply again.'))return;
+    try{
+      const r=await api('/api/staff/dining-overrides/'+date,{method:'DELETE'});
+      if(!r.ok){toast('Failed to remove','error');return;}
+      toast('Override removed — normal hours restored','success');
+      loadDiningOverrides();
+    }catch(e){if(e.message!=='Session expired')toast('Network error','error');}
+  }
+
   /* expose availability fns to global scope for onclick= attributes */
   window.avSetMode=avSetMode;
   window.avSelectDay=avSelectDay;
   window.avSelectType=avSelectType;
   window.avCreate=avCreate;
   window.avDelete=avDelete;
+  window.dhoToggleClosed=dhoToggleClosed;
+  window.dhoSave=dhoSave;
+  window.dhoDelete=dhoDelete;
 
   /* ── Menu Management ─────────────────────────────────────────────────────── */
   let menuMgmtData=[];

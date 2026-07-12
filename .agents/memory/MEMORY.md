@@ -4,3 +4,4 @@
 - [Stock management system](stock-management.md) — delivery log, monthly counts, consumption report; seeding, backdating, router.d.ts gotcha
 - [Prize code redemption](prize-code-redemption.md) — two code systems with subtle bugs; normalisation and alphabet must match between generation and lookup
 - [Square deals visibility](square-deals-visibility.md) — Square discounts have no active flag; pricing-rule date window is the on/off switch; 60s cache
+- [Staff-auth e2e testing recipe](staff-e2e-testing.md) — temp staff_sessions insert, correct column/field names, encrypted-PII cleanup gotcha

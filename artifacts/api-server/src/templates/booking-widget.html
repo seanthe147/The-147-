@@ -652,7 +652,7 @@
       tableType: null, tableNumber: null, guestCount: null,
       date: null, duration: 1, time: null,
       name: '', email: '', phone: '', notes: '',
-      bookedSlots: [], totalTables: 1, blockedPeriodsList: []
+      bookedSlots: [], totalTables: 1, blockedPeriodsList: [], diningOverrides: []
     };
   }
 
@@ -875,9 +875,10 @@
     try {
       let url = `${API_BASE}/api/bookings/availability?date=${state.date}&tableType=${state.tableType}`;
       if (state.tableNumber) url += `&tableNumber=${state.tableNumber}`;
-      const [availRes, blocksRes] = await Promise.all([
+      const [availRes, blocksRes, diningRes] = await Promise.all([
         fetch(url),
         fetch(`${API_BASE}/api/blocked-periods`),
+        fetch(`${API_BASE}/api/dining-hours`),
       ]);
       if (availRes.ok) {
         const data = await availRes.json();
@@ -891,6 +892,10 @@
       }
       if (blocksRes.ok) {
         state.blockedPeriodsList = await blocksRes.json();
+      }
+      if (diningRes.ok) {
+        const dh = await diningRes.json();
+        state.diningOverrides = (dh && Array.isArray(dh.overrides)) ? dh.overrides : [];
       }
     } catch(e) {
       console.error('Availability fetch failed:', e);
@@ -946,16 +951,25 @@
     const now = new Date();
     const nowMins = now.getHours() * 60 + now.getMinutes();
     const selectedDow = new Date(state.date + 'T00:00:00').getDay(); // 0=Sun...6=Sat
-    const isDiningDay = [0, 3, 4, 5, 6].includes(selectedDow); // Wed=3, Thu=4, Fri=5, Sat=6, Sun=0
 
-    // Dining restriction: only Wed-Sun
-    if (state.tableType === 'dining' && !isDiningDay) {
-      container.innerHTML = '<div class="avail-loading" style="color:var(--red)">🍽️ Dining is only available Wednesday to Sunday. Please choose a different date.</div>';
+    // Effective dining window: staff per-date override wins, else Wed–Sun 12:00–20:00
+    const diningOverride = (state.diningOverrides || []).find(o => o.date === state.date);
+    let diningWindow = null;
+    if (diningOverride) {
+      diningWindow = diningOverride.closed ? null : { start: diningOverride.startTime || '12:00', end: diningOverride.endTime || '20:00' };
+    } else if ([0, 3, 4, 5, 6].includes(selectedDow)) { // Wed=3, Thu=4, Fri=5, Sat=6, Sun=0
+      diningWindow = { start: '12:00', end: '20:00' };
+    }
+
+    if (state.tableType === 'dining' && !diningWindow) {
+      container.innerHTML = diningOverride
+        ? '<div class="avail-loading" style="color:var(--red)">🍽️ Dining is closed on this date. Please choose a different date.</div>'
+        : '<div class="avail-loading" style="color:var(--red)">🍽️ Dining is only available Wednesday to Sunday. Please choose a different date.</div>';
       return;
     }
 
-    const diningStart = toMins('12:00');
-    const diningEnd   = toMins('20:00'); // last slot must end by 20:00
+    const diningStart = diningWindow ? toMins(diningWindow.start) : 0;
+    const diningEnd   = diningWindow ? toMins(diningWindow.end) : 0; // last slot must end by this time
 
     let anyAvail = false;
     TABLE_HOURS.forEach(t => {
@@ -965,7 +979,7 @@
       // Standard closing: must end by 22:00
       if (slotEnd > toMins('22:00')) return;
 
-      // Dining hours: 12pm–8pm only
+      // Dining hours: effective window (default 12pm–8pm, or staff override)
       if (state.tableType === 'dining') {
         if (slotStart < diningStart || slotEnd > diningEnd) return;
       }
