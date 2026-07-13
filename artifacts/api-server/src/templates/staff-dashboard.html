@@ -115,6 +115,57 @@
       #topbarLogoutBtn{padding:7px 10px}
       .modal{border-radius:16px 16px 0 0;max-height:94vh;position:fixed;bottom:0;left:0;right:0;width:100%;max-width:100%}
       .modal-overlay{align-items:flex-end}
+
+      /* ── Mobile browser friendliness ── */
+      /* Topbar: allow wrapping instead of overflowing */
+      .topbar{height:auto;min-height:52px;flex-wrap:wrap;padding:8px 14px;gap:8px 10px}
+      #orderingToggleWrap{margin-left:auto}
+      #orderingStatusReason{display:none!important}
+      /* Fixtures strip: single scrollable row instead of a tall stack */
+      #fixturesBar{padding:8px 14px}
+      #fixturesBar>div:last-child{flex-wrap:nowrap!important;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}
+      #fixturesBar>div:last-child>div{flex:0 0 auto;max-width:85vw}
+      /* Use dynamic viewport height so the browser URL bar doesn't hide content */
+      #app,.app-layout{height:100dvh}
+      .sidebar{height:100dvh}
+      /* 16px inputs prevent iOS Safari auto-zoom on focus */
+      input,select,textarea{font-size:16px!important}
+      .modal .form-input{padding:12px 14px}
+      /* Bigger tap targets */
+      .btn{min-height:42px}
+      .btn-sm{min-height:36px}
+      .nav-item{padding:13px 20px}
+      /* Cards: stack fixed multi-column grids */
+      .booking-card{grid-template-columns:64px 1fr;gap:10px 12px;padding:14px}
+      .booking-card .b-actions{grid-column:1/-1;flex-wrap:wrap;justify-content:flex-start}
+      .booking-card .b-actions-col{flex-direction:row;align-items:center}
+      .b-time{font-size:17px}
+      .l-card{grid-template-columns:64px 1fr;gap:10px 12px;padding:14px}
+      .staff-card{grid-template-columns:48px 1fr;padding:14px}
+      .staff-card .staff-actions{grid-column:1/-1;flex-wrap:wrap;justify-content:flex-start}
+      /* Forms: collapse side-by-side fields to one column */
+      .form-row{grid-template-columns:1fr}
+      .page-body [style*="grid-template-columns:1fr "],
+      .modal [style*="grid-template-columns:1fr "],
+      .modal-body [style*="grid-template-columns:1fr "]{grid-template-columns:1fr!important}
+      /* Data tables scroll horizontally instead of breaking the page */
+      .page-body table,.modal table,.modal-body table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+      .page-body{overflow-x:hidden}
+      /* Modal padding + footer buttons */
+      .modal-hd{padding:18px 18px 0}
+      .modal-bd{padding:16px 18px}
+      .modal-ft{padding:0 18px 18px;flex-wrap:wrap}
+      .modal-ft .btn{flex:1 1 auto}
+      /* Toasts: full-width at the top of small screens */
+      .toast-wrap{left:12px;right:12px;top:64px}
+      .toast{min-width:0;max-width:100%;width:100%}
+      .new-booking-toast,.new-l-toast{white-space:normal;max-width:calc(100vw - 24px);text-align:center}
+      /* Misc density */
+      .stat-value{font-size:22px}
+      .messages-filters{flex-wrap:wrap}
+      .empty-state{padding:48px 16px}
+      .msg-card{padding:14px 16px}
+      .settings-section{max-width:none}
     }
     @media(min-width:768px) and (max-width:1023px){
       :root{--sidebar:200px}
