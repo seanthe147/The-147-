@@ -751,6 +751,7 @@
                 <button class="btn-nav" id="nextDay" title="Next day">&#8250;</button>
               </div>
               <button class="today-btn" id="todayBtn">Today</button>
+              <button class="today-btn" id="printFohBtn" title="Print front-of-house check-in sheet">🖨 Print</button>
               <div class="search-box">
                 <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 <input type="text" id="searchInput" placeholder="Search name, email…">
@@ -3956,6 +3957,64 @@
   el('prevDay').addEventListener('click',()=>shiftDay(-1));
   el('nextDay').addEventListener('click',()=>shiftDay(1));
   el('todayBtn').addEventListener('click',()=>{state.currentDate=todayStr();updateDateUI();loadBookings()});
+  el('printFohBtn').addEventListener('click',printFohReport);
+
+  /* ── Front-of-house printable check-in sheet ── */
+  function printFohReport(){
+    const date=state.currentDate;
+    const list=[...state.bookings].filter(b=>b.status!=='cancelled').sort((a,b)=>a.startTime.localeCompare(b.startTime)||(a.customerName||'').localeCompare(b.customerName||''));
+    if(!list.length){toast('No bookings to print for this date','error');return;}
+    const rows=list.map(b=>{
+      const arrived=b.status==='completed';
+      const noshow=b.status==='noshow';
+      const tableLabel=cap(b.tableType)+((b.tableType==='snooker'||b.tableType==='pool')&&b.tableNumber?' #'+b.tableNumber:'');
+      const statusNote=arrived?'Arrived':noshow?'No show':(b.status==='pending'||!b.status)?'Pending':b.status==='pending_deposit'?'Deposit pending':'';
+      return `<tr>
+        <td class="chk"><span class="box">${arrived?'&#10003;':''}</span></td>
+        <td class="time">${esc(b.startTime)}<div class="sub">${b.duration}h</div></td>
+        <td class="name">${esc(b.customerName||'')}${b.notes?`<div class="notes">${esc(b.notes)}</div>`:''}</td>
+        <td>${esc(tableLabel)}</td>
+        <td class="num">${esc(String(b.guestCount??''))}</td>
+        <td>${esc(b.customerPhone||'')}</td>
+        <td class="status">${esc(statusNote)}</td>
+      </tr>`;
+    }).join('');
+    const printedAt=new Date().toLocaleString('en-GB',{hour:'2-digit',minute:'2-digit',day:'numeric',month:'short'});
+    const doc=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Front of House — ${esc(formatDateLabel(date))}</title>
+    <style>
+      *{box-sizing:border-box}
+      body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:24px;font-size:13px}
+      h1{font-size:18px;margin:0 0 2px}
+      .meta{font-size:12px;color:#555;margin-bottom:14px}
+      table{width:100%;border-collapse:collapse}
+      th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#444;border-bottom:2px solid #111;padding:6px 8px}
+      td{border-bottom:1px solid #bbb;padding:8px;vertical-align:top}
+      tr{page-break-inside:avoid}
+      .chk{width:44px;text-align:center}
+      .box{display:inline-block;width:22px;height:22px;border:2px solid #111;border-radius:4px;line-height:20px;font-size:15px;text-align:center}
+      .time{width:64px;font-weight:bold;font-size:14px;white-space:nowrap}
+      .sub{font-weight:normal;font-size:11px;color:#555}
+      .name{font-weight:bold}
+      .notes{font-weight:normal;font-size:11px;color:#444;font-style:italic;margin-top:2px}
+      .num{width:52px;text-align:center}
+      .status{width:90px;font-size:11px;color:#555}
+      .foot{margin-top:16px;font-size:11px;color:#777}
+      @media print{body{margin:10mm}}
+    </style></head><body>
+    <h1>The 147 — Front of House Check-In Sheet</h1>
+    <div class="meta">${esc(formatDateLabel(date))} &nbsp;&middot;&nbsp; ${list.length} booking${list.length===1?'':'s'} &nbsp;&middot;&nbsp; Printed ${esc(printedAt)}</div>
+    <table>
+      <thead><tr><th>&#10003;</th><th>Time</th><th>Name</th><th>Table</th><th>Guests</th><th>Phone</th><th>Status</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="foot">Tick the box as each customer arrives, then mark them as "Showed Up" in the staff portal when convenient. Cancelled bookings are not listed.</div>
+    <script>window.onload=function(){window.print()}<\/script>
+    </body></html>`;
+    const w=window.open('','_blank');
+    if(!w){toast('Pop-up blocked — please allow pop-ups to print','error');return;}
+    w.document.open();w.document.write(doc);w.document.close();
+  }
+  window.printFohReport=printFohReport;
   el('searchInput').addEventListener('input',()=>{state.searchQ=el('searchInput').value.toLowerCase();renderBookings()});
 
   /* ── Global search (RBAC-aware, server-filtered) ── */
