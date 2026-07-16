@@ -60,6 +60,15 @@ function emptyMatch(): CachedMatch {
   };
 }
 
+// How long a finished match stays on the bar when there is nothing else
+// coming up (i.e. after the final). Kickoff + 6h comfortably covers extra
+// time, penalties and post-match celebration, then the bar disappears.
+const FINISHED_GRACE_MS = 6 * 60 * 60 * 1000;
+
+function finishedExpired(kickoffMs: number): boolean {
+  return !kickoffMs || Date.now() - kickoffMs > FINISHED_GRACE_MS;
+}
+
 function yyyymmdd(d: Date): string {
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
@@ -114,6 +123,9 @@ async function fetchEspn(): Promise<CachedMatch> {
   const finished = normalised.filter((m) => m.state === "post").sort((a, b) => b.kickoffMs - a.kickoffMs);
   const chosen = live[0] ?? upcoming[0] ?? finished[0];
   if (!chosen) return emptyMatch();
+  // Tournament over (no live/upcoming left): show the last result briefly,
+  // then hide the bar entirely.
+  if (!live.length && !upcoming.length && finishedExpired(chosen.kickoffMs)) return emptyMatch();
 
   const status: CachedMatch["status"] =
     chosen.state === "in" ? "live" : chosen.state === "pre" ? "upcoming" : "finished";
@@ -212,7 +224,11 @@ async function fetchSportsDb(): Promise<CachedMatch> {
   const upcoming = parsed.filter((p) => p.data.status === "upcoming").sort((a, b) => a.kickoffMs - b.kickoffMs);
   const finished = parsed.filter((p) => p.data.status === "finished").sort((a, b) => b.kickoffMs - a.kickoffMs);
   const chosen = live[0] ?? upcoming[0] ?? finished[0];
-  return chosen ? chosen.data : emptyMatch();
+  if (!chosen) return emptyMatch();
+  // Tournament over (no live/upcoming left): show the last result briefly,
+  // then hide the bar entirely.
+  if (!live.length && !upcoming.length && finishedExpired(chosen.kickoffMs)) return emptyMatch();
+  return chosen.data;
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
@@ -244,30 +260,37 @@ export async function getNextWorldCupMatch(): Promise<CachedMatch> {
 
   let data: CachedMatch = emptyMatch();
   let espnError: string | null = null;
+  let espnOk = false;
 
   // 1. ESPN primary
   try {
     data = await fetchEspn();
+    espnOk = true;
   } catch (err: any) {
     espnError = err?.message ?? String(err);
     console.error("[WORLD_CUP] ESPN fetch error:", espnError);
   }
 
-  // 2. TheSportsDB fallback — only if ESPN threw or returned nothing.
-  if (data.status === "none") {
+  // 2. TheSportsDB fallback — only if ESPN threw. A valid "none" from ESPN
+  // (tournament over / no fixtures) is an authoritative answer, not a failure.
+  if (!espnOk) {
     try {
       const fallback = await fetchSportsDb();
       if (fallback.status !== "none") {
         data = fallback;
-        if (espnError) console.log("[WORLD_CUP] Falling back to TheSportsDB (ESPN unavailable)");
+        console.log("[WORLD_CUP] Falling back to TheSportsDB (ESPN unavailable)");
+      } else {
+        espnOk = true; // SportsDB answered authoritatively with "none"
       }
     } catch (err: any) {
       console.error("[WORLD_CUP] TheSportsDB fetch error:", err?.message ?? err);
     }
   }
 
-  // 3. If both failed, serve stale cache if we have any.
-  if (data.status === "none" && cache) return cache.data;
+  // 3. Only if BOTH providers actually failed, serve stale cache. A genuine
+  // "none" result must be cached as-is so an old finished match can't
+  // resurrect after the tournament ends.
+  if (data.status === "none" && !espnOk && cache) return cache.data;
 
   // Cache TTL: be aggressive near kickoff so we pick up "live" status quickly.
   //   live            → 30s
