@@ -89,7 +89,6 @@ function RootLayoutNav() {
             <Stack.Screen name="staff-hr" options={{ headerShown: false, presentation: "modal" }} />
           </>
         )}
-        <Stack.Screen name="world-cup-game" options={{ headerShown: false }} />
         <Stack.Screen name="staff-onboarding" options={{ headerShown: false, presentation: "modal" }} />
         <Stack.Screen name="privacy-policy" options={{ headerShown: false, presentation: "modal" }} />
         <Stack.Screen name="gdpr-rights" options={{ headerShown: false, presentation: "modal" }} />

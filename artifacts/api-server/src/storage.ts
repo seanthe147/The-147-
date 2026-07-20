@@ -3409,7 +3409,7 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(gamePrizes).where(eq(gamePrizes.active, true)).orderBy(gamePrizes.id);
   }
 
-  async getActiveGamePrizesForGame(game: "scratch_card" | "penalty"): Promise<GamePrize[]> {
+  async getActiveGamePrizesForGame(game: "scratch_card"): Promise<GamePrize[]> {
     return db.select().from(gamePrizes).where(
       and(eq(gamePrizes.active, true), or(eq(gamePrizes.game, game), eq(gamePrizes.game, "both")))
     ).orderBy(gamePrizes.id);

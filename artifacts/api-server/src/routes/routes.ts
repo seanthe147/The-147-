@@ -5411,62 +5411,6 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     });
   }
 
-  app.get("/api/world-cup/next-match", async (_req, res) => {
-    try {
-      const { getNextWorldCupMatch } = await import("../worldCup.js");
-      const data = await getNextWorldCupMatch();
-      res.json(data);
-    } catch (err: any) {
-      console.error("/api/world-cup/next-match error:", err.message);
-      res.status(500).json({ message: "Unable to load match" });
-    }
-  });
-
-  // ── Staff: World Cup test-mode override ──────────────────────────────────
-  // GET  /api/staff/game/wc-test   → { active, override }
-  // POST /api/staff/game/wc-test   → activate with { homeShort, awayShort, homeScore, awayScore, minute }
-  // DELETE /api/staff/game/wc-test → clear override
-
-  app.get("/api/staff/game/wc-test", staffAuth, async (_req, res) => {
-    const { getWcTestOverride } = await import("../worldCup.js");
-    const override = getWcTestOverride();
-    res.json({ active: !!override, override });
-  });
-
-  app.post("/api/staff/game/wc-test", staffAuth, async (req, res) => {
-    const { setWcTestOverride } = await import("../worldCup.js");
-    const { homeShort, awayShort, homeScore, awayScore, minute } = req.body ?? {};
-    setWcTestOverride({
-      homeShort: String(homeShort || "Home"),
-      awayShort: String(awayShort || "Away"),
-      homeScore: Number(homeScore ?? 0),
-      awayScore: Number(awayScore ?? 0),
-      minute: String(minute || "45'"),
-    });
-    res.json({ ok: true });
-  });
-
-  app.delete("/api/staff/game/wc-test", staffAuth, async (_req, res) => {
-    const { setWcTestOverride } = await import("../worldCup.js");
-    setWcTestOverride(null);
-    res.json({ ok: true });
-  });
-
-  // Next N England fixtures for the home-screen "WORLD CUP 2026" card.
-  // Defaults to 2. Caches internally for 10 minutes (30s if any are live).
-  app.get("/api/world-cup/england-next", async (req, res) => {
-    try {
-      const limitRaw = Number(req.query.limit);
-      const limit = Number.isFinite(limitRaw) && limitRaw > 0 && limitRaw <= 10 ? Math.floor(limitRaw) : 2;
-      const { getNextEnglandMatches } = await import("../worldCup.js");
-      const matches = await getNextEnglandMatches(limit);
-      res.json({ matches });
-    } catch (err: any) {
-      console.error("/api/world-cup/england-next error:", err.message);
-      res.status(500).json({ message: "Unable to load England matches" });
-    }
-  });
-
   // Staff-only: upcoming sports fixtures for the bookings page bar.
   // Returns up to 3 fixtures from PL, Championship, and Super League RL
   // kicking off within the next 48 hours, sorted by kickoff time.
@@ -10013,189 +9957,18 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     return true;
   }
 
-  // ── World Cup Penalty Shootout game ──────────────────────────────────────────
-  //
-  // Separate from the daily scratch card — only available on World Cup match
-  // days (any match is live or within 3h of kickoff on the London calendar
-  // date). One play per customer per London calendar date, same prize backend.
-
-  function isWcMatchDay(match: {
-    status: string;
-    kickoffIso: string | null;
-  }): boolean {
-    if (match.status === "none") return false;
-    if (match.status === "live") return true;
-    if (match.kickoffIso) {
-      const kickoff = new Date(match.kickoffIso);
-      const now = new Date();
-      const diffMs = kickoff.getTime() - now.getTime();
-      // Show from 30 minutes before kickoff
-      if (diffMs >= 0 && diffMs <= 30 * 60 * 1000) return true;
-      // Show for 3 hours after kickoff (covers 90 min match + extra time + penalties)
-      if (diffMs < 0 && Math.abs(diffMs) < 3 * 60 * 60 * 1000) return true;
-    }
-    return false;
-  }
-
-  // GET /api/game/wc-status — returns today's match + whether the game is
-  // available. Requires customer auth so we can check alreadyPlayed.
-  app.get("/api/game/wc-status", customerAuth, async (req: Request & { customerId?: number }, res) => {
-    try {
-      const customerId = req.customerId!;
-      const { getNextWorldCupMatch, getWcTestOverride } = await import("../worldCup.js");
-      const [match, penaltyEnabledSetting] = await Promise.all([
-        getNextWorldCupMatch(),
-        storage.getSetting("penalty_enabled"),
-      ]);
-      // When a staff test override is active, the game is always available
-      // regardless of the penalty_enabled setting or match window timing.
-      // penalty_enabled defaults to ON (null or "true") — only "false" disables it,
-      // matching the "Auto" description shown in admin-game.
-      const isTestActive = !!getWcTestOverride();
-      const penaltyEnabled = isTestActive || penaltyEnabledSetting !== "false";
-      const matchDay = isTestActive || isWcMatchDay(match);
-      const available = matchDay && penaltyEnabled;
-      const londonDate = getGameLondonDate();
-      const todayWcPlays = await storage.getGamePlaysToday(customerId, `wc-${londonDate}`);
-      const alreadyPlayed = todayWcPlays.length > 0;
-      const todayMatch = match.status !== "none" ? {
-        homeName: match.homeName,
-        awayName: match.awayName,
-        homeShort: match.homeShort,
-        awayShort: match.awayShort,
-        homeLogo: match.homeLogo,
-        awayLogo: match.awayLogo,
-        kickoffIso: match.kickoffIso,
-        status: match.status,
-        minute: match.minute,
-        stage: match.stage,
-      } : null;
-      res.json({ available, matchDay, penaltyEnabled, todayMatch, alreadyPlayed });
-    } catch (err: any) {
-      logger.error({ err }, "[WC_GAME] Status error");
-      res.status(500).json({ available: false, matchDay: false, todayMatch: null, alreadyPlayed: false });
-    }
-  });
-
-  // POST /api/game/wc-play — one penalty shot per match day. Uses same prize
-  // backend (rollGamePrize, Square loyalty/gift card/group).
-  app.post("/api/game/wc-play", customerAuth, async (req: Request & { customerId?: number }, res) => {
-    const customerId = req.customerId!;
-    try {
-      const { getNextWorldCupMatch, getWcTestOverride } = await import("../worldCup.js");
-      const isTestActive = !!getWcTestOverride();
-      if (!isTestActive) {
-        const penaltyEnabledSetting = await storage.getSetting("penalty_enabled");
-        // null (never set) → enabled by default; only "false" disables
-        if (penaltyEnabledSetting === "false") {
-          return res.status(403).json({ message: "The penalty challenge is currently disabled." });
-        }
-      }
-      const match = await getNextWorldCupMatch();
-      if (!isTestActive && !isWcMatchDay(match)) {
-        return res.status(403).json({ message: "The penalty challenge is only available on World Cup match days." });
-      }
-
-      const londonDate = getGameLondonDate();
-      const wcDate = `wc-${londonDate}`;
-      const todayPlays = await storage.getGamePlaysToday(customerId, wcDate);
-      if (todayPlays.length > 0) {
-        return res.status(429).json({ message: "You've already taken your shot today — come back on the next match day!", alreadyPlayed: true });
-      }
-
-      // Roll prize — 60% chance of scoring (win), 40% saved (no prize)
-      // We encode this by giving a "none" prize a weight of ~40 relative to sum
-      const [prizes, wonGroupPrizeIds] = await Promise.all([
-        storage.getActiveGamePrizesForGame("penalty"),
-        storage.getCustomerWonGroupPrizeIds(customerId),
-      ]);
-      const eligiblePrizes = wonGroupPrizeIds.length > 0
-        ? prizes.filter(p => !(p.prizeType === "customer_group" && wonGroupPrizeIds.includes(p.id)))
-        : prizes;
-
-      // 40% chance the keeper saves regardless of prize roll
-      const saved = Math.random() < 0.40;
-      const prize = saved ? null : rollGamePrize(eligiblePrizes);
-
-      let squareRewardId: string | null = null;
-      let pointsAwarded: number | null = null;
-      let giftCardGan: string | null = null;
-      let squareGroupAddedAt: Date | null = null;
-      let autoClaimedAt: Date | null = null;
-
-      if (!saved && prize && prize.prizeType !== "none") {
-        const customer = await storage.getCustomerById(customerId);
-        if (prize.prizeType === "loyalty_points" && prize.value && customer?.squareLoyaltyAccountId) {
-          try {
-            await square.adjustLoyaltyPoints(customer.squareLoyaltyAccountId, prize.value, "WC Penalty prize", `wc-prize-${customerId}-${Date.now()}`);
-            pointsAwarded = prize.value;
-          } catch (e: any) { logger.warn({ err: e }, "[WC_GAME] Points award failed"); }
-        }
-        if (prize.prizeType === "reward_tier" && prize.rewardTierId && customer?.squareLoyaltyAccountId) {
-          try {
-            const reward = await square.issueFreeGameReward(customer.squareLoyaltyAccountId, prize.rewardTierId, prize.tierPoints ?? 0, `wc-reward-${customerId}-${Date.now()}`);
-            if (reward?.id) { squareRewardId = reward.id; autoClaimedAt = new Date(); }
-          } catch (e: any) { logger.warn({ err: e }, "[WC_GAME] Reward issue failed"); }
-        }
-        if (prize.prizeType === "gift_card" && prize.giftCardAmountPence && prize.giftCardAmountPence > 0) {
-          try {
-            const customer2 = await storage.getCustomerById(customerId);
-            giftCardGan = await square.issueGiftCardPrize(customer2?.squareCustomerId ?? null, prize.giftCardAmountPence, `wc-gc-${customerId}-${Date.now()}`);
-          } catch (e: any) { logger.warn({ err: e }, "[WC_GAME] Gift card failed"); }
-        }
-        // customer_group: generate a claim code staff enter at the bar.
-        // Staff apply the discount manually at POS and redeem the code in
-        // the portal to record it. No Square customer-group manipulation
-        // needed — simpler and requires no Square Dashboard pricing rules.
-        // (prizeClaimCode is set below alongside reward_tier)
-      }
-
-      const wcPrizeClaimCode = (prize && (prize.prizeType === "reward_tier" || prize.prizeType === "customer_group") && !autoClaimedAt && !saved) ? generateClaimCode() : null;
-      const wcClaimExpiresAt = wcPrizeClaimCode ? new Date(Date.now() + (prize!.prizeExpiryHours ?? 168) * 3600 * 1000) : null;
-      const play = await storage.createGamePlay({
-        customerId,
-        prizeId: prize?.id ?? null,
-        squareRewardId,
-        pointsAwarded,
-        giftCardGan,
-        squareGroupAddedAt,
-        claimedAt: autoClaimedAt,
-        londonDate: wcDate, // prefixed so daily limits don't mix with scratch card
-        prizeClaimCode: wcPrizeClaimCode,
-        prizeClaimExpiresAt: wcClaimExpiresAt,
-      });
-
-      logger.info({ customerId, saved, prizeId: prize?.id, playId: play.id }, "[WC_GAME] Penalty shot played");
-      res.json({
-        won: !saved && prize?.prizeType !== "none" && !!prize,
-        saved,
-        prize: prize && !saved ? { name: prize.name, description: prize.description, prizeType: prize.prizeType } : null,
-        pointsAwarded,
-        giftCardGan,
-        playId: play.id,
-        squareRewardIssued: !!squareRewardId,
-        squareGroupAdded: !!squareGroupAddedAt,
-        prizeClaimCode: wcPrizeClaimCode,
-      });
-    } catch (err: any) {
-      logger.error({ err }, "[WC_GAME] Play error");
-      res.status(500).json({ message: "Something went wrong — please try again." });
-    }
-  });
-
   // ── Customer game endpoints ───────────────────────────────────────────────────
 
   // Public config — lets the app know whether to show the game button at all.
   app.get("/api/game/config", async (_req, res) => {
     try {
-      const [enabled, windowStart, windowEnd, scheduleDays, scheduleFrom, scheduleTo, penaltyEnabled] = await Promise.all([
+      const [enabled, windowStart, windowEnd, scheduleDays, scheduleFrom, scheduleTo] = await Promise.all([
         storage.getSetting("game_enabled"),
         storage.getSetting("game_window_start"),
         storage.getSetting("game_window_end"),
         storage.getSetting("game_schedule_days"),
         storage.getSetting("game_schedule_from"),
         storage.getSetting("game_schedule_to"),
-        storage.getSetting("penalty_enabled"),
       ]);
       const start = windowStart ?? "00:00";
       const end   = windowEnd   ?? "23:59";
@@ -10210,7 +9983,6 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         scheduleFrom: from,
         scheduleTo: to,
         withinWindow: enabled === "true" && isGameScheduleActive(start, end, days, from, to),
-        penaltyEnabled: penaltyEnabled === "true",
       });
     } catch {
       res.json({ enabled: false, withinWindow: false });
@@ -10475,14 +10247,13 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
 
   app.get("/api/staff/game/config", staffAuth, async (_req, res) => {
     try {
-      const [enabled, windowStart, windowEnd, scheduleDays, scheduleFrom, scheduleTo, penaltyEnabled] = await Promise.all([
+      const [enabled, windowStart, windowEnd, scheduleDays, scheduleFrom, scheduleTo] = await Promise.all([
         storage.getSetting("game_enabled"),
         storage.getSetting("game_window_start"),
         storage.getSetting("game_window_end"),
         storage.getSetting("game_schedule_days"),
         storage.getSetting("game_schedule_from"),
         storage.getSetting("game_schedule_to"),
-        storage.getSetting("penalty_enabled"),
       ]);
       const prizes = await storage.getAllGamePrizes();
       res.json({
@@ -10492,7 +10263,6 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         scheduleDays: scheduleDays ?? "",
         scheduleFrom: scheduleFrom ?? "",
         scheduleTo: scheduleTo ?? "",
-        penaltyEnabled: penaltyEnabled === "true",
         prizes,
       });
     } catch (err: any) {
@@ -10501,11 +10271,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   });
 
   app.post("/api/staff/game/config", staffAuth, managerAuth, async (req, res) => {
-    const { enabled, windowStart, windowEnd, scheduleDays, scheduleFrom, scheduleTo, penaltyEnabled } = req.body ?? {};
+    const { enabled, windowStart, windowEnd, scheduleDays, scheduleFrom, scheduleTo } = req.body ?? {};
     try {
       await Promise.all([
         enabled        != null && storage.setSetting("game_enabled",         enabled ? "true" : "false"),
-        penaltyEnabled != null && storage.setSetting("penalty_enabled",      penaltyEnabled ? "true" : "false"),
         windowStart    != null && storage.setSetting("game_window_start",    String(windowStart)),
         windowEnd      != null && storage.setSetting("game_window_end",      String(windowEnd)),
         // scheduleDays can be an empty string (= every day), so we save even empty values
@@ -10573,7 +10342,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         maxDiscountPence: prizeType === "customer_group" && maxDiscountPence != null ? Math.round(parseFloat(maxDiscountPence) * 100) : null,
         weightPercent: weightPercent ?? 10,
         active: active !== false,
-        game: (game === "scratch_card" || game === "penalty") ? game : "both",
+        game: game === "scratch_card" ? game : "both",
       });
       res.json(prize);
     } catch (err: any) {
@@ -10605,7 +10374,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         maxDiscountPence: prizeType === "customer_group" && maxDiscountPence != null ? Math.round(parseFloat(maxDiscountPence) * 100) : null,
         weightPercent,
         active,
-        game: (game === "scratch_card" || game === "penalty") ? game : "both",
+        game: game === "scratch_card" ? game : "both",
       });
       res.json(prize);
     } catch (err: any) {

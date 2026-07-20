@@ -1027,7 +1027,7 @@ export const gamePrizes = pgTable("game_prizes", {
   maxDiscountPence: integer("max_discount_pence"),        // optional cap on the prize discount in pence (e.g. 600 = £6 max) — must also be set on the CatalogPricingRule in Square Dashboard
   weightPercent: integer("weight_percent").notNull().default(10), // probability weight (relative)
   active: boolean("active").notNull().default(true),
-  game: text("game").notNull().default("both"),             // 'scratch_card' | 'penalty' | 'both'
+  game: text("game").notNull().default("both"),             // 'scratch_card' | 'both'
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

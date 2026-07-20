@@ -14,7 +14,6 @@ import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useResponsive } from "@/hooks/useResponsive";
-import { useMatchBarVisible } from "@/hooks/useMatchBarVisible";
 import Colors from "@/constants/colors";
 import { OPENING_HOURS } from "@/lib/data";
 import { getApiUrl } from "@/lib/query-client";
@@ -56,7 +55,6 @@ export default function AboutScreen() {
   const { isTablet } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
-  const matchBarVisible = useMatchBarVisible();
   const today = new Date().getDay();
   const dayIndex = today === 0 ? 6 : today - 1;
 
@@ -65,7 +63,7 @@ export default function AboutScreen() {
       style={styles.container}
       contentContainerStyle={[
         styles.scrollContent,
-        { paddingTop: (matchBarVisible ? 0 : insets.top) + webTopInset },
+        { paddingTop: (insets.top) + webTopInset },
       ]}
       showsVerticalScrollIndicator={false}
     >

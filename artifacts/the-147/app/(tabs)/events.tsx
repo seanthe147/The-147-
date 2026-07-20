@@ -23,7 +23,6 @@ import { useQuery } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 import { getApiUrl } from "@/lib/query-client";
 import { useResponsive } from "@/hooks/useResponsive";
-import { useMatchBarVisible } from "@/hooks/useMatchBarVisible";
 import type { Event, BannerImage } from "@workspace/db/schema";
 import { isSafePublicUrl } from "@workspace/db/schema";
 
@@ -378,7 +377,6 @@ export default function EventsScreen() {
   const { isTablet } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
-  const matchBarVisible = useMatchBarVisible();
   const [activeTab, setActiveTab] = useState<"events" | "whats-on">("events");
 
   const { data: bannerImages } = useQuery<BannerImage[]>({
@@ -390,7 +388,7 @@ export default function EventsScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: (matchBarVisible ? 0 : insets.top) + webTopInset },
+          { paddingTop: (insets.top) + webTopInset },
         ]}
         showsVerticalScrollIndicator={false}
       >

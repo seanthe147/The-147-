@@ -49,7 +49,7 @@ interface GamePrize {
   maxDiscountPence: number | null;
   weightPercent: number;
   active: boolean;
-  game: "scratch_card" | "penalty" | "both";
+  game: "scratch_card" | "both";
 }
 
 interface GameWinner {
@@ -106,7 +106,7 @@ interface PrizeDraft {
   maxDiscountPounds: string;
   weightPercent: string;
   active: boolean;
-  game: "scratch_card" | "penalty" | "both";
+  game: "scratch_card" | "both";
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -164,7 +164,7 @@ function PrizeRow({ prize, onToggleActive, onEdit, saving }: PrizeRowProps) {
         <View style={prizeRow.metaRow}>
           <Ionicons name="game-controller-outline" size={11} color="#9CA3AF" />
           <Text style={prizeRow.meta}>
-            {prize.game === "scratch_card" ? "Scratch Card only" : prize.game === "penalty" ? "Penalty only" : "Both games"}
+            {prize.game === "scratch_card" ? "Scratch Card only" : "All games"}
           </Text>
           <Text style={prizeRow.metaDot}>·</Text>
           <Ionicons name="scale-outline" size={11} color="#9CA3AF" />
@@ -355,30 +355,6 @@ function PrizeEditor({ draft, onChange, onSave, onCancel, saving, isNew, squareT
           placeholder="Shown to customer on win screen"
           placeholderTextColor="#9CA3AF"
         />
-      </View>
-
-      <View style={editor.field}>
-        <Text style={editor.label}>Which game?</Text>
-        <View style={editor.segRow}>
-          {(["both", "scratch_card", "penalty"] as const).map((g) => (
-            <Pressable
-              key={g}
-              onPress={() => set("game", g)}
-              style={[editor.seg, draft.game === g && editor.segActive]}
-            >
-              <Text style={[editor.segText, draft.game === g && editor.segTextActive]}>
-                {g === "both" ? "Both" : g === "scratch_card" ? "Scratch Card" : "Penalty"}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        <Text style={editor.hint}>
-          {draft.game === "both"
-            ? "Prize can be won in either the daily scratch card or the World Cup penalty game."
-            : draft.game === "scratch_card"
-            ? "Only available in the daily scratch card game."
-            : "Only available in the World Cup penalty shootout game."}
-        </Text>
       </View>
 
       <View style={editor.field}>
@@ -1124,7 +1100,7 @@ export default function AdminGameScreen() {
       maxDiscountPounds: p.maxDiscountPence != null ? String(p.maxDiscountPence / 100) : "",
       weightPercent: String(p.weightPercent),
       active: p.active,
-      game: (p.game === "scratch_card" || p.game === "penalty") ? p.game : "both",
+      game: p.game === "scratch_card" ? p.game : "both",
     });
   };
 
@@ -1284,27 +1260,6 @@ export default function AdminGameScreen() {
           </>
         )}
 
-        {/* ── World Cup Penalty Game ────────────────────────────────────── */}
-        <Text style={styles.sectionTitle}>World Cup Penalty Game</Text>
-        <View style={styles.card}>
-          <View style={styles.fieldHeader}>
-            <Text style={{ fontSize: 18 }}>⚽</Text>
-            <Text style={styles.fieldTitle}>Penalty Shootout</Text>
-            <View style={[styles.gameStatusBadge, { backgroundColor: "#D1FAE5" }]}>
-              <Text style={[styles.gameStatusText, { color: "#065F46" }]}>Auto</Text>
-            </View>
-          </View>
-          <Text style={styles.fieldDescription}>
-            Activates automatically 30 minutes before any World Cup match and stays open for 4 hours after kick-off. One shot per customer per match day. No manual toggle needed — it self-manages around the fixture list.
-          </Text>
-          <View style={[styles.hintBox, { marginTop: 4, marginBottom: 0 }]}>
-            <Ionicons name="information-circle-outline" size={14} color="#10B981" />
-            <Text style={styles.hintText}>
-              Prizes assigned to <Text style={{ fontFamily: "Montserrat_600SemiBold" }}>Penalty</Text> or <Text style={{ fontFamily: "Montserrat_600SemiBold" }}>Both games</Text> in the Prize Pool below are used for this game.
-            </Text>
-          </View>
-        </View>
-
         {/* ── Prize Pool ────────────────────────────────────────────────── */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Prize Pool</Text>
@@ -1440,15 +1395,14 @@ export default function AdminGameScreen() {
         ) : (
           <View style={styles.winnerList}>
             {winners.map((w) => {
-              const isPenalty = w.londonDate?.startsWith("wc-");
               return (
                 <View key={w.id} style={styles.winnerRow}>
                   <View style={styles.winnerLeft}>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                       <Text style={styles.winnerName}>{w.customerName ?? "Unknown customer"}</Text>
-                      <View style={[styles.gameStatusBadge, isPenalty ? { backgroundColor: "#D1FAE5" } : { backgroundColor: "#FEF3C7" }]}>
-                        <Text style={[styles.gameStatusText, { color: isPenalty ? "#065F46" : "#92400E" }]}>
-                          {isPenalty ? "⚽ Penalty" : "🎰 Scratch Card"}
+                      <View style={[styles.gameStatusBadge, { backgroundColor: "#FEF3C7" }]}>
+                        <Text style={[styles.gameStatusText, { color: "#92400E" }]}>
+                          {"🎰 Scratch Card"}
                         </Text>
                       </View>
                     </View>

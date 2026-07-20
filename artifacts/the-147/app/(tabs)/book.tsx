@@ -21,7 +21,6 @@ import { apiRequest, queryClient, getApiUrl } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
 import { useResponsive } from "@/hooks/useResponsive";
-import { useMatchBarVisible } from "@/hooks/useMatchBarVisible";
 import Colors from "@/constants/colors";
 import { TABLE_TYPES } from "@/lib/data";
 
@@ -123,7 +122,6 @@ export default function BookScreen() {
   const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
-  const matchBarVisible = useMatchBarVisible();
 
   const [step, setStep] = useState<Step>("table");
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
@@ -376,7 +374,7 @@ export default function BookScreen() {
   const stepIndex = ["table", "datetime", "details", "confirm", "success"].indexOf(step);
 
   return (
-    <View style={[styles.container, { paddingTop: (matchBarVisible ? 0 : insets.top) + webTopInset }]}>
+    <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Book a Table</Text>
         {greeting ? (

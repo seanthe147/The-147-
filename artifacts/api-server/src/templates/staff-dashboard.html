@@ -2630,9 +2630,8 @@
       <div class="form-group">
         <label class="form-label">Available in</label>
         <select class="form-input" id="gamePrizeGame" style="max-width:280px">
-          <option value="both">Both games (Scratch Card &amp; Penalty)</option>
+          <option value="both">All games</option>
           <option value="scratch_card">Scratch Card only</option>
-          <option value="penalty">Penalty Challenge only</option>
         </select>
       </div>
       <div style="display:flex;gap:16px;flex-wrap:wrap">
@@ -4384,7 +4383,6 @@
     const prizes=cfg.prizes||[];
 
     const scratchPrizes=prizes.filter(p=>p.game==='scratch_card'||p.game==='both');
-    const penaltyPrizes=prizes.filter(p=>p.game==='penalty'||p.game==='both');
 
     const PRIZE_TYPE_LABEL={'none':'No prize','loyalty_points':'Loyalty Points','reward_tier':'Reward Voucher','gift_card':'Gift Card','customer_group':'Offer (claim code)'};
 
@@ -4437,76 +4435,6 @@
     ];
 
     body.innerHTML=`
-      <!-- ── PENALTY CHALLENGE ──────────────────────────────────────────── -->
-      <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:24px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-          <span style="font-size:20px">⚽</span>
-          <div style="font-size:15px;font-weight:700;color:var(--text)">Penalty Challenge</div>
-          <span style="font-size:11px;padding:2px 8px;border-radius:4px;background:#f0fdf4;color:#166534;font-weight:600;border:1px solid #bbf7d0">World Cup 2026</span>
-        </div>
-
-        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px">
-          <input type="checkbox" id="penaltyEnabled" ${cfg.penaltyEnabled?'checked':''} style="width:18px;height:18px;accent-color:var(--blue)">
-          Penalty game enabled
-        </label>
-        <p style="font-size:13px;color:var(--text-2);margin:0 0 16px 28px">
-          When ticked, customers can play the penalty shootout during World Cup matches.
-          The game window opens <strong>30 minutes before kick-off</strong> and closes <strong>1 hour after kick-off</strong>.
-          One shot per customer per match day.
-        </p>
-
-        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px">Penalty Prizes</div>
-        <p style="font-size:13px;color:var(--text-2);margin:0 0 10px">
-          Prizes listed below are entered into the penalty draw. Prizes set to <em>Both games</em> also appear here.
-          Use the <strong>Available in</strong> field in the prize editor to control which game each prize can be won in.
-        </p>
-        ${makePrizeTable(penaltyPrizes)}
-        <button class="btn btn-secondary" onclick="openGamePrizeModal(null,'penalty')" style="margin-bottom:18px">+ Add Penalty Prize</button>
-
-        <div>
-          <button class="btn btn-primary" id="penaltySaveBtn" onclick="savePenaltyConfig()">Save Penalty Settings</button>
-        </div>
-
-        <!-- ── TEST MODE ── -->
-        <div id="wcTestPanel" style="margin-top:20px;padding:16px;border-radius:10px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3)">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-            <span style="font-size:16px">🧪</span>
-            <span style="font-size:13px;font-weight:700;color:#b45309">Test Mode</span>
-            <span id="wcTestActivePill" style="display:none;font-size:11px;padding:2px 8px;border-radius:4px;background:#fef3c7;color:#92400e;font-weight:600;border:1px solid #fde68a">ACTIVE</span>
-          </div>
-          <p style="font-size:12px;color:var(--text-2);margin:0 0 12px">
-            Simulate a live match — the score bar and penalty game will behave exactly as during a real match.
-            Clears automatically when the server restarts.
-          </p>
-          <div style="display:grid;grid-template-columns:1fr 1fr 60px 60px 80px;gap:8px;align-items:end;margin-bottom:10px">
-            <div>
-              <label style="font-size:11px;color:var(--text-2);display:block;margin-bottom:3px">Home team</label>
-              <input id="wcTestHome" type="text" value="ENG" maxlength="10" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px">
-            </div>
-            <div>
-              <label style="font-size:11px;color:var(--text-2);display:block;margin-bottom:3px">Away team</label>
-              <input id="wcTestAway" type="text" value="CRO" maxlength="10" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px">
-            </div>
-            <div>
-              <label style="font-size:11px;color:var(--text-2);display:block;margin-bottom:3px">Home</label>
-              <input id="wcTestHomeScore" type="number" value="1" min="0" max="20" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px">
-            </div>
-            <div>
-              <label style="font-size:11px;color:var(--text-2);display:block;margin-bottom:3px">Away</label>
-              <input id="wcTestAwayScore" type="number" value="0" min="0" max="20" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px">
-            </div>
-            <div>
-              <label style="font-size:11px;color:var(--text-2);display:block;margin-bottom:3px">Minute</label>
-              <input id="wcTestMinute" type="text" value="45'" maxlength="6" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px">
-            </div>
-          </div>
-          <div style="display:flex;gap:8px">
-            <button class="btn btn-secondary" onclick="activateWcTest()" style="font-size:13px;padding:7px 14px;background:#d97706;color:#fff;border-color:#d97706">▶ Start Test Match</button>
-            <button class="btn btn-secondary" onclick="clearWcTest()" style="font-size:13px;padding:7px 14px">✕ Clear Test</button>
-          </div>
-        </div>
-      </div>
-
       <!-- ── SCRATCH CARD GAME ──────────────────────────────────────────── -->
       <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:24px">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
@@ -4582,7 +4510,6 @@
     `;
     loadPendingGameClaims();
     loadGameWinners();
-    loadWcTestState();
   }
 
 
@@ -4609,74 +4536,6 @@
       else{const d=await r.json().catch(()=>({}));toast(d.message||'Save failed','error');}
     }catch(e){toast('Save failed','error');}
     finally{btn.disabled=false;btn.textContent='Save Scratch Card Settings';}
-  }
-
-  async function savePenaltyConfig(){
-    const btn=el('penaltySaveBtn');
-    if(!btn||btn.disabled)return;
-    btn.disabled=true;btn.textContent='Saving…';
-    try{
-      const penaltyEnabled=el('penaltyEnabled')?.checked||false;
-      const r=await api('/api/staff/game/config',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({penaltyEnabled}),
-      });
-      if(r.ok){toast('Penalty settings saved','success');}
-      else{const d=await r.json().catch(()=>({}));toast(d.message||'Save failed','error');}
-    }catch(e){toast('Save failed','error');}
-    finally{btn.disabled=false;btn.textContent='Save Penalty Settings';}
-  }
-
-  async function activateWcTest(){
-    const home=el('wcTestHome')?.value?.trim()||'ENG';
-    const away=el('wcTestAway')?.value?.trim()||'CRO';
-    const homeScore=parseInt(el('wcTestHomeScore')?.value||'1')||0;
-    const awayScore=parseInt(el('wcTestAwayScore')?.value||'0')||0;
-    const minute=el('wcTestMinute')?.value?.trim()||"45'";
-    try{
-      const r=await api('/api/staff/game/wc-test',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({homeShort:home,awayShort:away,homeScore,awayScore,minute}),
-      });
-      if(r.ok){
-        const pill=el('wcTestActivePill');
-        if(pill)pill.style.display='inline-flex';
-        toast(`Test match active: ${home} ${homeScore}–${awayScore} ${away} (${minute})  —  open the app to see it live`,'success');
-      }else{toast('Could not start test','error');}
-    }catch(e){toast('Could not start test','error');}
-  }
-
-  async function clearWcTest(){
-    try{
-      const r=await api('/api/staff/game/wc-test',{method:'DELETE'});
-      if(r.ok){
-        const pill=el('wcTestActivePill');
-        if(pill)pill.style.display='none';
-        toast('Test match cleared — real match data restored','success');
-      }else{toast('Could not clear test','error');}
-    }catch(e){toast('Could not clear test','error');}
-  }
-
-  // Restore active-pill state on panel load
-  async function loadWcTestState(){
-    try{
-      const r=await api('/api/staff/game/wc-test');
-      if(r.ok){
-        const d=await r.json();
-        const pill=el('wcTestActivePill');
-        if(pill)pill.style.display=d.active?'inline-flex':'none';
-        if(d.active&&d.override){
-          const o=d.override;
-          if(el('wcTestHome'))el('wcTestHome').value=o.homeShort||'ENG';
-          if(el('wcTestAway'))el('wcTestAway').value=o.awayShort||'CRO';
-          if(el('wcTestHomeScore'))el('wcTestHomeScore').value=o.homeScore??1;
-          if(el('wcTestAwayScore'))el('wcTestAwayScore').value=o.awayScore??0;
-          if(el('wcTestMinute'))el('wcTestMinute').value=o.minute||"45'";
-        }
-      }
-    }catch(_){}
   }
 
   async function loadPendingGameClaims(){
@@ -4926,9 +4785,6 @@
   window.openGamePrizeModal=openGamePrizeModal;
   window.saveGamePrize=saveGamePrize;
   window.saveGameConfig=saveGameConfig;
-  window.savePenaltyConfig=savePenaltyConfig;
-  window.activateWcTest=activateWcTest;
-  window.clearWcTest=clearWcTest;
   window.updateGamePrizeTypeFields=updateGamePrizeTypeFields;
   window.updateDiscountPreview=updateDiscountPreview;
   window.onGamePrizeTierSelected=onGamePrizeTierSelected;
