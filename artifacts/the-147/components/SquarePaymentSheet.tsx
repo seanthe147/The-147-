@@ -14,7 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import Colors from "@/constants/colors";
 import { buildPaymentSheetHtml } from "@/components/squarePaymentSheetHtml";
 import { getApiUrl } from "@/lib/query-client";
-import { useSquareGooglePay } from "@/hooks/useSquareGooglePay";
+import { useSquareGooglePay, type GooglePayNonceResult } from "@/hooks/useSquareGooglePay";
 
 export interface SquarePaymentSheetProps {
   visible: boolean;
@@ -41,7 +41,7 @@ export interface SquarePaymentSheetProps {
    * Pre-computed requestNonce function from a parent-level useSquareGooglePay
    * call. Paired with googlePayAvailable — both must be provided together.
    */
-  googlePayRequestNonce?: (p: { amountPence: number; currency: string }) => Promise<string | null>;
+  googlePayRequestNonce?: (p: { amountPence: number; currency: string }) => Promise<GooglePayNonceResult>;
   /**
    * Square verifyBuyer intent. Defaults to "CHARGE" for one-off payments. Use
    * "STORE" when saving a card on file for recurring billing (memberships) so
@@ -133,15 +133,36 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
     setIsGooglePayProcessing(true);
     setInternalError(null);
     try {
-      const nonce = await requestNonce({
+      const result = await requestNonce({
         amountPence: props.amountPence,
         currency: props.currency || "GBP",
       });
-      if (nonce) {
-        props.onTokenized({ sourceId: nonce, verificationToken: null });
+      if (result.status === "ok") {
+        props.onTokenized({ sourceId: result.nonce, verificationToken: result.verificationToken });
+      } else if (result.status === "failed") {
+        // Surface the failure instead of silently returning to idle — the
+        // user needs to know Google Pay didn't go through and that card
+        // entry below still works.
+        setInternalError(
+          `${result.message} You can still pay by entering your card details below.`,
+        );
+        postDiagnostic({
+          phase: "google_pay_error",
+          reason: result.message,
+          platform: Platform.OS,
+          environment: props.environment,
+          amountPence: props.amountPence,
+        });
       }
-    } catch {
+      // status === "cancelled": user closed the wallet sheet on purpose — no error.
+    } catch (e: any) {
       setInternalError("Google Pay failed. Please try entering your card details instead.");
+      postDiagnostic({
+        phase: "google_pay_error",
+        reason: e?.message || "unknown_exception",
+        platform: Platform.OS,
+        environment: props.environment,
+      });
     } finally {
       setIsGooglePayProcessing(false);
     }

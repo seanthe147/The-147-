@@ -895,6 +895,8 @@ function CartSheet({
     applicationId: squareConfig?.applicationId ?? null,
     locationId: squareConfig?.locationId ?? null,
     environment: squareConfig?.environment ?? "sandbox",
+    buyerEmail: customer?.email ?? null,
+    buyerName: customer?.name ?? null,
   });
 
   // Issued loyalty rewards — only fetched when customer is signed in

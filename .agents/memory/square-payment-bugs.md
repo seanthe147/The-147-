@@ -46,6 +46,16 @@ description: Root causes and fixes for "Payment Screen Issue" alert and loyalty 
 
 **Why**: Square KDS only sees orders that have been paid (card/cash tender) or explicitly set to COMPLETED. Free orders skip both paths without this fix.
 
+## Bug 6 — Google Pay still failing for some Android users (SCA + silent errors)
+
+**Root cause (two-part)**:
+1. Google Pay nonces were sent with `verificationToken: null` — no buyer verification (SCA/3DS) ever ran on the native Google Pay path, so UK banks requiring SCA declined those payments. The WebView card path does verifyBuyer; the native wallet path didn't.
+2. All Google Pay failures/cancellations resolved to `null` silently — the button just returned to idle with no message, making failures look intermittent and unreportable.
+
+**Fix**: `requestNonce` now returns a structured result (`ok`/`cancelled`/`failed`), runs `startBuyerVerificationFlow` on the nonce (falls back to bare nonce if the module is unavailable), and the sheet shows failure messages + posts `google_pay_error` diagnostics to `/api/public/payment-sheet-diagnostics`.
+
+**Deploy**: Mobile code — needs OTA push (`eas update --channel production`, user's terminal) AND users must be on a binary that includes the Square native module (runtime 2.8.7+); older installed binaries can never show Google Pay regardless of OTA.
+
 ## Payment flow summary (for quick reference)
 1. Client: POST /api/orders/create → returns appOrderId, amountPence, squareOrderId
 2a. amountPence > 0: Client opens SquarePaymentSheet WebView
