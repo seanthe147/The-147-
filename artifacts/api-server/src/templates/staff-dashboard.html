@@ -1427,6 +1427,11 @@
                 <p style="margin:0;font-size:12px;color:var(--text-3)">Every prize or reward code redeemed by staff — most recent first</p>
               </div>
               <div style="display:flex;gap:8px;align-items:center">
+                <select id="redeemAuditTypeFilter" class="form-input" style="padding:5px 10px;font-size:12px;width:auto" onchange="loadRedemptionAudit()">
+                  <option value="all" selected>All types</option>
+                  <option value="game_prize">🎮 Game Prize</option>
+                  <option value="venue_reward">🏆 Venue Reward</option>
+                </select>
                 <select id="redeemAuditLimit" class="form-input" style="padding:5px 10px;font-size:12px;width:auto" onchange="loadRedemptionAudit()">
                   <option value="50">Last 50</option>
                   <option value="100" selected>Last 100</option>
@@ -4895,8 +4900,13 @@
     try{
       const r=await api('/api/staff/redemption-audit?limit='+limit);
       if(!r.ok){el2.innerHTML='<span style="color:var(--danger);font-size:13px">Could not load redemption history.</span>';return;}
-      const rows=await r.json();
+      let rows=await r.json();
       if(!rows.length){el2.innerHTML='<p style="font-size:13px;color:var(--text-3);margin:0">No redemptions yet.</p>';return;}
+      const typeFilter=el('redeemAuditTypeFilter')?el('redeemAuditTypeFilter').value:'all';
+      if(typeFilter!=='all'){
+        rows=rows.filter(row=>typeFilter==='game_prize'?row.kind==='game_prize':row.kind!=='game_prize');
+        if(!rows.length){el2.innerHTML='<p style="font-size:13px;color:var(--text-3);margin:0">No '+(typeFilter==='game_prize'?'game prize':'venue reward')+' redemptions in the selected range.</p>';return;}
+      }
       el2.innerHTML=`
         <table style="width:100%;border-collapse:collapse;font-size:13px">
           <thead><tr style="border-bottom:1.5px solid var(--border);text-align:left">
