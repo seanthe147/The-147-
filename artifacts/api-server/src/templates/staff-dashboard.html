@@ -3053,6 +3053,7 @@
         <label class="form-label">Membership Plan</label>
         <select class="form-input" id="amPlanId"></select>
         <div id="amPlanPrice" style="margin-top:6px;font-size:13px;color:var(--text-2);font-weight:600"></div>
+        <ul id="amPlanBenefits" style="margin:8px 0 0;padding:0;list-style:none;font-size:13px;color:var(--text-2);display:none"></ul>
       </div>
 
       <div class="form-group">
@@ -10650,6 +10651,18 @@
     const priceEl=el('amPlanPrice');
     if(plan){priceEl.textContent=`£${(plan.priceMonthly/100).toFixed(2)} per month`}
     else{priceEl.textContent=''}
+    // Show the canonical benefit list for the selected plan (same wording as the customer app)
+    const benefitsEl=el('amPlanBenefits');
+    if(benefitsEl){
+      const benefits=(plan&&Array.isArray(plan.benefits))?plan.benefits:[];
+      if(benefits.length>0){
+        benefitsEl.innerHTML=benefits.map(b=>`<li style="display:flex;align-items:flex-start;gap:6px;margin-top:4px"><span style="color:var(--green,#16a34a);font-weight:700;line-height:1.4">✓</span><span>${esc(typeof b==='string'?b:(b&&b.text)||'')}</span></li>`).join('');
+        benefitsEl.style.display='block';
+      }else{
+        benefitsEl.innerHTML='';
+        benefitsEl.style.display='none';
+      }
+    }
     // update amount placeholder
     if(plan&&el('amPaymentAmount')){el('amPaymentAmount').placeholder=(plan.priceMonthly/100).toFixed(2)}
   }
