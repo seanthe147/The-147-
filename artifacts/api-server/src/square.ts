@@ -576,6 +576,54 @@ export async function createCardPayment(opts: {
   return data.payment;
 }
 
+// Double-charge guard: check whether a Square order already has a completed
+// payment attached (payments appear as tenders on the order once processed).
+// Used by the pay routes both BEFORE charging (retry after the app never heard
+// the first success) and AFTER an ambiguous failure (timeout / network drop /
+// Square 5xx) to find out whether the charge actually went through.
+// Only tenders carrying a real `payment_id` are considered, and the payment
+// itself is fetched and verified (successful terminal status, same order,
+// exact amount) before it is trusted — a cash/partial/failed tender must
+// never cause a pending app order to be marked paid.
+export async function findExistingPaymentForOrder(
+  squareOrderId: string,
+  expectedAmountPence: number,
+): Promise<{ id: string; status: string } | null> {
+  const order = await getOrder(squareOrderId);
+  const tenders: any[] = order?.tenders ?? [];
+  for (const t of tenders) {
+    const paymentId: string | undefined = t?.payment_id;
+    if (!paymentId) continue;
+    try {
+      const data = await squareRequest("GET", `/v2/payments/${paymentId}`);
+      const p = data?.payment;
+      if (!p) continue;
+      const isSuccess = p.status === "COMPLETED" || p.status === "APPROVED";
+      const sameOrder = p.order_id === squareOrderId;
+      const sameAmount = Number(p.amount_money?.amount ?? -1) === expectedAmountPence;
+      if (isSuccess && sameOrder && sameAmount) {
+        return { id: p.id as string, status: p.status as string };
+      }
+    } catch (err) {
+      if (err instanceof SquareError && err.statusCode === 404) continue;
+      throw err; // caller decides how to handle an unverifiable state
+    }
+  }
+  return null;
+}
+
+// A payment error is "ambiguous" when we cannot know whether Square processed
+// the charge: request timeout, network failure, or a Square-side 5xx. Declines
+// and validation errors (4xx with a code) are definitive — the charge did NOT
+// happen — and must be surfaced to the customer as before.
+export function isAmbiguousPaymentError(err: unknown): boolean {
+  if (err instanceof SquareError) {
+    return err.code === "TIMEOUT" || err.statusCode >= 500;
+  }
+  // Non-SquareError = fetch/network failure before a response was parsed.
+  return true;
+}
+
 // ── Subscription helpers ──────────────────────────────────────────────────────
 
 export async function createSquareCustomer(name: string, email: string, phone?: string) {

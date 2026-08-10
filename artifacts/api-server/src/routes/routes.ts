@@ -189,6 +189,23 @@ setInterval(() => {
   }
 }, 15 * 60 * 1000);
 
+// ── Per-order payment mutex (cross-instance) ────────────────────────────────
+// Serialises payment attempts for the same app order via a Postgres
+// transactional advisory lock, so two concurrent requests (double-tap, /pay
+// racing the saved-card route, or two autoscale instances) can't both pass
+// the "no existing payment" check and each submit a charge. All instances
+// share the same database, so the lock is genuinely distributed; it is held
+// for the duration of the check → charge → mark-paid sequence and released
+// automatically when the wrapping transaction commits or the connection dies.
+// 874147 is an arbitrary app-wide namespace for the two-key advisory lock.
+const PAY_LOCK_NAMESPACE = 874147;
+async function withOrderPayLock<T>(orderId: number, fn: () => Promise<T>): Promise<T> {
+  return await db.transaction(async (tx) => {
+    await tx.execute(dSql`SELECT pg_advisory_xact_lock(${PAY_LOCK_NAMESPACE}, ${orderId})`);
+    return await fn();
+  });
+}
+
 const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION = 15 * 60 * 1000;
@@ -7755,18 +7772,110 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       if (!order.squareOrderId) {
         return res.status(400).json({ message: "Order is missing Square reference" });
       }
-      const idemRaw = `app-order-${appOrderId}|${sourceId}`;
-      const idempotencyKey = createHash("sha256").update(idemRaw).digest("hex").slice(0, 45);
-      const payment = await square.createCardPayment({
-        sourceId: sourceId.trim(),
-        amountPence: order.totalPence,
-        idempotencyKey,
-        note: order.tableNote ? `Order ${appOrderId} — ${order.tableNote}` : `Order ${appOrderId}`,
-        referenceId: `app-order-${appOrderId}`,
-        buyerEmail: (buyerEmail || order.customerEmail || null) as string | null,
-        verificationToken: verificationToken || null,
-        orderId: order.squareOrderId,
+      // ── Double-charge guard ────────────────────────────────────────────
+      // If the connection dropped after Square accepted a previous attempt
+      // (but before the app heard back), the customer retries with a NEW
+      // payment token — which would produce a new idempotency key and a
+      // second real charge. All of check + charge runs inside a per-order
+      // lock so concurrent attempts are serialised; inside the lock we ask
+      // Square whether the order already carries a verified successful
+      // payment before charging.
+      // (A static per-order idempotency key can't solve this: Square rejects
+      // key reuse with a different token as IDEMPOTENCY_KEY_REUSED, which
+      // would block legitimate retries after a genuine decline.)
+      type PayOutcome =
+        | { kind: "already"; status: string }
+        | { kind: "unverifiable" }
+        | { kind: "paid"; payment: { id: string; status: string }; recovered: boolean };
+      const outcome: PayOutcome = await withOrderPayLock(order.id, async () => {
+        // Re-check status now that we hold the lock — a concurrent attempt
+        // may have completed while we were waiting.
+        const fresh = await storage.getAppOrder(appOrderId);
+        if (!fresh || fresh.status !== "pending") {
+          return { kind: "already" as const, status: fresh?.status ?? "unknown" };
+        }
+        let existing: { id: string; status: string } | null;
+        try {
+          existing = await square.findExistingPaymentForOrder(order.squareOrderId!, order.totalPence);
+        } catch (checkErr: any) {
+          // Fail CLOSED: if we can't verify whether a previous charge landed,
+          // charging anyway is exactly the double-charge path. Ask the
+          // customer to retry instead.
+          console.error(`[ORDER] Could not verify existing payments for order #${order.id}:`, checkErr?.message);
+          return { kind: "unverifiable" as const };
+        }
+        if (existing) {
+          console.log(`[ORDER] Order #${order.id} already paid on Square (payment ${existing.id}) — skipping duplicate charge`);
+          return { kind: "paid" as const, payment: existing, recovered: true };
+        }
+        const idemRaw = `app-order-${appOrderId}|${sourceId}`;
+        const idempotencyKey = createHash("sha256").update(idemRaw).digest("hex").slice(0, 45);
+        try {
+          const p = await square.createCardPayment({
+            sourceId: sourceId.trim(),
+            amountPence: order.totalPence,
+            idempotencyKey,
+            note: order.tableNote ? `Order ${appOrderId} — ${order.tableNote}` : `Order ${appOrderId}`,
+            referenceId: `app-order-${appOrderId}`,
+            buyerEmail: (buyerEmail || order.customerEmail || null) as string | null,
+            verificationToken: verificationToken || null,
+            orderId: order.squareOrderId,
+          });
+          // Mark paid while still holding the lock — closes the window where
+          // a concurrent attempt could pass the status check before Square's
+          // order/tender view reflects this charge. updateAppOrderPaid is an
+          // atomic pending→paid transition, so the duplicate call in the
+          // fall-through success path below safely no-ops.
+          if (p.status === "COMPLETED" || p.status === "APPROVED") {
+            const transitioned = await storage.updateAppOrderPaid(order.squareOrderId!, p.id).catch((e: any) => {
+              console.error("[ORDER] Failed to mark paid (in-lock):", e.message);
+              return false;
+            });
+            if (transitioned) {
+              await storage.logOrderAction({
+                orderId: order.id,
+                staffUsername: "system",
+                action: "paid",
+                reason: `Square payment ${p.id} (in-app)`,
+              }).catch((e: any) => console.error("[ORDER] Audit log failed:", e.message));
+            }
+          }
+          return { kind: "paid" as const, payment: p, recovered: false };
+        } catch (payErr: any) {
+          // Ambiguous failure (timeout / network drop / Square 5xx): the
+          // charge may have gone through. Check Square before reporting
+          // failure — if a verified payment landed, treat it as success.
+          if (!square.isAmbiguousPaymentError(payErr)) throw payErr;
+          const rec = await square.findExistingPaymentForOrder(order.squareOrderId!, order.totalPence).catch(() => null);
+          if (!rec) throw payErr;
+          console.log(`[ORDER] Recovered payment ${rec.id} for order #${order.id} after ambiguous error (${payErr?.message})`);
+          return { kind: "paid" as const, payment: rec, recovered: true };
+        }
       });
+      if (outcome.kind === "already") {
+        return res.status(409).json({ message: `Order is already ${outcome.status}` });
+      }
+      if (outcome.kind === "unverifiable") {
+        return res.status(503).json({
+          message: "We couldn't confirm your payment status. Please wait a moment and try again — you have not been charged twice.",
+        });
+      }
+      const payment = outcome.payment;
+      if (outcome.recovered) {
+        const transitioned = await storage.updateAppOrderPaid(order.squareOrderId, payment.id).catch((e: any) => {
+          console.error("[ORDER] Failed to mark paid:", e.message);
+          return false;
+        });
+        if (transitioned) {
+          await storage.logOrderAction({
+            orderId: order.id,
+            staffUsername: "system",
+            action: "paid",
+            reason: `Square payment ${payment.id} (recovered — duplicate charge prevented)`,
+          }).catch((e: any) => console.error("[ORDER] Audit log failed:", e.message));
+        }
+        return res.json({ ok: true, status: "COMPLETED", paymentId: payment.id, appOrderId: order.id });
+      }
       const succeeded = payment.status === "COMPLETED" || payment.status === "APPROVED";
       if (succeeded) {
         // Atomic pending → paid; only log audit if this call actually
@@ -11247,21 +11356,95 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       if (!order.squareOrderId) {
         return res.status(400).json({ message: "Order is missing Square reference" });
       }
-      // The saved-card id is reused as the source — Square debounces by
-      // idempotency key over a 24h window, so include the order id (not
-      // the source) in the seed.
-      const idemRaw = `app-order-${appOrderId}|saved-${customer.squareCardId}`;
-      const idempotencyKey = createHash("sha256").update(idemRaw).digest("hex").slice(0, 45);
-      const payment = await square.chargeSavedCard({
-        squareCustomerId: customer.squareCustomerId,
-        squareCardId: customer.squareCardId,
-        amountPence: order.totalPence,
-        idempotencyKey,
-        note: order.tableNote ? `Order ${appOrderId} — ${order.tableNote}` : `Order ${appOrderId}`,
-        referenceId: `app-order-${appOrderId}`,
-        buyerEmail: customer.email,
-        orderId: order.squareOrderId,
+      // ── Double-charge guard ────────────────────────────────────────────
+      // Same protection as /pay: serialise per-order, verify with Square
+      // that no successful payment already exists (fail closed if we can't
+      // check), and recover the payment on ambiguous failures.
+      type SavedPayOutcome =
+        | { kind: "already"; status: string }
+        | { kind: "unverifiable" }
+        | { kind: "paid"; payment: { id: string; status: string }; recovered: boolean };
+      const outcome: SavedPayOutcome = await withOrderPayLock(order.id, async () => {
+        const fresh = await storage.getAppOrder(appOrderId);
+        if (!fresh || fresh.status !== "pending") {
+          return { kind: "already" as const, status: fresh?.status ?? "unknown" };
+        }
+        let existing: { id: string; status: string } | null;
+        try {
+          existing = await square.findExistingPaymentForOrder(order.squareOrderId!, order.totalPence);
+        } catch (checkErr: any) {
+          console.error(`[SAVED CARD] Could not verify existing payments for order #${order.id}:`, checkErr?.message);
+          return { kind: "unverifiable" as const };
+        }
+        if (existing) {
+          console.log(`[SAVED CARD] Order #${order.id} already paid on Square (payment ${existing.id}) — skipping duplicate charge`);
+          return { kind: "paid" as const, payment: existing, recovered: true };
+        }
+        // The saved-card id is reused as the source — Square debounces by
+        // idempotency key over a 24h window, so include the order id (not
+        // the source) in the seed.
+        const idemRaw = `app-order-${appOrderId}|saved-${customer.squareCardId}`;
+        const idempotencyKey = createHash("sha256").update(idemRaw).digest("hex").slice(0, 45);
+        try {
+          const p = await square.chargeSavedCard({
+            squareCustomerId: customer.squareCustomerId!,
+            squareCardId: customer.squareCardId!,
+            amountPence: order.totalPence,
+            idempotencyKey,
+            note: order.tableNote ? `Order ${appOrderId} — ${order.tableNote}` : `Order ${appOrderId}`,
+            referenceId: `app-order-${appOrderId}`,
+            buyerEmail: customer.email,
+            orderId: order.squareOrderId,
+          });
+          // Mark paid while still holding the lock (see /pay for rationale);
+          // the duplicate transition in the success path below no-ops.
+          if (p.status === "COMPLETED" || p.status === "APPROVED") {
+            const transitioned = await storage.updateAppOrderPaid(order.squareOrderId!, p.id).catch((e: any) => {
+              console.error("[SAVED CARD] Failed to mark paid (in-lock):", e.message);
+              return false;
+            });
+            if (transitioned) {
+              await storage.logOrderAction({
+                orderId: order.id,
+                staffUsername: "system",
+                action: "paid",
+                reason: `Square payment ${p.id} (saved card)`,
+              }).catch((e: any) => console.error("[ORDER] Audit log failed:", e.message));
+            }
+          }
+          return { kind: "paid" as const, payment: p, recovered: false };
+        } catch (payErr: any) {
+          if (!square.isAmbiguousPaymentError(payErr)) throw payErr;
+          const rec = await square.findExistingPaymentForOrder(order.squareOrderId!, order.totalPence).catch(() => null);
+          if (!rec) throw payErr;
+          console.log(`[SAVED CARD] Recovered payment ${rec.id} for order #${order.id} after ambiguous error (${payErr?.message})`);
+          return { kind: "paid" as const, payment: rec, recovered: true };
+        }
       });
+      if (outcome.kind === "already") {
+        return res.status(409).json({ message: `Order is already ${outcome.status}` });
+      }
+      if (outcome.kind === "unverifiable") {
+        return res.status(503).json({
+          message: "We couldn't confirm your payment status. Please wait a moment and try again — you have not been charged twice.",
+        });
+      }
+      const payment = outcome.payment;
+      if (outcome.recovered) {
+        const transitioned = await storage.updateAppOrderPaid(order.squareOrderId, payment.id).catch((e: any) => {
+          console.error("[ORDER] Failed to mark paid:", e.message);
+          return false;
+        });
+        if (transitioned) {
+          await storage.logOrderAction({
+            orderId: order.id,
+            staffUsername: "system",
+            action: "paid",
+            reason: `Square payment ${payment.id} (recovered — duplicate charge prevented)`,
+          }).catch((e: any) => console.error("[ORDER] Audit log failed:", e.message));
+        }
+        return res.json({ ok: true, status: "COMPLETED", paymentId: payment.id, appOrderId: order.id });
+      }
       const succeeded = payment.status === "COMPLETED" || payment.status === "APPROVED";
       if (succeeded) {
         const transitioned = await storage.updateAppOrderPaid(order.squareOrderId, payment.id).catch((e: any) => {
