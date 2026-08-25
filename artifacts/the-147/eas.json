@@ -27,6 +27,7 @@
       "distribution": "store",
       "environment": "production",
       "channel": "production",
+      "node": "22.19.0",
       "ios": {
         "buildConfiguration": "Release"
       },
