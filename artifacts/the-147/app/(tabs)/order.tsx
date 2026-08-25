@@ -2212,7 +2212,15 @@ export default function OrderScreen() {
 
   const { data: categories, isLoading, isError, refetch } = useQuery<MenuCategory[]>({
     queryKey: ["/api/menu"],
-    staleTime: 5 * 60 * 1000,
+    // Staff can hide or sell-out items at any time. The old five-minute
+    // stale window meant customers could keep seeing unavailable products
+    // long after the staff change had saved. Refresh on the same cadence as
+    // ordering status, and always check again when the Order tab mounts or
+    // the app returns to the foreground.
+    staleTime: 0,
+    refetchInterval: 15 * 1000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
   });
 
   const { data: banners } = useQuery<BannerImage[]>({

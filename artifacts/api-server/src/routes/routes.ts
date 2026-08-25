@@ -5615,6 +5615,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
 
   app.get("/api/menu", async (_req, res) => {
     try {
+      // Availability and visibility overrides are operational live data.
+      // Do not let browser/proxy caches keep serving a menu snapshot after
+      // staff have hidden or sold-out an item.
+      res.setHeader("Cache-Control", "no-store");
       const [categories, categoryOverrides, itemOverrides, catSettingsArr, availRules] = await Promise.all([
         square.getMenuFromSquare(),
         storage.getMenuCategoryOverrides(),
