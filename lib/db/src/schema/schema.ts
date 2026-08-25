@@ -75,6 +75,7 @@ export const pushTokens = pgTable("push_tokens", {
   deviceName: text("device_name"),
   customerEmail: text("customer_email"),
   customerEmailHash: text("customer_email_hash"),
+  deviceSecretHash: text("device_secret_hash"),
   platform: text("platform"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

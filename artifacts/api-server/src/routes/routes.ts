@@ -16,6 +16,16 @@ import { hashPin, verifyPin, hashPassword, verifyPassword, hashEmail, decrypt } 
 import * as square from "../square";
 import * as teya from "../teya";
 import { buildReorderPayload, type ReorderMenuItem, type ReorderRawItem } from "../reorder-matching";
+import {
+  isValidExpoPushToken,
+  sendPushMessages,
+  sendPushToTokens as sendTargetedPush,
+} from "../push";
+import {
+  createPushRegistrationSecret,
+  hashPushRegistrationSecret,
+  matchesPushRegistrationSecret,
+} from "../push-registration";
 
 // ── Square POS → Live Tables sync helpers ───────────────────────────────────
 // Parses a Square ticket name like "Snooker 4" / "Pool 2" / "Dining 7" into a
@@ -1288,6 +1298,25 @@ async function customerAuth(req: Request, res: Response, next: NextFunction) {
   (req as any).customerId = customer.id;
   (req as any).customerEmail = customer.email;
   next();
+}
+
+async function getOptionalAuthenticatedCustomer(req: Request) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return undefined;
+  const token = authHeader.slice(7);
+  if (token.length < 32 || token.length > 128) return undefined;
+  try {
+    const session = await storage.validateCustomerSession(token);
+    if (!session) return undefined;
+    const customer = await storage.getCustomerById(session.customerId);
+    if (!customer || (customer.expiresAt && customer.expiresAt.getTime() < Date.now())) {
+      return undefined;
+    }
+    return customer;
+  } catch (err: any) {
+    console.warn("[AUTH] Optional customer session validation failed:", err.message);
+    return undefined;
+  }
 }
 
 type MemberDiscountResult = {
@@ -3521,16 +3550,84 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     res.status(200).json({ received: true });
   });
 
+  async function getOwnedRegisteredPushToken(token: unknown, secret: unknown) {
+    if (!isValidExpoPushToken(token)) return undefined;
+    const registered = await storage.getPushToken(token);
+    if (!registered || !matchesPushRegistrationSecret(token, secret, registered.deviceSecretHash)) {
+      return undefined;
+    }
+    return registered;
+  }
+
+  async function getAuthenticatedCustomerPushToken(req: Request, token: unknown) {
+    if (!isValidExpoPushToken(token)) return undefined;
+    const customer = await getOptionalAuthenticatedCustomer(req);
+    if (!customer?.email) return undefined;
+    const customerTokens = await storage.getPushTokensByEmail(customer.email);
+    return customerTokens.find((candidate) => candidate.token === token);
+  }
+
   app.post("/api/push-tokens", async (req, res) => {
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    const rl = checkRateLimit(`push-token-register:${ip}`, 20, 15 * 60 * 1000);
+    if (!rl.allowed) {
+      res.setHeader("Retry-After", String(rl.retryAfter));
+      return res.status(429).json({ message: "Too many token registration attempts" });
+    }
     const parsed = insertPushTokenSchema.safeParse(req.body);
-    if (!parsed.success) {
+    if (!parsed.success || !isValidExpoPushToken(parsed.data.token)) {
       return res.status(400).json({ message: "Invalid token data" });
     }
     // Strip customerEmail — email binding requires an authenticated session.
     // Unauthenticated callers must not be able to tie a token to an arbitrary email.
-    const { customerEmail: _email, customerEmailHash: _hash, ...tokenData } = parsed.data;
+    const existing = await storage.getPushToken(parsed.data.token);
+    const suppliedSecret = req.body?.pushRegistrationSecret;
+    let pushRegistrationSecret: string;
+    if (existing?.deviceSecretHash) {
+      if (!matchesPushRegistrationSecret(parsed.data.token, suppliedSecret, existing.deviceSecretHash)) {
+        return res.status(409).json({ message: "This device token is already registered" });
+      }
+      pushRegistrationSecret = suppliedSecret;
+    } else {
+      // Existing pre-upgrade tokens may claim a secret once. After this hash is
+      // stored, knowing the Expo token alone can no longer mint order-routing proof.
+      pushRegistrationSecret = createPushRegistrationSecret();
+    }
+
+    const {
+      customerEmail: _email,
+      customerEmailHash: _hash,
+      deviceSecretHash: _deviceSecretHash,
+      ...tokenData
+    } = parsed.data;
     const token = await storage.registerPushToken(tokenData);
-    res.status(201).json(token);
+    if (!existing?.deviceSecretHash) {
+      await storage.setPushTokenDeviceSecretHash(
+        token.token,
+        hashPushRegistrationSecret(token.token, pushRegistrationSecret),
+      );
+    }
+    res.status(201).json({ registered: true, pushRegistrationSecret });
+  });
+
+  // A push token is a high-entropy device credential. Accept it in the body so
+  // it is not leaked into URL/access logs, and delete only that exact token.
+  app.delete("/api/push-tokens", async (req, res) => {
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    const rl = checkRateLimit(`push-token-delete:${ip}`, 20, 15 * 60 * 1000);
+    if (!rl.allowed) {
+      res.setHeader("Retry-After", String(rl.retryAfter));
+      return res.status(429).json({ message: "Too many token deletion attempts" });
+    }
+    const { token, pushRegistrationSecret } = req.body ?? {};
+    const ownedToken = await getOwnedRegisteredPushToken(token, pushRegistrationSecret);
+    if (!ownedToken) {
+      return res.status(403).json({ message: "Invalid device registration" });
+    }
+    // Deliberately return the same response whether it existed or not; this
+    // keeps the endpoint idempotent and avoids making it a token oracle.
+    await storage.removePushToken(ownedToken.token);
+    res.status(204).send();
   });
 
   app.delete("/api/push-tokens/:token", staffAuth, managerAuth, async (req, res) => {
@@ -3544,147 +3641,12 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     res.json(tokens);
   });
 
-  // Both legacy ("ExponentPushToken[…]") and current ("ExpoPushToken[…]")
-  // formats are emitted by Expo depending on SDK version. Accept either so
-  // we don't silently drop notifications for some installs.
-  function isValidExpoPushToken(token: unknown): token is string {
-    return typeof token === "string"
-      && (token.startsWith("ExponentPushToken[") || token.startsWith("ExpoPushToken["));
-  }
-
-  async function sendTargetedPush(tokens: string[], title: string, body: string, data?: Record<string, unknown>) {
-    if (!tokens.length) return { successCount: 0, failureCount: 0 };
-    const messages = tokens.map(to => ({
-      to,
-      sound: "default" as const,
-      channelId: "default",
-      title,
-      body,
-      ...(data ? { data } : {}),
-    }));
-    let successCount = 0, failureCount = 0;
-    try {
-      const response = await fetch("https://exp.host/--/api/v2/push/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Accept": "application/json" },
-        body: JSON.stringify(messages),
-      });
-      const data = await response.json() as { data?: Array<{ status: string; details?: { error?: string } }>; errors?: unknown[] };
-      if (data.data) {
-        for (const r of data.data) {
-          if (r.status === "ok") successCount++;
-          else { failureCount++; if (r.details?.error === "DeviceNotRegistered") { /* handled by broadcast cleanup */ } }
-        }
-      } else failureCount += tokens.length;
-    } catch { failureCount += tokens.length; }
-    return { successCount, failureCount };
-  }
-
-  async function sendPushNotifications(title: string, body: string, sentBy?: string) {
+  async function sendPushNotifications(title: string, body: string, _sentBy?: string) {
     const tokens = await storage.getAllPushTokens();
     if (tokens.length === 0) return { tokens, successCount: 0, failureCount: 0 };
-
-    type PushMessage = { to: string; sound: "default"; channelId: string; title: string; body: string };
-
-    const allMessages: PushMessage[] = tokens.map((t) => ({
-      to: t.token,
-      sound: "default" as const,
-      channelId: "default",
-      title,
-      body,
-    }));
-
-    let successCount = 0;
-    let failureCount = 0;
-    const deadTokens: string[] = [];
-
-    // Sends a batch where all tokens belong to the same Expo project.
-    // If Expo rejects due to mixed experience IDs, it splits and retries per group.
-    async function sendSingleProjectBatch(batch: PushMessage[]): Promise<void> {
-      let responseData: {
-        data?: Array<{ status: string; message?: string; details?: { error?: string } }>;
-        errors?: Array<{ code: string; message: string; details?: Record<string, string[]> }>;
-      };
-      try {
-        const response = await fetch("https://exp.host/--/api/v2/push/send", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "Accept-Encoding": "gzip, deflate",
-          },
-          body: JSON.stringify(batch),
-        });
-        responseData = await response.json() as typeof responseData;
-      } catch (err) {
-        console.error("[Push] Network error sending to Expo:", err);
-        failureCount += batch.length;
-        return;
-      }
-
-      // Expo rejects batches mixing tokens from different projects — split and retry each group
-      if (responseData.errors?.some(e => e.code === "PUSH_TOO_MANY_EXPERIENCE_IDS")) {
-        const details = responseData.errors.find(e => e.code === "PUSH_TOO_MANY_EXPERIENCE_IDS")?.details ?? {};
-        console.log(`[Push] Mixed experience IDs — splitting into ${Object.keys(details).length} groups`);
-        for (const [experienceId, groupTokens] of Object.entries(details)) {
-          const groupBatch = batch.filter(m => groupTokens.includes(m.to));
-          if (!groupBatch.length) continue;
-          console.log(`[Push] Retrying ${groupBatch.length} tokens for ${experienceId}`);
-          await sendSingleProjectBatch(groupBatch);
-        }
-        return;
-      }
-
-      if (responseData.errors) {
-        console.error("[Push] Expo API error:", JSON.stringify(responseData));
-        failureCount += batch.length;
-        return;
-      }
-
-      if (responseData.data) {
-        responseData.data.forEach((result, index) => {
-          const token = batch[index]?.to;
-          if (result.status === "ok") {
-            successCount++;
-          } else {
-            failureCount++;
-            console.error(`[Push] Failed for token ${token}: ${result.message} (${result.details?.error})`);
-            // DeviceNotRegistered = app uninstalled; InvalidCredentials here
-            // means the token belongs to a dev/Expo-Go experience that has no
-            // APNs credentials on the production server — both are undeliverable
-            // and should be pruned so future sends don't waste quota on them.
-            if ((result.details?.error === "DeviceNotRegistered" || result.details?.error === "InvalidCredentials") && token) {
-              deadTokens.push(token);
-            }
-          }
-        });
-      } else {
-        console.error("[Push] Unexpected Expo response:", JSON.stringify(responseData));
-        failureCount += batch.length;
-      }
-    }
-
-    // Expo accepts up to 100 messages per request
-    for (let i = 0; i < allMessages.length; i += 100) {
-      await sendSingleProjectBatch(allMessages.slice(i, i + 100));
-    }
-
-    // Remove tokens for devices that have uninstalled the app
-    for (const deadToken of deadTokens) {
-      try {
-        await storage.removePushToken(deadToken);
-        console.log(`[Push] Removed unregistered token: ${deadToken}`);
-      } catch (err) {
-        console.error(`[Push] Failed to remove dead token ${deadToken}:`, err);
-      }
-    }
-
-    if (failureCount > 0) {
-      console.error(`[Push] Summary: ${successCount} delivered, ${failureCount} failed, ${deadTokens.length} dead tokens removed`);
-    } else {
-      console.log(`[Push] Summary: ${successCount} delivered successfully`);
-    }
-
+    const { successCount, failureCount } = await sendTargetedPush(
+      tokens.map((token) => token.token), title, body,
+    );
     return { tokens, successCount, failureCount };
   }
 
@@ -4556,7 +4518,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         // Notify the originating device. Same data shape as the staff
         // advance route so the existing deep-link handler (type:
         // "order-status") routes the tap back into the receipt screen.
-        if (appOrder.pushToken) {
+        const registeredOrderToken = appOrder.pushToken
+          ? await storage.getPushToken(appOrder.pushToken)
+          : undefined;
+        if (registeredOrderToken) {
           const ref = appOrder.id.toString().padStart(5, "0");
           const data = {
             type: "order-status" as const,
@@ -4565,7 +4530,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
             status: "completed",
           };
           sendTargetedPush(
-            [appOrder.pushToken],
+            [registeredOrderToken.token],
             "Order complete 🎉",
             `Order #${ref} is complete — enjoy!`,
             data,
@@ -6657,6 +6622,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         square.redeemIssuedLoyaltyReward(loyaltyRewardId, squareOrderId).catch(() => {});
       }
       const discountedTotal = Math.max(0, memberDiscountedTotal - loyaltyDiscountPence);
+      const registeredPushToken = await getAuthenticatedCustomerPushToken(req, pushToken);
 
       // Store order record (non-blocking — don't fail checkout if DB write fails)
       storage.createAppOrder({
@@ -6684,7 +6650,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         totalPence: discountedTotal,
         discountPercent: discountPercent ?? undefined,
         discountLabel: discountLabel ?? undefined,
-        pushToken: isValidExpoPushToken(pushToken) ? pushToken : undefined,
+        pushToken: registeredPushToken?.token,
       }).catch((err: any) => console.error("[ORDER] Failed to save order record:", err.message));
 
       res.json({ url, discountPercent: discountPercent ?? null, discountLabel: discountLabel ?? null });
@@ -7644,6 +7610,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       // alongside the appOrderId on the device and presents it later to the
       // /confirmation endpoint so we don't expose paid orders by ID alone.
       const confirmationToken = randomBytes(24).toString("hex");
+      const registeredPushToken = await getAuthenticatedCustomerPushToken(req, pushToken);
 
       // Save app_orders row (pending) so the webhook + staff dashboard see it
       const appOrder = await storage.createAppOrder({
@@ -7671,7 +7638,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         discountPercent: discountPercent ?? undefined,
         discountLabel: discountLabel ?? undefined,
         confirmationToken,
-        pushToken: isValidExpoPushToken(pushToken) ? pushToken : undefined,
+        pushToken: registeredPushToken?.token,
         // Stored so the /pay route can mark it redeemed AFTER a successful
         // payment rather than here (which would burn the reward even on a
         // later card decline).
@@ -8334,7 +8301,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         };
       }
       const message = NOTIFY[target];
-      if (message && order.pushToken) {
+      const registeredOrderToken = order.pushToken
+        ? await storage.getPushToken(order.pushToken)
+        : undefined;
+      if (message && registeredOrderToken) {
         // Tapping the notification deep-links back into the receipt screen
         // for THIS order. The confirmationToken is required by the
         // /confirmation endpoint so the deep link stays scoped to the
@@ -8345,7 +8315,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
           token: order.confirmationToken ?? "",
           status: target,
         };
-        sendTargetedPush([order.pushToken], message.title, message.body, data).catch((err: any) => {
+        sendTargetedPush([registeredOrderToken.token], message.title, message.body, data).catch((err: any) => {
           console.error("[Push] Order status notification failed:", err?.message ?? err);
         });
       }
@@ -8744,7 +8714,11 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       res.setHeader("Retry-After", String(rl.retryAfter));
       return res.status(429).json({ message: "Too many contact requests. Please wait before trying again." });
     }
-    const { pushToken: incomingPushToken, ...bodyRest } = req.body;
+    const {
+      pushToken: incomingPushToken,
+      pushRegistrationSecret: _pushRegistrationSecret,
+      ...bodyRest
+    } = req.body;
     const parsed = insertContactMessageSchema.safeParse(bodyRest);
     if (!parsed.success) {
       return res.status(400).json({ message: "Please fill in all required fields", errors: parsed.error.flatten() });
@@ -8759,14 +8733,14 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       return res.status(400).json({ message: "You must consent to data processing to send a message" });
     }
 
-    // Push token is stored directly on the contact message for the reply notification.
-    // We intentionally do NOT bind the token to the email here: the contact form is
-    // unauthenticated, so accepting an arbitrary (email, pushToken) pairing from the
-    // request body would let an attacker redirect notifications for any email address.
+    const registeredContactToken = await getAuthenticatedCustomerPushToken(
+      req,
+      incomingPushToken,
+    );
 
     const contact = await storage.createContactMessage({
       ...parsed.data,
-      pushToken: incomingPushToken ?? null,
+      pushToken: registeredContactToken?.token ?? null,
     } as any);
 
     try {
@@ -8832,12 +8806,18 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     // Send push notification to the customer's device(s)
     let pushed = false;
     const tokenSources: string[] = [];
-    if (msg.pushToken) tokenSources.push(msg.pushToken);
+    if (msg.pushToken && await storage.getPushToken(msg.pushToken)) {
+      tokenSources.push(msg.pushToken);
+    }
     const emailTokens = await storage.getPushTokensByEmail(msg.email);
     emailTokens.forEach(t => { if (!tokenSources.includes(t.token)) tokenSources.push(t.token); });
     if (tokenSources.length) {
-      await sendTargetedPush(tokenSources, "The 147 – Reply to your message", replyText.trim().slice(0, 200));
-      pushed = true;
+      const result = await sendTargetedPush(
+        tokenSources,
+        "The 147 – Reply to your message",
+        replyText.trim().slice(0, 200),
+      );
+      pushed = result.successCount > 0;
     }
 
     res.json({ updated, pushed });
@@ -11624,12 +11604,19 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   });
 
   app.post("/api/customers/me/push-token", customerAuth, async (req, res) => {
-    const { token } = req.body;
-    if (!token || typeof token !== "string" || token.length < 10 || token.length > 300) {
-      return res.status(400).json({ message: "Invalid token" });
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    const rl = checkRateLimit(`customer-push-token:${ip}`, 20, 15 * 60 * 1000);
+    if (!rl.allowed) {
+      res.setHeader("Retry-After", String(rl.retryAfter));
+      return res.status(429).json({ message: "Too many token registration attempts" });
+    }
+    const { token, pushRegistrationSecret } = req.body;
+    const ownedToken = await getOwnedRegisteredPushToken(token, pushRegistrationSecret);
+    if (!ownedToken) {
+      return res.status(403).json({ message: "Invalid device registration" });
     }
     const email = (req as any).customerEmail as string;
-    await storage.registerPushToken({ token, customerEmail: email });
+    await storage.registerPushToken({ token: ownedToken.token, customerEmail: email });
     res.status(204).send();
   });
 
@@ -14907,15 +14894,8 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
           body,
         };
       });
-      try {
-        const r = await fetch("https://exp.host/--/api/v2/push/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(messages),
-        });
-        const data = await r.json() as { data?: Array<{ status: string }> };
-        notified = data.data?.filter(d => d.status === "ok").length ?? 0;
-      } catch { /* notification failure doesn't block publish */ }
+      const result = await sendPushMessages(messages);
+      notified = result.successCount;
     }
     res.json({ ...published, staffNotified: notified, tokenCount: tokens.length });
   });

@@ -175,13 +175,14 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   const bindPushToken = useCallback(async (customerToken: string) => {
     try {
       const pushToken = await AsyncStorage.getItem("expo_push_token");
-      if (!pushToken) return;
+      const pushRegistrationSecret = await AsyncStorage.getItem("expo_push_registration_secret");
+      if (!pushToken || !pushRegistrationSecret) return;
       const baseUrl = getApiUrl();
       const url = new URL("/api/customers/me/push-token", baseUrl);
       await fetch(url.toString(), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${customerToken}` },
-        body: JSON.stringify({ token: pushToken }),
+        body: JSON.stringify({ token: pushToken, pushRegistrationSecret }),
       });
     } catch {}
   }, []);

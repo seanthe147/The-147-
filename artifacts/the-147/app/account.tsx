@@ -693,17 +693,58 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
   } = useCustomerAuth();
   const [biometricBusy, setBiometricBusy] = useState(false);
 
-  const { permissionStatus, registerForPushNotifications } = useNotifications();
+  const {
+    expoPushToken,
+    pushRegistrationSecret,
+    permissionStatus,
+    registerForPushNotifications,
+    unregisterForPushNotifications,
+  } = useNotifications();
   const [notifBusy, setNotifBusy] = useState(false);
+  const notificationsEnabled = permissionStatus === "granted"
+    && !!expoPushToken
+    && !!pushRegistrationSecret;
   const handleNotificationToggle = useCallback(async () => {
-    if (permissionStatus === "granted" || notifBusy) return;
+    if (notifBusy) return;
+    if (expoPushToken && pushRegistrationSecret) {
+      setNotifBusy(true);
+      try {
+        const disabled = await unregisterForPushNotifications();
+        if (!disabled) {
+          Alert.alert(
+            "Couldn't turn off notifications",
+            "Your notification preference could not be saved. Please try again.",
+          );
+        }
+      } finally {
+        setNotifBusy(false);
+      }
+      return;
+    }
     if (permissionStatus === "denied") {
-      Linking.openSettings();
+      try {
+        await Linking.openSettings();
+      } catch {
+        Alert.alert(
+          "Open Settings",
+          "Please open your device Settings and allow notifications for The 147.",
+        );
+      }
       return;
     }
     setNotifBusy(true);
-    try { await registerForPushNotifications(); } finally { setNotifBusy(false); }
-  }, [permissionStatus, notifBusy, registerForPushNotifications]);
+    try {
+      const token = await registerForPushNotifications();
+      if (!token) {
+        Alert.alert(
+          "Couldn't turn on notifications",
+          "Please check your device notification settings and try again.",
+        );
+      }
+    } finally {
+      setNotifBusy(false);
+    }
+  }, [expoPushToken, pushRegistrationSecret, permissionStatus, notifBusy, registerForPushNotifications, unregisterForPushNotifications]);
   const showNotifRow = Platform.OS !== "web"
     && permissionStatus !== "expo_go_unsupported"
     && permissionStatus !== "web_unsupported"
@@ -1004,19 +1045,19 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
       {showNotifRow && (
         <Pressable
           onPress={handleNotificationToggle}
-          disabled={notifBusy || permissionStatus === "granted"}
+          disabled={notifBusy}
           style={({ pressed }) => [styles.biometricSettingRow, { opacity: pressed || notifBusy ? 0.7 : 1 }]}
           testID="notification-toggle"
         >
           <Ionicons
-            name={permissionStatus === "granted" ? "notifications" : "notifications-outline"}
+            name={notificationsEnabled ? "notifications" : "notifications-outline"}
             size={22}
             color={Colors.brand.blue}
           />
           <View style={{ flex: 1 }}>
             <Text style={styles.biometricSettingTitle}>Push Notifications</Text>
             <Text style={styles.biometricSettingSub}>
-              {permissionStatus === "granted"
+              {notificationsEnabled
                 ? "On — you'll get updates about bookings and offers."
                 : permissionStatus === "denied"
                 ? "Off — tap to open Settings and enable."
@@ -1025,8 +1066,8 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
                 : "Off — tap to enable notifications."}
             </Text>
           </View>
-          <View style={[styles.biometricSwitch, permissionStatus === "granted" && styles.biometricSwitchOn]}>
-            <View style={[styles.biometricSwitchThumb, permissionStatus === "granted" && styles.biometricSwitchThumbOn]} />
+          <View style={[styles.biometricSwitch, notificationsEnabled && styles.biometricSwitchOn]}>
+            <View style={[styles.biometricSwitchThumb, notificationsEnabled && styles.biometricSwitchThumbOn]} />
           </View>
         </Pressable>
       )}

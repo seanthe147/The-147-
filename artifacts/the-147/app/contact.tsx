@@ -18,6 +18,7 @@ import Colors from "@/constants/colors";
 import { getApiUrl } from "@/lib/query-client";
 import { fetch } from "expo/fetch";
 import { useNotifications } from "@/contexts/NotificationContext";
+import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 
 const SUBJECTS = [
   "General Enquiry",
@@ -35,6 +36,7 @@ export default function ContactScreen() {
   const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { expoPushToken } = useNotifications();
+  const { customer, getCustomerToken } = useCustomerAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -78,9 +80,14 @@ export default function ContactScreen() {
     try {
       const baseUrl = getApiUrl();
       const url = new URL("/api/contact", baseUrl);
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (customer) {
+        const customerToken = await getCustomerToken();
+        if (customerToken) headers.Authorization = `Bearer ${customerToken}`;
+      }
       const res = await fetch(url.toString(), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           name: name.trim(),
           email: email.trim(),

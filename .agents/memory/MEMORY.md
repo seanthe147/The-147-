@@ -5,3 +5,4 @@
 - [Prize code redemption](prize-code-redemption.md) — two code systems with subtle bugs; normalisation and alphabet must match between generation and lookup
 - [Square deals visibility](square-deals-visibility.md) — Square discounts have no active flag; pricing-rule date window is the on/off switch; 60s cache
 - [Staff-auth e2e testing recipe](staff-e2e-testing.md) — temp staff_sessions insert, correct column/field names, encrypted-PII cleanup gotcha
+- [Private push destination ownership](private-push-destinations.md) — never treat public token registration as device attestation; bind private pushes through authenticated accounts

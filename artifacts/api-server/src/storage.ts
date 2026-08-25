@@ -271,7 +271,8 @@ export async function runStartupMigrations() {
     `);
     await client.query(`
       ALTER TABLE push_tokens
-        ADD COLUMN IF NOT EXISTS customer_email_hash TEXT;
+        ADD COLUMN IF NOT EXISTS customer_email_hash TEXT,
+        ADD COLUMN IF NOT EXISTS device_secret_hash TEXT;
     `);
     await client.query(`
       ALTER TABLE app_orders
@@ -720,6 +721,8 @@ export interface IStorage {
   updateOffer(id: number, offer: Partial<InsertOffer>): Promise<Offer | undefined>;
   deleteOffer(id: number): Promise<boolean>;
   registerPushToken(token: InsertPushToken): Promise<PushToken>;
+  getPushToken(token: string): Promise<PushToken | undefined>;
+  setPushTokenDeviceSecretHash(token: string, deviceSecretHash: string): Promise<void>;
   getAllPushTokens(): Promise<PushToken[]>;
   removePushToken(token: string): Promise<boolean>;
   getPushTokensByEmail(email: string): Promise<PushToken[]>;
@@ -891,6 +894,17 @@ export class DatabaseStorage implements IStorage {
       customerEmailHash: emailHash,
     }).returning();
     return decryptPushToken(created);
+  }
+
+  async getPushToken(token: string): Promise<PushToken | undefined> {
+    const [row] = await db.select().from(pushTokens).where(eq(pushTokens.token, token));
+    return row ? decryptPushToken(row) : undefined;
+  }
+
+  async setPushTokenDeviceSecretHash(token: string, deviceSecretHash: string): Promise<void> {
+    await db.update(pushTokens)
+      .set({ deviceSecretHash })
+      .where(eq(pushTokens.token, token));
   }
 
   async getAllPushTokens(): Promise<PushToken[]> {

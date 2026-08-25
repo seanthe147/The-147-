@@ -2,6 +2,7 @@ import express from "express";
 import { createApp, setupErrorHandler } from "./app";
 import { registerRoutes } from "./routes/routes";
 import { runStartupMigrations } from "./storage";
+import { sendPushToTokens } from "./push";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { POLICY_DATES } from "@workspace/db/policy-dates";
@@ -78,17 +79,11 @@ function scheduleBookingReminders() {
             const tableLabel = booking.tableType === "dining"
               ? "dining area"
               : `${booking.tableType} table ${booking.tableNumber ?? ""}`.trim();
-            const messages = tokens.map((t: any) => ({
-              to: t.token,
-              sound: "default" as const,
-              title: "Your booking starts soon ⏰",
-              body: `Reminder: your ${tableLabel} booking at The 147 starts in about 1 hour (${booking.startTime}).`,
-            }));
-            await fetch("https://exp.host/--/api/v2/push/send", {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "Accept": "application/json" },
-              body: JSON.stringify(messages),
-            });
+            await sendPushToTokens(
+              tokens.map((token) => token.token),
+              "Your booking starts soon ⏰",
+              `Reminder: your ${tableLabel} booking at The 147 starts in about 1 hour (${booking.startTime}).`,
+            );
           }
           await store.markReminderSent(booking.id);
         } catch (err) {

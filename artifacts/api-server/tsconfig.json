@@ -6,7 +6,8 @@
     "outDir": "dist",
     "rootDir": "src",
     "types": ["node"],
-    "noImplicitReturns": false
+    "noImplicitReturns": false,
+    "allowImportingTsExtensions": true
   },
   "include": ["src"],
   "references": [
