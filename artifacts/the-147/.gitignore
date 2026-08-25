@@ -43,3 +43,6 @@ yarn-error.*
 # Firebase — contains credentials, never commit
 google-services.json
 GoogleService-Info.plist
+
+# Store submission credentials — keep local only
+secrets/
