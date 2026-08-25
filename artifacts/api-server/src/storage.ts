@@ -778,6 +778,7 @@ export interface IStorage {
   setEmailVerificationToken(id: number, tokenHash: string, expiresAt: Date): Promise<void>;
   getCustomerByVerifyTokenHash(tokenHash: string): Promise<Customer | undefined>;
   markEmailVerified(id: number): Promise<void>;
+  verifyCustomerEmailAndRotatePassword(id: number, tokenHash: string, passwordHash: string): Promise<boolean>;
   setPasswordResetToken(id: number, tokenHash: string, expiresAt: Date): Promise<void>;
   getCustomerByPasswordResetTokenHash(tokenHash: string): Promise<Customer | undefined>;
   setCustomerPassword(id: number, passwordHash: string): Promise<void>;
@@ -1929,6 +1930,25 @@ export class DatabaseStorage implements IStorage {
       emailVerifyTokenHash: null,
       emailVerifyTokenExpiresAt: null,
     }).where(eq(customers.id, id));
+  }
+
+  async verifyCustomerEmailAndRotatePassword(id: number, tokenHash: string, passwordHash: string): Promise<boolean> {
+    return db.transaction(async (tx) => {
+      const verified = await tx.update(customers).set({
+        emailVerified: true,
+        emailVerifyTokenHash: null,
+        emailVerifyTokenExpiresAt: null,
+        passwordHash,
+      }).where(and(
+        eq(customers.id, id),
+        eq(customers.emailVerified, false),
+        eq(customers.emailVerifyTokenHash, tokenHash),
+        gt(customers.emailVerifyTokenExpiresAt, new Date()),
+      )).returning({ id: customers.id });
+      if (verified.length === 0) return false;
+      await tx.update(customerSessions).set({ active: false }).where(eq(customerSessions.customerId, id));
+      return true;
+    });
   }
 
   async setPasswordResetToken(id: number, tokenHash: string, expiresAt: Date): Promise<void> {

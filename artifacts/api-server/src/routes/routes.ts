@@ -544,12 +544,12 @@ async function sendVerificationEmail(opts: { name: string; email: string; tokenR
       <h2 style="color: #1E40AF; font-size: 18px; margin: 8px 0 0;">Confirm your email address</h2>
     </div>
     <p style="color: #374151; font-size: 15px;">Hi ${escHtml(opts.name)},</p>
-    <p style="color: #374151; font-size: 15px;">Thanks for creating your account at The 147. Please confirm your email address so we can keep your account secure and let you recover bookings or your membership if you ever lose access.</p>
+    <p style="color: #374151; font-size: 15px;">Thanks for creating your account at The 147. Please confirm your email address to activate your account and protect your bookings and membership.</p>
     <div style="text-align: center; margin: 28px 0;">
       <a href="${verifyUrl}" style="display: inline-block; background: #0047AB; color: #fff; font-size: 16px; font-weight: 700; padding: 14px 32px; border-radius: 12px; text-decoration: none;">Confirm Email →</a>
     </div>
     <p style="color: #6b7280; font-size: 13px; line-height: 1.6;">Or paste this link into your browser:<br/><span style="word-break: break-all; color: #0047AB;">${escHtml(verifyUrl)}</span></p>
-    <p style="color: #6b7280; font-size: 13px; line-height: 1.6;">This link expires in 7 days. You can keep using your account and bookings without verifying — but recovery features need a confirmed email.</p>
+    <p style="color: #6b7280; font-size: 13px; line-height: 1.6;">This link expires in 7 days. You cannot sign in, manage bookings, or access membership benefits until your email is confirmed.</p>
     <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
     <p style="color: #9ca3af; font-size: 12px; text-align: center;">If you didn't create an account at The 147, you can safely ignore this email.</p>
   </div>`;
@@ -1295,6 +1295,16 @@ async function customerAuth(req: Request, res: Response, next: NextFunction) {
     await storage.invalidateCustomerSession(token);
     return res.status(401).json({ message: "This account has expired." });
   }
+  // A session must never be enough to establish ownership of an email
+  // address. Invalidate any legacy session issued before this control was
+  // added, so an unverified sign-up cannot access data keyed by that email.
+  if (!customer.emailVerified) {
+    await storage.invalidateCustomerSession(token);
+    return res.status(403).json({
+      code: "EMAIL_NOT_VERIFIED",
+      message: "Please verify your email address before accessing your account.",
+    });
+  }
   (req as any).customerId = customer.id;
   (req as any).customerEmail = customer.email;
   next();
@@ -1309,7 +1319,14 @@ async function getOptionalAuthenticatedCustomer(req: Request) {
     const session = await storage.validateCustomerSession(token);
     if (!session) return undefined;
     const customer = await storage.getCustomerById(session.customerId);
-    if (!customer || (customer.expiresAt && customer.expiresAt.getTime() < Date.now())) {
+    if (
+      !customer ||
+      !customer.emailVerified ||
+      (customer.expiresAt && customer.expiresAt.getTime() < Date.now())
+    ) {
+      if (customer && !customer.emailVerified) {
+        await storage.invalidateCustomerSession(token);
+      }
       return undefined;
     }
     return customer;
@@ -1368,23 +1385,10 @@ async function resolveMemberDiscountImpl(
   // Auth is *optional* here — guests can still place orders, just without a discount.
   let signedInCustomerId: number | null = null;
   let signedInEmail: string | null = null;
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    const token = authHeader.slice(7);
-    if (token.length >= 32 && token.length <= 128) {
-      try {
-        const session = await storage.validateCustomerSession(token);
-        if (session) {
-          const cust = await storage.getCustomerById(session.customerId);
-          if (cust) {
-            signedInCustomerId = cust.id;
-            signedInEmail = cust.email;
-          }
-        }
-      } catch (err: any) {
-        console.warn("[ORDER] Session validation failed:", err.message);
-      }
-    }
+  const signedInCustomer = await getOptionalAuthenticatedCustomer(req);
+  if (signedInCustomer) {
+    signedInCustomerId = signedInCustomer.id;
+    signedInEmail = signedInCustomer.email;
   }
 
   // Apply discount only if the signed-in account itself owns a valid membership.
@@ -3740,7 +3744,11 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
                 user &&
                 user.active !== false &&
                 user.approvalStatus !== "rejected" &&
-                user.approvalStatus !== "pending"
+                user.approvalStatus !== "pending" &&
+                // Match staffAuth's forced-password-change gate. This route
+                // remains public, so a restricted staff token is downgraded
+                // to a normal public request instead of receiving a 401.
+                user.mustChangePassword !== true
               ) {
                 requestStaffUser = user;
                 (req as any).staffUser = user;
@@ -7937,52 +7945,47 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         saveCard === true &&
         getServerFeatureFlags().savedCards
       ) {
-        const auth = (req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
-        if (auth && auth.length >= 32 && auth.length <= 128) {
-          const session = await storage.validateCustomerSession(auth).catch(() => null);
-          const customer = session ? await storage.getCustomerById(session.customerId).catch(() => null) : null;
-          if (customer) {
-            try {
-              // Look up (or create) the Square Customer record we'll
-              // attach the card to. We DON'T reuse the membership's
-              // squareCustomerId — keeping payments and memberships
-              // isolated means cancelling membership doesn't drop the
-              // saved card and vice versa.
-              let squareCustomerId = customer.squareCustomerId ?? null;
-              if (!squareCustomerId) {
-                const found = await square.findSquareCustomerByEmail(customer.email);
-                squareCustomerId = found?.id ?? null;
-              }
-              if (!squareCustomerId) {
-                const created = await square.createSquareCustomer(
-                  customer.name,
-                  customer.email,
-                  customer.phone || undefined,
-                );
-                squareCustomerId = created?.id ?? null;
-              }
-              if (squareCustomerId) {
-                const card = await square.saveCardOnFile({
-                  customerId: squareCustomerId,
-                  sourceId: sourceId.trim(),
-                  verificationToken: verificationToken || null,
-                  cardholderName: customer.name,
-                });
-                if (card?.id) {
-                  await storage.setCustomerSavedCard(customer.id, {
-                    squareCustomerId,
-                    squareCardId: card.id,
-                    brand: card.card_brand ?? null,
-                    last4: card.last_4 ?? null,
-                    expMonth: typeof card.exp_month === "number" ? card.exp_month : null,
-                    expYear: typeof card.exp_year === "number" ? card.exp_year : null,
-                  });
-                  console.log(`[SAVED CARD] Saved card ${card.id} for customer ${customer.id}`);
-                }
-              }
-            } catch (saveErr: any) {
-              console.error("[SAVED CARD] Save failed (payment unaffected):", saveErr?.message ?? saveErr);
+        const customer = await getOptionalAuthenticatedCustomer(req);
+        if (customer) {
+          try {
+            // Look up (or create) the Square Customer record we'll attach
+            // the card to. The helper above only returns a verified account;
+            // an unverified email must never create or attach a payment
+            // profile.
+            let squareCustomerId = customer.squareCustomerId ?? null;
+            if (!squareCustomerId) {
+              const found = await square.findSquareCustomerByEmail(customer.email);
+              squareCustomerId = found?.id ?? null;
             }
+            if (!squareCustomerId) {
+              const created = await square.createSquareCustomer(
+                customer.name,
+                customer.email,
+                customer.phone || undefined,
+              );
+              squareCustomerId = created?.id ?? null;
+            }
+            if (squareCustomerId) {
+              const card = await square.saveCardOnFile({
+                customerId: squareCustomerId,
+                sourceId: sourceId.trim(),
+                verificationToken: verificationToken || null,
+                cardholderName: customer.name,
+              });
+              if (card?.id) {
+                await storage.setCustomerSavedCard(customer.id, {
+                  squareCustomerId,
+                  squareCardId: card.id,
+                  brand: card.card_brand ?? null,
+                  last4: card.last_4 ?? null,
+                  expMonth: typeof card.exp_month === "number" ? card.exp_month : null,
+                  expYear: typeof card.exp_year === "number" ? card.exp_year : null,
+                });
+                console.log(`[SAVED CARD] Saved card ${card.id} for customer ${customer.id}`);
+              }
+            }
+          } catch (saveErr: any) {
+            console.error("[SAVED CARD] Save failed (payment unaffected):", saveErr?.message ?? saveErr);
           }
         }
       }
@@ -9769,12 +9772,20 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   });
 
   // ── Square membership auto-sync ─────────────────────────────────────────────
-  // Called after register/login. Looks up the customer's email in Square, finds
-  // any active subscription matching one of our plans, and creates a local record
-  // so the discount is applied automatically — even for members added via Square POS.
+  // Called after email verification/login. Looks up the customer's email in
+  // Square, finds any active subscription matching one of our plans, and creates
+  // a local record so the discount is applied automatically — even for members
+  // added via Square POS.
   async function syncSquareMembershipForCustomer(customerId: number, email: string) {
     try {
       if (!square.isConfigured()) return;
+      // This helper is called by user, staff, and scheduled flows. Enforce
+      // mailbox ownership here rather than trusting every caller to remember
+      // the check: an unverified sign-up must never inherit a Square-backed
+      // membership merely by supplying a member's email address.
+      const customer = await storage.getCustomerById(customerId);
+      if (!customer?.emailVerified) return;
+      email = customer.email;
 
       const existing = await storage.getMembershipSubscriptionByCustomer(customerId);
       const allPlans = await storage.getMembershipPlans();
@@ -9928,8 +9939,8 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     })();
   }, 30000); // 30s — must run AFTER runStartupMigrations() in server/index.ts (which can reset the backfill flag). Migrations comfortably finish well within this window.
 
-  // ── Square auto-enrollment on new customer signup ───────────────────────────
-  // Called non-blocking after the local account is created.
+  // ── Square auto-enrollment after email verification ─────────────────────────
+  // Called non-blocking only after mailbox ownership is confirmed.
   // • Existing Square customer (matched by email) → linked; NOT added to the
   //   "The 147 Loyalty" group (they are already known to Square).
   // • Brand-new customer → Square customer created + added to "The 147 Loyalty"
@@ -9941,6 +9952,18 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   }) {
     try {
       if (!square.isConfigured()) return;
+      // As with membership sync, guard this at the integration boundary so a
+      // later caller cannot create or attach Square records for an unverified
+      // email address.
+      const verifiedCustomer = await storage.getCustomerById(customer.id);
+      if (!verifiedCustomer?.emailVerified) return;
+      customer = {
+        id: verifiedCustomer.id,
+        email: verifiedCustomer.email,
+        name: verifiedCustomer.name,
+        phone: verifiedCustomer.phone,
+        squareCustomerId: verifiedCustomer.squareCustomerId ?? null,
+      };
       if (customer.squareCustomerId) return; // already enrolled
 
       const existing = await square.findSquareCustomerByEmail(customer.email).catch(() => null);
@@ -10521,20 +10544,16 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       const tiers = await storage.getActiveVenueRewardTiers();
 
       // Optionally attach the customer's pending claims if authenticated
-      const authHeader = req.headers.authorization;
       let pendingClaims: any[] = [];
-      if (authHeader?.startsWith("Bearer ")) {
-        const token = authHeader.slice(7);
-        const session = await storage.validateCustomerSession(token);
-        if (session) {
-          const claims = await storage.getVenueRewardClaimsByCustomer(session.customerId);
-          // Enrich with tier name for display
-          pendingClaims = claims.map((c) => {
-            const tier = tiers.find((t) => t.id === c.tierId) ??
-              { name: "Venue Reward", category: "other" };
-            return { ...c, tierName: (tier as any).name, tierCategory: (tier as any).category };
-          });
-        }
+      const customer = await getOptionalAuthenticatedCustomer(req);
+      if (customer) {
+        const claims = await storage.getVenueRewardClaimsByCustomer(customer.id);
+        // Enrich with tier name for display
+        pendingClaims = claims.map((c) => {
+          const tier = tiers.find((t) => t.id === c.tierId) ??
+            { name: "Venue Reward", category: "other" };
+          return { ...c, tierName: (tier as any).name, tierCategory: (tier as any).category };
+        });
       }
 
       res.json({ tiers, pendingClaims });
@@ -10887,24 +10906,6 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       res.status(200).json({ success: true });
       // Non-blocking: send verification email
       sendVerificationEmail({ name: customer.name, email: customer.email, tokenRaw: verifyTokenRaw }).catch(() => {});
-      // Non-blocking: auto-link any existing Square membership for this email
-      syncSquareMembershipForCustomer(customer.id, customer.email);
-      // Non-blocking: create/link Square customer profile, add to "The 147
-      // Loyalty" group (new accounts only), and enrol in loyalty programme.
-      enrollNewCustomerInSquare({
-        id: customer.id,
-        email: customer.email,
-        name: customer.name,
-        phone: customer.phone,
-        squareCustomerId: customer.squareCustomerId ?? null,
-      });
-      // Non-blocking: send welcome email if the automation is enabled
-      db.select().from(emailAutomations).where(dEq(emailAutomations.triggerType, "welcome")).then(([automation]) => {
-        if (automation?.enabled && automation.subject && automation.bodyText) {
-          const html = buildMarketingEmailHtml(automation.subject, automation.bodyText);
-          sendMarketingEmail(customer.email, automation.subject, html).catch(() => {});
-        }
-      }).catch(() => {});
     } catch (err: any) {
       console.error("Customer register error:", err.message);
       res.status(500).json({ message: "Registration failed" });
@@ -10935,6 +10936,12 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       }
       if (customer.expiresAt && customer.expiresAt.getTime() < Date.now()) {
         return res.status(401).json({ message: "This account has expired." });
+      }
+      if (!customer.emailVerified) {
+        return res.status(403).json({
+          code: "EMAIL_NOT_VERIFIED",
+          message: "Please verify your email address before signing in.",
+        });
       }
       const token = randomBytes(48).toString("hex");
       const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -11012,8 +11019,44 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     if (expiresAt && expiresAt.getTime() < Date.now()) {
       return res.status(400).send(renderVerifyResultPage("error", "This verification link has expired. Sign in to your account and request a new one."));
     }
-    await storage.markEmailVerified(customer.id);
-    res.send(renderVerifyResultPage("success", "Your email is verified. You can now use account recovery if you ever lose access."));
+    // The pre-verification password is not trustworthy: an attacker can
+    // submit somebody else's address, while only the mailbox owner receives
+    // this link. Rotate it and invalidate all sessions atomically so the
+    // email owner must choose their own password through the existing reset
+    // flow before the account becomes usable.
+    const replacement = hashPin(randomBytes(48).toString("hex"));
+    const verified = await storage.verifyCustomerEmailAndRotatePassword(
+      customer.id,
+      tokenHash,
+      `${replacement.salt}:${replacement.hash}`,
+    );
+    if (!verified) {
+      return res.status(400).send(renderVerifyResultPage(
+        "error",
+        "This verification link is invalid or has already been used. If you've already verified, reset your password from the sign-in screen.",
+      ));
+    }
+    res.send(renderVerifyResultPage(
+      "success",
+      "Your email is verified. For your security, reset your password from the sign-in screen before you continue.",
+    ));
+    // Identity-sensitive external linking begins only after mailbox
+    // ownership has been proven. In particular, never inherit a Square
+    // membership merely because an unverified sign-up supplied that email.
+    void syncSquareMembershipForCustomer(customer.id, customer.email);
+    void enrollNewCustomerInSquare({
+      id: customer.id,
+      email: customer.email,
+      name: customer.name,
+      phone: customer.phone,
+      squareCustomerId: customer.squareCustomerId ?? null,
+    });
+    db.select().from(emailAutomations).where(dEq(emailAutomations.triggerType, "welcome")).then(([automation]) => {
+      if (automation?.enabled && automation.subject && automation.bodyText) {
+        const html = buildMarketingEmailHtml(automation.subject, automation.bodyText);
+        sendMarketingEmail(customer.email, automation.subject, html).catch(() => {});
+      }
+    }).catch(() => {});
   });
 
   // Public resend-verification — used by the password recovery flow when the account
