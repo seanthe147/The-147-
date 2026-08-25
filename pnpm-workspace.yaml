@@ -34,6 +34,14 @@ minimumReleaseAgeExclude:
   - '@replit/*'
   - stripe-replit-sync
 
+# image-size has no patched release for these advisories. It is only used by
+# Metro at build time to inspect trusted, repository-controlled image assets;
+# the API server uses sharp for untrusted uploads and never calls image-size.
+auditConfig:
+  ignoreCves:
+    - CVE-2025-71329
+    - CVE-2025-71330
+
 packages:
   - artifacts/*
   - lib/*
@@ -164,7 +172,7 @@ overrides:
   # Security: qs >=6.11.1 <=6.15.1 has DoS via qs.stringify (GHSA-q8mj-m7cp-5q26)
   qs: "^6.15.2"
   # Security: postcss <8.5.10 has XSS via unescaped </style> (GHSA-qx2v-qp2m-jg93)
-  postcss: "^8.5.10"
+  postcss: ">=8.5.23"
   # Security: vite >=7.0.0 <=7.3.4 has server.fs.deny bypass (GHSA-fx2h-pf6j-xcff, High) + NTLMv2 hash disclosure (GHSA-v6wh-96g9-6wx3, Medium)
   # Affected reported version: 7.3.3 — override forces all dependents to 7.3.5+
   vite: ">=7.3.5"
@@ -172,8 +180,29 @@ overrides:
   # Affected reported version: 0.7.13 — override forces all dependents to 0.8.13+
   "@xmldom/xmldom": ">=0.8.13"
   # Security: js-yaml <=4.1.1 has quadratic-complexity DoS in merge key handling (GHSA-h67p-54hq-rp68, Medium)
-  # Affected reported versions: 3.14.2, 4.1.1 — override forces all dependents to 4.2.0+
-  js-yaml: ">=4.2.0"
+  # Affected reported versions now include 4.2.0 — override forces all dependents to the patched 4.3.0+
+  js-yaml: ">=4.3.0"
+  # Security: brace-expansion has multiple resource-exhaustion vulnerabilities across maintained major lines.
+  # Keep each dependent on its existing major while forcing the patched release for that line.
+  "brace-expansion@1": "1.1.18"
+  "brace-expansion@2": "2.1.4"
+  "brace-expansion@5": "5.0.9"
+  # Security: tar 7.5.13 has path traversal and denial-of-service vulnerabilities.
+  tar: ">=7.5.21"
+  # Security: image-size 1.2.1 can be forced into excessive resource consumption by crafted images.
+  image-size: ">=2.0.2"
+  # Security: http-proxy-middleware 3.0.5 mishandles crafted proxy requests.
+  http-proxy-middleware: ">=3.0.7"
+  # Security: undici <6.28.0 has request-smuggling and denial-of-service vulnerabilities.
+  undici: ">=6.28.0"
+  # Security: body-parser 2.2.2 can silently disable request-size limits.
+  body-parser: ">=2.3.0"
+  # Security: linkify-it 5.0.1 has a regular-expression denial of service.
+  linkify-it: ">=5.0.2"
+  # Security: fast-uri <3.1.5 has URL canonicalization and denial-of-service vulnerabilities.
+  fast-uri: ">=3.1.5"
+  # Security: nanoid <3.3.18 has predictable output and denial-of-service vulnerabilities.
+  nanoid: ">=3.3.18"
   # Security: markdown-it <=14.1.1 has quadratic DoS in smartquotes rule (GHSA-6v5v-wf23-fmfq, Medium)
   # Affected reported version: 14.1.1 — override forces all dependents to 14.2.0+
   markdown-it: ">=14.2.0"
@@ -184,8 +213,5 @@ overrides:
   # Affected reported versions: 7.28.6, 7.29.0 — override forces all dependents to 7.29.6+
   "@babel/core": ">=7.29.6"
   # Security: shell-quote <=1.8.3 has ReDoS / argument injection (GHSA-w7jw-789q-3m8p, High)
-  # Affected reported version: 1.8.3 — override forces all dependents to 1.8.4+
-  shell-quote: "^1.8.4"
-  # Security: http-proxy-middleware <=3.0.5 has host-header bypass (GHSA-gcq2-9pq2-cxqm, High)
-  # and websocket hijack (GHSA-64mm-vxmg-q3vj, Medium). Fixed in 3.0.6+.
-  http-proxy-middleware: ">=3.0.6"
+  # Affected reported versions now include 1.8.4 — override forces all dependents to 1.9.0+
+  shell-quote: ">=1.9.0"
