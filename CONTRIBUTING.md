@@ -104,62 +104,92 @@ Fix any warnings before submitting — mismatched native package versions are a 
 
 ---
 
-## EAS builds (binary builds — must run from Mac terminal)
+## Store release runbook (owner's Mac only)
 
-> **Important:** `eas build` archives the git working tree and writes to `.git/index.lock`. This is blocked inside the Replit agent environment. **Always trigger binary builds from your local Mac terminal.**
+Binary builds and store submissions must be run from the owner's Mac terminal, not
+from Replit. Start from a clean, up-to-date checkout and install dependencies:
 
-Log in first (one-time):
 ```bash
+git pull --ff-only
+pnpm install --frozen-lockfile
 eas login
-```
-
-Available build profiles (defined in `artifacts/the-147/eas.json`):
-
-| Profile | Purpose | Platforms |
-|---------|---------|-----------|
-| `development` | Dev client (internal distribution) | iOS (device), Android |
-| `preview` | Internal test build (IPA / APK) | iOS, Android |
-| `production` | App Store / Play Store release | iOS (AAB), Android |
-
-Trigger a build from the `artifacts/the-147` directory:
-
-```bash
 cd artifacts/the-147
-
-# Preview build for both platforms
-EAS_SKIP_AUTO_FINGERPRINT=1 eas build --profile preview --platform all
-
-# Production iOS only
-EAS_SKIP_AUTO_FINGERPRINT=1 eas build --profile production --platform ios
-
-# Production Android only
-EAS_SKIP_AUTO_FINGERPRINT=1 eas build --profile production --platform android
 ```
 
-> Always pass `EAS_SKIP_AUTO_FINGERPRINT=1` — this project uses a hardcoded `runtimeVersion` in `app.json` (required for OTA update targeting). Letting EAS compute a fingerprint will break OTA delivery to existing installs.
+For Google Play submission, download the Play Console service-account JSON to
+`artifacts/the-147/secrets/google-play-service-account.json`. The `secrets/`
+directory is gitignored; never commit or paste this key. The service account must
+have permission to release `com.the147bradford.venue`.
 
----
+### Choose the correct version action
 
-## OTA updates (publishing JS-only changes without a new binary)
+- **Normal store release:** changes the public app version, runtime version, iOS
+  build number, and Android version code together. The default is the next patch:
 
-OTA updates **can** be pushed from the Replit environment or from a Mac terminal:
+  ```bash
+  pnpm run version:bump -- release
+  # Or choose an explicit version:
+  pnpm run version:bump -- release 2.9.0
+  ```
+
+- **Rebuild the same release:** use when store upload/build credentials failed or
+  a native rebuild is needed while keeping compatibility with the same OTA
+  runtime. It increments only the two store build numbers:
+
+  ```bash
+  pnpm run version:bump -- build
+  ```
+
+- **OTA-only JS/assets update:** do not run either bump command. OTA updates must
+  retain the installed binary's `version`/`runtimeVersion`.
+
+Review and commit the changed `app.json`, then run the safety checks before every
+binary build:
 
 ```bash
-cd artifacts/the-147
-
-# Push to the production channel (iOS + Android)
-GIT_INDEX_FILE=/tmp/eas-git-index EXPO_TOKEN=$EXPO_TOKEN EAS_SKIP_AUTO_FINGERPRINT=1 \
-  npx eas-cli update --channel production --message "describe your change" --non-interactive
+pnpm run prebuild:check
+pnpm run check-expo-deps
+pnpm run typecheck
+git status --short
 ```
 
-Or use the workspace scripts from the repo root:
+Resolve every reported casing conflict or junk/untracked path before continuing.
+Always keep `runtimeVersion` equal to `version`; the scripts enforce this rule.
+
+### iOS App Store release
 
 ```bash
-pnpm --filter @workspace/the-147 run update:production "describe your change"
-pnpm --filter @workspace/the-147 run update:preview "describe your change"
+EAS_SKIP_AUTO_FINGERPRINT=1 eas build --platform ios --profile production
+EAS_SKIP_AUTO_FINGERPRINT=1 eas submit --platform ios --profile production --latest
 ```
 
-> The `runtimeVersion` in `app.json` must exactly match the installed binary's runtime version or the update will be silently ignored. After building a new binary, check the EAS build metadata for `Runtime Version` and update `app.json` before pushing OTAs.
+### Android Play Store release
+
+The first Play Store upload for this package may need to be uploaded manually in
+Play Console once. After that, the configured production submit profile publishes
+the latest AAB to the production track:
+
+```bash
+EAS_SKIP_AUTO_FINGERPRINT=1 eas build --platform android --profile production
+EAS_SKIP_AUTO_FINGERPRINT=1 eas submit --platform android --profile production --latest
+```
+
+### OTA-only update
+
+Use this only for JavaScript and asset changes that do not add/change native
+modules, permissions, plugins, entitlements, or native configuration. Those
+changes require new store binaries instead.
+
+```bash
+# No version bump for an OTA-only update.
+pnpm run prebuild:check
+EAS_SKIP_AUTO_FINGERPRINT=1 eas update \
+  --channel production \
+  --message "describe the update"
+```
+
+The update is delivered only to installed binaries whose runtime version matches
+the unchanged `runtimeVersion` in `app.json`.
 
 ---
 

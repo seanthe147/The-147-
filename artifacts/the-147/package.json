@@ -12,6 +12,9 @@
     "build:android:preview": "EAS_SKIP_AUTO_FINGERPRINT=1 eas build --platform android --profile preview --non-interactive",
     "update:production": "EAS_SKIP_AUTO_FINGERPRINT=1 eas update --channel production --message",
     "update:preview": "EAS_SKIP_AUTO_FINGERPRINT=1 eas update --channel preview --message",
+    "version:bump": "node scripts/bump-version.js",
+    "test:version-bump": "node --test scripts/bump-version.test.js",
+    "prebuild:check": "node scripts/prebuild-check.js",
     "check-expo-config": "expo config --type introspect",
     "check-expo-deps": "expo install --check"
   },
