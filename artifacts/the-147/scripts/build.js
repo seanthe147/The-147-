@@ -201,7 +201,10 @@ async function downloadFile(url, outputPath) {
     const response = await fetch(url, { signal: controller.signal });
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      const errorBody = (await response.text()).slice(0, 8_000);
+      throw new Error(
+        `HTTP ${response.status}${errorBody ? `\n${errorBody}` : ""}`,
+      );
     }
 
     const file = fs.createWriteStream(outputPath);
