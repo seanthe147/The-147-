@@ -77,6 +77,55 @@
     "extra": {
       "eas": {
         "projectId": "b35e28d2-6a2a-4cd2-bb07-f426fb4f31bd"
+      },
+      "easConfig": {
+        "cli": {
+          "version": ">= 12.0.0",
+          "appVersionSource": "local"
+        },
+        "build": {
+          "development": {
+            "developmentClient": true,
+            "distribution": "internal",
+            "ios": {
+              "simulator": false,
+              "image": "latest"
+            },
+            "android": {
+              "buildType": "apk",
+              "image": "latest"
+            }
+          },
+          "preview": {
+            "channel": "preview",
+            "distribution": "internal",
+            "ios": {
+              "simulator": false
+            },
+            "android": {
+              "buildType": "apk"
+            }
+          },
+          "production": {
+            "channel": "production",
+            "autoIncrement": true,
+            "ios": {
+              "simulator": false,
+              "image": "latest"
+            },
+            "android": {
+              "buildType": "apk",
+              "image": "latest"
+            }
+          }
+        },
+        "submit": {
+          "production": {
+            "ios": {
+              "appleTeamId": "94LW5H4828"
+            }
+          }
+        }
       }
     },
     "owner": "the-147"
