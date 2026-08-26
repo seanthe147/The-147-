@@ -7,3 +7,4 @@
 - [Staff-auth e2e testing recipe](staff-e2e-testing.md) — temp staff_sessions insert, correct column/field names, encrypted-PII cleanup gotcha
 - [Private push destination ownership](private-push-destinations.md) — never treat public token registration as device attestation; bind private pushes through authenticated accounts
 - [Expo Launch Node runtime](expo-launch-node-runtime.md) — Replit iOS publishing and direct EAS builds read separate profiles; keep their Node versions aligned
+- [pnpm ignored-audit behavior](pnpm-audit-ignored.md) — plain audit exits 0 for configured exceptions, while JSON mode still exits 1 and counts ignored findings

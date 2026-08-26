@@ -34,9 +34,15 @@ minimumReleaseAgeExclude:
   - '@replit/*'
   - stripe-replit-sync
 
-# image-size has no patched release for these advisories. It is only used by
-# Metro at build time to inspect trusted, repository-controlled image assets;
-# the API server uses sharp for untrusted uploads and never calls image-size.
+# Scoped security exception for image-size 1.2.1:
+# - Advisories: GHSA-5p2g-fcmc-qvqq / CVE-2025-71329 and
+#   GHSA-w3rx-r6r6-pgpr / CVE-2025-71330.
+# - Exposure: Metro uses image-size only at build time to inspect trusted,
+#   repository-controlled app assets. Runtime uploads use sharp instead.
+# - Compatibility: image-size has no patched release, and Metro 0.83 requires
+#   the 1.x Buffer API; forcing 2.x breaks Expo asset processing.
+# - Owner: The 147 project maintainers.
+# - Review by: 2026-11-26, or earlier when Metro supports a patched replacement.
 auditConfig:
   ignoreCves:
     - CVE-2025-71329
