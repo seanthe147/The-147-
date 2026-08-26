@@ -2,7 +2,7 @@
   "expo": {
     "name": "The 147",
     "slug": "the-147",
-    "version": "2.8.7",
+    "version": "2.8.8",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "the147",
@@ -17,7 +17,7 @@
       "supportsTablet": true,
       "requireFullScreen": true,
       "bundleIdentifier": "com.the147bradford.app",
-      "buildNumber": "68",
+      "buildNumber": "69",
       "entitlements": {
         "com.apple.developer.in-app-payments": [
           "merchant.com.the147bradford.app"
@@ -126,7 +126,7 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "versionCode": 123
+      "versionCode": 124
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
@@ -218,7 +218,7 @@
       }
     },
     "owner": "the-147",
-    "runtimeVersion": "2.8.7",
+    "runtimeVersion": "2.8.8",
     "updates": {
       "url": "https://u.expo.dev/3f31dfb1-b149-43ca-ab9a-91b6d7cb230a",
       "requestHeaders": {
