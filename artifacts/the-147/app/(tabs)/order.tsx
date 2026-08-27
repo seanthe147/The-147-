@@ -58,6 +58,12 @@ import type { MenuCategory, MenuItem, ModifierList, SelectedModifier } from "@/t
 import { DIETARY_TAGS, type DietaryTagCode } from "@/types/menu";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import { useResponsive } from "@/hooks/useResponsive";
+import {
+  groupMenuItems,
+  menuGroupMatchesDietaryFilters,
+  menuGroupMatchesQuery,
+  type MenuProductGroup,
+} from "@/lib/menu-grouping";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 // Ratio matches the recommended 1500×650 upload size (2.308:1).
@@ -653,16 +659,126 @@ const modStyles = StyleSheet.create({
   },
 });
 
+function VariationModal({
+  group,
+  visible,
+  onClose,
+  onSelect,
+}: {
+  group: MenuProductGroup | null;
+  visible: boolean;
+  onClose: () => void;
+  onSelect: (item: MenuItem) => void;
+}) {
+  const insets = useSafeAreaInsets();
+  if (!group) return null;
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: Colors.light.background }}>
+        <View style={[modStyles.header, { paddingTop: insets.top + 16 }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={modStyles.title} numberOfLines={2}>{group.name}</Text>
+            <Text style={variationStyles.subtitle}>Choose a size</Text>
+          </View>
+          <Pressable onPress={onClose} hitSlop={12} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+            <Ionicons name="close" size={24} color={Colors.light.text} />
+          </Pressable>
+        </View>
+
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={variationStyles.content}>
+          {group.variations.map((variation) => {
+            const unavailable = !!variation.soldOut;
+            return (
+              <Pressable
+                key={variation.variationId}
+                disabled={unavailable}
+                onPress={() => onSelect(variation)}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: unavailable }}
+                accessibilityLabel={`${variation.variationName || "Regular"}, ${formatPrice(variation.price)}${unavailable ? ", unavailable" : ""}`}
+                style={({ pressed }) => [
+                  variationStyles.option,
+                  unavailable && variationStyles.optionUnavailable,
+                  pressed && !unavailable && variationStyles.optionPressed,
+                ]}
+                testID={`choose-variation-${variation.variationId}`}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={variationStyles.optionName}>
+                    {variation.variationName || "Regular"}
+                  </Text>
+                  {unavailable && <Text style={variationStyles.unavailableText}>Unavailable</Text>}
+                </View>
+                <Text style={variationStyles.optionPrice}>{formatPrice(variation.price)}</Text>
+                {!unavailable && <Ionicons name="chevron-forward" size={20} color={Colors.brand.blue} />}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
+const variationStyles = StyleSheet.create({
+  subtitle: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+    marginTop: 4,
+  },
+  content: {
+    padding: 20,
+    gap: 10,
+  },
+  option: {
+    minHeight: 68,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.light.border,
+    backgroundColor: Colors.light.surface,
+  },
+  optionPressed: {
+    borderColor: Colors.brand.blue,
+    backgroundColor: "#EFF6FF",
+  },
+  optionUnavailable: {
+    opacity: 0.5,
+  },
+  optionName: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 16,
+    color: Colors.light.text,
+  },
+  unavailableText: {
+    fontFamily: "Montserrat_500Medium",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginTop: 3,
+  },
+  optionPrice: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 15,
+    color: Colors.brand.blue,
+  },
+});
+
 function ItemCard({
-  item,
-  onOpenModifiers,
+  group,
+  onSelectProduct,
   highlighted,
   showDietaryTags,
   kitchenClosed,
   barClosed,
 }: {
-  item: MenuItem;
-  onOpenModifiers: (item: MenuItem) => void;
+  group: MenuProductGroup;
+  onSelectProduct: (group: MenuProductGroup) => void;
   highlighted?: boolean;
   /** FEATURE_DIETARY_FILTERS: render dietary badges next to the item name. */
   showDietaryTags?: boolean;
@@ -675,11 +791,13 @@ function ItemCard({
   barClosed?: boolean;
 }) {
   const { addItem, updateQuantity, getQuantity } = useCart();
-  const qty = getQuantity(item.variationId);
-  const soldOut = !!item.soldOut || !!kitchenClosed || !!barClosed;
+  const item = group.displayItem;
+  const hasMultipleVariations = group.variations.length > 1;
+  const qty = group.variations.reduce((sum, variation) => sum + getQuantity(variation.variationId), 0);
+  const soldOut = group.soldOut || !!kitchenClosed || !!barClosed;
   const cartName = item.variationName ? `${item.name} — ${item.variationName}` : item.name;
   const hasImage = !!item.imageUrl;
-  const hasModifiers = !!(item.modifiers && item.modifiers.length > 0);
+  const hasModifiers = group.variations.some((variation) => !!variation.modifiers?.length);
   // FEATURE_DIETARY_FILTERS: resolve tag codes to {label, colour}. Skipped
   // when the parent didn't opt in via showDietaryTags so menus rendered
   // for venues without the flag stay visually identical to before.
@@ -690,8 +808,12 @@ function ItemCard({
     : [];
 
   const handleAdd = () => {
+    if (hasMultipleVariations) {
+      onSelectProduct(group);
+      return;
+    }
     if (hasModifiers) {
-      onOpenModifiers(item);
+      onSelectProduct(group);
     } else {
       addItem({ variationId: item.variationId, itemId: item.id, name: cartName, price: item.price });
     }
@@ -717,7 +839,7 @@ function ItemCard({
       <View style={[styles.itemInfo, hasImage && styles.itemInfoWithImage]}>
         <View style={styles.itemNameRow}>
           <Text style={[styles.itemName, soldOut && styles.itemNameSoldOut]} numberOfLines={2}>{item.name}</Text>
-          {!!item.variationName && (
+          {!hasMultipleVariations && !!item.variationName && (
             <View style={styles.variationBadge}>
               <Text style={styles.variationText}>{item.variationName}</Text>
             </View>
@@ -730,6 +852,11 @@ function ItemCard({
           {hasModifiers && !soldOut && (
             <View style={[styles.variationBadge, { backgroundColor: "#EFF6FF" }]}>
               <Text style={[styles.variationText, { color: Colors.brand.blue }]}>Customisable</Text>
+            </View>
+          )}
+          {hasMultipleVariations && !soldOut && (
+            <View style={[styles.variationBadge, { backgroundColor: "#EFF6FF" }]}>
+              <Text style={[styles.variationText, { color: Colors.brand.blue }]}>Choose size</Text>
             </View>
           )}
         </View>
@@ -745,7 +872,11 @@ function ItemCard({
             ))}
           </View>
         )}
-        <Text style={[styles.itemPrice, soldOut && { opacity: 0.4 }]}>{formatPrice(item.price)}</Text>
+        <Text style={[styles.itemPrice, soldOut && { opacity: 0.4 }]}>
+          {hasMultipleVariations && group.minPrice !== group.maxPrice
+            ? `From ${formatPrice(group.minPrice)}`
+            : formatPrice(group.minPrice)}
+        </Text>
       </View>
 
       <View style={styles.itemActions}>
@@ -753,7 +884,7 @@ function ItemCard({
           <View style={styles.addBtnDisabled}>
             <Ionicons name="close" size={18} color="rgba(255,255,255,0.5)" />
           </View>
-        ) : hasModifiers ? (
+        ) : hasModifiers || hasMultipleVariations ? (
           <View style={{ alignItems: "center", gap: 4 }}>
             {qty > 0 && (
               <View style={styles.modQtyBadge}>
@@ -762,8 +893,10 @@ function ItemCard({
             )}
             <Pressable
               onPress={handleAdd}
+              accessibilityRole="button"
+              accessibilityLabel={hasMultipleVariations ? `Choose a size for ${item.name}` : `Customise ${item.name}`}
               style={({ pressed }) => [styles.addBtn, { opacity: pressed ? 0.7 : 1 }]}
-              testID={`add-${item.variationId}`}
+              testID={`add-${group.id}`}
             >
               <Ionicons name="add" size={20} color="#fff" />
             </Pressable>
@@ -2198,6 +2331,7 @@ export default function OrderScreen() {
       router.setParams({ openCheckout: undefined, checkoutStep: undefined, prefillEmail: undefined });
     }
   }, [params.openCheckout, params.checkoutStep, params.prefillEmail]);
+  const [variationGroup, setVariationGroup] = useState<MenuProductGroup | null>(null);
   const [modifierItem, setModifierItem] = useState<MenuItem | null>(null);
   const [highlightItemId, setHighlightItemId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -2272,18 +2406,13 @@ export default function OrderScreen() {
 
   const activeItems = useMemo(() => {
     const base = showingSubcategoryGrid ? [] : (activeCategoryData?.items ?? []);
+    const groups = groupMenuItems(base);
     // FEATURE_DIETARY_FILTERS: when chips are active, hide items that don't
     // include EVERY selected tag. We intentionally don't hide untagged items
     // when no chips are selected — that would empty the menu for venues
     // that haven't tagged anything yet.
-    if (!featureFlags.dietaryFilters || dietaryFilters.size === 0) return base;
-    return base.filter(item => {
-      const tags = item.dietaryTags ?? [];
-      for (const f of dietaryFilters) {
-        if (!tags.includes(f)) return false;
-      }
-      return true;
-    });
+    if (!featureFlags.dietaryFilters || dietaryFilters.size === 0) return groups;
+    return groups.filter((group) => menuGroupMatchesDietaryFilters(group, dietaryFilters));
   }, [activeCategoryData, showingSubcategoryGrid, featureFlags.dietaryFilters, dietaryFilters]);
 
   const toggleDietaryFilter = useCallback((code: DietaryTagCode) => {
@@ -2303,17 +2432,11 @@ export default function OrderScreen() {
   const searchResults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q || !categories) return [];
-    const results: Array<{ item: MenuItem; categoryName: string }> = [];
+    const results: Array<{ group: MenuProductGroup; categoryName: string }> = [];
     const walk = (cat: MenuCategory, prefix?: string) => {
       const label = prefix ? `${prefix} › ${cat.name}` : cat.name;
-      for (const item of cat.items) {
-        if (
-          item.name.toLowerCase().includes(q) ||
-          item.description?.toLowerCase().includes(q) ||
-          item.variationName?.toLowerCase().includes(q)
-        ) {
-          results.push({ item, categoryName: label });
-        }
+      for (const group of groupMenuItems(cat.items)) {
+        if (menuGroupMatchesQuery(group, q)) results.push({ group, categoryName: label });
       }
       for (const sub of cat.subcategories ?? []) {
         walk(sub, cat.name);
@@ -2323,9 +2446,36 @@ export default function OrderScreen() {
     return results;
   }, [searchQuery, categories]);
 
-  const handleOpenModifiers = useCallback((item: MenuItem) => {
-    setModifierItem(item);
-  }, []);
+  const addVariationToOrder = useCallback((item: MenuItem) => {
+    if (item.modifiers?.length) {
+      setModifierItem(item);
+      return;
+    }
+    const cartName = item.variationName ? `${item.name} — ${item.variationName}` : item.name;
+    addItem({
+      variationId: item.variationId,
+      itemId: item.id,
+      name: cartName,
+      price: item.price,
+    });
+  }, [addItem]);
+
+  const handleSelectProduct = useCallback((group: MenuProductGroup) => {
+    if (group.variations.length > 1) {
+      setVariationGroup(group);
+      return;
+    }
+    addVariationToOrder(group.variations[0]);
+  }, [addVariationToOrder]);
+
+  const handleVariationSelect = useCallback((item: MenuItem) => {
+    setVariationGroup(null);
+    if (item.modifiers?.length) {
+      setTimeout(() => setModifierItem(item), 250);
+      return;
+    }
+    addVariationToOrder(item);
+  }, [addVariationToOrder]);
 
   const handleModifierConfirm = useCallback((modifiers: SelectedModifier[]) => {
     if (!modifierItem) return;
@@ -2409,14 +2559,14 @@ export default function OrderScreen() {
     }
   }, [params.hlCatId, params.hlItemId, categories]);
 
-  const renderItem = useCallback(({ item }: { item: MenuItem }) => (
+  const renderItem = useCallback(({ item }: { item: MenuProductGroup }) => (
     // On iPad we render in a multi-column grid, so each cell needs flex:1
     // to share the row width evenly. On phone (itemCols===1) the wrapper
     // is a no-op and the card renders full-width as before.
     <View style={itemCols > 1 ? { flex: 1 / itemCols } : undefined}>
-      <ItemCard item={item} onOpenModifiers={handleOpenModifiers} highlighted={item.id === highlightItemId} showDietaryTags={featureFlags.dietaryFilters} kitchenClosed={!kitchenOpen && !!activeCategoryData?.isKitchen} barClosed={!barOpen && !activeCategoryData?.isKitchen} />
+      <ItemCard group={item} onSelectProduct={handleSelectProduct} highlighted={item.id === highlightItemId} showDietaryTags={featureFlags.dietaryFilters} kitchenClosed={!kitchenOpen && !!activeCategoryData?.isKitchen} barClosed={!barOpen && !activeCategoryData?.isKitchen} />
     </View>
-  ), [handleOpenModifiers, highlightItemId, featureFlags.dietaryFilters, kitchenOpen, barOpen, activeCategoryData?.isKitchen, itemCols]);
+  ), [handleSelectProduct, highlightItemId, featureFlags.dietaryFilters, kitchenOpen, barOpen, activeCategoryData?.isKitchen, itemCols]);
 
   const handleSelectCategory = useCallback((id: string) => {
     setSelectedCategory(id);
@@ -2547,8 +2697,8 @@ export default function OrderScreen() {
                 </View>
               ) : (
                 <View style={{ paddingHorizontal: 16, gap: 0 }}>
-                  {searchResults.map(({ item, categoryName }) => (
-                    <View key={item.variationId}>
+                  {searchResults.map(({ group, categoryName }) => (
+                    <View key={`${categoryName}-${group.id}`}>
                       <View style={styles.searchCatLabel}>
                         <Text style={styles.searchCatLabelText}>{categoryName}</Text>
                       </View>
@@ -2556,7 +2706,7 @@ export default function OrderScreen() {
                         const cat = categories?.find(c => c.name === categoryName)
                           ?? categories?.find(c => c.subcategories?.some(s => s.name === categoryName));
                         const isKitchenCat = !!cat?.isKitchen;
-                        return <ItemCard item={item} onOpenModifiers={handleOpenModifiers} showDietaryTags={featureFlags.dietaryFilters} kitchenClosed={!kitchenOpen && isKitchenCat} barClosed={!barOpen && !isKitchenCat} />;
+                        return <ItemCard group={group} onSelectProduct={handleSelectProduct} showDietaryTags={featureFlags.dietaryFilters} kitchenClosed={!kitchenOpen && isKitchenCat} barClosed={!barOpen && !isKitchenCat} />;
                       })()}
                     </View>
                   ))}
@@ -2735,6 +2885,12 @@ export default function OrderScreen() {
           onClose={() => setModifierItem(null)}
           onConfirm={handleModifierConfirm}
         />
+        <VariationModal
+          group={variationGroup}
+          visible={!!variationGroup}
+          onClose={() => setVariationGroup(null)}
+          onSelect={handleVariationSelect}
+        />
       </View>
     );
   }
@@ -2827,7 +2983,7 @@ export default function OrderScreen() {
           // data is small and already cached.
           key={`items-${itemCols}`}
           data={activeItems}
-          keyExtractor={(item) => item.variationId}
+          keyExtractor={(item) => item.id}
           renderItem={renderItem}
           numColumns={itemCols}
           columnWrapperStyle={itemCols > 1 ? { gap: 10, marginBottom: 10 } : undefined}
@@ -2890,6 +3046,12 @@ export default function OrderScreen() {
         visible={!!modifierItem}
         onClose={() => setModifierItem(null)}
         onConfirm={handleModifierConfirm}
+      />
+      <VariationModal
+        group={variationGroup}
+        visible={!!variationGroup}
+        onClose={() => setVariationGroup(null)}
+        onSelect={handleVariationSelect}
       />
     </View>
   );
