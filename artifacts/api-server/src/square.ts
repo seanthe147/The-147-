@@ -1336,6 +1336,7 @@ export interface ModifierList {
 export interface MenuItem {
   id: string;
   variationId: string;
+  categoryIds: string[];
   name: string;
   variationName?: string;
   description: string;
@@ -1353,10 +1354,40 @@ export interface MenuCategory {
   items: MenuItem[];
 }
 
-let menuCache: { data: MenuCategory[]; expiry: number } | null = null;
+const menuCache = new Map<string, { data: MenuCategory[]; expiry: number }>();
 
-export async function getMenuFromSquare(): Promise<MenuCategory[]> {
-  if (menuCache && Date.now() < menuCache.expiry) return menuCache.data;
+export function isActiveMenuCatalogObject(object: any): boolean {
+  if (object?.is_deleted) return false;
+  if (object?.item_data?.is_archived) return false;
+  if (object?.item_variation_data?.is_archived) return false;
+  if (object?.category_data?.is_archived) return false;
+  return true;
+}
+
+export function selectMenuCategoryId(
+  item: any,
+  preferredCategoryIds: ReadonlySet<string>,
+): string | undefined {
+  const categoryIds: string[] = (item.item_data?.categories || [])
+    .map((category: any) => category.id)
+    .filter((id: unknown): id is string => typeof id === "string" && !PARENT_CATEGORY_IDS.has(id));
+
+  return categoryIds.find((id) => preferredCategoryIds.has(id)) ?? categoryIds[0];
+}
+
+export function itemUsesAnyMenuCategory(
+  item: Pick<MenuItem, "categoryIds">,
+  categoryIds: ReadonlySet<string>,
+): boolean {
+  return item.categoryIds.some((categoryId) => categoryIds.has(categoryId));
+}
+
+export async function getMenuFromSquare(
+  preferredCategoryIds: ReadonlySet<string> = new Set<string>(),
+): Promise<MenuCategory[]> {
+  const cacheKey = Array.from(preferredCategoryIds).sort().join(",");
+  const cached = menuCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiry) return cached.data;
 
   let allItems: any[] = [];
   let cursor: string | null = null;
@@ -1368,7 +1399,7 @@ export async function getMenuFromSquare(): Promise<MenuCategory[]> {
   } while (cursor);
 
   const items = allItems.filter(
-    (o) => o.type === "ITEM" && !SKIP_ITEMS.has(o.item_data?.name)
+    (o) => o.type === "ITEM" && isActiveMenuCatalogObject(o) && !SKIP_ITEMS.has(o.item_data?.name)
   );
 
   const subcatIds = new Set<string>();
@@ -1390,6 +1421,7 @@ export async function getMenuFromSquare(): Promise<MenuCategory[]> {
       object_ids: Array.from(subcatIds),
     });
     (catData.objects || []).forEach((o: any) => {
+      if (!isActiveMenuCatalogObject(o)) return;
       catNames[o.id] = o.category_data?.name || "Other";
       if (o.category_data?.image_ids?.[0]) {
         catImageIds[o.id] = o.category_data.image_ids[0];
@@ -1462,11 +1494,13 @@ export async function getMenuFromSquare(): Promise<MenuCategory[]> {
 
   const categoryMap: Record<string, { name: string; imageUrl?: string; updatedAt?: string; items: MenuItem[] }> = {};
   items.forEach((item) => {
-    const subcatId = (item.item_data?.categories || []).find(
-      (c: any) => !PARENT_CATEGORY_IDS.has(c.id)
-    )?.id;
+    const categoryIds: string[] = (item.item_data?.categories || [])
+      .map((category: any) => category.id)
+      .filter((id: unknown): id is string => typeof id === "string");
+    const subcatId = selectMenuCategoryId(item, preferredCategoryIds);
     if (!subcatId) return;
-    const variations: any[] = item.item_data?.variations || [];
+    const variations: any[] = (item.item_data?.variations || [])
+      .filter(isActiveMenuCatalogObject);
     if (!variations.length) return;
 
     if (!categoryMap[subcatId]) {
@@ -1504,6 +1538,7 @@ export async function getMenuFromSquare(): Promise<MenuCategory[]> {
       categoryMap[subcatId].items.push({
         id: item.id,
         variationId: variation.id,
+        categoryIds,
         name: item.item_data.name,
         variationName,
         description: item.item_data.description || "",
@@ -1529,12 +1564,14 @@ export async function getMenuFromSquare(): Promise<MenuCategory[]> {
       return oa !== ob ? oa - ob : a.name.localeCompare(b.name);
     });
 
-  menuCache = { data: result, expiry: Date.now() + 5 * 60 * 1000 };
+  // Square catalog webhooks clear this immediately. The short TTL is a fallback
+  // for venues whose webhook subscription does not include catalog updates.
+  menuCache.set(cacheKey, { data: result, expiry: Date.now() + 60 * 1000 });
   return result;
 }
 
 export function invalidateMenuCache() {
-  menuCache = null;
+  menuCache.clear();
 }
 
 export interface SelectedModifier {

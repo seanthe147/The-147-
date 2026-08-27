@@ -4266,6 +4266,11 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     const eventType: string = event?.type ?? "";
     console.log("[WEBHOOK] Square event received:", eventType);
 
+    if (eventType === "catalog.version.updated") {
+      square.invalidateMenuCache();
+      return res.sendStatus(200);
+    }
+
     // ── subscription.updated / subscription.activated ───────────────────────
     // NOTE: We intentionally do NOT promote local status to "active" here.
     // Activation is handled exclusively by the invoice.payment_made event once
@@ -5592,11 +5597,15 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       // Do not let browser/proxy caches keep serving a menu snapshot after
       // staff have hidden or sold-out an item.
       res.setHeader("Cache-Control", "no-store");
+      const catSettingsPromise = storage.getCategorySettings();
+      const categoriesPromise = catSettingsPromise.then((settings) =>
+        square.getMenuFromSquare(new Set(settings.map((setting) => setting.categoryId))),
+      );
       const [categories, categoryOverrides, itemOverrides, catSettingsArr, availRules] = await Promise.all([
-        square.getMenuFromSquare(),
+        categoriesPromise,
         storage.getMenuCategoryOverrides(),
         storage.getMenuItemOverrides(),
-        storage.getCategorySettings(),
+        catSettingsPromise,
         storage.getAvailabilityRules(),
       ]);
 
@@ -5644,6 +5653,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
           .filter(item => {
             const override = itemOverrideMap.get(item.variationId);
             if (override?.hidden) return false;
+            if (square.itemUsesAnyMenuCategory(item, hiddenCategoryIds)) return false;
             if (!isAvailableNow(availRules.filter(r => r.targetType === 'item'), item.id)) return false;
             return true;
           })
@@ -5724,8 +5734,12 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   app.get("/api/staff/menu", staffAuth, async (req: any, res) => {
     try {
       if (req.query.nocache === "1") square.invalidateMenuCache();
+      const catSettingsPromise = storage.getCategorySettings();
+      const categoriesPromise = catSettingsPromise.then((settings) =>
+        square.getMenuFromSquare(new Set(settings.map((setting) => setting.categoryId))),
+      );
       const [categories, categoryOverrides, itemOverrides] = await Promise.all([
-        square.getMenuFromSquare(),
+        categoriesPromise,
         storage.getMenuCategoryOverrides(),
         storage.getMenuItemOverrides(),
       ]);
