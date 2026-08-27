@@ -1,0 +1,26 @@
+⚙️ Export Expo app
+
+< 1s
+
+
+> pnpm expo export:embed --eager --dev=false --platform=ios
+WARN  Unsupported engine: wanted: {"node":"22.19.0"} (current: {"node":"v20.19.4","pnpm":"10.16.1"})
+env: load .env
+env: export EXPO_PUBLIC_DOMAIN
+/Users/expo/workingdir/build/node_modules/.pnpm/@expo+cli@54.0.27_expo-router@6.0.24_expo@54.0.37_react-native@0.81.5_@babel+core@7.29._843f788122ac3582212d12b42b61c9c2/node_modules/@expo/cli/build/src/utils/errors.js:130
+    throw error;
+    ^
+TypeError: webidl.util.markAsUncloneable is not a function
+    at new CacheStorage (/Users/expo/workingdir/build/node_modules/.pnpm/undici@8.10.0/node_modules/undici/lib/web/cache/cachestorage.js:20:17)
+    at Object.<anonymous> (/Users/expo/workingdir/build/node_modules/.pnpm/undici@8.10.0/node_modules/undici/index.js:179:25)
+    at Module._compile (node:internal/modules/cjs/loader:1529:14)
+    at Object.Module._extensions..js (node:internal/modules/cjs/loader:1613:10)
+    at Module.load (node:internal/modules/cjs/loader:1275:32)
+    at Function.Module._load (node:internal/modules/cjs/loader:1096:12)
+    at Module.require (node:internal/modules/cjs/loader:1298:19)
+    at require (node:internal/modules/helpers:182:18)
+    at RetryAgent (/Users/expo/workingdir/build/node_modules/.pnpm/@expo+cli@54.0.27_expo-router@6.0.24_expo@54.0.37_react-native@0.81.5_@babel+core@7.29._843f788122ac3582212d12b42b61c9c2/node_modules/@expo/cli/build/src/utils/telemetry/clients/FetchClient.js:19:18)
+    at createTelemetryFetch (/Users/expo/workingdir/build/node_modules/.pnpm/@expo+cli@54.0.27_expo-router@6.0.24_expo@54.0.37_react-native@0.81.5_@babel+core@7.29._843f788122ac3582212d12b42b61c9c2/node_modules/@expo/cli/src/utils/telemetry/clients/FetchClient.ts:111:21)
+Node.js v20.19.4
+Error: pnpm expo export:embed --eager --dev=false --platform=ios exited with non-zero code: 7
+/bin/bash -eo pipefail /var/folders/5_/4knlryn57n39p2c_jw8567z00000gn/T/eas-build/af746c05-d202-4b92-856d-5b3040a1d28f/steps/step-011/scripts/d3792116-1a5f-4153-a0fa-aa426c435f9e.sh exited with non-zero code: 1

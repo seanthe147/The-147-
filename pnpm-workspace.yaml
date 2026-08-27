@@ -201,8 +201,10 @@ overrides:
   image-size: "1.2.1"
   # Security: http-proxy-middleware 3.0.5 mishandles crafted proxy requests.
   http-proxy-middleware: ">=3.0.7"
-  # Security: undici <6.28.0 has request-smuggling and denial-of-service vulnerabilities.
-  undici: ">=6.28.0"
+  # Expo Launch currently exports iOS with Node 20.19.4. Undici 8 requires
+  # Node 22 WebIDL APIs and crashes before Metro starts, so keep all consumers
+  # on the latest Node-20-compatible major.
+  undici: "7.29.0"
   # Security: body-parser 2.2.2 can silently disable request-size limits.
   body-parser: ">=2.3.0"
   # Security: linkify-it 5.0.1 has a regular-expression denial of service.
