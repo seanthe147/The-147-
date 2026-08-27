@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useKiosk } from "@/contexts/KioskContext";
 import { useCart } from "@/contexts/CartContext";
 import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 
 interface BannerImage {
   id: number;
@@ -31,6 +32,8 @@ interface BannerImage {
 const BANNER_ROTATE_MS = 6000;
 
 export function KioskAttractOverlay() {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors.scheme]);
   const { isKioskMode, attractVisible, dismissAttract, disableKioskMode } = useKiosk();
   const { clearCart } = useCart();
   const insets = useSafeAreaInsets();
@@ -151,7 +154,7 @@ export function KioskAttractOverlay() {
               transition={400}
             />
           ) : (
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: "#0A1628" }]} />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background }]} />
           )}
           <View style={styles.scrim} />
           <View
@@ -222,7 +225,7 @@ export function KioskAttractOverlay() {
               value={pin}
               onChangeText={setPin}
               placeholder="••••"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.textSecondary}
               style={styles.pinInput}
               keyboardType="number-pad"
               secureTextEntry={Platform.OS !== "web"}
@@ -252,12 +255,12 @@ export function KioskAttractOverlay() {
   );
 }
 
-const styles = StyleSheet.create({
-  bg: { flex: 1, backgroundColor: "#0A1628" },
-  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(10,22,40,0.55)" },
+const createStyles = (colors: ReturnType<typeof useColors>) => StyleSheet.create({
+  bg: { flex: 1, backgroundColor: colors.background },
+  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.overlay },
   content: { flex: 1, justifyContent: "space-between" },
   ctaPaused: {
-    backgroundColor: "rgba(255,255,255,0.96)",
+    backgroundColor: colors.surface,
     paddingHorizontal: 40,
     paddingVertical: 28,
     borderRadius: 24,
@@ -279,12 +282,12 @@ const styles = StyleSheet.create({
     textAlign: "center" as const,
   },
   brandWrap: { alignItems: "center" },
-  brandSmall: { color: "rgba(255,255,255,0.85)", fontSize: 16, letterSpacing: 4, fontWeight: "600" as const },
-  brandBig: { color: "#fff", fontSize: 84, letterSpacing: 6, fontWeight: "700" as const, marginTop: 8 },
+  brandSmall: { color: colors.text, fontSize: 16, letterSpacing: 4, fontWeight: "600" as const },
+  brandBig: { color: colors.text, fontSize: 84, letterSpacing: 6, fontWeight: "700" as const, marginTop: 8 },
   brandTag: { color: Colors.brand.gold, fontSize: 14, letterSpacing: 6, fontWeight: "600" as const, marginTop: 8 },
   ctaWrap: { alignItems: "center", justifyContent: "center" },
   cta: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.surface,
     paddingHorizontal: 56,
     paddingVertical: 36,
     borderRadius: 28,
@@ -296,9 +299,9 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   ctaText: { color: Colors.brand.blue, fontSize: 38, fontWeight: "700" as const, letterSpacing: 1, marginTop: 8 },
-  ctaSub: { color: Colors.light.textSecondary, fontSize: 14, marginTop: 6 },
+  ctaSub: { color: colors.textSecondary, fontSize: 14, marginTop: 6 },
   footer: { alignItems: "center" },
-  footerText: { color: "rgba(255,255,255,0.7)", fontSize: 12, letterSpacing: 2, fontWeight: "500" as const },
+  footerText: { color: colors.textSecondary, fontSize: 12, letterSpacing: 2, fontWeight: "500" as const },
   hiddenExit: {
     position: "absolute",
     bottom: 0,
@@ -307,26 +310,26 @@ const styles = StyleSheet.create({
     height: 80,
   },
   pinScrim: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 24 },
-  pinCard: { backgroundColor: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 360 },
-  pinTitle: { fontSize: 20, fontWeight: "700" as const, color: Colors.light.text, textAlign: "center" },
-  pinSub: { fontSize: 14, color: Colors.light.textSecondary, textAlign: "center", marginTop: 6 },
+  pinCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 24, width: "100%", maxWidth: 360 },
+  pinTitle: { fontSize: 20, fontWeight: "700" as const, color: colors.text, textAlign: "center" },
+  pinSub: { fontSize: 14, color: colors.textSecondary, textAlign: "center", marginTop: 6 },
   pinInput: {
     marginTop: 20,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: colors.border,
     borderRadius: 10,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 22,
     textAlign: "center",
     letterSpacing: 8,
-    color: Colors.light.text,
+    color: colors.text,
   },
   pinError: { color: Colors.brand.red, fontSize: 13, textAlign: "center", marginTop: 10 },
   pinBtnRow: { flexDirection: "row", gap: 10, marginTop: 20 },
   pinBtn: { flex: 1, borderRadius: 10, paddingVertical: 14, alignItems: "center" },
-  pinBtnGhost: { backgroundColor: "#F3F4F6" },
+  pinBtnGhost: { backgroundColor: colors.surfaceElevated },
   pinBtnPrimary: { backgroundColor: Colors.brand.blue },
-  pinBtnGhostText: { color: Colors.light.text, fontWeight: "600" as const, fontSize: 15 },
+  pinBtnGhostText: { color: colors.text, fontWeight: "600" as const, fontSize: 15 },
   pinBtnPrimaryText: { color: "#fff", fontWeight: "700" as const, fontSize: 15 },
 });

@@ -3,7 +3,7 @@ import { BlurView } from "expo-blur";
 import { Platform, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect } from "react";
-import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 import { useTabBar } from "@/contexts/TabBarContext";
 import { useKiosk } from "@/contexts/KioskContext";
 
@@ -14,6 +14,7 @@ export default function TabLayout() {
   const { isKioskMode, resetIdle } = useKiosk();
   const router = useRouter();
   const pathname = usePathname();
+  const colors = useColors();
 
   // In kiosk mode, force the user onto the order tab — block navigation to
   // any other tab via redirect. The tab bar itself is hidden below.
@@ -34,13 +35,13 @@ export default function TabLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: Colors.brand.gold,
-          tabBarInactiveTintColor: "rgba(255,255,255,0.4)",
+          tabBarActiveTintColor: colors.tabIconSelected,
+          tabBarInactiveTintColor: colors.tabIconDefault,
           tabBarStyle: {
             position: "absolute" as const,
             backgroundColor: "transparent",
             borderTopWidth: isWeb ? 1 : 0,
-            borderTopColor: "rgba(255,255,255,0.08)",
+            borderTopColor: colors.border,
             elevation: 0,
             ...(isWeb ? { height: 84 } : {}),
             display: showBar ? "flex" : "none",
@@ -49,17 +50,17 @@ export default function TabLayout() {
             isIOS ? (
               <BlurView
                 intensity={80}
-                tint="dark"
-                style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(10,22,40,0.6)" }]}
+                tint={colors.scheme}
+                style={[StyleSheet.absoluteFill, { backgroundColor: colors.glass.card }]}
               />
             ) : isWeb ? (
               <View
                 style={[
                   StyleSheet.absoluteFill,
                   {
-                    backgroundColor: "rgba(10,22,40,0.92)",
+                    backgroundColor: colors.surface,
                     borderTopWidth: 1,
-                    borderTopColor: "rgba(255,255,255,0.08)",
+                    borderTopColor: colors.border,
                   },
                 ]}
               />
@@ -68,9 +69,9 @@ export default function TabLayout() {
                 style={[
                   StyleSheet.absoluteFill,
                   {
-                    backgroundColor: "rgba(10,22,40,0.88)",
+                    backgroundColor: colors.surface,
                     borderTopWidth: StyleSheet.hairlineWidth,
-                    borderTopColor: "rgba(255,255,255,0.14)",
+                    borderTopColor: colors.border,
                   },
                 ]}
               />

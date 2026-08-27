@@ -1,15 +1,18 @@
-import React, { useEffect, useState, useCallback, memo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, memo } from "react";
 import { StyleSheet, Text, View, Pressable, Platform, Linking } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Device from "expo-device";
 import { useNotifications } from "@/contexts/NotificationContext";
 import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 
 const SNOOZE_KEY = "notif_banner_snoozed_until";
 const SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
 
 function EnableNotificationsBannerInner() {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { permissionStatus, expoPushToken, registerForPushNotifications } = useNotifications();
   const [snoozed, setSnoozed] = useState<boolean | null>(null);
 
@@ -84,10 +87,10 @@ function EnableNotificationsBannerInner() {
 
 export const EnableNotificationsBanner = memo(EnableNotificationsBannerInner);
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ReturnType<typeof useColors>) => StyleSheet.create({
   card: {
     flexDirection: "row",
-    backgroundColor: "rgba(19,39,66,0.75)",
+    backgroundColor: colors.surfaceElevated,
     borderRadius: 16,
     padding: 16,
     marginHorizontal: 16,
@@ -95,7 +98,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     gap: 12,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: colors.border,
     boxShadow: "0px 8px 24px rgba(0,0,0,0.35)",
     elevation: 4,
   },
@@ -103,7 +106,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: "rgba(0,71,171,0.25)",
+    backgroundColor: `${colors.tint}20`,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -111,13 +114,13 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 15,
-    color: "#FFFFFF",
+    color: colors.text,
     marginBottom: 4,
   },
   subtitle: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 12,
-    color: "rgba(255,255,255,0.55)",
+    color: colors.textSecondary,
     lineHeight: 17,
     marginBottom: 12,
   },
@@ -140,6 +143,6 @@ const styles = StyleSheet.create({
   snoozeText: {
     fontFamily: "Montserrat_500Medium",
     fontSize: 13,
-    color: "rgba(255,255,255,0.4)",
+    color: colors.textSecondary,
   },
 });

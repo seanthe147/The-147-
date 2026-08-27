@@ -13,7 +13,8 @@ import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
 import { getApiUrl, getStaffToken } from "@/lib/query-client";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
-import Colors from "@/constants/colors";
+import BaseColors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -98,6 +99,7 @@ const GDPR_KEY = "hr_gdpr_accepted_v1";
 
 // ════════════════════════════════════════════════════════════════════════════
 export default function StaffHRScreen() {
+  const { styles, Colors } = useThemedStyles();
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const { displayName, role, isAuthenticated, isLoading: authLoading } = useStaffAuth();
@@ -632,6 +634,7 @@ export default function StaffHRScreen() {
 // ════════════════════════════════════════════════════════════════════════════
 
 function GDPRNotice({ onAccept }: { onAccept: () => void }) {
+  const { styles, Colors } = useThemedStyles();
   const insets = useSafeAreaInsets();
   const privacyUrl = `${getApiUrl().replace(/\/api$/, "")}/staff-privacy-notice`;
   const FOOTER_HEIGHT = 120 + insets.bottom;
@@ -669,6 +672,7 @@ function GDPRNotice({ onAccept }: { onAccept: () => void }) {
 }
 
 function StatBox({ label, value, icon, colour }: { label: string; value: string; icon: any; colour?: string }) {
+  const { styles, Colors } = useThemedStyles();
   return (
     <View style={styles.statBox}>
       <Ionicons name={icon} size={18} color={colour ?? Colors.brand.blue} />
@@ -679,6 +683,7 @@ function StatBox({ label, value, icon, colour }: { label: string; value: string;
 }
 
 function ActionCard({ icon, label, colour, badge, badgeLabel, onPress }: { icon: any; label: string; colour: string; badge?: string; badgeLabel?: string; onPress: () => void }) {
+  const { styles } = useThemedStyles();
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.actionCard, pressed && { opacity: 0.75 }]}>
       <View style={[styles.actionIcon, { backgroundColor: colour + "18" }]}>
@@ -695,6 +700,7 @@ function ActionCard({ icon, label, colour, badge, badgeLabel, onPress }: { icon:
 }
 
 function LeaveRow({ label, value, colour }: { label: string; value: string; colour?: string }) {
+  const { styles } = useThemedStyles();
   return (
     <View style={styles.leaveRow}>
       <Text style={styles.leaveRowLabel}>{label}</Text>
@@ -719,6 +725,7 @@ const LEAVE_TYPE_COLOURS: Record<string, string> = {
 
 // ── Leave Request Modal ───────────────────────────────────────────────────────
 function LeaveRequestModal({ visible, onClose, onSuccess, leaveRequests }: { visible: boolean; onClose: () => void; onSuccess: () => void; leaveRequests: any[] }) {
+  const { styles, Colors } = useThemedStyles();
   const [tab, setTab] = useState<"request" | "history">("request");
   const [leaveType, setLeaveType] = useState("annual");
   const [startDate, setStartDate] = useState("");
@@ -861,6 +868,7 @@ function LeaveRequestModal({ visible, onClose, onSuccess, leaveRequests }: { vis
 
 // ── Shift History Modal ───────────────────────────────────────────────────────
 function ShiftHistoryModal({ visible, onClose, entries }: { visible: boolean; onClose: () => void; entries: any[] }) {
+  const { styles, Colors } = useThemedStyles();
   // Entries pending manager review are not authoritative and must NOT be
   // included in payroll hour totals until a manager has approved them.
   const approvedEntries = entries.filter((e) => !e.needsManagerReview);
@@ -931,7 +939,9 @@ function ShiftHistoryModal({ visible, onClose, entries }: { visible: boolean; on
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-const styles = StyleSheet.create({
+const createThemedStyles = (colors: ReturnType<typeof useColors>) => {
+  const Colors = { ...BaseColors, light: colors, glass: colors.glass };
+  return themedStyleSheet({
   container: { flex: 1, backgroundColor: Colors.light.background },
   centered: { flex: 1, alignItems: "center", justifyContent: "center" },
   header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.light.border, backgroundColor: Colors.light.surface },
@@ -1071,4 +1081,16 @@ const styles = StyleSheet.create({
   venueCodeBtnCancelText: { fontFamily: "Montserrat_600SemiBold", fontSize: 15, color: Colors.light.textSecondary },
   venueCodeBtnConfirm: { backgroundColor: Colors.light.tint },
   venueCodeBtnConfirmText: { fontFamily: "Montserrat_700Bold", fontSize: 15, color: "#fff" },
-});
+  }, colors);
+};
+
+function useThemedStyles() {
+  const colors = useColors();
+  const styles = React.useMemo(() => createThemedStyles(colors), [colors]);
+  const themedColors = React.useMemo(() => ({ ...BaseColors, light: colors, glass: colors.glass }), [colors]);
+  return { colors, styles, Colors: themedColors };
+}
+
+function themedStyleSheet(source: any, colors: ReturnType<typeof useColors>) { return StyleSheet.create(themeSource(source, colors)); }
+function themeSource(source: any, colors: ReturnType<typeof useColors>): any { return Object.fromEntries(Object.entries(source).map(([n, v]: any) => [n, Object.fromEntries(Object.entries(v).map(([k, t]: any) => [k, themeToken(n, k, t, colors)]))])); }
+function themeToken(n: string, k: string, t: any, c: ReturnType<typeof useColors>) { if (typeof t !== "string") return t; if (k === "color" && /^#fff(?:fff)?$/i.test(t)) return /btn|button|badge|chip|pill|selected|active|primary|action|cta|fab|submit|save|publish|approve|confirm|complete|clock|gdpr|back|close|filter|tab|preview|retry|claim|redeem|login/i.test(n) ? t : c.text; if (k === "color") return ["#0A1628", "#132742", "#111827", "#1E293B", "#1F2937", "#334155", "#374151", "#4B5563"].includes(t) ? c.text : ["#475569", "#4B5A72", "#64748B", "#6B7280", "#94A3B8", "#9CA3AF"].includes(t) ? c.textSecondary : t; if (/border.*color/i.test(k) && ["#E2E8F0", "#E5E7EB", "#CBD5E1", "#D1D5DB"].includes(t)) return c.border; if (/backgroundcolor/i.test(k)) return ["#F2F5FA", "#F4F7FB", "#F8FAFC", "#F9FAFB", "#F1F5F9", "#F3F4F6"].includes(t) ? c.background : ["#fff", "#FFFFFF"].includes(t) ? c.surface : ["#0A1628", "#132742", "#0F172A", "#1E293B"].includes(t) ? c.surfaceElevated : t; return t; }

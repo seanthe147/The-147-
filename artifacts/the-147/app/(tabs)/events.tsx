@@ -1,4 +1,4 @@
-import React, { useState, useContext, memo, useCallback, useRef, useEffect } from "react";
+import React, { useState, useContext, memo, useCallback, useRef, useEffect, useMemo } from "react";
 import {
   StyleSheet,
   View,
@@ -21,6 +21,8 @@ import { Image as ExpoImage } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { useQuery } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
+const baseColors = Colors;
 import { getApiUrl } from "@/lib/query-client";
 import { useResponsive } from "@/hooks/useResponsive";
 import type { Event, BannerImage } from "@workspace/db/schema";
@@ -47,6 +49,8 @@ function withCacheBuster(url: string, ts: string | number | Date | null | undefi
 }
 
 const BannerCarousel = memo(function BannerCarousel({ images }: { images: BannerImage[] }) {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const scrollRef = useRef<ScrollView>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -179,6 +183,8 @@ function formatTime(timeStr: string): string {
 }
 
 const EventCard = memo(function EventCard({ event }: { event: Event }) {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const color = event.imageColor || "#0047AB";
   const isWeekly = event.eventType === "weekly";
 
@@ -235,7 +241,7 @@ const EventCard = memo(function EventCard({ event }: { event: Event }) {
         <View style={styles.eventCardContent}>
           <Text style={styles.eventTitle} numberOfLines={2}>{event.title}</Text>
           <View style={styles.eventMeta}>
-            <Ionicons name={isWeekly ? "repeat-outline" : "time-outline"} size={13} color={Colors.light.textSecondary} />
+            <Ionicons name={isWeekly ? "repeat-outline" : "time-outline"} size={13} color={colors.textSecondary} />
             <Text style={styles.eventMetaText}>{metaText}</Text>
           </View>
           {event.description ? (
@@ -255,6 +261,8 @@ const EventCard = memo(function EventCard({ event }: { event: Event }) {
 });
 
 function UpcomingEventsTab() {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { data: events, isLoading, isError } = useQuery<Event[]>({
     queryKey: ["/api/events?type=event"],
   });
@@ -278,7 +286,7 @@ function UpcomingEventsTab() {
   if (isError || !events) {
     return (
       <View style={styles.emptyWrap}>
-        <Ionicons name="cloud-offline-outline" size={40} color={Colors.light.textSecondary} />
+        <Ionicons name="cloud-offline-outline" size={40} color={colors.textSecondary} />
         <Text style={styles.emptyTitle}>Couldn't load events</Text>
         <Text style={styles.emptySubtext}>Check back soon for upcoming events</Text>
       </View>
@@ -288,7 +296,7 @@ function UpcomingEventsTab() {
   if (upcomingEvents.length === 0) {
     return (
       <View style={styles.emptyWrap}>
-        <Ionicons name="calendar-outline" size={40} color={Colors.light.textSecondary} />
+        <Ionicons name="calendar-outline" size={40} color={colors.textSecondary} />
         <Text style={styles.emptyTitle}>No upcoming events</Text>
         <Text style={styles.emptySubtext}>New events are added regularly - check back soon!</Text>
       </View>
@@ -308,6 +316,8 @@ function UpcomingEventsTab() {
 }
 
 function WhatsOnTab() {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { data: events, isLoading, isError } = useQuery<Event[]>({
     queryKey: ["/api/events?type=weekly"],
   });
@@ -324,7 +334,7 @@ function WhatsOnTab() {
   if (isError || !events) {
     return (
       <View style={styles.emptyWrap}>
-        <Ionicons name="cloud-offline-outline" size={40} color={Colors.light.textSecondary} />
+        <Ionicons name="cloud-offline-outline" size={40} color={colors.textSecondary} />
         <Text style={styles.emptyTitle}>Couldn't load weekly events</Text>
         <Text style={styles.emptySubtext}>Check back soon</Text>
       </View>
@@ -334,7 +344,7 @@ function WhatsOnTab() {
   if (events.length === 0) {
     return (
       <View style={styles.emptyWrap}>
-        <Ionicons name="repeat-outline" size={40} color={Colors.light.textSecondary} />
+        <Ionicons name="repeat-outline" size={40} color={colors.textSecondary} />
         <Text style={styles.emptyTitle}>No weekly events yet</Text>
         <Text style={styles.emptySubtext}>Regular weekly events will appear here</Text>
       </View>
@@ -373,6 +383,8 @@ function WhatsOnTab() {
 }
 
 export default function EventsScreen() {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -393,7 +405,7 @@ export default function EventsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {Platform.OS === "ios" ? (
-          <BlurView intensity={55} tint="dark" style={styles.heroSection}>
+          <BlurView intensity={55} tint={colors.scheme} style={styles.heroSection}>
             <View style={styles.heroInner}>
               <Text style={styles.heroTitle}>Events & Tickets</Text>
               <Text style={styles.heroSubtitle}>
@@ -436,7 +448,7 @@ export default function EventsScreen() {
           </View>
           </BlurView>
         ) : (
-          <View style={[styles.heroSection, { backgroundColor: "rgba(10,22,40,0.88)" }]}>
+          <View style={[styles.heroSection, { backgroundColor: colors.surface }]}>
             <View style={styles.heroInner}>
               <Text style={styles.heroTitle}>Events & Tickets</Text>
               <Text style={styles.heroSubtitle}>
@@ -482,7 +494,9 @@ export default function EventsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: ReturnType<typeof useColors>) => {
+  const Colors = { ...baseColors, light: palette };
+  return StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
@@ -501,13 +515,13 @@ const styles = StyleSheet.create({
   heroTitle: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 28,
-    color: "#FFFFFF",
+    color: palette.text,
     marginBottom: 8,
   },
   heroSubtitle: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 14,
-    color: "rgba(255,255,255,0.7)",
+    color: palette.textSecondary,
     lineHeight: 20,
   },
   tabBar: {
@@ -742,4 +756,5 @@ const styles = StyleSheet.create({
     width: 20,
     borderRadius: 3,
   },
-});
+  });
+};

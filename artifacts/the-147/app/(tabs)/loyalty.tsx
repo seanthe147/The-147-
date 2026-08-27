@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useContext } from "react";
+import React, { useState, useCallback, useEffect, useContext, useMemo } from "react";
 import {
   StyleSheet,
   Text,
@@ -20,6 +20,8 @@ import { BlurView } from "expo-blur";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
+const baseColors = Colors;
 import { getApiUrl } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
@@ -97,7 +99,6 @@ const PLAN_TIER_META: Record<string, { icon: string; tagline: string }> = {
   century: { icon: "trophy", tagline: "Most popular" },
   maximum: { icon: "diamond", tagline: "The full experience" },
 };
-
 function getPlanDisplayFeatures(plan: MembershipPlan): string[] {
   // Prefer the server-rendered benefit list so wording can be tweaked
   // server-side without an app rebuild. Falls back to a local computation
@@ -140,6 +141,8 @@ interface LoyaltyMeResponse {
 }
 
 export default function LoyaltyScreen() {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const isWeb = Platform.OS === "web";
@@ -473,7 +476,7 @@ export default function LoyaltyScreen() {
         keyboardShouldPersistTaps="handled"
       >
         {Platform.OS === "ios" ? (
-          <BlurView intensity={55} tint="dark" style={styles.headerGradient}>
+          <BlurView intensity={55} tint={colors.scheme} style={styles.headerGradient}>
             <Ionicons name="diamond" size={28} color={Colors.brand.gold} />
             <Text style={styles.headerTitle}>Membership</Text>
             <Text style={styles.headerSubtitle}>
@@ -483,7 +486,7 @@ export default function LoyaltyScreen() {
             </Text>
           </BlurView>
         ) : (
-          <View style={[styles.headerGradient, { backgroundColor: "rgba(10,22,40,0.88)" }]}>
+          <View style={[styles.headerGradient, { backgroundColor: colors.surface }]}>
             <Ionicons name="diamond" size={28} color={Colors.brand.gold} />
             <Text style={styles.headerTitle}>Membership</Text>
             <Text style={styles.headerSubtitle}>
@@ -501,7 +504,7 @@ export default function LoyaltyScreen() {
           </View>
         ) : !programData?.configured ? (
           <View style={styles.statusCard}>
-            <Ionicons name="alert-circle-outline" size={40} color={Colors.light.textSecondary} />
+            <Ionicons name="alert-circle-outline" size={40} color={colors.textSecondary} />
             <Text style={styles.statusTitle}>Coming Soon</Text>
             <Text style={styles.statusText}>
               Our loyalty rewards program is being set up. Check back soon!
@@ -524,7 +527,7 @@ export default function LoyaltyScreen() {
             </View>
           ) : meQuery.isError ? (
             <View style={styles.statusCard}>
-              <Ionicons name="cloud-offline-outline" size={40} color={Colors.light.textSecondary} />
+              <Ionicons name="cloud-offline-outline" size={40} color={colors.textSecondary} />
               <Text style={styles.statusTitle}>Couldn't load your rewards</Text>
               <Text style={styles.statusText}>
                 {(meQuery.error as Error)?.message || "Please try again."}
@@ -656,11 +659,11 @@ export default function LoyaltyScreen() {
 
               <View style={styles.inputRow}>
                 <View style={styles.inputWrap}>
-                  <Ionicons name="call-outline" size={18} color={Colors.light.textSecondary} style={styles.inputIcon} />
+                  <Ionicons name="call-outline" size={18} color={colors.textSecondary} style={styles.inputIcon} />
                   <TextInput
                     style={styles.phoneInput}
                     placeholder="07xxx xxxxxx"
-                    placeholderTextColor={Colors.light.textSecondary}
+                    placeholderTextColor={colors.textSecondary}
                     value={phone}
                     onChangeText={(v) => { setPhone(v); setQuickResult(null); setQuickError(""); }}
                     keyboardType="phone-pad"
@@ -729,7 +732,7 @@ export default function LoyaltyScreen() {
                 onPress={() => setShowEnrollFlow(true)}
                 style={({ pressed }) => [styles.secondaryLink, { opacity: pressed ? 0.7 : 1 }]}
               >
-                <Ionicons name="mail-outline" size={15} color={Colors.light.textSecondary} />
+                <Ionicons name="mail-outline" size={15} color={colors.textSecondary} />
                 <Text style={styles.secondaryLinkText}>Sign in with email for full account access</Text>
               </Pressable>
             ) : (
@@ -741,11 +744,11 @@ export default function LoyaltyScreen() {
 
                 <View style={styles.inputRow}>
                   <View style={styles.inputWrap}>
-                    <Ionicons name="call-outline" size={18} color={Colors.light.textSecondary} style={styles.inputIcon} />
+                    <Ionicons name="call-outline" size={18} color={colors.textSecondary} style={styles.inputIcon} />
                     <TextInput
                       style={styles.phoneInput}
                       placeholder="07xxx xxxxxx"
-                      placeholderTextColor={Colors.light.textSecondary}
+                      placeholderTextColor={colors.textSecondary}
                       value={phone}
                       onChangeText={setPhone}
                       keyboardType="phone-pad"
@@ -758,11 +761,11 @@ export default function LoyaltyScreen() {
 
                 <View style={[styles.inputRow, { marginTop: 8 }]}>
                   <View style={styles.inputWrap}>
-                    <Ionicons name="mail-outline" size={18} color={Colors.light.textSecondary} style={styles.inputIcon} />
+                    <Ionicons name="mail-outline" size={18} color={colors.textSecondary} style={styles.inputIcon} />
                     <TextInput
                       style={styles.phoneInput}
                       placeholder="your@email.com"
-                      placeholderTextColor={Colors.light.textSecondary}
+                      placeholderTextColor={colors.textSecondary}
                       value={email}
                       onChangeText={setEmail}
                       keyboardType="email-address"
@@ -797,7 +800,7 @@ export default function LoyaltyScreen() {
                   onPress={() => setShowEnrollFlow(false)}
                   style={({ pressed }) => [styles.logoutButton, { alignSelf: "center", marginTop: 8, opacity: pressed ? 0.7 : 1 }]}
                 >
-                  <Ionicons name="arrow-back-outline" size={15} color={Colors.light.textSecondary} />
+                  <Ionicons name="arrow-back-outline" size={15} color={colors.textSecondary} />
                   <Text style={styles.logoutButtonText}>Back to points check</Text>
                 </Pressable>
 
@@ -818,11 +821,11 @@ export default function LoyaltyScreen() {
 
               <View style={styles.inputRow}>
                 <View style={styles.inputWrap}>
-                  <Ionicons name="key-outline" size={18} color={Colors.light.textSecondary} style={styles.inputIcon} />
+                  <Ionicons name="key-outline" size={18} color={colors.textSecondary} style={styles.inputIcon} />
                   <TextInput
                     style={styles.phoneInput}
                     placeholder="6-digit code"
-                    placeholderTextColor={Colors.light.textSecondary}
+                    placeholderTextColor={colors.textSecondary}
                     value={otpCode}
                     onChangeText={setOtpCode}
                     keyboardType="number-pad"
@@ -860,7 +863,7 @@ export default function LoyaltyScreen() {
                 }}
                 style={({ pressed }) => [styles.logoutButton, { alignSelf: "center", marginTop: 8, opacity: pressed ? 0.7 : 1 }]}
               >
-                <Ionicons name="arrow-back-outline" size={16} color={Colors.light.textSecondary} />
+                <Ionicons name="arrow-back-outline" size={16} color={colors.textSecondary} />
                 <Text style={styles.logoutButtonText}>Change phone / email</Text>
               </Pressable>
 
@@ -869,7 +872,7 @@ export default function LoyaltyScreen() {
                 disabled={sendCodeMutation.isPending}
                 style={({ pressed }) => [styles.logoutButton, { alignSelf: "center", marginTop: 4, opacity: pressed ? 0.7 : 1 }]}
               >
-                <Ionicons name="refresh-outline" size={16} color={Colors.light.textSecondary} />
+                <Ionicons name="refresh-outline" size={16} color={colors.textSecondary} />
                 <Text style={styles.logoutButtonText}>Resend code</Text>
               </Pressable>
 
@@ -941,7 +944,7 @@ export default function LoyaltyScreen() {
                     onPress={handleLogout}
                     style={({ pressed }) => [styles.logoutButton, { opacity: pressed ? 0.85 : 1 }]}
                   >
-                    <Ionicons name="log-out-outline" size={18} color={Colors.light.textSecondary} />
+                    <Ionicons name="log-out-outline" size={18} color={colors.textSecondary} />
                     <Text style={styles.logoutButtonText}>Sign Out</Text>
                   </Pressable>
                 </View>
@@ -950,7 +953,7 @@ export default function LoyaltyScreen() {
 
             <View style={styles.infoCard}>
               <View style={styles.infoRow}>
-                <Ionicons name="information-circle-outline" size={18} color={Colors.light.textSecondary} />
+                <Ionicons name="information-circle-outline" size={18} color={colors.textSecondary} />
                 <Text style={styles.infoText}>
                   Points are earned automatically when you pay at The 147. Ask a member of staff if you need help with your loyalty account.
                 </Text>
@@ -1012,7 +1015,7 @@ export default function LoyaltyScreen() {
                   </View>
                 </View>
                 <View style={styles.planChevron}>
-                  <Ionicons name="chevron-forward" size={16} color={Colors.light.textSecondary} />
+                  <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
                 </View>
               </Pressable>
             );
@@ -1031,7 +1034,9 @@ export default function LoyaltyScreen() {
 }
 
 
-const styles = StyleSheet.create({
+const createStyles = (palette: ReturnType<typeof useColors>) => {
+  const Colors = { ...baseColors, light: palette };
+  return StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
@@ -1050,12 +1055,12 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 22,
     fontWeight: "700",
-    color: "#FFF",
+    color: palette.text,
     fontFamily: "Montserrat_700Bold",
   },
   headerSubtitle: {
     fontSize: 14,
-    color: "rgba(255,255,255,0.7)",
+    color: palette.textSecondary,
     textAlign: "center",
     fontFamily: "Montserrat_400Regular",
   },
@@ -1517,4 +1522,5 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_400Regular",
     textDecorationLine: "underline",
   },
-});
+  });
+};

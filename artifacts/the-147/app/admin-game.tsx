@@ -18,7 +18,8 @@ import { router } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
-import Colors from "@/constants/colors";
+import BaseColors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -132,7 +133,7 @@ function prizeTypeLabel(t: string): string {
 
 function prizeTypeColor(t: string): string {
   if (t === "none") return "#6B7280";
-  if (t === "loyalty_points") return Colors.brand.gold;
+  if (t === "loyalty_points") return BaseColors.brand.gold;
   if (t === "reward_tier") return "#10B981";
   if (t === "gift_card") return "#6366F1";
   if (t === "customer_group") return "#EC4899";
@@ -149,6 +150,9 @@ interface PrizeRowProps {
 }
 
 function PrizeRow({ prize, onToggleActive, onEdit, saving }: PrizeRowProps) {
+  const colors = useColors();
+  const Colors = React.useMemo(() => ({ ...BaseColors, light: colors, glass: colors.glass }), [colors]);
+  const prizeRow = React.useMemo(() => createPrizeRow(colors), [colors]);
   return (
     <View style={[prizeRow.card, !prize.active && prizeRow.inactive]}>
       <View style={prizeRow.left}>
@@ -207,7 +211,9 @@ function PrizeRow({ prize, onToggleActive, onEdit, saving }: PrizeRowProps) {
   );
 }
 
-const prizeRow = StyleSheet.create({
+const createPrizeRow = (colors: ReturnType<typeof useColors>) => {
+  const Colors = { ...BaseColors, light: colors, glass: colors.glass };
+  return themedStyleSheet({
   card: {
     backgroundColor: "#fff",
     borderRadius: 12,
@@ -287,7 +293,8 @@ const prizeRow = StyleSheet.create({
     backgroundColor: "#F3F4F6",
     borderRadius: 8,
   },
-});
+  }, colors);
+};
 
 // ── Prize editor modal (inline sheet) ─────────────────────────────────────────
 
@@ -315,6 +322,9 @@ function tierDiscountLabel(tier: SquareTier): string {
 }
 
 function PrizeEditor({ draft, onChange, onSave, onCancel, saving, isNew, squareTiers, tiersLoading, tiersError, tiersRefetch }: PrizeEditorProps) {
+  const colors = useColors();
+  const Colors = React.useMemo(() => ({ ...BaseColors, light: colors, glass: colors.glass }), [colors]);
+  const editor = React.useMemo(() => createEditorStyles(colors), [colors]);
   const set = (key: keyof PrizeDraft, val: string | boolean) =>
     onChange({ ...draft, [key]: val });
 
@@ -605,7 +615,9 @@ function PrizeEditor({ draft, onChange, onSave, onCancel, saving, isNew, squareT
   );
 }
 
-const editor = StyleSheet.create({
+const createEditorStyles = (colors: ReturnType<typeof useColors>) => {
+  const Colors = { ...BaseColors, light: colors, glass: colors.glass };
+  return themedStyleSheet({
   container: {
     backgroundColor: "#F9FAFB",
     borderRadius: 14,
@@ -828,11 +840,14 @@ const editor = StyleSheet.create({
     fontSize: 11,
     color: "#9CA3AF",
   },
-});
+  }, colors);
+};
 
 // ── Redeem-by-code widget ─────────────────────────────────────────────────────
 
 function RedeemByCodeWidget({ onSuccess }: { onSuccess: () => void }) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createThemedStyles(colors), [colors]);
   const [code, setCode] = useState("");
   const [lastResult, setLastResult] = useState<{ customerName: string | null; prizeName: string; tierName: string | null } | null>(null);
 
@@ -907,6 +922,9 @@ function RedeemByCodeWidget({ onSuccess }: { onSuccess: () => void }) {
 // ── Main screen ───────────────────────────────────────────────────────────────
 
 export default function AdminGameScreen() {
+  const colors = useColors();
+  const Colors = React.useMemo(() => ({ ...BaseColors, light: colors, glass: colors.glass }), [colors]);
+  const styles = React.useMemo(() => createThemedStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -1426,7 +1444,9 @@ export default function AdminGameScreen() {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const createThemedStyles = (colors: ReturnType<typeof useColors>) => {
+  const Colors = { ...BaseColors, light: colors, glass: colors.glass };
+  return themedStyleSheet({
   container: { flex: 1, backgroundColor: Colors.light.background },
   center: { alignItems: "center", justifyContent: "center" },
   header: {
@@ -1702,4 +1722,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#B91C1C",
   },
-});
+  }, colors);
+};
+
+function themedStyleSheet(source: any, colors: ReturnType<typeof useColors>) {
+  return StyleSheet.create(themeSource(source, colors));
+}
+function themeSource(source: any, colors: ReturnType<typeof useColors>): any {
+  return Object.fromEntries(Object.entries(source).map(([name, value]: any) => [
+    name, Object.fromEntries(Object.entries(value).map(([key, token]: any) => [key, themeToken(name, key, token, colors)])),
+  ]));
+}
+function themeToken(name: string, key: string, token: any, colors: ReturnType<typeof useColors>) {
+  if (typeof token !== "string") return token;
+  if (key === "color" && /^#fff(?:fff)?$/i.test(token)) return /btn|button|badge|chip|pill|selected|active|primary|action|cta|fab|submit|save|publish|approve|confirm|complete|clock|gdpr|back|close|filter|tab|preview|retry|claim|redeem|login/i.test(name) ? token : colors.text;
+  if (key === "color") return ["#0A1628", "#132742", "#111827", "#1E293B", "#1F2937", "#334155", "#374151", "#4B5563"].includes(token) ? colors.text : ["#475569", "#4B5A72", "#64748B", "#6B7280", "#94A3B8", "#9CA3AF"].includes(token) ? colors.textSecondary : token;
+  if (/border.*color/i.test(key) && ["#E2E8F0", "#E5E7EB", "#CBD5E1", "#D1D5DB"].includes(token)) return colors.border;
+  if (/backgroundcolor/i.test(key)) return ["#F2F5FA", "#F4F7FB", "#F8FAFC", "#F9FAFB", "#F1F5F9", "#F3F4F6"].includes(token) ? colors.background : ["#fff", "#FFFFFF"].includes(token) ? colors.surface : ["#0A1628", "#132742", "#0F172A", "#1E293B"].includes(token) ? colors.surfaceElevated : token;
+  return token;
+}

@@ -23,12 +23,14 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useCart } from "@/contexts/CartContext";
 import { apiRequest, queryClient, getApiUrl } from "@/lib/query-client";
 import type { SelectedModifier } from "@/types/menu";
-import Colors from "@/constants/colors";
+import type { AppPalette } from "@/constants/colors";
 import { TABLE_TYPES } from "@/lib/data";
 import { fetch } from "expo/fetch";
 import { hasPromptedForBiometric, markBiometricPrompted } from "@/lib/biometric";
 import { useNotifications } from "@/contexts/NotificationContext";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { useColors } from "@/hooks/useColors";
+import { useAppearance, type AppearancePreference } from "@/contexts/AppearanceContext";
 
 const BOOKING_HOURS = [
   "10:00", "10:30", "11:00", "11:30", "12:00", "12:30",
@@ -74,6 +76,8 @@ function DOBPicker({ value, onChange, testID }: {
   onChange: (next: string) => void;
   testID?: string;
 }) {
+  const colors = useColors();
+  const styles = useMemo(() => buildStyles(colors), [colors]);
   const [showPicker, setShowPicker] = useState(false);
 
   if (Platform.OS === "web") {
@@ -90,14 +94,14 @@ function DOBPicker({ value, onChange, testID }: {
       style: {
         height: 48,
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.15)",
+        borderColor: colors.border,
         borderRadius: 8,
         paddingLeft: 12,
         paddingRight: 12,
         fontSize: 16,
         fontFamily: "inherit",
-        color: "rgba(255,255,255,0.9)",
-        backgroundColor: "rgba(255,255,255,0.08)",
+        color: colors.text,
+        backgroundColor: colors.input,
         marginBottom: 4,
         width: "100%",
         boxSizing: "border-box",
@@ -132,7 +136,7 @@ function DOBPicker({ value, onChange, testID }: {
         style={styles.dobPickerButton}
         testID={testID}
       >
-        <Ionicons name="calendar-outline" size={18} color={Colors.brand.blue} />
+        <Ionicons name="calendar-outline" size={18} color={colors.tint} />
         <Text style={[styles.dobPickerText, !value && styles.dobPickerPlaceholder]}>
           {value || "Select your date of birth"}
         </Text>
@@ -222,6 +226,8 @@ interface AppOrder {
 }
 
 export default function AccountScreen() {
+  const colors = useColors();
+  const styles = useMemo(() => buildStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -251,7 +257,7 @@ export default function AccountScreen() {
   if (authLoading) {
     return (
       <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
-        <ActivityIndicator size="large" color={Colors.brand.blue} style={{ marginTop: 60 }} />
+        <ActivityIndicator size="large" color={colors.tint} style={{ marginTop: 60 }} />
       </View>
     );
   }
@@ -294,6 +300,84 @@ export default function AccountScreen() {
   );
 }
 
+function AppearanceSetting() {
+  const colors = useColors();
+  const { themesEnabled, preference, setPreference } = useAppearance();
+
+  if (!themesEnabled) return null;
+
+  return (
+    <View
+      style={{
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderWidth: 1,
+        borderRadius: 12,
+        padding: 14,
+        marginTop: 12,
+        marginBottom: 16,
+      }}
+      accessibilityLabel="Appearance"
+    >
+      <Text
+        style={{
+          color: colors.text,
+          fontFamily: "Montserrat_600SemiBold",
+          fontSize: 14,
+        }}
+      >
+        Appearance
+      </Text>
+      <Text
+        style={{
+          color: colors.textSecondary,
+          fontFamily: "Montserrat_400Regular",
+          fontSize: 12,
+          marginTop: 2,
+          marginBottom: 10,
+        }}
+      >
+        Choose how The 147 looks on this device.
+      </Text>
+      <View style={{ flexDirection: "row", gap: 8 }} accessibilityRole="radiogroup">
+        {(["system", "light", "dark"] as AppearancePreference[]).map((option) => {
+          const active = preference === option;
+          const label = option.charAt(0).toUpperCase() + option.slice(1);
+          return (
+            <Pressable
+              key={option}
+              onPress={() => { void setPreference(option); }}
+              testID={`appearance-option-${option}`}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`${label} appearance`}
+              style={{
+                flex: 1,
+                alignItems: "center",
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: active ? colors.tint : colors.border,
+                backgroundColor: active ? colors.glass.card : colors.background,
+                paddingVertical: 9,
+              }}
+            >
+              <Text
+                style={{
+                  color: active ? colors.tint : colors.textSecondary,
+                  fontFamily: "Montserrat_600SemiBold",
+                  fontSize: 13,
+                }}
+              >
+                {label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 function AuthView({ login, register, requestPasswordReset, resendVerificationEmailFor, prefillEmail, initialMode }: {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (name: string, email: string, phone: string, password: string, dateOfBirth?: string | null) => Promise<{ success: boolean; pending?: boolean; error?: string }>;
@@ -302,6 +386,19 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
   prefillEmail?: string;
   initialMode?: AuthMode;
 }) {
+  const colors = useColors();
+  const styles = useMemo(() => buildStyles(colors), [colors]);
+  const authTheme = useMemo(() => StyleSheet.create({
+    title: { color: colors.text },
+    secondaryText: { color: colors.textSecondary },
+    label: { color: colors.text },
+    input: {
+      color: colors.text,
+      backgroundColor: colors.input,
+      borderColor: colors.border,
+    },
+    divider: { backgroundColor: colors.border },
+  }), [colors]);
   const { tabletPad } = useResponsive();
   const {
     biometricSupported,
@@ -348,20 +445,20 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
     return (
       <ScrollView style={styles.scrollContent} contentContainerStyle={[styles.scrollInner, { marginHorizontal: tabletPad }]} keyboardShouldPersistTaps="handled">
         <View style={styles.authIcon}>
-          <Ionicons name="key-outline" size={70} color={Colors.brand.blue} />
+          <Ionicons name="key-outline" size={70} color={colors.tint} />
         </View>
-        <Text style={styles.authTitle}>Reset Password</Text>
-        <Text style={styles.authSubtitle}>
+        <Text style={[styles.authTitle, authTheme.title]}>Reset Password</Text>
+        <Text style={[styles.authSubtitle, authTheme.secondaryText]}>
           Enter the email on your account and we'll send you a reset link.
         </Text>
 
-        <Text style={styles.inputLabel}>Email Address</Text>
+        <Text style={[styles.inputLabel, authTheme.label]}>Email Address</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, authTheme.input]}
           value={forgotEmail}
           onChangeText={setForgotEmail}
           placeholder="your@email.com"
-          placeholderTextColor="#9CA3AF"
+          placeholderTextColor={colors.textSecondary}
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
@@ -400,7 +497,7 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
           }}
           style={styles.switchMode}
         >
-          <Text style={styles.switchModeText}>
+          <Text style={[styles.switchModeText, authTheme.secondaryText]}>
             <Text style={styles.switchModeLink}>← Back to sign in</Text>
           </Text>
         </Pressable>
@@ -488,10 +585,10 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
     return (
       <ScrollView style={styles.scrollContent} contentContainerStyle={[styles.scrollInner, { marginHorizontal: tabletPad }]} keyboardShouldPersistTaps="handled">
         <View style={styles.authIcon}>
-          <Ionicons name="mail-outline" size={70} color={Colors.brand.blue} />
+          <Ionicons name="mail-outline" size={70} color={colors.tint} />
         </View>
-        <Text style={styles.authTitle}>Check Your Email</Text>
-        <Text style={styles.authSubtitle}>
+        <Text style={[styles.authTitle, authTheme.title]}>Check Your Email</Text>
+        <Text style={[styles.authSubtitle, authTheme.secondaryText]}>
           If that email address is available, we've created your account and sent a verification link. Please check your inbox and follow the link to get started.
         </Text>
         <Pressable
@@ -507,12 +604,12 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
   return (
     <ScrollView style={styles.scrollContent} contentContainerStyle={[styles.scrollInner, { marginHorizontal: tabletPad }]} keyboardShouldPersistTaps="handled">
       <View style={styles.authIcon}>
-        <Ionicons name="person-circle" size={80} color={Colors.brand.blue} />
+        <Ionicons name="person-circle" size={80} color={colors.tint} />
       </View>
-      <Text style={styles.authTitle}>
+      <Text style={[styles.authTitle, authTheme.title]}>
         {mode === "login" ? "Welcome Back" : "Create Account"}
       </Text>
-      <Text style={styles.authSubtitle}>
+      <Text style={[styles.authSubtitle, authTheme.secondaryText]}>
         {mode === "login"
           ? "Sign in to manage your bookings"
           : "Join The 147 to book tables and track reservations"}
@@ -535,66 +632,66 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
             <Ionicons
               name={biometricKind === "face" ? "scan-outline" : "finger-print"}
               size={22}
-              color={Colors.brand.blue}
+              color={colors.tint}
             />
-            <Text style={styles.biometricButtonText}>Sign in with {biometricLabelText}</Text>
+            <Text style={[styles.biometricButtonText, authTheme.title]}>Sign in with {biometricLabelText}</Text>
           </Pressable>
           <View style={styles.biometricDivider}>
-            <View style={styles.biometricDividerLine} />
-            <Text style={styles.biometricDividerText}>or use password</Text>
-            <View style={styles.biometricDividerLine} />
+            <View style={[styles.biometricDividerLine, authTheme.divider]} />
+            <Text style={[styles.biometricDividerText, authTheme.secondaryText]}>or use password</Text>
+            <View style={[styles.biometricDividerLine, authTheme.divider]} />
           </View>
         </>
       ) : null}
 
       {mode === "register" && (
         <>
-          <Text style={styles.inputLabel}>Full Name *</Text>
+          <Text style={[styles.inputLabel, authTheme.label]}>Full Name *</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, authTheme.input]}
             value={name}
             onChangeText={setName}
             placeholder="Your full name"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={colors.textSecondary}
             autoCapitalize="words"
             testID="register-name"
           />
-          <Text style={styles.inputLabel}>Phone Number</Text>
+          <Text style={[styles.inputLabel, authTheme.label]}>Phone Number</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, authTheme.input]}
             value={phone}
             onChangeText={setPhone}
             placeholder="Your phone number"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={colors.textSecondary}
             keyboardType="phone-pad"
             testID="register-phone"
           />
-          <Text style={styles.inputLabel}>Date of Birth</Text>
+          <Text style={[styles.inputLabel, authTheme.label]}>Date of Birth</Text>
           <DOBPicker value={regDob} onChange={setRegDob} testID="register-dob" />
-          <Text style={styles.dobHint}>Optional — add your birthday to unlock a free reward in your birthday week.</Text>
+          <Text style={[styles.dobHint, authTheme.secondaryText]}>Optional — add your birthday to unlock a free reward in your birthday week.</Text>
         </>
       )}
 
-      <Text style={styles.inputLabel}>Email Address *</Text>
+      <Text style={[styles.inputLabel, authTheme.label]}>Email Address *</Text>
       <TextInput
-        style={styles.input}
+        style={[styles.input, authTheme.input]}
         value={email}
         onChangeText={setEmail}
         placeholder="your@email.com"
-        placeholderTextColor="#9CA3AF"
+        placeholderTextColor={colors.textSecondary}
         keyboardType="email-address"
         autoCapitalize="none"
         autoCorrect={false}
         testID="auth-email"
       />
 
-      <Text style={styles.inputLabel}>Password *</Text>
+      <Text style={[styles.inputLabel, authTheme.label]}>Password *</Text>
       <TextInput
-        style={styles.input}
+        style={[styles.input, authTheme.input]}
         value={password}
         onChangeText={setPassword}
         placeholder={mode === "register" ? "Min. 6 characters" : "Your password"}
-        placeholderTextColor="#9CA3AF"
+        placeholderTextColor={colors.textSecondary}
         secureTextEntry
         testID="auth-password"
       />
@@ -653,7 +750,7 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
           style={styles.switchMode}
           testID="forgot-password-link"
         >
-          <Text style={styles.switchModeText}>
+          <Text style={[styles.switchModeText, authTheme.secondaryText]}>
             <Text style={styles.switchModeLink}>Forgot password?</Text>
           </Text>
         </Pressable>
@@ -663,13 +760,14 @@ function AuthView({ login, register, requestPasswordReset, resendVerificationEma
         onPress={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}
         style={styles.switchMode}
       >
-        <Text style={styles.switchModeText}>
+        <Text style={[styles.switchModeText, authTheme.secondaryText]}>
           {mode === "login" ? "Don't have an account? " : "Already have an account? "}
           <Text style={styles.switchModeLink}>
             {mode === "login" ? "Sign Up" : "Sign In"}
           </Text>
         </Text>
       </Pressable>
+      <AppearanceSetting />
     </ScrollView>
   );
 }
@@ -681,6 +779,8 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
   deleteAccount: () => Promise<{ success: boolean; error?: string }>;
   resendVerificationEmail: () => Promise<{ success: boolean; error?: string }>;
 }) {
+  const colors = useColors();
+  const styles = useMemo(() => buildStyles(colors), [colors]);
   const { tabletPad } = useResponsive();
   const {
     biometricSupported,
@@ -992,7 +1092,7 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
           </View>
           {!editingProfile && (
             <Pressable onPress={() => setEditingProfile(true)} style={styles.editButton}>
-              <Ionicons name="pencil" size={18} color={Colors.brand.blue} />
+              <Ionicons name="pencil" size={18} color={colors.tint} />
             </Pressable>
           )}
         </View>
@@ -1037,8 +1137,8 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
           onPress={handleLogout}
           style={({ pressed }) => [styles.logoutButton, { opacity: pressed ? 0.8 : 1 }]}
         >
-          <Ionicons name="log-out-outline" size={20} color={Colors.brand.red} />
-          <Text style={[styles.actionButtonText, { color: Colors.brand.red }]}>Sign Out</Text>
+          <Ionicons name="log-out-outline" size={20} color={colors.accent} />
+          <Text style={[styles.actionButtonText, { color: colors.accent }]}>Sign Out</Text>
         </Pressable>
       </View>
 
@@ -1052,7 +1152,7 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
           <Ionicons
             name={notificationsEnabled ? "notifications" : "notifications-outline"}
             size={22}
-            color={Colors.brand.blue}
+            color={colors.tint}
           />
           <View style={{ flex: 1 }}>
             <Text style={styles.biometricSettingTitle}>Push Notifications</Text>
@@ -1082,7 +1182,7 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
           <Ionicons
             name={biometricKind === "face" ? "scan-outline" : "finger-print"}
             size={22}
-            color={Colors.brand.blue}
+            color={colors.tint}
           />
           <View style={{ flex: 1 }}>
             <Text style={styles.biometricSettingTitle}>Sign in with {biometricLabelText}</Text>
@@ -1098,9 +1198,11 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
         </Pressable>
       ) : null}
 
+      <AppearanceSetting />
+
       <Text style={styles.sectionTitle}>Upcoming Bookings</Text>
       {bookingsQuery.isLoading ? (
-        <ActivityIndicator color={Colors.brand.blue} style={{ marginTop: 20 }} />
+        <ActivityIndicator color={colors.tint} style={{ marginTop: 20 }} />
       ) : upcomingBookings.length === 0 ? (
         <View style={styles.emptyState}>
           <Ionicons name="calendar-outline" size={40} color="#9CA3AF" />
@@ -1141,7 +1243,7 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
               Tap an order to view its receipt. Showing the last 30 days.
             </Text>
             {ordersQuery.isLoading ? (
-              <ActivityIndicator color={Colors.brand.blue} style={{ marginTop: 20 }} />
+              <ActivityIndicator color={colors.tint} style={{ marginTop: 20 }} />
             ) : ordersQuery.error ? (
               <View style={styles.emptyState}>
                 <Text style={styles.emptyText}>Could not load orders</Text>
@@ -1169,14 +1271,14 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
           onPress={() => router.push("/privacy-policy")}
           style={({ pressed }) => [styles.privacyLink, { opacity: pressed ? 0.7 : 1 }]}
         >
-          <Ionicons name="shield-checkmark-outline" size={18} color={Colors.brand.blue} />
+          <Ionicons name="shield-checkmark-outline" size={18} color={colors.tint} />
           <Text style={styles.privacyLinkText}>View Privacy Policy</Text>
         </Pressable>
         <Pressable
           onPress={() => router.push("/gdpr-rights")}
           style={({ pressed }) => [styles.privacyLink, { opacity: pressed ? 0.7 : 1 }]}
         >
-          <Ionicons name="shield-outline" size={18} color={Colors.brand.blue} />
+          <Ionicons name="shield-outline" size={18} color={colors.tint} />
           <Text style={styles.privacyLinkText}>UK GDPR Rights</Text>
         </Pressable>
         <Pressable
@@ -1184,7 +1286,7 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
           style={({ pressed }) => [styles.privacyLink, { opacity: pressed ? 0.7 : 1 }]}
           testID="terms-link-account"
         >
-          <Ionicons name="reader-outline" size={18} color={Colors.brand.blue} />
+          <Ionicons name="reader-outline" size={18} color={colors.tint} />
           <Text style={styles.privacyLinkText}>View Terms & Conditions</Text>
         </Pressable>
         <Pressable
@@ -1240,6 +1342,8 @@ function LoggedInView({ customer, logout, updateProfile, deleteAccount, resendVe
 }
 
 function BookingCard({ booking, onCancel, onReschedule, showCancel }: { booking: CustomerBooking; onCancel?: () => void; onReschedule?: () => void; showCancel: boolean }) {
+  const colors = useColors();
+  const styles = useMemo(() => buildStyles(colors), [colors]);
   const tableData = TABLE_TYPES.find((t) => t.id === booking.tableType);
   const tableName = tableData?.name || booking.tableType;
   const [dy, dm, dd] = booking.date.split("-").map(Number);
@@ -1265,7 +1369,7 @@ function BookingCard({ booking, onCancel, onReschedule, showCancel }: { booking:
         <View style={styles.bookingActions}>
           {onReschedule && (
             <Pressable onPress={onReschedule} style={({ pressed }) => [styles.rescheduleButton, { opacity: pressed ? 0.7 : 1 }]}>
-              <Ionicons name="calendar-outline" size={14} color={Colors.brand.blue} style={{ marginRight: 4 }} />
+              <Ionicons name="calendar-outline" size={14} color={colors.tint} style={{ marginRight: 4 }} />
               <Text style={styles.rescheduleButtonText}>Reschedule</Text>
             </Pressable>
           )}
@@ -1291,6 +1395,8 @@ interface ReorderResponse {
 }
 
 function OrderCard({ order, active }: { order: AppOrder; active?: boolean }) {
+  const colors = useColors();
+  const styles = useMemo(() => buildStyles(colors), [colors]);
   const date = new Date(order.createdAt);
   const dateStr = date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
   const timeStr = date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
@@ -1420,7 +1526,7 @@ function OrderCard({ order, active }: { order: AppOrder; active?: boolean }) {
           <View style={[styles.statusBadge, { backgroundColor: sc.bg }]}>
             <Text style={[styles.statusText, { color: sc.text }]}>{sc.label}</Text>
           </View>
-          <Text style={{ fontWeight: "700" as const, fontSize: 15, color: Colors.light.text }}>{total}</Text>
+          <Text style={{ fontWeight: "700" as const, fontSize: 15, color: colors.text }}>{total}</Text>
         </View>
       </View>
       {order.discountLabel && (
@@ -1445,10 +1551,10 @@ function OrderCard({ order, active }: { order: AppOrder; active?: boolean }) {
               ]}
             >
               {reordering ? (
-                <ActivityIndicator size="small" color={Colors.brand.blue} />
+                <ActivityIndicator size="small" color={colors.tint} />
               ) : (
                 <>
-                  <Ionicons name="repeat-outline" size={14} color={Colors.brand.blue} />
+                  <Ionicons name="repeat-outline" size={14} color={colors.tint} />
                   <Text style={styles.reorderInlineText}>Reorder</Text>
                 </>
               )}
@@ -1457,7 +1563,7 @@ function OrderCard({ order, active }: { order: AppOrder; active?: boolean }) {
           {canOpenReceipt ? (
             <View style={styles.viewReceiptInner}>
               <Text style={styles.viewReceiptText}>View receipt</Text>
-              <Ionicons name="chevron-forward" size={14} color={Colors.brand.blue} />
+              <Ionicons name="chevron-forward" size={14} color={colors.tint} />
             </View>
           ) : null}
         </View>
@@ -1496,6 +1602,8 @@ function RescheduleModal({ booking, onClose, onConfirm, loading }: {
   onConfirm: (date: string, startTime: string, duration: number) => void;
   loading: boolean;
 }) {
+  const colors = useColors();
+  const rStyles = useMemo(() => buildRescheduleStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const [weekOffset, setWeekOffset] = useState(0);
   const today = localDateStr(new Date());
@@ -1556,7 +1664,7 @@ function RescheduleModal({ booking, onClose, onConfirm, loading }: {
 
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: Colors.light.background }}>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
         <View style={[rStyles.header, { paddingTop: insets.top + (Platform.OS === "web" ? 20 : 0) }]}>
           <Pressable onPress={onClose} style={rStyles.closeBtn}>
             <Ionicons name="close" size={22} color="#fff" />
@@ -1574,13 +1682,13 @@ function RescheduleModal({ booking, onClose, onConfirm, loading }: {
           <Text style={rStyles.sectionLabel}>Select new date</Text>
           <View style={rStyles.weekNav}>
             <Pressable onPress={() => setWeekOffset(Math.max(0, weekOffset - 1))} style={rStyles.weekBtn} disabled={weekOffset === 0}>
-              <Ionicons name="chevron-back" size={18} color={weekOffset === 0 ? "#CBD5E1" : Colors.brand.blue} />
+              <Ionicons name="chevron-back" size={18} color={weekOffset === 0 ? "#CBD5E1" : colors.tint} />
             </Pressable>
             <Text style={rStyles.weekLabel}>
               {days[0].label} {days[0].dayNum} – {days[6].label} {days[6].dayNum}
             </Text>
             <Pressable onPress={() => setWeekOffset(Math.min(26, weekOffset + 1))} style={rStyles.weekBtn}>
-              <Ionicons name="chevron-forward" size={18} color={Colors.brand.blue} />
+              <Ionicons name="chevron-forward" size={18} color={colors.tint} />
             </Pressable>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
@@ -1616,7 +1724,7 @@ function RescheduleModal({ booking, onClose, onConfirm, loading }: {
 
           <Text style={rStyles.sectionLabel}>Select time</Text>
           {availabilityQuery.isLoading ? (
-            <ActivityIndicator color={Colors.brand.blue} style={{ marginVertical: 16 }} />
+            <ActivityIndicator color={colors.tint} style={{ marginVertical: 16 }} />
           ) : (
             <View style={rStyles.timeGrid}>
               {BOOKING_HOURS.filter((time) => {
@@ -1670,38 +1778,38 @@ function RescheduleModal({ booking, onClose, onConfirm, loading }: {
   );
 }
 
-const rStyles = StyleSheet.create({
-  header: { backgroundColor: Colors.brand.navy, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 14 },
+const buildRescheduleStyles = (colors: AppPalette) => StyleSheet.create({
+  header: { backgroundColor: colors.scheme === "light" ? "#132742" : colors.surfaceElevated, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 14 },
   closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center" },
   headerTitle: { fontSize: 17, fontWeight: "700" as const, color: "#fff" },
-  currentCard: { backgroundColor: "rgba(59,130,246,0.1)", borderRadius: 10, padding: 14, marginBottom: 24, borderLeftWidth: 3, borderLeftColor: Colors.brand.blue },
-  currentLabel: { fontSize: 11, fontWeight: "600" as const, color: "rgba(255,255,255,0.5)", textTransform: "uppercase" as const, letterSpacing: 0.5, marginBottom: 4 },
-  currentDetail: { fontSize: 14, fontWeight: "600" as const, color: Colors.brand.blue },
-  sectionLabel: { fontSize: 13, fontWeight: "700" as const, color: "rgba(255,255,255,0.7)", marginBottom: 12, textTransform: "uppercase" as const, letterSpacing: 0.5 },
+  currentCard: { backgroundColor: colors.glass.card, borderRadius: 10, padding: 14, marginBottom: 24, borderLeftWidth: 3, borderLeftColor: colors.tint },
+  currentLabel: { fontSize: 11, fontWeight: "600" as const, color: colors.textSecondary, textTransform: "uppercase" as const, letterSpacing: 0.5, marginBottom: 4 },
+  currentDetail: { fontSize: 14, fontWeight: "600" as const, color: colors.tint },
+  sectionLabel: { fontSize: 13, fontWeight: "700" as const, color: colors.textSecondary, marginBottom: 12, textTransform: "uppercase" as const, letterSpacing: 0.5 },
   weekNav: { flexDirection: "row" as const, alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
   weekBtn: { padding: 6 },
-  weekLabel: { fontSize: 13, fontWeight: "600" as const, color: "rgba(255,255,255,0.7)" },
-  dayChip: { width: 48, alignItems: "center", paddingVertical: 10, marginRight: 8, borderRadius: 10, backgroundColor: "rgba(255,255,255,0.08)", borderWidth: 1.5, borderColor: "transparent" },
-  dayChipSelected: { backgroundColor: Colors.brand.blue, borderColor: Colors.brand.blue },
+  weekLabel: { fontSize: 13, fontWeight: "600" as const, color: colors.textSecondary },
+  dayChip: { width: 48, alignItems: "center", paddingVertical: 10, marginRight: 8, borderRadius: 10, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.border },
+  dayChipSelected: { backgroundColor: colors.tint, borderColor: colors.tint },
   dayChipDisabled: { opacity: 0.35 },
-  dayLabel: { fontSize: 11, fontWeight: "600" as const, color: "rgba(255,255,255,0.5)" },
+  dayLabel: { fontSize: 11, fontWeight: "600" as const, color: colors.textSecondary },
   dayLabelSelected: { color: "#fff" },
-  dayNum: { fontSize: 16, fontWeight: "800" as const, color: "rgba(255,255,255,0.9)", marginTop: 2 },
+  dayNum: { fontSize: 16, fontWeight: "800" as const, color: colors.text, marginTop: 2 },
   dayNumSelected: { color: "#fff" },
   dayTextDisabled: { color: "rgba(255,255,255,0.25)" },
   chipRow: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 8, marginBottom: 24 },
-  chip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, backgroundColor: "rgba(255,255,255,0.08)", borderWidth: 1.5, borderColor: "transparent" },
-  chipSelected: { backgroundColor: Colors.brand.blue, borderColor: Colors.brand.blue },
-  chipText: { fontSize: 13, fontWeight: "600" as const, color: "rgba(255,255,255,0.7)" },
+  chip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.border },
+  chipSelected: { backgroundColor: colors.tint, borderColor: colors.tint },
+  chipText: { fontSize: 13, fontWeight: "600" as const, color: colors.textSecondary },
   chipTextSelected: { color: "#fff" },
   timeGrid: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 8, marginBottom: 28 },
-  timeChip: { width: 72, paddingVertical: 10, alignItems: "center", borderRadius: 8, backgroundColor: "rgba(255,255,255,0.08)", borderWidth: 1.5, borderColor: "transparent" },
-  timeChipSelected: { backgroundColor: Colors.brand.blue, borderColor: Colors.brand.blue },
+  timeChip: { width: 72, paddingVertical: 10, alignItems: "center", borderRadius: 8, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.border },
+  timeChipSelected: { backgroundColor: colors.tint, borderColor: colors.tint },
   timeChipDisabled: { opacity: 0.35 },
-  timeText: { fontSize: 13, fontWeight: "600" as const, color: "rgba(255,255,255,0.7)" },
+  timeText: { fontSize: 13, fontWeight: "600" as const, color: colors.textSecondary },
   timeTextSelected: { color: "#fff" },
   timeTextDisabled: { color: "#94A3B8" },
-  confirmBtn: { backgroundColor: Colors.brand.navy, borderRadius: 12, paddingVertical: 16, alignItems: "center" as const },
+  confirmBtn: { backgroundColor: colors.scheme === "light" ? "#132742" : colors.surfaceElevated, borderRadius: 12, paddingVertical: 16, alignItems: "center" as const },
   confirmBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" as const },
 });
 
@@ -1710,13 +1818,13 @@ async function getCustomerToken(): Promise<string> {
   return (await AsyncStorage.getItem("customer_session_token")) || "";
 }
 
-const styles = StyleSheet.create({
+const buildStyles = (colors: AppPalette) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.light.background,
+    backgroundColor: colors.background,
   },
   header: {
-    backgroundColor: Colors.brand.navy,
+    backgroundColor: colors.scheme === "light" ? "#132742" : colors.surfaceElevated,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -1758,14 +1866,14 @@ const styles = StyleSheet.create({
   authTitle: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 24,
-    color: Colors.light.text,
+    color: colors.text,
     textAlign: "center",
     marginBottom: 8,
   },
   authSubtitle: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 14,
-    color: Colors.light.textSecondary,
+    color: colors.textSecondary,
     textAlign: "center",
     marginBottom: 24,
     lineHeight: 20,
@@ -1817,13 +1925,13 @@ const styles = StyleSheet.create({
   warningText: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 13,
-    color: "rgba(255,255,255,0.75)",
+    color: colors.textSecondary,
     lineHeight: 18,
     marginBottom: 10,
   },
   warningButton: {
     alignSelf: "flex-start",
-    backgroundColor: Colors.brand.blue,
+    backgroundColor: colors.tint,
     borderRadius: 8,
     paddingVertical: 8,
     paddingHorizontal: 14,
@@ -1836,29 +1944,29 @@ const styles = StyleSheet.create({
   warningHint: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 12,
-    color: "rgba(255,255,255,0.6)",
+    color: colors.textSecondary,
     marginTop: 8,
   },
   inputLabel: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 13,
-    color: Colors.light.text,
+    color: colors.text,
     marginBottom: 6,
     marginTop: 4,
   },
   input: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 15,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: colors.input,
     borderRadius: 10,
     padding: 14,
     marginBottom: 14,
-    color: Colors.light.text,
+    color: colors.text,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: colors.border,
   },
   submitButton: {
-    backgroundColor: Colors.brand.blue,
+    backgroundColor: colors.tint,
     borderRadius: 12,
     padding: 16,
     alignItems: "center",
@@ -1877,19 +1985,19 @@ const styles = StyleSheet.create({
   switchModeText: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 14,
-    color: Colors.light.textSecondary,
+    color: colors.textSecondary,
   },
   switchModeLink: {
     fontFamily: "Montserrat_600SemiBold",
-    color: Colors.brand.blue,
+    color: colors.tint,
   },
   profileCard: {
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 20,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: colors.border,
   },
   verifyBanner: {
     backgroundColor: "rgba(212,168,67,0.08)",
@@ -1938,7 +2046,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: Colors.brand.blue,
+    backgroundColor: colors.tint,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1950,24 +2058,24 @@ const styles = StyleSheet.create({
   profileName: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 18,
-    color: Colors.light.text,
+    color: colors.text,
   },
   profileEmail: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 13,
-    color: Colors.light.textSecondary,
+    color: colors.textSecondary,
     marginTop: 2,
   },
   profilePhone: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 13,
-    color: Colors.light.textSecondary,
+    color: colors.textSecondary,
     marginTop: 2,
   },
   dobHint: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 11,
-    color: Colors.light.textSecondary,
+    color: colors.textSecondary,
     marginBottom: 10,
     fontStyle: "italic",
   },
@@ -1977,20 +2085,20 @@ const styles = StyleSheet.create({
     gap: 10,
     height: 48,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
+    borderColor: colors.border,
     borderRadius: 8,
     paddingHorizontal: 12,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: colors.input,
     marginBottom: 4,
   },
   dobPickerText: {
     flex: 1,
     fontFamily: "Montserrat_500Medium",
     fontSize: 16,
-    color: "rgba(255,255,255,0.9)",
+    color: colors.text,
   },
   dobPickerPlaceholder: {
-    color: "rgba(255,255,255,0.4)",
+    color: colors.textSecondary,
     fontFamily: "Montserrat_400Regular",
   },
   dobModalBackdrop: {
@@ -1999,7 +2107,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   dobModalSheet: {
-    backgroundColor: "#132742",
+    backgroundColor: colors.surface,
     paddingTop: 8,
     paddingBottom: 34,
     borderTopLeftRadius: 16,
@@ -2008,7 +2116,7 @@ const styles = StyleSheet.create({
   },
   dobModalDone: {
     alignSelf: "center",
-    backgroundColor: Colors.brand.blue,
+    backgroundColor: colors.tint,
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 8,
@@ -2027,7 +2135,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   saveButton: {
-    backgroundColor: Colors.brand.blue,
+    backgroundColor: colors.tint,
     borderRadius: 8,
     paddingHorizontal: 20,
     paddingVertical: 10,
@@ -2045,7 +2153,7 @@ const styles = StyleSheet.create({
   cancelEditText: {
     fontFamily: "Montserrat_500Medium",
     fontSize: 14,
-    color: Colors.light.textSecondary,
+    color: colors.textSecondary,
   },
   actionRow: {
     flexDirection: "row",
@@ -2058,7 +2166,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    backgroundColor: Colors.brand.blue,
+    backgroundColor: colors.tint,
     borderRadius: 12,
     padding: 14,
   },
@@ -2082,7 +2190,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 18,
-    color: Colors.light.text,
+    color: colors.text,
     marginBottom: 12,
   },
   emptyState: {
@@ -2093,15 +2201,15 @@ const styles = StyleSheet.create({
   emptyText: {
     fontFamily: "Montserrat_500Medium",
     fontSize: 14,
-    color: Colors.light.textSecondary,
+    color: colors.textSecondary,
   },
   bookingCard: {
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: colors.glass.card,
     borderRadius: 14,
     padding: 16,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: colors.glass.cardBorder,
   },
   bookingCardCancelled: {
     opacity: 0.6,
@@ -2117,18 +2225,18 @@ const styles = StyleSheet.create({
   bookingTable: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 15,
-    color: Colors.light.text,
+    color: colors.text,
   },
   bookingDate: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 13,
-    color: Colors.light.textSecondary,
+    color: colors.textSecondary,
     marginTop: 4,
   },
   bookingDuration: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 13,
-    color: Colors.light.textSecondary,
+    color: colors.textSecondary,
     marginTop: 2,
   },
   statusBadge: {
@@ -2157,7 +2265,7 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 12,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.08)",
+    borderTopColor: colors.border,
     paddingTop: 12,
   },
   rescheduleButton: {
@@ -2168,12 +2276,12 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1.5,
-    borderColor: Colors.brand.blue,
+    borderColor: colors.tint,
   },
   rescheduleButtonText: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 13,
-    color: Colors.brand.blue,
+    color: colors.tint,
   },
   cancelButton: {
     alignItems: "center",
@@ -2185,7 +2293,7 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 13,
-    color: Colors.brand.red,
+    color: colors.accent,
   },
   activeOrderCard: {
     borderLeftWidth: 3,
@@ -2210,7 +2318,7 @@ const styles = StyleSheet.create({
   orderItemRow: {
     fontSize: 12,
     fontFamily: "Montserrat_400Regular",
-    color: "rgba(255,255,255,0.5)",
+    color: colors.textSecondary,
   },
   orderDiscountRow: {
     flexDirection: "row",
@@ -2218,7 +2326,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.08)",
+    borderTopColor: colors.border,
   },
   orderDiscountText: {
     fontSize: 12,
@@ -2232,7 +2340,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.08)",
+    borderTopColor: colors.border,
     gap: 4,
   },
   viewReceiptInner: {
@@ -2244,7 +2352,7 @@ const styles = StyleSheet.create({
   viewReceiptText: {
     fontSize: 12,
     fontFamily: "Montserrat_600SemiBold",
-    color: Colors.brand.blue,
+    color: colors.tint,
   },
   reorderInlineBtn: {
     flexDirection: "row",
@@ -2254,14 +2362,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: Colors.brand.blue,
-    backgroundColor: "rgba(0,71,171,0.15)",
+    borderColor: colors.tint,
+    backgroundColor: colors.glass.card,
     minHeight: 30,
   },
   reorderInlineText: {
     fontSize: 12,
     fontFamily: "Montserrat_600SemiBold",
-    color: Colors.brand.blue,
+    color: colors.tint,
   },
   consentRow: {
     flexDirection: "row",
@@ -2276,36 +2384,36 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 4,
     borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.25)",
+    borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 1,
   },
   consentCheckboxChecked: {
-    backgroundColor: Colors.brand.blue,
-    borderColor: Colors.brand.blue,
+    backgroundColor: colors.tint,
+    borderColor: colors.tint,
   },
   consentText: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 12,
-    color: Colors.light.textSecondary,
+    color: colors.textSecondary,
     flex: 1,
     lineHeight: 18,
   },
   consentLink: {
-    color: Colors.brand.blue,
+    color: colors.tint,
     fontFamily: "Montserrat_600SemiBold",
   },
   dangerZone: {
     marginTop: 32,
     paddingTop: 20,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.1)",
+    borderTopColor: colors.border,
   },
   dangerTitle: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 16,
-    color: Colors.light.text,
+    color: colors.text,
     marginBottom: 12,
   },
   privacyLink: {
@@ -2321,7 +2429,7 @@ const styles = StyleSheet.create({
   privacyLinkText: {
     fontFamily: "Montserrat_500Medium",
     fontSize: 14,
-    color: Colors.brand.blue,
+    color: colors.tint,
   },
   deleteAccountButton: {
     flexDirection: "row",
@@ -2343,7 +2451,7 @@ const styles = StyleSheet.create({
   dangerNote: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 11,
-    color: Colors.light.textSecondary,
+    color: colors.textSecondary,
     lineHeight: 16,
   },
   biometricButton: {
@@ -2354,15 +2462,15 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderRadius: 12,
-    backgroundColor: "rgba(0,71,171,0.15)",
+    backgroundColor: colors.glass.card,
     borderWidth: 1,
-    borderColor: Colors.brand.blue,
+    borderColor: colors.tint,
     marginBottom: 14,
   },
   biometricButtonText: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 15,
-    color: Colors.brand.blue,
+    color: colors.tint,
   },
   biometricDivider: {
     flexDirection: "row",
@@ -2373,12 +2481,12 @@ const styles = StyleSheet.create({
   biometricDividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: colors.border,
   },
   biometricDividerText: {
     fontFamily: "Montserrat_500Medium",
     fontSize: 12,
-    color: Colors.light.textSecondary,
+    color: colors.textSecondary,
   },
   biometricSettingRow: {
     flexDirection: "row",
@@ -2387,32 +2495,32 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
+    borderColor: colors.border,
     marginBottom: 16,
   },
   biometricSettingTitle: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 14,
-    color: Colors.light.text,
+    color: colors.text,
   },
   biometricSettingSub: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 12,
-    color: Colors.light.textSecondary,
+    color: colors.textSecondary,
     marginTop: 2,
   },
   biometricSwitch: {
     width: 44,
     height: 26,
     borderRadius: 13,
-    backgroundColor: "rgba(255,255,255,0.15)",
+    backgroundColor: colors.surfaceElevated,
     padding: 2,
     justifyContent: "center",
   },
   biometricSwitchOn: {
-    backgroundColor: Colors.brand.blue,
+    backgroundColor: colors.tint,
   },
   biometricSwitchThumb: {
     width: 22,

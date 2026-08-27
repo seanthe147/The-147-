@@ -19,6 +19,7 @@ import { useKiosk } from "@/contexts/KioskContext";
 import { useResponsive } from "@/hooks/useResponsive";
 import { getApiUrl } from "@/lib/query-client";
 import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 
 function formatPrice(pence: number) {
   return `£${(pence / 100).toFixed(2)}`;
@@ -42,6 +43,8 @@ function NumPad({
   onPress: (digit: string) => void;
   onBackspace: () => void;
 }) {
+  const colors = useColors();
+  const padStyles = useMemo(() => createPadStyles(colors), [colors.scheme]);
   const keys: (string | "back")[] = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "back"];
   return (
     <View style={padStyles.grid}>
@@ -75,6 +78,8 @@ function NumPad({
 }
 
 export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps) {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors.scheme]);
   const insets = useSafeAreaInsets();
   const { isTablet, isLandscape, width } = useResponsive(640);
   // On iPad use up to 1100pt of width so the redesigned two-column layouts
@@ -233,7 +238,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
     if (items.length === 0) {
       return (
         <View style={styles.empty}>
-          <Ionicons name="cart-outline" size={isTablet ? 88 : 56} color={Colors.light.textSecondary} />
+              <Ionicons name="cart-outline" size={isTablet ? 88 : 56} color={colors.textSecondary} />
           <Text style={[styles.emptyText, isTablet && { fontSize: 20 }]}>Your basket is empty</Text>
           <Pressable
             style={({ pressed }) => [styles.primaryBtn, isTablet && styles.primaryBtnTablet, { opacity: pressed ? 0.85 : 1, marginTop: 24 }]}
@@ -349,7 +354,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
               value={name}
               onChangeText={setName}
               placeholder="First name"
-              placeholderTextColor={Colors.light.textSecondary}
+               placeholderTextColor={colors.textSecondary}
               style={[styles.bigInput, styles.bigInputTablet]}
               autoCapitalize="words"
               returnKeyType="done"
@@ -363,7 +368,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
               value={phone}
               onChangeText={(t) => setPhone(t.replace(/[^0-9+\s]/g, ""))}
               placeholder="07…"
-              placeholderTextColor={Colors.light.textSecondary}
+               placeholderTextColor={colors.textSecondary}
               style={[styles.bigInput, styles.bigInputTablet]}
               keyboardType="phone-pad"
               returnKeyType="done"
@@ -389,7 +394,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
 
               <View style={styles.tableDisplay}>
                 <Text style={styles.tableDisplayText}>
-                  {tableNumber || <Text style={{ color: Colors.light.textSecondary }}>—</Text>}
+                   {tableNumber || <Text style={{ color: colors.textSecondary }}>—</Text>}
                 </Text>
               </View>
 
@@ -437,7 +442,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
           value={name}
           onChangeText={setName}
           placeholder="First name"
-          placeholderTextColor={Colors.light.textSecondary}
+           placeholderTextColor={colors.textSecondary}
           style={styles.bigInput}
           autoCapitalize="words"
           returnKeyType="next"
@@ -451,7 +456,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
           value={tableNumber}
           onChangeText={(t) => setTableNumber(t.replace(/[^0-9]/g, ""))}
           placeholder="e.g. 12"
-          placeholderTextColor={Colors.light.textSecondary}
+           placeholderTextColor={colors.textSecondary}
           style={[styles.bigInput, { textAlign: "center", letterSpacing: 4, fontSize: 32 }]}
           keyboardType="number-pad"
           returnKeyType="done"
@@ -465,7 +470,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
           value={phone}
           onChangeText={(t) => setPhone(t.replace(/[^0-9+\s]/g, ""))}
           placeholder="07…"
-          placeholderTextColor={Colors.light.textSecondary}
+           placeholderTextColor={colors.textSecondary}
           style={styles.bigInput}
           keyboardType="phone-pad"
           returnKeyType="done"
@@ -563,7 +568,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
                 <View style={[styles.header, isTablet && styles.headerTablet]}>
                   {step === "details" ? (
                     <Pressable onPress={() => setStep("cart")} hitSlop={12} testID="kiosk-back">
-                      <Ionicons name="chevron-back" size={isTablet ? 36 : 28} color={Colors.light.text} />
+                       <Ionicons name="chevron-back" size={isTablet ? 36 : 28} color={colors.text} />
                     </Pressable>
                   ) : (
                     <View style={{ width: isTablet ? 36 : 28 }} />
@@ -572,7 +577,7 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
                     {step === "cart" ? "Your Order" : "Almost done"}
                   </Text>
                   <Pressable onPress={handleCancel} hitSlop={12} testID="kiosk-close">
-                    <Ionicons name="close" size={isTablet ? 36 : 28} color={Colors.light.text} />
+                     <Ionicons name="close" size={isTablet ? 36 : 28} color={colors.text} />
                   </Pressable>
                 </View>
               )}
@@ -588,95 +593,95 @@ export function KioskCheckoutSheet({ visible, onClose }: KioskCheckoutSheetProps
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" },
+const createStyles = (colors: ReturnType<typeof useColors>) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
   headerTablet: { paddingHorizontal: 32, paddingBottom: 18 },
-  title: { fontSize: 22, fontWeight: "700" as const, color: Colors.light.text },
+  title: { fontSize: 22, fontWeight: "700" as const, color: colors.text },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32 },
-  emptyText: { color: Colors.light.textSecondary, fontSize: 16, marginTop: 12 },
+  emptyText: { color: colors.textSecondary, fontSize: 16, marginTop: 12 },
 
   // Two-column shell — used on iPad landscape & wide portrait.
   twoCol: { flex: 1, flexDirection: "row" as const, paddingTop: 12 },
-  twoColLeft: { flex: 1.4, borderRightWidth: 1, borderRightColor: "#F1F5F9" },
+  twoColLeft: { flex: 1.4, borderRightWidth: 1, borderRightColor: colors.border },
   twoColRight: { flex: 1, paddingHorizontal: 24, paddingTop: 8 },
 
   // Sticky summary panel on the right side of the cart step.
   summaryCard: {
-    backgroundColor: "#F9FAFB",
+    backgroundColor: colors.surfaceElevated,
     borderRadius: 18,
     padding: 22,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: colors.border,
   },
-  summaryLabel: { fontSize: 12, letterSpacing: 3, fontWeight: "700" as const, color: Colors.light.textSecondary, marginBottom: 14 },
+  summaryLabel: { fontSize: 12, letterSpacing: 3, fontWeight: "700" as const, color: colors.textSecondary, marginBottom: 14 },
   summaryRow: { flexDirection: "row" as const, justifyContent: "space-between" as const, alignItems: "baseline" as const },
-  summaryRowLabel: { fontSize: 16, color: Colors.light.textSecondary },
-  summaryRowValue: { fontSize: 16, color: Colors.light.text, fontWeight: "600" as const },
-  summaryTotalLabel: { fontSize: 22, color: Colors.light.text, fontWeight: "700" as const },
-  summaryTotalValue: { fontSize: 32, color: Colors.light.text, fontWeight: "700" as const },
+  summaryRowLabel: { fontSize: 16, color: colors.textSecondary },
+  summaryRowValue: { fontSize: 16, color: colors.text, fontWeight: "600" as const },
+  summaryTotalLabel: { fontSize: 22, color: colors.text, fontWeight: "700" as const },
+  summaryTotalValue: { fontSize: 32, color: colors.text, fontWeight: "700" as const },
 
   // Number pad host (right column on the details step).
   padCard: {
-    backgroundColor: "#F9FAFB",
+    backgroundColor: colors.surfaceElevated,
     borderRadius: 18,
     padding: 22,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: colors.border,
   },
   tableDisplay: {
     marginTop: 14,
-    backgroundColor: "#0A1628",
+    backgroundColor: colors.background,
     borderRadius: 14,
     paddingVertical: 18,
     alignItems: "center" as const,
   },
   tableDisplayText: { color: "#fff", fontSize: 56, fontWeight: "700" as const, letterSpacing: 6, lineHeight: 62 },
 
-  line: { flexDirection: "row", alignItems: "center", paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
+  line: { flexDirection: "row", alignItems: "center", paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
   lineTablet: { paddingVertical: 22 },
-  lineName: { color: Colors.light.text, fontSize: 17, fontWeight: "600" as const },
-  lineMods: { color: Colors.light.textSecondary, fontSize: 13, marginTop: 2 },
-  linePrice: { color: Colors.light.text, fontSize: 16, fontWeight: "600" as const, marginTop: 6 },
+  lineName: { color: colors.text, fontSize: 17, fontWeight: "600" as const },
+  lineMods: { color: colors.textSecondary, fontSize: 13, marginTop: 2 },
+  linePrice: { color: colors.text, fontSize: 16, fontWeight: "600" as const, marginTop: 6 },
   qtyBox: { flexDirection: "row", alignItems: "center", gap: 12 },
-  qtyBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: "#EFF6FF" },
+  qtyBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceElevated },
   qtyBtnTablet: { width: 56, height: 56, borderRadius: 28 },
-  qtyText: { fontSize: 17, fontWeight: "700" as const, color: Colors.light.text, minWidth: 22, textAlign: "center" },
+  qtyText: { fontSize: 17, fontWeight: "700" as const, color: colors.text, minWidth: 22, textAlign: "center" },
 
-  totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 16, borderTopWidth: 1, borderTopColor: "#F1F5F9", backgroundColor: "#F9FAFB" },
-  totalLabel: { fontSize: 18, fontWeight: "600" as const, color: Colors.light.text },
-  totalAmount: { fontSize: 24, fontWeight: "700" as const, color: Colors.light.text },
+  totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 16, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surfaceElevated },
+  totalLabel: { fontSize: 18, fontWeight: "600" as const, color: colors.text },
+  totalAmount: { fontSize: 24, fontWeight: "700" as const, color: colors.text },
 
   primaryBtn: { backgroundColor: Colors.brand.blue, borderRadius: 14, paddingVertical: 18, paddingHorizontal: 22, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   primaryBtnTablet: { paddingVertical: 22, borderRadius: 16, gap: 12 },
   primaryBtnText: { color: "#fff", fontSize: 18, fontWeight: "700" as const },
 
-  ghostBtn: { borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12, paddingVertical: 14, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  ghostBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   ghostBtnTablet: { paddingVertical: 18, borderRadius: 14 },
   ghostBtnText: { color: Colors.brand.blue, fontSize: 15, fontWeight: "600" as const },
 
-  sectionTitle: { fontSize: 18, fontWeight: "700" as const, color: Colors.light.text, marginTop: 12 },
-  sectionSub: { fontSize: 14, color: Colors.light.textSecondary, marginTop: 4 },
-  bigInput: { borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 16, fontSize: 18, color: Colors.light.text, marginTop: 10, backgroundColor: "#F9FAFB" },
+  sectionTitle: { fontSize: 18, fontWeight: "700" as const, color: colors.text, marginTop: 12 },
+  sectionSub: { fontSize: 14, color: colors.textSecondary, marginTop: 4 },
+  bigInput: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 16, fontSize: 18, color: colors.text, marginTop: 10, backgroundColor: colors.input },
   bigInputTablet: { paddingVertical: 20, paddingHorizontal: 20, fontSize: 22, borderRadius: 14 },
 
-  callout: { flexDirection: "row", gap: 12, alignItems: "center", backgroundColor: "#EFF6FF", borderRadius: 12, padding: 14, marginTop: 24 },
+  callout: { flexDirection: "row", gap: 12, alignItems: "center", backgroundColor: colors.surfaceElevated, borderRadius: 12, padding: 14, marginTop: 24 },
   calloutTitle: { color: Colors.brand.blue, fontWeight: "700" as const, fontSize: 14 },
-  calloutText: { color: Colors.light.text, fontSize: 13, marginTop: 2 },
+  calloutText: { color: colors.text, fontSize: 13, marginTop: 2 },
 
   confirmWrap: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32 },
   confirmCheck: { width: 96, height: 96, borderRadius: 48, backgroundColor: "#16A34A", alignItems: "center", justifyContent: "center" },
-  confirmHeading: { fontSize: 28, fontWeight: "700" as const, color: Colors.light.text, marginTop: 20 },
-  confirmSub: { fontSize: 16, color: Colors.light.textSecondary, marginTop: 8, textAlign: "center" },
-  ticketBox: { marginTop: 28, backgroundColor: "#0A1628", paddingHorizontal: 48, paddingVertical: 24, borderRadius: 20, alignItems: "center" },
+  confirmHeading: { fontSize: 28, fontWeight: "700" as const, color: colors.text, marginTop: 20 },
+  confirmSub: { fontSize: 16, color: colors.textSecondary, marginTop: 8, textAlign: "center" },
+  ticketBox: { marginTop: 28, backgroundColor: colors.background, paddingHorizontal: 48, paddingVertical: 24, borderRadius: 20, alignItems: "center" },
   ticketBoxTablet: { marginTop: 36, paddingHorizontal: 80, paddingVertical: 32, borderRadius: 28 },
   ticketLabel: { color: "rgba(255,255,255,0.7)", fontSize: 11, letterSpacing: 3, fontWeight: "700" as const },
   ticketNumber: { color: "#fff", fontSize: 96, fontWeight: "700" as const, letterSpacing: 2 },
-  confirmHint: { fontSize: 13, color: Colors.light.textSecondary, marginTop: 16, textAlign: "center", paddingHorizontal: 24 },
-  confirmFooter: { fontSize: 13, color: Colors.light.textSecondary, marginTop: 24 },
+  confirmHint: { fontSize: 13, color: colors.textSecondary, marginTop: 16, textAlign: "center", paddingHorizontal: 24 },
+  confirmFooter: { fontSize: 13, color: colors.textSecondary, marginTop: 24 },
 });
 
-const padStyles = StyleSheet.create({
+const createPadStyles = (colors: ReturnType<typeof useColors>) => StyleSheet.create({
   grid: {
     marginTop: 16,
     flexDirection: "row" as const,
@@ -689,12 +694,12 @@ const padStyles = StyleSheet.create({
   },
   btn: {
     borderRadius: 14,
-    backgroundColor: "#fff",
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: colors.border,
     alignItems: "center" as const,
     justifyContent: "center" as const,
   },
-  btnGhost: { backgroundColor: "#F1F5F9" },
-  btnText: { fontSize: 32, fontWeight: "700" as const, color: Colors.light.text },
+  btnGhost: { backgroundColor: colors.surfaceElevated },
+  btnText: { fontSize: 32, fontWeight: "700" as const, color: colors.text },
 });

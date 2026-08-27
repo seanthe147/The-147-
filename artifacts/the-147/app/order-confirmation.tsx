@@ -11,6 +11,7 @@ import { getApiUrl } from "@/lib/query-client";
 import { useCart } from "@/contexts/CartContext";
 import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
 import { useResponsive } from "@/hooks/useResponsive";
+import { useColors } from "@/hooks/useColors";
 import type { SelectedModifier } from "@/types/menu";
 
 interface ReorderResponse {
@@ -64,6 +65,8 @@ const STATUS_TONE: Record<string, { bg: string; fg: string; icon: keyof typeof I
 };
 
 export default function OrderConfirmationScreen() {
+  const colors = useColors();
+  const styles = useMemo(() => createThemeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const params = useLocalSearchParams<{
@@ -316,7 +319,7 @@ export default function OrderConfirmationScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styleSource = {
   container: { flex: 1, backgroundColor: "#0A1628", paddingHorizontal: 16 },
   header: { flexDirection: "row" as const, justifyContent: "flex-end" as const },
   scroll: { paddingTop: 12, paddingBottom: 24, alignItems: "center" as const },
@@ -347,7 +350,7 @@ const styles = StyleSheet.create({
   refLabel: { color: "rgba(255,255,255,0.45)", fontSize: 13, fontWeight: "600" as const },
   refValue: { color: "#FFFFFF", fontSize: 15, fontWeight: "600" as const },
   itemsCard: { width: "100%", backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.1)", borderRadius: 16, padding: 16, gap: 12 },
-  itemsHeader: { fontSize: 14, fontWeight: "700" as const, color: "#FFFFFF", marginBottom: 4 },
+  itemsHeader: { fontSize: 14, fontWeight: "700" as const, color: Colors.brand.white, marginBottom: 4 },
   itemRow: { flexDirection: "row" as const, gap: 10 },
   itemQty: { fontSize: 14, fontWeight: "700" as const, color: "#60A5FA", minWidth: 28 },
   itemName: { fontSize: 14, color: "rgba(255,255,255,0.9)", fontWeight: "500" as const },
@@ -368,4 +371,8 @@ const styles = StyleSheet.create({
   reorderText: { color: "#60A5FA", fontWeight: "700" as const, fontSize: 15 },
   doneBtn: { backgroundColor: Colors.brand.blue, paddingVertical: 16, borderRadius: 14, alignItems: "center" as const, marginTop: 8 },
   doneText: { color: "#fff", fontWeight: "700" as const, fontSize: 16 },
-});
+};
+
+const createThemeStyles = (colors: ReturnType<typeof useColors>) => StyleSheet.create(themeSource(styleSource, colors));
+function themeSource(source: any, colors: ReturnType<typeof useColors>): any { return Object.fromEntries(Object.entries(source).map(([name, value]: any) => [name, Object.fromEntries(Object.entries(value).map(([key, token]: any) => [key, themeToken(name, key, token, colors)]))])); }
+function themeToken(name: string, key: string, token: any, colors: ReturnType<typeof useColors>) { if (typeof token !== "string") return token; const isWhiteForeground = key === "color" && /(primary|action|button|submit|done|retry|pay|badge|selected|hero|image.?overlay|warning|status)/i.test(name); if (token === "#0A1628") return colors.background; if (token === "#FFFFFF") return isWhiteForeground ? token : colors.text; if (token === Colors.brand.blue) return colors.tint; if (token.startsWith("rgba(255,255,255")) return key === "backgroundColor" ? colors.glass.card : key === "borderColor" ? colors.glass.cardBorder : colors.textSecondary; return token; }

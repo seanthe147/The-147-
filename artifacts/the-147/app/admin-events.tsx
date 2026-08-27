@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   StyleSheet,
   Text,
@@ -19,7 +19,7 @@ import { router } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
-import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 import type { Event } from "@workspace/db/schema";
 
 const COLOR_PRESETS = [
@@ -77,6 +77,7 @@ function formatDisplayTime(timeStr: string): string {
 }
 
 export default function AdminEventsScreen() {
+  const { Colors, styles } = useAdminTheme();
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -590,6 +591,7 @@ function EventRow({
   onToggleActive: () => void;
   isPast?: boolean;
 }) {
+  const { Colors, styles } = useAdminTheme();
   const isWeekly = event.eventType === "weekly";
   const isTicketSource = event.source === "ticketsource";
   const dateDisplay = isWeekly
@@ -673,7 +675,22 @@ function EventRow({
   );
 }
 
-const styles = StyleSheet.create({
+function useAdminTheme() {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const Colors = useMemo(() => ({
+    light: colors,
+    brand: { blue: colors.tint, red: colors.accent, gold: colors.gold, green: "#1B5E20" },
+  } as const), [colors]);
+  return { Colors, styles };
+}
+
+function createStyles(colors: ReturnType<typeof useColors>) {
+  const Colors = {
+    light: colors,
+    brand: { blue: colors.tint, red: colors.accent, gold: colors.gold, green: "#1B5E20" },
+  } as const;
+  return StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
@@ -849,7 +866,7 @@ const styles = StyleSheet.create({
   colorLabel: {
     fontFamily: "Montserrat_500Medium",
     fontSize: 10,
-    color: "#6B7280",
+    color: Colors.light.textSecondary,
   },
   activeToggle: {
     flexDirection: "row",
@@ -1005,7 +1022,8 @@ const styles = StyleSheet.create({
   emptySubtext: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 13,
-    color: "#9CA3AF",
+    color: Colors.light.textSecondary,
     textAlign: "center",
   },
-});
+  });
+}

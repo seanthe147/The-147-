@@ -17,6 +17,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 
@@ -37,6 +38,8 @@ const ROLES = [
 ];
 
 export default function AdminStaffScreen() {
+  const colors = useColors();
+  const styles = React.useMemo(() => createThemedStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -565,7 +568,7 @@ export default function AdminStaffScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createThemedStyles = (colors: any) => themedStyleSheet({
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: Colors.light.background },
   container: { flex: 1, backgroundColor: Colors.light.background },
   header: {
@@ -784,4 +787,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#DC2626",
   },
-});
+}, colors);
+function themedStyleSheet(source: any, colors: ReturnType<typeof useColors>) { return StyleSheet.create(themeSource(source, colors)); } function themeSource(source: any, colors: ReturnType<typeof useColors>): any { return Object.fromEntries(Object.entries(source).map(([n,v]: any) => [n,Object.fromEntries(Object.entries(v).map(([k,t]: any)=>[k,themeToken(n,k,t,colors)]))])); } function themeToken(n:string,k:string,t:any,c:ReturnType<typeof useColors>) { if(typeof t!=="string")return t;if(k==="color"&&/^#fff(?:fff)?$/i.test(t))return /btn|button|badge|chip|pill|selected|active|primary|action|cta|fab|submit|save|publish|approve|confirm|complete|clock|gdpr|back|close|filter|tab|preview|retry|claim|redeem|login/i.test(n)?t:c.text;if(k==="color")return ["#0A1628","#132742","#111827","#1E293B","#1F2937","#334155","#374151","#4B5563"].includes(t)?c.text:["#475569","#4B5A72","#64748B","#6B7280","#94A3B8"].includes(t)?c.textSecondary:t;if(/border.*color/i.test(k)&&["#E2E8F0","#E5E7EB","#CBD5E1","#D1D5DB"].includes(t))return c.border;if(/backgroundcolor/i.test(k))return ["#F2F5FA","#F4F7FB","#F8FAFC","#F9FAFB","#F1F5F9"].includes(t)?c.background:["#fff","#FFFFFF"].includes(t)?c.surface:["#0A1628","#132742","#0F172A","#1E293B"].includes(t)?c.surfaceElevated:t;return t;}

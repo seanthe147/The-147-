@@ -19,6 +19,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 import type { Offer } from "@workspace/db/schema";
 
 const ICON_OPTIONS: Array<{ name: string; label: string }> = [
@@ -79,6 +80,8 @@ interface MenuCategory {
 }
 
 function OfferPreview({ form }: { form: OfferForm }) {
+  const colors = useColors();
+  const styles = useMemo(() => createThemedStyles(colors), [colors]);
   return (
     <View style={styles.previewCard}>
       <LinearGradient
@@ -115,6 +118,8 @@ function OfferPreview({ form }: { form: OfferForm }) {
 }
 
 export default function AdminOffersScreen() {
+  const colors = useColors();
+  const styles = useMemo(() => createThemedStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -610,7 +615,7 @@ export default function AdminOffersScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createThemedStyles = (colors: any) => themedStyleSheet({
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
@@ -991,4 +996,5 @@ const styles = StyleSheet.create({
     color: "#9CA3AF",
     textAlign: "center",
   },
-});
+}, colors);
+function themedStyleSheet(source: any, colors: ReturnType<typeof useColors>) { return StyleSheet.create(themeSource(source, colors)); } function themeSource(source: any, colors: ReturnType<typeof useColors>): any { return Object.fromEntries(Object.entries(source).map(([n,v]: any) => [n,Object.fromEntries(Object.entries(v).map(([k,t]: any)=>[k,themeToken(n,k,t,colors)]))])); } function themeToken(n:string,k:string,t:any,c:ReturnType<typeof useColors>) { if(typeof t!=="string")return t;if(k==="color"&&/^#fff(?:fff)?$/i.test(t))return /btn|button|badge|chip|pill|selected|active|primary|action|cta|fab|submit|save|publish|approve|confirm|complete|clock|gdpr|back|close|filter|tab|preview|retry|claim|redeem|login/i.test(n)?t:c.text;if(k==="color")return ["#0A1628","#132742","#111827","#1E293B","#1F2937","#334155","#374151","#4B5563"].includes(t)?c.text:["#475569","#4B5A72","#64748B","#6B7280","#94A3B8"].includes(t)?c.textSecondary:t;if(/border.*color/i.test(k)&&["#E2E8F0","#E5E7EB","#CBD5E1","#D1D5DB"].includes(t))return c.border;if(/backgroundcolor/i.test(k))return ["#F2F5FA","#F4F7FB","#F8FAFC","#F9FAFB","#F1F5F9"].includes(t)?c.background:["#fff","#FFFFFF"].includes(t)?c.surface:["#0A1628","#132742","#0F172A","#1E293B"].includes(t)?c.surfaceElevated:t;return t;}

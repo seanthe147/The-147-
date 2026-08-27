@@ -1,4 +1,4 @@
-import React, { useContext, useState, useCallback } from "react";
+import React, { useContext, useState, useCallback, useMemo } from "react";
 import {
   StyleSheet,
   Text,
@@ -17,6 +17,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
+const baseColors = Colors;
 import { getApiUrl } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
@@ -178,6 +180,8 @@ function VoucherCard({
   code?: string | null;
   footer: string;
 }) {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={[styles.voucherOuter, { borderColor: accentColor }]}>
       <View style={[styles.voucherAccent, { backgroundColor: accentColor }]} />
@@ -201,7 +205,7 @@ function VoucherCard({
           </View>
         ) : null}
         <View style={styles.voucherFooterRow}>
-          <Ionicons name="people-outline" size={13} color={Colors.light.textSecondary} />
+          <Ionicons name="people-outline" size={13} color={colors.textSecondary} />
           <Text style={styles.voucherFooterText}>{footer}</Text>
         </View>
       </View>
@@ -220,6 +224,8 @@ function WalletSection({
   squareRewards: IssuedReward[];
   program: LoyaltyProgram | null;
 }) {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const totalCount = gameClaims.length + venueClaims.length + squareRewards.length;
 
   return (
@@ -238,7 +244,7 @@ function WalletSection({
 
       {totalCount === 0 ? (
         <View style={styles.walletEmpty}>
-          <Ionicons name="ticket-outline" size={32} color={Colors.light.textSecondary} />
+          <Ionicons name="ticket-outline" size={32} color={colors.textSecondary} />
           <Text style={styles.walletEmptyTitle}>No active vouchers</Text>
           <Text style={styles.walletEmptyText}>Play the scratch card or spend points to earn prizes and vouchers.</Text>
         </View>
@@ -295,6 +301,8 @@ function WalletSection({
 }
 
 function PointsDisplay({ balance, terminology }: { balance: number; terminology?: { one: string; other: string } }) {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const label = terminology ? (balance === 1 ? terminology.one : terminology.other) : "Points";
   return (
     <View style={styles.pointsContainer}>
@@ -321,6 +329,8 @@ function NextRewardCard({
   rewardTiers: RewardTier[];
   terminology?: { one: string; other: string };
 }) {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   if (!rewardTiers || rewardTiers.length === 0) return null;
   const sorted = [...rewardTiers].sort((a, b) => a.points - b.points);
   const next = sorted.find((t) => balance < t.points);
@@ -393,6 +403,8 @@ function BirthdayBanner({
   birthday: { hasDob: boolean; active: boolean; bonusAwardedThisYear: boolean; bonusPoints: number; dayOfYear: string | null };
   terminology?: { one: string; other: string };
 }) {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const pointsLabel = terminology?.other || "points";
   if (!birthday.hasDob) {
     return (
@@ -440,6 +452,8 @@ function VenueRewardsSection({
   onClaim: (tier: VenueRewardTierItem) => void;
   isClaiming: boolean;
 }) {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   if (tiers.length === 0) return null;
 
   return (
@@ -460,7 +474,7 @@ function VenueRewardsSection({
               <Ionicons
                 name={categoryIcon(tier.category)}
                 size={26}
-                color={canClaim ? "#7C3AED" : Colors.light.textSecondary}
+                color={canClaim ? "#7C3AED" : colors.textSecondary}
               />
             </View>
             <View style={styles.venueTierBody}>
@@ -499,6 +513,8 @@ function RewardTierCard({
   balance: number;
   terminology?: { one: string; other: string };
 }) {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const canRedeem = balance >= tier.points;
   const progress = Math.min(balance / tier.points, 1);
   const pointsLabel = terminology ? terminology.other : "points";
@@ -509,7 +525,7 @@ function RewardTierCard({
         <Ionicons
           name={canRedeem ? "gift" : "gift-outline"}
           size={24}
-          color={canRedeem ? Colors.brand.gold : Colors.light.textSecondary}
+          color={canRedeem ? Colors.brand.gold : colors.textSecondary}
         />
         <View style={styles.tierInfo}>
           <Text style={styles.tierName}>{tier.name}</Text>
@@ -538,6 +554,8 @@ function ActivityFeed({
   events: LoyaltyEvent[];
   program: LoyaltyProgram | null;
 }) {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   if (!events.length) return null;
 
   function describeEvent(event: LoyaltyEvent): { label: string; sub: string; icon: React.ComponentProps<typeof Ionicons>["name"]; color: string } {
@@ -592,6 +610,8 @@ function ActivityFeed({
 }
 
 export default function RewardsScreen() {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const isWeb = Platform.OS === "web";
@@ -697,7 +717,7 @@ export default function RewardsScreen() {
       scrollEnabled={!scratchActive}
     >
       {Platform.OS === "ios" ? (
-        <BlurView intensity={55} tint="dark" style={styles.headerGradient}>
+        <BlurView intensity={55} tint={colors.scheme} style={styles.headerGradient}>
           <Ionicons name="gift" size={28} color={Colors.brand.gold} />
           <Text style={styles.headerTitle}>Rewards</Text>
           <Text style={styles.headerSubtitle}>
@@ -707,7 +727,7 @@ export default function RewardsScreen() {
           </Text>
         </BlurView>
       ) : (
-        <View style={[styles.headerGradient, { backgroundColor: "rgba(10,22,40,0.88)" }]}>
+        <View style={[styles.headerGradient, { backgroundColor: colors.surface }]}>
           <Ionicons name="gift" size={28} color={Colors.brand.gold} />
           <Text style={styles.headerTitle}>Rewards</Text>
           <Text style={styles.headerSubtitle}>
@@ -740,7 +760,7 @@ export default function RewardsScreen() {
         </View>
       ) : meQuery.isError ? (
         <View style={styles.statusCard}>
-          <Ionicons name="cloud-offline-outline" size={40} color={Colors.light.textSecondary} />
+          <Ionicons name="cloud-offline-outline" size={40} color={colors.textSecondary} />
           <Text style={styles.statusTitle}>Couldn't load your rewards</Text>
           <Text style={styles.statusText}>
             {(meQuery.error as Error)?.message || "Please try again."}
@@ -755,7 +775,7 @@ export default function RewardsScreen() {
         </View>
       ) : !meQuery.data?.configured ? (
         <View style={styles.statusCard}>
-          <Ionicons name="alert-circle-outline" size={40} color={Colors.light.textSecondary} />
+          <Ionicons name="alert-circle-outline" size={40} color={colors.textSecondary} />
           <Text style={styles.statusTitle}>Coming Soon</Text>
           <Text style={styles.statusText}>Our rewards program is being set up. Check back soon!</Text>
         </View>
@@ -910,7 +930,7 @@ export default function RewardsScreen() {
 
           <View style={styles.infoCard}>
             <View style={styles.infoRow}>
-              <Ionicons name="information-circle-outline" size={18} color={Colors.light.textSecondary} />
+              <Ionicons name="information-circle-outline" size={18} color={colors.textSecondary} />
               <Text style={styles.infoText}>
                 Points are earned automatically when you pay at The 147. Show this screen at the till to redeem rewards.
               </Text>
@@ -922,12 +942,14 @@ export default function RewardsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: ReturnType<typeof useColors>) => {
+  const Colors = { ...baseColors, light: palette };
+  return StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.light.background },
   content: { paddingHorizontal: 0 },
   headerGradient: { marginHorizontal: 20, borderRadius: 16, padding: 24, alignItems: "center", gap: 8, overflow: "hidden" as const },
-  headerTitle: { fontSize: 22, fontWeight: "700", color: "#FFF", fontFamily: "Montserrat_700Bold" },
-  headerSubtitle: { fontSize: 14, color: "rgba(255,255,255,0.7)", textAlign: "center", fontFamily: "Montserrat_400Regular" },
+  headerTitle: { fontSize: 22, fontWeight: "700", color: palette.text, fontFamily: "Montserrat_700Bold" },
+  headerSubtitle: { fontSize: 14, color: palette.textSecondary, textAlign: "center", fontFamily: "Montserrat_400Regular" },
   personalIntro: { fontFamily: "Montserrat_500Medium", fontSize: 14, color: Colors.light.textSecondary, textAlign: "center", marginTop: 16, marginBottom: -4, paddingHorizontal: 20 },
   loadingWrap: { padding: 40, alignItems: "center", gap: 12 },
   loadingText: { fontSize: 14, color: Colors.light.textSecondary, fontFamily: "Montserrat_400Regular" },
@@ -1033,4 +1055,5 @@ const styles = StyleSheet.create({
   venueClaimBtnActive: { backgroundColor: "#7C3AED" },
   venueClaimBtnText: { fontSize: 13, fontWeight: "700", color: Colors.light.textSecondary, fontFamily: "Montserrat_700Bold" },
   venueClaimBtnTextActive: { color: "#FFF" },
-});
+  });
+};

@@ -8,7 +8,7 @@
  * States: idle → scratching → [won | no_prize | already_played | error]
  */
 
-import React, { useRef, useState, useCallback, useEffect } from "react";
+import React, { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import {
   StyleSheet,
   View,
@@ -35,6 +35,7 @@ import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
 import { getApiUrl } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
+import { useColors } from "@/hooks/useColors";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -258,6 +259,8 @@ export function ScratchCardGame({
   onScratchStart?: () => void;
   onScratchEnd?: () => void;
 } = {}) {
+  const colors = useColors();
+  const themeStyles = useMemo(() => createThemeStyles(colors), [colors]);
   const { customer, getCustomerToken } = useCustomerAuth();
   const qc = useQueryClient();
 
@@ -538,7 +541,7 @@ export function ScratchCardGame({
     // can see their prize until midnight — then it resets for a new day.
     if (result && overlayGone) {
       return (
-        <View style={styles.wrapper}>
+        <View style={[styles.wrapper, themeStyles.wrapper]}>
           <View style={styles.wrapperLabel}>
             <Ionicons name="star" size={13} color={Colors.brand.gold} />
             <Text style={styles.wrapperLabelText}>TODAY'S LUCKY BREAK</Text>
@@ -563,7 +566,7 @@ export function ScratchCardGame({
     }
     // No stored result (played on another device / storage cleared)
     return (
-      <View style={styles.wrapper}>
+      <View style={[styles.wrapper, themeStyles.wrapper]}>
         <View style={styles.wrapperLabel}>
           <Ionicons name="star" size={13} color={Colors.brand.gold} />
           <Text style={styles.wrapperLabelText}>TODAY'S LUCKY BREAK</Text>
@@ -588,7 +591,7 @@ export function ScratchCardGame({
   // ── Outside schedule window ───────────────────────────────────────────────
   if (!gameActive) {
     return (
-      <View style={styles.wrapper}>
+      <View style={[styles.wrapper, themeStyles.wrapper]}>
         <View style={styles.wrapperLabel}>
           <Ionicons name="star" size={13} color={Colors.brand.gold} />
           <Text style={styles.wrapperLabelText}>TODAY'S LUCKY BREAK</Text>
@@ -618,7 +621,7 @@ export function ScratchCardGame({
 
   // ── Active scratch card ───────────────────────────────────────────────────
   return (
-    <View style={styles.wrapper}>
+    <View style={[styles.wrapper, themeStyles.wrapper]}>
       <View style={styles.wrapperLabel}>
         <Ionicons name="star" size={13} color={Colors.brand.gold} />
         <Text style={styles.wrapperLabelText}>TODAY'S LUCKY BREAK</Text>
@@ -850,5 +853,13 @@ const styles = StyleSheet.create({
     color: Colors.light.textSecondary,
     textAlign: "center",
     marginTop: 6,
+  },
+});
+
+const createThemeStyles = (colors: ReturnType<typeof useColors>) => StyleSheet.create({
+  wrapper: {
+    backgroundColor: colors.glass.card,
+    borderColor: colors.gold,
+    shadowColor: colors.cardShadow,
   },
 });

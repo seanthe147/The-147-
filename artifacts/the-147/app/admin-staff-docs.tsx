@@ -13,6 +13,7 @@ import * as FileSystem from "expo-file-system";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import { getApiUrl, getStaffToken } from "@/lib/query-client";
 import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 
 async function hrApi(path: string, opts?: RequestInit) {
   const url = new URL(path, getApiUrl()).toString();
@@ -78,6 +79,8 @@ type Onboarding = {
 };
 
 export default function AdminStaffDocsScreen() {
+  const colors = useColors();
+  const styles = React.useMemo(() => createThemedStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const webTop = Platform.OS === "web" ? 67 : 0;
@@ -442,10 +445,12 @@ export default function AdminStaffDocsScreen() {
 }
 
 function OnboardingSection({ title, icon, children }: { title: string; icon: any; children: React.ReactNode }) {
+  const colors = useColors();
+  const oStyles = React.useMemo(() => createOnboardingStyles(colors), [colors]);
   return (
     <View style={oStyles.section}>
       <View style={oStyles.sectionHeader}>
-        <Ionicons name={icon} size={16} color={Colors.brand.blue} />
+        <Ionicons name={icon} size={16} color={colors.tint} />
         <Text style={oStyles.sectionTitle}>{title}</Text>
       </View>
       {children}
@@ -454,6 +459,8 @@ function OnboardingSection({ title, icon, children }: { title: string; icon: any
 }
 
 function OField({ label, value, sensitive }: { label: string; value: string | null | undefined; sensitive?: boolean }) {
+  const colors = useColors();
+  const oStyles = React.useMemo(() => createOnboardingStyles(colors), [colors]);
   const [reveal, setReveal] = useState(false);
   const display = sensitive && !reveal ? "••••••••" : (value || "—");
   return (
@@ -462,25 +469,25 @@ function OField({ label, value, sensitive }: { label: string; value: string | nu
       <Pressable onPress={() => sensitive && setReveal(r => !r)} style={oStyles.fieldValueRow}>
         <Text style={[oStyles.fieldValue, !value && oStyles.fieldEmpty]}>{display}</Text>
         {sensitive && value && (
-          <Ionicons name={reveal ? "eye-off-outline" : "eye-outline"} size={14} color={Colors.light.textSecondary} />
+          <Ionicons name={reveal ? "eye-off-outline" : "eye-outline"} size={14} color={colors.textSecondary} />
         )}
       </Pressable>
     </View>
   );
 }
 
-const oStyles = StyleSheet.create({
-  section: { backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E2E8F0", padding: 14, marginBottom: 14 },
-  sectionHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" },
-  sectionTitle: { fontSize: 13, fontWeight: "700", color: Colors.light.text, textTransform: "uppercase", letterSpacing: 0.5 },
+const createOnboardingStyles = (colors: ReturnType<typeof useColors>) => StyleSheet.create({
+  section: { backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: 14, marginBottom: 14 },
+  sectionHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
+  sectionTitle: { fontSize: 13, fontWeight: "700", color: colors.text, textTransform: "uppercase", letterSpacing: 0.5 },
   field: { marginBottom: 10 },
-  fieldLabel: { fontSize: 11, fontWeight: "600", color: Colors.light.textSecondary, marginBottom: 2, textTransform: "uppercase", letterSpacing: 0.4 },
+  fieldLabel: { fontSize: 11, fontWeight: "600", color: colors.textSecondary, marginBottom: 2, textTransform: "uppercase", letterSpacing: 0.4 },
   fieldValueRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  fieldValue: { fontSize: 14, color: Colors.light.text, fontWeight: "500" },
-  fieldEmpty: { color: Colors.light.textSecondary, fontStyle: "italic", fontWeight: "400" },
+  fieldValue: { fontSize: 14, color: colors.text, fontWeight: "500" },
+  fieldEmpty: { color: colors.textSecondary, fontStyle: "italic", fontWeight: "400" },
 });
 
-const styles = StyleSheet.create({
+const createThemedStyles = (colors: any) => themedStyleSheet({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
   centered: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
 
@@ -550,4 +557,5 @@ const styles = StyleSheet.create({
   cancelBtnText: { color: Colors.light.text, fontSize: 14, fontWeight: "600" },
   saveBtn: { paddingHorizontal: 24, paddingVertical: 10, borderRadius: 10, backgroundColor: Colors.brand.blue },
   saveBtnText: { color: "#fff", fontSize: 14, fontWeight: "700" },
-});
+}, colors);
+function themedStyleSheet(source: any, colors: ReturnType<typeof useColors>) { return StyleSheet.create(themeSource(source, colors)); } function themeSource(source: any, colors: ReturnType<typeof useColors>): any { return Object.fromEntries(Object.entries(source).map(([n,v]: any) => [n,Object.fromEntries(Object.entries(v).map(([k,t]: any)=>[k,themeToken(n,k,t,colors)]))])); } function themeToken(n:string,k:string,t:any,c:ReturnType<typeof useColors>) { if(typeof t!=="string")return t;if(k==="color"&&/^#fff(?:fff)?$/i.test(t))return /btn|button|badge|chip|pill|selected|active|primary|action|cta|fab|submit|save|publish|approve|confirm|complete|clock|gdpr|back|close|filter|tab|preview|retry|claim|redeem|login/i.test(n)?t:c.text;if(k==="color")return ["#0A1628","#132742","#111827","#1E293B","#1F2937","#334155","#374151","#4B5563"].includes(t)?c.text:["#475569","#4B5A72","#64748B","#6B7280","#94A3B8"].includes(t)?c.textSecondary:t;if(/border.*color/i.test(k)&&["#E2E8F0","#E5E7EB","#CBD5E1","#D1D5DB"].includes(t))return c.border;if(/backgroundcolor/i.test(k))return ["#F2F5FA","#F4F7FB","#F8FAFC","#F9FAFB","#F1F5F9"].includes(t)?c.background:["#fff","#FFFFFF"].includes(t)?c.surface:["#0A1628","#132742","#0F172A","#1E293B"].includes(t)?c.surfaceElevated:t;return t;}

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import {
   StyleSheet,
   Text,
@@ -15,8 +15,11 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useConsent } from "@/contexts/ConsentContext";
 import { POLICY_DATES } from "@workspace/db/policy-dates";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
+import { useColors } from "@/hooks/useColors";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  const colors = useColors();
+  const styles = useMemo(() => createThemeStyles(colors), [colors]);
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>{title}</Text>
@@ -26,6 +29,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function StorageItem({ icon, label, description }: { icon: keyof typeof Ionicons.glyphMap; label: string; description: string }) {
+  const colors = useColors();
+  const styles = useMemo(() => createThemeStyles(colors), [colors]);
   return (
     <View style={styles.storageItem}>
       <View style={styles.storageIcon}>
@@ -40,6 +45,8 @@ function StorageItem({ icon, label, description }: { icon: keyof typeof Ionicons
 }
 
 export default function CookiePolicyScreen() {
+  const colors = useColors();
+  const styles = useMemo(() => createThemeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -73,7 +80,7 @@ export default function CookiePolicyScreen() {
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + 12 + webTopInset }]}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="close" size={24} color={Colors.light.text} />
+          <Ionicons name="close" size={24} color={colors.text} />
         </Pressable>
         <Text style={styles.headerTitle}>Cookie & Storage Policy</Text>
         <View style={{ width: 40 }} />
@@ -87,7 +94,7 @@ export default function CookiePolicyScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.topBadge}>
-          <Ionicons name="phone-portrait-outline" size={18} color={Colors.brand.blue} />
+          <Ionicons name="phone-portrait-outline" size={18} color={colors.tint} />
           <Text style={styles.topBadgeText}>Device Storage Only — No Tracking Cookies</Text>
         </View>
 
@@ -165,7 +172,7 @@ export default function CookiePolicyScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styleSource = {
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
@@ -290,4 +297,8 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontStyle: "italic",
   },
-});
+};
+
+const createThemeStyles = (colors: ReturnType<typeof useColors>) => StyleSheet.create(themeSource(styleSource, colors));
+function themeSource(source: any, colors: ReturnType<typeof useColors>): any { return Object.fromEntries(Object.entries(source).map(([name, value]: any) => [name, Object.fromEntries(Object.entries(value).map(([key, token]: any) => [key, themeToken(name, key, token, colors)]))])); }
+function themeToken(name: string, key: string, token: any, colors: ReturnType<typeof useColors>) { if (typeof token !== "string") return token; const isWhiteForeground = key === "color" && /(primary|action|button|submit|done|retry|pay|badge|selected|hero|image.?overlay|warning|status)/i.test(name); if (token === Colors.light.background) return colors.background; if (token === Colors.light.surface) return colors.surface; if (token === Colors.light.text) return isWhiteForeground ? token : colors.text; if (token === Colors.light.textSecondary) return colors.textSecondary; if (token === Colors.light.border) return colors.border; if (token === Colors.brand.blue) return colors.tint; if (token === Colors.brand.red) return colors.accent; if (token.startsWith(Colors.brand.blue)) return `${colors.tint}${token.slice(Colors.brand.blue.length)}`; return token; }

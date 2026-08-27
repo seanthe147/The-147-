@@ -19,7 +19,7 @@ import { router } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
-import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 import type { Booking, StaffNotice } from "@workspace/db/schema";
 
 const TABLE_LABELS: Record<string, string> = {
@@ -98,6 +98,7 @@ function getWeekDays(startDate: Date): Array<{ date: string; dayName: string; da
 }
 
 export default function AdminBookingsScreen() {
+  const { Colors, styles } = useAdminTheme();
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -978,7 +979,22 @@ export default function AdminBookingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function useAdminTheme() {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const Colors = useMemo(() => ({
+    light: colors,
+    brand: { blue: colors.tint, red: colors.accent, gold: colors.gold, green: "#1B5E20" },
+  } as const), [colors]);
+  return { Colors, styles };
+}
+
+function createStyles(colors: ReturnType<typeof useColors>) {
+  const Colors = {
+    light: colors,
+    brand: { blue: colors.tint, red: colors.accent, gold: colors.gold, green: "#1B5E20" },
+  } as const;
+  return StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
@@ -991,6 +1007,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: Colors.light.border,
+    backgroundColor: Colors.light.surface,
   },
   headerTitle: {
     fontFamily: "Montserrat_700Bold",
@@ -1348,7 +1365,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginTop: 4,
     overflow: "hidden",
-    shadowColor: "#000",
+    shadowColor: Colors.light.cardShadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 6,
@@ -1420,6 +1437,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: Colors.light.border,
+    backgroundColor: Colors.light.surface,
   },
   modalTitle: {
     fontFamily: "Montserrat_700Bold",
@@ -1537,4 +1555,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#fff",
   },
-});
+  });
+}

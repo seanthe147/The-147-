@@ -1,5 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { InteractionManager, LogBox } from "react-native";
@@ -15,6 +16,7 @@ import { ConsentProvider } from "@/contexts/ConsentContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { StaffAuthProvider } from "@/contexts/StaffAuthContext";
 import { CustomerAuthProvider } from "@/contexts/CustomerAuthContext";
+import { AppearanceProvider, useAppearance } from "@/contexts/AppearanceContext";
 import { queryClient, prefetchAppData } from "@/lib/query-client";
 import { isStaffVariant, showCustomerRoutes, showStaffRoutes } from "@/lib/app-variant";
 import {
@@ -40,10 +42,13 @@ LogBox.ignoreLogs([
 SplashScreen.preventAutoHideAsync();
 
 function RootLayoutNav() {
+  const { colors, resolvedAppearance } = useAppearance();
+
   return (
     <>
+      <StatusBar style={resolvedAppearance === "dark" ? "light" : "dark"} backgroundColor={colors.background} />
       <Stack
-        screenOptions={{ headerBackTitle: "Back" }}
+        screenOptions={{ headerBackTitle: "Back", contentStyle: { backgroundColor: colors.background } }}
         initialRouteName={isStaffVariant ? "staff-hr" : "(tabs)"}
       >
         {showCustomerRoutes && (
@@ -135,26 +140,28 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <ConsentProvider>
-          <CustomerAuthProvider>
-            <StaffAuthProvider>
-              <NotificationProvider>
-                <TabBarProvider>
-                  <CartProvider>
-                    <KioskProvider>
-                      <GestureHandlerRootView>
-                        <KeyboardProvider>
-                          <RootLayoutNav />
-                          <KioskAttractOverlay />
-                        </KeyboardProvider>
-                      </GestureHandlerRootView>
-                    </KioskProvider>
-                  </CartProvider>
-                </TabBarProvider>
-              </NotificationProvider>
-            </StaffAuthProvider>
-          </CustomerAuthProvider>
-        </ConsentProvider>
+        <AppearanceProvider>
+          <ConsentProvider>
+            <CustomerAuthProvider>
+              <StaffAuthProvider>
+                <NotificationProvider>
+                  <TabBarProvider>
+                    <CartProvider>
+                      <KioskProvider>
+                        <GestureHandlerRootView>
+                          <KeyboardProvider>
+                            <RootLayoutNav />
+                            <KioskAttractOverlay />
+                          </KeyboardProvider>
+                        </GestureHandlerRootView>
+                      </KioskProvider>
+                    </CartProvider>
+                  </TabBarProvider>
+                </NotificationProvider>
+              </StaffAuthProvider>
+            </CustomerAuthProvider>
+          </ConsentProvider>
+        </AppearanceProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );

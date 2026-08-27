@@ -20,6 +20,7 @@ import { apiRequest, queryClient } from "@/lib/query-client";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import { DatePicker } from "@/components/DateTimePickers";
 import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 
 function localDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -178,6 +179,8 @@ function fmtDateTime(iso: string) {
 type Tab = "deliveries" | "count" | "report" | "catalogue";
 
 export default function AdminStockScreen() {
+  const colors = useColors();
+  const styles = React.useMemo(() => createThemedStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isManager, isOwner, isLoading: authLoading } = useStaffAuth();
   const canManage = isManager || isOwner;
@@ -246,6 +249,8 @@ export default function AdminStockScreen() {
 // ── Deliveries Tab ────────────────────────────────────────────────────────────
 
 function DeliveriesTab({ items, categories }: { items: StockItem[]; categories: StockCategory[] }) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createThemedStyles(colors), [colors]);
   const [showForm, setShowForm] = useState(false);
   const [deliveredAt, setDeliveredAt] = useState(() => localDateStr(new Date()));
   const [supplier, setSupplier] = useState("Molson Coors");
@@ -397,6 +402,8 @@ function DeliveriesTab({ items, categories }: { items: StockItem[]; categories: 
 // ── Stock Count Tab ───────────────────────────────────────────────────────────
 
 function CountTab({ items, categories }: { items: StockItem[]; categories: StockCategory[] }) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createThemedStyles(colors), [colors]);
   const [showForm, setShowForm] = useState(false);
   const [periodStart, setPeriodStart] = useState(() => {
     const d = new Date();
@@ -574,6 +581,8 @@ function CountTab({ items, categories }: { items: StockItem[]; categories: Stock
 // ── Report Tab ────────────────────────────────────────────────────────────────
 
 function ReportTab({ categories }: { categories: StockCategory[] }) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createThemedStyles(colors), [colors]);
   const [periodStart, setPeriodStart] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 7);
@@ -697,6 +706,8 @@ function ReportTab({ categories }: { categories: StockCategory[] }) {
 type CatView = "list" | "edit" | "autoMatch";
 
 function CatalogueTab({ items, categories }: { items: StockItem[]; categories: StockCategory[] }) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createThemedStyles(colors), [colors]);
   const [view, setView] = useState<CatView>("list");
   const [editItem, setEditItem] = useState<StockItem | null>(null);
   const [editServes, setEditServes] = useState("");
@@ -972,7 +983,7 @@ function CatalogueTab({ items, categories }: { items: StockItem[]; categories: S
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const createThemedStyles = (colors: any) => themedStyleSheet({
   root: { flex: 1, backgroundColor: Colors.light.background },
   center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: Colors.light.background },
   header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#1E293B" },
@@ -1067,4 +1078,5 @@ const styles = StyleSheet.create({
   reportSummaryText: { fontSize: 12, color: "#AAB4C8", flex: 1 },
   varianceLegend: { flexDirection: "row", gap: 12, marginTop: 6, paddingHorizontal: 4, flexWrap: "wrap" as const },
   varianceLegendItem: { fontSize: 10, fontWeight: "600" },
-});
+}, colors);
+function themedStyleSheet(source: any, colors: ReturnType<typeof useColors>) { return StyleSheet.create(themeSource(source, colors)); } function themeSource(source: any, colors: ReturnType<typeof useColors>): any { return Object.fromEntries(Object.entries(source).map(([n,v]: any) => [n,Object.fromEntries(Object.entries(v).map(([k,t]: any)=>[k,themeToken(n,k,t,colors)]))])); } function themeToken(n:string,k:string,t:any,c:ReturnType<typeof useColors>) { if(typeof t!=="string")return t;if(k==="color"&&/^#fff(?:fff)?$/i.test(t))return /btn|button|badge|chip|pill|selected|active|primary|action|cta|fab|submit|save|publish|approve|confirm|complete|clock|gdpr|back|close|filter|tab|preview|retry|claim|redeem|login/i.test(n)?t:c.text;if(k==="color")return ["#0A1628","#132742","#111827","#1E293B","#1F2937","#334155","#374151","#4B5563"].includes(t)?c.text:["#475569","#4B5A72","#64748B","#6B7280","#94A3B8"].includes(t)?c.textSecondary:t;if(/border.*color/i.test(k)&&["#E2E8F0","#E5E7EB","#CBD5E1","#D1D5DB"].includes(t))return c.border;if(/backgroundcolor/i.test(k))return ["#F2F5FA","#F4F7FB","#F8FAFC","#F9FAFB","#F1F5F9"].includes(t)?c.background:["#fff","#FFFFFF"].includes(t)?c.surface:["#0A1628","#132742","#0F172A","#1E293B"].includes(t)?c.surfaceElevated:t;return t;}

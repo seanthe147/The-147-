@@ -10,7 +10,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import { getApiUrl, getStaffToken } from "@/lib/query-client";
-import Colors from "@/constants/colors";
+import BaseColors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 import { TimePicker } from "@/components/DateTimePickers";
 import { useWindowDimensions } from "react-native";
 
@@ -139,6 +140,7 @@ function normaliseTime(t: string): string {
 // ── Main screen ──────────────────────────────────────────────────────────────
 
 export default function AdminRotaScreen() {
+  const { styles, Colors } = useThemedStyles();
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const { width: windowWidth } = useWindowDimensions();
@@ -993,7 +995,9 @@ export default function AdminRotaScreen() {
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const createThemedStyles = (colors: ReturnType<typeof useColors>) => {
+  const Colors = { ...BaseColors, light: colors, glass: colors.glass };
+  return themedStyleSheet({
   container: { flex: 1, backgroundColor: Colors.light.background },
   centered: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
   accessDenied: { fontSize: 16, color: Colors.light.textSecondary, marginTop: 8 },
@@ -1148,4 +1152,16 @@ const styles = StyleSheet.create({
   gpsChipOutText: { color: "#DC2626" },
   gpsNoData: { flexDirection: "row", alignItems: "center", gap: 5 },
   gpsNoDataText: { fontSize: 11, color: Colors.light.textSecondary, fontStyle: "italic" },
-});
+  }, colors);
+};
+
+function useThemedStyles() {
+  const colors = useColors();
+  const styles = React.useMemo(() => createThemedStyles(colors), [colors]);
+  const themedColors = React.useMemo(() => ({ ...BaseColors, light: colors, glass: colors.glass }), [colors]);
+  return { colors, styles, Colors: themedColors };
+}
+
+function themedStyleSheet(source: any, colors: ReturnType<typeof useColors>) { return StyleSheet.create(themeSource(source, colors)); }
+function themeSource(source: any, colors: ReturnType<typeof useColors>): any { return Object.fromEntries(Object.entries(source).map(([n, v]: any) => [n, Object.fromEntries(Object.entries(v).map(([k, t]: any) => [k, themeToken(n, k, t, colors)]))])); }
+function themeToken(n: string, k: string, t: any, c: ReturnType<typeof useColors>) { if (typeof t !== "string") return t; if (k === "color" && /^#fff(?:fff)?$/i.test(t)) return /btn|button|badge|chip|pill|selected|active|primary|action|cta|fab|submit|save|publish|approve|confirm|complete|clock|gdpr|back|close|filter|tab|preview|retry|claim|redeem|login/i.test(n) ? t : c.text; if (k === "color") return ["#0A1628", "#132742", "#111827", "#1E293B", "#1F2937", "#334155", "#374151", "#4B5563"].includes(t) ? c.text : ["#475569", "#4B5A72", "#64748B", "#6B7280", "#94A3B8", "#9CA3AF"].includes(t) ? c.textSecondary : t; if (/border.*color/i.test(k) && ["#E2E8F0", "#E5E7EB", "#CBD5E1", "#D1D5DB"].includes(t)) return c.border; if (/backgroundcolor/i.test(k)) return ["#F2F5FA", "#F4F7FB", "#F8FAFC", "#F9FAFB", "#F1F5F9", "#F3F4F6"].includes(t) ? c.background : ["#fff", "#FFFFFF"].includes(t) ? c.surface : ["#0A1628", "#132742", "#0F172A", "#1E293B"].includes(t) ? c.surfaceElevated : t; return t; }

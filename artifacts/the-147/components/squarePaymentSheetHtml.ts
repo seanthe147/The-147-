@@ -46,7 +46,23 @@ export function buildPaymentSheetHtml(opts: {
    * payments and Apple Pay (on iOS) are unaffected.
    */
   platform?: string;
+  /** Resolved app appearance, so the WebView matches the native payment sheet. */
+  appearance?: "light" | "dark";
 }): string {
+  const isLight = opts.appearance === "light";
+  const theme = isLight
+    ? {
+        background: "#F4F7FB", surface: "#FFFFFF", surfaceElevated: "#EAF0F7",
+        text: "#102033", textSecondary: "#526273", border: "rgba(16,32,51,0.14)",
+        card: "rgba(16,32,51,0.05)", muted: "rgba(16,32,51,0.55)",
+        faint: "rgba(16,32,51,0.12)", footer: "rgba(16,32,51,0.48)",
+      }
+    : {
+        background: "#0A1628", surface: "#13233A", surfaceElevated: "#1A2E4A",
+        text: "#FFFFFF", textSecondary: "rgba(255,255,255,0.62)", border: "rgba(255,255,255,0.14)",
+        card: "rgba(255,255,255,0.05)", muted: "rgba(255,255,255,0.55)",
+        faint: "rgba(255,255,255,0.12)", footer: "rgba(255,255,255,0.3)",
+      };
   const sdkSrc =
     opts.environment === "production"
       ? "https://web.squarecdn.com/v1/square.js"
@@ -114,7 +130,8 @@ export function buildPaymentSheetHtml(opts: {
   ></script>
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    html, body { margin: 0; padding: 0; background: #0A1628; color: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+    :root { --background: ${theme.background}; --surface: ${theme.surface}; --surface-elevated: ${theme.surfaceElevated}; --text: ${theme.text}; --text-secondary: ${theme.textSecondary}; --border: ${theme.border}; --card: ${theme.card}; --muted: ${theme.muted}; --faint: ${theme.faint}; --footer: ${theme.footer}; }
+    html, body { margin: 0; padding: 0; background: var(--background); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
     body { padding: 18px 16px 28px; min-height: 100vh; }
 
     .amount-card {
@@ -143,24 +160,24 @@ export function buildPaymentSheetHtml(opts: {
       font-weight: 500;
     }
 
-    .section-title { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.45); text-transform: uppercase; letter-spacing: 1.3px; margin-bottom: 10px; }
+    .section-title { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1.3px; margin-bottom: 10px; }
 
     .wallets { display: flex; flex-direction: column; gap: 10px; margin-bottom: 6px; }
     #apple-pay-button, #google-pay-button { display: none; height: 50px; border-radius: 12px; overflow: hidden; }
 
-    .or { display: none; text-align: center; color: rgba(255,255,255,0.35); font-size: 11px; letter-spacing: 1.4px; font-weight: 600; margin: 18px 0 14px; position: relative; }
-    .or::before, .or::after { content: ""; position: absolute; top: 50%; width: calc(50% - 60px); height: 1px; background: rgba(255,255,255,0.12); }
+    .or { display: none; text-align: center; color: var(--muted); font-size: 11px; letter-spacing: 1.4px; font-weight: 600; margin: 18px 0 14px; position: relative; }
+    .or::before, .or::after { content: ""; position: absolute; top: 50%; width: calc(50% - 60px); height: 1px; background: var(--faint); }
     .or::before { left: 0; }
     .or::after { right: 0; }
 
     .card-card {
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.1);
+       background: var(--card);
+       border: 1px solid var(--border);
       border-radius: 14px;
       padding: 16px;
     }
     .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-    .card-header .label { font-size: 13px; font-weight: 700; color: rgba(255,255,255,0.9); }
+    .card-header .label { font-size: 13px; font-weight: 700; color: var(--text); }
     .brands { display: flex; gap: 6px; align-items: center; }
     .brand-logo { height: 20px; width: auto; display: block; border-radius: 3px; }
 
@@ -175,7 +192,7 @@ export function buildPaymentSheetHtml(opts: {
     #pay-card-btn:active { transform: translateY(1px); box-shadow: 0 2px 6px rgba(0, 71, 171, 0.3); }
     #pay-card-btn:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
 
-    #recurring-fineprint { display: none; font-size: 11.5px; color: rgba(255,255,255,0.45); line-height: 1.5; margin-top: 10px; text-align: center; }
+    #recurring-fineprint { display: none; font-size: 11.5px; color: var(--muted); line-height: 1.5; margin-top: 10px; text-align: center; }
 
     /* ── FEATURE_SAVED_CARDS opt-in checkbox ──
        Hidden by default; the inline script un-hides it when SHOW_SAVE_CARD
@@ -186,17 +203,17 @@ export function buildPaymentSheetHtml(opts: {
     #save-card-row {
       display: none; align-items: flex-start; gap: 10px;
       margin-top: 14px; padding: 11px 12px;
-      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
+       background: var(--card); border: 1px solid var(--border); border-radius: 10px;
       cursor: pointer; user-select: none; -webkit-user-select: none;
     }
     #save-card-row input[type="checkbox"] { width: 18px; height: 18px; margin: 1px 0 0 0; accent-color: #3B82F6; flex-shrink: 0; }
-    #save-card-row .save-card-label { font-size: 13px; font-weight: 600; color: #FFFFFF; line-height: 1.35; }
-    #save-card-row .save-card-sub { font-size: 11.5px; color: rgba(255,255,255,0.5); font-weight: 500; line-height: 1.4; margin-top: 2px; }
+    #save-card-row .save-card-label { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.35; }
+    #save-card-row .save-card-sub { font-size: 11.5px; color: var(--muted); font-weight: 500; line-height: 1.4; margin-top: 2px; }
 
     #status { margin-top: 10px; font-size: 13px; color: #F87171; min-height: 16px; text-align: center; font-weight: 500; }
 
-    #loading { display: flex; align-items: center; justify-content: center; gap: 10px; color: rgba(255,255,255,0.5); font-size: 13px; padding: 24px 0; }
-    .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.12); border-top-color: #3B82F6; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    #loading { display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--muted); font-size: 13px; padding: 24px 0; }
+    .spinner { width: 16px; height: 16px; border: 2px solid var(--faint); border-top-color: #3B82F6; border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     #slow-warning { display: none; margin: 0 0 12px; padding: 12px 14px; background: rgba(180,83,9,0.18); border: 1px solid rgba(252,211,77,0.35); border-radius: 10px; font-size: 13px; color: #FCD34D; text-align: center; }
     #slow-retry-btn { display: inline-block; margin-top: 8px; padding: 7px 18px; background: #0047AB; color: #fff; font-size: 13px; font-weight: 700; border: none; border-radius: 8px; cursor: pointer; }
@@ -204,11 +221,11 @@ export function buildPaymentSheetHtml(opts: {
     .trust-footer {
       display: flex; align-items: center; justify-content: center; gap: 6px;
       margin-top: 18px; padding-top: 16px;
-      border-top: 1px solid rgba(255,255,255,0.08);
-      font-size: 11px; color: rgba(255,255,255,0.3); font-weight: 500;
+       border-top: 1px solid var(--border);
+       font-size: 11px; color: var(--footer); font-weight: 500;
     }
-    .trust-footer .lock { display: inline-block; width: 10px; height: 10px; border: 1.5px solid rgba(255,255,255,0.3); border-radius: 2px; position: relative; }
-    .trust-footer .lock::before { content: ""; position: absolute; top: -4px; left: 1.5px; width: 5px; height: 5px; border: 1.5px solid rgba(255,255,255,0.3); border-bottom: none; border-radius: 4px 4px 0 0; }
+     .trust-footer .lock { display: inline-block; width: 10px; height: 10px; border: 1.5px solid var(--footer); border-radius: 2px; position: relative; }
+     .trust-footer .lock::before { content: ""; position: absolute; top: -4px; left: 1.5px; width: 5px; height: 5px; border: 1.5px solid var(--footer); border-bottom: none; border-radius: 4px 4px 0 0; }
   </style>
 </head>
 <body>

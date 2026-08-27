@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   StyleSheet,
   Text,
@@ -17,7 +17,7 @@ import { router } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/query-client";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
-import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 import type { BlockedPeriod } from "@workspace/db/schema";
 import { DatePicker, TimePicker } from "@/components/DateTimePickers";
 
@@ -63,6 +63,8 @@ function formatBlockLabel(b: BlockedPeriod): string {
 }
 
 export default function AdminAvailabilityScreen() {
+  const colors = useColors();
+  const styles = useMemo(() => createThemedStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -149,7 +151,7 @@ export default function AdminAvailabilityScreen() {
   if (authLoading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color={Colors.brand.blue} />
+        <ActivityIndicator color={colors.tint} />
       </View>
     );
   }
@@ -176,7 +178,7 @@ export default function AdminAvailabilityScreen() {
     >
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.headerBack}>
-          <Ionicons name="arrow-back" size={22} color={Colors.brand.navy} />
+          <Ionicons name="arrow-back" size={22} color={colors.text} />
         </Pressable>
         <Text style={styles.headerTitle}>Availability Blocks</Text>
       </View>
@@ -262,7 +264,7 @@ export default function AdminAvailabilityScreen() {
             value={label}
             onChangeText={setLabel}
             placeholder="e.g. Private event, Maintenance..."
-            placeholderTextColor="#aaa"
+            placeholderTextColor={colors.textSecondary}
           />
         </View>
 
@@ -291,10 +293,10 @@ export default function AdminAvailabilityScreen() {
       <Text style={styles.sectionLabel}>ACTIVE BLOCKS</Text>
 
       {isLoading ? (
-        <ActivityIndicator color={Colors.brand.blue} style={{ marginTop: 20 }} />
+        <ActivityIndicator color={colors.tint} style={{ marginTop: 20 }} />
       ) : blocks.length === 0 ? (
         <View style={styles.emptyCard}>
-          <Ionicons name="checkmark-circle-outline" size={32} color={Colors.brand.green} />
+          <Ionicons name="checkmark-circle-outline" size={32} color="#1B5E20" />
           <Text style={styles.emptyText}>No blocks active — all times are open to bookings</Text>
         </View>
       ) : (
@@ -323,7 +325,7 @@ export default function AdminAvailabilityScreen() {
       )}
 
       <View style={styles.noteCard}>
-        <Ionicons name="information-circle-outline" size={18} color={Colors.brand.blue} style={{ marginRight: 8 }} />
+        <Ionicons name="information-circle-outline" size={18} color={colors.tint} style={{ marginRight: 8 }} />
         <Text style={styles.noteText}>
           Dining is automatically restricted to Wednesday–Sunday, 12pm–8pm as a business rule.
           Use blocks above for additional closures or event days.
@@ -333,17 +335,17 @@ export default function AdminAvailabilityScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F5F7FA" },
+const createThemedStyles = (colors: ReturnType<typeof useColors>) => themedStyleSheet({
+  container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16 },
   center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24 },
   errorText: { fontSize: 16, color: "#DC2626", marginBottom: 16 },
-  backBtn: { backgroundColor: Colors.brand.blue, borderRadius: 8, paddingHorizontal: 20, paddingVertical: 10 },
+  backBtn: { backgroundColor: colors.tint, borderRadius: 8, paddingHorizontal: 20, paddingVertical: 10 },
   backBtnText: { color: "#fff", fontWeight: "600" },
 
   header: { flexDirection: "row", alignItems: "center", marginBottom: 24 },
   headerBack: { padding: 4, marginRight: 12 },
-  headerTitle: { fontSize: 22, fontWeight: "700", color: Colors.brand.navy },
+  headerTitle: { fontSize: 22, fontWeight: "700", color: colors.text },
 
   sectionLabel: {
     fontSize: 11, fontWeight: "700", color: "#8B9AB0",
@@ -351,37 +353,37 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    backgroundColor: "#fff", borderRadius: 16, padding: 16,
-    marginBottom: 20, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
+    backgroundColor: colors.surface, borderRadius: 16, padding: 16,
+    marginBottom: 20, shadowColor: colors.cardShadow, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
   },
-  modeRow: { flexDirection: "row", backgroundColor: "#F1F5FB", borderRadius: 10, padding: 3, marginBottom: 16 },
+  modeRow: { flexDirection: "row", backgroundColor: colors.surfaceElevated, borderRadius: 10, padding: 3, marginBottom: 16 },
   modeBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: "center" },
-  modeBtnActive: { backgroundColor: "#fff", shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 4, elevation: 2 },
+  modeBtnActive: { backgroundColor: colors.surface, shadowColor: colors.cardShadow, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2 },
   modeBtnText: { fontSize: 13, fontWeight: "600", color: "#8B9AB0" },
-  modeBtnTextActive: { color: Colors.brand.navy },
+  modeBtnTextActive: { color: colors.text },
 
   field: { marginBottom: 14 },
   fieldLabel: { fontSize: 12, fontWeight: "600", color: "#6B7280", marginBottom: 6 },
   input: {
-    borderWidth: 1.5, borderColor: "#E2E8F0", borderRadius: 10,
-    padding: 11, fontSize: 14, color: Colors.brand.navy, backgroundColor: "#FAFAFA",
+    borderWidth: 1.5, borderColor: colors.border, borderRadius: 10,
+    padding: 11, fontSize: 14, color: colors.text, backgroundColor: colors.input,
   },
   rowFields: { flexDirection: "row" },
 
   dayGrid: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 },
   dayBtn: {
     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8,
-    borderWidth: 1.5, borderColor: "#E2E8F0", backgroundColor: "#FAFAFA",
+    borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.input,
   },
-  dayBtnActive: { backgroundColor: Colors.brand.blue, borderColor: Colors.brand.blue },
+  dayBtnActive: { backgroundColor: colors.tint, borderColor: colors.tint },
   dayBtnText: { fontSize: 13, fontWeight: "600", color: "#6B7280" },
   dayBtnTextActive: { color: "#fff" },
 
   typeChip: {
     paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
-    borderWidth: 1.5, borderColor: "#E2E8F0", backgroundColor: "#FAFAFA", marginRight: 8,
+    borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.input, marginRight: 8,
   },
-  typeChipActive: { backgroundColor: Colors.brand.blue, borderColor: Colors.brand.blue },
+  typeChipActive: { backgroundColor: colors.tint, borderColor: colors.tint },
   typeChipText: { fontSize: 13, fontWeight: "600", color: "#6B7280" },
   typeChipTextActive: { color: "#fff" },
 
@@ -396,22 +398,22 @@ const styles = StyleSheet.create({
   submitBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
 
   emptyCard: {
-    backgroundColor: "#fff", borderRadius: 16, padding: 24,
+    backgroundColor: colors.surface, borderRadius: 16, padding: 24,
     alignItems: "center", marginBottom: 16,
   },
   emptyText: { marginTop: 10, color: "#6B7280", fontSize: 14, textAlign: "center" },
 
   blockRow: {
-    backgroundColor: "#fff", borderRadius: 12, padding: 14, marginBottom: 10,
+    backgroundColor: colors.surface, borderRadius: 12, padding: 14, marginBottom: 10,
     flexDirection: "row", alignItems: "center",
-    shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 6, elevation: 1,
+    shadowColor: colors.cardShadow, shadowOpacity: 0.04, shadowRadius: 6, elevation: 1,
   },
   blockIcon: {
     width: 36, height: 36, borderRadius: 18, backgroundColor: "#FEF2F2",
     justifyContent: "center", alignItems: "center", marginRight: 12,
   },
   blockInfo: { flex: 1 },
-  blockMain: { fontSize: 13, fontWeight: "600", color: Colors.brand.navy },
+  blockMain: { fontSize: 13, fontWeight: "600", color: colors.text },
   blockSub: { fontSize: 12, color: "#6B7280", marginTop: 2 },
   deleteBtn: { padding: 6 },
 
@@ -419,5 +421,8 @@ const styles = StyleSheet.create({
     flexDirection: "row", backgroundColor: "#EFF6FF", borderRadius: 12, padding: 14,
     marginTop: 8, alignItems: "flex-start",
   },
-  noteText: { flex: 1, fontSize: 12, color: Colors.brand.blue, lineHeight: 18 },
-});
+  noteText: { flex: 1, fontSize: 12, color: colors.tint, lineHeight: 18 },
+}, colors);
+function themedStyleSheet(source: any, colors: ReturnType<typeof useColors>) { return StyleSheet.create(themeSource(source, colors)); }
+function themeSource(source: any, colors: ReturnType<typeof useColors>): any { return Object.fromEntries(Object.entries(source).map(([name, value]: any) => [name, Object.fromEntries(Object.entries(value).map(([key, token]: any) => [key, themeToken(name, key, token, colors)]))])); }
+function themeToken(name: string, key: string, token: any, colors: ReturnType<typeof useColors>) { if (typeof token !== "string") return token; if (key === "color" && /^#fff(?:fff)?$/i.test(token)) return /btn|button|badge|chip|pill|selected|active|primary|action|cta|fab|submit|save|publish|approve|confirm|complete|clock|gdpr|back|close|filter|tab|preview|retry|claim|redeem|login/i.test(name) ? token : colors.text; if (key === "color") return ["#0A1628", "#132742"].includes(token) ? colors.text : ["#6B7280", "#8B9AB0"].includes(token) ? colors.textSecondary : token; if (/border.*color/i.test(key) && ["#E2E8F0"].includes(token)) return colors.border; if (key === "backgroundColor") return ["#F5F7FA"].includes(token) ? colors.background : ["#fff", "#FAFAFA"].includes(token) ? colors.surface : token; return token; }

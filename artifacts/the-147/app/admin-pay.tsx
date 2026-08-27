@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResponsive } from "@/hooks/useResponsive";
 import { getApiUrl, getStaffToken } from "@/lib/query-client";
 import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 
 const SSP_RATE_YEAR = "2025/26";
 const SSP_WEEKLY = 118.75;
@@ -34,6 +35,8 @@ async function apiFetch(path: string, opts?: RequestInit) {
 }
 
 export default function AdminPayScreen() {
+  const colors = useColors();
+  const styles = React.useMemo(() => createThemedStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const router = useRouter();
@@ -442,7 +445,7 @@ export default function AdminPayScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createThemedStyles = (colors: any) => themedStyleSheet({
   root: { flex: 1, backgroundColor: Colors.light.background },
   header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingBottom: 12, gap: 8, borderBottomWidth: 1, borderBottomColor: Colors.light.border },
   back: { padding: 4 },
@@ -499,4 +502,5 @@ const styles = StyleSheet.create({
   disclaimerBox: { flexDirection: "row", alignItems: "flex-start", backgroundColor: "#F9FAFB", borderRadius: 10, padding: 12, marginTop: 16 },
   disclaimerText: { fontFamily: "Montserrat_400Regular", fontSize: 11, color: Colors.light.textSecondary, flex: 1, lineHeight: 16 },
   errText: { fontFamily: "Montserrat_400Regular", fontSize: 14, color: "#EF4444", textAlign: "center", marginTop: 40 },
-});
+}, colors);
+function themedStyleSheet(source: any, colors: ReturnType<typeof useColors>) { return StyleSheet.create(themeSource(source, colors)); } function themeSource(source: any, colors: ReturnType<typeof useColors>): any { return Object.fromEntries(Object.entries(source).map(([n,v]: any) => [n,Object.fromEntries(Object.entries(v).map(([k,t]: any)=>[k,themeToken(n,k,t,colors)]))])); } function themeToken(n:string,k:string,t:any,c:ReturnType<typeof useColors>) { if(typeof t!=="string")return t;if(k==="color"&&/^#fff(?:fff)?$/i.test(t))return /btn|button|badge|chip|pill|selected|active|primary|action|cta|fab|submit|save|publish|approve|confirm|complete|clock|gdpr|back|close|filter|tab|preview|retry|claim|redeem|login/i.test(n)?t:c.text;if(k==="color")return ["#0A1628","#132742","#111827","#1E293B","#1F2937","#334155","#374151","#4B5563"].includes(t)?c.text:["#475569","#4B5A72","#64748B","#6B7280","#94A3B8"].includes(t)?c.textSecondary:t;if(/border.*color/i.test(k)&&["#E2E8F0","#E5E7EB","#CBD5E1","#D1D5DB"].includes(t))return c.border;if(/backgroundcolor/i.test(k))return ["#F2F5FA","#F4F7FB","#F8FAFC","#F9FAFB","#F1F5F9"].includes(t)?c.background:["#fff","#FFFFFF"].includes(t)?c.surface:["#0A1628","#132742","#0F172A","#1E293B"].includes(t)?c.surfaceElevated:t;return t;}

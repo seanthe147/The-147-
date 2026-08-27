@@ -9,6 +9,7 @@ export interface FeatureFlags {
   dietaryFilters: boolean;
   personalisedHome: boolean;
   kdsSync: boolean;
+  appearanceThemes: boolean;
 }
 
 export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
@@ -17,6 +18,7 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   dietaryFilters: false,
   personalisedHome: false,
   kdsSync: false,
+  appearanceThemes: false,
 };
 
 export const FEATURE_FLAG_ENV: Record<keyof FeatureFlags, string> = {
@@ -25,6 +27,7 @@ export const FEATURE_FLAG_ENV: Record<keyof FeatureFlags, string> = {
   dietaryFilters: "FEATURE_DIETARY_FILTERS",
   personalisedHome: "FEATURE_PERSONALISED_HOME",
   kdsSync: "FEATURE_KDS_SYNC",
+  appearanceThemes: "FEATURE_APPEARANCE_THEMES",
 };
 
 export function parseFlagEnv(val: string | undefined): boolean {

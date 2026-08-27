@@ -12,6 +12,7 @@ import { WebView, type WebView as WebViewType } from "react-native-webview";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 import { buildPaymentSheetHtml } from "@/components/squarePaymentSheetHtml";
 import { getApiUrl } from "@/lib/query-client";
 import { useSquareGooglePay, type GooglePayNonceResult } from "@/hooks/useSquareGooglePay";
@@ -102,6 +103,8 @@ function postDiagnostic(payload: Record<string, unknown>) {
 
 
 export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors.scheme]);
   const insets = useSafeAreaInsets();
   const [internalError, setInternalError] = useState<string | null>(null);
   const [isGooglePayProcessing, setIsGooglePayProcessing] = useState(false);
@@ -181,8 +184,9 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
       recurringDescription: props.recurringDescription || null,
       showSaveCard: !!props.showSaveCard,
       platform: Platform.OS,
+      appearance: colors.scheme,
     });
-  }, [props.applicationId, props.locationId, props.environment, props.amountPence, props.currency, props.intent, props.buyerEmail, props.recurringDescription, props.showSaveCard]);
+  }, [props.applicationId, props.locationId, props.environment, props.amountPence, props.currency, props.intent, props.buyerEmail, props.recurringDescription, props.showSaveCard, colors.scheme]);
 
   // Reset error when the sheet is reopened
   useEffect(() => {
@@ -287,7 +291,7 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
               { opacity: pressed || props.inProgress ? 0.5 : 1 },
             ]}
           >
-            <Ionicons name="close" size={22} color={Colors.light.text} />
+            <Ionicons name="close" size={22} color={colors.text} />
           </Pressable>
         </View>
 
@@ -397,7 +401,7 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
                 <ActivityIndicator color={Colors.brand.blue} />
               </View>
             )}
-            style={{ flex: 1, backgroundColor: "#fff" }}
+            style={{ flex: 1, backgroundColor: colors.background }}
           />
         )}
 
@@ -421,8 +425,8 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0A1628" },
+const createStyles = (colors: ReturnType<typeof useColors>) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: "row" as const,
     alignItems: "center" as const,
@@ -430,22 +434,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingBottom: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.1)",
-    backgroundColor: "#0A1628",
+    borderBottomColor: colors.border,
+    backgroundColor: colors.background,
   },
   headerLeft: { flexDirection: "row" as const, alignItems: "center" as const, gap: 8 },
-  title: { fontSize: 17, fontWeight: "700" as const, color: "#FFFFFF" },
+  title: { fontSize: 17, fontWeight: "700" as const, color: colors.text },
   closeBtn: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: colors.surfaceElevated,
     alignItems: "center" as const,
     justifyContent: "center" as const,
   },
   errorBox: { padding: 24, alignItems: "center" as const, gap: 10 },
-  errorTitle: { fontSize: 16, fontWeight: "700" as const, color: "#FFFFFF" },
-  errorBody: { fontSize: 14, color: "rgba(255,255,255,0.55)", textAlign: "center" as const, lineHeight: 20 },
+  errorTitle: { fontSize: 16, fontWeight: "700" as const, color: colors.text },
+  errorBody: { fontSize: 14, color: colors.textSecondary, textAlign: "center" as const, lineHeight: 20 },
   errorBanner: {
     flexDirection: "row" as const,
     alignItems: "center" as const,
@@ -459,10 +463,10 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   errorBannerText: { color: "#F87171", fontSize: 13, flex: 1 },
-  loadingOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "center" as const, justifyContent: "center" as const, backgroundColor: "#0A1628" },
-  processingOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "center" as const, justifyContent: "center" as const, backgroundColor: "rgba(10,22,40,0.92)" },
-  processingCard: { padding: 22, borderRadius: 16, alignItems: "center" as const, gap: 10, backgroundColor: "rgba(19,39,66,0.98)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)", shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 20, elevation: 8 },
-  processingText: { fontSize: 14, color: "#FFFFFF", fontWeight: "600" as const },
+  loadingOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "center" as const, justifyContent: "center" as const, backgroundColor: colors.background },
+  processingOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "center" as const, justifyContent: "center" as const, backgroundColor: colors.overlay },
+  processingCard: { padding: 22, borderRadius: 16, alignItems: "center" as const, gap: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, shadowColor: colors.cardShadow, shadowOpacity: 0.4, shadowRadius: 20, elevation: 8 },
+  processingText: { fontSize: 14, color: colors.text, fontWeight: "600" as const },
   googlePaySection: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 },
   googlePayButton: {
     height: 52,
@@ -483,6 +487,6 @@ const styles = StyleSheet.create({
   },
   googlePayText: { fontSize: 15, fontWeight: "600" as const, color: "#fff", letterSpacing: 0.1 },
   orDivider: { flexDirection: "row" as const, alignItems: "center" as const, paddingHorizontal: 20, paddingVertical: 10, gap: 10 },
-  orLine: { flex: 1, height: 1, backgroundColor: "rgba(255,255,255,0.12)" },
-  orText: { fontSize: 10, fontWeight: "600" as const, color: "rgba(255,255,255,0.35)", letterSpacing: 1.2 },
+  orLine: { flex: 1, height: 1, backgroundColor: colors.border },
+  orText: { fontSize: 10, fontWeight: "600" as const, color: colors.textSecondary, letterSpacing: 1.2 },
 });

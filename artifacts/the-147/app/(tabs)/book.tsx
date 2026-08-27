@@ -22,6 +22,8 @@ import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
 import { useResponsive } from "@/hooks/useResponsive";
 import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
+const baseColors = Colors;
 import { TABLE_TYPES } from "@/lib/data";
 
 interface VenueRewardTier {
@@ -118,6 +120,8 @@ type Step = "table" | "datetime" | "details" | "confirm" | "success" | "deposit"
 const DEPOSIT_GUEST_THRESHOLD = 7;
 
 export default function BookScreen() {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -737,7 +741,7 @@ export default function BookScreen() {
                   value={name}
                   onChangeText={setName}
                   placeholder="John Smith"
-                  placeholderTextColor={Colors.light.textSecondary}
+                  placeholderTextColor={colors.textSecondary}
                   autoCapitalize="words"
                   testID="booking-name-input"
                 />
@@ -750,7 +754,7 @@ export default function BookScreen() {
                   value={email}
                   onChangeText={setEmail}
                   placeholder="john@example.com"
-                  placeholderTextColor={Colors.light.textSecondary}
+                  placeholderTextColor={colors.textSecondary}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   testID="booking-email-input"
@@ -764,7 +768,7 @@ export default function BookScreen() {
                   value={phone}
                   onChangeText={setPhone}
                   placeholder="07700 900000"
-                  placeholderTextColor={Colors.light.textSecondary}
+                  placeholderTextColor={colors.textSecondary}
                   keyboardType="phone-pad"
                   testID="booking-phone-input"
                 />
@@ -777,7 +781,7 @@ export default function BookScreen() {
                   value={notes}
                   onChangeText={setNotes}
                   placeholder="Any special requests?"
-                  placeholderTextColor={Colors.light.textSecondary}
+                  placeholderTextColor={colors.textSecondary}
                   multiline
                   numberOfLines={3}
                   testID="booking-notes-input"
@@ -990,7 +994,7 @@ export default function BookScreen() {
                 </Pressable>
               ) : null}
               <Pressable onPress={resetForm} style={[styles.newBookingButton, { marginTop: 12 }]}>
-                <Text style={[styles.newBookingText, { color: Colors.light.textSecondary }]}>Cancel Booking</Text>
+                <Text style={[styles.newBookingText, { color: colors.textSecondary }]}>Cancel Booking</Text>
               </Pressable>
             </View>
           )}
@@ -1099,7 +1103,7 @@ export default function BookScreen() {
                 {loginMode === "login" ? "Sign In" : "Create Account"}
               </Text>
               <Pressable onPress={() => setShowLoginModal(false)} style={styles.modalClose}>
-                <Ionicons name="close" size={22} color={Colors.light.text} />
+                <Ionicons name="close" size={22} color={colors.text} />
               </Pressable>
             </View>
 
@@ -1133,7 +1137,7 @@ export default function BookScreen() {
                     value={loginName}
                     onChangeText={setLoginName}
                     placeholder="John Smith"
-                    placeholderTextColor={Colors.light.textSecondary}
+                    placeholderTextColor={colors.textSecondary}
                     autoCapitalize="words"
                   />
                   <Text style={styles.modalLabel}>Phone *</Text>
@@ -1142,7 +1146,7 @@ export default function BookScreen() {
                     value={loginPhone}
                     onChangeText={setLoginPhone}
                     placeholder="07700 900000"
-                    placeholderTextColor={Colors.light.textSecondary}
+                    placeholderTextColor={colors.textSecondary}
                     keyboardType="phone-pad"
                   />
                 </>
@@ -1154,7 +1158,7 @@ export default function BookScreen() {
                 value={loginEmail}
                 onChangeText={setLoginEmail}
                 placeholder="john@example.com"
-                placeholderTextColor={Colors.light.textSecondary}
+                placeholderTextColor={colors.textSecondary}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -1166,7 +1170,7 @@ export default function BookScreen() {
                 value={loginPassword}
                 onChangeText={setLoginPassword}
                 placeholder="••••••••"
-                placeholderTextColor={Colors.light.textSecondary}
+                placeholderTextColor={colors.textSecondary}
                 secureTextEntry
                 onSubmitEditing={loginMode === "login" ? handleModalLogin : handleModalRegister}
               />
@@ -1196,25 +1200,29 @@ export default function BookScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: ReturnType<typeof useColors>) => {
+  const Colors = { ...baseColors, light: palette };
+  return StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
   },
   header: {
-    backgroundColor: Colors.brand.navy,
+    backgroundColor: palette.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: palette.border,
     paddingHorizontal: 20,
     paddingVertical: 14,
   },
   headerTitle: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 22,
-    color: "#FFFFFF",
+    color: palette.text,
   },
   headerSubtitle: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 13,
-    color: "rgba(255,255,255,0.75)",
+    color: palette.textSecondary,
     marginTop: 2,
   },
   progressRow: {
@@ -1927,4 +1935,5 @@ const styles = StyleSheet.create({
   rewardClaimBtnTextClaimed: {
     color: "#065F46",
   },
-});
+  });
+};

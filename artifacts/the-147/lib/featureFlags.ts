@@ -33,6 +33,7 @@ export interface FeatureFlags {
   dietaryFilters: boolean;
   personalisedHome: boolean;
   kdsSync: boolean;
+  appearanceThemes: boolean;
 }
 
 export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
@@ -41,6 +42,7 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   dietaryFilters: false,
   personalisedHome: false,
   kdsSync: false,
+  appearanceThemes: false,
 };
 
 /** Env-var name for each flag. Co-located so server + client stay in sync. */
@@ -50,6 +52,7 @@ export const FEATURE_FLAG_ENV: Record<keyof FeatureFlags, string> = {
   dietaryFilters: "FEATURE_DIETARY_FILTERS",
   personalisedHome: "FEATURE_PERSONALISED_HOME",
   kdsSync: "FEATURE_KDS_SYNC",
+  appearanceThemes: "FEATURE_APPEARANCE_THEMES",
 };
 
 /** Parse a single env-var value into a boolean. Empty / unset → false. */

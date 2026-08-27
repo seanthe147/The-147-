@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -25,6 +25,7 @@ import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import { getApiUrl, prefetchSquarePaymentSdk } from "@/lib/query-client";
 import { SquarePaymentSheet } from "@/components/SquarePaymentSheet";
 import { getPlanBenefits, type BenefitKey } from "@workspace/db/schema";
+import { useColors } from "@/hooks/useColors";
 
 const TOKEN_KEY = "customer_session_token";
 
@@ -106,6 +107,8 @@ function todayString() {
 }
 
 export default function MembershipScreen() {
+  const colors = useColors();
+  const styles = useMemo(() => createThemeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const { isAuthenticated, isLoading: authLoading, customer } = useCustomerAuth();
@@ -683,6 +686,8 @@ function ActiveMembership({
   onRefresh: () => void;
   refreshing: boolean;
 }) {
+  const colors = useColors();
+  const styles = useMemo(() => createThemeStyles(colors), [colors]);
   const { tabletPad } = useResponsive();
   const plan = subscription.plan;
   const planColor = plan?.color || Colors.brand.blue;
@@ -920,7 +925,7 @@ function ActiveMembership({
   );
 }
 
-const styles = StyleSheet.create({
+const styleSource = {
   container: { flex: 1, backgroundColor: Colors.light.background },
   loadingContainer: { flex: 1, alignItems: "center", justifyContent: "center" },
   header: {
@@ -1234,4 +1239,8 @@ const styles = StyleSheet.create({
     color: "#7C3AED",
     flex: 1,
   },
-});
+};
+
+const createThemeStyles = (colors: ReturnType<typeof useColors>) => StyleSheet.create(themeSource(styleSource, colors));
+function themeSource(source: any, colors: ReturnType<typeof useColors>): any { return Object.fromEntries(Object.entries(source).map(([name, value]: any) => [name, Object.fromEntries(Object.entries(value).map(([key, token]: any) => [key, themeToken(name, key, token, colors)]))])); }
+function themeToken(name: string, key: string, token: any, colors: ReturnType<typeof useColors>) { if (typeof token !== "string") return token; const isWhiteForeground = key === "color" && /(primary|action|button|submit|done|retry|pay|badge|selected|hero|image.?overlay|warning|status)/i.test(name); if (token === Colors.light.background) return colors.background; if (token === Colors.light.surface) return colors.surface; if (token === Colors.light.surfaceElevated) return colors.surfaceElevated; if (token === Colors.light.text) return isWhiteForeground ? token : colors.text; if (token === Colors.light.textSecondary) return colors.textSecondary; if (token === Colors.light.border) return colors.border; if (token === Colors.brand.blue) return colors.tint; if (token === Colors.brand.red) return colors.accent; if (token.startsWith(Colors.brand.blue)) return `${colors.tint}${token.slice(Colors.brand.blue.length)}`; return token; }

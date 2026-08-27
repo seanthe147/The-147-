@@ -11,6 +11,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import { getApiUrl, getStaffToken } from "@/lib/query-client";
 import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 
 async function hrApi(path: string, opts?: RequestInit) {
   const url = new URL(path, getApiUrl()).toString();
@@ -60,6 +61,8 @@ const EMPTY: FormState = {
 };
 
 export default function StaffOnboardingScreen() {
+  const colors = useColors();
+  const styles = React.useMemo(() => createThemedStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const webTop = Platform.OS === "web" ? 67 : 0;
@@ -132,7 +135,7 @@ export default function StaffOnboardingScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerBack}>
-          <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
         </Pressable>
         <Text style={styles.headerTitle}>My Onboarding Details</Text>
         <View style={{ width: 36 }} />
@@ -268,6 +271,8 @@ export default function StaffOnboardingScreen() {
 }
 
 function Section({ title, icon, children }: { title: string; icon: any; children: React.ReactNode }) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createThemedStyles(colors), [colors]);
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
@@ -283,6 +288,8 @@ function Field({ label, value, onChangeText, placeholder, keyboardType, maxLengt
   label: string; value: string; onChangeText: (v: string) => void;
   placeholder?: string; keyboardType?: any; maxLength?: number; hint?: string;
 }) {
+  const colors = useColors();
+  const styles = React.useMemo(() => createThemedStyles(colors), [colors]);
   return (
     <View style={styles.fieldWrap}>
       <Text style={styles.fieldLabelTop}>{label}</Text>
@@ -292,7 +299,7 @@ function Field({ label, value, onChangeText, placeholder, keyboardType, maxLengt
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={Colors.light.textSecondary}
+        placeholderTextColor={colors.textSecondary}
         keyboardType={keyboardType}
         maxLength={maxLength}
       />
@@ -300,7 +307,7 @@ function Field({ label, value, onChangeText, placeholder, keyboardType, maxLengt
   );
 }
 
-const styles = StyleSheet.create({
+const createThemedStyles = (colors: any) => themedStyleSheet({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
   centered: { flex: 1, alignItems: "center", justifyContent: "center" },
 
@@ -343,4 +350,5 @@ const styles = StyleSheet.create({
   saveProgressText: { color: Colors.brand.blue, fontSize: 14, fontWeight: "700" },
   completeBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 12, borderRadius: 10, backgroundColor: Colors.brand.blue },
   completeBtnText: { color: "#fff", fontSize: 14, fontWeight: "700" },
-});
+}, colors);
+function themedStyleSheet(source: any, colors: ReturnType<typeof useColors>) { return StyleSheet.create(themeSource(source, colors)); } function themeSource(source: any, colors: ReturnType<typeof useColors>): any { return Object.fromEntries(Object.entries(source).map(([n,v]: any) => [n,Object.fromEntries(Object.entries(v).map(([k,t]: any)=>[k,themeToken(n,k,t,colors)]))])); } function themeToken(n:string,k:string,t:any,c:ReturnType<typeof useColors>) { if(typeof t!=="string")return t;if(k==="color"&&/^#fff(?:fff)?$/i.test(t))return /btn|button|badge|chip|pill|selected|active|primary|action|cta|fab|submit|save|publish|approve|confirm|complete|clock|gdpr|back|close|filter|tab|preview|retry|claim|redeem|login/i.test(n)?t:c.text;if(k==="color")return ["#0A1628","#132742","#111827","#1E293B","#1F2937","#334155","#374151","#4B5563"].includes(t)?c.text:["#475569","#4B5A72","#64748B","#6B7280","#94A3B8"].includes(t)?c.textSecondary:t;if(/border.*color/i.test(k)&&["#E2E8F0","#E5E7EB","#CBD5E1","#D1D5DB"].includes(t))return c.border;if(/backgroundcolor/i.test(k))return ["#F2F5FA","#F4F7FB","#F8FAFC","#F9FAFB","#F1F5F9"].includes(t)?c.background:["#fff","#FFFFFF"].includes(t)?c.surface:["#0A1628","#132742","#0F172A","#1E293B"].includes(t)?c.surfaceElevated:t;return t;}

@@ -1,4 +1,4 @@
-import React, { useContext } from "react";
+import React, { useContext, useMemo } from "react";
 import {
   StyleSheet,
   Text,
@@ -15,15 +15,19 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useResponsive } from "@/hooks/useResponsive";
 import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
+const baseColors = Colors;
 import { OPENING_HOURS } from "@/lib/data";
 import { getApiUrl } from "@/lib/query-client";
 import { showStaffRoutes } from "@/lib/app-variant";
 
 function InfoSection({
+  styles,
   icon,
   title,
   children,
 }: {
+  styles: ReturnType<typeof createStyles>;
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   children: React.ReactNode;
@@ -41,7 +45,15 @@ function InfoSection({
   );
 }
 
-function FacilityItem({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) {
+function FacilityItem({
+  icon,
+  label,
+  styles,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  styles: ReturnType<typeof createStyles>;
+}) {
   return (
     <View style={styles.facilityItem}>
       <Ionicons name={icon} size={20} color={Colors.brand.blue} />
@@ -51,6 +63,8 @@ function FacilityItem({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; l
 }
 
 export default function AboutScreen() {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -80,7 +94,7 @@ export default function AboutScreen() {
       </LinearGradient>
 
       <View style={[styles.body, isTablet && { maxWidth: 720, width: "100%", alignSelf: "center" }]}>
-        <InfoSection icon="information-circle" title="About The 147">
+          <InfoSection styles={styles} icon="information-circle" title="About The 147">
           <Text style={styles.bodyText}>
             The 147 is more than just a snooker club. We're a modern venue that combines
             the best of cue sports with quality dining, a fully stocked bar, and regular
@@ -95,22 +109,22 @@ export default function AboutScreen() {
           </Text>
         </InfoSection>
 
-        <InfoSection icon="grid" title="Our Facilities">
+          <InfoSection styles={styles} icon="grid" title="Our Facilities">
           <View style={styles.facilitiesGrid}>
-            <FacilityItem icon="ellipse" label="Full-Size Snooker Tables" />
-            <FacilityItem icon="ellipse-outline" label="Pool Tables" />
-            <FacilityItem icon="restaurant" label="Restaurant & Kitchen" />
-            <FacilityItem icon="beer" label="Fully Licensed Bar" />
-            <FacilityItem icon="tv" label="Live Sports Screens" />
-            <FacilityItem icon="game-controller" label="Entertainment Area" />
-            <FacilityItem icon="musical-notes" label="Live Music Events" />
-            <FacilityItem icon="trophy" label="Weekly Tournaments" />
-            <FacilityItem icon="wifi" label="Free Wi-Fi" />
-            <FacilityItem icon="car" label="On-Site Parking" />
+            <FacilityItem styles={styles} icon="ellipse" label="Full-Size Snooker Tables" />
+            <FacilityItem styles={styles} icon="ellipse-outline" label="Pool Tables" />
+            <FacilityItem styles={styles} icon="restaurant" label="Restaurant & Kitchen" />
+            <FacilityItem styles={styles} icon="beer" label="Fully Licensed Bar" />
+            <FacilityItem styles={styles} icon="tv" label="Live Sports Screens" />
+            <FacilityItem styles={styles} icon="game-controller" label="Entertainment Area" />
+            <FacilityItem styles={styles} icon="musical-notes" label="Live Music Events" />
+            <FacilityItem styles={styles} icon="trophy" label="Weekly Tournaments" />
+            <FacilityItem styles={styles} icon="wifi" label="Free Wi-Fi" />
+            <FacilityItem styles={styles} icon="car" label="On-Site Parking" />
           </View>
         </InfoSection>
 
-        <InfoSection icon="time" title="Opening Hours">
+        <InfoSection styles={styles} icon="time" title="Opening Hours">
           <View style={styles.hoursContainer}>
             {OPENING_HOURS.map((item, index) => (
               <View
@@ -136,7 +150,7 @@ export default function AboutScreen() {
           </View>
         </InfoSection>
 
-        <InfoSection icon="call" title="Contact & Location">
+        <InfoSection styles={styles} icon="call" title="Contact & Location">
           <View style={styles.contactList}>
             <Pressable
               onPress={() => router.push("/contact")}
@@ -145,7 +159,7 @@ export default function AboutScreen() {
             >
               <Ionicons name="mail-outline" size={18} color={Colors.brand.blue} />
               <Text style={styles.contactText}>Contact Us</Text>
-              <Ionicons name="chevron-forward" size={14} color={Colors.light.textSecondary} />
+              <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
             </Pressable>
 
             <Pressable
@@ -154,7 +168,7 @@ export default function AboutScreen() {
             >
               <Ionicons name="globe-outline" size={18} color={Colors.brand.blue} />
               <Text style={styles.contactText}>www.the147.co.uk</Text>
-              <Ionicons name="open-outline" size={14} color={Colors.light.textSecondary} />
+              <Ionicons name="open-outline" size={14} color={colors.textSecondary} />
             </Pressable>
 
             <View style={styles.contactItem}>
@@ -164,7 +178,7 @@ export default function AboutScreen() {
           </View>
         </InfoSection>
 
-        <InfoSection icon="shield-checkmark" title="Legal & Privacy">
+        <InfoSection styles={styles} icon="shield-checkmark" title="Legal & Privacy">
           <Pressable
             onPress={() => router.push("/privacy-policy")}
             style={({ pressed }) => [styles.contactItem, { opacity: pressed ? 0.7 : 1 }]}
@@ -172,7 +186,7 @@ export default function AboutScreen() {
           >
             <Ionicons name="document-text-outline" size={18} color={Colors.brand.blue} />
             <Text style={styles.contactText}>Privacy Policy</Text>
-            <Ionicons name="chevron-forward" size={14} color={Colors.light.textSecondary} />
+            <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
           </Pressable>
           <Pressable
             onPress={() => Linking.openURL(`${getApiUrl().replace(/\/$/, "")}/terms`)}
@@ -181,7 +195,7 @@ export default function AboutScreen() {
           >
             <Ionicons name="reader-outline" size={18} color={Colors.brand.blue} />
             <Text style={styles.contactText}>Terms & Conditions</Text>
-            <Ionicons name="open-outline" size={14} color={Colors.light.textSecondary} />
+            <Ionicons name="open-outline" size={14} color={colors.textSecondary} />
           </Pressable>
           <Pressable
             onPress={() => router.push("/gdpr-rights")}
@@ -189,7 +203,7 @@ export default function AboutScreen() {
           >
             <Ionicons name="shield-outline" size={18} color={Colors.brand.blue} />
             <Text style={styles.contactText}>UK GDPR Rights</Text>
-            <Ionicons name="chevron-forward" size={14} color={Colors.light.textSecondary} />
+            <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
           </Pressable>
           <Pressable
             onPress={() => router.push("/cookie-policy")}
@@ -197,7 +211,7 @@ export default function AboutScreen() {
           >
             <Ionicons name="phone-portrait-outline" size={18} color={Colors.brand.blue} />
             <Text style={styles.contactText}>Cookie & Storage Policy</Text>
-            <Ionicons name="chevron-forward" size={14} color={Colors.light.textSecondary} />
+            <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
           </Pressable>
           <Pressable
             onPress={() => router.push("/cancellation-policy")}
@@ -205,7 +219,7 @@ export default function AboutScreen() {
           >
             <Ionicons name="receipt-outline" size={18} color={Colors.brand.blue} />
             <Text style={styles.contactText}>Cancellation & Refunds</Text>
-            <Ionicons name="chevron-forward" size={14} color={Colors.light.textSecondary} />
+            <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
           </Pressable>
         </InfoSection>
 
@@ -220,7 +234,7 @@ export default function AboutScreen() {
           >
             <Ionicons name="shield-checkmark" size={20} color={Colors.brand.blue} />
             <Text style={styles.adminButtonText}>Staff Portal</Text>
-            <Ionicons name="chevron-forward" size={18} color={Colors.light.textSecondary} />
+            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
           </Pressable>
         )}
 
@@ -246,7 +260,9 @@ export default function AboutScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: ReturnType<typeof useColors>) => {
+  const Colors = { ...baseColors, light: palette };
+  return StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
@@ -438,4 +454,5 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginBottom: 8,
   },
-});
+  });
+};

@@ -22,7 +22,8 @@ import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import { useKiosk } from "@/contexts/KioskContext";
 import { apiRequest } from "@/lib/query-client";
 import { useResponsive } from "@/hooks/useResponsive";
-import Colors from "@/constants/colors";
+import BaseColors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 import type { StaffNotice } from "@workspace/db/schema";
 
 interface BuildInfoResponse {
@@ -34,6 +35,7 @@ interface BuildInfoResponse {
 }
 
 function BuildInfoFooter() {
+  const { styles, Colors } = useThemedStyles();
   const { data, isError } = useQuery<BuildInfoResponse>({
     queryKey: ["/api/build-info"],
     staleTime: 5 * 60 * 1000,
@@ -88,6 +90,7 @@ function validatePasswordClient(pw: string): string | null {
 }
 
 function LoginScreen() {
+  const { styles, Colors } = useThemedStyles();
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { login, register } = useStaffAuth();
@@ -409,6 +412,7 @@ interface AdminToolProps {
 }
 
 function AdminTool({ icon, title, description, color, onPress, testID }: AdminToolProps) {
+  const { styles, Colors } = useThemedStyles();
   const { isTablet, width } = useResponsive();
   const isWide = width >= 960;
   return (
@@ -435,6 +439,7 @@ function AdminTool({ icon, title, description, color, onPress, testID }: AdminTo
 }
 
 function KioskEnableModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { styles, Colors } = useThemedStyles();
   const { enableKioskMode } = useKiosk();
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -563,6 +568,7 @@ type TerminalStatus = {
   enabled: boolean;
 };
 function SquareTerminalModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { styles, Colors } = useThemedStyles();
   const queryClient = useQueryClient();
   const { data: status, refetch } = useQuery<TerminalStatus>({
     queryKey: ["/api/staff/square-terminal/status"],
@@ -838,6 +844,7 @@ type TeyaRecentPayment = {
   finishedAt: string | null;
 };
 function TeyaTerminalModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { styles, Colors } = useThemedStyles();
   const queryClient = useQueryClient();
   const { data: status, refetch } = useQuery<TeyaStatus>({
     queryKey: ["/api/staff/teya/status"],
@@ -1339,6 +1346,7 @@ function TeyaTerminalModal({ visible, onClose }: { visible: boolean; onClose: ()
 // `active_kiosk_terminal` setting; defaults to "square" so existing venues
 // see no behaviour change after the Teya integration ships.
 function ActiveTerminalRow() {
+  const { styles, Colors } = useThemedStyles();
   const queryClient = useQueryClient();
   const { data } = useQuery<{ provider: "square" | "teya" | "none" }>({
     queryKey: ["/api/staff/active-terminal"],
@@ -1419,6 +1427,7 @@ function ActiveTerminalRow() {
 // active in-app but disable it on the kiosk during a busy event. Member
 // discounts are unaffected — this only governs Square's Discounts catalog.
 function SquareDealsRow() {
+  const { styles, Colors } = useThemedStyles();
   const queryClient = useQueryClient();
   const { data } = useQuery<{ order: boolean; kiosk: boolean }>({
     queryKey: ["/api/staff/square-deals/settings"],
@@ -1489,6 +1498,7 @@ function SquareDealsRow() {
 }
 
 function KioskAttractEditModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { styles, Colors } = useThemedStyles();
   const queryClient = useQueryClient();
   const { data: settings } = useQuery<Record<string, string>>({
     queryKey: ["/api/settings"],
@@ -1668,6 +1678,7 @@ function KioskAttractEditModal({ visible, onClose }: { visible: boolean; onClose
 }
 
 function DashboardScreen() {
+  const { styles, Colors } = useThemedStyles();
   const insets = useSafeAreaInsets();
   const { tabletPad, isTablet } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -2124,6 +2135,7 @@ function DashboardScreen() {
 }
 
 function SetPasswordScreen() {
+  const { styles, Colors } = useThemedStyles();
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const { setPassword, logout, username, displayName } = useStaffAuth();
@@ -2265,6 +2277,7 @@ function SetPasswordScreen() {
 }
 
 export default function StaffPortalScreen() {
+  const { styles, Colors } = useThemedStyles();
   const { isAuthenticated, isLoading, mustChangePassword } = useStaffAuth();
 
   if (isLoading) {
@@ -2286,7 +2299,9 @@ export default function StaffPortalScreen() {
   return <DashboardScreen />;
 }
 
-const styles = StyleSheet.create({
+const createThemedStyles = (colors: ReturnType<typeof useColors>) => {
+  const Colors = { ...BaseColors, light: colors, glass: colors.glass };
+  return themedStyleSheet({
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
@@ -2959,4 +2974,16 @@ const styles = StyleSheet.create({
     color: Colors.light.text,
     backgroundColor: "#F9FAFB",
   },
-});
+  }, colors);
+};
+
+function useThemedStyles() {
+  const colors = useColors();
+  const styles = React.useMemo(() => createThemedStyles(colors), [colors]);
+  const themedColors = React.useMemo(() => ({ ...BaseColors, light: colors, glass: colors.glass }), [colors]);
+  return { colors, styles, Colors: themedColors };
+}
+
+function themedStyleSheet(source: any, colors: ReturnType<typeof useColors>) { return StyleSheet.create(themeSource(source, colors)); }
+function themeSource(source: any, colors: ReturnType<typeof useColors>): any { return Object.fromEntries(Object.entries(source).map(([n, v]: any) => [n, Object.fromEntries(Object.entries(v).map(([k, t]: any) => [k, themeToken(n, k, t, colors)]))])); }
+function themeToken(n: string, k: string, t: any, c: ReturnType<typeof useColors>) { if (typeof t !== "string") return t; if (k === "color" && /^#fff(?:fff)?$/i.test(t)) return /btn|button|badge|chip|pill|selected|active|primary|action|cta|fab|submit|save|publish|approve|confirm|complete|clock|gdpr|back|close|filter|tab|preview|retry|claim|redeem|login/i.test(n) ? t : c.text; if (k === "color") return ["#0A1628", "#132742", "#111827", "#1E293B", "#1F2937", "#334155", "#374151", "#4B5563"].includes(t) ? c.text : ["#475569", "#4B5A72", "#64748B", "#6B7280", "#94A3B8", "#9CA3AF"].includes(t) ? c.textSecondary : t; if (/border.*color/i.test(k) && ["#E2E8F0", "#E5E7EB", "#CBD5E1", "#D1D5DB"].includes(t)) return c.border; if (/backgroundcolor/i.test(k)) return ["#F2F5FA", "#F4F7FB", "#F8FAFC", "#F9FAFB", "#F1F5F9", "#F3F4F6"].includes(t) ? c.background : ["#fff", "#FFFFFF"].includes(t) ? c.surface : ["#0A1628", "#132742", "#0F172A", "#1E293B"].includes(t) ? c.surfaceElevated : t; return t; }

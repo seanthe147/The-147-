@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   StyleSheet,
   Text,
@@ -16,7 +16,7 @@ import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
-import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 
 type TabKey = "tickets" | "payment";
 
@@ -55,6 +55,7 @@ function formatDate(iso: string): string {
 }
 
 export default function AdminEventsPaymentsScreen() {
+  const { Colors, styles } = useAdminTheme();
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -169,6 +170,7 @@ export default function AdminEventsPaymentsScreen() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function TicketsTab({ boxOfficeUrl }: { boxOfficeUrl: string }) {
+  const { Colors, styles } = useAdminTheme();
   if (!boxOfficeUrl) {
     return (
       <View style={styles.card}>
@@ -298,6 +300,7 @@ function ProcessorCard({
   ready: boolean;
   onPress: () => void;
 }) {
+  const { styles } = useAdminTheme();
   return (
     <Pressable
       style={[
@@ -472,6 +475,7 @@ function AmountHero({
   description: string;
   onDescription: (v: string) => void;
 }) {
+  const { Colors, styles } = useAdminTheme();
   return (
     <View style={styles.amountHero}>
       <Text style={styles.amountHeroLabel}>Amount to charge</Text>
@@ -520,6 +524,7 @@ function AmountHero({
 }
 
 function StatusBanner({ msg }: { msg: StatusMsg }) {
+  const { styles } = useAdminTheme();
   const ok = msg.type === "ok";
   return (
     <View style={[styles.banner, ok ? styles.bannerOk : styles.bannerErr]}>
@@ -554,6 +559,7 @@ function PaymentTab({
   onRefresh: () => void;
   showReporting?: boolean;
 }) {
+  const { Colors, styles } = useAdminTheme();
   const squareReady = !!(square?.configured && square.applicationId && square.locationId);
   // Default: Square if configured (recommended for MOTO), else Stripe
   const [processor, setProcessor] = useState<Processor>(squareReady ? "square" : "stripe");
@@ -647,6 +653,7 @@ function PaymentTab({
 
 // ─── Stats row at the top of the payment log column ──────────────────────────
 function PaymentStats({ logs }: { logs: PaymentLog[] }) {
+  const { styles } = useAdminTheme();
   const now = new Date();
   const todayKey = now.toDateString();
   const weekStart = new Date(now);
@@ -684,6 +691,7 @@ function PaymentStats({ logs }: { logs: PaymentLog[] }) {
 }
 
 function StripeForm({ publishableKey, onSuccess }: { publishableKey: string; onSuccess: () => void }) {
+  const { colors, Colors, styles } = useAdminTheme();
   const formRef = useRef<HTMLDivElement | null>(null);
   const [stripeReady, setStripeReady] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -708,7 +716,7 @@ function StripeForm({ publishableKey, onSuccess }: { publishableKey: string; onS
       const elements = stripe.elements();
       const card = elements.create("card", {
         style: {
-          base: { fontSize: "16px", color: "#0a0a0a", "::placeholder": { color: "#94a3b8" } },
+          base: { fontSize: "16px", color: colors.text, "::placeholder": { color: colors.textSecondary } },
           invalid: { color: "#dc2626" },
         },
       });
@@ -738,7 +746,7 @@ function StripeForm({ publishableKey, onSuccess }: { publishableKey: string; onS
         stateRef.current?.card?.destroy();
       } catch {}
     };
-  }, [publishableKey]);
+  }, [publishableKey, colors.text, colors.textSecondary]);
 
   async function handleSubmit() {
     setStatusMsg(null);
@@ -917,6 +925,7 @@ function SquareForm({
   environment: "production" | "sandbox";
   onSuccess: () => void;
 }) {
+  const { Colors, styles } = useAdminTheme();
   const [sdkReady, setSdkReady] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [statusMsg, setStatusMsg] = useState<StatusMsg | null>(null);
@@ -1135,6 +1144,7 @@ function SquareForm({
 }
 
 function PaymentLogTable({ logs, onRefresh }: { logs: PaymentLog[]; onRefresh: () => void }) {
+  const { Colors, styles } = useAdminTheme();
   // Today's totals (succeeded only)
   const todayKey = new Date().toDateString();
   const todaysSucceeded = logs.filter(
@@ -1203,9 +1213,24 @@ function PaymentLogTable({ logs, onRefresh }: { logs: PaymentLog[]; onRefresh: (
   );
 }
 
-const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
-  header: { flexDirection: "row", alignItems: "center", marginBottom: 20, gap: 4 },
+function useAdminTheme() {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const Colors = useMemo(() => ({
+    light: colors,
+    brand: { blue: colors.tint, red: colors.accent, gold: colors.gold, green: "#1B5E20" },
+  } as const), [colors]);
+  return { colors, Colors, styles };
+}
+
+function createStyles(colors: ReturnType<typeof useColors>) {
+  const Colors = {
+    light: colors,
+    brand: { blue: colors.tint, red: colors.accent, gold: colors.gold, green: "#1B5E20" },
+  } as const;
+  return StyleSheet.create({
+  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24, backgroundColor: Colors.light.background },
+  header: { flexDirection: "row", alignItems: "center", marginBottom: 20, gap: 4, backgroundColor: Colors.light.surface },
   title: { fontSize: 24, fontWeight: "700", color: Colors.light.text, letterSpacing: -0.3 },
   subtitle: { fontSize: 13, color: Colors.light.textSecondary, marginTop: 2 },
   iconBtn: { padding: 6, borderRadius: 8 },
@@ -1298,7 +1323,7 @@ const styles = StyleSheet.create({
   procHint: { fontSize: 12, color: Colors.light.textSecondary, marginTop: 2 },
   procBadge: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10 },
   procBadgeText: { fontSize: 10, fontWeight: "700", color: "#fff", textTransform: "uppercase", letterSpacing: 0.4 },
-  procBadgeDim: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10, backgroundColor: "#F1F5F9" },
+  procBadgeDim: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10, backgroundColor: Colors.light.surfaceElevated },
   procBadgeDimText: { fontSize: 10, fontWeight: "700", color: Colors.light.textSecondary, textTransform: "uppercase", letterSpacing: 0.4 },
   row2: { flexDirection: Platform.OS === "web" ? "row" : "column", gap: 12 },
   field: { flex: 1, gap: 6 },
@@ -1310,7 +1335,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: "#fff",
+    backgroundColor: Colors.light.input,
     fontSize: 15,
     color: Colors.light.text,
   },
@@ -1320,7 +1345,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.light.border,
     borderRadius: 8,
-    backgroundColor: "#fff",
+    backgroundColor: Colors.light.input,
     overflow: "hidden",
   },
   inputPrefix: { paddingLeft: 12, paddingRight: 4, fontSize: 16, fontWeight: "600", color: Colors.light.textSecondary },
@@ -1329,7 +1354,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.light.border,
     borderRadius: 8,
-    backgroundColor: "#fff",
+    backgroundColor: Colors.light.input,
   },
   helperMuted: { fontSize: 12, color: Colors.light.textSecondary },
   loadingRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 },
@@ -1342,7 +1367,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.light.border,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#fff",
+    backgroundColor: Colors.light.input,
   },
   checkboxOn: { backgroundColor: Colors.brand.blue, borderColor: Colors.brand.blue },
   checkLabel: { fontSize: 14, color: Colors.light.text, flex: 1 },
@@ -1353,12 +1378,12 @@ const styles = StyleSheet.create({
   bannerHint: { fontSize: 13, fontWeight: "500", lineHeight: 18, marginTop: 4, opacity: 0.9 },
 
   amountHero: {
-    backgroundColor: "#F8FAFC",
+    backgroundColor: Colors.light.surfaceElevated,
     borderRadius: 14,
     padding: 18,
     marginTop: 18,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: Colors.light.border,
   },
   amountHeroLabel: {
     fontSize: 11,
@@ -1397,9 +1422,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: "#fff",
+    backgroundColor: Colors.light.input,
     borderWidth: 1,
-    borderColor: "#CBD5E1",
+    borderColor: Colors.light.border,
   },
   quickChipActive: {
     backgroundColor: Colors.brand.blue,
@@ -1419,9 +1444,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#fff",
+    backgroundColor: Colors.light.surface,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: Colors.light.border,
   },
 
   statsRow: {
@@ -1434,7 +1459,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 14,
     borderRadius: 12,
-    backgroundColor: "#fff",
+    backgroundColor: Colors.light.surface,
     borderWidth: 1,
     borderColor: Colors.light.border,
   },
@@ -1520,4 +1545,5 @@ const styles = StyleSheet.create({
   pillTextOk: { color: "#065F46" },
   pillTextErr: { color: "#991B1B" },
   pillTextPending: { color: "#92400E" },
-});
+  });
+}

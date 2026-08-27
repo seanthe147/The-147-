@@ -148,5 +148,8 @@ SMTP_PORT = "587"
 PUBLIC_FROM_EMAIL = "DONOTREPLY@the147.co.uk"
 RESEND_FROM_EMAIL = "DONOTREPLY@the147.co.uk"
 
+[userenv.development]
+FEATURE_APPEARANCE_THEMES = "true"
+
 [nix]
 channel = "stable-25_05"

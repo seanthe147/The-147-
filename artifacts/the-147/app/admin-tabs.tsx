@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/query-client";
-import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 
 type Tab = {
   id: number;
@@ -81,6 +81,8 @@ function fmtTime(iso: string): string {
 }
 
 export default function AdminTabsScreen() {
+  const colors = useColors();
+  const styles = useMemo(() => createThemedStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const qc = useQueryClient();
@@ -133,7 +135,7 @@ export default function AdminTabsScreen() {
       </View>
 
       {isLoading ? (
-        <View style={styles.centered}><ActivityIndicator color={Colors.brand.blue} /></View>
+        <View style={styles.centered}><ActivityIndicator color={colors.tint} /></View>
       ) : tabsList.length === 0 ? (
         <View style={styles.centered}>
           <Ionicons name="receipt-outline" size={48} color="#9CA3AF" />
@@ -169,6 +171,8 @@ export default function AdminTabsScreen() {
 }
 
 function TabCard({ tab, onOpen }: { tab: Tab; onOpen: () => void }) {
+  const colors = useColors();
+  const styles = useMemo(() => createThemedStyles(colors), [colors]);
   const meta = TABLE_TYPES.find((t) => t.value === tab.tableType);
   return (
     <Pressable onPress={onOpen} style={styles.tabCard} testID={`tab-card-${tab.id}`}>
@@ -194,6 +198,8 @@ function TabCard({ tab, onOpen }: { tab: Tab; onOpen: () => void }) {
 }
 
 function NewTabModal({ visible, onClose, onCreated }: { visible: boolean; onClose: () => void; onCreated: (id: number) => void }) {
+  const colors = useColors();
+  const styles = useMemo(() => createThemedStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const [tableType, setTableType] = useState("snooker");
   const [tableNumber, setTableNumber] = useState("");
@@ -291,6 +297,8 @@ function NewTabModal({ visible, onClose, onCreated }: { visible: boolean; onClos
 }
 
 function TabDetailModal({ tabId, onClose }: { tabId: number; onClose: () => void }) {
+  const colors = useColors();
+  const styles = useMemo(() => createThemedStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
   const [itemName, setItemName] = useState("");
@@ -357,7 +365,7 @@ function TabDetailModal({ tabId, onClose }: { tabId: number; onClose: () => void
         </View>
 
         {isLoading || !tab ? (
-          <View style={styles.centered}><ActivityIndicator color={Colors.brand.blue} /></View>
+          <View style={styles.centered}><ActivityIndicator color={colors.tint} /></View>
         ) : (
           <>
             <View style={styles.totalBar}>
@@ -478,70 +486,73 @@ function TabDetailModal({ tabId, onClose }: { tabId: number; onClose: () => void
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F2F5FA" },
+const createThemedStyles = (colors: ReturnType<typeof useColors>) => themedStyleSheet({
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    backgroundColor: Colors.brand.dark, paddingHorizontal: 12, paddingVertical: 12,
+    backgroundColor: colors.surfaceElevated, paddingHorizontal: 12, paddingVertical: 12,
   },
   headerBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
-  headerTitle: { color: "#fff", fontSize: 18, fontWeight: "700" },
+  headerTitle: { color: colors.text, fontSize: 18, fontWeight: "700" },
   filterRow: { flexDirection: "row", padding: 12, gap: 8 },
-  filterBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: "#fff", alignItems: "center", borderWidth: 1, borderColor: "#E5E7EB" },
-  filterBtnActive: { backgroundColor: Colors.brand.blue, borderColor: Colors.brand.blue },
+  filterBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.surface, alignItems: "center", borderWidth: 1, borderColor: colors.border },
+  filterBtnActive: { backgroundColor: colors.tint, borderColor: colors.tint },
   filterText: { fontSize: 14, fontWeight: "600", color: "#4B5A72" },
   filterTextActive: { color: "#fff" },
   centered: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32 },
   emptyText: { marginTop: 12, color: "#6B7280", fontSize: 15, textAlign: "center" },
-  emptyCta: { marginTop: 16, flexDirection: "row", gap: 6, backgroundColor: Colors.brand.blue, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10 },
+  emptyCta: { marginTop: 16, flexDirection: "row", gap: 6, backgroundColor: colors.tint, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10 },
   emptyCtaText: { color: "#fff", fontWeight: "700" },
   tabCard: {
-    backgroundColor: "#fff", borderRadius: 14, padding: 14,
+    backgroundColor: colors.surface, borderRadius: 14, padding: 14,
     flexDirection: "row", alignItems: "center", gap: 12,
-    shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1,
+    shadowColor: colors.cardShadow, shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1,
   },
   tabIcon: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
-  tabTitle: { fontSize: 16, fontWeight: "700", color: Colors.brand.dark, textTransform: "capitalize" },
+  tabTitle: { fontSize: 16, fontWeight: "700", color: colors.text, textTransform: "capitalize" },
   tabSubtitle: { fontSize: 13, color: "#6B7280", marginTop: 2 },
-  tabTotal: { fontSize: 17, fontWeight: "800", color: Colors.brand.blue },
+  tabTotal: { fontSize: 17, fontWeight: "800", color: colors.tint },
   tabClosed: { fontSize: 11, color: "#6B7280", textTransform: "capitalize", marginTop: 2 },
   modalOverlay: { flex: 1, justifyContent: "flex-end" },
-  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.4)" },
-  modalSheet: { backgroundColor: "#fff", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.overlay },
+  modalSheet: { backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 },
   dragHandle: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: "#D1D5DB", marginBottom: 12 },
-  modalTitle: { fontSize: 20, fontWeight: "800", color: Colors.brand.dark, marginBottom: 12 },
+  modalTitle: { fontSize: 20, fontWeight: "800", color: colors.text, marginBottom: 12 },
   fieldLabel: { fontSize: 12, fontWeight: "700", color: "#4B5A72", marginTop: 8, marginBottom: 4, letterSpacing: 0.4 },
-  input: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8, paddingHorizontal: 12, height: 44, fontSize: 15, color: "#111827" },
+  input: { backgroundColor: colors.input, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, height: 44, fontSize: 15, color: colors.text },
   typeChip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff", marginRight: 8 },
   typeChipText: { fontSize: 13, fontWeight: "600", color: "#374151", textTransform: "capitalize" },
   modalActions: { flexDirection: "row", gap: 10, marginTop: 18 },
-  btnPrimary: { backgroundColor: Colors.brand.blue, paddingVertical: 14, borderRadius: 12, alignItems: "center" },
+  btnPrimary: { backgroundColor: colors.tint, paddingVertical: 14, borderRadius: 12, alignItems: "center" },
   btnPrimaryText: { color: "#fff", fontWeight: "800", fontSize: 15 },
   btnSecondary: { backgroundColor: "#F3F4F6", paddingVertical: 14, borderRadius: 12, alignItems: "center" },
   btnSecondaryText: { color: "#374151", fontWeight: "700", fontSize: 15 },
-  totalBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#E5E7EB" },
-  totalBarLabel: { fontSize: 15, fontWeight: "700", color: Colors.brand.dark },
+  totalBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border },
+  totalBarLabel: { fontSize: 15, fontWeight: "700", color: colors.text },
   totalBarSub: { fontSize: 12, color: "#6B7280", marginTop: 2 },
-  totalBarAmount: { fontSize: 22, fontWeight: "800", color: Colors.brand.blue },
+  totalBarAmount: { fontSize: 22, fontWeight: "800", color: colors.tint },
   sectionLabel: { fontSize: 11, fontWeight: "800", color: "#6B7280", letterSpacing: 0.6, marginBottom: 8 },
   quickGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  quickBtn: { width: "31%", minHeight: 70, backgroundColor: "#fff", borderRadius: 10, padding: 10, justifyContent: "space-between", borderWidth: 1, borderColor: "#E5E7EB" },
-  quickBtnName: { fontSize: 12, fontWeight: "600", color: Colors.brand.dark },
-  quickBtnPrice: { fontSize: 14, fontWeight: "800", color: Colors.brand.blue, marginTop: 6 },
-  addBtn: { width: 44, backgroundColor: Colors.brand.blue, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  quickBtn: { width: "31%", minHeight: 70, backgroundColor: colors.surface, borderRadius: 10, padding: 10, justifyContent: "space-between", borderWidth: 1, borderColor: colors.border },
+  quickBtnName: { fontSize: 12, fontWeight: "600", color: colors.text },
+  quickBtnPrice: { fontSize: 14, fontWeight: "800", color: colors.tint, marginTop: 6 },
+  addBtn: { width: 44, backgroundColor: colors.tint, borderRadius: 8, alignItems: "center", justifyContent: "center" },
   emptyHint: { color: "#9CA3AF", fontStyle: "italic", paddingVertical: 8 },
   itemRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
-  itemName: { fontSize: 14, fontWeight: "600", color: Colors.brand.dark },
+  itemName: { fontSize: 14, fontWeight: "600", color: colors.text },
   itemMeta: { fontSize: 11, color: "#9CA3AF", marginTop: 2 },
-  itemPrice: { fontSize: 14, fontWeight: "700", color: Colors.brand.dark, marginLeft: 12 },
-  closeBar: { position: "absolute", left: 0, right: 0, bottom: 0, padding: 12, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#E5E7EB" },
-  closeBarBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: Colors.brand.blue, paddingVertical: 14, borderRadius: 12 },
+  itemPrice: { fontSize: 14, fontWeight: "700", color: colors.text, marginLeft: 12 },
+  closeBar: { position: "absolute", left: 0, right: 0, bottom: 0, padding: 12, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border },
+  closeBarBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: colors.tint, paddingVertical: 14, borderRadius: 12 },
   closeBarText: { color: "#fff", fontWeight: "800", fontSize: 15 },
-  confirmSheet: { position: "absolute", left: 16, right: 16, top: "20%", backgroundColor: "#fff", borderRadius: 18, padding: 20 },
+  confirmSheet: { position: "absolute", left: 16, right: 16, top: "20%", backgroundColor: colors.surface, borderRadius: 18, padding: 20 },
   confirmTitle: { fontSize: 16, fontWeight: "700", color: "#374151", textAlign: "center" },
-  confirmAmount: { fontSize: 30, fontWeight: "900", color: Colors.brand.blue, textAlign: "center", marginVertical: 10 },
+  confirmAmount: { fontSize: 30, fontWeight: "900", color: colors.tint, textAlign: "center", marginVertical: 10 },
   confirmOption: { flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: 12, borderWidth: 2, marginTop: 10 },
   confirmOptionText: { fontSize: 15, fontWeight: "700" },
   cancelLink: { alignItems: "center", paddingVertical: 14, marginTop: 4 },
   cancelLinkText: { color: "#6B7280", fontWeight: "600" },
-});
+}, colors);
+function themedStyleSheet(source: any, colors: ReturnType<typeof useColors>) { return StyleSheet.create(themeSource(source, colors)); }
+function themeSource(source: any, colors: ReturnType<typeof useColors>): any { return Object.fromEntries(Object.entries(source).map(([name, value]: any) => [name, Object.fromEntries(Object.entries(value).map(([key, token]: any) => [key, themeToken(name, key, token, colors)]))])); }
+function themeToken(name: string, key: string, token: any, colors: ReturnType<typeof useColors>) { if (typeof token !== "string") return token; if (key === "color" && /^#fff(?:fff)?$/i.test(token)) return /btn|button|badge|chip|pill|selected|active|primary|action|cta|fab|submit|save|publish|approve|confirm|complete|clock|gdpr|back|close|filter|tab|preview|retry|claim|redeem|login/i.test(name) ? token : colors.text; if (key === "color") return ["#111827", "#374151"].includes(token) ? colors.text : ["#4B5A72", "#6B7280", "#9CA3AF"].includes(token) ? colors.textSecondary : token; if (/border.*color/i.test(key) && ["#E5E7EB", "#F3F4F6", "#D1D5DB"].includes(token)) return colors.border; if (key === "backgroundColor") return ["#F2F5FA"].includes(token) ? colors.background : ["#fff", "#F3F4F6"].includes(token) ? colors.surface : token; return token; }

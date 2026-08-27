@@ -25,6 +25,8 @@ import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import { useResponsive } from "@/hooks/useResponsive";
 import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
+const baseColors = Colors;
 import { OPENING_HOURS } from "@/lib/data";
 import type { Event, BannerImage, Offer } from "@workspace/db/schema";
 import { isSafePublicUrl } from "@workspace/db/schema";
@@ -58,7 +60,7 @@ interface LoyaltyMeSnapshot {
 // signed-in customer's loyalty balance and tucks it next to the hours chip.
 // Renders nothing for signed-out customers or those who haven't linked yet —
 // no need for a noisy "Join now" prompt up here, the loyalty tab handles that.
-const HomePointsPill = memo(function HomePointsPill() {
+const HomePointsPill = memo(function HomePointsPill({ styles }: { styles: ReturnType<typeof createStyles> }) {
   const { isAuthenticated, customer, getCustomerToken } = useCustomerAuth();
   // Key includes customer.id so that signing out + signing in as a different
   // customer on a shared device doesn't briefly surface the previous user's
@@ -97,11 +99,13 @@ const HomePointsPill = memo(function HomePointsPill() {
 });
 
 const QuickActionPill = memo(function QuickActionPill({
+  styles,
   icon,
   label,
   iconColor,
   onPress,
 }: {
+  styles: ReturnType<typeof createStyles>;
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   iconColor?: string;
@@ -133,7 +137,7 @@ const BANNER_WIDTH = SCREEN_WIDTH - 40;
 const BANNER_HEIGHT = Math.round(BANNER_WIDTH / 2.3);
 const AUTO_SCROLL_INTERVAL = 5000;
 
-const BannerCarousel = memo(function BannerCarousel({ images }: { images: BannerImage[] }) {
+const BannerCarousel = memo(function BannerCarousel({ images, styles }: { images: BannerImage[]; styles: ReturnType<typeof createStyles> }) {
   const scrollRef = useRef<ScrollView>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -283,7 +287,7 @@ function formatDealValue(deal: Deal): string {
   return "";
 }
 
-const OffersSection = memo(function OffersSection() {
+const OffersSection = memo(function OffersSection({ styles }: { styles: ReturnType<typeof createStyles> }) {
   const { data: offers } = useQuery<Offer[]>({ queryKey: ["/api/offers"] });
   const active = (offers || []).filter((o) => o.active);
   if (active.length === 0) return null;
@@ -353,7 +357,7 @@ const OffersSection = memo(function OffersSection() {
   );
 });
 
-const DealsSection = memo(function DealsSection() {
+const DealsSection = memo(function DealsSection({ styles }: { styles: ReturnType<typeof createStyles> }) {
   const { data: deals } = useQuery<Deal[]>({ queryKey: ["/api/deals"] });
   if (!deals || deals.length === 0) return null;
   return (
@@ -394,7 +398,13 @@ const DealsSection = memo(function DealsSection() {
   );
 });
 
-const EventPreview = memo(function EventPreview() {
+const EventPreview = memo(function EventPreview({
+  styles,
+  colors,
+}: {
+  styles: ReturnType<typeof createStyles>;
+  colors: ReturnType<typeof useColors>;
+}) {
   const { data: events } = useQuery<Event[]>({
     queryKey: ["/api/events?type=event"],
   });
@@ -458,7 +468,7 @@ const EventPreview = memo(function EventPreview() {
                 {timeDisplay ? ` at ${timeDisplay}` : ""}
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={16} color={Colors.light.border} />
+            <Ionicons name="chevron-forward" size={16} color={colors.border} />
           </Pressable>
         );
       })}
@@ -467,6 +477,8 @@ const EventPreview = memo(function EventPreview() {
 });
 
 export default function HomeScreen() {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -508,7 +520,7 @@ export default function HomeScreen() {
       <View style={styles.heroTopBar}>
         <ExpoImage source={logoImage} style={styles.logoImage} contentFit="contain" cachePolicy="memory" />
         <View style={styles.heroTopRight}>
-          <HomePointsPill />
+          <HomePointsPill styles={styles} />
           <Pressable
             onPress={() => router.push("/about")}
             style={({ pressed }) => [styles.hoursChip, { opacity: pressed ? 0.8 : 1 }]}
@@ -608,28 +620,32 @@ export default function HomeScreen() {
               flag is on, the customer is signed in, and there's something
               relevant to show — so this section silently disappears in
               every other case. */}
-          <PersonalisedHomeCards />
+          <PersonalisedHomeCards styles={styles} colors={colors} />
 
           <View style={styles.quickNav}>
             <QuickActionPill
+              styles={styles}
               icon="calendar"
               label="Book Table"
               iconColor={Colors.brand.blue}
               onPress={goToBook}
             />
             <QuickActionPill
+              styles={styles}
               icon="restaurant"
               label="Order Food"
               iconColor={Colors.brand.gold}
               onPress={goToOrder}
             />
             <QuickActionPill
+              styles={styles}
               icon="diamond"
               label="Membership"
               iconColor="#FFFFFF"
               onPress={() => router.push("/(tabs)/loyalty")}
             />
             <QuickActionPill
+              styles={styles}
               icon="mail-outline"
               label="Contact Us"
               iconColor="#FFFFFF"
@@ -640,14 +656,14 @@ export default function HomeScreen() {
           <EnableNotificationsBanner />
 
           {bannerImages && bannerImages.length > 0 ? (
-            <BannerCarousel images={bannerImages} />
+            <BannerCarousel images={bannerImages} styles={styles} />
           ) : null}
 
-          <OffersSection />
+          <OffersSection styles={styles} />
 
-          <DealsSection />
+          <DealsSection styles={styles} />
 
-          <EventPreview />
+          <EventPreview styles={styles} colors={colors} />
 
           <Pressable
             onPress={() => router.push("/about")}
@@ -662,7 +678,7 @@ export default function HomeScreen() {
                 <Text style={styles.hoursCardSub}>{todayHours.day}: {todayHours.hours}</Text>
               </View>
             </View>
-            <Ionicons name="chevron-forward" size={18} color={Colors.light.textSecondary} />
+            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
           </Pressable>
 
           <Pressable
@@ -690,10 +706,12 @@ function getOpeningHoursToday(): { day: string; hours: string; closeTime: string
   return { day: today, hours, closeTime };
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: ReturnType<typeof useColors>) => {
+  const Colors = { ...baseColors, light: palette };
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0A1628",
+    backgroundColor: palette.background,
   },
   scrollContent: {
     paddingTop: 0,
@@ -858,6 +876,7 @@ const styles = StyleSheet.create({
   },
   body: {
     paddingTop: 20,
+    backgroundColor: palette.background,
   },
   quickNav: {
     flexDirection: "row",
@@ -875,15 +894,15 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.07)",
+    backgroundColor: palette.surface,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.15)",
+    borderTopColor: palette.border,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.3)",
+    borderBottomColor: palette.border,
     borderLeftWidth: 1,
-    borderLeftColor: "rgba(255,255,255,0.05)",
+    borderLeftColor: palette.border,
     borderRightWidth: 1,
-    borderRightColor: "rgba(255,255,255,0.05)",
+    borderRightColor: palette.border,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
@@ -895,7 +914,7 @@ const styles = StyleSheet.create({
   quickTileLabel: {
     fontFamily: "Montserrat_500Medium",
     fontSize: 11,
-    color: "rgba(255,255,255,0.7)",
+    color: palette.textSecondary,
     textAlign: "center",
   },
   sectionHeader: {
@@ -908,7 +927,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 18,
-    color: "#FFFFFF",
+    color: palette.text,
     letterSpacing: -0.3,
   },
   seeAllText: {
@@ -1003,18 +1022,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 14,
     marginHorizontal: 20,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: palette.surface,
     padding: 14,
     borderRadius: 14,
     marginBottom: 8,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.12)",
+    borderTopColor: palette.border,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.25)",
+    borderBottomColor: palette.border,
     borderLeftWidth: 1,
-    borderLeftColor: "rgba(255,255,255,0.04)",
+    borderLeftColor: palette.border,
     borderRightWidth: 1,
-    borderRightColor: "rgba(255,255,255,0.04)",
+    borderRightColor: palette.border,
   },
   eventDateBox: {
     width: 48,
@@ -1039,13 +1058,13 @@ const styles = StyleSheet.create({
   eventTitle: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 14,
-    color: "#FFFFFF",
+    color: palette.text,
     marginBottom: 2,
   },
   eventMeta: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 12,
-    color: "rgba(255,255,255,0.5)",
+    color: palette.textSecondary,
   },
   offersSection: {
     marginBottom: 16,
@@ -1060,7 +1079,7 @@ const styles = StyleSheet.create({
   offersSectionTitle: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 14,
-    color: "#FFFFFF",
+    color: palette.text,
   },
   offersScroll: {
     paddingHorizontal: 20,
@@ -1149,14 +1168,14 @@ const styles = StyleSheet.create({
   dealsSectionTitle: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 14,
-    color: "#FFFFFF",
+    color: palette.text,
   },
   dealsScroll: {
     paddingHorizontal: 20,
     gap: 10,
   },
   dealCard: {
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: palette.surface,
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -1164,18 +1183,18 @@ const styles = StyleSheet.create({
     maxWidth: 180,
     justifyContent: "space-between",
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.12)",
+    borderTopColor: palette.border,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.3)",
+    borderBottomColor: palette.border,
     borderLeftWidth: 1,
-    borderLeftColor: "rgba(255,255,255,0.04)",
+    borderLeftColor: palette.border,
     borderRightWidth: 1,
-    borderRightColor: "rgba(255,255,255,0.04)",
+    borderRightColor: palette.border,
   },
   dealName: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 13,
-    color: "#FFFFFF",
+    color: palette.text,
     marginBottom: 8,
   },
   dealValue: {
@@ -1192,14 +1211,16 @@ const styles = StyleSheet.create({
   dealExpiryText: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 10,
-    color: "rgba(255,255,255,0.5)",
+    color: palette.textSecondary,
   },
   hoursCard: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginHorizontal: 20,
-    backgroundColor: Colors.brand.navy,
+    backgroundColor: palette.surfaceElevated,
+    borderWidth: 1,
+    borderColor: palette.border,
     padding: 16,
     borderRadius: 16,
     marginBottom: 10,
@@ -1220,12 +1241,12 @@ const styles = StyleSheet.create({
   hoursCardTitle: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 14,
-    color: "#FFFFFF",
+    color: palette.text,
   },
   hoursCardSub: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 12,
-    color: "rgba(255,255,255,0.6)",
+    color: palette.textSecondary,
     marginTop: 1,
   },
   websiteCard: {
@@ -1236,15 +1257,15 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     paddingVertical: 14,
     borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: palette.surface,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.12)",
+    borderTopColor: palette.border,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.25)",
+    borderBottomColor: palette.border,
     borderLeftWidth: 1,
-    borderLeftColor: "rgba(255,255,255,0.04)",
+    borderLeftColor: palette.border,
     borderRightWidth: 1,
-    borderRightColor: "rgba(255,255,255,0.04)",
+    borderRightColor: palette.border,
   },
   websiteText: {
     fontFamily: "Montserrat_500Medium",
@@ -1264,22 +1285,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     letterSpacing: 0.6,
     textTransform: "uppercase",
-    color: "rgba(255,255,255,0.45)",
+    color: palette.textSecondary,
     marginBottom: 4,
   },
   personalisedCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: palette.surface,
     borderRadius: 14,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.12)",
+    borderTopColor: palette.border,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.25)",
+    borderBottomColor: palette.border,
     borderLeftWidth: 1,
-    borderLeftColor: "rgba(255,255,255,0.04)",
+    borderLeftColor: palette.border,
     borderRightWidth: 1,
-    borderRightColor: "rgba(255,255,255,0.04)",
+    borderRightColor: palette.border,
     padding: 14,
     gap: 12,
   },
@@ -1297,15 +1318,16 @@ const styles = StyleSheet.create({
   personalisedHeading: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 14,
-    color: "#FFFFFF",
+    color: palette.text,
     marginBottom: 2,
   },
   personalisedSub: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 12,
-    color: "rgba(255,255,255,0.5)",
+    color: palette.textSecondary,
   },
-});
+  });
+};
 
 /**
  * FEATURE_PERSONALISED_HOME
@@ -1315,7 +1337,13 @@ const styles = StyleSheet.create({
  * — keeping the home layout identical to the pre-flag version in those
  * cases.
  */
-function PersonalisedHomeCards() {
+function PersonalisedHomeCards({
+  styles,
+  colors,
+}: {
+  styles: ReturnType<typeof createStyles>;
+  colors: ReturnType<typeof useColors>;
+}) {
   const { customer, getCustomerToken } = useCustomerAuth();
   const { flags } = useFeatureFlags();
 
@@ -1376,7 +1404,7 @@ function PersonalisedHomeCards() {
                   {card.summary} · £{(card.totalPence / 100).toFixed(2)}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={Colors.light.textSecondary} />
+              <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
             </Pressable>
           );
         }
@@ -1402,7 +1430,7 @@ function PersonalisedHomeCards() {
                 Tap to browse the filtered menu
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color={Colors.light.textSecondary} />
+            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
           </Pressable>
         );
       })}

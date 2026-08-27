@@ -1,39 +1,43 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { StyleSheet, Text, View, Pressable, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useConsent } from "@/contexts/ConsentContext";
 import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 
 export function ConsentBanner() {
+  const colors = useColors();
+  const themeStyles = useMemo(() => createThemeStyles(colors), [colors]);
   const { consent, isLoading, acceptEssentialOnly } = useConsent();
   const insets = useSafeAreaInsets();
 
   if (isLoading || consent.hasConsented !== null) return null;
 
   return (
-    <View style={styles.overlay}>
+    <View style={[styles.overlay, themeStyles.overlay]}>
       <View
         style={[
           styles.banner,
+          themeStyles.banner,
           { paddingBottom: Math.max(insets.bottom, 16) + (Platform.OS === "web" ? 34 : 0) },
         ]}
       >
         <View style={styles.iconRow}>
-          <View style={styles.iconWrap}>
-            <Ionicons name="shield-checkmark" size={22} color={Colors.brand.blue} />
+          <View style={[styles.iconWrap, themeStyles.iconWrap]}>
+            <Ionicons name="shield-checkmark" size={22} color={colors.tint} />
           </View>
-          <Text style={styles.heading}>Your Privacy</Text>
+          <Text style={[styles.heading, themeStyles.heading]}>Your Privacy</Text>
         </View>
 
-        <Text style={styles.description}>
+        <Text style={[styles.description, themeStyles.description]}>
           We only collect the information you provide — such as your name, email
           and phone number — to manage your bookings and account. We do not
           track your activity, use cookies, or share your data with third
           parties. View our{" "}
           <Text
-            style={styles.link}
+            style={[styles.link, themeStyles.link]}
             onPress={() => router.push("/privacy-policy")}
           >
             Privacy Policy
@@ -122,4 +126,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#FFFFFF",
   },
+});
+
+const createThemeStyles = (colors: ReturnType<typeof useColors>) => StyleSheet.create({
+  overlay: { backgroundColor: colors.overlay },
+  banner: { backgroundColor: colors.surface, shadowColor: colors.cardShadow },
+  iconWrap: { backgroundColor: colors.glass.card },
+  heading: { color: colors.text },
+  description: { color: colors.textSecondary },
+  link: { color: colors.tint },
 });

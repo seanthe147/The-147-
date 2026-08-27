@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   StyleSheet,
   Text,
@@ -19,6 +19,7 @@ import { getApiUrl } from "@/lib/query-client";
 import { fetch } from "expo/fetch";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
+import { useColors } from "@/hooks/useColors";
 
 const SUBJECTS = [
   "General Enquiry",
@@ -32,6 +33,8 @@ const SUBJECTS = [
 import { useResponsive } from "@/hooks/useResponsive";
 
 export default function ContactScreen() {
+  const colors = useColors();
+  const styles = useMemo(() => createThemeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -125,14 +128,14 @@ export default function ContactScreen() {
       <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} hitSlop={12}>
-            <Ionicons name="close" size={28} color={Colors.light.text} />
+            <Ionicons name="close" size={28} color={colors.text} />
           </Pressable>
           <Text style={styles.headerTitle}>Contact Us</Text>
           <View style={{ width: 28 }} />
         </View>
         <View style={styles.successContainer}>
           <View style={styles.successIcon}>
-            <Ionicons name="checkmark-circle" size={64} color={Colors.brand.green} />
+            <Ionicons name="checkmark-circle" size={64} color="#1B5E20" />
           </View>
           <Text style={styles.successTitle}>Message Sent</Text>
           <Text style={styles.successSubtitle}>
@@ -163,10 +166,10 @@ export default function ContactScreen() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
     >
-      <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
+        <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} hitSlop={12}>
-            <Ionicons name="close" size={28} color={Colors.light.text} />
+            <Ionicons name="close" size={28} color={colors.text} />
           </Pressable>
           <Text style={styles.headerTitle}>Contact Us</Text>
           <View style={{ width: 28 }} />
@@ -193,7 +196,7 @@ export default function ContactScreen() {
                 value={name}
                 onChangeText={(t) => { setName(t); setError(""); }}
                 placeholder="Your full name"
-                placeholderTextColor={Colors.light.textSecondary}
+                placeholderTextColor={colors.textSecondary}
                 autoCapitalize="words"
                 testID="contact-name"
               />
@@ -206,7 +209,7 @@ export default function ContactScreen() {
                 value={email}
                 onChangeText={(t) => { setEmail(t); setError(""); }}
                 placeholder="your@email.com"
-                placeholderTextColor={Colors.light.textSecondary}
+                placeholderTextColor={colors.textSecondary}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -221,7 +224,7 @@ export default function ContactScreen() {
                 value={phone}
                 onChangeText={setPhone}
                 placeholder="Your phone number"
-                placeholderTextColor={Colors.light.textSecondary}
+                placeholderTextColor={colors.textSecondary}
                 keyboardType="phone-pad"
                 testID="contact-phone"
               />
@@ -260,7 +263,7 @@ export default function ContactScreen() {
                 value={message}
                 onChangeText={(t) => { setMessage(t); setError(""); }}
                 placeholder="Tell us how we can help..."
-                placeholderTextColor={Colors.light.textSecondary}
+                placeholderTextColor={colors.textSecondary}
                 multiline
                 numberOfLines={5}
                 textAlignVertical="top"
@@ -330,7 +333,7 @@ export default function ContactScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styleSource = {
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
@@ -557,4 +560,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.light.textSecondary,
   },
-});
+};
+
+const createThemeStyles = (colors: ReturnType<typeof useColors>) => StyleSheet.create(themeSource(styleSource, colors));
+function themeSource(source: any, colors: ReturnType<typeof useColors>): any { return Object.fromEntries(Object.entries(source).map(([name, value]: any) => [name, Object.fromEntries(Object.entries(value).map(([key, token]: any) => [key, themeToken(name, key, token, colors)]))])); }
+function themeToken(name: string, key: string, token: any, colors: ReturnType<typeof useColors>) { if (typeof token !== "string") return token; const isWhiteForeground = key === "color" && /(primary|action|button|submit|done|retry|pay|badge|selected|hero|image.?overlay|warning|status)/i.test(name); if (token === Colors.light.background) return colors.background; if (token === Colors.light.surface) return colors.surface; if (token === Colors.light.text) return isWhiteForeground ? token : colors.text; if (token === Colors.light.textSecondary) return colors.textSecondary; if (token === Colors.light.border) return colors.border; if (token === Colors.brand.blue) return colors.tint; if (token === Colors.brand.red) return colors.accent; if (token.startsWith(Colors.brand.blue)) return `${colors.tint}${token.slice(Colors.brand.blue.length)}`; return token; }

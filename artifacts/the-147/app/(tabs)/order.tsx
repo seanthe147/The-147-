@@ -39,6 +39,8 @@ import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
+const baseColors = Colors;
 import { useCart } from "@/contexts/CartContext";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useKiosk } from "@/contexts/KioskContext";
@@ -262,6 +264,8 @@ function CategoryGrid({
   categories: MenuCategory[];
   onSelect: (id: string) => void;
 }) {
+  const colors = useColors();
+  const gridStyles = useMemo(() => createGridStyles(colors), [colors]);
   // Multi-column grid sized to the actual content width (not the raw
   // screen) so iPad gets 3 cols portrait / 4 cols landscape and phone
   // keeps the original 2-up layout. The parent ScrollView already
@@ -326,7 +330,9 @@ function CategoryGrid({
   );
 }
 
-const gridStyles = StyleSheet.create({
+const createGridStyles = (palette: ReturnType<typeof useColors>) => {
+  const Colors = { ...baseColors, light: palette };
+  return StyleSheet.create({
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -408,8 +414,8 @@ const gridStyles = StyleSheet.create({
     color: Colors.light.textSecondary,
     marginTop: 2,
   },
-});
-
+  });
+};
 function ModifierModal({
   item,
   visible,
@@ -421,6 +427,8 @@ function ModifierModal({
   onClose: () => void;
   onConfirm: (modifiers: SelectedModifier[]) => void;
 }) {
+  const colors = useColors();
+  const modStyles = useMemo(() => createModifierStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const [selections, setSelections] = useState<Record<string, string[]>>({});
 
@@ -467,11 +475,11 @@ function ModifierModal({
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: Colors.light.background }}>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
         <View style={[modStyles.header, { paddingTop: insets.top + 16 }]}>
           <Text style={modStyles.title} numberOfLines={2}>{cartName}</Text>
           <Pressable onPress={onClose} hitSlop={12} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
-            <Ionicons name="close" size={24} color={Colors.light.text} />
+            <Ionicons name="close" size={24} color={colors.text} />
           </Pressable>
         </View>
 
@@ -528,7 +536,9 @@ function ModifierModal({
   );
 }
 
-const modStyles = StyleSheet.create({
+const createModifierStyles = (palette: ReturnType<typeof useColors>) => {
+  const Colors = { ...baseColors, light: palette };
+  return StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -657,8 +667,8 @@ const modStyles = StyleSheet.create({
     fontSize: 16,
     color: "#fff",
   },
-});
-
+  });
+};
 function VariationModal({
   group,
   visible,
@@ -670,19 +680,22 @@ function VariationModal({
   onClose: () => void;
   onSelect: (item: MenuItem) => void;
 }) {
+  const colors = useColors();
+  const modStyles = useMemo(() => createModifierStyles(colors), [colors]);
+  const variationStyles = useMemo(() => createVariationStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   if (!group) return null;
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: Colors.light.background }}>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
         <View style={[modStyles.header, { paddingTop: insets.top + 16 }]}>
           <View style={{ flex: 1 }}>
             <Text style={modStyles.title} numberOfLines={2}>{group.name}</Text>
             <Text style={variationStyles.subtitle}>Choose a size</Text>
           </View>
           <Pressable onPress={onClose} hitSlop={12} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
-            <Ionicons name="close" size={24} color={Colors.light.text} />
+            <Ionicons name="close" size={24} color={colors.text} />
           </Pressable>
         </View>
 
@@ -721,7 +734,9 @@ function VariationModal({
   );
 }
 
-const variationStyles = StyleSheet.create({
+const createVariationStyles = (palette: ReturnType<typeof useColors>) => {
+  const Colors = { ...baseColors, light: palette };
+  return StyleSheet.create({
   subtitle: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 13,
@@ -767,8 +782,8 @@ const variationStyles = StyleSheet.create({
     fontSize: 15,
     color: Colors.brand.blue,
   },
-});
-
+  });
+};
 function ItemCard({
   group,
   onSelectProduct,
@@ -790,6 +805,8 @@ function ItemCard({
    *  closed → grey out and show "Bar closed" badge. */
   barClosed?: boolean;
 }) {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { addItem, updateQuantity, getQuantity } = useCart();
   const item = group.displayItem;
   const hasMultipleVariations = group.variations.length > 1;
@@ -944,6 +961,9 @@ function CartSheet({
   initialGuestEmail?: string;
   onInitialConsumed?: () => void;
 }) {
+  const colors = useColors();
+  const Colors = { ...baseColors, light: colors };
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { items, updateQuantity, clearCart, totalPrice } = useCart();
   const { customer, getCustomerToken } = useCustomerAuth();
   const { expoPushToken } = useNotifications();
@@ -2303,6 +2323,9 @@ function CartSheet({
 }
 
 export default function OrderScreen() {
+  const colors = useColors();
+  const Colors = { ...baseColors, light: colors };
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -2604,7 +2627,7 @@ export default function OrderScreen() {
     return (
       <View style={styles.container}>
         <View style={[styles.header, { paddingTop: (insets.top) + webTopInset }]}>
-          {Platform.OS === "ios" && <BlurView intensity={65} tint="dark" style={StyleSheet.absoluteFill} />}
+          {Platform.OS === "ios" && <BlurView intensity={65} tint={colors.scheme} style={StyleSheet.absoluteFill} />}
           <View style={styles.headerRow}>
             <View>
               <Text style={styles.headerTitle}>Order</Text>
@@ -2624,7 +2647,7 @@ export default function OrderScreen() {
     return (
       <View style={styles.container}>
         <View style={[styles.header, { paddingTop: (insets.top) + webTopInset }]}>
-          {Platform.OS === "ios" && <BlurView intensity={65} tint="dark" style={StyleSheet.absoluteFill} />}
+          {Platform.OS === "ios" && <BlurView intensity={65} tint={colors.scheme} style={StyleSheet.absoluteFill} />}
           <View style={styles.headerRow}>
             <View>
               <Text style={styles.headerTitle}>Order</Text>
@@ -2649,7 +2672,7 @@ export default function OrderScreen() {
     return (
       <View style={styles.container}>
         <View style={[styles.header, { paddingTop: (insets.top) + webTopInset }]}>
-          {Platform.OS === "ios" && <BlurView intensity={65} tint="dark" style={StyleSheet.absoluteFill} />}
+          {Platform.OS === "ios" && <BlurView intensity={65} tint={colors.scheme} style={StyleSheet.absoluteFill} />}
           <View style={styles.headerRow}>
             <View>
               <Text style={styles.headerTitle}>Order</Text>
@@ -2898,7 +2921,7 @@ export default function OrderScreen() {
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: (insets.top) + webTopInset }]}>
-        {Platform.OS === "ios" && <BlurView intensity={65} tint="dark" style={StyleSheet.absoluteFill} />}
+        {Platform.OS === "ios" && <BlurView intensity={65} tint={colors.scheme} style={StyleSheet.absoluteFill} />}
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
             <Pressable onPress={handleBack} hitSlop={8} style={({ pressed }) => [styles.backBtn, { opacity: pressed ? 0.7 : 1 }]}>
@@ -3057,7 +3080,9 @@ export default function OrderScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (palette: ReturnType<typeof useColors>) => {
+  const Colors = { ...baseColors, light: palette };
+  return StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
@@ -3068,7 +3093,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 20,
-    backgroundColor: Platform.OS === "ios" ? "transparent" : "rgba(10,22,40,0.92)",
+    backgroundColor: Platform.OS === "ios" ? "transparent" : palette.surface,
     paddingHorizontal: 20,
     paddingBottom: 10,
     overflow: "hidden" as const,
@@ -3088,20 +3113,20 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.15)",
+    backgroundColor: palette.surfaceElevated,
     justifyContent: "center",
     alignItems: "center",
   },
   headerTitle: {
     fontFamily: "Montserrat_700Bold",
     fontSize: 18,
-    color: "#fff",
+    color: palette.text,
     lineHeight: 22,
   },
   headerSubtitle: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 11,
-    color: "rgba(255,255,255,0.6)",
+    color: palette.textSecondary,
     marginTop: 1,
   },
   cartIconBtn: {
@@ -3157,7 +3182,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 10,
     marginBottom: 6,
-    backgroundColor: "rgba(255,255,255,0.15)",
+    backgroundColor: palette.input,
+    borderWidth: 1,
+    borderColor: palette.border,
     borderRadius: 12,
     paddingHorizontal: 12,
     height: 36,
@@ -3166,7 +3193,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: "Montserrat_500Medium",
     fontSize: 14,
-    color: "#fff",
+    color: palette.text,
     height: 36,
   },
   searchEmpty: {
@@ -4030,4 +4057,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.brand.blue,
   },
-});
+  });
+};

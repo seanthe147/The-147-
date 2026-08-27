@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useMemo } from "react";
 import {
   StyleSheet,
   Text,
@@ -18,7 +18,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
-import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 import { apiRequest, queryClient, getApiUrl, getStaffToken } from "@/lib/query-client";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import type { BannerImage } from "@workspace/db/schema";
@@ -46,6 +46,7 @@ function formatRelativeDate(dateInput: string | Date | null | undefined): string
 }
 
 export default function AdminBannerScreen() {
+  const { Colors, styles } = useAdminTheme();
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -625,7 +626,22 @@ export default function AdminBannerScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function useAdminTheme() {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const Colors = useMemo(() => ({
+    light: colors,
+    brand: { blue: colors.tint, red: colors.accent, gold: colors.gold, green: "#1B5E20" },
+  } as const), [colors]);
+  return { Colors, styles };
+}
+
+function createStyles(colors: ReturnType<typeof useColors>) {
+  const Colors = {
+    light: colors,
+    brand: { blue: colors.tint, red: colors.accent, gold: colors.gold, green: "#1B5E20" },
+  } as const;
+  return StyleSheet.create({
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
@@ -644,6 +660,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: Colors.light.border,
+    backgroundColor: Colors.light.surface,
   },
   headerTitle: {
     fontFamily: "Montserrat_700Bold",
@@ -675,7 +692,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   addSection: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Colors.light.surface,
     borderRadius: 16,
     padding: 16,
     marginBottom: 24,
@@ -786,7 +803,7 @@ const styles = StyleSheet.create({
   imageCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Colors.light.surface,
     borderRadius: 14,
     padding: 10,
     marginBottom: 10,
@@ -905,13 +922,13 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: Colors.light.overlay,
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
   },
   modalCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Colors.light.surface,
     borderRadius: 20,
     padding: 24,
     width: "100%",
@@ -960,4 +977,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#FFFFFF",
   },
-});
+  });
+}

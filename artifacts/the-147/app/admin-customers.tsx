@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import {
   StyleSheet,
   Text,
@@ -14,7 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResponsive } from "@/hooks/useResponsive";
 import { router } from "expo-router";
-import Colors from "@/constants/colors";
+import { useColors } from "@/hooks/useColors";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 
@@ -70,6 +70,7 @@ function formatTimestamp(iso: string): string {
 }
 
 export default function AdminCustomersScreen() {
+  const { Colors, styles } = useAdminTheme();
   const insets = useSafeAreaInsets();
   const { tabletPad } = useResponsive();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -350,7 +351,22 @@ export default function AdminCustomersScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function useAdminTheme() {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const Colors = useMemo(() => ({
+    light: colors,
+    brand: { blue: colors.tint, red: colors.accent, gold: colors.gold, green: "#1B5E20" },
+  } as const), [colors]);
+  return { Colors, styles };
+}
+
+function createStyles(colors: ReturnType<typeof useColors>) {
+  const Colors = {
+    light: colors,
+    brand: { blue: colors.tint, red: colors.accent, gold: colors.gold, green: "#1B5E20" },
+  } as const;
+  return StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.light.background },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: Colors.light.background },
   header: {
@@ -361,6 +377,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: Colors.light.border,
+    backgroundColor: Colors.light.surface,
   },
   backBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
   title: { fontSize: 18, fontWeight: "600", color: Colors.light.text },
@@ -491,4 +508,5 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   outcomeBadgeText: { fontSize: 11, fontWeight: "600" },
-});
+  });
+}
