@@ -1,0 +1,66 @@
+🚀 Submit to App Store
+
+53s
+
+
+⌛️ Submitting iOS build...
+- Dashboard:    https://appstoreconnect.apple.com/apps/6760673771/distribution
+- App:          The 147 (com.the147bradford.app)
+- Build number: 135
+- Binary path:  ./ios/build/The147.ipa
+-------------------
+--- Step: pilot ---
+-------------------
+Creating authorization token for App Store Connect API
+Ready to upload new build to TestFlight (App: 6760673771)...
+Going to upload updated app to App Store Connect
+This might take a few minutes. Please don't interrupt the script.
+[altool] Running altool at path '/Applications/Xcode.app/Contents/SharedFrameworks/ContentDeliveryServices.framework/Frameworks/AppStoreService.framework/Support/altool'...
+[altool] 
+[altool] 2026-08-27 16:25:39.920 ERROR: [altool.6000028DC140] [ContentDelivery.Uploader.6000028DC140] 
+[altool] =======================================
+[altool] UPLOAD FAILED with 5 errors
+[altool] =======================================
+[altool] 2026-08-27 16:25:39.921 ERROR: [altool.6000028DC140] Error uploading '/var/folders/5_/4knlryn57n39p2c_jw8567z00000gn/T/c0dafd7e-7e6a-4f8e-b6fe-dda766b4bbe6.ipa'.
+[altool] 2026-08-27 16:25:39.921 ERROR: [altool.6000028DC140] Validation failed Invalid Signature. Code object is not signed at all. The file at path “The147.app/Frameworks/SquareInAppPaymentsSDK.framework/setup” is not properly signed. Make sure you have signed your application with a distribution certificate, not an ad hoc certificate or a development certificate. Verify that the code signing settings in Xcode are correct at the target level (which override any values at the project level). Additionally, make sure the bundle you are uploading was built using a Release target in Xcode, not a Simulator target. If you are certain your code signing settings are correct, choose “Clean All” in Xcode, delete the “build” directory in the Finder, and rebuild your release target. For more information, please consult https://developer.apple.com/support/code-signing. (ID: 380f694f-f0b8-484a-8ce5-8b92f6cc6b47) (409)
+[altool]  {
+[altool]     NSLocalizedDescription = "Validation failed";
+[altool]     NSLocalizedFailureReason = "Invalid Signature. Code object is not signed at all. The file at path \U201cThe147.app/Frameworks/SquareInAppPaymentsSDK.framework/setup\U201d is not properly signed. Make sure you have signed your application with a distribution certificate, not an ad hoc certificate or a development certificate. Verify that the code signing settings in Xcode are correct at the target level (which override any values at the project level). Additionally, make sure the bundle you are uploading was built using a Release target in Xcode, not a Simulator target. If you are certain your code signing settings are correct, choose \U201cClean All\U201d in Xcode, delete the \U201cbuild\U201d directory in the Finder, and rebuild your release target. For more information, please consult https://developer.apple.com/support/code-signing. (ID: 380f694f-f0b8-484a-8ce5-8b92f6cc6b47)";
+[altool]     NSUnderlyingError = "Error Domain=IrisAPI Code=-19241 \"Validation failed\" UserInfo={status=409, detail=Invalid Signature. Code object is not signed at all. The file at path \U201cThe147.app/Frameworks/SquareInAppPaymentsSDK.framework/setup\U201d is not properly signed. Make sure you have signed your application with a distribution certificate, not an ad hoc certificate or a development certificate. Verify that the code signing settings in Xcode are correct at the target level (which override any values at the project level). Additionally, make sure the bundle you are uploading was built using a Release target in Xcode, not a Simulator target. If you are certain your code signing settings are correct, choose \U201cClean All\U201d in Xcode, delete the \U201cbuild\U201d directory in the Finder, and rebuild your release target. For more information, please consult https://developer.apple.com/support/code-signing., id=380f694f-f0b8-484a-8ce5-8b92f6cc6b47, code=STATE_ERROR.VALIDATION_ERROR, title=Validation failed, NSLocalizedFailureReason=Invalid Signature. Code object is not signed at all. The file at path \U201cThe147.app/Frameworks/SquareInAppPaymentsSDK.framework/setup\U201d is not properly signed. Make sure you have signed your application with a distribution certificate, not an ad hoc certificate or a development certificate. Verify that the code signing settings in Xcode are correct at the target level (which override any values at the project level). Additionally, make sure the bundle you are uploading was built using a Release target in Xcode, not a Simulator target. If you are certain your code signing settings are correct, choose \U201cClean All\U201d in Xcode, delete the \U201cbuild\U201d directory in the Finder, and rebuild your release target. For more information, please consult https://developer.apple.com/support/code-signing., NSLocalizedDescription=Validation failed}";
+[altool]     "iris-code" = "STATE_ERROR.VALIDATION_ERROR";
+[altool] }
+[altool] 2026-08-27 16:25:39.921 ERROR: [altool.6000028DC140] Validation failed Invalid Bundle. The bundle at 'The147.app/Frameworks/SquareBuyerVerificationSDK.framework' contains disallowed nested bundles. (ID: d7f8bce4-d0ba-4c5a-9e43-2c7fd1fcd903) (409)
+[altool]  {
+[altool]     NSLocalizedDescription = "Validation failed";
+[altool]     NSLocalizedFailureReason = "Invalid Bundle. The bundle at 'The147.app/Frameworks/SquareBuyerVerificationSDK.framework' contains disallowed nested bundles. (ID: d7f8bce4-d0ba-4c5a-9e43-2c7fd1fcd903)";
+[altool]     NSUnderlyingError = "Error Domain=IrisAPI Code=-19241 \"Validation failed\" UserInfo={status=409, detail=Invalid Bundle. The bundle at 'The147.app/Frameworks/SquareBuyerVerificationSDK.framework' contains disallowed nested bundles., id=d7f8bce4-d0ba-4c5a-9e43-2c7fd1fcd903, code=STATE_ERROR.VALIDATION_ERROR, title=Validation failed, NSLocalizedFailureReason=Invalid Bundle. The bundle at 'The147.app/Frameworks/SquareBuyerVerificationSDK.framework' contains disallowed nested bundles., NSLocalizedDescription=Validation failed}";
+[altool]     "iris-code" = "STATE_ERROR.VALIDATION_ERROR";
+[altool] }
+[altool] 2026-08-27 16:25:39.922 ERROR: [altool.6000028DC140] Validation failed Invalid Bundle. The bundle at 'The147.app/Frameworks/SquareBuyerVerificationSDK.framework' contains disallowed file 'Frameworks'. (ID: 4d8b4dd0-a05f-4950-ba97-09bc1a614f30) (409)
+[altool]  {
+[altool]     NSLocalizedDescription = "Validation failed";
+[altool]     NSLocalizedFailureReason = "Invalid Bundle. The bundle at 'The147.app/Frameworks/SquareBuyerVerificationSDK.framework' contains disallowed file 'Frameworks'. (ID: 4d8b4dd0-a05f-4950-ba97-09bc1a614f30)";
+[altool]     NSUnderlyingError = "Error Domain=IrisAPI Code=-19241 \"Validation failed\" UserInfo={status=409, detail=Invalid Bundle. The bundle at 'The147.app/Frameworks/SquareBuyerVerificationSDK.framework' contains disallowed file 'Frameworks'., id=4d8b4dd0-a05f-4950-ba97-09bc1a614f30, code=STATE_ERROR.VALIDATION_ERROR, title=Validation failed, NSLocalizedFailureReason=Invalid Bundle. The bundle at 'The147.app/Frameworks/SquareBuyerVerificationSDK.framework' contains disallowed file 'Frameworks'., NSLocalizedDescription=Validation failed}";
+[altool]     "iris-code" = "STATE_ERROR.VALIDATION_ERROR";
+[altool] }
+[altool] 2026-08-27 16:25:39.922 ERROR: [altool.6000028DC140] Validation failed Invalid Bundle. The bundle at 'The147.app/Frameworks/SquareInAppPaymentsSDK.framework' contains disallowed nested bundles. (ID: 19bd20d0-9a84-4b41-a696-2f4f9af3e73e) (409)
+[altool]  {
+[altool]     NSLocalizedDescription = "Validation failed";
+[altool]     NSLocalizedFailureReason = "Invalid Bundle. The bundle at 'The147.app/Frameworks/SquareInAppPaymentsSDK.framework' contains disallowed nested bundles. (ID: 19bd20d0-9a84-4b41-a696-2f4f9af3e73e)";
+[altool]     NSUnderlyingError = "Error Domain=IrisAPI Code=-19241 \"Validation failed\" UserInfo={status=409, detail=Invalid Bundle. The bundle at 'The147.app/Frameworks/SquareInAppPaymentsSDK.framework' contains disallowed nested bundles., id=19bd20d0-9a84-4b41-a696-2f4f9af3e73e, code=STATE_ERROR.VALIDATION_ERROR, title=Validation failed, NSLocalizedFailureReason=Invalid Bundle. The bundle at 'The147.app/Frameworks/SquareInAppPaymentsSDK.framework' contains disallowed nested bundles., NSLocalizedDescription=Validation failed}";
+[altool]     "iris-code" = "STATE_ERROR.VALIDATION_ERROR";
+[altool] }
+[altool] 2026-08-27 16:25:39.922 ERROR: [altool.6000028DC140] Validation failed Invalid Bundle. The bundle at 'The147.app/Frameworks/SquareInAppPaymentsSDK.framework' contains disallowed file 'Frameworks'. (ID: 483d98fe-8213-4b4d-a9b0-ed7a363f5354) (409)
+[altool]  {
+[altool]     NSLocalizedDescription = "Validation failed";
+[altool]     NSLocalizedFailureReason = "Invalid Bundle. The bundle at 'The147.app/Frameworks/SquareInAppPaymentsSDK.framework' contains disallowed file 'Frameworks'. (ID: 483d98fe-8213-4b4d-a9b0-ed7a363f5354)";
+[altool]     NSUnderlyingError = "Error Domain=IrisAPI Code=-19241 \"Validation failed\" UserInfo={status=409, detail=Invalid Bundle. The bundle at 'The147.app/Frameworks/SquareInAppPaymentsSDK.framework' contains disallowed file 'Frameworks'., id=483d98fe-8213-4b4d-a9b0-ed7a363f5354, code=STATE_ERROR.VALIDATION_ERROR, title=Validation failed, NSLocalizedFailureReason=Invalid Bundle. The bundle at 'The147.app/Frameworks/SquareInAppPaymentsSDK.framework' contains disallowed file 'Frameworks'., NSLocalizedDescription=Validation failed}";
+[altool]     "iris-code" = "STATE_ERROR.VALIDATION_ERROR";
+[altool] }
+Application Loader output above ^
+The call to the altool completed with a non-zero exit status: 1. This indicates a failure.
+Could not download/upload from App Store Connect!
+[!] Error uploading ipa file: 
+ [Application Loader Error Output]: The call to the altool completed with a non-zero exit status: 1. This indicates a failure.
+Error: fastlane run pilot ipa:../../app-ecfa40f3-ca1e-4d9e-a50d-6a1829c926f3.ipa apple_id:6760673771 skip_waiting_for_build_processing:true api_key_path:asc_api_key-41dbba8f-8642-4594-9074-c0db42ae9afc.json exited with non-zero code: 1
+/bin/bash -eo pipefail /var/folders/5_/4knlryn57n39p2c_jw8567z00000gn/T/eas-build/57c1ee0f-b799-4a43-84db-3294573dd6e2/steps/step-017/scripts/f0f1eb9c-63b0-4aa6-8bf0-0750526a9eda.sh exited with non-zero code: 1
