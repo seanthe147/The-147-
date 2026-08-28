@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  getMemberDiscountExcludedItemIds,
   isActiveMenuCatalogObject,
+  isMemberDiscountExcludedItem,
+  isMemberDiscountEligibleItem,
   itemUsesAnyMenuCategory,
   selectMenuCategoryId,
 } from "./square.ts";
@@ -55,4 +58,42 @@ test("honors a hidden category across every Square category assigned to an item"
 
   assert.equal(itemUsesAnyMenuCategory(item, new Set(["hidden-draught"])), true);
   assert.equal(itemUsesAnyMenuCategory(item, new Set(["wine"])), false);
+});
+
+test("excludes every variation of Fosters and The 147 Lager from member discounts", () => {
+  const excludedIds = getMemberDiscountExcludedItemIds();
+
+  assert.deepEqual(
+    new Set(excludedIds),
+    new Set([
+      "JZ7SZSGOYKY5RV3VG3WBBZJM",
+      "4PG6COZWTPBHCDV2XLPLAVSJ",
+    ]),
+  );
+  assert.equal(isMemberDiscountExcludedItem("JZ7SZSGOYKY5RV3VG3WBBZJM"), true);
+  assert.equal(isMemberDiscountExcludedItem("4PG6COZWTPBHCDV2XLPLAVSJ"), true);
+  assert.equal(isMemberDiscountExcludedItem("D4FG2XLD4VQY4S6XDKCGFHCP"), false);
+});
+
+test("keeps blocked lager at full price without blocking eligible basket lines", () => {
+  assert.equal(
+    isMemberDiscountEligibleItem("JZ7SZSGOYKY5RV3VG3WBBZJM", false, false),
+    false,
+  );
+  assert.equal(
+    isMemberDiscountEligibleItem("4PG6COZWTPBHCDV2XLPLAVSJ", false, false),
+    false,
+  );
+  assert.equal(
+    isMemberDiscountEligibleItem("eligible-food-item", false, false),
+    true,
+  );
+  assert.equal(
+    isMemberDiscountEligibleItem("eligible-food-item", true, true),
+    false,
+  );
+  assert.equal(
+    isMemberDiscountEligibleItem("eligible-food-item", true, false),
+    true,
+  );
 });

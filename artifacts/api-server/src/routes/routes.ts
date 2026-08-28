@@ -7492,6 +7492,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       locationId,
       environment,
       configured: square.isWebPaymentsConfigured(),
+      memberDiscountExcludedItemIds: square.getMemberDiscountExcludedItemIds(),
     });
   });
 

@@ -1031,6 +1031,7 @@ function CartSheet({
     locationId: string | null;
     environment: "production" | "sandbox";
     configured: boolean;
+    memberDiscountExcludedItemIds?: string[];
   } | null>({
     queryKey: ["/api/public/square-config"],
     staleTime: 60 * 60 * 1000,
@@ -1174,32 +1175,46 @@ function CartSheet({
   // (LINE_ITEM scope, applied only to lines without an `applied_discounts`
   // entry for the deal).
   let dealsAmountPence = 0;
-  let nonDealSubtotalPence = 0;
+  let memberEligibleSubtotalAfterDealsPence = 0;
+  let memberEligibleNonDealSubtotalPence = 0;
+  const memberDiscountExcludedItemIds = new Set(
+    squareConfig?.memberDiscountExcludedItemIds ?? [],
+  );
   for (const i of items) {
     const lineSubtotal = i.price * i.quantity;
     const deal = dealLookup.get(i.variationId) ?? (i.itemId ? dealLookup.get(i.itemId) : undefined);
+    const excludedFromMemberDiscount =
+      !!i.itemId && memberDiscountExcludedItemIds.has(i.itemId);
     if (!deal) {
-      nonDealSubtotalPence += lineSubtotal;
+      if (!excludedFromMemberDiscount) {
+        memberEligibleNonDealSubtotalPence += lineSubtotal;
+        memberEligibleSubtotalAfterDealsPence += lineSubtotal;
+      }
       continue;
     }
+    let lineDealSavingPence = 0;
     if (deal.discountType === "FIXED_AMOUNT" && typeof deal.amountPence === "number") {
-      dealsAmountPence += deal.amountPence * i.quantity;
+      lineDealSavingPence = deal.amountPence * i.quantity;
     } else if (deal.discountType === "FIXED_PERCENTAGE" && deal.percentage) {
       const pct = parseFloat(deal.percentage);
       if (!Number.isNaN(pct) && pct > 0) {
-        dealsAmountPence += Math.round((lineSubtotal * pct) / 100);
+        lineDealSavingPence = Math.round((lineSubtotal * pct) / 100);
       }
+    }
+    dealsAmountPence += lineDealSavingPence;
+    if (!excludedFromMemberDiscount) {
+      memberEligibleSubtotalAfterDealsPence += Math.max(0, lineSubtotal - lineDealSavingPence);
     }
   }
 
   const excludeWithDeals = !!memberSub?.plan?.excludeWithDeals;
   const subtotalAfterDeals = Math.max(0, totalPrice - dealsAmountPence);
-  // If the member's plan excludes stacking AND there are deals in the
-  // cart, the % only applies to non-deal items. Otherwise apply to the
-  // discounted subtotal so the % comes off the full eligible amount.
-  const memberDiscountBase = excludeWithDeals && dealsAmountPence > 0
-    ? nonDealSubtotalPence
-    : subtotalAfterDeals;
+  // The membership percentage never applies to explicitly excluded Square
+  // items. Plans that also disallow deal stacking use only eligible,
+  // non-deal lines; otherwise the deal-adjusted eligible subtotal is used.
+  const memberDiscountBase = excludeWithDeals
+    ? memberEligibleNonDealSubtotalPence
+    : memberEligibleSubtotalAfterDealsPence;
   const discountAmountPence = discountPercent > 0 ? Math.round(memberDiscountBase * discountPercent / 100) : 0;
   const finalPrice = Math.max(0, subtotalAfterDeals - discountAmountPence);
 

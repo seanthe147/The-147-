@@ -1604,6 +1604,30 @@ export interface PricedLineItem {
   modifiers: Array<{ name: string; pricePence: number; catalogObjectId: string }>;
 }
 
+// These Square parent item IDs must never receive a membership percentage
+// discount. Using parent IDs covers every size/variation (for example Pint
+// and Half) and avoids relying on item names supplied by the client.
+const MEMBER_DISCOUNT_EXCLUDED_ITEM_IDS = new Set([
+  "JZ7SZSGOYKY5RV3VG3WBBZJM", // Fosters
+  "4PG6COZWTPBHCDV2XLPLAVSJ", // The 147 Lager
+]);
+
+export function getMemberDiscountExcludedItemIds(): string[] {
+  return Array.from(MEMBER_DISCOUNT_EXCLUDED_ITEM_IDS);
+}
+
+export function isMemberDiscountExcludedItem(itemId: string | undefined): boolean {
+  return !!itemId && MEMBER_DISCOUNT_EXCLUDED_ITEM_IDS.has(itemId);
+}
+
+export function isMemberDiscountEligibleItem(
+  itemId: string | undefined,
+  hasDeal: boolean,
+  excludeWithDeals: boolean,
+): boolean {
+  return !isMemberDiscountExcludedItem(itemId) && (!excludeWithDeals || !hasDeal);
+}
+
 function normalizeUkPhone(phone: string): string | undefined {
   const digits = phone.replace(/[\s\-\(\)]/g, "");
   if (digits.startsWith("+44")) return digits;
@@ -1700,6 +1724,7 @@ async function buildSquareOrderBody(
   }
   const catalogPriceById = new Map<string, number>();
   const catalogTypeById = new Map<string, string>();
+  const catalogItemIdByVariationId = new Map<string, string>();
   const idsToFetch = Array.from(catalogIds);
   // Build chunks of ≤100 ids (Square's batch-retrieve cap) and fire them all
   // in parallel alongside the deals lookup below. The previous implementation
@@ -1725,6 +1750,10 @@ async function buildSquareOrderBody(
       if (o.type === "ITEM_VARIATION") {
         catalogPriceById.set(o.id, o.item_variation_data?.price_money?.amount ?? 0);
         catalogTypeById.set(o.id, "ITEM_VARIATION");
+        const parentItemId = o.item_variation_data?.item_id;
+        if (typeof parentItemId === "string" && parentItemId) {
+          catalogItemIdByVariationId.set(o.id, parentItemId);
+        }
       } else if (o.type === "MODIFIER") {
         catalogPriceById.set(o.id, o.modifier_data?.price_money?.amount ?? 0);
         catalogTypeById.set(o.id, "MODIFIER");
@@ -1765,8 +1794,14 @@ async function buildSquareOrderBody(
     }
   }
   const matchedDeals = items
-    .filter((i) => dealByVariationId.has(i.variationId) || (i.itemId && dealByVariationId.has(i.itemId)))
-    .map((i) => (dealByVariationId.get(i.variationId) ?? dealByVariationId.get(i.itemId!))!.name);
+    .filter((i) => {
+      const itemId = catalogItemIdByVariationId.get(i.variationId);
+      return dealByVariationId.has(i.variationId) || (!!itemId && dealByVariationId.has(itemId));
+    })
+    .map((i) => {
+      const itemId = catalogItemIdByVariationId.get(i.variationId);
+      return (dealByVariationId.get(i.variationId) ?? dealByVariationId.get(itemId!))!.name;
+    });
   // Diagnostic: leaves a trail in production logs whenever a Square deal
   // is stamped onto a real order. Helps confirm the deal-application path
   // is firing without having to reproduce locally.
@@ -1776,9 +1811,21 @@ async function buildSquareOrderBody(
     console.log(`[SQUARE DEALS] No matching deals for cart of ${items.length} item(s); ${activeDeals.length} active deal(s) in catalog.`);
   }
 
-  const hasMemberDiscount = typeof discountPercent === "number" && discountPercent > 0;
+  const requestedMemberDiscount = typeof discountPercent === "number" && discountPercent > 0;
   const dealsInCart = matchedDeals.length > 0;
-  const itemLevelMemberDiscount = hasMemberDiscount && excludeWithDeals && dealsInCart;
+  const hasExcludedMemberDiscountItems = items.some((item) =>
+    isMemberDiscountExcludedItem(catalogItemIdByVariationId.get(item.variationId)),
+  );
+  const hasMemberDiscountEligibleItems = items.some((item) => {
+    const itemId = catalogItemIdByVariationId.get(item.variationId);
+    const hasDeal =
+      dealByVariationId.has(item.variationId) ||
+      (!!itemId && dealByVariationId.has(itemId));
+    return isMemberDiscountEligibleItem(itemId, hasDeal, !!excludeWithDeals);
+  });
+  const hasMemberDiscount = requestedMemberDiscount && hasMemberDiscountEligibleItems;
+  const itemLevelMemberDiscount =
+    hasMemberDiscount && ((excludeWithDeals && dealsInCart) || hasExcludedMemberDiscountItems);
   const orderLevelMemberDiscount = hasMemberDiscount && !itemLevelMemberDiscount;
 
   const orderDiscounts: any[] = orderLevelMemberDiscount ? [{
@@ -1797,7 +1844,15 @@ async function buildSquareOrderBody(
 
   const lineItems = items.map((item, idx) => {
     const lineUid = `li-${idx}`;
-    const deal = dealByVariationId.get(item.variationId) ?? (item.itemId ? dealByVariationId.get(item.itemId) : undefined);
+    const authoritativeItemId = catalogItemIdByVariationId.get(item.variationId);
+    const deal =
+      dealByVariationId.get(item.variationId) ??
+      (authoritativeItemId ? dealByVariationId.get(authoritativeItemId) : undefined);
+    const memberDiscountEligible = isMemberDiscountEligibleItem(
+      authoritativeItemId,
+      !!deal,
+      !!excludeWithDeals,
+    );
     const appliedDiscounts: any[] = [];
     if (deal) {
       const discountUid = `deal-${idx}`;
@@ -1821,7 +1876,8 @@ async function buildSquareOrderBody(
       if (orderDiscounts.find((d) => d.uid === discountUid)) {
         appliedDiscounts.push({ discount_uid: discountUid });
       }
-    } else if (itemLevelMemberDiscount) {
+    }
+    if (itemLevelMemberDiscount && memberDiscountEligible) {
       appliedDiscounts.push({ discount_uid: memberDiscountUid });
     }
     // Use the catalog price we just looked up — never the request value.
