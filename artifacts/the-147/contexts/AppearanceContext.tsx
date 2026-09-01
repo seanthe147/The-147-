@@ -1,4 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as NavigationBar from "expo-navigation-bar";
+import * as SystemUI from "expo-system-ui";
 import React, {
   createContext,
   type ReactNode,
@@ -80,6 +82,20 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     }
     Appearance.setColorScheme(themesEnabled && preference === "system" ? null : resolvedAppearance);
   }, [themesEnabled, preference, resolvedAppearance]);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+
+    void SystemUI.setBackgroundColorAsync(
+      resolvedAppearance === "light" ? lightPalette.background : darkPalette.background,
+    ).catch(() => {});
+
+    if (Platform.OS === "android") {
+      void NavigationBar.setButtonStyleAsync(
+        resolvedAppearance === "dark" ? "light" : "dark",
+      ).catch(() => {});
+    }
+  }, [resolvedAppearance]);
 
   const value = useMemo<AppearanceContextValue>(() => ({
     preference,

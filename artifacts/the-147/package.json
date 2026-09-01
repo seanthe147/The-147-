@@ -84,6 +84,7 @@
     "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
+    "expo-navigation-bar": "~5.0.10",
     "expo-updates": "~29.0.20",
     "react-native-square-in-app-payments": "^2.0.1"
   }

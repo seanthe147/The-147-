@@ -10,3 +10,5 @@
 - [Expo Launch Node runtime](expo-launch-node-runtime.md) — Replit iOS publishing and direct EAS builds read separate profiles; keep their Node versions aligned
 - [pnpm ignored-audit behavior](pnpm-audit-ignored.md) — plain audit exits 0 for configured exceptions, while JSON mode still exits 1 and counts ignored findings
 - [Expo web appearance override](expo-web-appearance.md) — native Appearance overrides are unavailable on Expo web and must be platform-guarded
+- [Native appearance chrome](native-appearance-chrome.md) — Android navigation controls and the native root background must track the resolved app theme
+- [Marketing email dark mode](marketing-email-dark-mode.md) — declare the intended dark color scheme and use solid text colors to avoid Gmail dark-mode inversion

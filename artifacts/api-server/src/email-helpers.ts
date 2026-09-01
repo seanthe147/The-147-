@@ -13,29 +13,31 @@ interface MarketingEmailOptions {
 export function buildMarketingEmailHtml(subject: string, bodyText: string, options: MarketingEmailOptions = {}): string {
   const bodyHtml = bodyText
     .split(/\n\n+/)
-    .map(p => `<p style="margin:0 0 16px 0;line-height:1.75;color:rgba(255,255,255,0.87);">${p.replace(/\n/g, "<br>")}</p>`)
+    .map(p => `<p style="margin:0 0 16px 0;line-height:1.75;color:#e4eaf2;">${p.replace(/\n/g, "<br>")}</p>`)
     .join("");
   const amountGBP = options.giftCard ? `£${(options.giftCard.amountPence / 100).toFixed(2)}` : "";
   const giftCardBlock = options.giftCard ? `
       <div style="margin:0 32px 28px 32px;background:rgba(212,168,67,0.08);border:2px solid rgba(212,168,67,0.4);border-radius:12px;padding:20px;text-align:center;">
-        <div style="font-size:11px;color:rgba(255,255,255,0.45);letter-spacing:3px;text-transform:uppercase;margin-bottom:10px;">Your Birthday Gift Card</div>
+        <div style="font-size:11px;color:#7f8b9c;letter-spacing:3px;text-transform:uppercase;margin-bottom:10px;">Your Birthday Gift Card</div>
         <div style="font-size:28px;font-weight:900;color:#d4a843;letter-spacing:4px;font-family:monospace;">${options.giftCard.gan}</div>
         <div style="font-size:15px;color:#ffffff;font-weight:700;margin-top:8px;">${amountGBP} loaded and ready to use</div>
-        <div style="font-size:12px;color:rgba(255,255,255,0.45);margin-top:10px;line-height:1.6;">Show this code at the till when you visit.<br>Valid on food, drinks, and table bookings.</div>
+        <div style="font-size:12px;color:#7f8b9c;margin-top:10px;line-height:1.6;">Show this code at the till when you visit.<br>Valid on food, drinks, and table bookings.</div>
       </div>` : "";
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <meta name="supported-color-schemes" content="dark">
   <title>${subject}</title>
 </head>
-<body style="margin:0;padding:0;background:#0a1628;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<body style="margin:0;padding:0;background:#0a1628;color:#e4eaf2;color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <div style="max-width:600px;margin:0 auto;padding:24px 16px;">
     <div style="background:linear-gradient(160deg,#0d1e35 0%,#0a1628 100%);border:1px solid rgba(212,168,67,0.25);border-radius:14px;overflow:hidden;">
       <div style="background:linear-gradient(135deg,#0d1e35,#162640);padding:28px 32px;border-bottom:2px solid #d4a843;text-align:center;">
         <div style="font-size:42px;font-weight:900;color:#d4a843;letter-spacing:6px;line-height:1;">147</div>
-        <div style="font-size:11px;color:rgba(255,255,255,0.5);letter-spacing:4px;margin-top:6px;text-transform:uppercase;">The 147 Bradford</div>
+        <div style="font-size:11px;color:#7f8b9c;letter-spacing:4px;margin-top:6px;text-transform:uppercase;">The 147 Bradford</div>
       </div>
       <div style="padding:32px;">
         <h2 style="margin:0 0 20px 0;font-size:21px;font-weight:700;color:#ffffff;line-height:1.3;">${subject}</h2>
@@ -43,7 +45,7 @@ export function buildMarketingEmailHtml(subject: string, bodyText: string, optio
       </div>
       ${giftCardBlock}
       <div style="padding:20px 32px;border-top:1px solid rgba(255,255,255,0.07);background:rgba(0,0,0,0.2);">
-        <p style="margin:0;font-size:12px;color:rgba(255,255,255,0.28);text-align:center;line-height:1.6;">
+        <p style="margin:0;font-size:12px;color:#748196;text-align:center;line-height:1.6;">
           The 147 Bradford · Snooker &amp; Bar<br>
           You are receiving this email as a valued customer of The 147.
         </p>
