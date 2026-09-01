@@ -6648,8 +6648,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       const discountedTotal = Math.max(0, memberDiscountedTotal - loyaltyDiscountPence);
       const registeredPushToken = await getAuthenticatedCustomerPushToken(req, pushToken);
 
-      // Store order record (non-blocking — don't fail checkout if DB write fails)
-      storage.createAppOrder({
+      // Store the order record before confirming checkout to the customer.
+      // The staff Order tab reads app_orders, so letting this run in the
+      // background can leave a Square POS order with no local dashboard row.
+      await storage.createAppOrder({
         id: reservedOrderId,
         squareLinkId: linkId || undefined,
         squareOrderId: squareOrderId || undefined,
@@ -6675,7 +6677,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         discountPercent: discountPercent ?? undefined,
         discountLabel: discountLabel ?? undefined,
         pushToken: registeredPushToken?.token,
-      }).catch((err: any) => console.error("[ORDER] Failed to save order record:", err.message));
+      });
 
       res.json({ url, discountPercent: discountPercent ?? null, discountLabel: discountLabel ?? null });
     } catch (err: any) {
@@ -7560,6 +7562,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     if (!square.isWebPaymentsConfigured()) {
       return res.status(503).json({ message: "In-app payments are not configured." });
     }
+    let provisionalAppOrderId: number | null = null;
     try {
       const status = await getOrderingStatus();
       if (!status.enabled) {
@@ -7593,6 +7596,25 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       // on the Square KDS ticket when the customer hasn't given a name or
       // table. Same id is then used for the app_orders row below.
       const reservedOrderId = await storage.reserveAppOrderId();
+      provisionalAppOrderId = reservedOrderId;
+      const confirmationToken = randomBytes(24).toString("hex");
+      const registeredPushToken = await getAuthenticatedCustomerPushToken(req, pushToken);
+      // Create the local row before calling Square. The staff Order tab reads
+      // this table, so Square-first ordering could leave a POS order with no
+      // corresponding row if the second write failed.
+      await storage.createAppOrder({
+        id: reservedOrderId,
+        tableNote: tableNote || undefined,
+        customerName: customer?.name || undefined,
+        customerEmail: customer?.email || undefined,
+        itemsJson: JSON.stringify(items),
+        totalPence: 0,
+        discountPercent: discountPercent ?? undefined,
+        discountLabel: discountLabel ?? undefined,
+        confirmationToken,
+        pushToken: registeredPushToken?.token,
+        loyaltyRewardId: loyaltyRewardId ?? undefined,
+      });
       // Square promotional discounts ("deals") auto-apply on the Order tab
       // by default; the owner can turn them off from the staff portal
       // without touching the Square dashboard.
@@ -7631,20 +7653,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         }
       }
 
-      // Generate a per-order confirmation token. The client stores this
-      // alongside the appOrderId on the device and presents it later to the
-      // /confirmation endpoint so we don't expose paid orders by ID alone.
-      const confirmationToken = randomBytes(24).toString("hex");
-      const registeredPushToken = await getAuthenticatedCustomerPushToken(req, pushToken);
-
-      // Save app_orders row (pending) so the webhook + staff dashboard see it
-      const appOrder = await storage.createAppOrder({
-        id: reservedOrderId,
-        squareOrderId: orderId,
-        tableNote: tableNote || undefined,
-        customerName: customer?.name || undefined,
-        customerEmail: customer?.email || undefined,
-        itemsJson: JSON.stringify(
+      const pricedItemsJson = JSON.stringify(
           pricedItems.map((p) => ({
             name: p.name,
             quantity: p.quantity,
@@ -7657,21 +7666,16 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
                   modifierIds: p.modifiers.map((m) => m.catalogObjectId),
                 }
               : {}),
-          }))
-        ),
+          })),
+      );
+      await storage.updateAppOrderSquareDetails(reservedOrderId, {
+        squareOrderId: orderId,
+        itemsJson: pricedItemsJson,
         totalPence,
-        discountPercent: discountPercent ?? undefined,
-        discountLabel: discountLabel ?? undefined,
-        confirmationToken,
-        pushToken: registeredPushToken?.token,
-        // Stored so the /pay route can mark it redeemed AFTER a successful
-        // payment rather than here (which would burn the reward even on a
-        // later card decline).
-        loyaltyRewardId: loyaltyRewardId ?? undefined,
       });
 
       res.json({
-        appOrderId: appOrder.id,
+        appOrderId: reservedOrderId,
         squareOrderId: orderId,
         amountPence: totalPence,
         confirmationToken,
@@ -7680,6 +7684,11 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       });
     } catch (err: any) {
       console.error("[ORDER] Create order failed:", err.message);
+      if (provisionalAppOrderId !== null) {
+        await storage.updateAppOrderStatus(provisionalAppOrderId, "cancelled").catch((cleanupErr: any) => {
+          console.error(`[ORDER] Failed to cancel provisional local order #${provisionalAppOrderId}:`, cleanupErr.message);
+        });
+      }
       const status = err instanceof square.SquareError && err.statusCode >= 400 && err.statusCode < 500
         ? err.statusCode
         : 500;

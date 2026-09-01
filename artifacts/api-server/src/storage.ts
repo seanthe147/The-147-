@@ -2642,6 +2642,23 @@ export class DatabaseStorage implements IStorage {
     return rows[0] ? decryptAppOrder(rows[0]) : null;
   }
 
+  // Complete the local app-order record after the Square order has been
+  // created. Keeping this separate lets the staff Order tab see the order
+  // immediately, even while Square is still processing the request.
+  async updateAppOrderSquareDetails(id: number, data: {
+    squareOrderId?: string;
+    squareLinkId?: string;
+    itemsJson?: string;
+    totalPence?: number;
+  }): Promise<void> {
+    await db.update(appOrders).set({
+      ...(data.squareOrderId !== undefined ? { squareOrderId: data.squareOrderId } : {}),
+      ...(data.squareLinkId !== undefined ? { squareLinkId: data.squareLinkId } : {}),
+      ...(data.itemsJson !== undefined ? { itemsJson: data.itemsJson } : {}),
+      ...(data.totalPence !== undefined ? { totalPence: data.totalPence } : {}),
+    }).where(eq(appOrders.id, id));
+  }
+
   async updateAppOrderPaid(squareOrderId: string, squarePaymentId: string): Promise<boolean> {
     // Atomically transition pending → paid. Returns true only on first
     // successful transition. This is the safety net for two races:
