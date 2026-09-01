@@ -66,6 +66,10 @@ import {
   menuGroupMatchesQuery,
   type MenuProductGroup,
 } from "@/lib/menu-grouping";
+import {
+  buildOrderCartPayload,
+  collectSelectedModifiers,
+} from "@/lib/order-customization";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 // Ratio matches the recommended 1500×650 upload size (2.308:1).
@@ -454,14 +458,7 @@ function ModifierModal({
   };
 
   const handleConfirm = () => {
-    const mods: SelectedModifier[] = [];
-    (item.modifiers || []).forEach((ml) => {
-      (selections[ml.id] || []).forEach((optId) => {
-        const opt = ml.options.find((o) => o.id === optId);
-        if (opt) mods.push({ catalogObjectId: opt.id, name: opt.name, price: opt.price });
-      });
-    });
-    onConfirm(mods);
+    onConfirm(collectSelectedModifiers(item, selections));
   };
 
   const cartName = item.variationName ? `${item.name} — ${item.variationName}` : item.name;
@@ -499,6 +496,7 @@ function ModifierModal({
                     key={opt.id}
                     onPress={() => toggle(ml.id, opt.id, ml.selectionType)}
                     style={[modStyles.option, isSelected && modStyles.optionSelected]}
+                    testID={`modifier-${ml.id}-${opt.id}`}
                   >
                     <View style={[
                       ml.selectionType === "SINGLE" ? modStyles.radio : modStyles.checkbox,
@@ -527,6 +525,7 @@ function ModifierModal({
           <Pressable
             onPress={handleConfirm}
             style={({ pressed }) => [modStyles.addBtn, { opacity: pressed ? 0.8 : 1 }]}
+            testID="modifier-confirm-btn"
           >
             <Text style={modStyles.addBtnText}>Add to Order · {formatPrice(lineTotal)}</Text>
           </Pressable>
@@ -2489,13 +2488,7 @@ export default function OrderScreen() {
       setModifierItem(item);
       return;
     }
-    const cartName = item.variationName ? `${item.name} — ${item.variationName}` : item.name;
-    addItem({
-      variationId: item.variationId,
-      itemId: item.id,
-      name: cartName,
-      price: item.price,
-    });
+    addItem(buildOrderCartPayload(item));
   }, [addItem]);
 
   const handleSelectProduct = useCallback((group: MenuProductGroup) => {
@@ -2517,16 +2510,7 @@ export default function OrderScreen() {
 
   const handleModifierConfirm = useCallback((modifiers: SelectedModifier[]) => {
     if (!modifierItem) return;
-    const cartName = modifierItem.variationName
-      ? `${modifierItem.name} — ${modifierItem.variationName}`
-      : modifierItem.name;
-    addItem({
-      variationId: modifierItem.variationId,
-      itemId: modifierItem.id,
-      name: cartName,
-      price: modifierItem.price,
-      modifiers: modifiers.length > 0 ? modifiers : undefined,
-    });
+    addItem(buildOrderCartPayload(modifierItem, modifiers));
     setModifierItem(null);
   }, [modifierItem, addItem]);
 

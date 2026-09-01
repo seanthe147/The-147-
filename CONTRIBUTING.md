@@ -155,6 +155,8 @@ git status --short
 
 Resolve every reported casing conflict or junk/untracked path before continuing.
 Always keep `runtimeVersion` equal to `version`; the scripts enforce this rule.
+The pre-build check also runs the Pint/Half Order-menu regression fixture, so a
+split product card or broken variation/modifier cart payload blocks the release.
 
 ### iOS App Store release
 

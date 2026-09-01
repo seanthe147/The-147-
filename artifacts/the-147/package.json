@@ -18,6 +18,7 @@
     "version:bump": "node scripts/bump-version.js",
     "test:version-bump": "node --test scripts/bump-version.test.js",
     "test:menu-grouping": "node --experimental-strip-types --test lib/menu-grouping.test.ts",
+    "test:order-release-check": "node --experimental-strip-types --test lib/order-release-check.test.ts",
     "test:appearance": "node --experimental-strip-types --test lib/appearance.test.ts components/squarePaymentSheetHtml.test.ts",
     "prebuild:check": "node scripts/prebuild-check.js",
     "check-expo-config": "expo config --type introspect",

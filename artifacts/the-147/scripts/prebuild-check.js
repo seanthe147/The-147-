@@ -12,6 +12,20 @@ const repoRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], {
 const appRelative = path.relative(repoRoot, appDir).replaceAll(path.sep, "/");
 const errors = [];
 
+try {
+  execFileSync(
+    process.execPath,
+    [
+      "--experimental-strip-types",
+      "--test",
+      path.join(appDir, "lib/order-release-check.test.ts"),
+    ],
+    { cwd: appDir, stdio: "inherit" },
+  );
+} catch {
+  errors.push("Order menu release check failed");
+}
+
 function git(args) {
   return execFileSync("git", args, {
     cwd: repoRoot,
