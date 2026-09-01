@@ -5409,8 +5409,9 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   }
 
   // Staff-only: upcoming sports fixtures for the bookings page bar.
-  // Returns up to 3 fixtures from PL, Championship, and Super League RL
-  // kicking off within the next 48 hours, sorted by kickoff time.
+  // Returns up to 5 general fixtures plus confirmed Bradford City/Leeds United
+  // TV fixtures, sorted by kickoff time. The fixture module applies the
+  // team-specific priority before enforcing the response limit.
   app.get("/api/staff/fixtures/upcoming", staffAuth, async (_req, res) => {
     try {
       const { getUpcomingFixtures } = await import("../sports-fixtures.js");

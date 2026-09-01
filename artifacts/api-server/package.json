@@ -9,7 +9,8 @@
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:push": "node --experimental-strip-types --test src/push-core.test.ts",
-    "test:menu": "node --experimental-strip-types --test src/square-menu.test.ts"
+    "test:menu": "node --experimental-strip-types --test src/square-menu.test.ts",
+    "test:fixtures": "node --experimental-strip-types --test src/sports-fixtures.test.ts"
   },
   "dependencies": {
     "@sentry/node": "^10.0.0",
