@@ -13,3 +13,4 @@
 - [Native appearance chrome](native-appearance-chrome.md) — Android navigation controls and the native root background must track the resolved app theme
 - [Marketing email dark mode](marketing-email-dark-mode.md) — declare the intended dark color scheme and use solid text colors to avoid Gmail dark-mode inversion
 - [API route test bundling](api-route-test-bundling.md) — bundle source-level API route tests with esbuild from an artifact-local temp directory
+- [Playwright in Nix test runners](playwright-nix-runtime.md) — pass Nix runtime library paths to Chromium child processes for browser smoke tests

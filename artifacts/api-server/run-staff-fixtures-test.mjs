@@ -1,10 +1,23 @@
 import { build } from "esbuild";
 import { spawn } from "node:child_process";
+import { readdirSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import path from "node:path";
 
 const tempDir = await mkdtemp(path.join(process.cwd(), ".staff-fixtures-test-"));
 const output = path.join(tempDir, "staff-fixtures-route.test.js");
+const nixLibraryDirs = [
+  ...(process.env.NIX_LDFLAGS?.match(/(?:^|\s)-L(\S+)/g) ?? []).map((flag) => flag.trim().slice(2)),
+  ...readdirSync("/nix/store", { withFileTypes: true })
+    .filter((entry) => /-(?:mesa|mesa-libgbm|alsa-lib)-/.test(entry.name))
+    .map((entry) => path.join("/nix/store", entry.name, "lib")),
+].join(":");
+const testEnv = {
+  ...process.env,
+  ...(nixLibraryDirs
+    ? { LD_LIBRARY_PATH: [nixLibraryDirs, process.env.LD_LIBRARY_PATH].filter(Boolean).join(":") }
+    : {}),
+};
 
 try {
   await build({
@@ -33,13 +46,14 @@ try {
       "pino",
       "pino-pretty",
       "thread-stream",
+      "playwright",
     ],
   });
 
   const exitCode = await new Promise((resolveCode, rejectCode) => {
     const child = spawn(process.execPath, ["--test", "--test-force-exit", output], {
       stdio: "inherit",
-      env: { ...process.env, NODE_ENV: "production" },
+      env: { ...testEnv, NODE_ENV: "production" },
     });
     child.once("error", rejectCode);
     child.once("exit", (code, signal) => {

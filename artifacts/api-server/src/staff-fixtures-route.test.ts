@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
+import { chromium, type Page } from "playwright";
 import { createApp } from "./app.ts";
 import { registerStaffFixturesRoute } from "./routes/routes.ts";
 import { invalidateFixturesCache } from "./sports-fixtures.ts";
@@ -184,5 +185,197 @@ test("authenticated fixture response stays bounded, canonical, and dashboard-com
     await new Promise<void>((resolveClose, rejectClose) => {
       server.close((error) => error ? rejectClose(error) : resolveClose());
     });
+  }
+});
+
+async function startStaffDashboardServer(
+  providerFetch: typeof fetch,
+): Promise<{ baseUrl: string; server: Server; restore: () => void }> {
+  invalidateFixturesCache();
+  const originalValidateStaffSession = storage.validateStaffSession;
+  const originalLogStaffAction = storage.logStaffAction;
+  const originalFetchForDashboard = globalThis.fetch;
+  globalThis.fetch = providerFetch;
+  (storage as any).validateStaffSession = async (token: string) =>
+    token === SESSION_TOKEN
+      ? { staffUsername: null, expiresAt: new Date(Date.now() + 60_000) }
+      : undefined;
+  (storage as any).logStaffAction = async () => undefined;
+
+  const app = createApp();
+  registerStaffFixturesRoute(app);
+  app.get("/staff", (_req, res) => {
+    const dashboard = readFileSync(resolve("src/templates/staff-dashboard.html"), "utf8");
+    res.type("html").send(dashboard);
+  });
+  app.get("/favicon.ico", (_req, res) => res.sendStatus(204));
+  app.get("/assets/logo-147.png", (_req, res) => res.sendStatus(204));
+  // The fixture request uses the real staffAuth middleware above. Keep the
+  // verify response small and deterministic so the browser test can focus on
+  // the dashboard rendering rather than database-backed dashboard panels.
+  app.get("/api/staff/verify", (req, res) => {
+    if (req.header("authorization") !== `Bearer ${SESSION_TOKEN}`) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+    return res.json({ role: "staff", username: "fixture-smoke", displayName: "Fixture Smoke" });
+  });
+  const server = createServer(app);
+  const baseUrl = await listen(server);
+
+  return {
+    baseUrl,
+    server,
+    restore: () => {
+      (storage as any).validateStaffSession = originalValidateStaffSession;
+      (storage as any).logStaffAction = originalLogStaffAction;
+      globalThis.fetch = originalFetchForDashboard;
+      invalidateFixturesCache();
+    },
+  };
+}
+
+async function closeServer(server: Server): Promise<void> {
+  await new Promise<void>((resolveClose, rejectClose) => {
+    server.close((error) => error ? rejectClose(error) : resolveClose());
+  });
+}
+
+async function assertDashboardHasNoBrowserErrors(
+  page: Page,
+  browserErrors: string[],
+): Promise<void> {
+  await page.waitForFunction(`
+    (() => {
+      const app = document.querySelector("#app");
+      const title = document.querySelector("#topbarTitle");
+      return app?.style.display === "block" && title?.textContent === "Bookings";
+    })()
+  `);
+  await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+  assert.deepEqual(browserErrors, []);
+}
+
+async function openStaffDashboard(
+  page: Page,
+  baseUrl: string,
+): Promise<string[]> {
+  const browserErrors: string[] = [];
+  page.on("pageerror", (error) => browserErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
+  page.on("response", (response) => {
+    if (response.status() >= 400) {
+      browserErrors.push(`${response.status()} ${response.url()}`);
+    }
+  });
+  await page.addInitScript({
+    content: `window.localStorage.setItem("staffToken147", ${JSON.stringify(SESSION_TOKEN)});`,
+  });
+  await page.route("**/api/**", async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname === ROUTE || pathname === "/api/staff/verify") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([]),
+    });
+  });
+  await page.goto(`${baseUrl}/staff`);
+  return browserErrors;
+}
+
+test("browser smoke check renders the authenticated fixture strip", async () => {
+  const providerFetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.endsWith("eventsnext.php?id=134189")) {
+      return response([providerEvent({
+        idEvent: "bradford-smoke",
+        idLeague: "4396",
+        strLeague: "League One",
+        dateEvent: "2099-01-10",
+        strTime: "12:34:00",
+        strHomeTeam: "Bradford City",
+        strAwayTeam: "Cambridge United",
+        idHomeTeam: "134189",
+        idAwayTeam: "134586",
+        strTVStation: "BT Sport 1",
+      })]);
+    }
+    if (url.endsWith("eventsnextleague.php?id=4328")) {
+      return response([]);
+    }
+    return response([]);
+  }) as typeof fetch;
+  const dashboardServer = await startStaffDashboardServer(providerFetch);
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({ timezoneId: "UTC" });
+  const page = await context.newPage();
+
+  try {
+    const browserErrors = await openStaffDashboard(page, dashboardServer.baseUrl);
+    await page.waitForFunction(`
+      (() => {
+        const bar = document.querySelector("#fixturesBar");
+        return Boolean(bar && bar.style.display !== "none" && bar.querySelectorAll("div > div").length > 0);
+      })()
+    `);
+
+    const fixtureBar = page.locator("#fixturesBar");
+    const fixtureText = await fixtureBar.innerText();
+    assert.match(fixtureText, /League One/);
+    assert.match(fixtureText, /Bradford City/);
+    assert.match(fixtureText, /Cambridge United/);
+    assert.match(fixtureText, /10 Jan/);
+    assert.match(fixtureText, /12:34/);
+    assert.match(fixtureText, /TNT Sports/);
+    assert.equal(await fixtureBar.locator("svg").count() > 0, true);
+    await assertDashboardHasNoBrowserErrors(page, browserErrors);
+  } finally {
+    await page.close();
+    await context.close();
+    await browser.close();
+    dashboardServer.restore();
+    await closeServer(dashboardServer.server);
+  }
+});
+
+test("browser smoke check keeps the dashboard usable when fixtures are empty or fail", async () => {
+  const dashboardServer = await startStaffDashboardServer(
+    (async () => response([])) as typeof fetch,
+  );
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({ timezoneId: "UTC" });
+
+  try {
+    for (const fixtureFailure of [false, true]) {
+      invalidateFixturesCache();
+      globalThis.fetch = fixtureFailure
+        ? (async () => { throw new Error("fixture provider unavailable"); }) as typeof fetch
+        : (async () => response([])) as typeof fetch;
+      const page = await context.newPage();
+      try {
+        const browserErrors = await openStaffDashboard(page, dashboardServer.baseUrl);
+        await page.waitForFunction(`
+          (() => {
+            const bar = document.querySelector("#fixturesBar");
+            return bar?.style.display === "none";
+          })()
+        `);
+        assert.equal(await page.locator("#topbarTitle").innerText(), "Bookings");
+        assert.equal(await page.locator("#pageBookings").isVisible(), true);
+        await assertDashboardHasNoBrowserErrors(page, browserErrors);
+      } finally {
+        await page.close();
+      }
+    }
+  } finally {
+    await context.close();
+    await browser.close();
+    dashboardServer.restore();
+    await closeServer(dashboardServer.server);
   }
 });

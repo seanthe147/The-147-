@@ -153,3 +153,4 @@ FEATURE_APPEARANCE_THEMES = "true"
 
 [nix]
 channel = "stable-25_05"
+packages = ["glib", "nss", "nspr", "atk", "cups", "libdrm", "pango", "cairo", "libxkbcommon", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXfixes", "xorg.libXrandr", "xorg.libxcb", "xorg.libX11", "mesa", "libglvnd"]
