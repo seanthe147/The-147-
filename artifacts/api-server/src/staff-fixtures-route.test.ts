@@ -1,0 +1,188 @@
+import assert from "node:assert/strict";
+import { createServer, type Server } from "node:http";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import test from "node:test";
+import { createApp } from "./app.ts";
+import { registerStaffFixturesRoute } from "./routes/routes.ts";
+import { invalidateFixturesCache } from "./sports-fixtures.ts";
+import { storage } from "./storage.ts";
+
+const ROUTE = "/api/staff/fixtures/upcoming";
+const SESSION_TOKEN = "fixture-route-test-session-token-1234567890";
+const originalFetch = globalThis.fetch;
+
+const fixtureKeys = [
+  "awayLogo",
+  "awayScore",
+  "awayTeam",
+  "channel",
+  "homeLogo",
+  "homeScore",
+  "homeTeam",
+  "id",
+  "kickoffIso",
+  "kickoffMs",
+  "leagueName",
+  "sport",
+  "status",
+].sort();
+
+function response(events: Record<string, unknown>[]): Response {
+  return new Response(JSON.stringify({ events }), {
+    headers: { "content-type": "application/json" },
+  });
+}
+
+function providerEvent(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    idEvent: "general-event",
+    idLeague: "4328",
+    dateEvent: "2099-01-01",
+    strTime: "12:00:00",
+    strStatus: "NS",
+    strTVStation: null,
+    strHomeTeam: "Home team",
+    strAwayTeam: "Away team",
+    idHomeTeam: "100",
+    idAwayTeam: "101",
+    strHomeTeamBadge: "https://example.com/home.png",
+    strAwayTeamBadge: "https://example.com/away.png",
+    intHomeScore: null,
+    intAwayScore: null,
+    ...overrides,
+  };
+}
+
+async function listen(server: Server): Promise<string> {
+  await new Promise<void>((resolveListen, rejectListen) => {
+    server.once("error", rejectListen);
+    server.listen(0, "127.0.0.1", () => resolveListen());
+  });
+  const address = server.address();
+  assert(address && typeof address !== "string");
+  return `http://127.0.0.1:${address.port}`;
+}
+
+test("staff fixture route rejects unauthenticated requests", async () => {
+  const app = createApp();
+  registerStaffFixturesRoute(app);
+  const server = createServer(app);
+  const baseUrl = await listen(server);
+
+  try {
+    const result = await originalFetch(`${baseUrl}${ROUTE}`);
+    assert.equal(result.status, 401);
+    assert.deepEqual(await result.json(), { message: "Authentication required" });
+  } finally {
+    await new Promise<void>((resolveClose, rejectClose) => {
+      server.close((error) => error ? rejectClose(error) : resolveClose());
+    });
+  }
+});
+
+test("authenticated fixture response stays bounded, canonical, and dashboard-compatible", async () => {
+  invalidateFixturesCache();
+
+  const generalFixtures = Array.from({ length: 6 }, (_, index) =>
+    providerEvent({
+      idEvent: `general-${index + 1}`,
+      dateEvent: `2099-01-${String(index + 1).padStart(2, "0")}`,
+    }),
+  );
+
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.endsWith("eventsnext.php?id=134189")) {
+      return response([providerEvent({
+        idEvent: "bradford-tv",
+        idLeague: "4396",
+        dateEvent: "2099-01-10",
+        strHomeTeam: "Bradford City",
+        strAwayTeam: "Cambridge United",
+        idHomeTeam: "134189",
+        idAwayTeam: "134586",
+        strTVStation: "BT Sport 1",
+      })]);
+    }
+    if (url.endsWith("eventsnext.php?id=133635")) {
+      return response([providerEvent({
+        idEvent: "leeds-tv",
+        dateEvent: "2099-01-11",
+        strHomeTeam: "Brighton and Hove Albion",
+        strAwayTeam: "Leeds United",
+        idHomeTeam: "133619",
+        idAwayTeam: "133635",
+        strTVStation: "Sky Sports Main Event",
+      })]);
+    }
+    if (url.endsWith("eventsnextleague.php?id=4328")) {
+      return response(generalFixtures);
+    }
+    return response([]);
+  }) as typeof fetch;
+
+  const originalValidateStaffSession = storage.validateStaffSession;
+  const originalLogStaffAction = storage.logStaffAction;
+  (storage as any).validateStaffSession = async (token: string) =>
+    token === SESSION_TOKEN
+      ? { staffUsername: null, expiresAt: new Date(Date.now() + 60_000) }
+      : undefined;
+  (storage as any).logStaffAction = async () => undefined;
+
+  const app = createApp();
+  registerStaffFixturesRoute(app);
+  const server = createServer(app);
+  const baseUrl = await listen(server);
+
+  try {
+    const result = await originalFetch(`${baseUrl}${ROUTE}`, {
+      headers: { Authorization: `Bearer ${SESSION_TOKEN}` },
+    });
+    assert.equal(result.status, 200);
+
+    const body = await result.json() as { fixtures?: unknown };
+    assert.deepEqual(Object.keys(body), ["fixtures"]);
+    assert(Array.isArray(body.fixtures));
+    assert(body.fixtures.length <= 5);
+    assert(body.fixtures.length > 0);
+
+    for (const fixture of body.fixtures) {
+      assert.deepEqual(Object.keys(fixture as object).sort(), fixtureKeys);
+      const typedFixture = fixture as Record<string, unknown>;
+      assert.equal(typeof typedFixture.sport, "string");
+      assert.equal(typeof typedFixture.leagueName, "string");
+      assert.equal(typeof typedFixture.homeTeam, "string");
+      assert.equal(typeof typedFixture.awayTeam, "string");
+      assert.equal(typeof typedFixture.kickoffIso, "string");
+      assert.equal(typeof typedFixture.channel, "string");
+      assert(["upcoming", "live"].includes(String(typedFixture.status)));
+    }
+
+    const fixtures = body.fixtures as Array<Record<string, unknown>>;
+    assert.equal(fixtures.find((fixture) => fixture.id === "bradford-tv")?.channel, "TNT Sports");
+    assert.equal(fixtures.find((fixture) => fixture.id === "leeds-tv")?.channel, "Sky Sports");
+    assert.equal(fixtures.filter((fixture) => String(fixture.id).startsWith("general-")).length, 3);
+
+    const dashboard = readFileSync(resolve("src/templates/staff-dashboard.html"), "utf8");
+    for (const field of [
+      "data.fixtures||[]",
+      "f.sport",
+      "f.leagueName",
+      "f.homeTeam",
+      "f.awayTeam",
+      "f.kickoffIso",
+      "f.channel",
+    ]) {
+      assert(dashboard.includes(field), `dashboard no longer reads fixture field ${field}`);
+    }
+  } finally {
+    (storage as any).validateStaffSession = originalValidateStaffSession;
+    (storage as any).logStaffAction = originalLogStaffAction;
+    globalThis.fetch = originalFetch;
+    invalidateFixturesCache();
+    await new Promise<void>((resolveClose, rejectClose) => {
+      server.close((error) => error ? rejectClose(error) : resolveClose());
+    });
+  }
+});

@@ -1243,6 +1243,23 @@ async function ownerAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+export function registerStaffFixturesRoute(app: Express): void {
+  // Staff-only: upcoming sports fixtures for the bookings page bar.
+  // Returns up to 5 general fixtures plus confirmed Bradford City/Leeds United
+  // TV fixtures, sorted by kickoff time. The fixture module applies the
+  // team-specific priority before enforcing the response limit.
+  app.get("/api/staff/fixtures/upcoming", staffAuth, async (_req, res) => {
+    try {
+      const { getUpcomingFixtures } = await import("../sports-fixtures.js");
+      const fixtures = await getUpcomingFixtures(5);
+      res.json({ fixtures });
+    } catch (err: any) {
+      console.error("/api/staff/fixtures/upcoming error:", err.message);
+      res.status(500).json({ fixtures: [], message: "Unable to load fixtures" });
+    }
+  });
+}
+
 const customerLoginAttempts = new Map<string, { count: number; blockedUntil: number }>();
 
 function checkCustomerRateLimit(ip: string): { allowed: boolean; retryAfter?: number } {
@@ -5408,20 +5425,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     });
   }
 
-  // Staff-only: upcoming sports fixtures for the bookings page bar.
-  // Returns up to 5 general fixtures plus confirmed Bradford City/Leeds United
-  // TV fixtures, sorted by kickoff time. The fixture module applies the
-  // team-specific priority before enforcing the response limit.
-  app.get("/api/staff/fixtures/upcoming", staffAuth, async (_req, res) => {
-    try {
-      const { getUpcomingFixtures } = await import("../sports-fixtures.js");
-      const fixtures = await getUpcomingFixtures(5);
-      res.json({ fixtures });
-    } catch (err: any) {
-      console.error("/api/staff/fixtures/upcoming error:", err.message);
-      res.status(500).json({ fixtures: [], message: "Unable to load fixtures" });
-    }
-  });
+  registerStaffFixturesRoute(app);
 
   // ── Data backup (owner-only) ──────────────────────────────────────────────
   // List available backup snapshots.
