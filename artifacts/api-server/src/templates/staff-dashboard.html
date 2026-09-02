@@ -4248,8 +4248,8 @@
       const cards=fixtures.map(f=>{
         const isRL=f.sport==='rugby-league';
         const sportIcon=isRL
-          ?'<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><ellipse cx="12" cy="12" rx="10" ry="6" fill="none" stroke="currentColor" stroke-width="2"/><line x1="2" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="1.5"/><line x1="12" y1="6" x2="12" y2="18" stroke="currentColor" stroke-width="1.5"/></svg>'
-          :'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>';
+          ?'<svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><ellipse cx="12" cy="12" rx="10" ry="6" fill="none" stroke="currentColor" stroke-width="2"/><line x1="2" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="1.5"/><line x1="12" y1="6" x2="12" y2="18" stroke="currentColor" stroke-width="1.5"/></svg>'
+          :'<svg aria-hidden="true" focusable="false" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>';
 
         // Kickoff time formatted as local time (venue is UK so just show clock)
         const ko=new Date(f.kickoffIso);
@@ -4266,28 +4266,29 @@
         const chColour=channelColour(ch);
         const chLogo=CHANNEL_LOGOS[ch]||'';
         const chLogoImg=chLogo
-          ?`<img src="${chLogo}" width="14" height="14" style="border-radius:2px;object-fit:contain;vertical-align:middle;margin-right:3px" onerror="this.style.display='none'">`
+          ?`<img src="${chLogo}" alt="" aria-hidden="true" width="14" height="14" style="border-radius:2px;object-fit:contain;vertical-align:middle;margin-right:3px" onerror="this.style.display='none'">`
           :'';
         const chBadge=ch
           ?`<span style="display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:2px 6px;border-radius:5px;background:${chColour}22;color:${chColour};border:1px solid ${chColour}44;white-space:nowrap">${chLogoImg}${esc(ch)}</span>`
           :'';
+        const accessibleLabel=`${f.leagueName}: ${f.homeTeam} vs ${f.awayTeam}, kickoff ${dayLabel} at ${timeLabel}${ch?', broadcaster '+ch:''}`;
 
         const livePip=isLive
           ?'<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#EF4444;margin-right:4px;flex-shrink:0;animation:pulse 1.4s infinite"></span>'
           :'';
 
-        return`<div style="flex:1;min-width:200px;max-width:340px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 14px;display:flex;flex-direction:column;gap:5px">
+        return`<div role="group" aria-label="${esc(accessibleLabel)}" style="flex:1;min-width:200px;max-width:340px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 14px;display:flex;flex-direction:column;gap:5px">
           <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-2);font-weight:600">
             ${sportIcon}
             <span>${esc(f.leagueName)}</span>
             ${livePip}${isLive?'<span style="font-size:10px;color:#EF4444;font-weight:700">LIVE</span>':''}
           </div>
           <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
-            ${f.homeLogo?`<img src="${esc(f.homeLogo)}" width="16" height="16" style="border-radius:2px;object-fit:contain" onerror="this.style.display='none'">`:''}
+            ${f.homeLogo?`<img src="${esc(f.homeLogo)}" alt="" aria-hidden="true" width="16" height="16" style="border-radius:2px;object-fit:contain" onerror="this.style.display='none'">`:''}
             <span style="font-size:13px;font-weight:700;color:var(--text)">${esc(f.homeTeam)}</span>
             ${scoreHtml}
             <span style="font-size:12px;color:var(--text-2)">vs</span>
-            ${f.awayLogo?`<img src="${esc(f.awayLogo)}" width="16" height="16" style="border-radius:2px;object-fit:contain" onerror="this.style.display='none'">`:''}
+            ${f.awayLogo?`<img src="${esc(f.awayLogo)}" alt="" aria-hidden="true" width="16" height="16" style="border-radius:2px;object-fit:contain" onerror="this.style.display='none'">`:''}
             <span style="font-size:13px;font-weight:700;color:var(--text)">${esc(f.awayTeam)}</span>
           </div>
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">

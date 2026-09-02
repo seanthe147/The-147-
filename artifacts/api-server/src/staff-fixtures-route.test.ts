@@ -333,6 +333,17 @@ test("browser smoke check renders the authenticated fixture strip", async () => 
     assert.match(fixtureText, /12:34/);
     assert.match(fixtureText, /TNT Sports/);
     assert.equal(await fixtureBar.locator("svg").count() > 0, true);
+    const fixtureCards = fixtureBar.getByRole("group");
+    assert.equal(await fixtureCards.count(), 1);
+    const accessibleName = await fixtureCards.first().getAttribute("aria-label");
+    assert(accessibleName);
+    assert.match(accessibleName, /League One/);
+    assert.match(accessibleName, /Bradford City/);
+    assert.match(accessibleName, /Cambridge United/);
+    assert.match(accessibleName, /kickoff .*10 Jan.*12:34/);
+    assert.match(accessibleName, /broadcaster TNT Sports/);
+    assert.equal(await fixtureCards.first().locator("svg[aria-hidden='true']").count(), 1);
+    assert.equal(await fixtureCards.first().locator("img[aria-hidden='true']").count(), 3);
     await assertDashboardHasNoBrowserErrors(page, browserErrors);
   } finally {
     await page.close();
