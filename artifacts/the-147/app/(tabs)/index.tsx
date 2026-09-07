@@ -31,6 +31,7 @@ import { OPENING_HOURS } from "@/lib/data";
 import type { Event, BannerImage, Offer } from "@workspace/db/schema";
 import { isSafePublicUrl } from "@workspace/db/schema";
 import { EnableNotificationsBanner } from "@/components/EnableNotificationsBanner";
+import { trackEvent } from "@/lib/analytics";
 
 const logoImage = require("@/assets/images/logo-147.png");
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -497,10 +498,22 @@ export default function HomeScreen() {
   const bannerImageUrl = settings?.banner_image;
   const todayHours = useMemo(() => getOpeningHoursToday(), []);
 
-  const goToBook = useCallback(() => router.push("/booking"), []);
-  const goToEvents = useCallback(() => router.push("/(tabs)/events"), []);
-  const goToOrder = useCallback(() => router.push("/(tabs)/order"), []);
-  const goToContact = useCallback(() => router.push("/contact"), []);
+  const goToBook = useCallback(() => {
+    trackEvent("home_navigation_tapped", { destination: "booking" });
+    router.push("/booking");
+  }, []);
+  const goToEvents = useCallback(() => {
+    trackEvent("home_navigation_tapped", { destination: "events" });
+    router.push("/(tabs)/events");
+  }, []);
+  const goToOrder = useCallback(() => {
+    trackEvent("home_navigation_tapped", { destination: "order" });
+    router.push("/(tabs)/order");
+  }, []);
+  const goToContact = useCallback(() => {
+    trackEvent("home_navigation_tapped", { destination: "contact" });
+    router.push("/contact");
+  }, []);
 
   const heroOverlay = (
     <LinearGradient
@@ -565,6 +578,7 @@ export default function HomeScreen() {
         <Pressable
           onPress={() => {
             if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            trackEvent("home_navigation_tapped", { destination: "booking" });
             router.push("/booking");
           }}
           style={({ pressed }) => [
@@ -578,6 +592,7 @@ export default function HomeScreen() {
         <Pressable
           onPress={() => {
             if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            trackEvent("home_navigation_tapped", { destination: "order" });
             router.push("/(tabs)/order");
           }}
           style={({ pressed }) => [

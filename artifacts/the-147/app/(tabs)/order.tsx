@@ -47,6 +47,7 @@ import { useKiosk } from "@/contexts/KioskContext";
 import { KioskCheckoutSheet } from "@/components/KioskCheckoutSheet";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { getApiUrl, prefetchSquarePaymentSdk } from "@/lib/query-client";
+import { trackEvent } from "@/lib/analytics";
 import { SquarePaymentSheet } from "@/components/SquarePaymentSheet";
 import { useSquareGooglePay } from "@/hooks/useSquareGooglePay";
 import * as LocalAuthentication from "expo-local-authentication";
@@ -1293,6 +1294,7 @@ function CartSheet({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Checkout failed");
+      trackEvent("order_checkout_succeeded", { method: "hosted_checkout" });
       onClose();
       clearCart();
       setTableNote("");
@@ -1308,6 +1310,7 @@ function CartSheet({
         await Linking.openURL(data.url);
       }
     } catch (err: any) {
+      trackEvent("order_checkout_failed", { method: "hosted_checkout", reason: "request_error" });
       Alert.alert("Checkout Error", err.message || "Please try again.");
     } finally {
       setLoading(false);
@@ -1329,6 +1332,7 @@ function CartSheet({
     if (!customer) return;
     setLoading(true);
     setPayError(null);
+    trackEvent("order_checkout_started", { method: "saved_card" });
     try {
       const apiBase = getApiUrl();
       const token = await getCustomerToken();
@@ -1409,7 +1413,9 @@ function CartSheet({
       setOrderNote("");
       setStep("cart");
       router.push({ pathname: "/order-confirmation", params: confirmationParams });
+      trackEvent("order_checkout_succeeded", { method: "saved_card" });
     } catch (err: any) {
+      trackEvent("order_checkout_failed", { method: "saved_card", reason: "request_error" });
       setPayError(err.message || "Payment failed. Please try again.");
     } finally {
       setLoading(false);
@@ -1419,6 +1425,9 @@ function CartSheet({
 
   const handleCheckout = async () => {
     if (items.length === 0) return;
+    trackEvent("order_checkout_started", {
+      method: squareConfig?.configured ? "payment_sheet" : "hosted_checkout",
+    });
     if (!squareConfig?.configured) {
       // Web Payments SDK not available — fall back to hosted checkout
       return fallbackToHostedCheckout();
@@ -1509,11 +1518,13 @@ function CartSheet({
         setStep("cart");
         setGuestMode(false);
         router.push({ pathname: "/order-confirmation", params: confirmationParams });
+        trackEvent("order_checkout_succeeded", { method: "payment_sheet", amount_pence: 0 });
         return;
       }
 
       setPaymentSheetVisible(true);
     } catch (err: any) {
+      trackEvent("order_checkout_failed", { method: "payment_sheet", reason: "request_error" });
       Alert.alert("Checkout Error", err.message || "Please try again.");
     } finally {
       setLoading(false);
@@ -1601,7 +1612,9 @@ function CartSheet({
       setStep("cart");
       setGuestMode(false);
       router.push({ pathname: "/order-confirmation", params: confirmationParams });
+      trackEvent("order_checkout_succeeded", { method: "payment_sheet" });
     } catch (err: any) {
+      trackEvent("order_checkout_failed", { method: "payment_sheet", reason: "payment_error" });
       setPayError(err.message || "Payment failed. Please try again.");
     } finally {
       setPaying(false);

@@ -21,6 +21,7 @@ import { apiRequest, queryClient, getApiUrl } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
 import { useResponsive } from "@/hooks/useResponsive";
+import { trackEvent } from "@/lib/analytics";
 import Colors from "@/constants/colors";
 import { useColors } from "@/hooks/useColors";
 const baseColors = Colors;
@@ -286,6 +287,9 @@ export default function BookScreen() {
     mutationFn: (data: any) => apiRequest("POST", "/api/bookings", data).then((res) => res.json()),
     onSuccess: (response: any) => {
       queryClient.refetchQueries({ queryKey: ["/api/bookings/availability"] });
+      trackEvent("booking_completed", {
+        deposit_required: Boolean(response?.depositRequired && response?.depositPaymentUrl),
+      });
       if (response?.depositRequired && response?.depositPaymentUrl) {
         setDepositPaymentUrl(response.depositPaymentUrl);
         setStep("deposit");
@@ -294,6 +298,7 @@ export default function BookScreen() {
       }
     },
     onError: (err: Error) => {
+      trackEvent("booking_failed", { reason: "request_error" });
       let msg = "Booking failed. Please try again.";
       try {
         const text = err.message || "";
@@ -342,6 +347,11 @@ export default function BookScreen() {
       else Alert.alert("Consent Required", msg);
       return;
     }
+    trackEvent("booking_submitted", {
+      table_type: selectedTable || "unknown",
+      duration_hours: duration,
+      guest_count: isDining ? guestCount : 0,
+    });
     bookMutation.mutate({
       customerName: name.trim(),
       customerEmail: email.trim(),
