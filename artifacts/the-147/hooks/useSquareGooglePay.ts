@@ -1,7 +1,9 @@
+import { normalizeGooglePayError, type GooglePayErrorContext } from "@/lib/google-pay-errors";
+
 export type GooglePayNonceResult =
   | { status: "ok"; nonce: string; verificationToken: string | null }
   | { status: "cancelled" }
-  | { status: "failed"; message: string };
+  | { status: "failed"; message: string; error: GooglePayErrorContext };
 
 export function useSquareGooglePay(_opts: {
   applicationId: string | null;
@@ -18,6 +20,10 @@ export function useSquareGooglePay(_opts: {
     requestNonce: async () => ({
       status: "failed",
       message: "Google Pay is not available on this platform.",
+      error: normalizeGooglePayError({
+        code: "GOOGLE_PAY_UNSUPPORTED_PLATFORM",
+        message: "Google Pay is not available on this platform.",
+      }),
     }),
   };
 }

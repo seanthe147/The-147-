@@ -1,4 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import {
+  googlePayCustomerMessage,
+  normalizeGooglePayError,
+  type GooglePayErrorContext,
+} from "@/lib/google-pay-errors";
 
 // Dynamic require with try/catch — TurboModuleRegistry.getEnforcing throws in
 // Expo Go because the native SQIPGooglePay module is only available in a full
@@ -26,15 +31,13 @@ try {
 export type GooglePayNonceResult =
   | { status: "ok"; nonce: string; verificationToken: string | null }
   | { status: "cancelled" }
-  | { status: "failed"; message: string };
+  | { status: "failed"; message: string; error: GooglePayErrorContext };
 
-function errMessage(details: any): string {
-  return (
-    details?.message ||
-    details?.debugMessage ||
-    details?.code ||
-    "Google Pay could not complete."
-  );
+const GOOGLE_PAY_REQUEST_TIMEOUT_MS = 90_000;
+
+function failedResult(details: unknown): GooglePayNonceResult {
+  const error = normalizeGooglePayError(details);
+  return { status: "failed", message: googlePayCustomerMessage(error), error };
 }
 
 export function useSquareGooglePay(opts: {
@@ -78,8 +81,9 @@ export function useSquareGooglePay(opts: {
   // Step 2 of the flow: run Square buyer verification (SCA/3DS) on the Google
   // Pay nonce. Without this, banks that require Strong Customer Authentication
   // (common in the UK) decline the payment — the reported "some Android users
-  // still can't pay with Google Pay" failure mode. Falls back to the bare
-  // nonce (previous behaviour) when the verification module is unavailable.
+  // still can't pay with Google Pay" failure mode. If the verification module
+  // is unavailable, use the native nonce as the compatibility fallback; once a
+  // verification flow has started, failures must not silently bypass SCA.
   const verifyBuyer = useCallback(
     (nonce: string, amountPence: number, currency: string): Promise<GooglePayNonceResult> => {
       const start =
@@ -101,10 +105,12 @@ export function useSquareGooglePay(opts: {
         // native verification flow stalls.
         const timer = setTimeout(
           () =>
-            settle({
-              status: "failed",
-              message: "Payment verification timed out. Please try card details instead.",
-            }),
+            settle(
+              failedResult({
+                code: "GOOGLE_PAY_VERIFICATION_TIMEOUT",
+                message: "Payment verification timed out.",
+              }),
+            ),
           90_000,
         );
         const rawName = (buyerRef.current.name || "").trim();
@@ -129,22 +135,20 @@ export function useSquareGooglePay(opts: {
               settle({ status: "ok", nonce: verifiedNonce, verificationToken: token });
             },
             (details: any) => {
+              const error = normalizeGooglePayError(details);
               settle({
                 status: "failed",
-                message: `Your bank could not verify this payment. ${errMessage(details)}`,
+                message: `Your bank could not verify this payment. ${googlePayCustomerMessage(error)}`,
+                error,
               });
             },
             () => settle({ status: "cancelled" }),
           );
           if (maybePromise && typeof maybePromise.catch === "function") {
-            maybePromise.catch(() =>
-              // Verification flow could not even start (e.g. older SDK) —
-              // degrade to the bare nonce, matching previous behaviour.
-              settle({ status: "ok", nonce, verificationToken: null }),
-            );
+            maybePromise.catch((error: unknown) => settle(failedResult(error)));
           }
-        } catch {
-          settle({ status: "ok", nonce, verificationToken: null });
+        } catch (error) {
+          settle(failedResult(error));
         }
       });
     },
@@ -154,12 +158,32 @@ export function useSquareGooglePay(opts: {
   const requestNonce = useCallback(
     async (params: { amountPence: number; currency: string }): Promise<GooglePayNonceResult> => {
       if (!SQIPGooglePay) {
-        return { status: "failed", message: "Google Pay is not available on this device." };
+        return failedResult({
+          code: "GOOGLE_PAY_NATIVE_MODULE_UNAVAILABLE",
+          message: "Google Pay is not available on this device.",
+        });
       }
       const price = (params.amountPence / 100).toFixed(2);
       const nonceResult = await new Promise<GooglePayNonceResult>((resolve) => {
+        let settled = false;
+        const settle = (result: GooglePayNonceResult) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(result);
+        };
+        const timer = setTimeout(
+          () =>
+            settle(
+              failedResult({
+                code: "GOOGLE_PAY_REQUEST_TIMEOUT",
+                message: "Google Pay did not return a result in time.",
+              }),
+            ),
+          GOOGLE_PAY_REQUEST_TIMEOUT_MS,
+        );
         try {
-          SQIPGooglePay.requestGooglePayNonce(
+          void SQIPGooglePay.requestGooglePayNonce(
             {
               price,
               currencyCode: params.currency,
@@ -167,14 +191,21 @@ export function useSquareGooglePay(opts: {
             },
             (cardDetails: any) => {
               const nonce = cardDetails?.nonce ?? null;
-              if (nonce) resolve({ status: "ok", nonce, verificationToken: null });
-              else resolve({ status: "failed", message: "Google Pay returned no payment token." });
+              if (nonce) settle({ status: "ok", nonce, verificationToken: null });
+              else {
+                settle(
+                  failedResult({
+                    code: "GOOGLE_PAY_NO_PAYMENT_TOKEN",
+                    message: "Google Pay returned no payment token.",
+                  }),
+                );
+              }
             },
-            (errorDetails: any) => resolve({ status: "failed", message: errMessage(errorDetails) }),
-            () => resolve({ status: "cancelled" }),
-          ).catch((e: any) => resolve({ status: "failed", message: errMessage(e) }));
-        } catch (e: any) {
-          resolve({ status: "failed", message: errMessage(e) });
+            (errorDetails: any) => settle(failedResult(errorDetails)),
+            () => settle({ status: "cancelled" }),
+          ).catch((error: unknown) => settle(failedResult(error)));
+        } catch (error) {
+          settle(failedResult(error));
         }
       });
       if (nonceResult.status !== "ok") return nonceResult;

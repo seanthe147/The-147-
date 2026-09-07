@@ -7531,6 +7531,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       phase: s(body.phase, 40) || "unknown",
       reason: s(body.reason, 240),
       sessionId: s(body.sessionId, 40),
+      requestId: s(body.requestId, 40),
       platform: s(body.platform, 16),
       environment: s(body.environment, 16),
       userAgent: s(body.userAgent, 240),
@@ -7543,6 +7544,24 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       retryCount: typeof body.retryCount === "number" && Number.isFinite(body.retryCount)
         ? Math.max(0, Math.round(body.retryCount))
         : null,
+      amountPence: typeof body.amountPence === "number" && Number.isFinite(body.amountPence)
+        ? Math.max(0, Math.round(body.amountPence))
+        : null,
+      currency: s(body.currency, 8),
+      priceStatus: typeof body.priceStatus === "number" && Number.isFinite(body.priceStatus)
+        ? Math.round(body.priceStatus)
+        : null,
+      errorCode: s(body.errorCode, 80),
+      debugCode: s(body.debugCode, 80),
+      debugMessage: s(body.debugMessage, 240),
+      googlePayCode: s(body.googlePayCode, 80),
+      applicationIdSuffix: s(body.applicationIdSuffix, 12),
+      locationIdSuffix: s(body.locationIdSuffix, 12),
+      nativeModule: body.nativeModule === true || body.nativeModule === false ? body.nativeModule : null,
+      verificationTokenReceived:
+        body.verificationTokenReceived === true || body.verificationTokenReceived === false
+          ? body.verificationTokenReceived
+          : null,
       ip,
     };
     // Single-line, grep-friendly. Severity: fatal = full error, anything else = info.

@@ -16,6 +16,10 @@ import { useColors } from "@/hooks/useColors";
 import { buildPaymentSheetHtml } from "@/components/squarePaymentSheetHtml";
 import { getApiUrl } from "@/lib/query-client";
 import { useSquareGooglePay, type GooglePayNonceResult } from "@/hooks/useSquareGooglePay";
+import {
+  googlePayDiagnosticCode,
+  normalizeGooglePayError,
+} from "@/lib/google-pay-errors";
 
 export interface SquarePaymentSheetProps {
   visible: boolean;
@@ -110,6 +114,7 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
   const [isGooglePayProcessing, setIsGooglePayProcessing] = useState(false);
   const webRef = useRef<WebViewType | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const googlePayRequestNumber = useRef(0);
 
   const hookResult = useSquareGooglePay({
     applicationId: props.applicationId,
@@ -133,6 +138,20 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
 
   const handleGooglePay = useCallback(async () => {
     if (isGooglePayProcessing || props.inProgress) return;
+    const requestId = `gpay-${++googlePayRequestNumber.current}`;
+    const suffix = (value: string | null) => (value ? value.slice(-6) : null);
+    postDiagnostic({
+      phase: "google_pay_request_start",
+      requestId,
+      platform: Platform.OS,
+      environment: props.environment,
+      amountPence: props.amountPence,
+      currency: props.currency || "GBP",
+      priceStatus: 3,
+      applicationIdSuffix: suffix(props.applicationId),
+      locationIdSuffix: suffix(props.locationId),
+      nativeModule: true,
+    });
     setIsGooglePayProcessing(true);
     setInternalError(null);
     try {
@@ -142,29 +161,60 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
       });
       if (result.status === "ok") {
         props.onTokenized({ sourceId: result.nonce, verificationToken: result.verificationToken });
+        postDiagnostic({
+          phase: "google_pay_nonce_received",
+          requestId,
+          platform: Platform.OS,
+          environment: props.environment,
+          amountPence: props.amountPence,
+          currency: props.currency || "GBP",
+          verificationTokenReceived: !!result.verificationToken,
+        });
       } else if (result.status === "failed") {
         // Surface the failure instead of silently returning to idle — the
         // user needs to know Google Pay didn't go through and that card
         // entry below still works.
-        setInternalError(
-          `${result.message} You can still pay by entering your card details below.`,
-        );
+        setInternalError(result.message);
         postDiagnostic({
           phase: "google_pay_error",
+          requestId,
           reason: result.message,
           platform: Platform.OS,
           environment: props.environment,
           amountPence: props.amountPence,
+          currency: props.currency || "GBP",
+          errorCode: result.error.code,
+          debugCode: result.error.debugCode,
+          debugMessage: result.error.debugMessage,
+          googlePayCode: googlePayDiagnosticCode(result.error),
+        });
+      } else {
+        postDiagnostic({
+          phase: "google_pay_cancelled",
+          requestId,
+          platform: Platform.OS,
+          environment: props.environment,
+          amountPence: props.amountPence,
+          currency: props.currency || "GBP",
         });
       }
-      // status === "cancelled": user closed the wallet sheet on purpose — no error.
     } catch (e: any) {
-      setInternalError("Google Pay failed. Please try entering your card details instead.");
+      const error = normalizeGooglePayError(e);
+      setInternalError(
+        `${error.message} You can still pay by entering your card details below.`,
+      );
       postDiagnostic({
         phase: "google_pay_error",
-        reason: e?.message || "unknown_exception",
+        requestId,
+        reason: error.message,
         platform: Platform.OS,
         environment: props.environment,
+        amountPence: props.amountPence,
+        currency: props.currency || "GBP",
+        errorCode: error.code,
+        debugCode: error.debugCode,
+        debugMessage: error.debugMessage,
+        googlePayCode: googlePayDiagnosticCode(error),
       });
     } finally {
       setIsGooglePayProcessing(false);
