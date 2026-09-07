@@ -26,6 +26,7 @@
     }
     html,body{height:100%;overflow:hidden}
     body{font-family:'Montserrat',-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
+     .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 
     /* ── Login ── */
     #loginScreen{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,var(--navy) 0%,var(--dark) 60%,#1a3a6b 100%);position:fixed;inset:0;z-index:1000}
@@ -679,6 +680,7 @@
     <main class="main">
       <!-- Persistent sports fixtures strip — visible on every page for all staff -->
       <div id="fixturesBar" style="display:none;padding:10px 20px 10px;border-bottom:1px solid var(--border)"></div>
+      <div id="fixturesAnnouncement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 
       <div class="topbar">
         <button class="hamburger-btn" id="hamburgerBtn" onclick="toggleSidebar()" aria-label="Menu">
@@ -4235,6 +4237,44 @@
   };
   function channelColour(ch){return CHANNEL_COLOURS[ch]||'var(--text-3,#9CA3AF)';}
 
+  let previousFixtures=null;
+  function fixtureKey(f){
+    return [
+      f.id,f.sport,f.leagueName,f.homeTeam,f.awayTeam,f.kickoffIso,
+      f.channel,f.status,f.homeScore,f.awayScore,
+    ].map(value=>String(value??'')).join('\u001f');
+  }
+  function fixtureCount(count,label){
+    return count+' '+label+(count===1?'':'s');
+  }
+  function announceFixtureChanges(previous,current){
+    if(previous===null)return;
+
+    const previousById=new Map(previous.map(f=>[String(f.id),f]));
+    const currentById=new Map(current.map(f=>[String(f.id),f]));
+    const added=current.filter(f=>!previousById.has(String(f.id)));
+    const removed=previous.filter(f=>!currentById.has(String(f.id)));
+    const newlyLive=current.filter(f=>{
+      const before=previousById.get(String(f.id));
+      return f.status==='live'&&before?.status!=='live';
+    });
+    const changed=current.filter(f=>{
+      const before=previousById.get(String(f.id));
+      return before&&fixtureKey(before)!==fixtureKey(f);
+    });
+    const parts=[];
+    if(newlyLive.length)parts.push(fixtureCount(newlyLive.length,'fixture')+' now live');
+    const addedNotLive=added.filter(f=>f.status!=='live');
+    if(addedNotLive.length)parts.push(fixtureCount(addedNotLive.length,'new fixture')+' added');
+    if(removed.length)parts.push(fixtureCount(removed.length,'fixture')+' removed');
+    if(changed.length&&!newlyLive.length)parts.push('fixture details changed');
+    if(!parts.length)return;
+    if(!current.length)parts.push('no upcoming fixtures');
+
+    const announcement=el('fixturesAnnouncement');
+    if(announcement)announcement.textContent='Fixture schedule updated: '+parts.join('; ')+'.';
+  }
+
   async function loadFixturesBar(){
     const bar=el('fixturesBar');if(!bar)return;
     try{
@@ -4242,7 +4282,9 @@
       if(!r.ok){bar.style.display='none';return;}
       const data=await r.json();
       const fixtures=data.fixtures||[];
-      if(!fixtures.length){bar.style.display='none';return;}
+      announceFixtureChanges(previousFixtures,fixtures);
+      previousFixtures=fixtures.slice();
+      if(!fixtures.length){bar.style.display='none';scheduleFixturesRefresh([]);return;}
       bar.style.display='';
 
       const cards=fixtures.map(f=>{

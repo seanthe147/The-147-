@@ -354,6 +354,102 @@ test("browser smoke check renders the authenticated fixture strip", async () => 
   }
 });
 
+test("browser smoke check politely announces changed fixture data once", async () => {
+  const dashboardServer = await startStaffDashboardServer(
+    (async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("eventsnext.php?id=134189")) {
+        return response([providerEvent({
+          idEvent: "bradford-announcement",
+          idLeague: "4396",
+          dateEvent: "2099-01-10",
+          strTime: "12:34:00",
+          strHomeTeam: "Bradford City",
+          strAwayTeam: "Cambridge United",
+          idHomeTeam: "134189",
+          idAwayTeam: "134586",
+          strTVStation: "BT Sport 1",
+        })]);
+      }
+      return response([]);
+    }) as typeof fetch,
+  );
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({ timezoneId: "UTC" });
+  const page = await context.newPage();
+
+  try {
+    await page.addInitScript({
+      content: `
+        (() => {
+          const pendingFixtureRefreshes = [];
+          const originalSetTimeout = window.setTimeout.bind(window);
+          window.__pendingFixtureRefreshes = pendingFixtureRefreshes;
+          window.setTimeout = (handler, timeout, ...args) => {
+            if (typeof handler === "function" && (timeout || 0) >= 60000) {
+              pendingFixtureRefreshes.push(handler);
+              return 0;
+            }
+            return originalSetTimeout(handler, timeout, ...args);
+          };
+        })();
+      `,
+    });
+    const browserErrors = await openStaffDashboard(page, dashboardServer.baseUrl);
+    await page.route(`**${ROUTE}`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ fixtures: [] }),
+      });
+    });
+    await page.waitForFunction(`
+      (() => {
+        const bar = document.querySelector("#fixturesBar");
+        return Boolean(bar && bar.style.display !== "none" && bar.querySelectorAll("div > div").length > 0);
+      })()
+    `);
+
+    const announcement = page.locator("#fixturesAnnouncement");
+    assert.equal(await announcement.textContent(), "");
+    const pendingRefresh = await page.evaluate(
+      "window.__pendingFixtureRefreshes && window.__pendingFixtureRefreshes.length > 0",
+    );
+    assert.equal(pendingRefresh, true);
+
+    await page.evaluate(`
+      (() => {
+        const refresh = window.__pendingFixtureRefreshes.pop();
+        if (!refresh) throw new Error("fixture refresh timer was not captured");
+        refresh();
+      })()
+    `);
+    await page.waitForFunction(
+      `document.querySelector("#fixturesAnnouncement")?.textContent ===
+        "Fixture schedule updated: 1 fixture removed; no upcoming fixtures."`,
+    );
+    assert.equal(await page.locator("#fixturesBar").evaluate((bar) => bar?.style.display), "none");
+
+    const announcementAfterChange = await announcement.textContent();
+    await page.evaluate(`
+      (() => {
+        const refresh = window.__pendingFixtureRefreshes.pop();
+        if (!refresh) throw new Error("fixture refresh timer was not captured");
+        refresh();
+      })()
+    `);
+    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+    assert.equal(await announcement.textContent(), announcementAfterChange);
+    await assertDashboardHasNoBrowserErrors(page, browserErrors);
+  } finally {
+    await page.close();
+    await context.close();
+    await browser.close();
+    dashboardServer.restore();
+    await closeServer(dashboardServer.server);
+  }
+});
+
 test("browser smoke check keeps the dashboard usable when fixtures are empty or fail", async () => {
   const dashboardServer = await startStaffDashboardServer(
     (async () => response([])) as typeof fetch,
