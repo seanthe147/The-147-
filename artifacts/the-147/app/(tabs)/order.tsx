@@ -71,6 +71,10 @@ import {
   buildOrderCartPayload,
   collectSelectedModifiers,
 } from "@/lib/order-customization";
+import {
+  calculateMemberDiscountPreviewPence,
+  getMemberDiscountPreviewExcludedItemIds,
+} from "@/lib/member-discount";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 // Ratio matches the recommended 1500×650 upload size (2.308:1).
@@ -1177,8 +1181,10 @@ function CartSheet({
   let dealsAmountPence = 0;
   let memberEligibleSubtotalAfterDealsPence = 0;
   let memberEligibleNonDealSubtotalPence = 0;
-  const memberDiscountExcludedItemIds = new Set(
-    squareConfig?.memberDiscountExcludedItemIds ?? [],
+  const serverMemberDiscountExcludedItemIds =
+    squareConfig?.memberDiscountExcludedItemIds;
+  const memberDiscountExcludedItemIds = getMemberDiscountPreviewExcludedItemIds(
+    serverMemberDiscountExcludedItemIds,
   );
   for (const i of items) {
     const lineSubtotal = i.price * i.quantity;
@@ -1215,7 +1221,11 @@ function CartSheet({
   const memberDiscountBase = excludeWithDeals
     ? memberEligibleNonDealSubtotalPence
     : memberEligibleSubtotalAfterDealsPence;
-  const discountAmountPence = discountPercent > 0 ? Math.round(memberDiscountBase * discountPercent / 100) : 0;
+  const discountAmountPence = calculateMemberDiscountPreviewPence({
+    discountPercent,
+    eligibleSubtotalPence: memberDiscountBase,
+    exclusionsLoaded: Array.isArray(serverMemberDiscountExcludedItemIds),
+  });
   const finalPrice = Math.max(0, subtotalAfterDeals - discountAmountPence);
 
   // Loyalty reward discount — calculated client-side for display only.
