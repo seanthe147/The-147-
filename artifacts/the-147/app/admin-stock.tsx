@@ -490,7 +490,7 @@ function CountTab({ items, categories }: { items: StockItem[]; categories: Stock
           <DatePicker value={periodEnd} onChange={setPeriodEnd} placeholder="Select end date" />
 
           <Text style={styles.fieldLabel}>Notes</Text>
-          <TextInput style={[styles.input, { height: 56 }]} value={notes} onChangeText={setNotes} multiline placeholderTextColor="#666" placeholder="Optional" />
+          <TextInput style={[styles.input, { height: 56 }]} value={notes} onChangeText={setNotes} multiline placeholderTextColor={colors.textSecondary} placeholder="Optional" />
 
           <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Physical count</Text>
           <Text style={styles.fieldHint}>Enter what you physically counted for each item</Text>
@@ -514,7 +514,7 @@ function CountTab({ items, categories }: { items: StockItem[]; categories: Stock
                     onChangeText={(v) => setCounts((prev) => ({ ...prev, [item.id]: v }))}
                     keyboardType="decimal-pad"
                     placeholder="0"
-                    placeholderTextColor="#555"
+                    placeholderTextColor={colors.textSecondary}
                   />
                   <Text style={styles.unitTag}>{item.countUnit === "keg" ? "kegs" : item.countUnit + "(s)"}</Text>
                 </View>
@@ -1005,13 +1005,13 @@ const createThemedStyles = (colors: any) => themedStyleSheet({
   formTitle: { fontSize: 18, fontWeight: "700", color: Colors.light.text, marginBottom: 16 },
   fieldLabel: { fontSize: 13, fontWeight: "600", color: "#AAB4C8", marginBottom: 4, marginTop: 12 },
   fieldHint: { fontSize: 12, color: "#666", marginBottom: 4 },
-  input: { backgroundColor: "#111827", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: Colors.light.text, fontSize: 14, borderWidth: 1, borderColor: "#1E293B" },
+  input: { backgroundColor: colors.input, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: colors.text, fontSize: 14, borderWidth: 1, borderColor: colors.border },
   catHeader: { fontSize: 11, fontWeight: "700", color: Colors.brand.gold, letterSpacing: 1, marginTop: 16, marginBottom: 6, textTransform: "uppercase" },
   lineRow: { flexDirection: "row", alignItems: "center", marginBottom: 8, gap: 8 },
   lineInfo: { flex: 1 },
   lineName: { fontSize: 13, color: Colors.light.text, fontWeight: "500" },
   lineUnit: { fontSize: 11, color: "#666" },
-  qtyInput: { width: 56, backgroundColor: "#111827", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 8, color: Colors.light.text, fontSize: 14, textAlign: "center", borderWidth: 1, borderColor: "#374151" },
+  qtyInput: { width: 56, backgroundColor: colors.input, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 8, color: colors.text, fontSize: 14, textAlign: "center", borderWidth: 1, borderColor: colors.border },
   unitTag: { fontSize: 11, color: "#888", width: 48 },
   formActions: { flexDirection: "row", gap: 10, marginTop: 24 },
   cancelBtn: { flex: 1, borderWidth: 1, borderColor: "#374151", borderRadius: 8, paddingVertical: 12, alignItems: "center" },
