@@ -16035,14 +16035,36 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     try {
       const id = parseInt(String(req.params.id), 10);
       const { links } = req.body as { links: Array<{ squareVariationId: string; squareVariationName?: string | null; soldUnitFactor?: number | string }> };
+      const clean = (links ?? [])
+        .filter((l) => l.squareVariationId)
+        .map((l) => ({ ...l, soldUnitFactor: Number(l.soldUnitFactor ?? 1) }));
+      if (new Set(clean.map((l) => l.squareVariationId)).size !== clean.length) {
+        return res.status(400).json({ error: "The same Square variation cannot be linked twice to one stock item." });
+      }
+      if (clean.some((l) => !Number.isFinite(l.soldUnitFactor) || l.soldUnitFactor <= 0)) {
+        return res.status(400).json({ error: "Every POS conversion factor must be greater than zero." });
+      }
+      if (clean.length) {
+        const conflicting = await db
+          .select({ stockItemId: stockItemPosLinks.stockItemId, squareVariationId: stockItemPosLinks.squareVariationId })
+          .from(stockItemPosLinks)
+          .where(dInArray(stockItemPosLinks.squareVariationId, clean.map((l) => l.squareVariationId)));
+        const conflict = conflicting.find((l) => l.stockItemId !== id);
+        if (conflict) {
+          return res.status(409).json({
+            error: "This Square variation is already linked to another stock item. Remove that link before reusing it.",
+            squareVariationId: conflict.squareVariationId,
+            stockItemId: conflict.stockItemId,
+          });
+        }
+      }
       await db.delete(stockItemPosLinks).where(dEq(stockItemPosLinks.stockItemId, id));
-      const clean = (links ?? []).filter((l) => l.squareVariationId);
       if (clean.length) {
         await db.insert(stockItemPosLinks).values(clean.map((l) => ({
           stockItemId: id,
           squareVariationId: l.squareVariationId,
           squareVariationName: l.squareVariationName ?? null,
-          soldUnitFactor: String(l.soldUnitFactor ?? "1"),
+          soldUnitFactor: String(l.soldUnitFactor),
         })));
       }
       // Mirror the primary (factor closest to 1) link to legacy columns for back-compat.
@@ -16109,9 +16131,18 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
         : [];
 
       // Fetch Square POS sales for mapped items
-      const salesMap = square.isConfigured()
-        ? await square.getSalesByVariation(start.toISOString(), end.toISOString()).catch(() => new Map<string, number>())
-        : new Map<string, number>();
+      const squareConfigured = square.isConfigured();
+      let squareSalesAvailable = squareConfigured;
+      let squareSalesError: string | null = squareConfigured ? null : "Square POS is not configured.";
+      let salesMap = new Map<string, number>();
+      if (squareConfigured) {
+        try {
+          salesMap = await square.getSalesByVariation(start.toISOString(), end.toISOString());
+        } catch (error: any) {
+          squareSalesAvailable = false;
+          squareSalesError = error?.message ?? "Square POS sales could not be loaded.";
+        }
+      }
 
       const round1 = (n: number) => Math.round(n * 10) / 10;
 
@@ -16138,7 +16169,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
           ? itemLinks.map((l) => ({ variationId: l.squareVariationId, factor: parseFloat(l.soldUnitFactor) || 1 }))
           : (item.squareCatalogVariationId ? [{ variationId: item.squareCatalogVariationId, factor: 1 }] : []);
         const squareLinked = effectiveLinks.length > 0;
-        const sold = squareLinked
+        const sold = squareLinked && squareSalesAvailable
           ? round1(effectiveLinks.reduce((sum, lk) => sum + (salesMap.get(lk.variationId) ?? 0) * lk.factor, 0))
           : null;
         const variance = sold !== null ? round1(consumed - sold) : null;
@@ -16151,6 +16182,8 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
           baseUnit,
           categoryName: cat.name,
           squareLinked,
+          squareSalesAvailable,
+          squareSalesError,
           opening,
           delivered,
           closing,

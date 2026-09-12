@@ -115,6 +115,8 @@ interface ReportLine {
   containerSize: string | null;
   categoryName: string;
   squareLinked: boolean;
+  squareSalesAvailable: boolean;
+  squareSalesError: string | null;
   opening: number;
   delivered: number;
   closing: number;
@@ -608,6 +610,7 @@ function ReportTab({ categories }: { categories: StockCategory[] }) {
     .filter((g) => g.lines.length > 0);
   const hasSquareData = data.some((l) => l.squareLinked);
   const linkedCount = data.filter((l) => l.squareLinked).length;
+  const squareSalesError = data.find((l) => !l.squareSalesAvailable)?.squareSalesError;
 
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
@@ -635,12 +638,20 @@ function ReportTab({ categories }: { categories: StockCategory[] }) {
       )}
 
       {fetched && data.length > 0 && (
+        <>
+        {squareSalesError && (
+          <View style={[styles.reportSummaryBanner, { borderColor: "#EF4444" }]}>
+            <Ionicons name="cloud-offline-outline" size={14} color="#EF4444" />
+            <Text style={[styles.reportSummaryText, { color: "#EF4444" }]}> POS sales unavailable: {squareSalesError}. Sold and variance are left blank.</Text>
+          </View>
+        )}
         <View style={styles.reportSummaryBanner}>
           {hasSquareData
             ? <><Ionicons name="link" size={14} color="#22C55E" /><Text style={styles.reportSummaryText}> {linkedCount} of {data.length} items linked to Square POS</Text></>
             : <><Ionicons name="alert-circle-outline" size={14} color="#F59E0B" /><Text style={[styles.reportSummaryText, { color: "#F59E0B" }]}> No items linked to Square POS — link items in the Catalogue tab to see Sold & Variance</Text></>
           }
         </View>
+        </>
       )}
 
       {grouped.map(({ cat, lines }) => (
@@ -716,6 +727,7 @@ function CatalogueTab({ items, categories }: { items: StockItem[]; categories: S
   const [variationSearch, setVariationSearch] = useState("");
   const [pendingVarId, setPendingVarId] = useState<string | null>(null);
   const [pendingVarName, setPendingVarName] = useState<string | null>(null);
+  const [pendingLinks, setPendingLinks] = useState<PosLink[]>([]);
   // Auto-match state
   const [autoResults, setAutoResults] = useState<AutoMatchResult[]>([]);
   const [confirmed, setConfirmed] = useState<Record<number, boolean>>({});
@@ -732,7 +744,6 @@ function CatalogueTab({ items, categories }: { items: StockItem[]; categories: S
       if (!res.ok) throw new Error((await res.json()).error ?? "Failed");
       return res.json();
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/stock/items"] }); setView("list"); },
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
 
@@ -780,16 +791,37 @@ function CatalogueTab({ items, categories }: { items: StockItem[]; categories: S
     setVariationSearch("");
     setPendingVarId(item.squareCatalogVariationId ?? null);
     setPendingVarName(item.squareCatalogVariationName ?? null);
+    setPendingLinks(item.posLinks?.length
+      ? item.posLinks.map((link) => ({ ...link, soldUnitFactor: Number(link.soldUnitFactor) }))
+      : (item.squareCatalogVariationId ? [{
+          squareVariationId: item.squareCatalogVariationId,
+          squareVariationName: item.squareCatalogVariationName,
+          soldUnitFactor: 1,
+        }] : []));
     setView("edit");
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!editItem) return;
-    patchMutation.mutate({ id: editItem.id, servesPerUnit: editServes || undefined, active: editActive });
-    if (pendingVarId !== editItem.squareCatalogVariationId) {
-      const links = pendingVarId ? buildPosLinks(pendingVarId, variationsQuery.data ?? []) : [];
-      linksMutation.mutate({ id: editItem.id, links });
+    if (pendingLinks.some((link) => !Number.isFinite(Number(link.soldUnitFactor)) || Number(link.soldUnitFactor) <= 0)) {
+      return Alert.alert("Check POS quantities", "Each sale quantity must be greater than zero.");
     }
+    try {
+      await patchMutation.mutateAsync({ id: editItem.id, servesPerUnit: editServes || undefined, active: editActive });
+      await linksMutation.mutateAsync({ id: editItem.id, links: pendingLinks });
+      await queryClient.invalidateQueries({ queryKey: ["/api/stock/items"] });
+      setView("list");
+    } catch {
+      // Mutations show the server's error message.
+    }
+  };
+
+  const selectVariation = (variation: CatalogVariation) => {
+    const links = buildPosLinks(variation.variationId, variationsQuery.data ?? []);
+    setPendingLinks(links);
+    setPendingVarId(variation.variationId);
+    setPendingVarName(variation.displayName);
+    setVariationSearch("");
   };
 
   const filteredVariations = (variationsQuery.data ?? []).filter((v) =>
@@ -884,13 +916,30 @@ function CatalogueTab({ items, categories }: { items: StockItem[]; categories: S
           {/* POS Link section */}
           <Text style={[styles.fieldLabel, { marginTop: 20 }]}>Square POS Link</Text>
           {pendingVarId ? (
-            <View style={styles.posLinkedBadge}>
-              <Ionicons name="link" size={14} color="#22C55E" />
-              <Text style={styles.posLinkedText} numberOfLines={1}>{pendingVarName}</Text>
-              <Pressable onPress={() => { setPendingVarId(null); setPendingVarName(null); }} hitSlop={8}>
-                <Ionicons name="close-circle" size={18} color="#EF4444" />
+            <>
+              {pendingLinks.map((link, index) => (
+                <View key={link.squareVariationId} style={styles.posLinkedBadge}>
+                  <Ionicons name="link" size={14} color="#22C55E" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.posLinkedText} numberOfLines={1}>{link.squareVariationName ?? pendingVarName}</Text>
+                    <Text style={styles.fieldHint}>One POS sale uses this many {editItem.countUnit === "keg" ? "pints" : editItem.countUnit + "s"}:</Text>
+                  </View>
+                  <TextInput
+                    style={[styles.qtyInput, { width: 62 }]}
+                    value={String(link.soldUnitFactor)}
+                    onChangeText={(value) => setPendingLinks((current) => current.map((entry, entryIndex) =>
+                      entryIndex === index ? { ...entry, soldUnitFactor: Number(value) } : entry
+                    ))}
+                    keyboardType="decimal-pad"
+                    placeholder="1"
+                    placeholderTextColor={colors.textSecondary}
+                  />
+                </View>
+              ))}
+              <Pressable onPress={() => { setPendingVarId(null); setPendingVarName(null); setPendingLinks([]); }} hitSlop={8}>
+                <Text style={[styles.fieldHint, { color: "#EF4444", marginTop: 6 }]}>Remove POS link</Text>
               </Pressable>
-            </View>
+            </>
           ) : (
             <Text style={styles.fieldHint}>Not linked — sales won't appear in the reconciliation report</Text>
           )}
@@ -911,7 +960,7 @@ function CatalogueTab({ items, categories }: { items: StockItem[]; categories: S
                 <Pressable
                   key={v.variationId}
                   style={[styles.variationRow, pendingVarId === v.variationId && styles.variationRowSelected]}
-                  onPress={() => { setPendingVarId(v.variationId); setPendingVarName(v.displayName); setVariationSearch(""); }}
+                  onPress={() => selectVariation(v)}
                 >
                   <Text style={styles.variationName}>{v.displayName}</Text>
                   {pendingVarId === v.variationId && <Ionicons name="checkmark-circle" size={16} color="#22C55E" />}
@@ -924,8 +973,8 @@ function CatalogueTab({ items, categories }: { items: StockItem[]; categories: S
             <Pressable style={styles.cancelBtn} onPress={() => setView("list")}>
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </Pressable>
-            <Pressable style={styles.saveBtn} onPress={handleSave} disabled={patchMutation.isPending}>
-              {patchMutation.isPending ? <ActivityIndicator color="#000" /> : <Text style={styles.saveBtnText}>Save</Text>}
+            <Pressable style={styles.saveBtn} onPress={handleSave} disabled={patchMutation.isPending || linksMutation.isPending}>
+              {patchMutation.isPending || linksMutation.isPending ? <ActivityIndicator color="#000" /> : <Text style={styles.saveBtnText}>Save</Text>}
             </Pressable>
           </View>
         </ScrollView>
