@@ -1781,19 +1781,30 @@ async function buildSquareOrderBody(
       }
     }
   }
+  const soldOutItems = items.filter((item) =>
+    soldOutVariationIds.has(item.variationId),
+  );
+  const soldOutItemNames = soldOutItems
+    .map((item) => item.name.trim())
+    .filter(Boolean);
+  if (soldOutItems.length > 0) {
+    const uniqueNames = Array.from(new Set(soldOutItemNames));
+    const hasNames = uniqueNames.length > 0;
+    const itemList = hasNames
+      ? uniqueNames.join(", ")
+      : "One or more items in your order";
+    throw new SquareError(
+      `${itemList} ${hasNames && uniqueNames.length === 1 ? "is" : "are"} now sold out. Please remove ${hasNames && uniqueNames.length === 1 ? "it" : "them"} and try again.`,
+      "ITEM_SOLD_OUT",
+      409,
+    );
+  }
   for (const item of items) {
     if (catalogTypeById.get(item.variationId) !== "ITEM_VARIATION") {
       throw new SquareError(
         `Unknown or unavailable menu item (id ${item.variationId})`,
         "INVALID_CATALOG_ID",
         400,
-      );
-    }
-    if (soldOutVariationIds.has(item.variationId)) {
-      throw new SquareError(
-        "One or more items in your order are now sold out. Please remove them and try again.",
-        "ITEM_SOLD_OUT",
-        409,
       );
     }
     for (const m of item.modifiers ?? []) {

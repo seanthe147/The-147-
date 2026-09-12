@@ -9,6 +9,7 @@ export interface CartItem {
   price: number;
   quantity: number;
   modifiers?: SelectedModifier[];
+  unavailable?: boolean;
 }
 
 function makeCartKey(variationId: string, modifiers?: SelectedModifier[]): string {
@@ -31,6 +32,7 @@ interface CartContextType {
   addItems: (items: AddItemPayload[]) => void;
   removeItem: (cartKey: string) => void;
   updateQuantity: (cartKey: string, delta: number) => void;
+  syncUnavailableVariations: (variationIds: ReadonlySet<string>) => void;
   clearCart: () => void;
   totalItems: number;
   totalPrice: number;
@@ -87,6 +89,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
+  const syncUnavailableVariations = useCallback((variationIds: ReadonlySet<string>) => {
+    setItems((prev) => {
+      let changed = false;
+      const next = prev.map((item) => {
+        const unavailable = variationIds.has(item.variationId);
+        if (!!item.unavailable === unavailable) return item;
+        changed = true;
+        return { ...item, unavailable };
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
   const clearCart = useCallback(() => setItems([]), []);
 
   const totalItems = items.reduce((sum, i) => sum + i.quantity, 0);
@@ -113,6 +128,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         addItems,
         removeItem,
         updateQuantity,
+        syncUnavailableVariations,
         clearCart,
         totalItems,
         totalPrice,

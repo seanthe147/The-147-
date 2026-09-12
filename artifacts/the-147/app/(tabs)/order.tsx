@@ -968,7 +968,7 @@ function CartSheet({
   const colors = useColors();
   const Colors = { ...baseColors, light: colors };
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { items, updateQuantity, clearCart, totalPrice } = useCart();
+  const { items, removeItem, updateQuantity, clearCart, totalPrice } = useCart();
   const { customer, getCustomerToken } = useCustomerAuth();
   const { expoPushToken } = useNotifications();
   const { flags } = useFeatureFlags();
@@ -993,11 +993,18 @@ function CartSheet({
   const [cancelledNotice, setCancelledNotice] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+  const unavailableItems = items.filter((item) => item.unavailable);
+  const hasUnavailableItems = unavailableItems.length > 0;
+  const unavailableItemNames = Array.from(
+    new Set(unavailableItems.map((item) => item.name)),
+  );
 
   // If the customer modifies their cart after closing the payment sheet, clear
   // any stale pendingOrder so that tapping "Continue" creates a fresh order
   // with the correct items and total rather than reusing the old one.
-  const itemsFingerprint = items.map(i => `${i.variationId}:${i.quantity}`).join("|");
+  const itemsFingerprint = items
+    .map(i => `${i.variationId}:${i.quantity}:${i.unavailable ? "unavailable" : "available"}`)
+    .join("|");
   const prevItemsFingerprintRef = React.useRef(itemsFingerprint);
   React.useEffect(() => {
     if (prevItemsFingerprintRef.current !== itemsFingerprint) {
@@ -1005,6 +1012,14 @@ function CartSheet({
       if (pendingOrder) setPendingOrder(null);
     }
   }, [itemsFingerprint]);
+
+  useEffect(() => {
+    if (!hasUnavailableItems) return;
+    setStep("cart");
+    setPaymentSheetVisible(false);
+    setPendingOrder(null);
+    setPayError(null);
+  }, [hasUnavailableItems]);
 
   // FEATURE_SAVED_CARDS: snapshot of the customer's stored card, if any.
   // Only fetched when both the flag is on AND the customer is authenticated
@@ -1798,12 +1813,30 @@ function CartSheet({
                 keyExtractor={(i) => i.cartKey}
                 style={styles.cartList}
                 contentContainerStyle={{ paddingBottom: 8 }}
+                ListHeaderComponent={hasUnavailableItems ? (
+                  <View style={styles.unavailableNotice} testID="cart-unavailable-notice">
+                    <Ionicons name="alert-circle" size={20} color="#B91C1C" />
+                    <View style={styles.unavailableNoticeCopy}>
+                      <Text style={styles.unavailableNoticeTitle}>
+                        {unavailableItemNames.length === 1
+                          ? `${unavailableItemNames[0]} has just sold out`
+                          : `${unavailableItemNames.join(", ")} have just sold out`}
+                      </Text>
+                      <Text style={styles.unavailableNoticeText}>
+                        Remove {unavailableItemNames.length === 1 ? "it" : "them"} before continuing.
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
                 renderItem={({ item }) => {
                   const linePrice = (item.price + (item.modifiers?.reduce((s, m) => s + m.price, 0) ?? 0)) * item.quantity;
                   return (
-                    <View style={styles.cartItem}>
+                    <View style={[styles.cartItem, item.unavailable && styles.cartItemUnavailable]}>
                       <View style={styles.cartItemInfo}>
                         <Text style={styles.cartItemName}>{item.name}</Text>
+                        {item.unavailable ? (
+                          <Text style={styles.cartItemUnavailableLabel}>Sold out</Text>
+                        ) : null}
                         {item.modifiers && item.modifiers.length > 0 && (
                           <Text style={styles.cartItemMods} numberOfLines={2}>
                             {item.modifiers.map((m) => m.name).join(", ")}
@@ -1811,6 +1844,21 @@ function CartSheet({
                         )}
                         <Text style={styles.cartItemPrice}>{formatPrice(linePrice)}</Text>
                       </View>
+                      {item.unavailable ? (
+                        <Pressable
+                          onPress={() => removeItem(item.cartKey)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Remove sold out item ${item.name}`}
+                          style={({ pressed }) => [
+                            styles.removeUnavailableBtn,
+                            { opacity: pressed ? 0.7 : 1 },
+                          ]}
+                          testID={`remove-unavailable-${item.cartKey}`}
+                        >
+                          <Ionicons name="trash-outline" size={15} color="#B91C1C" />
+                          <Text style={styles.removeUnavailableBtnText}>Remove</Text>
+                        </Pressable>
+                      ) : (
                       <View style={styles.qtyRow}>
                         <Pressable
                           onPress={() => updateQuantity(item.cartKey, -1)}
@@ -1826,6 +1874,7 @@ function CartSheet({
                           <Ionicons name="add" size={16} color={Colors.brand.blue} />
                         </Pressable>
                       </View>
+                      )}
                     </View>
                   );
                 }}
@@ -1963,10 +2012,16 @@ function CartSheet({
 
               <Pressable
                 onPress={() => setStep("customer")}
-                style={({ pressed }) => [styles.checkoutBtn, { opacity: pressed ? 0.8 : 1 }]}
+                disabled={hasUnavailableItems}
+                style={({ pressed }) => [
+                  styles.checkoutBtn,
+                  { opacity: hasUnavailableItems ? 0.45 : pressed ? 0.8 : 1 },
+                ]}
                 testID="continue-btn"
               >
-                <Text style={styles.checkoutBtnText}>Continue</Text>
+                <Text style={styles.checkoutBtnText}>
+                  {hasUnavailableItems ? "Remove sold out items" : "Continue"}
+                </Text>
                 <Text style={styles.checkoutBtnSub}>{formatPrice(finalPriceAfterReward)}</Text>
               </Pressable>
             </>
@@ -2399,7 +2454,7 @@ export default function OrderScreen() {
   // Local state only for the test-version — when the flag promotes to a
   // long-lived feature we'll persist this via PATCH /api/customers/me/dietary-filters.
   const [dietaryFilters, setDietaryFilters] = useState<Set<DietaryTagCode>>(new Set());
-  const { totalItems, totalPrice, addItem } = useCart();
+  const { totalItems, totalPrice, addItem, syncUnavailableVariations } = useCart();
   const { flags: featureFlags } = useFeatureFlags();
   const categoryScrollRef = useRef<ScrollView>(null);
   const searchRef = useRef<TextInput>(null);
@@ -2416,6 +2471,23 @@ export default function OrderScreen() {
     refetchOnWindowFocus: true,
     refetchOnMount: "always",
   });
+
+  useEffect(() => {
+    if (!categories) return;
+    const soldOutVariationIds = new Set<string>();
+    const collectSoldOutVariations = (menuCategories: MenuCategory[]) => {
+      for (const category of menuCategories) {
+        for (const item of category.items) {
+          if (item.soldOut) soldOutVariationIds.add(item.variationId);
+        }
+        if (category.subcategories?.length) {
+          collectSoldOutVariations(category.subcategories);
+        }
+      }
+    };
+    collectSoldOutVariations(categories);
+    syncUnavailableVariations(soldOutVariationIds);
+  }, [categories, syncUnavailableVariations]);
 
   const { data: banners } = useQuery<BannerImage[]>({
     queryKey: ["/api/banner-images?page=order"],
@@ -3558,6 +3630,12 @@ const createStyles = (palette: ReturnType<typeof useColors>) => {
     justifyContent: "space-between",
     paddingVertical: 12,
   },
+  cartItemUnavailable: {
+    backgroundColor: "rgba(185,28,28,0.06)",
+    marginHorizontal: -8,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
   cartItemInfo: {
     flex: 1,
     paddingRight: 12,
@@ -3567,6 +3645,57 @@ const createStyles = (palette: ReturnType<typeof useColors>) => {
     fontSize: 14,
     color: Colors.light.text,
     marginBottom: 3,
+  },
+  cartItemUnavailableLabel: {
+    alignSelf: "flex-start",
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 11,
+    color: "#B91C1C",
+    backgroundColor: "rgba(185,28,28,0.1)",
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginBottom: 3,
+  },
+  unavailableNotice: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: "rgba(185,28,28,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(185,28,28,0.25)",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+  },
+  unavailableNoticeCopy: {
+    flex: 1,
+  },
+  unavailableNoticeTitle: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 13,
+    color: "#B91C1C",
+    marginBottom: 3,
+  },
+  unavailableNoticeText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+  },
+  removeUnavailableBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 1,
+    borderColor: "rgba(185,28,28,0.35)",
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+  removeUnavailableBtnText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 12,
+    color: "#B91C1C",
   },
   cartItemPrice: {
     fontFamily: "Montserrat_700Bold",
