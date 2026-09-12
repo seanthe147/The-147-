@@ -1341,6 +1341,7 @@ export interface MenuItem {
   variationName?: string;
   description: string;
   price: number;
+  soldOut?: boolean;
   imageUrl?: string;
   updatedAt?: string;
   modifiers?: ModifierList[];
@@ -1364,6 +1365,19 @@ export function isActiveMenuCatalogObject(object: any): boolean {
   return true;
 }
 
+export function isVariationSoldOutAtLocation(
+  variation: any,
+  locationId: string,
+): boolean {
+  const locationOverrides =
+    variation?.item_variation_data?.location_overrides ?? [];
+
+  return locationOverrides.some(
+    (override: any) =>
+      override?.location_id === locationId && override?.sold_out === true,
+  );
+}
+
 export function selectMenuCategoryId(
   item: any,
   preferredCategoryIds: ReadonlySet<string>,
@@ -1385,6 +1399,7 @@ export function itemUsesAnyMenuCategory(
 export async function getMenuFromSquare(
   preferredCategoryIds: ReadonlySet<string> = new Set<string>(),
 ): Promise<MenuCategory[]> {
+  const locationId = getLocationId();
   const cacheKey = Array.from(preferredCategoryIds).sort().join(",");
   const cached = menuCache.get(cacheKey);
   if (cached && Date.now() < cached.expiry) return cached.data;
@@ -1535,6 +1550,7 @@ export async function getMenuFromSquare(
     variationsToShow.forEach((variation: any) => {
       const rawVarName: string = variation.item_variation_data?.name || "";
       const variationName = hasMeaningfulVariations && !isGenericName(rawVarName) ? rawVarName : undefined;
+      const soldOut = isVariationSoldOutAtLocation(variation, locationId);
       categoryMap[subcatId].items.push({
         id: item.id,
         variationId: variation.id,
@@ -1543,6 +1559,7 @@ export async function getMenuFromSquare(
         variationName,
         description: item.item_data.description || "",
         price: variation.item_variation_data?.price_money?.amount || 0,
+        ...(soldOut ? { soldOut: true } : {}),
         imageUrl: itemImageUrl,
         ...(itemUpdatedAt ? { updatedAt: itemUpdatedAt } : {}),
         ...(itemModifiers.length > 0 ? { modifiers: itemModifiers } : {}),
@@ -1725,6 +1742,7 @@ async function buildSquareOrderBody(
   const catalogPriceById = new Map<string, number>();
   const catalogTypeById = new Map<string, string>();
   const catalogItemIdByVariationId = new Map<string, string>();
+  const soldOutVariationIds = new Set<string>();
   const idsToFetch = Array.from(catalogIds);
   // Build chunks of ≤100 ids (Square's batch-retrieve cap) and fire them all
   // in parallel alongside the deals lookup below. The previous implementation
@@ -1750,6 +1768,9 @@ async function buildSquareOrderBody(
       if (o.type === "ITEM_VARIATION") {
         catalogPriceById.set(o.id, o.item_variation_data?.price_money?.amount ?? 0);
         catalogTypeById.set(o.id, "ITEM_VARIATION");
+        if (isVariationSoldOutAtLocation(o, locationId)) {
+          soldOutVariationIds.add(o.id);
+        }
         const parentItemId = o.item_variation_data?.item_id;
         if (typeof parentItemId === "string" && parentItemId) {
           catalogItemIdByVariationId.set(o.id, parentItemId);
@@ -1766,6 +1787,13 @@ async function buildSquareOrderBody(
         `Unknown or unavailable menu item (id ${item.variationId})`,
         "INVALID_CATALOG_ID",
         400,
+      );
+    }
+    if (soldOutVariationIds.has(item.variationId)) {
+      throw new SquareError(
+        "One or more items in your order are now sold out. Please remove them and try again.",
+        "ITEM_SOLD_OUT",
+        409,
       );
     }
     for (const m of item.modifiers ?? []) {

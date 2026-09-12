@@ -5688,7 +5688,9 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
               ...(item.modifiers && item.modifiers.length > 0 ? { modifiers: item.modifiers } : {}),
               ...(dietaryTags.length > 0 ? { dietaryTags } : {}),
             };
-            return override?.soldOut ? { ...base, soldOut: true } : base;
+            return override?.soldOut || item.soldOut
+              ? { ...base, soldOut: true }
+              : base;
           });
 
         mergedMap.get(targetId)!.items.push(...availableItems);

@@ -6,9 +6,38 @@ import {
   isActiveMenuCatalogObject,
   isMemberDiscountExcludedItem,
   isMemberDiscountEligibleItem,
+  isVariationSoldOutAtLocation,
   itemUsesAnyMenuCategory,
   selectMenuCategoryId,
 } from "./square.ts";
+
+test("uses Square's sold-out flag for the configured location", () => {
+  const variation = {
+    item_variation_data: {
+      location_overrides: [
+        { location_id: "OTHER", sold_out: true },
+        { location_id: "THE-147", sold_out: true },
+      ],
+    },
+  };
+
+  assert.equal(isVariationSoldOutAtLocation(variation, "THE-147"), true);
+  assert.equal(isVariationSoldOutAtLocation(variation, "ANOTHER"), false);
+});
+
+test("keeps a variation available when Square has not marked it sold out", () => {
+  assert.equal(
+    isVariationSoldOutAtLocation(
+      {
+        item_variation_data: {
+          location_overrides: [{ location_id: "THE-147", sold_out: false }],
+        },
+      },
+      "THE-147",
+    ),
+    false,
+  );
+});
 
 test("prefers an app-configured category over an earlier Square category", () => {
   const item = {
