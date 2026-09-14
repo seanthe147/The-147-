@@ -1173,7 +1173,7 @@ export interface Deal {
   discountType: "FIXED_PERCENTAGE" | "FIXED_AMOUNT";
   percentage?: string;
   amountPence?: number;
-  expiresOn?: string; // "YYYY-MM-DD" from Square pricing rule valid_until_date
+  expiresOn?: string; // "YYYY-MM-DD" last active day (Square valid_until_date is exclusive)
   applicableVariationIds?: string[]; // catalog IDs from linked product set — for auto-apply at checkout
 }
 
@@ -1242,7 +1242,9 @@ export async function getSquareDeals(): Promise<Deal[]> {
     // Build maps from pricing rules: discount_id -> validity windows + applicable IDs
     // A discount's pricing rule schedule is treated as its on/off switch: the deal
     // is only shown while today falls inside at least one rule's
-    // [valid_from_date, valid_until_date] window. Setting a schedule end date in the
+    // [valid_from_date, valid_until_date) window. Square treats valid_until_date as
+    // exclusive: a rule ending on Monday is no longer active from Monday 00:00.
+    // Setting a schedule end date in the
     // past (or start date in the future) in Square therefore DEACTIVATES the deal on
     // the app without deleting it — extend or clear the dates to reactivate it later.
     // applicableIds includes both the product set IDs AND parent item IDs of any variations,
@@ -1288,16 +1290,21 @@ export async function getSquareDeals(): Promise<Deal[]> {
       const key = name.toLowerCase();
       if (seen.has(key)) continue;
       // Schedule check: if the discount has any pricing rules, today must fall inside
-      // at least one rule's [from, until] window for the deal to be considered active.
+      // at least one rule's [from, until) window for the deal to be considered active.
       // Discounts with no pricing rule are always-on (manual discounts, unchanged).
       const windows = rulesByDiscountId.get(o.id);
       let expiresOn: string | undefined;
       if (windows && windows.length > 0) {
         const activeWindow = windows.find(
-          (w) => (!w.from || w.from <= today) && (!w.until || w.until >= today),
+          (w) => (!w.from || w.from <= today) && (!w.until || w.until > today),
         );
         if (!activeWindow) continue; // scheduled, but not currently active -> deactivated
-        expiresOn = activeWindow.until;
+        if (activeWindow.until) {
+          const [year, month, day] = activeWindow.until.split("-").map(Number);
+          const lastActiveDay = new Date(Date.UTC(year, month - 1, day));
+          lastActiveDay.setUTCDate(lastActiveDay.getUTCDate() - 1);
+          expiresOn = lastActiveDay.toISOString().slice(0, 10);
+        }
       }
       seen.add(key);
       const applicableVariationIds = variationsByDiscountId.get(o.id);
