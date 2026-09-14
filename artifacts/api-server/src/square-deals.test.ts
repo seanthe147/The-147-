@@ -49,6 +49,15 @@ function installCatalogFetch(): void {
             },
           },
           {
+            id: "discount-dst-transition",
+            type: "DISCOUNT",
+            discount_data: {
+              name: "DST transition deal",
+              discount_type: "FIXED_PERCENTAGE",
+              percentage: "25",
+            },
+          },
+          {
             id: "discount-manual",
             type: "DISCOUNT",
             discount_data: {
@@ -91,6 +100,16 @@ function installCatalogFetch(): void {
               valid_from_date: "2026-09-14",
               valid_until_date: "2026-09-14",
               valid_until_local_time: "18:00:00",
+            },
+          },
+          {
+            id: "rule-dst-transition",
+            type: "PRICING_RULE",
+            pricing_rule_data: {
+              discount_id: "discount-dst-transition",
+              valid_from_date: "2026-10-25",
+              valid_until_date: "2026-10-25",
+              valid_until_local_time: "03:00:00",
             },
           },
           {
@@ -154,6 +173,43 @@ test("customer deal list excludes expired and unscheduled rules", async () => {
     ]);
     assert.equal(deals.find((deal) => deal.id === "discount-expired"), undefined);
     assert.equal(deals.find((deal) => deal.id === "discount-manual"), undefined);
+  } finally {
+    mock.timers.reset();
+    invalidateSquareDealsCache();
+    globalThis.fetch = originalFetch;
+    if (originalSquareAccessToken === undefined) {
+      delete process.env.SQUARE_ACCESS_TOKEN;
+    } else {
+      process.env.SQUARE_ACCESS_TOKEN = originalSquareAccessToken;
+    }
+  }
+});
+
+test("customer deal list follows London time after the autumn DST transition", async () => {
+  process.env.SQUARE_ACCESS_TOKEN = "square-deals-test-token";
+  installCatalogFetch();
+  invalidateSquareDealsCache();
+  mock.timers.enable({
+    apis: ["Date"],
+    // At 02:30 UTC the UK has changed back to GMT, so local time is 02:30.
+    now: new Date("2026-10-25T02:30:00.000Z"),
+  });
+
+  try {
+    const dealsBeforeCutover = await getSquareDeals();
+
+    // A fixed BST offset would incorrectly see 03:30 and hide this deal.
+    assert.deepEqual(dealsBeforeCutover.map((deal) => deal.id), [
+      "discount-active",
+      "discount-dst-transition",
+    ]);
+
+    mock.timers.setTime(Date.parse("2026-10-25T03:00:00.000Z"));
+    invalidateSquareDealsCache();
+    const dealsAtCutover = await getSquareDeals();
+
+    // Square's 03:00 Europe/London end time is exclusive.
+    assert.deepEqual(dealsAtCutover.map((deal) => deal.id), ["discount-active"]);
   } finally {
     mock.timers.reset();
     invalidateSquareDealsCache();
