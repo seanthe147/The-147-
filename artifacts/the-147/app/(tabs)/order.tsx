@@ -1173,6 +1173,11 @@ function CartSheet({
   }>>({
     queryKey: ["/api/deals?surface=order"],
     staleTime: 60_000,
+    // The screen can stay open across a Square pricing-rule cutover. Keep the
+    // preview fresh even though the shared query client does not refetch on
+    // window focus. The server applies the same live rule check at checkout.
+    refetchInterval: 60_000,
+    refetchOnMount: "always",
   });
   // Build a map of variationId/itemId -> deal so per-line lookup is O(1).
   // Mirrors the server-side dealByVariationId logic in buildSquareOrderBody

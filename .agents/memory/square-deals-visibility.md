@@ -19,7 +19,10 @@ enabled/disabled boolean. What makes a discount "live" is its PRICING_RULE sched
 time falls inside at least one pricing rule's `[valid_from, valid_until)` window
 (missing bound = open-ended). Use `valid_from_local_time` and
 `valid_until_local_time` when present. The end boundary is exclusive.
-Discounts with NO pricing rule at all are always-on (manual discounts).
+Discounts with NO pricing rule at all, or with a rule that has no date/time
+boundary, are not customer-facing app offers. They may still exist in Square
+for manual staff use, but the app has no reliable expiry signal and must not
+advertise or auto-apply them.
 
 **Why:** Square POS stopped a weekend deal at its Monday end time, while the app
 continued showing it because it treated `valid_until_date` as inclusive and

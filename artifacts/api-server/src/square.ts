@@ -1303,30 +1303,33 @@ export async function getSquareDeals(): Promise<Deal[]> {
       if (DEAL_EXCLUDE_PATTERNS.some((p) => p.test(name))) continue;
       const key = name.toLowerCase();
       if (seen.has(key)) continue;
-      // Schedule check: if the discount has any pricing rules, today must fall inside
-      // at least one rule's [from, until) window for the deal to be considered active.
-      // Discounts with no pricing rule are always-on (manual discounts, unchanged).
+      // Customer-facing app offers must have a pricing rule. A discount without
+      // one may still be used manually by staff in Square, but has no reliable
+      // expiry signal and must not be advertised or auto-applied by the app.
       const windows = rulesByDiscountId.get(o.id);
+      // A pricing rule can exist without any date/time boundary. That is
+      // suitable for manual/POS use, but the app cannot know when an offer
+      // should stop, so it must not advertise it as a current promotion.
+      const scheduledWindows = windows?.filter((w) => w.from || w.until) ?? [];
+      if (scheduledWindows.length === 0) continue;
       let expiresOn: string | undefined;
-      if (windows && windows.length > 0) {
-        const activeWindow = windows.find(
-          (w) => {
-            const startsAt = w.from ? `${w.from}T${w.fromTime || "00:00:00"}` : null;
-            const endsAt = w.until ? `${w.until}T${w.untilTime || "00:00:00"}` : null;
-            return (!startsAt || startsAt <= nowLocal) && (!endsAt || endsAt > nowLocal);
-          },
-        );
-        if (!activeWindow) continue; // scheduled, but not currently active -> deactivated
-        if (activeWindow.until) {
-          const endsDuringDay = !!activeWindow.untilTime && activeWindow.untilTime !== "00:00:00";
-          if (endsDuringDay) {
-            expiresOn = activeWindow.until;
-          } else {
-            const [year, month, day] = activeWindow.until.split("-").map(Number);
-            const lastActiveDay = new Date(Date.UTC(year, month - 1, day));
-            lastActiveDay.setUTCDate(lastActiveDay.getUTCDate() - 1);
-            expiresOn = lastActiveDay.toISOString().slice(0, 10);
-          }
+      const activeWindow = scheduledWindows.find(
+        (w) => {
+          const startsAt = w.from ? `${w.from}T${w.fromTime || "00:00:00"}` : null;
+          const endsAt = w.until ? `${w.until}T${w.untilTime || "00:00:00"}` : null;
+          return (!startsAt || startsAt <= nowLocal) && (!endsAt || endsAt > nowLocal);
+        },
+      );
+      if (!activeWindow) continue; // scheduled, but not currently active -> deactivated
+      if (activeWindow.until) {
+        const endsDuringDay = !!activeWindow.untilTime && activeWindow.untilTime !== "00:00:00";
+        if (endsDuringDay) {
+          expiresOn = activeWindow.until;
+        } else {
+          const [year, month, day] = activeWindow.until.split("-").map(Number);
+          const lastActiveDay = new Date(Date.UTC(year, month - 1, day));
+          lastActiveDay.setUTCDate(lastActiveDay.getUTCDate() - 1);
+          expiresOn = lastActiveDay.toISOString().slice(0, 10);
         }
       }
       seen.add(key);
