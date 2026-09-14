@@ -1249,7 +1249,7 @@ export async function getSquareDeals(): Promise<Deal[]> {
     // the app without deleting it — extend or clear the dates to reactivate it later.
     // applicableIds includes both the product set IDs AND parent item IDs of any variations,
     // so matching at checkout works for ALL sizes of an item (Pint + Half, etc.)
-    const rulesByDiscountId = new Map<string, { from?: string; until?: string }[]>();
+    const rulesByDiscountId = new Map<string, { from?: string; fromTime?: string; until?: string; untilTime?: string }[]>();
     const variationsByDiscountId = new Map<string, string[]>();
     for (const o of (ruleData.objects || []) as any[]) {
       if (o.type !== "PRICING_RULE" || o.is_deleted) continue;
@@ -1257,7 +1257,12 @@ export async function getSquareDeals(): Promise<Deal[]> {
       if (!pd.discount_id) continue;
       // Validity window for this rule
       const windows = rulesByDiscountId.get(pd.discount_id) || [];
-      windows.push({ from: pd.valid_from_date, until: pd.valid_until_date });
+      windows.push({
+        from: pd.valid_from_date,
+        fromTime: pd.valid_from_local_time,
+        until: pd.valid_until_date,
+        untilTime: pd.valid_until_local_time,
+      });
       rulesByDiscountId.set(pd.discount_id, windows);
       // Applicable product IDs: include original IDs + parent item IDs for any variations
       if (pd.match_products_id) {
@@ -1276,9 +1281,18 @@ export async function getSquareDeals(): Promise<Deal[]> {
 
     // Use UK business-local date (venue timezone) so schedule cutovers happen at
     // local midnight, not UTC midnight (off-by-up-to-an-hour during BST otherwise).
-    const today = new Intl.DateTimeFormat("en-CA", {
+    const londonParts = new Intl.DateTimeFormat("en-GB", {
       timeZone: "Europe/London",
-    }).format(new Date());
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(new Date());
+    const part = (type: Intl.DateTimeFormatPartTypes) => londonParts.find((p) => p.type === type)?.value ?? "";
+    const nowLocal = `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}:${part("second")}`;
     const seen = new Set<string>();
     const deals: Deal[] = [];
     for (const o of (discountData.objects || []) as any[]) {
@@ -1296,14 +1310,23 @@ export async function getSquareDeals(): Promise<Deal[]> {
       let expiresOn: string | undefined;
       if (windows && windows.length > 0) {
         const activeWindow = windows.find(
-          (w) => (!w.from || w.from <= today) && (!w.until || w.until > today),
+          (w) => {
+            const startsAt = w.from ? `${w.from}T${w.fromTime || "00:00:00"}` : null;
+            const endsAt = w.until ? `${w.until}T${w.untilTime || "00:00:00"}` : null;
+            return (!startsAt || startsAt <= nowLocal) && (!endsAt || endsAt > nowLocal);
+          },
         );
         if (!activeWindow) continue; // scheduled, but not currently active -> deactivated
         if (activeWindow.until) {
-          const [year, month, day] = activeWindow.until.split("-").map(Number);
-          const lastActiveDay = new Date(Date.UTC(year, month - 1, day));
-          lastActiveDay.setUTCDate(lastActiveDay.getUTCDate() - 1);
-          expiresOn = lastActiveDay.toISOString().slice(0, 10);
+          const endsDuringDay = !!activeWindow.untilTime && activeWindow.untilTime !== "00:00:00";
+          if (endsDuringDay) {
+            expiresOn = activeWindow.until;
+          } else {
+            const [year, month, day] = activeWindow.until.split("-").map(Number);
+            const lastActiveDay = new Date(Date.UTC(year, month - 1, day));
+            lastActiveDay.setUTCDate(lastActiveDay.getUTCDate() - 1);
+            expiresOn = lastActiveDay.toISOString().slice(0, 10);
+          }
         }
       }
       seen.add(key);

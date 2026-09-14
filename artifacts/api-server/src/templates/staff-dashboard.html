@@ -1545,7 +1545,7 @@
             </div>
             <div class="form-group">
               <label class="form-label">Valid until</label>
-              <input class="form-input" id="ofValidUntil" type="date">
+              <input class="form-input" id="ofValidUntil" type="datetime-local">
             </div>
           </div>
           <div class="form-group">
@@ -8297,7 +8297,8 @@
     el('ofTitle').value=offer?offer.title:'';
     el('ofSubtitle').value=offer?offer.subtitle:'';
     el('ofDiscount').value=offer?offer.discount:'';
-    el('ofValidUntil').value=offer?offer.validUntil:'';
+    const savedUntil=offer&&offer.validUntil||'';
+    el('ofValidUntil').value=/^\d{4}-\d{2}-\d{2}$/.test(savedUntil)?savedUntil+'T23:59':savedUntil;
     const lt=offer&&offer.linkType||'';
     el('ofLinkType').value=lt;
     el('ofLinkUrl').value=(offer&&offer.linkType==='url'&&offer.linkUrl)||'';
@@ -8324,8 +8325,8 @@
     const lt=el('ofLinkType').value;
     const payload={
       title,subtitle,
-      discount:el('ofDiscount').value.trim()||null,
-      validUntil:el('ofValidUntil').value||null,
+      discount:el('ofDiscount').value.trim(),
+      validUntil:el('ofValidUntil').value,
       gradientStart:selectedOfferGradient.start,
       gradientEnd:selectedOfferGradient.end,
       icon:'pricetag',

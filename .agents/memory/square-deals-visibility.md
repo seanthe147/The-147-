@@ -15,18 +15,21 @@ A Square DISCOUNT object only has name/type/amount/application_method. There is 
 enabled/disabled boolean. What makes a discount "live" is its PRICING_RULE schedule
 (`valid_from_date` / `valid_until_date`).
 
-**Rule:** a deal is shown on the app only if today falls inside at least one of its
-pricing rules' `[valid_from, valid_until]` windows (missing bound = open-ended).
+**Rule:** a deal is shown on the app only if the current Europe/London date and
+time falls inside at least one pricing rule's `[valid_from, valid_until)` window
+(missing bound = open-ended). Use `valid_from_local_time` and
+`valid_until_local_time` when present. The end boundary is exclusive.
 Discounts with NO pricing rule at all are always-on (manual discounts).
 
-**Why:** lets staff deactivate a promo without deleting it — set the schedule end
-date to the past (or start date to the future) to hide it; extend/clear dates to
-reactivate. Deleting the discount entirely is no longer required.
+**Why:** Square POS stopped a weekend deal at its Monday end time, while the app
+continued showing it because it treated `valid_until_date` as inclusive and
+ignored `valid_until_local_time`. Matching Square's local timestamp prevents the
+app and POS disagreeing around a cutover.
 
 **How to apply:** if asked "deal won't disappear / won't deactivate", first check
-the discount's pricing-rule date window covers today (that's why it still shows),
-not the cache. Deleted discounts are excluded via `include_deleted_objects:false` +
-`is_deleted` check.
+the pricing rule's date and local-time boundaries, then allow for the app/server
+cache. Deleted discounts are excluded via `include_deleted_objects:false` and
+the `is_deleted` check.
 
 ## Diagnostic
 A throwaway node script using `SQUARE_ACCESS_TOKEN` + `SQUARE_ENVIRONMENT` against

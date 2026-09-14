@@ -849,7 +849,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getOffers(): Promise<Offer[]> {
-    return db.select().from(offers).where(eq(offers.active, true));
+    const activeOffers = await db.select().from(offers).where(eq(offers.active, true));
+    const londonParts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/London",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(new Date());
+    const part = (type: Intl.DateTimeFormatPartTypes) => londonParts.find((p) => p.type === type)?.value ?? "";
+    const nowLocal = `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}:${part("second")}`;
+    return activeOffers.filter((offer) => {
+      const value = offer.validUntil?.trim();
+      if (!value) return true;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return nowLocal <= `${value}T23:59:59`;
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(value)) {
+        return nowLocal < (value.length === 16 ? `${value}:00` : value);
+      }
+      return true;
+    });
   }
 
   async getAllOffers(): Promise<Offer[]> {
