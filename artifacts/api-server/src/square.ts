@@ -1193,6 +1193,10 @@ const DEAL_EXCLUDE_PATTERNS = [
 
 let dealsCache: { data: Deal[]; expiry: number } | null = null;
 
+export function invalidateSquareDealsCache(): void {
+  dealsCache = null;
+}
+
 export async function getSquareDeals(): Promise<Deal[]> {
   if (dealsCache && Date.now() < dealsCache.expiry) return dealsCache.data;
   try {
