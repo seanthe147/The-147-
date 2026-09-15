@@ -5,6 +5,13 @@ description: Root causes and fixes for "Payment Screen Issue" alert and loyalty 
 
 ## Google Pay merchant registration
 
+Google Pay submission review rejected a black button on a dark checkout surface
+and custom button typography. Use official complete button artwork or SDK-rendered
+buttons, not a Google G mark next to locally typeset text.
+**Why:** Matching the logo colours alone did not satisfy Google's branding review.
+**How to apply:** preserve the official artwork and choose a contrasting button
+theme when changing checkout appearance.
+
 Treat `OR_BIBED_11` separately from bank declines and SCA failures.
 
 **Why:** Google's troubleshooting identifies this code as incomplete merchant

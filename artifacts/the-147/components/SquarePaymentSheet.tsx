@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Pressable,
   ActivityIndicator,
+  Image,
   Platform,
 } from "react-native";
 import { WebView, type WebView as WebViewType } from "react-native-webview";
@@ -16,6 +17,11 @@ import { useColors } from "@/hooks/useColors";
 import { buildPaymentSheetHtml } from "@/components/squarePaymentSheetHtml";
 import { getApiUrl } from "@/lib/query-client";
 import { useSquareGooglePay, type GooglePayNonceResult } from "@/hooks/useSquareGooglePay";
+import {
+  GOOGLE_PAY_BUTTON_CLEAR_SPACE,
+  GOOGLE_PAY_NATIVE_BUTTON_HEIGHT,
+  getGooglePayNativeButtonColors,
+} from "@/lib/google-pay-branding";
 import {
   googlePayDiagnosticCode,
   normalizeGooglePayError,
@@ -109,6 +115,11 @@ function postDiagnostic(payload: Record<string, unknown>) {
 export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
   const colors = useColors();
   const styles = useMemo(() => createStyles(colors), [colors.scheme]);
+  const nativeGooglePayColors = getGooglePayNativeButtonColors(colors.scheme);
+  const nativeGooglePayAsset =
+    colors.scheme === "dark"
+      ? require("@/assets/google-pay/pay-button-white-pill-shape.png")
+      : require("@/assets/google-pay/pay-button-dark-pill-shape.png");
   const insets = useSafeAreaInsets();
   const [internalError, setInternalError] = useState<string | null>(null);
   const [isGooglePayProcessing, setIsGooglePayProcessing] = useState(false);
@@ -351,18 +362,23 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
               <Pressable
                 onPress={handleGooglePay}
                 disabled={isGooglePayProcessing || props.inProgress}
+                testID="google-pay-button"
+                accessibilityRole="button"
+                accessibilityLabel="Google Pay"
                 style={({ pressed }) => [
                   styles.googlePayButton,
                   { opacity: (pressed || isGooglePayProcessing || props.inProgress) ? 0.75 : 1 },
                 ]}
               >
                 {isGooglePayProcessing ? (
-                  <ActivityIndicator color="#fff" size="small" />
+                  <ActivityIndicator color={nativeGooglePayColors.foregroundColor} size="small" />
                 ) : (
-                  <>
-                    <Text style={styles.googlePayG}>G</Text>
-                    <Text style={styles.googlePayText}>Pay with Google Pay</Text>
-                  </>
+                  <Image
+                    source={nativeGooglePayAsset}
+                    accessibilityLabel="Google Pay"
+                    resizeMode="contain"
+                    style={styles.googlePayAsset}
+                  />
                 )}
               </Pressable>
             </View>
@@ -517,25 +533,26 @@ const createStyles = (colors: ReturnType<typeof useColors>) => StyleSheet.create
   processingOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "center" as const, justifyContent: "center" as const, backgroundColor: colors.overlay },
   processingCard: { padding: 22, borderRadius: 16, alignItems: "center" as const, gap: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, shadowColor: colors.cardShadow, shadowOpacity: 0.4, shadowRadius: 20, elevation: 8 },
   processingText: { fontSize: 14, color: colors.text, fontWeight: "600" as const },
-  googlePaySection: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 },
+  googlePaySection: {
+    // Google requires at least 8 dp of clear space on every side of a
+    // payment button. The horizontal 16 dp inset also keeps the button
+    // aligned with the card form below it.
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: GOOGLE_PAY_BUTTON_CLEAR_SPACE,
+  },
   googlePayButton: {
-    height: 52,
+    height: GOOGLE_PAY_NATIVE_BUTTON_HEIGHT,
     borderRadius: 12,
-    backgroundColor: "#000",
-    flexDirection: "row" as const,
+    overflow: "hidden" as const,
+    backgroundColor: "transparent",
     alignItems: "center" as const,
     justifyContent: "center" as const,
-    gap: 10,
-    elevation: 2,
   },
-  googlePayG: {
-    fontSize: 18,
-    fontWeight: "700" as const,
-    color: "#4285F4",
-    letterSpacing: -0.5,
-    fontStyle: "italic" as const,
+  googlePayAsset: {
+    width: "100%",
+    height: GOOGLE_PAY_NATIVE_BUTTON_HEIGHT,
   },
-  googlePayText: { fontSize: 15, fontWeight: "600" as const, color: "#fff", letterSpacing: 0.1 },
   orDivider: { flexDirection: "row" as const, alignItems: "center" as const, paddingHorizontal: 20, paddingVertical: 10, gap: 10 },
   orLine: { flex: 1, height: 1, backgroundColor: colors.border },
   orText: { fontSize: 10, fontWeight: "600" as const, color: colors.textSecondary, letterSpacing: 1.2 },

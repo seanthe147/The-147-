@@ -7,6 +7,18 @@
 // to catch template-literal escape bugs (e.g. the "spinner forever" regression
 // where `\\s` collapsed to `s` and silently broke the entire script).
 
+import {
+  GOOGLE_PAY_BUTTON_CLEAR_SPACE,
+  GOOGLE_PAY_WEB_BUTTON_HEIGHT,
+  getGooglePayWebButtonOptions,
+} from "../lib/google-pay-branding.ts";
+import {
+  APPLE_PAY_BUTTON_CLEAR_SPACE,
+  APPLE_PAY_BUTTON_HEIGHT,
+  APPLE_PAY_BUTTON_MIN_WIDTH,
+  getApplePayButtonOptions,
+} from "../lib/apple-pay-branding.ts";
+
 export function formatPounds(pence: number): string {
   return `£${(pence / 100).toFixed(2)}`;
 }
@@ -68,6 +80,11 @@ export function buildPaymentSheetHtml(opts: {
       ? "https://web.squarecdn.com/v1/square.js"
       : "https://sandbox.web.squarecdn.com/v1/square.js";
   const amountStr = (opts.amountPence / 100).toFixed(2);
+  const googlePayButtonOptions = getGooglePayWebButtonOptions(isLight ? "light" : "dark");
+  const applePayButtonOptions = getApplePayButtonOptions(
+    isLight ? "light" : "dark",
+    opts.intent || "CHARGE",
+  );
   // Per-phase timeout. Production logs from the diagnostic endpoint showed a
   // long tail of customers on slow mobile signal (3G / poor Wi-Fi at the
   // venue) where the original 8s budget tripped before the SDK had finished
@@ -116,12 +133,14 @@ export function buildPaymentSheetHtml(opts: {
   <link rel="dns-prefetch" href="${tokenizationOrigin}" />
   <link rel="preload" as="script" href="${sdkSrc}" crossorigin />
   <!--
-    Apple's official Apple Pay button web component. Required by App Store
-    Guideline 4.9 — using only the  Pay wordmark on a custom black button
-    is grounds for rejection. This script defines the <apple-pay-button>
-    custom element that we render below. Loads silently on non-Apple
-    devices and does nothing harmful there (Square's applePay() init will
-    no-op on unsupported platforms).
+    Apple's official Apple Pay button web component. It supplies the approved
+    Apple Pay artwork and localized label; the app never composes a logo or
+    payment label itself. It loads silently on non-Apple devices and does
+    nothing harmful there (Square's applePay() init will no-op on unsupported
+    platforms).
+
+    See Apple's "Displaying Apple Pay Buttons Using CSS" and the Apple Pay JS
+    button documentation for the supported component and styling values.
   -->
   <script
     crossorigin="anonymous"
@@ -162,8 +181,20 @@ export function buildPaymentSheetHtml(opts: {
 
     .section-title { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1.3px; margin-bottom: 10px; }
 
-    .wallets { display: flex; flex-direction: column; gap: 10px; margin-bottom: 6px; }
-    #apple-pay-button, #google-pay-button { display: none; height: 50px; border-radius: 12px; overflow: hidden; }
+    /*
+       Google requires at least 8 dp of clear space on every side of a
+       payment button. Keep that space in the host rather than relying on the
+       SDK-rendered button's internal padding.
+    */
+    .wallets { display: flex; flex-direction: column; gap: 10px; margin-bottom: 6px; padding: ${Math.max(APPLE_PAY_BUTTON_CLEAR_SPACE, GOOGLE_PAY_BUTTON_CLEAR_SPACE)}px 16px; }
+    #apple-pay-button, #google-pay-button { display: none; width: 100%; height: ${GOOGLE_PAY_WEB_BUTTON_HEIGHT}px; border-radius: 12px; overflow: hidden; }
+    /*
+       Apple's directive buttons ("Buy with" / "Subscribe with") require at
+       least 140 x 30 points. The official component enforces the same minimum
+       in its shadow tree; keeping it on the host prevents a narrow layout from
+       clipping that approved button.
+    */
+    #apple-pay-button { min-width: ${APPLE_PAY_BUTTON_MIN_WIDTH}px; min-height: 30px; height: ${APPLE_PAY_BUTTON_HEIGHT}px; }
 
     .or { display: none; text-align: center; color: var(--muted); font-size: 11px; letter-spacing: 1.4px; font-weight: 600; margin: 18px 0 14px; position: relative; }
     .or::before, .or::after { content: ""; position: absolute; top: 50%; width: calc(50% - 60px); height: 1px; background: var(--faint); }
@@ -864,16 +895,13 @@ export function buildPaymentSheetHtml(opts: {
       // source-order (function declarations are hoisted within this IIFE).
       function initWallets() {
 
-      // Apple Pay (iOS Safari/WebKit only, requires verified domain).
+        // Apple Pay (iOS Safari/WebKit only, requires verified domain).
       // Fully isolated — any failure here MUST NOT affect the card form.
       //
-      // IMPORTANT (App Store Guideline 4.9): we MUST render the official
-      // Apple-approved Pay button, NOT a custom black button containing the
-      //  Pay wordmark. We render the button via Apple Pay JS's
-      // ApplePayButton custom element (apple-pay-button-with-text). Square's
-      // Web Payments SDK does not provide an attach() helper for Apple Pay
-      // (unlike googlePay.attach), so we inject Apple's official element and
-      // wire its click to Square's tokenize flow.
+        // Apple's official component renders the approved Apple Pay artwork
+        // and localized label. Square's Web Payments SDK does not provide an
+        // attach() helper for Apple Pay (unlike googlePay.attach), so we inject
+        // Apple's element and wire its click to Square's tokenize flow.
       try {
         var pr = paymentRequest();
         payments.applePay(pr).then(function (ap) {
@@ -887,21 +915,17 @@ export function buildPaymentSheetHtml(opts: {
             el.innerHTML = "";
             el.removeAttribute("style");
             el.style.display = "block";
-            el.style.height = "50px";
+            el.style.height = "${APPLE_PAY_BUTTON_HEIGHT}px";
             el.style.borderRadius = "12px";
             el.style.overflow = "hidden";
             var btn = document.createElement("apple-pay-button");
-            btn.setAttribute("buttonstyle", "black");
-            // Use the semantically correct button type so the Apple Pay sheet
-            // shows the right action label:
-            //   "Subscribe with  Pay" — for membership/recurring billing
-            //   "Buy with  Pay"       — for one-off orders
-            // Apple's guidelines provide type="subscribe" exactly for this case.
-            // Using "buy" on a subscription screen is technically non-compliant.
-            btn.setAttribute("type", IS_SUBSCRIPTION ? "subscribe" : "buy");
-            btn.setAttribute("locale", "en-GB");
+            // These attributes select Apple's approved contrast treatment and
+            // checkout label. The component supplies the logo and text.
+            btn.setAttribute("buttonstyle", ${JSON.stringify(applePayButtonOptions.buttonStyle)});
+            btn.setAttribute("type", ${JSON.stringify(applePayButtonOptions.type)});
+            btn.setAttribute("locale", ${JSON.stringify(applePayButtonOptions.locale)});
             btn.style.setProperty("--apple-pay-button-width", "100%");
-            btn.style.setProperty("--apple-pay-button-height", "50px");
+            btn.style.setProperty("--apple-pay-button-height", "${APPLE_PAY_BUTTON_HEIGHT}px");
             btn.style.setProperty("--apple-pay-button-border-radius", "12px");
             btn.style.display = "block";
             btn.style.width = "100%";
@@ -925,12 +949,10 @@ export function buildPaymentSheetHtml(opts: {
         diag("apple_pay_throw", { reason: (e && e.message) ? String(e.message).slice(0, 200) : "unknown" });
       }
 
-      // Google Pay — custom button approach (no gp.attach).
-      // gp.attach() creates Square's button with its own internal click
-      // handler. Our additional click listener on the container caused a
-      // tokenisation race on Android (both handlers fired simultaneously).
-      // Using a custom button + single gp.tokenize() call (same pattern as
-      // Apple Pay above) eliminates the race completely.
+      // Google Pay — use Square's SDK-rendered button. Square delegates the
+      // artwork, approved/localized caption, color treatment, and dimensions
+      // to the Google Pay button implementation rather than allowing a
+      // hand-built button to drift from Google's brand guidelines.
       //
       // Skipped entirely on Android: Payment Request API is unavailable in
       // Android WebView, so Square falls back to an intent:// URL that we
@@ -946,28 +968,21 @@ export function buildPaymentSheetHtml(opts: {
             if (!el) return;
             el.innerHTML = "";
             el.style.display = "block";
-            // Build a custom Google Pay button that fills the container div.
-            // The container already has height:50px and border-radius:12px
-            // from CSS, so the button just needs to fill it.
-            var btn = document.createElement("button");
-            btn.type = "button";
-            btn.setAttribute("aria-label", "Pay with Google Pay");
-            btn.style.cssText = [
-              "width:100%", "height:50px", "background:#000", "color:#fff",
-              "border:0", "border-radius:12px", "font-size:15px", "font-weight:600",
-              "cursor:pointer", "display:flex", "align-items:center",
-              "justify-content:center", "gap:8px", "letter-spacing:0.01em",
-              "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
-              "box-sizing:border-box", "padding:0 16px", "-webkit-tap-highlight-color:transparent",
-            ].join(";");
-            // Google "G" mark SVG (official colours, no text — cleaner on small buttons)
-            btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg><span>Pay with Google Pay</span>';
-            el.appendChild(btn);
-            var divider = document.getElementById("or-divider");
-            if (divider) divider.style.display = "block";
-            btn.addEventListener("click", function () {
-              diag("payment_started", { method: "google_pay" });
-              tokenizeAndSend(gp, "Google Pay");
+            gp.attach("#google-pay-button", ${JSON.stringify(googlePayButtonOptions)}).then(function () {
+              var target = document.getElementById("google-pay-button");
+              if (!target) return;
+              var divider = document.getElementById("or-divider");
+              if (divider) divider.style.display = "block";
+              // Square's documented contract is attach() for rendering,
+              // followed by one target.onclick handler that calls tokenize():
+              // https://developer.squareup.com/reference/sdks/web/payments/objects/GooglePay
+              // Keep this as the only tokenization handler.
+              target.onclick = function () {
+                diag("payment_started", { method: "google_pay" });
+                tokenizeAndSend(gp, "Google Pay");
+              };
+            }).catch(function (err) {
+              diag("google_pay_attach_error", { reason: (err && err.message) ? String(err.message).slice(0, 200) : "unknown" });
             });
           } catch (e) { /* swallow — card form must still work */ }
         }).catch(function (err) {

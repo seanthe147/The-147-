@@ -18,6 +18,8 @@ export interface SquareCardFieldProps {
   buyerEmail?: string | null;
   intent?: "CHARGE" | "STORE";
   recurringDescription?: string | null;
+  /** Appearance of the native checkout surface, used for Apple Pay contrast. */
+  appearance?: "light" | "dark";
   /** Card form has attached and is ready to tokenize */
   onReady?: () => void;
   /** Tokenize succeeded */
@@ -78,10 +80,11 @@ export const SquareCardField = React.forwardRef<SquareCardFieldHandle, SquareCar
         buyerEmail: props.buyerEmail || null,
         recurringDescription: props.recurringDescription || null,
         platform: Platform.OS,
+        appearance: props.appearance || "dark",
       });
       // Amount is baked into the HTML for the wallet payment request — so
       // any amount change forces a remount, which is correct behaviour.
-    }, [props.applicationId, props.locationId, props.environment, props.amountPence, props.currency, props.intent, props.buyerEmail, props.recurringDescription]);
+    }, [props.applicationId, props.locationId, props.environment, props.amountPence, props.currency, props.intent, props.buyerEmail, props.recurringDescription, props.appearance]);
 
     React.useImperativeHandle(ref, () => ({
       tokenizeCard: () => {

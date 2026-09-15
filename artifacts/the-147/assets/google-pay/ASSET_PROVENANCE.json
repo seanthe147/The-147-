@@ -1,0 +1,17 @@
+{
+  "provider": "Google Pay",
+  "purpose": "Native Google Pay payment trigger artwork",
+  "sourcePage": "https://developers.google.com/pay/api/android/guides/brand-guidelines",
+  "sourceAssets": {
+    "white": {
+      "url": "https://developers.google.com/static/pay/api/images/brand-guidelines/pay-button-white-pill-shape.png",
+      "sha256": "ca75718409cf7d3c0cf5f1b31c197e70b067be194108ae73b1a69a47830ab524"
+    },
+    "dark": {
+      "url": "https://developers.google.com/static/pay/api/images/brand-guidelines/pay-button-dark-pill-shape.png",
+      "sha256": "d9f45e871dbefa5fc5019450d711d65d1db1cb93d518e51168b3afdd8ad0276f"
+    }
+  },
+  "downloadedAt": "2026-09-15T22:46:07Z",
+  "integrity": "The PNG files are bundled byte-for-byte from the official URLs; do not edit, recolor, crop, or rebuild their wordmark."
+}
