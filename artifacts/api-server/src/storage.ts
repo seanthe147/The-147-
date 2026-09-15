@@ -105,6 +105,10 @@ import {
   type VenueRewardClaim,
 } from "@workspace/db";
 import { encrypt, decrypt, hashEmail } from "./encryption";
+import {
+  buildMenuItemPresentationOverride,
+  type MenuItemPresentation,
+} from "./menu-presentation";
 
 function decryptCustomer<T extends { email: string; name: string; phone?: string | null; dateOfBirth?: string | null }>(c: T): T {
   return {
@@ -211,6 +215,16 @@ export async function runStartupMigrations() {
     await client.query(`
       ALTER TABLE offers
         ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+    `);
+
+    // Menu card presentation metadata. Drizzle pushes these columns during a
+    // normal deploy; keeping the guarded startup migration here also lets a
+    // restarted API read /api/menu safely when the table predates this
+    // feature.
+    await client.query(`
+      ALTER TABLE menu_item_overrides
+        ADD COLUMN IF NOT EXISTS is_18_plus BOOLEAN NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS card_background_color TEXT;
     `);
 
     await client.query(`
@@ -3460,6 +3474,46 @@ export class DatabaseStorage implements IStorage {
       .onConflictDoUpdate({
         target: menuItemOverrides.variationId,
         set: { itemId, name, dietaryTags: cleaned, updatedBy, updatedAt: new Date() },
+      });
+  }
+
+  /**
+   * Persist item merchandising metadata without touching operational menu
+   * overrides. Passing null clears the custom card colour and the boolean
+   * controls the customer-facing 18+ badge only; checkout validation remains
+   * owned by the existing order/age-restriction paths.
+   */
+  async setMenuItemPresentation(
+    variationId: string,
+    itemId: string,
+    name: string,
+    is18Plus: boolean,
+    cardBackgroundColor: string | null,
+    updatedBy: string,
+  ): Promise<void> {
+    const existing = await db.select().from(menuItemOverrides).where(eq(menuItemOverrides.variationId, variationId));
+    const current = existing[0];
+    const presentation: MenuItemPresentation = { is18Plus, cardBackgroundColor };
+    const preserved = buildMenuItemPresentationOverride(current, presentation);
+    await db.insert(menuItemOverrides)
+      .values({
+        variationId,
+        itemId,
+        name,
+        ...preserved,
+        updatedBy,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: menuItemOverrides.variationId,
+        set: {
+          itemId,
+          name,
+          is18Plus,
+          cardBackgroundColor,
+          updatedBy,
+          updatedAt: new Date(),
+        },
       });
   }
 

@@ -26,6 +26,7 @@ import {
   hashPushRegistrationSecret,
   matchesPushRegistrationSecret,
 } from "../push-registration";
+import { validateMenuItemPresentation } from "../menu-presentation";
 
 // ── Square POS → Live Tables sync helpers ───────────────────────────────────
 // Parses a Square ticket name like "Snooker 4" / "Pool 2" / "Dining 7" into a
@@ -5687,6 +5688,8 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
               ...(item.updatedAt ? { updatedAt: item.updatedAt } : {}),
               ...(item.modifiers && item.modifiers.length > 0 ? { modifiers: item.modifiers } : {}),
               ...(dietaryTags.length > 0 ? { dietaryTags } : {}),
+              ...(override?.is18Plus ? { is18Plus: true } : {}),
+              ...(override?.cardBackgroundColor ? { cardBackgroundColor: override.cardBackgroundColor } : {}),
             };
             return override?.soldOut || item.soldOut
               ? { ...base, soldOut: true }
@@ -5770,6 +5773,8 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
           soldOut: itemOverrideMap.get(item.variationId)?.soldOut ?? false,
           hidden: itemOverrideMap.get(item.variationId)?.hidden ?? false,
           kioskHidden: itemOverrideMap.get(item.variationId)?.kioskHidden ?? false,
+          is18Plus: itemOverrideMap.get(item.variationId)?.is18Plus ?? false,
+          cardBackgroundColor: itemOverrideMap.get(item.variationId)?.cardBackgroundColor ?? null,
         })),
       }));
 
@@ -5864,6 +5869,28 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     } catch (err: any) {
       console.error("[STAFF MENU] Item dietary-tags error:", err.message);
       res.status(500).json({ message: "Failed to update dietary tags" });
+    }
+  });
+
+  // Manager-only item presentation metadata. This changes only the customer
+  // card's 18+ badge and optional background colour; it does not grant or
+  // remove permission to buy age-restricted products.
+  app.put("/api/staff/menu/items/:variationId/presentation", staffAuth, managerAuth, async (req: any, res) => {
+    const { variationId } = req.params;
+    const { itemId, name } = req.body;
+    if (!itemId || !name) return res.status(400).json({ message: "itemId and name required" });
+    const validation = validateMenuItemPresentation(req.body);
+    if (!validation.ok) return res.status(400).json({ message: validation.message });
+    const { is18Plus, cardBackgroundColor } = validation.value;
+    try {
+      const updatedBy = req.staffUser?.username ?? "staff";
+      const colour = cardBackgroundColor ?? null;
+      await storage.setMenuItemPresentation(variationId, itemId, name, is18Plus, colour, updatedBy);
+      square.invalidateMenuCache();
+      res.json({ ok: true, is18Plus, cardBackgroundColor: colour });
+    } catch (err: any) {
+      console.error("[STAFF MENU] Item presentation error:", err.message);
+      res.status(500).json({ message: "Failed to update item presentation" });
     }
   });
 

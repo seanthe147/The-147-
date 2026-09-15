@@ -434,6 +434,10 @@
     .menu-item-variation{font-size:11px;font-weight:600;color:var(--blue);background:#eff6ff;border-radius:4px;padding:1px 6px;margin-left:6px;letter-spacing:.2px}
     .menu-item-price{font-size:12px;color:var(--text-2);font-weight:600;min-width:52px;text-align:right}
     .menu-toggle-group{display:flex;align-items:center;gap:16px}
+    .menu-presentation-group{display:flex;align-items:center;gap:8px;flex-shrink:0}
+    .menu-presentation-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.35px;color:var(--text-2);display:flex;align-items:center;gap:4px;white-space:nowrap}
+    .menu-presentation-label input{accent-color:var(--red)}
+    .menu-card-colour{font:inherit;font-size:11px;color:var(--text-2);border:1px solid var(--border);border-radius:5px;background:#fff;padding:4px 5px;max-width:108px}
     .menu-toggle-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-2);display:flex;align-items:center;gap:6px}
     .toggle-sw{position:relative;display:inline-block;width:38px;height:22px}
     .toggle-sw input{opacity:0;width:0;height:0}
@@ -1183,7 +1187,7 @@
           <!-- ITEMS TAB -->
           <div id="menuTabPanelItems" style="display:none">
             <div class="menu-refresh-bar">
-              <p style="font-size:13px;color:var(--text-2);margin:0">Mark items as <strong>Sold Out</strong> to show a red badge and disable ordering (all staff). Managers and owners can also <strong>Hide</strong> items or entire categories so they don't appear in the app at all.</p>
+              <p style="font-size:13px;color:var(--text-2);margin:0">Mark items as <strong>Sold Out</strong> to show a red badge and disable ordering (all staff). Managers and owners can also mark an item <strong>18+</strong>, choose its card colour, or <strong>Hide</strong> items and categories so they don't appear in the app.</p>
               <button class="btn btn-secondary btn-sm" onclick="loadMenuManagement(true)" id="menuRefreshBtn">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                 Refresh from Square
@@ -6592,6 +6596,27 @@
 
   /* ── Menu Management ─────────────────────────────────────────────────────── */
   let menuMgmtData=[];
+  const menuCardColourOptions=[
+    ['', 'Default'],
+    ['#FEF3C7', 'Amber'],
+    ['#DCFCE7', 'Green'],
+    ['#DBEAFE', 'Blue'],
+    ['#FCE7F3', 'Pink'],
+    ['#EDE9FE', 'Purple'],
+    ['#FFEDD5', 'Orange'],
+  ];
+
+  // Item names come from Square and can contain quotes. Keep all item
+  // identity in escaped data attributes rather than interpolating JSON into
+  // an inline HTML handler (where a normal `"` would terminate the attribute).
+  function menuAttr(value){
+    return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  }
+
+  function menuCardColourSelect(item){
+    const current=item.cardBackgroundColor||'';
+    return `<select class="menu-card-colour" aria-label="Card colour" onchange="menuSetItemPresentationFromControl(this)" onclick="event.stopPropagation()">${menuCardColourOptions.map(([value,label])=>`<option value="${value}" ${current===value?'selected':''}>${label}</option>`).join('')}</select>`;
+  }
 
   async function loadMenuManagement(forceRefresh){
     const list=el('menuCategoriesList');
@@ -6621,8 +6646,10 @@
       const rowCls=['menu-item-row',item.soldOut?'sold-out':'',item.hidden?'hidden-item':''].filter(Boolean).join(' ');
       const price=item.price?'£'+(item.price/100).toFixed(2):'—';
       const varLabel=item.variationName?`<span class="menu-item-variation">${item.variationName}</span>`:'';
-      const hideTgl=isMgr?`<label class="menu-toggle-label">Hide<label class="toggle-sw danger"><input type="checkbox" ${item.hidden?'checked':''} onchange="menuToggleItemHidden('${item.variationId}','${item.itemId}',${JSON.stringify(item.name)},this.checked)"><span class="toggle-sw-slider"></span></label></label>`:'';
-      return `<div class="${rowCls}"><div class="menu-item-info"><span class="menu-item-name">${item.name}${varLabel}</span></div><span class="menu-item-price">${price}</span><div class="menu-toggle-group"><label class="menu-toggle-label">Available<label class="toggle-sw"><input type="checkbox" ${!item.soldOut?'checked':''} onchange="menuToggleItemSoldOut('${item.variationId}','${item.itemId}',${JSON.stringify(item.name)},!this.checked)"><span class="toggle-sw-slider"></span></label></label>${hideTgl}</div></div>`;
+      const itemData=`data-variation-id="${menuAttr(item.variationId)}" data-item-id="${menuAttr(item.itemId)}" data-item-name="${menuAttr(item.name)}"`;
+      const hideTgl=isMgr?`<label class="menu-toggle-label">Hide<label class="toggle-sw danger"><input type="checkbox" ${item.hidden?'checked':''} onchange="menuToggleItemHiddenFromControl(this,this.checked)"><span class="toggle-sw-slider"></span></label></label>`:'';
+      const presentation=isMgr?`<div class="menu-presentation-group"><label class="menu-presentation-label" title="Show an 18+ badge on the customer order card"><input class="menu-item-age" type="checkbox" ${item.is18Plus?'checked':''} onchange="menuSetItemPresentationFromControl(this)">18+</label>${menuCardColourSelect(item)}</div>`:'';
+      return `<div class="${rowCls}" ${itemData}><div class="menu-item-info"><span class="menu-item-name">${item.name}${varLabel}</span></div><span class="menu-item-price">${price}</span>${presentation}<div class="menu-toggle-group"><label class="menu-toggle-label">Available<label class="toggle-sw"><input type="checkbox" ${!item.soldOut?'checked':''} onchange="menuToggleItemSoldOutFromControl(this,!this.checked)"><span class="toggle-sw-slider"></span></label></label>${hideTgl}</div></div>`;
     }).join('');
     return `<div class="menu-cat" id="menuCat_${ci}"><div class="menu-cat-header" onclick="menuToggleCat(${ci})"><svg class="menu-cat-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg><span class="menu-cat-name">${cat.name}${catBadge}</span><span class="menu-cat-count">${countParts.join(' · ')}</span>${catHideToggle}</div><div class="menu-cat-items">${itemsHtml}</div></div>`;
   }
@@ -6677,10 +6704,45 @@
     }catch(e){alert('Failed to update item. Please try again.');}
   }
 
+  function menuItemDataFromControl(control){
+    const row=control.closest('.menu-item-row');
+    if(!row)throw new Error('Menu item row not found');
+    const {variationId,itemId,itemName}=row.dataset;
+    if(!variationId||!itemId||!itemName)throw new Error('Menu item metadata missing');
+    return {row,variationId,itemId,name:itemName};
+  }
+
+  async function menuToggleItemSoldOutFromControl(control,soldOut){
+    const {variationId,itemId,name}=menuItemDataFromControl(control);
+    return menuToggleItemSoldOut(variationId,itemId,name,soldOut);
+  }
+
+  async function menuToggleItemHiddenFromControl(control,hidden){
+    const {variationId,itemId,name}=menuItemDataFromControl(control);
+    return menuToggleItemHidden(variationId,itemId,name,hidden);
+  }
+
+  async function menuSetItemPresentationFromControl(control){
+    const {row,variationId,itemId,name}=menuItemDataFromControl(control);
+    const is18Plus=!!row.querySelector('.menu-item-age:checked');
+    const cardBackgroundColor=row.querySelector('.menu-card-colour')?.value||null;
+    try{
+      const r=await api('/api/staff/menu/items/'+variationId+'/presentation',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({is18Plus,cardBackgroundColor,itemId,name})});
+      if(!r.ok)throw new Error();
+      for(let ci=0;ci<menuMgmtData.length;ci++){
+        const item=menuMgmtData[ci].items.find(i=>i.variationId===variationId);
+        if(item){item.is18Plus=is18Plus;item.cardBackgroundColor=cardBackgroundColor;refreshCategoryInDOM(ci);break;}
+      }
+    }catch(e){alert('Failed to update item presentation. Please try again.');}
+  }
+
   window.menuToggleCat=menuToggleCat;
   window.menuToggleCatHidden=menuToggleCatHidden;
   window.menuToggleItemSoldOut=menuToggleItemSoldOut;
   window.menuToggleItemHidden=menuToggleItemHidden;
+  window.menuToggleItemSoldOutFromControl=menuToggleItemSoldOutFromControl;
+  window.menuToggleItemHiddenFromControl=menuToggleItemHiddenFromControl;
+  window.menuSetItemPresentationFromControl=menuSetItemPresentationFromControl;
   window.loadMenuManagement=loadMenuManagement;
 
   /* ── Menu Sub-tabs ────────────────────────────────────────────────────────── */

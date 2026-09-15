@@ -3,6 +3,17 @@ name: Square payment system bugs
 description: Root causes and fixes for "Payment Screen Issue" alert and loyalty reward issues in the payment flow
 ---
 
+## Google Pay merchant registration
+
+Treat `OR_BIBED_11` separately from bank declines and SCA failures.
+
+**Why:** Google's troubleshooting identifies this code as incomplete merchant
+registration; changing buyer verification does not resolve production approval.
+
+**How to apply:** check Google Pay & Wallet Console production approval for the
+actual Android app and Square gateway configuration. Keep card payment available;
+do not claim a code-only change fixes merchant approval.
+
 ## Bug 1 — "Payment Screen Issue" alert (fontFamily in Square card style)
 
 **Root cause**: `payments.card({ style: { input: { fontFamily: '-apple-system, BlinkMacSystemFont, ...' } } })` — Square SDK rejects comma-separated font stacks. Throws "Invalid style value for property fontFamily" → `card_attach_error` on both attempts 1 and 2 → `fatal()` → postMessage({type:"fatal"}) → native `handleSheetUnavailable` → Alert.

@@ -81,9 +81,8 @@ export function googlePayCustomerMessage(error: GooglePayErrorContext): string {
   const code = findGooglePayCode([error.code, error.debugCode, error.message, error.debugMessage]);
   if (code === "OR_BIBED_11") {
     return (
-      "Google Pay could not be accepted by the merchant or wallet configuration " +
-      "(OR_BIBED_11). No charge was made. Please use card details below. " +
-      "If this keeps happening, update Google Pay or contact the venue."
+      "Google Pay is not enabled for this merchant yet (OR_BIBED_11). No charge was made. " +
+      "Please use card details below. The venue needs to complete Google Pay production registration."
     );
   }
   if (error.debugCode === "rn_google_pay_result_error") {
@@ -101,4 +100,14 @@ export function googlePayCustomerMessage(error: GooglePayErrorContext): string {
 
 export function googlePayDiagnosticCode(error: GooglePayErrorContext): string | null {
   return findGooglePayCode([error.code, error.debugCode, error.message, error.debugMessage]);
+}
+
+/**
+ * OR_BIBED_11 is a merchant onboarding/registration failure, not a customer
+ * card decline. Once Google returns it, retrying from this sheet cannot change
+ * the result; callers should keep the card fallback available and avoid
+ * repeatedly opening a wallet flow that will fail in the same session.
+ */
+export function isGooglePayMerchantConfigurationError(error: GooglePayErrorContext): boolean {
+  return googlePayDiagnosticCode(error) === "OR_BIBED_11";
 }

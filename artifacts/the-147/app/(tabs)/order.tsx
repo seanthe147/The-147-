@@ -818,6 +818,10 @@ function ItemCard({
   const soldOut = group.soldOut || !!kitchenClosed || !!barClosed;
   const cartName = item.variationName ? `${item.name} — ${item.variationName}` : item.name;
   const hasImage = !!item.imageUrl;
+  // Manager-selected card colours are light/saturated surfaces. Keep every
+  // text/badge foreground on those surfaces dark, regardless of the app's
+  // light/dark theme (the normal theme foreground can be white in dark mode).
+  const hasCustomCardBackground = !!item.cardBackgroundColor;
   const hasModifiers = group.variations.some((variation) => !!variation.modifiers?.length);
   // FEATURE_DIETARY_FILTERS: resolve tag codes to {label, colour}. Skipped
   // when the parent didn't opt in via showDietaryTags so menus rendered
@@ -841,7 +845,14 @@ function ItemCard({
   };
 
   return (
-    <View style={[styles.itemCard, soldOut && styles.itemCardSoldOut, highlighted && styles.itemCardHighlighted]}>
+    <View
+      style={[
+        styles.itemCard,
+        soldOut && styles.itemCardSoldOut,
+        highlighted && styles.itemCardHighlighted,
+        item.cardBackgroundColor ? { backgroundColor: item.cardBackgroundColor } : null,
+      ]}
+    >
       {highlighted && (
         <View style={styles.highlightedBanner}>
           <Ionicons name="pricetag" size={11} color="#fff" />
@@ -859,41 +870,46 @@ function ItemCard({
       )}
       <View style={[styles.itemInfo, hasImage && styles.itemInfoWithImage]}>
         <View style={styles.itemNameRow}>
-          <Text style={[styles.itemName, soldOut && styles.itemNameSoldOut]} numberOfLines={2}>{item.name}</Text>
+          <Text style={[styles.itemName, soldOut && styles.itemNameSoldOut, hasCustomCardBackground && styles.customCardText]} numberOfLines={2}>{item.name}</Text>
           {!hasMultipleVariations && !!item.variationName && (
-            <View style={styles.variationBadge}>
-              <Text style={styles.variationText}>{item.variationName}</Text>
+            <View style={[styles.variationBadge, hasCustomCardBackground && styles.customCardBadge]}>
+              <Text style={[styles.variationText, hasCustomCardBackground && styles.customCardBadgeText]}>{item.variationName}</Text>
             </View>
           )}
           {soldOut && (
-            <View style={styles.soldOutBadge}>
-              <Text style={styles.soldOutText}>{!item.soldOut && kitchenClosed ? "Kitchen closed" : !item.soldOut && barClosed ? "Bar closed" : "Unavailable"}</Text>
+            <View style={[styles.soldOutBadge, hasCustomCardBackground && styles.customCardBadge]}>
+              <Text style={[styles.soldOutText, hasCustomCardBackground && styles.customCardBadgeText]}>{!item.soldOut && kitchenClosed ? "Kitchen closed" : !item.soldOut && barClosed ? "Bar closed" : "Unavailable"}</Text>
+            </View>
+          )}
+          {item.is18Plus && (
+            <View style={[styles.ageBadge, hasCustomCardBackground && styles.customCardBadge]} accessibilityLabel="18 plus">
+              <Text style={[styles.ageBadgeText, hasCustomCardBackground && styles.customCardBadgeText]}>18+</Text>
             </View>
           )}
           {hasModifiers && !soldOut && (
-            <View style={[styles.variationBadge, { backgroundColor: "#EFF6FF" }]}>
-              <Text style={[styles.variationText, { color: Colors.brand.blue }]}>Customisable</Text>
+            <View style={[styles.variationBadge, { backgroundColor: "#EFF6FF" }, hasCustomCardBackground && styles.customCardBadge]}>
+              <Text style={[styles.variationText, { color: Colors.brand.blue }, hasCustomCardBackground && styles.customCardBadgeText]}>Customisable</Text>
             </View>
           )}
           {hasMultipleVariations && !soldOut && (
-            <View style={[styles.variationBadge, { backgroundColor: "#EFF6FF" }]}>
-              <Text style={[styles.variationText, { color: Colors.brand.blue }]}>Choose size</Text>
+            <View style={[styles.variationBadge, { backgroundColor: "#EFF6FF" }, hasCustomCardBackground && styles.customCardBadge]}>
+              <Text style={[styles.variationText, { color: Colors.brand.blue }, hasCustomCardBackground && styles.customCardBadgeText]}>Choose size</Text>
             </View>
           )}
         </View>
         {!!item.description && (
-          <Text style={[styles.itemDesc, soldOut && { opacity: 0.4 }]} numberOfLines={2}>{item.description}</Text>
+          <Text style={[styles.itemDesc, soldOut && { opacity: 0.4 }, hasCustomCardBackground && styles.customCardSecondaryText]} numberOfLines={2}>{item.description}</Text>
         )}
         {tagBadges.length > 0 && (
           <View style={styles.dietaryRow}>
             {tagBadges.map(t => (
-              <View key={t.code} style={[styles.dietaryBadge, { backgroundColor: t.colour + "1A", borderColor: t.colour + "55" }]}>
-                <Text style={[styles.dietaryBadgeText, { color: t.colour }]}>{t.code}</Text>
+              <View key={t.code} style={[styles.dietaryBadge, { backgroundColor: t.colour + "1A", borderColor: t.colour + "55" }, hasCustomCardBackground && styles.customCardBadge]}>
+                <Text style={[styles.dietaryBadgeText, { color: t.colour }, hasCustomCardBackground && styles.customCardBadgeText]}>{t.code}</Text>
               </View>
             ))}
           </View>
         )}
-        <Text style={[styles.itemPrice, soldOut && { opacity: 0.4 }]}>
+        <Text style={[styles.itemPrice, soldOut && { opacity: 0.4 }, hasCustomCardBackground && styles.customCardText]}>
           {hasMultipleVariations && group.minPrice !== group.maxPrice
             ? `From ${formatPrice(group.minPrice)}`
             : formatPrice(group.minPrice)}
@@ -938,7 +954,7 @@ function ItemCard({
             >
               <Ionicons name="remove" size={16} color={Colors.brand.blue} />
             </Pressable>
-            <Text style={styles.qtyText}>{qty}</Text>
+            <Text style={[styles.qtyText, hasCustomCardBackground && styles.customCardText]}>{qty}</Text>
             <Pressable
               onPress={handleAdd}
               style={({ pressed }) => [styles.qtyBtn, { opacity: pressed ? 0.7 : 1 }]}
@@ -3430,6 +3446,19 @@ const createStyles = (palette: ReturnType<typeof useColors>) => {
   itemNameSoldOut: {
     color: Colors.light.textSecondary,
   },
+  customCardText: {
+    color: "#111827",
+  },
+  customCardSecondaryText: {
+    color: "#374151",
+  },
+  customCardBadge: {
+    backgroundColor: "rgba(17,24,39,0.08)",
+    borderColor: "rgba(17,24,39,0.28)",
+  },
+  customCardBadgeText: {
+    color: "#111827",
+  },
   soldOutBadge: {
     backgroundColor: "#ef444420",
     borderRadius: 6,
@@ -3444,6 +3473,20 @@ const createStyles = (palette: ReturnType<typeof useColors>) => {
     color: "#ef4444",
     textTransform: "uppercase" as const,
     letterSpacing: 0.5,
+  },
+  ageBadge: {
+    backgroundColor: "#FEF2F2",
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: "#DC2626",
+  },
+  ageBadgeText: {
+    fontFamily: "Montserrat_700Bold",
+    fontSize: 10,
+    color: "#B91C1C",
+    letterSpacing: 0.3,
   },
   variationBadge: {
     backgroundColor: "rgba(0,71,171,0.2)",

@@ -752,6 +752,11 @@ export const menuItemOverrides = pgTable("menu_item_overrides", {
   // staff can roll the feature out gradually without disappearing the
   // un-tagged half of the menu.
   dietaryTags: text("dietary_tags"),
+  // Item-level merchandising metadata. These fields are deliberately kept
+  // separate from the operational sold-out/hidden flags so changing the
+  // presentation of an item can never affect ordering or age validation.
+  is18Plus: boolean("is_18_plus").notNull().default(false),
+  cardBackgroundColor: text("card_background_color"),
   updatedBy: text("updated_by").notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

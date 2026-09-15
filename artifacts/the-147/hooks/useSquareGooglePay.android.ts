@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
   googlePayCustomerMessage,
+  isGooglePayMerchantConfigurationError,
   normalizeGooglePayError,
   type GooglePayErrorContext,
 } from "@/lib/google-pay-errors";
@@ -208,8 +209,22 @@ export function useSquareGooglePay(opts: {
           settle(failedResult(error));
         }
       });
-      if (nonceResult.status !== "ok") return nonceResult;
-      return verifyBuyer(nonceResult.nonce, params.amountPence, params.currency);
+      const hideWalletAfterMerchantError = (result: GooglePayNonceResult) => {
+        if (result.status === "failed" && isGooglePayMerchantConfigurationError(result.error)) {
+          // Google Pay's OR_BIBED_11 means the merchant has not completed
+          // Google Pay production registration. Retrying cannot fix that
+          // inside this checkout session; hide the wallet affordance while
+          // preserving the Square card form as the reliable fallback.
+          setCanUseGooglePay(false);
+        }
+        return result;
+      };
+      if (nonceResult.status !== "ok") {
+        return hideWalletAfterMerchantError(nonceResult);
+      }
+      return hideWalletAfterMerchantError(
+        await verifyBuyer(nonceResult.nonce, params.amountPence, params.currency),
+      );
     },
     [verifyBuyer],
   );

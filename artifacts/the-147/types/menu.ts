@@ -35,6 +35,10 @@ export interface MenuItem {
   // (the server omits the field when empty), so the client decides whether
   // to render the badges based on its own feature-flag check.
   dietaryTags?: string[];
+  /** Manager-selected customer-facing age indicator. Does not enforce checkout. */
+  is18Plus?: boolean;
+  /** Optional manager-selected background for this product card. */
+  cardBackgroundColor?: string | null;
 }
 
 // Canonical set of dietary tag codes the staff dashboard + customer filter
