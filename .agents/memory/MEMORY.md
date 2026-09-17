@@ -17,3 +17,4 @@
 - [Playwright in Nix test runners](playwright-nix-runtime.md) — pass Nix runtime library paths to Chromium child processes for browser smoke tests
 - [Native analytics provider](native-analytics.md) — native funnel events use EU-hosted PostHog with anonymous IDs; web remains on Replit-hosted Umami
 - [Expo native manifest verification](expo-native-manifest-verification.md) — verify config-plugin Android changes via temporary prebuild, not config-only introspection
+- [Expo native touch layout](expo-native-touch-layout.md) — root gesture-handler containers must fill the screen or native descendant hit testing can fail

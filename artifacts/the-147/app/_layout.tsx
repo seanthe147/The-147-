@@ -148,7 +148,7 @@ export default function RootLayout() {
                   <TabBarProvider>
                     <CartProvider>
                       <KioskProvider>
-                        <GestureHandlerRootView>
+                        <GestureHandlerRootView style={{ flex: 1 }}>
                           <KeyboardProvider>
                             <RootLayoutNav />
                             <KioskAttractOverlay />
