@@ -16,12 +16,18 @@ export function ConsentBanner() {
   if (isLoading || consent.hasConsented !== null) return null;
 
   return (
-    <View style={[styles.overlay, themeStyles.overlay]}>
+    <View
+      pointerEvents="box-none"
+      style={[styles.overlay, themeStyles.overlay]}
+    >
       <View
         style={[
           styles.banner,
           themeStyles.banner,
-          { paddingBottom: Math.max(insets.bottom, 16) + (Platform.OS === "web" ? 34 : 0) },
+          {
+            marginBottom: Platform.OS === "web" ? 84 : 80,
+            paddingBottom: Math.max(insets.bottom, 16) + (Platform.OS === "web" ? 34 : 0),
+          },
         ]}
       >
         <View style={styles.iconRow}>

@@ -43,6 +43,7 @@ export default function TabLayout() {
             borderTopWidth: isWeb ? 1 : 0,
             borderTopColor: colors.border,
             elevation: 0,
+              zIndex: 10,
             ...(isWeb ? { height: 84 } : {}),
             display: showBar ? "flex" : "none",
           },
@@ -52,6 +53,7 @@ export default function TabLayout() {
                 intensity={80}
                 tint={colors.scheme}
                 style={[StyleSheet.absoluteFill, { backgroundColor: colors.glass.card }]}
+                pointerEvents="none"
               />
             ) : isWeb ? (
               <View
@@ -63,6 +65,7 @@ export default function TabLayout() {
                     borderTopColor: colors.border,
                   },
                 ]}
+                pointerEvents="none"
               />
             ) : (
               <View
@@ -74,6 +77,7 @@ export default function TabLayout() {
                     borderTopColor: colors.border,
                   },
                 ]}
+                pointerEvents="none"
               />
             ),
         }}
