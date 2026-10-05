@@ -82,12 +82,12 @@ catalog:
 
 autoInstallPeers: false
 
-onlyBuiltDependencies:
-  - '@swc/core'
-  - esbuild
-  - msw
-  - sharp
-  - unrs-resolver
+allowBuilds:
+  '@swc/core': true
+  esbuild: true
+  msw: true
+  sharp: true
+  unrs-resolver: true
 
 overrides:
   # replit uses linux-x64 only, we can exclude all other platforms
@@ -185,6 +185,7 @@ overrides:
   # Security: @xmldom/xmldom <0.8.13 has multiple XML injection/DoS CVEs (GHSA-2v35-w6hq-6mfw, GHSA-f6ww-3ggp-fr8h, GHSA-j759-j44w-7fr8, GHSA-wh4c-j3r5-mjhp, GHSA-x6wf-f3px-wcqx, all High)
   # Affected reported version: 0.7.13 — override forces all dependents to 0.8.13+
   "@xmldom/xmldom": ">=0.8.13"
+  "@expo/plist>@xmldom/xmldom": "0.8.13"
   # Security: js-yaml <=4.1.1 has quadratic-complexity DoS in merge key handling (GHSA-h67p-54hq-rp68, Medium)
   # Affected reported versions now include 4.2.0 — override forces all dependents to the patched 4.3.0+
   js-yaml: ">=4.3.0"

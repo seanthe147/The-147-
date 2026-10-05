@@ -12,12 +12,12 @@ import {
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
+import { BottomTabBarHeightContext } from "expo-router/js-tabs";
 import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 import { useColors } from "@/hooks/useColors";
+import { AdaptiveGlassSurface } from "@/components/AdaptiveGlassSurface";
 const baseColors = Colors;
 import { getApiUrl } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
@@ -717,7 +717,12 @@ export default function RewardsScreen() {
       scrollEnabled={!scratchActive}
     >
       {Platform.OS === "ios" ? (
-        <BlurView intensity={55} tint={colors.scheme} style={styles.headerGradient}>
+        <AdaptiveGlassSurface
+          intensity={55}
+          fallbackColor={colors.surface}
+          style={styles.headerGradient}
+          pointerEvents="box-none"
+        >
           <Ionicons name="gift" size={28} color={Colors.brand.gold} />
           <Text style={styles.headerTitle}>Rewards</Text>
           <Text style={styles.headerSubtitle}>
@@ -725,7 +730,7 @@ export default function RewardsScreen() {
               ? `${firstName} — scratch cards, points & prizes`
               : "Scratch cards, points & prizes"}
           </Text>
-        </BlurView>
+        </AdaptiveGlassSurface>
       ) : (
         <View style={[styles.headerGradient, { backgroundColor: colors.surface }]}>
           <Ionicons name="gift" size={28} color={Colors.brand.gold} />

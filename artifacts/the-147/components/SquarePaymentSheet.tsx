@@ -529,8 +529,8 @@ const createStyles = (colors: ReturnType<typeof useColors>) => StyleSheet.create
     borderRadius: 10,
   },
   errorBannerText: { color: "#F87171", fontSize: 13, flex: 1 },
-  loadingOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "center" as const, justifyContent: "center" as const, backgroundColor: colors.background },
-  processingOverlay: { ...StyleSheet.absoluteFillObject, alignItems: "center" as const, justifyContent: "center" as const, backgroundColor: colors.overlay },
+  loadingOverlay: { ...StyleSheet.absoluteFill, alignItems: "center" as const, justifyContent: "center" as const, backgroundColor: colors.background },
+  processingOverlay: { ...StyleSheet.absoluteFill, alignItems: "center" as const, justifyContent: "center" as const, backgroundColor: colors.overlay },
   processingCard: { padding: 22, borderRadius: 16, alignItems: "center" as const, gap: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, shadowColor: colors.cardShadow, shadowOpacity: 0.4, shadowRadius: 20, elevation: 8 },
   processingText: { fontSize: 14, color: colors.text, fontWeight: "600" as const },
   googlePaySection: {

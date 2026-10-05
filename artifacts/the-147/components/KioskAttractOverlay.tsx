@@ -257,7 +257,7 @@ export function KioskAttractOverlay() {
 
 const createStyles = (colors: ReturnType<typeof useColors>) => StyleSheet.create({
   bg: { flex: 1, backgroundColor: colors.background },
-  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.overlay },
+  scrim: { ...StyleSheet.absoluteFill, backgroundColor: colors.overlay },
   content: { flex: 1, justifyContent: "space-between" },
   ctaPaused: {
     backgroundColor: colors.surface,

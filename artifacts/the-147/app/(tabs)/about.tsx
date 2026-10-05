@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
+import { BottomTabBarHeightContext } from "expo-router/js-tabs";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useResponsive } from "@/hooks/useResponsive";

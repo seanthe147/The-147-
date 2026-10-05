@@ -514,7 +514,7 @@ const createThemedStyles = (colors: ReturnType<typeof useColors>) => themedStyle
   tabTotal: { fontSize: 17, fontWeight: "800", color: colors.tint },
   tabClosed: { fontSize: 11, color: "#6B7280", textTransform: "capitalize", marginTop: 2 },
   modalOverlay: { flex: 1, justifyContent: "flex-end" },
-  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.overlay },
+  modalBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: colors.overlay },
   modalSheet: { backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 },
   dragHandle: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: "#D1D5DB", marginBottom: 12 },
   modalTitle: { fontSize: 20, fontWeight: "800", color: colors.text, marginBottom: 12 },

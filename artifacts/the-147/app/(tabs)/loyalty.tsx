@@ -15,12 +15,12 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
-import { BlurView } from "expo-blur";
+import { BottomTabBarHeightContext } from "expo-router/js-tabs";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
 import { useColors } from "@/hooks/useColors";
+import { AdaptiveGlassSurface } from "@/components/AdaptiveGlassSurface";
 const baseColors = Colors;
 import { getApiUrl } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
@@ -476,7 +476,12 @@ export default function LoyaltyScreen() {
         keyboardShouldPersistTaps="handled"
       >
         {Platform.OS === "ios" ? (
-          <BlurView intensity={55} tint={colors.scheme} style={styles.headerGradient}>
+          <AdaptiveGlassSurface
+            intensity={55}
+            fallbackColor={colors.surface}
+            style={styles.headerGradient}
+            pointerEvents="box-none"
+          >
             <Ionicons name="diamond" size={28} color={Colors.brand.gold} />
             <Text style={styles.headerTitle}>Membership</Text>
             <Text style={styles.headerSubtitle}>
@@ -484,7 +489,7 @@ export default function LoyaltyScreen() {
                 ? `Welcome back, ${firstName}`
                 : "Membership plans & your loyalty account"}
             </Text>
-          </BlurView>
+          </AdaptiveGlassSurface>
         ) : (
           <View style={[styles.headerGradient, { backgroundColor: colors.surface }]}>
             <Ionicons name="diamond" size={28} color={Colors.brand.gold} />

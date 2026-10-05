@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
     position: "relative" as const,
   },
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center" as const,
     justifyContent: "center" as const,
     gap: 10,

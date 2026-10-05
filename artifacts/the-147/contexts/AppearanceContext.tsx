@@ -46,7 +46,11 @@ const defaultValue: AppearanceContextValue = {
 const AppearanceContext = createContext<AppearanceContextValue>(defaultValue);
 
 export function AppearanceProvider({ children }: { children: ReactNode }) {
-  const systemScheme = useColorScheme();
+  const currentSystemScheme = useColorScheme();
+  const systemScheme =
+    currentSystemScheme === "light" || currentSystemScheme === "dark"
+      ? currentSystemScheme
+      : null;
   const { flags, isReady } = useFeatureFlags();
   const [preference, setPreferenceState] = useState<AppearancePreference>("system");
   const [isLoading, setIsLoading] = useState(true);
@@ -80,7 +84,9 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     if (Platform.OS === "web" || typeof Appearance.setColorScheme !== "function") {
       return;
     }
-    Appearance.setColorScheme(themesEnabled && preference === "system" ? null : resolvedAppearance);
+    Appearance.setColorScheme(
+      themesEnabled && preference === "system" ? "unspecified" : resolvedAppearance,
+    );
   }, [themesEnabled, preference, resolvedAppearance]);
 
   useEffect(() => {
@@ -91,9 +97,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     ).catch(() => {});
 
     if (Platform.OS === "android") {
-      void NavigationBar.setButtonStyleAsync(
-        resolvedAppearance === "dark" ? "light" : "dark",
-      ).catch(() => {});
+      NavigationBar.setStyle(resolvedAppearance === "dark" ? "light" : "dark");
     }
   }, [resolvedAppearance]);
 

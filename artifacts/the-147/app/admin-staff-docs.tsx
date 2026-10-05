@@ -536,7 +536,7 @@ const createThemedStyles = (colors: any) => themedStyleSheet({
   statusText: { fontSize: 13, fontWeight: "600" },
 
   modalOverlay: { flex: 1, justifyContent: "flex-end" },
-  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.4)" },
+  modalBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(0,0,0,0.4)" },
   modalSheet: { backgroundColor: "#fff", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingTop: 12 },
   dragHandle: { width: 36, height: 4, backgroundColor: "#E2E8F0", borderRadius: 2, alignSelf: "center", marginBottom: 16 },
   modalTitle: { fontSize: 18, fontWeight: "700", color: Colors.light.text, marginBottom: 16 },

@@ -15,7 +15,7 @@ import { Image as ExpoImage } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
+import { BottomTabBarHeightContext } from "expo-router/js-tabs";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useQuery } from "@tanstack/react-query";
@@ -523,7 +523,7 @@ export default function HomeScreen() {
           : [Colors.brand.dark, Colors.brand.navy, Colors.brand.blue + "70"]
       }
       locations={bannerImageUrl ? [0, 0.5, 1] : [0, 0.6, 1]}
-      style={StyleSheet.absoluteFillObject}
+      style={StyleSheet.absoluteFill}
     />
   );
 
@@ -619,7 +619,7 @@ export default function HomeScreen() {
           {bannerImageUrl ? (
             <ExpoImage
               source={{ uri: withCacheBuster(bannerImageUrl, settings?.banner_image_updated_at) }}
-              style={StyleSheet.absoluteFillObject}
+              style={StyleSheet.absoluteFill}
               contentFit="cover"
               transition={300}
               cachePolicy="disk"

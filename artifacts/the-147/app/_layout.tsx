@@ -46,7 +46,7 @@ function RootLayoutNav() {
 
   return (
     <>
-      <StatusBar style={resolvedAppearance === "dark" ? "light" : "dark"} backgroundColor={colors.background} />
+      <StatusBar style={resolvedAppearance === "dark" ? "light" : "dark"} />
       <Stack
         screenOptions={{ headerBackTitle: "Back", contentStyle: { backgroundColor: colors.background } }}
         initialRouteName={isStaffVariant ? "staff-hr" : "(tabs)"}
@@ -63,51 +63,47 @@ function RootLayoutNav() {
             }}
           />
         )}
-        {showStaffRoutes && (
-          <>
-            <Stack.Screen
-              name="staff-hr"
-              options={{
-                headerShown: false,
-                presentation: isStaffVariant ? "card" : "modal",
-              }}
-            />
-            <Stack.Screen name="admin-bookings" options={{ headerShown: false, presentation: "modal" }} />
-            <Stack.Screen name="admin-offers" options={{ headerShown: false, presentation: "modal" }} />
-            <Stack.Screen name="admin-notifications" options={{ headerShown: false, presentation: "modal" }} />
-            <Stack.Screen name="admin-banner" options={{ headerShown: false, presentation: "modal" }} />
-            <Stack.Screen name="admin-events" options={{ headerShown: false, presentation: "modal" }} />
-            <Stack.Screen name="admin-staff" options={{ headerShown: false, presentation: "modal" }} />
-            <Stack.Screen name="admin-customers" options={{ headerShown: false, presentation: "modal" }} />
-            <Stack.Screen name="admin-tabs" options={{ headerShown: false, presentation: "modal" }} />
-            <Stack.Screen name="admin-tables-live" options={{ headerShown: false, presentation: "modal" }} />
-            <Stack.Screen name="admin-game" options={{ headerShown: false, presentation: "modal" }} />
-            <Stack.Screen name="admin-stock" options={{ headerShown: false, presentation: "modal" }} />
-            <Stack.Screen name="admin-availability" options={{ headerShown: false, presentation: "modal" }} />
-            <Stack.Screen name="admin-events-payments" options={{ headerShown: false, presentation: "modal" }} />
-            <Stack.Screen name="admin-loyalty" options={{ headerShown: false, presentation: "modal" }} />
-            <Stack.Screen name="admin-marketing" options={{ headerShown: false, presentation: "modal" }} />
-            <Stack.Screen name="admin-notices" options={{ headerShown: false, presentation: "modal" }} />
-            <Stack.Screen name="admin-rota" options={{ headerShown: false, presentation: "modal" }} />
-            <Stack.Screen name="admin-pay" options={{ headerShown: false, presentation: "modal" }} />
-            <Stack.Screen name="admin-staff-docs" options={{ headerShown: false, presentation: "modal" }} />
-            <Stack.Screen name="staff-hr" options={{ headerShown: false, presentation: "modal" }} />
-          </>
-        )}
+        {showStaffRoutes && [
+          <Stack.Screen
+            key="staff-hr-variant"
+            name="staff-hr"
+            options={{
+              headerShown: false,
+              presentation: isStaffVariant ? "card" : "modal",
+            }}
+          />,
+          <Stack.Screen key="admin-bookings" name="admin-bookings" options={{ headerShown: false, presentation: "modal" }} />,
+          <Stack.Screen key="admin-offers" name="admin-offers" options={{ headerShown: false, presentation: "modal" }} />,
+          <Stack.Screen key="admin-notifications" name="admin-notifications" options={{ headerShown: false, presentation: "modal" }} />,
+          <Stack.Screen key="admin-banner" name="admin-banner" options={{ headerShown: false, presentation: "modal" }} />,
+          <Stack.Screen key="admin-events" name="admin-events" options={{ headerShown: false, presentation: "modal" }} />,
+          <Stack.Screen key="admin-staff" name="admin-staff" options={{ headerShown: false, presentation: "modal" }} />,
+          <Stack.Screen key="admin-customers" name="admin-customers" options={{ headerShown: false, presentation: "modal" }} />,
+          <Stack.Screen key="admin-tabs" name="admin-tabs" options={{ headerShown: false, presentation: "modal" }} />,
+          <Stack.Screen key="admin-tables-live" name="admin-tables-live" options={{ headerShown: false, presentation: "modal" }} />,
+          <Stack.Screen key="admin-game" name="admin-game" options={{ headerShown: false, presentation: "modal" }} />,
+          <Stack.Screen key="admin-stock" name="admin-stock" options={{ headerShown: false, presentation: "modal" }} />,
+          <Stack.Screen key="admin-availability" name="admin-availability" options={{ headerShown: false, presentation: "modal" }} />,
+          <Stack.Screen key="admin-events-payments" name="admin-events-payments" options={{ headerShown: false, presentation: "modal" }} />,
+          <Stack.Screen key="admin-loyalty" name="admin-loyalty" options={{ headerShown: false, presentation: "modal" }} />,
+          <Stack.Screen key="admin-marketing" name="admin-marketing" options={{ headerShown: false, presentation: "modal" }} />,
+          <Stack.Screen key="admin-notices" name="admin-notices" options={{ headerShown: false, presentation: "modal" }} />,
+          <Stack.Screen key="admin-rota" name="admin-rota" options={{ headerShown: false, presentation: "modal" }} />,
+          <Stack.Screen key="admin-pay" name="admin-pay" options={{ headerShown: false, presentation: "modal" }} />,
+          <Stack.Screen key="admin-staff-docs" name="admin-staff-docs" options={{ headerShown: false, presentation: "modal" }} />,
+        ]}
         <Stack.Screen name="staff-onboarding" options={{ headerShown: false, presentation: "modal" }} />
         <Stack.Screen name="privacy-policy" options={{ headerShown: false, presentation: "modal" }} />
         <Stack.Screen name="gdpr-rights" options={{ headerShown: false, presentation: "modal" }} />
         <Stack.Screen name="cookie-policy" options={{ headerShown: false, presentation: "modal" }} />
         <Stack.Screen name="cancellation-policy" options={{ headerShown: false, presentation: "modal" }} />
         <Stack.Screen name="contact" options={{ headerShown: false, presentation: "modal" }} />
-        {showCustomerRoutes && (
-          <>
-            <Stack.Screen name="account" options={{ headerShown: false, presentation: "modal" }} />
-            <Stack.Screen name="membership" options={{ headerShown: false, presentation: "modal" }} />
-            <Stack.Screen name="booking" options={{ headerShown: false, presentation: "modal" }} />
-            <Stack.Screen name="order-confirmation" options={{ headerShown: false, presentation: "modal", gestureEnabled: false }} />
-          </>
-        )}
+        {showCustomerRoutes && [
+          <Stack.Screen key="account" name="account" options={{ headerShown: false, presentation: "modal" }} />,
+          <Stack.Screen key="membership" name="membership" options={{ headerShown: false, presentation: "modal" }} />,
+          <Stack.Screen key="booking" name="booking" options={{ headerShown: false, presentation: "modal" }} />,
+          <Stack.Screen key="order-confirmation" name="order-confirmation" options={{ headerShown: false, presentation: "modal", gestureEnabled: false }} />,
+        ]}
       </Stack>
       <ConsentBanner />
     </>

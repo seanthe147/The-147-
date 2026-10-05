@@ -7,12 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "the147",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/images/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0A1628"
-    },
     "ios": {
       "supportsTablet": true,
       "requireFullScreen": true,
@@ -139,6 +133,15 @@
           "origin": "https://replit.com/"
         }
       ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 100,
+          "resizeMode": "contain",
+          "backgroundColor": "#0A1628"
+        }
+      ],
       "expo-font",
       "expo-web-browser",
       [
@@ -154,6 +157,9 @@
       [
         "expo-build-properties",
         {
+          "ios": {
+            "enableSceneSupport": true
+          },
           "android": {
             "minSdkVersion": 28
           }

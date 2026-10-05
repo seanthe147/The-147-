@@ -1,11 +1,11 @@
 import { Tabs, useRouter, usePathname } from "expo-router";
-import { BlurView } from "expo-blur";
 import { Platform, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect } from "react";
 import { useColors } from "@/hooks/useColors";
 import { useTabBar } from "@/contexts/TabBarContext";
 import { useKiosk } from "@/contexts/KioskContext";
+import { AdaptiveGlassSurface } from "@/components/AdaptiveGlassSurface";
 
 export default function TabLayout() {
   const isWeb = Platform.OS === "web";
@@ -49,10 +49,11 @@ export default function TabLayout() {
           },
           tabBarBackground: () =>
             isIOS ? (
-              <BlurView
+              <AdaptiveGlassSurface
                 intensity={80}
-                tint={colors.scheme}
-                style={[StyleSheet.absoluteFill, { backgroundColor: colors.glass.card }]}
+                fallbackColor={colors.surface}
+                style={StyleSheet.absoluteFill}
+                fallbackStyle={{ backgroundColor: colors.glass.card }}
                 pointerEvents="none"
               />
             ) : isWeb ? (
@@ -63,9 +64,9 @@ export default function TabLayout() {
                     backgroundColor: colors.surface,
                     borderTopWidth: 1,
                     borderTopColor: colors.border,
+                    pointerEvents: "none",
                   },
                 ]}
-                pointerEvents="none"
               />
             ) : (
               <View
@@ -75,9 +76,9 @@ export default function TabLayout() {
                     backgroundColor: colors.surface,
                     borderTopWidth: StyleSheet.hairlineWidth,
                     borderTopColor: colors.border,
+                    pointerEvents: "none",
                   },
                 ]}
-                pointerEvents="none"
               />
             ),
         }}

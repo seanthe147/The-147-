@@ -30,9 +30,8 @@ import {
 // fade-in transition. The menu is image-heavy and was the slowest part of
 // the Order tab to render on cold start with React Native's built-in Image.
 import { Image as ExpoImage } from "expo-image";
-import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
+import { BottomTabBarHeightContext } from "expo-router/js-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
@@ -40,6 +39,7 @@ import * as WebBrowser from "expo-web-browser";
 import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
 import { useColors } from "@/hooks/useColors";
+import { AdaptiveGlassSurface } from "@/components/AdaptiveGlassSurface";
 const baseColors = Colors;
 import { useCart } from "@/contexts/CartContext";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
@@ -2742,7 +2742,7 @@ export default function OrderScreen() {
     return (
       <View style={styles.container}>
         <View style={[styles.header, { paddingTop: (insets.top) + webTopInset }]}>
-          {Platform.OS === "ios" && <BlurView intensity={65} tint={colors.scheme} style={StyleSheet.absoluteFill} />}
+          {Platform.OS === "ios" && <AdaptiveGlassSurface intensity={65} fallbackColor={colors.surface} style={StyleSheet.absoluteFill} pointerEvents="none" />}
           <View style={styles.headerRow}>
             <View>
               <Text style={styles.headerTitle}>Order</Text>
@@ -2762,7 +2762,7 @@ export default function OrderScreen() {
     return (
       <View style={styles.container}>
         <View style={[styles.header, { paddingTop: (insets.top) + webTopInset }]}>
-          {Platform.OS === "ios" && <BlurView intensity={65} tint={colors.scheme} style={StyleSheet.absoluteFill} />}
+          {Platform.OS === "ios" && <AdaptiveGlassSurface intensity={65} fallbackColor={colors.surface} style={StyleSheet.absoluteFill} pointerEvents="none" />}
           <View style={styles.headerRow}>
             <View>
               <Text style={styles.headerTitle}>Order</Text>
@@ -2787,7 +2787,7 @@ export default function OrderScreen() {
     return (
       <View style={styles.container}>
         <View style={[styles.header, { paddingTop: (insets.top) + webTopInset }]}>
-          {Platform.OS === "ios" && <BlurView intensity={65} tint={colors.scheme} style={StyleSheet.absoluteFill} />}
+          {Platform.OS === "ios" && <AdaptiveGlassSurface intensity={65} fallbackColor={colors.surface} style={StyleSheet.absoluteFill} pointerEvents="none" />}
           <View style={styles.headerRow}>
             <View>
               <Text style={styles.headerTitle}>Order</Text>
@@ -3036,7 +3036,7 @@ export default function OrderScreen() {
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: (insets.top) + webTopInset }]}>
-        {Platform.OS === "ios" && <BlurView intensity={65} tint={colors.scheme} style={StyleSheet.absoluteFill} />}
+        {Platform.OS === "ios" && <AdaptiveGlassSurface intensity={65} fallbackColor={colors.surface} style={StyleSheet.absoluteFill} pointerEvents="none" />}
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
             <Pressable onPress={handleBack} hitSlop={8} style={({ pressed }) => [styles.backBtn, { opacity: pressed ? 0.7 : 1 }]}>

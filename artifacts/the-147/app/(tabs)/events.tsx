@@ -14,14 +14,14 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BottomTabBarHeightContext } from "@react-navigation/bottom-tabs";
+import { BottomTabBarHeightContext } from "expo-router/js-tabs";
 import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
 import { Image as ExpoImage } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { useQuery } from "@tanstack/react-query";
 import Colors from "@/constants/colors";
 import { useColors } from "@/hooks/useColors";
+import { AdaptiveGlassSurface } from "@/components/AdaptiveGlassSurface";
 const baseColors = Colors;
 import { getApiUrl } from "@/lib/query-client";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -405,7 +405,12 @@ export default function EventsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {Platform.OS === "ios" ? (
-          <BlurView intensity={55} tint={colors.scheme} style={styles.heroSection}>
+          <AdaptiveGlassSurface
+            intensity={55}
+            fallbackColor={colors.surface}
+            style={styles.heroSection}
+            pointerEvents="box-none"
+          >
             <View style={styles.heroInner}>
               <Text style={styles.heroTitle}>Events & Tickets</Text>
               <Text style={styles.heroSubtitle}>
@@ -446,7 +451,7 @@ export default function EventsScreen() {
               </Text>
             </Pressable>
           </View>
-          </BlurView>
+          </AdaptiveGlassSurface>
         ) : (
           <View style={[styles.heroSection, { backgroundColor: colors.surface }]}>
             <View style={styles.heroInner}>

@@ -24,6 +24,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import { getApiUrl, prefetchSquarePaymentSdk } from "@/lib/query-client";
 import { SquarePaymentSheet } from "@/components/SquarePaymentSheet";
+import { AdaptiveGlassSurface } from "@/components/AdaptiveGlassSurface";
 import { getPlanBenefits, type BenefitKey } from "@workspace/db/schema";
 import { useColors } from "@/hooks/useColors";
 
@@ -348,6 +349,14 @@ export default function MembershipScreen() {
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) }]}>
+        {Platform.OS === "ios" && (
+          <AdaptiveGlassSurface
+            intensity={55}
+            fallbackColor={colors.surface}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+        )}
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={12}>
           <Ionicons name="chevron-back" size={22} color={Colors.light.text} />
         </Pressable>
@@ -936,7 +945,7 @@ const styleSource = {
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: Colors.light.border,
-    backgroundColor: Colors.light.background,
+    backgroundColor: Platform.OS === "ios" ? "transparent" : Colors.light.background,
   },
   backBtn: {
     width: 38,

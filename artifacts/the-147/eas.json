@@ -29,6 +29,7 @@
       "channel": "production",
       "node": "22.19.0",
       "ios": {
+        "image": "macos-tahoe-26.6-xcode-27.0",
         "buildConfiguration": "Release"
       },
       "android": {

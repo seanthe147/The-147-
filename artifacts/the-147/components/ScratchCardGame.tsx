@@ -808,7 +808,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.brand.dark,
   },
   scratchPrompt: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
