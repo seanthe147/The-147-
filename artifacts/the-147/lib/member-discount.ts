@@ -3,7 +3,8 @@
 // Square configuration is loading or an older response remains in memory.
 export const MEMBER_DISCOUNT_PREVIEW_EXCLUDED_ITEM_IDS = [
   "JZ7SZSGOYKY5RV3VG3WBBZJM", // Fosters
-  "HNDZFILFTLJVB23X5WLWZGX5", // The 147 Lager*
+  "HNDZFILFTLJVB23X5WLWZGX5", // Legacy The 147 Lager*
+  "XJEZEEDYSLEA4L6TUHTYCKHD", // Current The 147 (Pint and Half)
 ] as const;
 
 export function getMemberDiscountPreviewExcludedItemIds(

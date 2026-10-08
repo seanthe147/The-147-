@@ -1663,7 +1663,8 @@ export interface PricedLineItem {
 // and Half) and avoids relying on item names supplied by the client.
 const MEMBER_DISCOUNT_EXCLUDED_ITEM_IDS = new Set([
   "JZ7SZSGOYKY5RV3VG3WBBZJM", // Fosters
-  "HNDZFILFTLJVB23X5WLWZGX5", // The 147 Lager*
+  "HNDZFILFTLJVB23X5WLWZGX5", // Legacy The 147 Lager*
+  "XJEZEEDYSLEA4L6TUHTYCKHD", // Current The 147 (Pint and Half)
 ]);
 
 export function getMemberDiscountExcludedItemIds(): string[] {

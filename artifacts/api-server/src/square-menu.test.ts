@@ -97,15 +97,25 @@ test("excludes every variation of Fosters and The 147 Lager from member discount
     new Set([
       "JZ7SZSGOYKY5RV3VG3WBBZJM",
       "HNDZFILFTLJVB23X5WLWZGX5",
+      "XJEZEEDYSLEA4L6TUHTYCKHD",
     ]),
   );
   assert.equal(isMemberDiscountExcludedItem("JZ7SZSGOYKY5RV3VG3WBBZJM"), true);
   assert.equal(isMemberDiscountExcludedItem("HNDZFILFTLJVB23X5WLWZGX5"), true);
+  assert.equal(isMemberDiscountExcludedItem("XJEZEEDYSLEA4L6TUHTYCKHD"), true);
   assert.equal(isMemberDiscountExcludedItem("4PG6COZWTPBHCDV2XLPLAVSJ"), false);
   assert.equal(isMemberDiscountExcludedItem("D4FG2XLD4VQY4S6XDKCGFHCP"), false);
 });
 
 test("keeps blocked lager at full price without blocking eligible basket lines", () => {
+  assert.equal(
+    isMemberDiscountEligibleItem("XJEZEEDYSLEA4L6TUHTYCKHD", false, false),
+    false,
+  );
+  assert.equal(
+    isMemberDiscountEligibleItem("XJEZEEDYSLEA4L6TUHTYCKHD", true, false),
+    false,
+  );
   assert.equal(
     isMemberDiscountEligibleItem("JZ7SZSGOYKY5RV3VG3WBBZJM", false, false),
     false,

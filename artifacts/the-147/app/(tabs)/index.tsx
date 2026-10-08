@@ -32,6 +32,8 @@ import type { Event, BannerImage, Offer } from "@workspace/db/schema";
 import { isSafePublicUrl } from "@workspace/db/schema";
 import { EnableNotificationsBanner } from "@/components/EnableNotificationsBanner";
 import { trackEvent } from "@/lib/analytics";
+import { runNavigationAction } from "@/lib/navigation-action";
+import { AdaptiveGlassSurface } from "@/components/AdaptiveGlassSurface";
 
 const logoImage = require("@/assets/images/logo-147.png");
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -88,8 +90,10 @@ const HomePointsPill = memo(function HomePointsPill({ styles }: { styles: Return
   return (
     <Pressable
       onPress={() => {
-        if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        router.push("/(tabs)/loyalty");
+        runNavigationAction(
+          () => router.push("/(tabs)/loyalty"),
+          () => Platform.OS !== "web" ? Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light) : undefined,
+        );
       }}
       style={({ pressed }) => [styles.pointsPill, { opacity: pressed ? 0.8 : 1 }]}
     >
@@ -114,16 +118,31 @@ const QuickActionPill = memo(function QuickActionPill({
 }) {
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      testID={`home-shortcut-${label.toLowerCase().replaceAll(" ", "-")}`}
       onPress={() => {
-        if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        onPress();
+        runNavigationAction(
+          onPress,
+          () => Platform.OS !== "web" ? Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light) : undefined,
+        );
       }}
       style={({ pressed }) => [
         styles.quickTileWrap,
         { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.94 : 1 }] },
       ]}
     >
-      <View style={styles.quickTileIcon}>
+      <View style={[
+        styles.quickTileIcon,
+        Platform.OS === "ios" && { backgroundColor: "transparent", overflow: "hidden" },
+      ]}>
+        {Platform.OS === "ios" && (
+          <AdaptiveGlassSurface
+            style={StyleSheet.absoluteFill}
+            fallbackColor={styles.quickTileIcon.backgroundColor}
+            pointerEvents="none"
+          />
+        )}
         <Ionicons name={icon} size={24} color={iconColor ?? "#FFFFFF"} />
       </View>
       <Text style={styles.quickTileLabel}>{label}</Text>
@@ -517,6 +536,7 @@ export default function HomeScreen() {
 
   const heroOverlay = (
     <LinearGradient
+      pointerEvents="none"
       colors={
         bannerImageUrl
           ? ["transparent", "rgba(10,22,40,0.55)", "rgba(10,22,40,0.92)"]
@@ -576,10 +596,14 @@ export default function HomeScreen() {
 
       <View style={styles.heroActions}>
         <Pressable
+          accessibilityRole="button"
+          testID="home-book-table"
           onPress={() => {
-            if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             trackEvent("home_navigation_tapped", { destination: "booking" });
-            router.push("/booking");
+            runNavigationAction(
+              () => router.push("/booking"),
+              () => Platform.OS !== "web" ? Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium) : undefined,
+            );
           }}
           style={({ pressed }) => [
             styles.primaryCta,
@@ -590,10 +614,14 @@ export default function HomeScreen() {
           <Text style={styles.primaryCtaText}>Book a Table</Text>
         </Pressable>
         <Pressable
+          accessibilityRole="button"
+          testID="home-order-food"
           onPress={() => {
-            if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             trackEvent("home_navigation_tapped", { destination: "order" });
-            router.push("/(tabs)/order");
+            runNavigationAction(
+              () => router.push("/(tabs)/order"),
+              () => Platform.OS !== "web" ? Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light) : undefined,
+            );
           }}
           style={({ pressed }) => [
             styles.secondaryCta,
@@ -619,6 +647,7 @@ export default function HomeScreen() {
           {bannerImageUrl ? (
             <ExpoImage
               source={{ uri: withCacheBuster(bannerImageUrl, settings?.banner_image_updated_at) }}
+              pointerEvents="none"
               style={StyleSheet.absoluteFill}
               contentFit="cover"
               transition={300}
@@ -656,14 +685,14 @@ export default function HomeScreen() {
               styles={styles}
               icon="diamond"
               label="Membership"
-              iconColor="#FFFFFF"
+              iconColor={colors.tint}
               onPress={() => router.push("/(tabs)/loyalty")}
             />
             <QuickActionPill
               styles={styles}
               icon="mail-outline"
               label="Contact Us"
-              iconColor="#FFFFFF"
+              iconColor={colors.tint}
               onPress={goToContact}
             />
           </View>
@@ -1402,8 +1431,10 @@ function PersonalisedHomeCards({
             <Pressable
               key={`reorder-${card.appOrderId}`}
               onPress={() => {
-                if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                router.push("/(tabs)/order");
+                runNavigationAction(
+                  () => router.push("/(tabs)/order"),
+                  () => Platform.OS !== "web" ? Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light) : undefined,
+                );
               }}
               style={({ pressed }) => [styles.personalisedCard, { transform: [{ scale: pressed ? 0.98 : 1 }] }]}
               testID="home-card-reorder"
@@ -1428,8 +1459,10 @@ function PersonalisedHomeCards({
           <Pressable
             key={`dietary-${idx}`}
             onPress={() => {
-              if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push("/(tabs)/order");
+              runNavigationAction(
+                () => router.push("/(tabs)/order"),
+                () => Platform.OS !== "web" ? Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light) : undefined,
+              );
             }}
             style={({ pressed }) => [styles.personalisedCard, { transform: [{ scale: pressed ? 0.98 : 1 }] }]}
             testID="home-card-dietary"
