@@ -1,7 +1,7 @@
 # iOS 27 readiness audit
 
 **Audit date:** 2026-10-05  
-**Status:** **Not confirmed.** Expo configuration/dependency checks, the generated iOS prebuild, and iOS JavaScript export pass. The attempted remote build failed during dependency installation before Xcode; no iOS 27 installation or device runtime test was possible in this Linux environment.
+**Status:** **Not confirmed.** Expo configuration/dependency checks, the generated iOS prebuild, and iOS JavaScript export pass. The attempted remote build failed during dependency installation before Xcode; no iOS 27 installation or device runtime test was possible in this Linux environment. Square has not confirmed WKWebView support in the available project records, and the Square account's registered payment-domain status and approved sandbox setup have not been verified.
 
 ## Compatibility inventory
 
@@ -17,9 +17,11 @@
 
 ### Square / Apple Pay risk
 
-The customer checkout renders Square's Web Payments SDK inside `react-native-webview` and enables Apple Pay in the iOS WebView. Square's Apple Pay Web Payments documentation lists Safari and `SFSafariViewController`; it does not list `WKWebView`. This is an unresolved vendor-support question, not evidence that the current flow is broken. No Square dependency or payment-flow change was made without an iOS 27 sandbox result.
+The customer checkout renders Square's Web Payments SDK inside `react-native-webview` and enables Apple Pay in the iOS WebView. Square's current Web Payments Apple Pay requirements name Safari and `SFSafariViewController` on iOS; they do not list `WKWebView`. This is an unresolved vendor-support question, not proof that the current flow is broken or a written Square rejection.
 
-If the owner-run sandbox test fails, the Square integration owner should confirm WKWebView support with Square and follow the vendor's supported migration path. Do not treat the current WebView setup as iOS 27 verified.
+Square separately documents Apple Pay through its native iOS In-App Payments SDK and its React Native plugin. This is a vendor-documented alternative to investigate if Square says the Web Payments SDK is unsupported in WKWebView. It is not documented as a direct migration from this integration, and the available July 2026 iOS 27 release note is for Square's separate Mobile Payments SDK, not the In-App Payments SDK or this app's React Native wrapper. Confirm the approved route and its iOS 27 compatibility with Square before changing the checkout. No payment dependency or flow change has been made.
+
+The app includes Apple's merchant entitlement and the API server has Apple's domain-association file, but neither proves that the configured staging/production domain is registered with Square for the corresponding Apple Pay environment. The Square Developer Console or an owner-authorized Square check is still required.
 
 ## Checks completed in this environment
 
@@ -49,7 +51,7 @@ The prebuild is not an Xcode compile and does not prove that CocoaPods, code sig
 3. Change both the iOS system appearance and the app's appearance setting (system, light, and dark). Confirm screen content, status bar, and native payment surfaces remain readable after switching and relaunching. Verify the tab, order, events, rewards, and membership glass surfaces; tap the tab and cart controls, then enable Reduce Transparency and confirm the solid fallback remains readable and all controls still work.
 4. Open the app from its `the147://` deep links, including the relevant sign-in or account-return link, and confirm it lands on the intended screen.
 5. With a test account, exercise Face ID success, cancellation, and fallback. On a fresh install, verify the notification permission prompt and allow/deny behavior. Verify remote notification delivery only against a staging/test setup; do not send real customer notifications. Test camera, photo-library, and location prompts only in the authorized staff test flow where those permissions are used.
-6. Verify Square card entry and Apple Pay tokenization, cancellation, and retry using Square's approved sandbox/test setup and a staging app/API environment. Confirm the configured payment domain is registered. Do not complete a live transaction. If the production profile cannot be pointed at a safe test environment, stop before checkout and have the release owner arrange one.
+6. Before testing, have the Square integration owner obtain Square's written answer on Web Payments SDK support in this WKWebView setup. If Square does not support it, confirm the vendor-approved native alternative and its iOS 27 compatibility before implementing that route. In Square's approved sandbox/test setup and a staging app/API environment, verify the configured payment domain is registered for the correct environment, then test card entry, Apple Pay tokenization, cancellation, and retry. Do not complete a live transaction. If the production profile cannot be pointed at a safe test environment, stop before checkout and have the release owner arrange one.
 7. Record the device model, iOS 27 build, app build number, test account type, results, and any logs. Treat any crash, failed Apple Pay session, unexpected permission behavior, or notification failure as a blocker until its owner resolves it and repeats the affected test.
 
 ## References
@@ -58,6 +60,9 @@ The prebuild is not an Xcode compile and does not prove that CocoaPods, code sig
 - [Expo build-properties documentation](https://docs.expo.dev/versions/latest/sdk/build-properties/)
 - [EAS Build server images](https://docs.expo.dev/build-reference/infrastructure/)
 - [Square Web Payments Apple Pay requirements](https://developer.squareup.com/docs/web-payments/apple-pay)
+- [Square In-App Payments SDK Apple Pay for iOS](https://developer.squareup.com/docs/in-app-payments-sdk/add-digital-wallets/apple-pay)
+- [Square In-App Payments SDK React Native plugin](https://developer.squareup.com/docs/in-app-payments-sdk/react-native)
+- [Square Mobile SDK changelog, July 27, 2026](https://developer.squareup.com/docs/changelog/mobile-logs/2026-07-27) — its iOS 27 note applies to Mobile Payments SDK 2.6.0, not In-App Payments SDK.
 - [pnpm 11 build-script allowlist migration](https://pnpm.io/blog/releases/11.0)
 - [Replit mobile app publishing](https://docs.replit.com/build/mobile-app)
 - [Replit TestFlight beta testing](https://docs.replit.com/build/mobile-testflight)
