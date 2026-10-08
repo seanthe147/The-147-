@@ -18,4 +18,5 @@
 - [Native analytics provider](native-analytics.md) — native funnel events use EU-hosted PostHog with anonymous IDs; web remains on Replit-hosted Umami
 - [Expo native manifest verification](expo-native-manifest-verification.md) — verify config-plugin Android changes via temporary prebuild, not config-only introspection
 - [Expo iOS 27 readiness](expo-ios-27-readiness.md) — verify scene support in generated native output and follow SDK 56+ Expo Router import/child rules
+- [Expo cloud build source](expo-cloud-build-source.md) — verify the linked GitHub ref matches the audited workspace before requesting a metered build
 - [Expo native touch layout](expo-native-touch-layout.md) — root gesture-handler containers must fill the screen or native descendant hit testing can fail

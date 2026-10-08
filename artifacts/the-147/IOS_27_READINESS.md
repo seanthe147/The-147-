@@ -1,7 +1,9 @@
 # iOS 27 readiness audit
 
 **Audit date:** 2026-10-05  
-**Status:** **Not confirmed.** Expo configuration/dependency checks, the generated iOS prebuild, and iOS JavaScript export pass. The attempted remote build failed during dependency installation before Xcode; no iOS 27 installation or device runtime test was possible in this Linux environment. Square has not confirmed WKWebView support in the available project records, and the Square account's registered payment-domain status and approved sandbox setup have not been verified.
+**Follow-up check:** 2026-10-08
+
+**Status:** **Not confirmed.** The original configuration/dependency checks, generated iOS prebuild, and iOS JavaScript export passed. The follow-up configuration check passes, but dependency alignment now fails on six Expo patch versions. The original remote build failed during dependency installation before Xcode; a subsequent build request was cancelled because linked GitHub `main` contained older, unaudited source. No iOS 27 installation or device runtime test was possible in this Linux environment. Square has not confirmed WKWebView support in the available project records, and the Square account's registered payment-domain status and approved sandbox setup have not been verified.
 
 ## Compatibility inventory
 
@@ -41,6 +43,25 @@ The app includes Apple's merchant entitlement and the API server has Apple's dom
 - `pnpm install --frozen-lockfile --offline` — passed with the explicit `allowBuilds` map on the workspace's pnpm 10.26.1. This does not establish that a cloud production build or Xcode compilation succeeds.
 
 The prebuild is not an Xcode compile and does not prove that CocoaPods, code signing, or the finished app binary works. This runner is Linux; `xcodebuild` and `xcrun` are unavailable, and the supported Replit Publishing flow could not be run from this workspace. No production iOS binary, TestFlight install, iOS 27 simulator, or iOS 27 device was available. Accordingly, launch/relaunch, sign-in, tabs, appearance, deep links, notification prompts and delivery, Face ID, permission prompts, and checkout remain untested on iOS 27.
+
+## Verification attempt — 2026-10-08
+
+The release is still blocked; this attempt did not produce native verification results.
+
+| Evidence | Result |
+| --- | --- |
+| Local Expo configuration | `pnpm --filter @workspace/the-147 run check-expo-config` passes; scene support remains enabled. |
+| Local dependency alignment | `CI=1 pnpm --filter @workspace/the-147 run check-expo-deps` exits 1. Expected patch ranges: `expo ~57.0.27`, `expo-updates ~57.0.25`, `expo-constants ~57.0.21`, `expo-linking ~57.0.12`, `expo-notifications ~57.0.22`, and `expo-router ~57.0.25`. The earlier passing result is historical, not a current release clearance. |
+| Audited workspace target | Version `2.8.9`, build `138`; production iOS profile pins `macos-tahoe-26.6-xcode-27.0`, and scene support is enabled. |
+| Requested cloud build | Connected Expo build request `21adb0e9-92dc-4621-aad0-956b72ec72a7`, profile `production`, Git ref `main`, base directory `artifacts/the-147`, with `autoSubmit: false`. Exactly one build allowance was approved. |
+| Resolved GitHub source | Commit `0427a2534ccc0c1e8c384799533ebc2657453e26` contains version `2.8.7`, build `68`, without the Xcode 27 image pin or scene support. It is not the audited workspace release. |
+| Build outcome | Confirmed `CANCELED`. No application archive was produced. No replacement build was requested. |
+| Distribution | Not performed. Nothing was uploaded to TestFlight or submitted for public App Store review by this request. |
+| Test device / iOS build | None available / not observed. This runner is Linux and has no `xcodebuild` or iOS device access. |
+| Installed app build | None; a configured build number is not an installed or tested build. |
+| Native journey results | **NOT RUN:** cold launch; background/resume; force-quit/relaunch; sign-in/out; every customer tab; system/app appearance; deep links; notification permission and staging delivery; Face ID success/cancel/fallback; applicable permission prompts. |
+
+Before another metered build, align the dependencies and verify that the selected linked GitHub ref contains the audited release code and the supported Xcode image. Synchronize to an explicitly selected release/test branch rather than assuming GitHub `main` matches the Replit workspace. A replacement cloud build requires a new approved allowance. A successful cloud build would still not satisfy the device-test requirements below.
 
 ## Owner-run TestFlight checklist
 
