@@ -48,10 +48,10 @@
     "@workspace/db": "workspace:*",
     "babel-plugin-react-compiler": "^19.0.0-beta-e993439-20250117",
     "babel-preset-expo": "~57.0.13",
-    "expo": "~57.0.26",
+    "expo": "~57.0.27",
     "expo-blur": "~57.0.3",
     "expo-build-properties": "~57.0.22",
-    "expo-constants": "~57.0.20",
+    "expo-constants": "~57.0.21",
     "expo-device": "^57.0.2",
     "expo-document-picker": "~57.0.3",
     "expo-file-system": "~57.0.7",
@@ -61,11 +61,11 @@
     "expo-image": "~57.0.5",
     "expo-image-picker": "~57.0.20",
     "expo-linear-gradient": "~57.0.2",
-    "expo-linking": "~57.0.11",
+    "expo-linking": "~57.0.12",
     "expo-local-authentication": "~57.0.3",
     "expo-location": "~57.0.20",
-    "expo-notifications": "~57.0.21",
-    "expo-router": "~57.0.24",
+    "expo-notifications": "~57.0.22",
+    "expo-router": "~57.0.25",
     "expo-secure-store": "~57.0.4",
     "expo-splash-screen": "~57.0.9",
     "expo-status-bar": "~57.0.1",
@@ -91,7 +91,7 @@
   },
   "dependencies": {
     "expo-navigation-bar": "~57.0.3",
-    "expo-updates": "~57.0.24",
+    "expo-updates": "~57.0.25",
     "react-native-square-in-app-payments": "^2.0.1"
   }
 }

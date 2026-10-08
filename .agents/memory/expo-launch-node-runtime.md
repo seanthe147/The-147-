@@ -8,3 +8,9 @@ Replit's Expo Launch iOS export may continue using its managed Node 20 runtime e
 **Why:** Expo CLI resolved Undici 8, which requires Node 22 WebIDL APIs. Expo Launch repeatedly exported with Node 20.19.4 despite both Node 22 declarations and crashed before Metro started.
 
 **How to apply:** Until Expo Launch upgrades its managed runtime, constrain Undici to the latest Node-20-compatible 7.x release through the workspace override and verify Expo CLI can load it under the exact Launch Node version. Remove this only after a Launch log confirms Node 22+ or Expo no longer resolves the incompatible dependency.
+
+Check native build-image selections across the embedded Replit build configuration and the separate cloud-build profile as well as Node versions.
+
+**Why:** A supported Xcode image was pinned for one build route but absent from the other. Correct local configuration for one tool is not evidence that another tool will select the same native compiler.
+
+**How to apply:** When preparing a native release, keep the intended image and runtime selections consistent across build routes and confirm the actual compiler image in the completed build log.

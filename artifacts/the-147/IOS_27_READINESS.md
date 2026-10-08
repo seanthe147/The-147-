@@ -3,14 +3,14 @@
 **Audit date:** 2026-10-05  
 **Follow-up check:** 2026-10-08
 
-**Status:** **Not confirmed.** The original configuration/dependency checks, generated iOS prebuild, and iOS JavaScript export passed. The follow-up configuration check passes, but dependency alignment now fails on six Expo patch versions. The original remote build failed during dependency installation before Xcode; a subsequent build request was cancelled because linked GitHub `main` contained older, unaudited source. No iOS 27 installation or device runtime test was possible in this Linux environment. Square has not confirmed WKWebView support in the available project records, and the Square account's registered payment-domain status and approved sandbox setup have not been verified.
+**Status:** **Not confirmed.** The original generated iOS prebuild and iOS JavaScript export passed. The latest Expo configuration/dependency checks, Expo Doctor, TypeScript checks, appearance tests, and Android JavaScript export pass after dependency alignment. The original remote build failed during dependency installation before Xcode; a subsequent build request was cancelled because linked GitHub `main` contained older, unaudited source. The owner has now approved synchronizing the corrected release source to GitHub. No successful native build, iOS 27 installation, or device runtime test has been completed in this Linux environment. Square has not confirmed WKWebView support in the available project records, and the Square account's registered payment-domain status and approved sandbox setup have not been verified.
 
 ## Compatibility inventory
 
 | Area | Finding |
 | --- | --- |
-| Expo / React Native | Expo SDK 57.0.26, React Native 0.86.3, and React 19.2.3. Expo Doctor reports 21/21 checks passing; `expo install --check` passes. |
-| iOS 27 lifecycle | Expo documents that iOS 27 SDK apps must use UIKit scenes. SDK 57.0.23+ supports this through `expo-build-properties`; this app uses SDK 57.0.26 with `ios.enableSceneSupport: true`. Generated `Info.plist` contains `UIApplicationSceneManifest` and `EXExpoAppSceneDelegate`. |
+| Expo / React Native | Expo SDK 57.0.27, React Native 0.86.3, and React 19.2.3. Expo Doctor reports 21/21 checks passing; `expo install --check` passes after the latest patch alignment. |
+| iOS 27 lifecycle | Expo documents that iOS 27 SDK apps must use UIKit scenes. SDK 57.0.23+ supports this through `expo-build-properties`; this app uses SDK 57.0.27 with `ios.enableSceneSupport: true`. The audited generated `Info.plist` contains `UIApplicationSceneManifest` and `EXExpoAppSceneDelegate`. |
 | Xcode image | The production profile selects `macos-tahoe-26.6-xcode-27.0`, a documented Xcode 27.0 image. Expo lists that image for SDK 58 and documents scene support as the way to use Xcode 27 while remaining on SDK 57. The attempted remote build stopped before starting the Xcode phase. |
 | Minimum iOS | Generated Xcode settings use iOS 16.4. This is Expo SDK 56+ build-properties' documented minimum, not a hand-set iOS 27 bump. No explicit deployment-target override was added. |
 | Identity and release state | The generated plist has bundle ID `com.the147bradford.app`, version `2.8.9`, and build `138`; `Expo.plist` keeps runtime version `2.8.9`. The Apple Pay merchant entitlement and privacy manifest are present. |
@@ -56,13 +56,23 @@ The release is still blocked; this attempt did not produce native verification r
 | Requested cloud build | Connected Expo build request `21adb0e9-92dc-4621-aad0-956b72ec72a7`, profile `production`, Git ref `main`, base directory `artifacts/the-147`, with `autoSubmit: false`. Exactly one build allowance was approved. |
 | Resolved GitHub source | Commit `0427a2534ccc0c1e8c384799533ebc2657453e26` contains version `2.8.7`, build `68`, without the Xcode 27 image pin or scene support. It is not the audited workspace release. |
 | Build outcome | Confirmed `CANCELED`. No application archive was produced. No replacement build was requested. |
-| Source synchronization decision | The owner chose to leave GitHub unchanged. No test branch was created or pushed; the connected GitHub build route remains blocked by the source mismatch. |
+| Source synchronization decision | The owner initially chose to leave GitHub unchanged, then explicitly approved updating GitHub with the current fixes. See release-source preparation below. |
 | Distribution | Not performed. Nothing was uploaded to TestFlight or submitted for public App Store review by this request. |
 | Test device / iOS build | None available / not observed. This runner is Linux and has no `xcodebuild` or iOS device access. |
 | Installed app build | None; a configured build number is not an installed or tested build. |
 | Native journey results | **NOT RUN:** cold launch; background/resume; force-quit/relaunch; sign-in/out; every customer tab; system/app appearance; deep links; notification permission and staging delivery; Face ID success/cancel/fallback; applicable permission prompts. |
 
-Before another metered build through connected Expo tooling, align the dependencies and verify that the selected linked GitHub ref contains the audited release code and the supported Xcode image. Source synchronization would require renewed owner approval; do not change GitHub under the current decision. A replacement cloud build requires a new approved allowance. A successful cloud build would still not satisfy the device-test requirements below.
+Before another metered build through connected Expo tooling, verify that the selected linked GitHub ref contains the corrected release code and the supported Xcode image. A replacement cloud build requires a new approved allowance. A successful cloud build would still not satisfy the device-test requirements below.
+
+## Release-source preparation — 2026-10-08
+
+- Updated the six Expo packages to their expected SDK 57 patch ranges and regenerated the pnpm lockfile.
+- `check-expo-deps`, `check-expo-config`, mobile TypeScript checks, and Expo Doctor (21/21) pass. The nine appearance/payment-sheet tests pass.
+- A frozen-lockfile offline install passes. Android JavaScript export passes; this is not a native Android compile or a Google Play upload.
+- Android's next build is version `2.8.9`, version code `125`, with runtime `2.8.9`. The last finished remote Android build was version `2.8.8`, version code `124`, on SDK 54; a native rebuild is needed for the SDK upgrade.
+- The embedded Replit iOS production profile and `eas.json` now both select `macos-tahoe-26.6-xcode-27.0` and Node `22.19.0`. iOS version/build remain `2.8.9`/`138`, with scene support enabled.
+- The owner approved updating linked GitHub `main`. Its previous commit is an ancestor of the corrected workspace, so a normal fast-forward push can preserve existing history. Confirm the remote release commit before requesting another build.
+- No replacement paid build or store submission was requested for this source-preparation work. Native iOS 27 journey results remain **NOT RUN**.
 
 ## Owner-run TestFlight checklist
 
