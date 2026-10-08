@@ -1,6 +1,6 @@
 # Android production update — 2026-10-08
 
-**Status: NOT BUILT OR PUBLISHED.** The approved cloud attempt failed during dependency installation, before Android compilation. No app bundle was generated and no Google Play submission was attempted.
+**Status: NOT BUILT OR PUBLISHED.** Two approved cloud attempts failed before Android compilation. The initial dependency-installation mismatch was corrected; the replacement stopped at a missing Firebase client configuration during Android prebuild. No app bundle was generated and no Google Play submission was attempted.
 
 ## Intended release
 
@@ -9,7 +9,7 @@
 - Build: `production`, store distribution, Android App Bundle.
 - Intended submission: Google Play `production`, release status `completed`, as requested by the owner. Automatic submission is disabled until the finished build is checked.
 
-## Attempt and fix
+## First attempt and pnpm fix
 
 - Build ID: `2ccf51ee-7639-4dcc-aaab-9f0a64e22903`.
 - Verified GitHub source: `1f18ce43371d08be3da7c65aa2a3ae82af849524`.
@@ -19,6 +19,17 @@
 - Local checks pass after the fix: `pnpm install --frozen-lockfile --offline`, `check-expo-config`, and assertions that both production build routes select pnpm `10.26.1` with the unchanged Android release identity.
 - Version code `125` can be retained because this attempt produced no bundle and uploaded nothing to Play.
 - A replacement cloud attempt requires fresh owner approval. The pnpm fix is not proof of a successful native compile; other build phases remain unverified.
+
+## Approved replacement result
+
+- Build ID: `bc34fa83-0509-4a92-a14f-49e9e98e0849`.
+- Verified GitHub source: `51bab0738fbff7ef2a5aa21aaca09805332812bf`.
+- The worker selected Node `22.19.0` and pnpm `10.26.1`; dependency installation passed. Release metadata correctly identified version `2.8.9`, code `125`, and SDK `57.0.0`.
+- Result: `ERRORED`, `PREBUILD`, `EAS_BUILD_MISSING_GOOGLE_SERVICES_JSON_ERROR`.
+- `artifacts/the-147/google-services.json` exists locally and contains a client for the correct Android package, with no service-account or private-key material detected. Both the root and app Git ignore rules exclude it, so the GitHub checkout could not supply the declared `./google-services.json` input.
+- The other declared image inputs exist locally. Before another paid attempt, verify the required inputs in the actual cloud-source checkout and run Android prebuild against those inputs.
+- Preserve the existing file-privacy rule unless the owner explicitly approves including the Android client configuration in GitHub. Alternatively provision the file securely through Expo's production environment and keep it out of Git. Google Play service-account credentials must remain private in either case.
+- No third attempt is approved or started. Version code `125` remains unused by Play because neither attempt produced or uploaded a bundle.
 
 ## Publishing access
 
