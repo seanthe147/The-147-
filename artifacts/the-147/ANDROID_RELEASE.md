@@ -31,6 +31,18 @@
 - Preserve the existing file-privacy rule unless the owner explicitly approves including the Android client configuration in GitHub. Alternatively provision the file securely through Expo's production environment and keep it out of Git. Google Play service-account credentials must remain private in either case.
 - No third attempt is approved or started. Version code `125` remains unused by Play because neither attempt produced or uploaded a bundle.
 
+## Private Firebase file delivery
+
+The owner chose to keep the Android client file private in Expo. Both Git ignore rules remain unchanged.
+
+- A dependency-free `eas-build-pre-install` hook prepares the declared Android file from the `GOOGLE_SERVICES_JSON` file variable before Expo prebuild.
+- The hook checks the Android package and rejects service-account/private-key material without logging the file contents. iOS builds skip this Android-only requirement.
+- Eleven preparation tests and the local native-input preflight pass. Public native assets and local config-plugin inputs must be tracked; the private Firebase input requires separate cloud provisioning.
+- A clean export of the candidate Git source, initially without the ignored Firebase file, passed Android `expo prebuild --platform android --no-install --clean` after supplying the private file through the hook. The generated Firebase client matched the Android package, and generated Gradle metadata matched version `2.8.9` / code `125`. Temporary private files and generated native output were removed. This was not an APK/AAB compile or a cloud-variable verification.
+- **Required owner setup:** open the project's [Expo environment variables](https://expo.dev/accounts/the-147/projects/the-147/environment-variables), add `GOOGLE_SERVICES_JSON`, select **production**, choose type **File** and visibility **Secret**, and upload the existing `artifacts/the-147/google-services.json` file. Do not upload a Google Play service-account key or paste file contents into chat.
+- The production profile already selects the `production` environment. No private cloud variable has been created or verified by this workspace work; owner confirmation is required before another metered attempt.
+- This keeps the source file out of GitHub. Firebase client settings still become part of the compiled Android app by design.
+
 ## Publishing access
 
 - Google Play OAuth was attached to the project.

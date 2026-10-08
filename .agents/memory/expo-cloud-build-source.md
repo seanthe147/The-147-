@@ -20,3 +20,9 @@ Audit configured native file inputs against the actual cloud-source checkout or 
 **Why:** A locally present Firebase Android client file passed local configuration checks but was excluded by Git ignore rules. A paid GitHub-sourced build reached Android prebuild and failed because that required input was absent.
 
 **How to apply:** Before requesting a metered native build, check that required icons, configuration files, and plugin inputs are tracked or securely provisioned for the selected cloud environment. Preserve intentional privacy rules unless the owner approves a change; never add private service-account keys to source control.
+
+Keep the Android Firebase client configuration private in Expo rather than committing it to GitHub.
+
+**Why:** The owner explicitly chose private Expo file provisioning when the GitHub-sourced build could not receive the ignored local file.
+
+**How to apply:** Preserve the Firebase Git ignore rules and supply the required client file through the production cloud environment. This concerns source-file storage; Firebase client settings are still embedded in the Android app by design. Private service-account keys must never be embedded in the client or committed.

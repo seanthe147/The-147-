@@ -78,6 +78,46 @@ for (const file of untracked) {
 const config = JSON.parse(
   fs.readFileSync(path.join(appDir, "app.json"), "utf8"),
 ).expo;
+const { prepareAndroidFirebase } = require("./prepare-android-firebase");
+try {
+  prepareAndroidFirebase({ appDir });
+} catch (error) {
+  errors.push(error.message);
+}
+
+function checkNativeInputs(value, field = "") {
+  if (typeof value === "string" && value.startsWith("./")) {
+    const candidate = path.resolve(appDir, value);
+    const resolved = ["", ".js", ".ts", ".cjs", ".mjs", ".json"]
+      .map((extension) => candidate + extension)
+      .find((file) => fs.existsSync(file) && fs.statSync(file).isFile());
+    if (!resolved) {
+      errors.push(`missing native build input: ${field} (${value})`);
+      return;
+    }
+    if (field === "android.googleServicesFile") {
+      console.log(
+        "Private Firebase input validated locally; confirm GOOGLE_SERVICES_JSON is configured in the Expo production environment before a cloud build.",
+      );
+      return;
+    }
+    const relative = path.relative(repoRoot, resolved).replaceAll(path.sep, "/");
+    try {
+      git(["ls-files", "--error-unmatch", "--", relative]);
+    } catch {
+      errors.push(`native input is absent from the GitHub source: "${relative}"`);
+    }
+    return;
+  }
+  if (value && typeof value === "object") {
+    for (const [key, child] of Object.entries(value)) {
+      if (!field && key === "extra") continue;
+      checkNativeInputs(child, field ? `${field}.${key}` : key);
+    }
+  }
+}
+checkNativeInputs(config);
+
 if (!/^\d+\.\d+\.\d+$/.test(config.version)) {
   errors.push(`app version "${config.version}" must use semantic x.y.z format`);
 }
