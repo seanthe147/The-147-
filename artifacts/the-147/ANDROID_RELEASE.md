@@ -1,6 +1,6 @@
-# Android production update — 2026-10-08
+# Android production update — 2026-10-09
 
-**Status: NOT BUILT OR PUBLISHED.** Three approved cloud attempts failed. Dependency installation and private Firebase delivery are now confirmed in cloud logs, but the third attempt stopped when starting Gradle under Java 11. No app bundle was generated and no Google Play submission was attempted.
+**Status: BUILT, NOT PUBLISHED.** The fourth approved Android attempt produced a signed production app bundle. Its package, release identity, source commit, SDK, and store distribution were verified. The Google Play submission request failed credential-field validation before starting an upload; no submission ID was returned. Native device journeys remain untested.
 
 ## Intended release
 
@@ -55,8 +55,26 @@ The owner chose to keep the Android client file private in Expo. Both Git ignore
 - Production now explicitly requests the documented SDK 57 image `ubuntu-26.04-jdk-17-ndk-r27b-sdk-57` in both build routes. Expo's current infrastructure documentation lists Java 17 and NDK 27.1 for this image. Node `22.19.0` and pnpm `10.26.1` remain explicitly selected.
 - Native-input preflight now requires explicit Android/iOS images, an SDK-matched Android image with JDK 17+, aligned runtime selections across both routes, the production environment, an Android App Bundle, and pnpm matching the verified local toolchain.
 - After the image-selection fix, all seven toolchain guard tests, the native-input preflight, and `check-expo-config` pass. Both Android image declarations and the unchanged release identity are verified locally.
-- No fourth build is approved or started. A future attempt must confirm the requested image in cloud logs. This Linux workspace has no Java/native Android compiler, so the image-selection fix is not proof of a completed native compile.
-- Version code `125` remains available because all three attempts produced no AAB and no Play upload.
+- At this point, a fourth attempt still required separate approval and confirmation of the requested image in cloud logs. The owner subsequently approved exactly one attempt, recorded below.
+- The first three attempts produced no AAB or Play upload.
+
+## Fourth attempt: finished native bundle
+
+- Build ID: `93c6e6c8-21b9-4b5f-bcaf-3ef52d6bb71c`.
+- Verified GitHub source: `3e08a2085c9d4d2747499f8da8e0b3069df58a2c`.
+- Result: `FINISHED`, with an application archive available. Finished at `2026-10-08T23:21:35.826Z` (9 October, 00:21 BST).
+- Cloud logs confirm the requested `ubuntu-26.04-jdk-17-ndk-r27b-sdk-57` image and `JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64`. Private Firebase preparation and Android prebuild passed.
+- Gradle completed the release bundle and signing tasks. Final metadata matches Android, store distribution, SDK `57.0.0`, version `2.8.9`, and code `125`. The cloud app configuration also matches package `com.the147bradford.venue` and the intended version/code.
+- The approved allowance was used once. No additional build or automatic retry was started.
+- This verifies a native Android compile and signed bundle, not cold launch, authentication, payments, notifications, biometrics, or other physical-device journeys. It does not complete the separate iOS 27 verification.
+
+## Production submission blocker
+
+- The owner-requested production submission was attempted using the finished bundle above.
+- The submission tool returned: `GraphQL error: contains a conflict between exclusive peers [googleServiceAccountKeyId, googleServiceAccountKeyJson]`.
+- This is submission request validation, not a Java/build failure or confirmation that Google Play rejected the app. No submission ID was returned and publication is not confirmed.
+- The tool exposes no credential-selection parameter to resolve those competing fields. Do not repeat the same request unchanged, rebuild the app, or change Firebase client configuration to address this error.
+- The existing signed AAB can be reused. A documented alternative is to download it from the [finished Expo build](https://expo.dev/accounts/the-147/projects/the-147/builds/93c6e6c8-21b9-4b5f-bcaf-3ef52d6bb71c) and upload it to the existing app's production release in [Google Play Console](https://play.google.com/console/). Review/processing and any publishing controls still apply.
 
 ## Publishing access
 
@@ -64,4 +82,4 @@ The owner chose to keep the Android client file private in Expo. Both Git ignore
 - Expo's reviews check returned Google API `403 PERMISSION_DENIED`. Reviews access does not establish production-release permission.
 - The direct connector's Android Publisher request returned HTML `404`: its configured base host is `play.googleapis.com`, not the Android Publisher service host `androidpublisher.googleapis.com`. This routing failure does not prove the OAuth credential is invalid.
 - The service-account JSON path referenced by the submission profile is absent locally. Whether Expo already has suitable stored submission credentials is not yet confirmed.
-- Once a valid store build finishes, check its package, release identity, source commit, and artifact before attempting production submission. If automatic submission cannot proceed, the owner can upload the finished AAB through Play Console. Do not report an update as published until release status is confirmed.
+- The finished bundle's release identity and source were checked before the submission attempt. The callback credential-format failure, the connector's host failure, and reviews permissions are separate issues; none proves successful publication. Do not report the update as published until its production release status is confirmed.
