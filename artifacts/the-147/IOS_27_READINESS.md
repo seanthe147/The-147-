@@ -56,12 +56,13 @@ The release is still blocked; this attempt did not produce native verification r
 | Requested cloud build | Connected Expo build request `21adb0e9-92dc-4621-aad0-956b72ec72a7`, profile `production`, Git ref `main`, base directory `artifacts/the-147`, with `autoSubmit: false`. Exactly one build allowance was approved. |
 | Resolved GitHub source | Commit `0427a2534ccc0c1e8c384799533ebc2657453e26` contains version `2.8.7`, build `68`, without the Xcode 27 image pin or scene support. It is not the audited workspace release. |
 | Build outcome | Confirmed `CANCELED`. No application archive was produced. No replacement build was requested. |
+| Source synchronization decision | The owner chose to leave GitHub unchanged. No test branch was created or pushed; the connected GitHub build route remains blocked by the source mismatch. |
 | Distribution | Not performed. Nothing was uploaded to TestFlight or submitted for public App Store review by this request. |
 | Test device / iOS build | None available / not observed. This runner is Linux and has no `xcodebuild` or iOS device access. |
 | Installed app build | None; a configured build number is not an installed or tested build. |
 | Native journey results | **NOT RUN:** cold launch; background/resume; force-quit/relaunch; sign-in/out; every customer tab; system/app appearance; deep links; notification permission and staging delivery; Face ID success/cancel/fallback; applicable permission prompts. |
 
-Before another metered build, align the dependencies and verify that the selected linked GitHub ref contains the audited release code and the supported Xcode image. Synchronize to an explicitly selected release/test branch rather than assuming GitHub `main` matches the Replit workspace. A replacement cloud build requires a new approved allowance. A successful cloud build would still not satisfy the device-test requirements below.
+Before another metered build through connected Expo tooling, align the dependencies and verify that the selected linked GitHub ref contains the audited release code and the supported Xcode image. Source synchronization would require renewed owner approval; do not change GitHub under the current decision. A replacement cloud build requires a new approved allowance. A successful cloud build would still not satisfy the device-test requirements below.
 
 ## Owner-run TestFlight checklist
 
