@@ -3,7 +3,7 @@
 **Audit date:** 2026-10-05  
 **Follow-up check:** 2026-10-08
 
-**Status:** **Not confirmed.** The original generated iOS prebuild and iOS JavaScript export passed. The latest Expo configuration/dependency checks, Expo Doctor, TypeScript checks, appearance tests, and Android JavaScript export pass after dependency alignment. The original remote build failed during dependency installation before Xcode; a subsequent build request was cancelled because linked GitHub `main` contained older, unaudited source. The owner has now approved synchronizing the corrected release source to GitHub. No successful native build, iOS 27 installation, or device runtime test has been completed in this Linux environment. Square has not confirmed WKWebView support in the available project records, and the Square account's registered payment-domain status and approved sandbox setup have not been verified.
+**Status:** **Not confirmed.** The original generated iOS prebuild and iOS JavaScript export passed. The latest Expo configuration/dependency checks, Expo Doctor, TypeScript checks, appearance tests, and Android JavaScript export pass after dependency alignment. The original remote build failed during dependency installation before Xcode; a subsequent build request was cancelled because linked GitHub `main` contained older, unaudited source. With the owner's approval, GitHub `main` now contains the corrected release source. No successful native build, iOS 27 installation, or device runtime test has been completed in this Linux environment. Square has not confirmed WKWebView support in the available project records, and the Square account's registered payment-domain status and approved sandbox setup have not been verified.
 
 ## Compatibility inventory
 
@@ -56,7 +56,7 @@ The release is still blocked; this attempt did not produce native verification r
 | Requested cloud build | Connected Expo build request `21adb0e9-92dc-4621-aad0-956b72ec72a7`, profile `production`, Git ref `main`, base directory `artifacts/the-147`, with `autoSubmit: false`. Exactly one build allowance was approved. |
 | Resolved GitHub source | Commit `0427a2534ccc0c1e8c384799533ebc2657453e26` contains version `2.8.7`, build `68`, without the Xcode 27 image pin or scene support. It is not the audited workspace release. |
 | Build outcome | Confirmed `CANCELED`. No application archive was produced. No replacement build was requested. |
-| Source synchronization decision | The owner initially chose to leave GitHub unchanged, then explicitly approved updating GitHub with the current fixes. See release-source preparation below. |
+| Source synchronization decision | The owner initially chose to leave GitHub unchanged, then explicitly approved updating GitHub with the current fixes. GitHub `main` was updated and verified against the release-source commit. See release-source preparation below. |
 | Distribution | Not performed. Nothing was uploaded to TestFlight or submitted for public App Store review by this request. |
 | Test device / iOS build | None available / not observed. This runner is Linux and has no `xcodebuild` or iOS device access. |
 | Installed app build | None; a configured build number is not an installed or tested build. |
@@ -71,7 +71,7 @@ Before another metered build through connected Expo tooling, verify that the sel
 - A frozen-lockfile offline install passes. Android JavaScript export passes; this is not a native Android compile or a Google Play upload.
 - Android's next build is version `2.8.9`, version code `125`, with runtime `2.8.9`. The last finished remote Android build was version `2.8.8`, version code `124`, on SDK 54; a native rebuild is needed for the SDK upgrade.
 - The embedded Replit iOS production profile and `eas.json` now both select `macos-tahoe-26.6-xcode-27.0` and Node `22.19.0`. iOS version/build remain `2.8.9`/`138`, with scene support enabled.
-- The owner approved updating linked GitHub `main`. Its previous commit is an ancestor of the corrected workspace, so a normal fast-forward push can preserve existing history. Confirm the remote release commit before requesting another build.
+- With the owner's approval, linked GitHub `main` was updated using a normal fast-forward push, preserving history. The remote HEAD was verified to match the local release-source commit. Stale saved Git credentials initially blocked the push; an existing project credential succeeded without exposing its value. The remote URL no longer stores a token. Confirm the remote release commit before requesting another build.
 - No replacement paid build or store submission was requested for this source-preparation work. Native iOS 27 journey results remain **NOT RUN**.
 
 ## Owner-run TestFlight checklist
