@@ -74,6 +74,8 @@ Before another metered build through connected Expo tooling, verify that the sel
 - With the owner's approval, linked GitHub `main` was updated using a normal fast-forward push, preserving history. The remote HEAD was verified to match the local release-source commit. Stale saved Git credentials initially blocked the push; an existing project credential succeeded without exposing its value. The remote URL no longer stores a token. Confirm the remote release commit before requesting another build.
 - No replacement paid build or store submission was requested for this source-preparation work. Native iOS 27 journey results remain **NOT RUN**.
 
+A later Android production attempt failed because the cloud worker selected pnpm 8 instead of the locally verified pnpm 10. Production profiles now explicitly pin pnpm `10.26.1` for both build routes. See [Android release status](ANDROID_RELEASE.md); this correction does not constitute an iOS native build or device verification.
+
 ## Owner-run TestFlight checklist
 
 **Owner:** The mobile release owner, with the Square integration owner for payment testing.

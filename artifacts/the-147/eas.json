@@ -28,6 +28,7 @@
       "environment": "production",
       "channel": "production",
       "node": "22.19.0",
+      "pnpm": "10.26.1",
       "ios": {
         "image": "macos-tahoe-26.6-xcode-27.0",
         "buildConfiguration": "Release"

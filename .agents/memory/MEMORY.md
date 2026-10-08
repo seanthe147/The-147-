@@ -21,3 +21,4 @@
 - [Expo cloud build source](expo-cloud-build-source.md) — verify the linked GitHub ref matches the audited workspace before requesting a metered build
 - [Expo native touch layout](expo-native-touch-layout.md) — root gesture-handler containers must fill the screen or native descendant hit testing can fail
 - [Expo budget confirmation](expo-budget-confirmation.md) — native and chat approval previews bind different modes; obtain a matching preview before asking for approval
+- [Google Play access](google-play-access.md) — distinguish a misconfigured connector host from OAuth failure, reviews permissions, and production release authority

@@ -14,3 +14,9 @@ Check native build-image selections across the embedded Replit build configurati
 **Why:** A supported Xcode image was pinned for one build route but absent from the other. Correct local configuration for one tool is not evidence that another tool will select the same native compiler.
 
 **How to apply:** When preparing a native release, keep the intended image and runtime selections consistent across build routes and confirm the actual compiler image in the completed build log.
+
+Explicitly select the package-manager version used to verify the workspace lockfile; selecting Node alone does not select a compatible pnpm.
+
+**Why:** A cloud worker honored the production Node version but defaulted to pnpm 8, which rejected the newer workspace lockfile before native compilation. Local dependency checks and a successful local frozen install did not detect the remote tool-version mismatch.
+
+**How to apply:** Keep package-manager selections aligned across production build routes and the verified local toolchain. Preserve frozen-lockfile installation rather than regenerating dependencies in the cloud, and confirm the actual tool versions in build logs.
