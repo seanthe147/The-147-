@@ -78,6 +78,15 @@ for (const file of untracked) {
 const config = JSON.parse(
   fs.readFileSync(path.join(appDir, "app.json"), "utf8"),
 ).expo;
+const { checkBuildToolchain } = require("./check-build-toolchain");
+errors.push(
+  ...checkBuildToolchain({
+    config,
+    eas: JSON.parse(fs.readFileSync(path.join(appDir, "eas.json"), "utf8")),
+    packageJson: JSON.parse(fs.readFileSync(path.join(appDir, "package.json"), "utf8")),
+    pnpmVersion: execFileSync("pnpm", ["--version"], { encoding: "utf8" }).trim(),
+  }),
+);
 const { prepareAndroidFirebase } = require("./prepare-android-firebase");
 try {
   prepareAndroidFirebase({ appDir });

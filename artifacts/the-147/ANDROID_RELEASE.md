@@ -1,6 +1,6 @@
 # Android production update — 2026-10-08
 
-**Status: NOT BUILT OR PUBLISHED.** Two approved cloud attempts failed before Android compilation. The initial dependency-installation mismatch was corrected; the replacement stopped at a missing Firebase client configuration during Android prebuild. No app bundle was generated and no Google Play submission was attempted.
+**Status: NOT BUILT OR PUBLISHED.** Three approved cloud attempts failed. Dependency installation and private Firebase delivery are now confirmed in cloud logs, but the third attempt stopped when starting Gradle under Java 11. No app bundle was generated and no Google Play submission was attempted.
 
 ## Intended release
 
@@ -29,7 +29,7 @@
 - `artifacts/the-147/google-services.json` exists locally and contains a client for the correct Android package, with no service-account or private-key material detected. Both the root and app Git ignore rules exclude it, so the GitHub checkout could not supply the declared `./google-services.json` input.
 - The other declared image inputs exist locally. Before another paid attempt, verify the required inputs in the actual cloud-source checkout and run Android prebuild against those inputs.
 - Preserve the existing file-privacy rule unless the owner explicitly approves including the Android client configuration in GitHub. Alternatively provision the file securely through Expo's production environment and keep it out of Git. Google Play service-account credentials must remain private in either case.
-- No third attempt is approved or started. Version code `125` remains unused by Play because neither attempt produced or uploaded a bundle.
+- At this point no bundle had been produced or uploaded; version code `125` remained unused by Play. The separately approved third attempt is recorded below.
 
 ## Private Firebase file delivery
 
@@ -40,8 +40,23 @@ The owner chose to keep the Android client file private in Expo. Both Git ignore
 - Eleven preparation tests and the local native-input preflight pass. Public native assets and local config-plugin inputs must be tracked; the private Firebase input requires separate cloud provisioning.
 - A clean export of the candidate Git source, initially without the ignored Firebase file, passed Android `expo prebuild --platform android --no-install --clean` after supplying the private file through the hook. The generated Firebase client matched the Android package, and generated Gradle metadata matched version `2.8.9` / code `125`. Temporary private files and generated native output were removed. This was not an APK/AAB compile or a cloud-variable verification.
 - **Required owner setup:** open the project's [Expo environment variables](https://expo.dev/accounts/the-147/projects/the-147/environment-variables), add `GOOGLE_SERVICES_JSON`, select **production**, choose type **File** and visibility **Secret**, and upload the existing `artifacts/the-147/google-services.json` file. Do not upload a Google Play service-account key or paste file contents into chat.
-- The production profile already selects the `production` environment. No private cloud variable has been created or verified by this workspace work; owner confirmation is required before another metered attempt.
+- The owner confirmed the upload was done. The third attempt's `PRE_INSTALL_HOOK` log confirms: `Android Firebase configuration prepared from the private Expo file variable.` Android prebuild then succeeded. The file remains excluded from GitHub.
 - This keeps the source file out of GitHub. Firebase client settings still become part of the compiled Android app by design.
+
+## Third attempt and Android compiler image
+
+- Build ID: `9dda3efe-7ab1-44be-ba3a-f5887dcc4b3e`.
+- Approved limit: one additional Android build; that allowance has been used.
+- Verified GitHub source: `66b47aa48f1e2504c0f9831528c5d5f9e8846002`.
+- Cloud metadata: SDK `57.0.0`, version `2.8.9`, code `125`, store distribution.
+- Dependencies and Android prebuild passed. The private file hook worked.
+- The cloud worker selected `ubuntu-22.04-jdk-11-ndk-r21e` with Java 11 despite the SDK 57 app metadata.
+- Result: `ERRORED`, `RUN_GRADLEW`, `EAS_BUILD_UNKNOWN_GRADLE_ERROR`. The specific error was: `Gradle requires JVM 17 or later to run. Your build is currently configured to use JVM 11.`
+- Production now explicitly requests the documented SDK 57 image `ubuntu-26.04-jdk-17-ndk-r27b-sdk-57` in both build routes. Expo's current infrastructure documentation lists Java 17 and NDK 27.1 for this image. Node `22.19.0` and pnpm `10.26.1` remain explicitly selected.
+- Native-input preflight now requires explicit Android/iOS images, an SDK-matched Android image with JDK 17+, aligned runtime selections across both routes, the production environment, an Android App Bundle, and pnpm matching the verified local toolchain.
+- After the image-selection fix, all seven toolchain guard tests, the native-input preflight, and `check-expo-config` pass. Both Android image declarations and the unchanged release identity are verified locally.
+- No fourth build is approved or started. A future attempt must confirm the requested image in cloud logs. This Linux workspace has no Java/native Android compiler, so the image-selection fix is not proof of a completed native compile.
+- Version code `125` remains available because all three attempts produced no AAB and no Play upload.
 
 ## Publishing access
 

@@ -26,6 +26,7 @@
     "test:appearance": "node --experimental-strip-types --test lib/appearance.test.ts components/squarePaymentSheetHtml.test.ts",
     "prebuild:check": "node scripts/prebuild-check.js",
     "test:android-firebase": "node --test scripts/prepare-android-firebase.test.js",
+    "test:build-toolchain": "node --test scripts/check-build-toolchain.test.js",
     "check-expo-config": "expo config --type introspect",
     "check-expo-deps": "expo install --check"
   },

@@ -20,3 +20,9 @@ Explicitly select the package-manager version used to verify the workspace lockf
 **Why:** A cloud worker honored the production Node version but defaulted to pnpm 8, which rejected the newer workspace lockfile before native compilation. Local dependency checks and a successful local frozen install did not detect the remote tool-version mismatch.
 
 **How to apply:** Keep package-manager selections aligned across production build routes and the verified local toolchain. Preserve frozen-lockfile installation rather than regenerating dependencies in the cloud, and confirm the actual tool versions in build logs.
+
+Explicitly pin the SDK-matched Android builder image rather than relying on the connected build service's default.
+
+**Why:** The service reported the correct current app SDK but selected a legacy Android image with Java 11. Dependency installation and prebuild succeeded, yet Gradle could not start because it required Java 17 or newer. Node and pnpm overrides do not upgrade the builder's Java/NDK toolchain.
+
+**How to apply:** Select a supported, SDK-matched Android image from Expo's current infrastructure documentation in both production build routes. Check the actual image and Java version in cloud logs; SDK metadata, JavaScript export, and local prebuild alone do not verify the native compiler environment.
