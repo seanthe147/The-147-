@@ -19,3 +19,5 @@
 - [Expo native manifest verification](expo-native-manifest-verification.md) — verify config-plugin Android changes via temporary prebuild, not config-only introspection
 - [Expo iOS 27 readiness](expo-ios-27-readiness.md) — verify scene support in generated native output and follow SDK 56+ Expo Router import/child rules
 - [Expo native touch layout](expo-native-touch-layout.md) — root gesture-handler containers must fill the screen or native descendant hit testing can fail
+- [Banner destination compatibility](banner-destinations.md) — preserve historical destination spellings on reads; normalize new writes without recreating stored banners
+- [Bookable pool tables](booking-pool-tables.md) — Pool Table 6 is retired; offer only Pool Tables 1–5 without deleting or silently reassigning old bookings

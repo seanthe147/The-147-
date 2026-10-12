@@ -22,7 +22,13 @@ import { useColors } from "@/hooks/useColors";
 import { apiRequest, queryClient, getApiUrl, getStaffToken } from "@/lib/query-client";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import type { BannerImage } from "@workspace/db/schema";
-import { isSafePublicUrl } from "@workspace/db/schema";
+import { isSafePublicUrl, normalizeBannerLinkType, type BannerLinkType } from "@workspace/db/schema";
+
+async function refreshBannerQueries() {
+  await queryClient.invalidateQueries({
+    predicate: (query) => typeof query.queryKey[0] === "string" && query.queryKey[0].startsWith("/api/banner-images"),
+  });
+}
 
 function formatRelativeDate(dateInput: string | Date | null | undefined): string {
   if (!dateInput) return "Unknown";
@@ -56,10 +62,10 @@ export default function AdminBannerScreen() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [linkType, setLinkType] = useState<"" | "event" | "order" | "url">("");
+  const [linkType, setLinkType] = useState<"" | BannerLinkType>("");
   const [linkUrl, setLinkUrl] = useState("");
   const [editingLinkId, setEditingLinkId] = useState<number | null>(null);
-  const [editLinkType, setEditLinkType] = useState<"" | "event" | "order" | "url">("");
+  const [editLinkType, setEditLinkType] = useState<"" | BannerLinkType>("");
   const [editLinkUrl, setEditLinkUrl] = useState("");
 
   const { data: bannerImages, isLoading } = useQuery<BannerImage[]>({
@@ -215,8 +221,7 @@ export default function AdminBannerScreen() {
       setLinkType("");
       setLinkUrl("");
       if (Platform.OS === "web" && fileInputRef.current) fileInputRef.current.value = "";
-      await queryClient.refetchQueries({ queryKey: ["/api/banner-images/all"] });
-      await queryClient.refetchQueries({ queryKey: ["/api/banner-images"] });
+      await refreshBannerQueries();
     } catch (e: any) {
       const msg = e?.message || "Failed to add banner image";
       Platform.OS === "web" ? window.alert(msg) : Alert.alert("Error", msg);
@@ -229,8 +234,7 @@ export default function AdminBannerScreen() {
     const doDelete = async () => {
       try {
         await apiRequest("DELETE", `/api/banner-images/${id}`);
-        await queryClient.refetchQueries({ queryKey: ["/api/banner-images/all"] });
-        await queryClient.refetchQueries({ queryKey: ["/api/banner-images"] });
+        await refreshBannerQueries();
       } catch {
         const msg = "Failed to delete banner image";
         Platform.OS === "web" ? window.alert(msg) : Alert.alert("Error", msg);
@@ -250,8 +254,7 @@ export default function AdminBannerScreen() {
   const handleToggle = async (id: number, currentActive: boolean) => {
     try {
       await apiRequest("PUT", `/api/banner-images/${id}`, { active: !currentActive });
-      await queryClient.refetchQueries({ queryKey: ["/api/banner-images/all"] });
-      await queryClient.refetchQueries({ queryKey: ["/api/banner-images"] });
+      await refreshBannerQueries();
     } catch {
       const msg = "Failed to update banner image";
       Platform.OS === "web" ? window.alert(msg) : Alert.alert("Error", msg);
@@ -260,7 +263,7 @@ export default function AdminBannerScreen() {
 
   const openEditLink = (img: BannerImage) => {
     setEditingLinkId(img.id);
-    setEditLinkType((img.linkType as any) || "");
+    setEditLinkType(normalizeBannerLinkType(img.linkType) || "");
     setEditLinkUrl(img.linkValue || "");
   };
 
@@ -283,8 +286,7 @@ export default function AdminBannerScreen() {
         linkType: editLinkType || null,
         linkValue: editLinkType === "url" ? editLinkUrl.trim() : null,
       });
-      await queryClient.refetchQueries({ queryKey: ["/api/banner-images/all"] });
-      await queryClient.refetchQueries({ queryKey: ["/api/banner-images"] });
+      await refreshBannerQueries();
       setEditingLinkId(null);
     } catch {
       const msg = "Failed to update link";
@@ -299,8 +301,7 @@ export default function AdminBannerScreen() {
     try {
       await apiRequest("PUT", `/api/banner-images/${current.id}`, { sortOrder: prev.sortOrder });
       await apiRequest("PUT", `/api/banner-images/${prev.id}`, { sortOrder: current.sortOrder });
-      await queryClient.refetchQueries({ queryKey: ["/api/banner-images/all"] });
-      await queryClient.refetchQueries({ queryKey: ["/api/banner-images"] });
+      await refreshBannerQueries();
     } catch {}
   };
 
@@ -311,8 +312,7 @@ export default function AdminBannerScreen() {
     try {
       await apiRequest("PUT", `/api/banner-images/${current.id}`, { sortOrder: next.sortOrder });
       await apiRequest("PUT", `/api/banner-images/${next.id}`, { sortOrder: current.sortOrder });
-      await queryClient.refetchQueries({ queryKey: ["/api/banner-images/all"] });
-      await queryClient.refetchQueries({ queryKey: ["/api/banner-images"] });
+      await refreshBannerQueries();
     } catch {}
   };
 
@@ -385,7 +385,7 @@ export default function AdminBannerScreen() {
           <View style={styles.linkTypeRow}>
             {([
               { value: "", label: "None" },
-              { value: "event", label: "Events", icon: "ticket-outline" },
+              { value: "events", label: "Events", icon: "ticket-outline" },
               { value: "order", label: "Order & Pay", icon: "restaurant-outline" },
               { value: "url", label: "URL", icon: "open-outline" },
             ] as const).map((opt) => (
@@ -483,12 +483,12 @@ export default function AdminBannerScreen() {
                     {img.linkType ? (
                       <View style={styles.linkBadge}>
                         <Ionicons
-                          name={img.linkType === "event" ? "ticket-outline" : img.linkType === "order" ? "restaurant-outline" : "open-outline"}
+                          name={normalizeBannerLinkType(img.linkType) === "events" ? "ticket-outline" : img.linkType === "order" ? "restaurant-outline" : "open-outline"}
                           size={10}
                           color={Colors.brand.blue}
                         />
                         <Text style={styles.linkBadgeText}>
-                          {img.linkType === "event" ? "→ Events" : img.linkType === "order" ? "→ Order" : "→ URL"}
+                          {normalizeBannerLinkType(img.linkType) === "events" ? "→ Events" : img.linkType === "order" ? "→ Order" : "→ URL"}
                         </Text>
                       </View>
                     ) : null}
@@ -566,7 +566,7 @@ export default function AdminBannerScreen() {
             <View style={[styles.linkTypeRow, { marginBottom: 16 }]}>
               {([
                 { value: "", label: "None" },
-                { value: "event", label: "Events", icon: "ticket-outline" },
+                { value: "events", label: "Events", icon: "ticket-outline" },
                 { value: "order", label: "Order & Pay", icon: "restaurant-outline" },
                 { value: "url", label: "URL", icon: "open-outline" },
               ] as const).map((opt) => (

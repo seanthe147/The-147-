@@ -21,6 +21,7 @@ import { apiRequest, queryClient } from "@/lib/query-client";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import { useColors } from "@/hooks/useColors";
 import type { Booking, StaffNotice } from "@workspace/db/schema";
+import { POOL_TABLE_NUMBERS, isBookablePoolTable } from "@workspace/db/schema";
 
 const TABLE_LABELS: Record<string, string> = {
   snooker: "Snooker",
@@ -60,7 +61,7 @@ const BOOKING_HOURS = [
   "23:00",
 ];
 const SNOOKER_TABLES = Array.from({ length: 10 }, (_, i) => String(i + 1));
-const POOL_TABLES = Array.from({ length: 6 }, (_, i) => String(i + 1));
+const POOL_TABLES = POOL_TABLE_NUMBERS;
 const TABLE_TYPES_LIST = [
   { id: "snooker", label: "Snooker", icon: "ellipse" as const },
   { id: "pool", label: "Pool", icon: "ellipse-outline" as const },
@@ -350,7 +351,8 @@ export default function AdminBookingsScreen() {
     setWiPhone(booking.customerPhone);
     setWiEmail(booking.customerEmail || "");
     setWiTableType(booking.tableType);
-    setWiTableNumber(booking.tableNumber ? String(booking.tableNumber) : "");
+    setWiTableNumber(booking.tableType === "pool" && !isBookablePoolTable(booking.tableNumber)
+      ? "" : booking.tableNumber ? String(booking.tableNumber) : "");
     setWiTime(booking.startTime);
     setWiDuration(booking.duration);
     setWiGuestCount((booking as any).guestCount ?? 2);

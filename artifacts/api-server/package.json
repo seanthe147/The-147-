@@ -12,6 +12,8 @@
     "test:menu": "node --experimental-strip-types --test src/square-menu.test.ts",
     "test:deals": "node --experimental-strip-types --test src/square-deals.test.ts",
     "test:fixtures": "node --experimental-strip-types --test src/sports-fixtures.test.ts",
+    "test:banner-schema": "node run-banner-schema-test.mjs",
+    "test:booking-tables": "node run-banner-schema-test.mjs src/booking-tables.test.ts",
     "test:staff-fixtures": "node run-staff-fixtures-test.mjs"
   },
   "dependencies": {

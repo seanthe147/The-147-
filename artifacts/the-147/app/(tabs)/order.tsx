@@ -61,6 +61,8 @@ import type { MenuCategory, MenuItem, ModifierList, SelectedModifier } from "@/t
 import { DIETARY_TAGS, type DietaryTagCode } from "@/types/menu";
 import { useFeatureFlags } from "@/hooks/useFeatureFlags";
 import { useResponsive } from "@/hooks/useResponsive";
+import { resolveBannerDestination, type BannerImage } from "@workspace/db/schema";
+import { openBannerDestination } from "@/lib/banner-navigation";
 import {
   groupMenuItems,
   menuGroupMatchesDietaryFilters,
@@ -141,14 +143,6 @@ function getCategoryStyle(name: string): CategoryStyle {
   return { icon: "grid-outline", color: "#374151", bg: "#f3f4f6" };
 }
 
-interface BannerImage {
-  id: number;
-  imageUrl: string;
-  title?: string | null;
-  active: boolean;
-  updatedAt?: string | Date | null;
-}
-
 function withBannerCacheBuster(url: string, ts: string | number | Date | null | undefined): string {
   if (!ts || url.startsWith("data:")) return url;
   const v = ts instanceof Date ? ts.getTime() : ts;
@@ -199,8 +193,18 @@ function BannerCarousel({ banners }: { banners: BannerImage[] }) {
         scrollEventThrottle={16}
         onScroll={onScroll}
       >
-        {banners.map((banner) => (
-          <View key={banner.id} style={bannerStyles.slide}>
+        {banners.map((banner) => {
+          const destination = resolveBannerDestination(banner);
+          return (
+          <Pressable
+            key={banner.id}
+            style={bannerStyles.slide}
+            testID={`banner-order-${banner.id}`}
+            disabled={!destination}
+            accessibilityRole={destination ? "link" : undefined}
+            accessibilityLabel={destination ? (banner.title || "Open banner destination") : undefined}
+            onPress={destination ? () => openBannerDestination(destination, "order") : undefined}
+          >
             <ExpoImage
               source={{ uri: withBannerCacheBuster(banner.imageUrl, banner.updatedAt) }}
               style={bannerStyles.image}
@@ -213,8 +217,9 @@ function BannerCarousel({ banners }: { banners: BannerImage[] }) {
                 <Text style={bannerStyles.titleText}>{banner.title}</Text>
               </View>
             )}
-          </View>
-        ))}
+          </Pressable>
+          );
+        })}
       </ScrollView>
       {banners.length > 1 && (
         <View style={bannerStyles.dots}>
@@ -2512,7 +2517,8 @@ export default function OrderScreen() {
 
   const { data: banners } = useQuery<BannerImage[]>({
     queryKey: ["/api/banner-images?page=order"],
-    staleTime: 10 * 60 * 1000,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 
   const queryClient = useQueryClient();

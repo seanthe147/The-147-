@@ -24,6 +24,7 @@ import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
 import { useResponsive } from "@/hooks/useResponsive";
 import Colors from "@/constants/colors";
 import { TABLE_TYPES } from "@/lib/data";
+import { POOL_TABLE_NUMBERS } from "@workspace/db/schema";
 
 const BOOKING_HOURS = [
   "10:00", "10:30", "11:00", "11:30", "12:00", "12:30",
@@ -37,7 +38,7 @@ const ALL_DURATION_OPTIONS = [1, 2, 3, 4];
 const STANDARD_DURATION_OPTIONS = [1, 2, 3];
 
 const SNOOKER_TABLES = Array.from({ length: 10 }, (_, i) => (i + 1).toString());
-const POOL_TABLES = Array.from({ length: 6 }, (_, i) => (i + 1).toString());
+const POOL_TABLES = POOL_TABLE_NUMBERS;
 const GUEST_COUNT_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
 
 const MAX_WEEKS_AHEAD = 26;
@@ -269,7 +270,7 @@ export default function BookScreen() {
       return;
     }
     if (isPool && !selectedTableNumber) {
-      const msg = "Please select a pool table number (1–6) before confirming.";
+      const msg = "Please select a pool table number (1–5) before confirming.";
       if (Platform.OS === "web") window.alert(msg);
       else Alert.alert("Table Required", msg);
       return;
@@ -430,7 +431,7 @@ export default function BookScreen() {
               {isPool && selectedTable && (
                 <>
                   <Text style={[styles.stepTitle, { marginTop: 24 }]}>Select Table Number</Text>
-                  <Text style={styles.stepSubtitle}>Choose from our 6 pool tables</Text>
+                  <Text style={styles.stepSubtitle}>Choose from our 5 pool tables</Text>
                   <View style={styles.tableNumberGrid}>
                     {POOL_TABLES.map((num) => {
                       const isSel = selectedTableNumber === num;

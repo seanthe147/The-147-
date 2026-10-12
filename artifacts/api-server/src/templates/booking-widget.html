@@ -438,7 +438,7 @@
     <!-- Pool table number -->
     <div class="card hide" id="poolTableCard">
       <div class="card-title">Which Pool Table?</div>
-      <div class="card-sub">Select your preferred table (1–6)</div>
+      <div class="card-sub">Select your preferred table (1–5)</div>
       <div class="table-num-grid" id="poolTableGrid"></div>
     </div>
 
@@ -769,7 +769,7 @@
   function buildPoolGrid() {
     const grid = document.getElementById('poolTableGrid');
     grid.innerHTML = '';
-    for (let i = 1; i <= 6; i++) {
+    for (let i = 1; i <= 5; i++) {
       const btn = document.createElement('div');
       btn.className = 'num-btn';
       btn.textContent = String(i);

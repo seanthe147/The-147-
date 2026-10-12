@@ -26,7 +26,8 @@ const baseColors = Colors;
 import { getApiUrl } from "@/lib/query-client";
 import { useResponsive } from "@/hooks/useResponsive";
 import type { Event, BannerImage } from "@workspace/db/schema";
-import { isSafePublicUrl } from "@workspace/db/schema";
+import { resolveBannerDestination } from "@workspace/db/schema";
+import { openBannerDestination } from "@/lib/banner-navigation";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const BANNER_WIDTH = SCREEN_WIDTH - 40;
@@ -94,22 +95,16 @@ const BannerCarousel = memo(function BannerCarousel({ images }: { images: Banner
         removeClippedSubviews
       >
         {images.map((item) => {
-          const hasLink = !!item.linkType;
-          const handleBannerPress = () => {
-            if (!item.linkType) return;
-            if (item.linkType === "url" && item.linkValue) {
-              // Defense-in-depth: even though the server now rejects unsafe
-              // schemes on write, refuse to open anything that isn't a plain
-              // http(s) URL. On web `Linking.openURL` becomes a navigation,
-              // and `javascript:` URLs would execute in the page origin.
-              if (isSafePublicUrl(item.linkValue)) {
-                Linking.openURL(item.linkValue);
-              }
-            }
-          };
+          const destination = resolveBannerDestination(item);
+          const hasLink = destination !== null;
+          const handleBannerPress = () => openBannerDestination(destination, "events");
           return (
             <Pressable
               key={item.id}
+              testID={`banner-events-${item.id}`}
+              disabled={!hasLink}
+              accessibilityRole={hasLink ? "link" : undefined}
+              accessibilityLabel={hasLink ? (item.title || "Open banner destination") : undefined}
               style={({ pressed }) => [
                 styles.bannerSlide,
                 hasLink && { opacity: pressed ? 0.88 : 1 },
@@ -393,6 +388,8 @@ export default function EventsScreen() {
 
   const { data: bannerImages } = useQuery<BannerImage[]>({
     queryKey: ["/api/banner-images?page=events"],
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 
   return (

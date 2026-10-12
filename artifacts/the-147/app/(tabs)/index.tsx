@@ -29,7 +29,8 @@ import { useColors } from "@/hooks/useColors";
 const baseColors = Colors;
 import { OPENING_HOURS } from "@/lib/data";
 import type { Event, BannerImage, Offer } from "@workspace/db/schema";
-import { isSafePublicUrl } from "@workspace/db/schema";
+import { normalizeBannerLinkType, resolveBannerDestination } from "@workspace/db/schema";
+import { openBannerDestination } from "@/lib/banner-navigation";
 import { EnableNotificationsBanner } from "@/components/EnableNotificationsBanner";
 import { trackEvent } from "@/lib/analytics";
 import { runNavigationAction } from "@/lib/navigation-action";
@@ -200,26 +201,17 @@ const BannerCarousel = memo(function BannerCarousel({ images, styles }: { images
         scrollEventThrottle={16}
       >
         {images.map((item) => {
-          const hasLink = !!item.linkType;
-          const handleBannerPress = () => {
-            if (!item.linkType) return;
-            if (item.linkType === "event") {
-              router.push("/(tabs)/events");
-            } else if (item.linkType === "order") {
-              router.push("/(tabs)/order");
-            } else if (item.linkType === "url" && item.linkValue) {
-              // Defense-in-depth: even though the server now rejects unsafe
-              // schemes on write, refuse to open anything that isn't a plain
-              // http(s) URL. On web `Linking.openURL` becomes a navigation,
-              // and `javascript:` URLs would execute in the page origin.
-              if (isSafePublicUrl(item.linkValue)) {
-                Linking.openURL(item.linkValue);
-              }
-            }
-          };
+          const destination = resolveBannerDestination(item);
+          const hasLink = destination !== null;
+          const linkType = normalizeBannerLinkType(item.linkType);
+          const handleBannerPress = () => openBannerDestination(destination, "home");
           return (
             <Pressable
               key={item.id}
+              testID={`banner-home-${item.id}`}
+              disabled={!hasLink}
+              accessibilityRole={hasLink ? "link" : undefined}
+              accessibilityLabel={hasLink ? (item.title || "Open banner destination") : undefined}
               style={({ pressed }) => [
                 styles.bannerSlide,
                 hasLink && { opacity: pressed ? 0.88 : 1 },
@@ -242,12 +234,12 @@ const BannerCarousel = memo(function BannerCarousel({ images, styles }: { images
                   {hasLink ? (
                     <View style={styles.bannerLinkBadge}>
                       <Ionicons
-                        name={item.linkType === "event" ? "ticket-outline" : item.linkType === "order" ? "restaurant-outline" : "open-outline"}
+                        name={linkType === "events" ? "ticket-outline" : linkType === "order" ? "restaurant-outline" : "open-outline"}
                         size={11}
                         color="rgba(255,255,255,0.9)"
                       />
                       <Text style={styles.bannerLinkText}>
-                        {item.linkType === "event" ? "View Events" : item.linkType === "order" ? "Order Now" : "Learn More"}
+                        {linkType === "events" ? "View Events" : linkType === "order" ? "Order Now" : "Learn More"}
                       </Text>
                       <Ionicons name="chevron-forward" size={11} color="rgba(255,255,255,0.9)" />
                     </View>
@@ -257,12 +249,12 @@ const BannerCarousel = memo(function BannerCarousel({ images, styles }: { images
                 <View style={styles.bannerOverlayMinimal}>
                   <View style={styles.bannerLinkBadge}>
                     <Ionicons
-                      name={item.linkType === "event" ? "ticket-outline" : item.linkType === "order" ? "restaurant-outline" : "open-outline"}
+                      name={linkType === "events" ? "ticket-outline" : linkType === "order" ? "restaurant-outline" : "open-outline"}
                       size={11}
                       color="rgba(255,255,255,0.9)"
                     />
                     <Text style={styles.bannerLinkText}>
-                      {item.linkType === "event" ? "View Events" : item.linkType === "order" ? "Order Now" : "Learn More"}
+                      {linkType === "events" ? "View Events" : linkType === "order" ? "Order Now" : "Learn More"}
                     </Text>
                     <Ionicons name="chevron-forward" size={11} color="rgba(255,255,255,0.9)" />
                   </View>
@@ -508,6 +500,8 @@ export default function HomeScreen() {
 
   const { data: bannerImages, isLoading: bannersLoading } = useQuery<BannerImage[]>({
     queryKey: ["/api/banner-images?page=home"],
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 
   const { data: settings } = useQuery<Record<string, string>>({

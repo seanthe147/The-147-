@@ -5566,12 +5566,12 @@
   }
 
   function buildTableNumChips(type){
-    const count=type==='pool'?6:10;
+    const count=type==='pool'?5:10;
     const wrap=el('tableNumChips');
     wrap.innerHTML='';
     const current=parseInt(chipState.tableNum)||1;
-    const clamped=Math.min(current,count);
-    chipState.tableNum=String(clamped);
+    const clamped=type==='pool'&&current>count?null:Math.min(current,count);
+    chipState.tableNum=clamped===null?'':String(clamped);
     for(let i=1;i<=count;i++){
       const b=document.createElement('button');
       b.className='chip-btn chip-num'+(i===clamped?' selected':'');
@@ -5761,6 +5761,10 @@
     if(!phone){err.textContent='Phone number is required';err.classList.add('show');return}
     if(!gdpr&&!editingId){err.textContent='Customer must consent to data processing';err.classList.add('show');return}
     const tableType=chipState.tableType;
+    if(tableType==='pool'&&!/^[1-5]$/.test(chipState.tableNum)){
+      err.textContent='Select a pool table from 1 to 5. Pool Table 6 is no longer available for booking.';
+      err.classList.add('show');return;
+    }
     const payload={
       tableType,
       tableNumber:(tableType==='snooker'||tableType==='pool')?parseInt(chipState.tableNum):null,
@@ -7900,7 +7904,7 @@
               <option value="" ${!b.linkType?'selected':''}>No link</option>
               <option value="url" ${b.linkType==='url'?'selected':''}>External website URL</option>
               <option value="order" ${b.linkType==='order'?'selected':''}>→ Order page</option>
-              <option value="events" ${b.linkType==='events'?'selected':''}>→ Events page</option>
+              <option value="events" ${(b.linkType==='events'||b.linkType==='event')?'selected':''}>→ Events page</option>
             </select>
             ${b.linkType==='url'?`<input type="url" value="${esc(b.linkValue||'')}" placeholder="https://…" onchange="setBannerLinkUrl(${b.id},this.value)" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text-1);font-size:12px;box-sizing:border-box">`:''}
             ${b.linkType&&b.linkType!=='url'?`<div style="font-size:11px;color:var(--blue);padding:4px 0">Tapping opens the ${b.linkType} tab in the app</div>`:''}
@@ -8169,22 +8173,34 @@
   }
 
   async function setBannerLinkType(id, linkType) {
+    if (linkType === 'event') linkType = 'events';
     try {
-      const r = await api('/api/banner-images/'+id, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({linkType: linkType || null, linkValue: linkType ? (bannersData.find(b=>b.id===id)?.linkValue || null) : null})});
+      // Selecting URL first displays the input; persist it together with its
+      // value when entered, rather than attempting an invalid empty-URL PUT.
+      const current = bannersData.find(b=>b.id===id);
+      if (linkType === 'url' && !current?.linkValue) {
+        if (current) current.linkType = 'url';
+        renderBanners();
+        return;
+      }
+      const r = await api('/api/banner-images/'+id, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({linkType: linkType || null, linkValue: linkType === 'url' ? (current?.linkValue || null) : null})});
       if (!r.ok) throw new Error();
+      const saved = await r.json();
       const idx = bannersData.findIndex(b=>b.id===id);
-      if (idx > -1) { bannersData[idx].linkType = linkType || null; if (!linkType) bannersData[idx].linkValue = null; }
+      if (idx > -1) bannersData[idx] = saved;
       renderBanners();
-    } catch(e) { alert('Failed to update banner link'); }
+    } catch(e) { alert('Failed to update banner link'); await loadBanners(); }
   }
 
   async function setBannerLinkUrl(id, url) {
     try {
-      const r = await api('/api/banner-images/'+id, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({linkValue: url || null})});
+      const r = await api('/api/banner-images/'+id, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({linkType: 'url', linkValue: url.trim() || null})});
       if (!r.ok) throw new Error();
+      const saved = await r.json();
       const idx = bannersData.findIndex(b=>b.id===id);
-      if (idx > -1) bannersData[idx].linkValue = url || null;
-    } catch(e) { alert('Failed to update banner link URL'); }
+      if (idx > -1) bannersData[idx] = saved;
+      renderBanners();
+    } catch(e) { alert('Failed to update banner link URL'); await loadBanners(); }
   }
 
   window.setBannerLinkType=setBannerLinkType;

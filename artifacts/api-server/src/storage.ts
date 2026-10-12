@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { eq, lt, lte, sql, and, gt, isNull, isNotNull, gte, desc, inArray, ne, ilike, or } from "drizzle-orm";
+import { POOL_TABLE_NUMBERS } from "@workspace/db/schema";
 import {
   type User,
   type InsertUser,
@@ -1098,6 +1099,10 @@ export class DatabaseStorage implements IStorage {
     ];
     if (tableNumber) {
       conditions.push(eq(bookings.tableNumber, tableNumber));
+    } else if (tableType === "pool") {
+      // Historical reservations for retired tables must not reduce capacity
+      // for the remaining bookable tables.
+      conditions.push(inArray(bookings.tableNumber, [...POOL_TABLE_NUMBERS]));
     }
     if (excludeBookingId) {
       conditions.push(ne(bookings.id, excludeBookingId));

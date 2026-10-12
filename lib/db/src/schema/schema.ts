@@ -8,6 +8,11 @@ import { createInsertSchema } from "drizzle-zod";
 // which surfaces to customers as the generic "Booking Error / unexpected
 // error" alert. Keep this import on `zod/v4`.
 import { z } from "zod/v4";
+import { isSafePublicUrl, normalizeBannerLinkType } from "./banner-destination";
+import { isBookablePoolTable } from "./booking-tables";
+export { POOL_TABLE_NUMBERS, isBookablePoolTable } from "./booking-tables";
+export { isSafePublicUrl, normalizeBannerLinkType, resolveBannerDestination, activateBannerDestination } from "./banner-destination";
+export type { BannerLinkType, BannerTab, BannerDestination } from "./banner-destination";
 
 export const users = pgTable("users", {
   id: varchar("id")
@@ -127,6 +132,15 @@ export const insertBookingSchema = createInsertSchema(bookings)
     guestCount: z.number().int().nullable().optional(),
     notes: z.string().nullable().optional(),
     emailHash: z.string().nullable().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.tableType === "pool" && !isBookablePoolTable(data.tableNumber)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["tableNumber"],
+        message: "Please select a pool table number (1–5). Pool Table 6 is no longer available for booking.",
+      });
+    }
   });
 
 export type InsertBooking = z.infer<typeof insertBookingSchema>;
@@ -397,25 +411,15 @@ export const bannerImages = pgTable("banner_images", {
 // auth tokens stored in AsyncStorage (`customer_session_token`,
 // `staff_session_token`). To prevent this stored-XSS sink, we restrict the
 // stored value to plain http/https navigation URLs at every entry point.
-// Helper is exported so the server, the schema, and the two client sinks can
+// Helper is exported so the server, the schema, and all client sinks can
 // all share one definition.
-export function isSafePublicUrl(value: unknown): value is string {
-  if (typeof value !== "string") return false;
-  const trimmed = value.trim();
-  if (!trimmed) return false;
-  let parsed: URL;
-  try {
-    parsed = new URL(trimmed);
-  } catch {
-    return false;
-  }
-  // Only allow standard navigation schemes. Explicitly rejects `javascript:`,
-  // `data:`, `vbscript:`, `file:`, `blob:`, etc.
-  return parsed.protocol === "https:" || parsed.protocol === "http:";
-}
-
 export const insertBannerImageSchema = createInsertSchema(bannerImages)
   .omit({ id: true, createdAt: true, updatedAt: true })
+  .extend({
+    linkType: z.enum(["event", "events", "order", "url"]).nullable().optional().transform(
+      (value) => value === undefined ? undefined : normalizeBannerLinkType(value),
+    ),
+  })
   .superRefine((data, ctx) => {
     if (data.linkType === "url" && data.linkValue != null && !isSafePublicUrl(data.linkValue)) {
       ctx.addIssue({

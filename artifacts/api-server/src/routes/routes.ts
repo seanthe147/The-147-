@@ -10,6 +10,7 @@ import nodemailer from "nodemailer";
 import { storage, db } from "../storage";
 import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema, isSafePublicUrl, tabs, tabItems, bookings as bookingsTable, tableSessions, marketingCampaigns, emailAutomations, emailUnsubscribes, emailSendLog, customers as customersTable, membershipSubscriptions as membershipSubsTable, venueRewardClaims, venueRewardTiers, venueRewardTiers as venueRewardTiersT, gamePlays, gamePrizes, staffUsers as staffUsersTable, stockCategories, stockItems, stockDeliveries, stockDeliveryLines, stockCounts, stockCountLines, stockItemPosLinks } from "@workspace/db";
 import type { InsertBannerImage } from "@workspace/db";
+import { normalizeBannerLinkType, POOL_TABLE_NUMBERS, isBookablePoolTable } from "@workspace/db";
 import { and as dAnd, eq as dEq, desc as dDesc, isNotNull as dIsNotNull, sql as dSql, gte as dGte, lte as dLte, asc as dAsc, lt as dLt, inArray as dInArray } from "drizzle-orm";
 import { getServerFeatureFlags } from "../featureFlags";
 import { hashPin, verifyPin, hashPassword, verifyPassword, hashEmail, decrypt } from "../encryption";
@@ -3740,7 +3741,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     }
 
     const toSlotMins = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + (m || 0); };
-    const POOL_TABLE_COUNT = 6;
+    const POOL_TABLE_COUNT = POOL_TABLE_NUMBERS.length;
     const DINING_TABLE_COUNT = 25;
     const DINING_TABLE_START = 18;
     let finalTableNumber = parsed.data.tableNumber ?? null;
@@ -3835,13 +3836,13 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       }
       finalTableNumber = assigned;
     } else if (parsed.data.tableType === "pool") {
-      // Pool: customer selects table number (1–6), require it
+      // Pool: customer selects an active table number (1–5), require it
       if (!parsed.data.tableNumber) {
-        return res.status(400).json({ message: "Please select a pool table number (1–6)" });
+        return res.status(400).json({ message: "Please select a pool table number (1–5)" });
       }
       const poolNum = parseInt(parsed.data.tableNumber);
-      if (poolNum < 1 || poolNum > POOL_TABLE_COUNT) {
-        return res.status(400).json({ message: "Invalid pool table number. Choose between 1 and 6." });
+      if (poolNum < 1 || poolNum > POOL_TABLE_COUNT || !isBookablePoolTable(parsed.data.tableNumber)) {
+        return res.status(400).json({ message: "Invalid pool table number. Choose between 1 and 5." });
       }
       // Per-table conflict check
       const bookedSlots = await storage.getBookedSlots(parsed.data.date, "pool", parsed.data.tableNumber);
@@ -4155,7 +4156,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     if (!date || !tableType) {
       return res.status(400).json({ message: "date and tableType are required" });
     }
-    const POOL_TABLE_COUNT = 6;
+    const POOL_TABLE_COUNT = POOL_TABLE_NUMBERS.length;
+    if (tableType === "pool" && tableNumber !== undefined && !isBookablePoolTable(tableNumber)) {
+      return res.status(400).json({ message: "Please select a pool table number (1–5). Pool Table 6 is no longer available for booking." });
+    }
     const DINING_TABLE_COUNT = 25;
     const excludeBookingId = excludeId ? parseInt(String(excludeId)) : undefined;
     // For dining: return all dining bookings so the frontend can count concurrent usage
@@ -5163,6 +5167,9 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     const finalStartTime = updateData.startTime ?? existing.startTime;
     const finalDuration = updateData.duration ?? existing.duration;
     if (updateData.date || updateData.startTime || updateData.duration || updateData.tableType || updateData.tableNumber) {
+      if (finalTableType === "pool" && !isBookablePoolTable(String(finalTableNumber ?? ""))) {
+        return res.status(400).json({ message: "Pool Table 6 is no longer available for booking. Please select a pool table from 1 to 5." });
+      }
       const bookedSlots = await storage.getBookedSlots(finalDate, finalTableType, finalTableNumber ?? undefined);
       const requestedStart = parseInt(finalStartTime.replace(":", ""));
       const requestedEnd = requestedStart + finalDuration * 100;
@@ -8693,7 +8700,11 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         const imageUrl = `data:image/jpeg;base64,${compressed.toString("base64")}`;
         const sortOrder = parseInt(req.body.sortOrder ?? "0");
         const active = req.body.active !== "false";
-        const linkType = req.body.linkType?.trim() || null;
+        const rawLinkType = req.body.linkType?.trim() || null;
+        const linkType = normalizeBannerLinkType(rawLinkType);
+        if (rawLinkType !== null && linkType === null) {
+          return res.status(400).json({ message: "Invalid banner destination" });
+        }
         // Force linkValue to null for non-url link types so a "park unsafe
         // value under linkType=event, then flip linkType to url later"
         // bypass is impossible at the storage layer. Banners with
@@ -8743,6 +8754,13 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     const existing = await storage.getBannerImageById(id);
     if (!existing) return res.status(404).json({ error: "Banner image not found" });
     const body = (req.body ?? {}) as Partial<InsertBannerImage>;
+    if (body.linkType !== undefined) {
+      const normalized = normalizeBannerLinkType(body.linkType);
+      if (body.linkType !== null && normalized === null) {
+        return res.status(400).json({ message: "Invalid banner destination" });
+      }
+      body.linkType = normalized;
+    }
     const finalLinkType = body.linkType !== undefined ? body.linkType : existing.linkType;
     const submittedValue = typeof body.linkValue === "string" ? body.linkValue.trim() : body.linkValue;
     const finalLinkValue = body.linkValue !== undefined ? submittedValue : existing.linkValue;
@@ -11854,6 +11872,9 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     }
     if (booking.status === "cancelled") {
       return res.status(400).json({ message: "Cannot reschedule a cancelled booking" });
+    }
+    if (booking.tableType === "pool" && !isBookablePoolTable(booking.tableNumber)) {
+      return res.status(400).json({ message: "This pool table is no longer available for booking. Please contact staff to move your booking to a table from 1 to 5." });
     }
     const today = new Date().toISOString().split("T")[0];
     if (booking.date < today) {

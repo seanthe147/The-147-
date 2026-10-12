@@ -21,6 +21,7 @@
     "test:google-pay-branding": "node --experimental-strip-types --test lib/google-pay-branding.test.ts components/squarePaymentSheetHtml.test.ts components/squareCardFieldHtml.test.ts",
     "test:apple-pay-branding": "node --experimental-strip-types --test components/squarePaymentSheetHtml.test.ts components/squareCardFieldHtml.test.ts",
     "test:menu-grouping": "node --experimental-strip-types --test lib/menu-grouping.test.ts",
+    "test:banner-navigation": "node --experimental-strip-types --test lib/banner-navigation.test.ts",
     "test:order-release-check": "node --experimental-strip-types --test lib/order-release-check.test.ts",
     "test:appearance": "node --experimental-strip-types --test lib/appearance.test.ts components/squarePaymentSheetHtml.test.ts",
     "prebuild:check": "node scripts/prebuild-check.js",
