@@ -4,7 +4,7 @@ import { membershipBillingStates as states, membershipSubscriptions as subscript
 import { db, storage } from "./storage";
 import * as square from "./square";
 import {
-  BILLING_TERMS_VERSION, cancellationAllowed, commitmentEnd, minimumTermMonths,
+  BILLING_TERMS_VERSION, cancellationAllowed, commitmentEnd, minimumTermMonths, isPlatinumConsolidation,
   validDate, variationForFrequency, type BillingFrequency,
 } from "./membership-billing-policy";
 
@@ -37,9 +37,30 @@ export async function alignBillingStart(id: number, plan: { name: string; tier?:
   if (!validDate(start)) return;
   const state = await billingState(id);
   if (!state?.termsVersion) return; // Never impose a term on an old customer retroactively.
+  const acceptedPlan = state.pendingPlanId ? await storage.getMembershipPlan(state.pendingPlanId) : plan;
+  if (!acceptedPlan) throw new Error("Accepted membership plan not found");
   await db.update(states).set({
-    commitmentStartDate: start, commitmentEndDate: commitmentEnd(plan, start),
+    commitmentStartDate: start, commitmentEndDate: commitmentEnd(acceptedPlan, start),
+    ...(state.pendingPlanId ? { pendingEffectiveDate: start } : {}),
   }).where(eq(states.subscriptionId, id));
+}
+
+export async function migrationOffer(plan: Awaited<ReturnType<typeof storage.getMembershipPlan>>) {
+  if (plan?.tier === "maximum") {
+    plan = (await storage.getMembershipPlans()).find(p => p.tier === "platinum");
+  }
+  if (!plan?.active || plan.hideFromSignup) throw new Error("This migration needs staff to select an available plan.");
+  return plan;
+}
+
+export async function prepareMigrationOffer(id: number, oldPlanId: number, plan: NonNullable<Awaited<ReturnType<typeof storage.getMembershipPlan>>>, frequency: BillingFrequency, start: string) {
+  await recordBillingTerms(id, plan, frequency, start);
+  if (oldPlanId !== plan.id) {
+    // Preserve legacy entitlements until a signed successful-payment event.
+    await db.update(states).set({
+      pendingPlanId: plan.id, pendingFrequency: frequency, pendingEffectiveDate: start,
+    }).where(eq(states.subscriptionId, id));
+  }
 }
 
 export async function migrationBillingStart(id: number): Promise<string> {
@@ -144,7 +165,7 @@ export async function syncPaidMembershipGroups(subscriptionId: number) {
     if (target) await square.addCustomerToGroup(local.squareCustomerId, target);
     for (const group of groups) {
       if (group.id !== target && current.includes(group.id) &&
-          plans.some(p => !p.hideFromSignup &&
+          plans.some(p => (!p.hideFromSignup || p.tier === "maximum") &&
             (p.squareCustomerGroupId === group.id || square.membershipGroupName(p.name) === group.name))) {
         await square.removeCustomerFromGroup(local.squareCustomerId, group.id);
       }
@@ -156,8 +177,9 @@ export function registerMembershipBilling(app: Express, customerAuth: RequestHan
   app.get("/api/membership/billing", customerAuth, async (req, res) => {
     try {
       let sub = await storage.getMembershipSubscriptionByCustomer((req as any).customerId);
+      let remote: any = null;
       if (sub?.squareSubscriptionId) {
-        const remote = await square.getSquareSubscription(sub.squareSubscriptionId);
+        remote = await square.getSquareSubscription(sub.squareSubscriptionId);
         await reconcileScheduledMembership(remote);
         sub = await storage.getMembershipSubscriptionByCustomer((req as any).customerId);
       }
@@ -171,7 +193,8 @@ export function registerMembershipBilling(app: Express, customerAuth: RequestHan
           frequency: state?.billingFrequency ?? (sub.source.includes("annual") ? "annual" : "monthly"),
           status: sub.status, renewalDate: sub.currentPeriodEnd ?? null,
           commitmentEndDate: state?.commitmentEndDate ?? null,
-          cancellationAllowed: cancellationAllowed(state?.commitmentEndDate ?? null, today()) &&
+          cancellationAllowed: cancellationAllowed(state?.commitmentEndDate ?? null, today(),
+            state?.billingFrequency === "annual" && sub.status === "active" ? remote?.charged_through_date ?? null : null) &&
             !!sub.squareSubscriptionId && !state?.pendingPlanId && !state?.cancellationDate,
           pendingPlanName: pending?.name ?? null, pendingDate: state?.pendingEffectiveDate ?? null,
           cancellationDate: state?.cancellationDate ?? null, managedInSquare: !!sub.squareSubscriptionId,
@@ -202,7 +225,7 @@ export function registerMembershipBilling(app: Express, customerAuth: RequestHan
         const target = await storage.getMembershipPlan(planId);
         const current = await storage.getMembershipPlan(sub.planId);
         if (!target?.active || target.hideFromSignup || !current) throw new Error("Plan is not available.");
-        if (target.id !== current.id && target.priceMonthly <= current.priceMonthly) {
+        if (target.id !== current.id && target.priceMonthly <= current.priceMonthly && !isPlatinumConsolidation(current, target)) {
           throw new Error("Only upgrades are available here. Contact the club about a downgrade.");
         }
         const currentFrequency = state?.billingFrequency ?? (sub.source.includes("annual") ? "annual" : "monthly");
@@ -244,11 +267,12 @@ export function registerMembershipBilling(app: Express, customerAuth: RequestHan
       const response = await db.transaction(async tx => {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(14702, ${sub.id})`);
         const state = await billingState(sub.id, tx);
-        if (!cancellationAllowed(state?.commitmentEndDate ?? null, today())) {
+        const remote = await square.getSquareSubscription(sub.squareSubscriptionId!);
+        if (!cancellationAllowed(state?.commitmentEndDate ?? null, today(),
+          state?.billingFrequency === "annual" && sub.status === "active" ? remote.charged_through_date ?? null : null)) {
           throw new Error(`Your minimum term runs until ${state!.commitmentEndDate}. Contact the club for exceptional circumstances.`);
         }
         if (state?.pendingPlanId) throw new Error("An upgrade is already scheduled. Contact the club.");
-        const remote = await square.getSquareSubscription(sub.squareSubscriptionId!);
         if (remote.actions?.some((a: any) => a.type === "SWAP_PLAN")) throw new Error("Square has a scheduled upgrade. Contact the club.");
         const result = remote.canceled_date ? remote : await square.cancelSquareSubscription(sub.squareSubscriptionId!);
         if (!validDate(result.canceled_date)) throw new Error("Square did not confirm the cancellation date. Contact the club before retrying.");

@@ -23,6 +23,10 @@ test("cancellation allowed on/after minimum-term end", () => {
   assert.equal(cancellationAllowed("2027-10-13", "2027-10-13"), true);
   assert.equal(cancellationAllowed(null, "2026-10-13"), true);
 });
+test("paid annual members can stop next year's renewal without shortening their 12-month access", () => {
+  assert.equal(cancellationAllowed("2027-10-13", "2026-10-13", "2027-10-13"), true);
+  assert.equal(cancellationAllowed("2027-10-13", "2026-10-13", "2026-11-13"), false);
+});
 test("annual billing must never fall back to a monthly Square variation", () => {
   assert.throws(() => variationForFrequency({ squarePlanVariationId: "monthly", priceAnnual: 10000 }, "annual"));
   assert.equal(variationForFrequency({ squarePlanVariationId: "monthly", squarePlanVariationIdAlt: "annual", priceAnnual: 10000 }, "annual"), "annual");

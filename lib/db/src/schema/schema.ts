@@ -538,6 +538,10 @@ export const insertMembershipPlanSchema = createInsertSchema(membershipPlans).om
 
 export type InsertMembershipPlan = z.infer<typeof insertMembershipPlanSchema>;
 export type MembershipPlan = typeof membershipPlans.$inferSelect;
+export const membershipPlanVariationAliases = pgTable("membership_plan_variation_aliases", {
+  squareVariationId: text("square_variation_id").primaryKey(),
+  planId: integer("plan_id").notNull().references(() => membershipPlans.id),
+});
 
 export const membershipSubscriptions = pgTable("membership_subscriptions", {
   id: serial("id").primaryKey(),

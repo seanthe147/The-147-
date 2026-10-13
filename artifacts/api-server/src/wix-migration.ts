@@ -283,7 +283,7 @@ export function renderMigrationLandingPage(opts: {
 
   return wrapMigrationPage(`
     <h1 style="margin:0 0 10px;font-size:26px;font-weight:700">Welcome to the new system, ${name}.</h1>
-    <p style="margin:0 0 24px;font-size:15px;color:#555;line-height:1.55">Your membership has already been moved across — we just need you to set up your card so we can take next month's payment on <strong>${renews}</strong>.</p>
+    <p style="margin:0 0 24px;font-size:15px;color:#555;line-height:1.55">Review your Platinum billing choice below. After staff have verified that Wix recurring billing has stopped and your existing paid-through date has arrived, you can authorise Square to process future membership payments.</p>
     <div style="background:#faf6e8;border:1px solid #e8dcb1;border-radius:12px;padding:18px 20px;margin:0 0 26px">
       <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#7a6a2e;margin-bottom:6px">Your plan</div>
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
@@ -300,7 +300,7 @@ export function renderMigrationLandingPage(opts: {
     <label style="display:block;margin:16px 0;font-size:14px;line-height:1.6">
       <input id="migrationTerms" type="checkbox">
       I accept recurring billing and the <a href="/terms" target="_blank" rel="noopener">membership terms</a>.
-      Black and Platinum have a 12-month minimum term; monthly billing continues monthly afterwards with cancellation allowed.
+      Platinum has a 12-month minimum term; monthly billing continues monthly afterwards with cancellation allowed.
       Other plans can be cancelled at renewal. Annual memberships renew yearly.
     </label>
     <p style="font-size:13px;color:#555">Staff must verify Wix recurring billing has stopped. Activate Square on or after your existing paid-through date to avoid overlapping charges. Your old card cannot transfer automatically.</p>

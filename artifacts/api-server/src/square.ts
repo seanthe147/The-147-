@@ -1008,12 +1008,13 @@ export async function createCatalogSubscriptionPlan(opts: {
   localPlanId: number;
   name: string;
   amountPence: number;
+  frequency?: "monthly" | "annual";
 }): Promise<PlanSetupResult> {
   const tempPlanId = `#plan-${opts.localPlanId}`;
   const tempVarId = `#var-${opts.localPlanId}`;
 
   const data = await squareRequest("POST", "/v2/catalog/batch-upsert", {
-    idempotency_key: `147-membership-plan-${opts.localPlanId}-${Date.now()}`,
+    idempotency_key: createHash("sha256").update(`147-plan:${opts.localPlanId}:${opts.name}:${opts.frequency ?? "monthly"}:${opts.amountPence}`).digest("hex").slice(0, 40),
     batches: [
       {
         objects: [
@@ -1027,10 +1028,10 @@ export async function createCatalogSubscriptionPlan(opts: {
                   type: "SUBSCRIPTION_PLAN_VARIATION",
                   id: tempVarId,
                   subscription_plan_variation_data: {
-                    name: "Monthly",
+                    name: opts.frequency === "annual" ? "Annual" : "Monthly",
                     phases: [
                       {
-                        cadence: "MONTHLY",
+                        cadence: opts.frequency === "annual" ? "ANNUAL" : "MONTHLY",
                         pricing: {
                           type: "STATIC",
                           price_money: {

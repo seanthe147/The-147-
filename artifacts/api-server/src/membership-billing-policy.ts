@@ -1,6 +1,10 @@
 export type BillingFrequency = "monthly" | "annual";
 export const BILLING_TERMS_VERSION = "membership-12-month-rolling";
 
+export function isPlatinumConsolidation(current: { tier?: string }, target: { tier?: string }): boolean {
+  return current.tier === "maximum" && target.tier === "platinum";
+}
+
 export function minimumTermMonths(plan: { name: string; tier?: string }): number {
   return [plan.name, plan.tier ?? ""].some(
     value => /^(?:the 147\s+)?(?:black|platinum)(?:\s+membership)?$/i.test(value.trim()),
@@ -29,8 +33,9 @@ export function commitmentEnd(plan: { name: string; tier?: string }, start: stri
   return months ? addCalendarMonths(start, months) : null;
 }
 
-export function cancellationAllowed(termEnd: string | null, today: string): boolean {
-  return !termEnd || termEnd <= today;
+export function cancellationAllowed(termEnd: string | null, today: string, prepaidThrough: string | null = null): boolean {
+  // Stopping next year's renewal does not shorten an already-paid annual term.
+  return !termEnd || termEnd <= today || (!!prepaidThrough && validDate(prepaidThrough) && prepaidThrough >= termEnd);
 }
 
 export function variationForFrequency(

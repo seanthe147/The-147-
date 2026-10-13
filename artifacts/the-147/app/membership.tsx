@@ -864,7 +864,7 @@ function ActiveMembership({
 
           <View style={styles.memberCardStats}>
             <View style={styles.memberCardStat}>
-              <Text style={styles.memberCardStatLabel}>Monthly fee</Text>
+              <Text style={styles.memberCardStatLabel}>Monthly signup price</Text>
               <Text style={styles.memberCardStatValue}>
                 £{plan ? (plan.priceMonthly / 100).toFixed(2) : "—"}
               </Text>
@@ -992,8 +992,11 @@ function ManageMembership() {
   const [accepted, setAccepted] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const { customer: billingCustomer } = useCustomerAuth();
 
-  const { data, isLoading, isError, error, refetch } = useGetMembershipBilling();
+  const { data, isLoading, isError, error, refetch } = useGetMembershipBilling({
+    query: { queryKey: [...getGetMembershipBillingQueryKey(), billingCustomer?.id], refetchInterval: 30000, staleTime: 0 },
+  });
 
   const onDone = (r: MembershipActionResult) => {
     setNotice(r.message + (r.effectiveDate ? ` (effective ${fmt(r.effectiveDate)})` : ""));

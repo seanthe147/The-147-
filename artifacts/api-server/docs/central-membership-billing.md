@@ -17,20 +17,24 @@ Sources checked:
 
 ## Billing rules
 
-- Keep current plan prices.
+- Platinum is the sole public offer from the former Maximum/Platinum pair:
+  £6.99/month or £65/year. Maximum remains hidden, not disabled/deleted.
+  Existing subscribers' Square charges are not changed automatically.
 - Monthly and annual billing have distinct Square plan variations. A missing,
   wrong-cadence or wrong-price variation prevents checkout; it never silently
   charges monthly for an annual choice.
-- New Black/Platinum purchases have a 12-month minimum term with explicit consent.
+- New Platinum purchases have a 12-month minimum term with explicit consent.
   Old customers do not acquire a minimum term retroactively.
 - Upgrades and billing-frequency changes use Square's renewal-date swap-plan
   operation. Benefits change after the corresponding successful payment, not
   when a customer schedules an upgrade.
-- An accepted upgrade to Black/Platinum starts its disclosed 12-month term at
+- An accepted upgrade to Platinum starts its disclosed 12-month term at
   the effective renewal.
 - After a monthly minimum term, billing continues monthly until cancelled.
   Cancellation stops billing at Square's confirmed date, not immediately.
 - Annual memberships renew annually; cancellation stops the next renewal.
+- An active, paid annual member may request that next renewal be stopped during
+  the year; access still lasts through the paid 12-month term.
 - Failed or missing webhook verification cannot grant paid membership benefits.
 
 ## Before going live
@@ -39,15 +43,20 @@ Sources checked:
    `pnpm --filter @workspace/api-server run check:membership-catalog`.
    Configure missing monthly/annual variations through the existing owner plan
    setup. Do not change plan prices to silence a mismatch.
-2. Ensure signed Square membership webhooks reach
-   `/api/membership/webhook`. The existing webhook signature setting is required.
+2. Enable `subscription.created`, `subscription.updated`, `invoice.payment_made`
+   and `invoice.scheduled_charge_failed` on the existing Square webhook
+   subscription at `/api/webhooks/square`. That authenticated endpoint now also
+   uses the central membership processor. `/api/membership/webhook` remains
+   supported for a dedicated configuration; its signing key must match that
+   Square webhook subscription. Never assume the same signing key applies to
+   two separately registered Square endpoints.
    Confirm subscription-created, subscription-updated, invoice-payment-made
    and failed-payment events are configured.
 3. Confirm real card authorisation, first payment, renewal, plan swap,
    declined payment and cancellation in Square's sandbox. Mocked route/UI tests
    do not prove merchant/location eligibility or delivery of real webhooks.
 4. Publish the backend and release the updated app together. Old app versions
-   cannot sign up to Black/Platinum without sending the new minimum-term consent.
+   cannot sign up to Platinum without sending the new minimum-term consent.
 5. Have the membership terms reviewed for applicable UK consumer/cancellation
    rights. Minimum terms do not guarantee successful collection of future card
    payments.

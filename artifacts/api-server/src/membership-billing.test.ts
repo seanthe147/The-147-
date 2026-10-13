@@ -5,7 +5,7 @@ import express from "express";
 import { eq, inArray } from "drizzle-orm";
 import { customers, membershipPlans, membershipSubscriptions, membershipBillingStates, membershipAuditLog } from "@workspace/db/schema";
 import { db, runStartupMigrations, storage } from "./storage";
-import { billingState, migrationBillingStart, recordBillingTerms, registerMembershipBilling, reconcileScheduledMembership, membershipSignupGuard } from "./membership-billing";
+import { alignBillingStart, billingState, migrationOffer, prepareMigrationOffer, migrationBillingStart, recordBillingTerms, registerMembershipBilling, reconcileScheduledMembership, membershipSignupGuard } from "./membership-billing";
 
 const realFetch = globalThis.fetch;
 const tag = randomUUID();
@@ -20,6 +20,7 @@ let actions: any[] = [];
 let catalogPence = 2000;
 const renewal = "2099-11-13";
 const remote: any = { id: "billing-fixture-sub", status: "ACTIVE", plan_variation_id: "fixture-monthly", actions };
+let cancellationAt = renewal;
 
 before(async () => {
   // Every Square request is intercepted. These tests never reach the provider.
@@ -36,7 +37,7 @@ before(async () => {
         actions = [{ type: "SWAP_PLAN", effective_date: renewal }];
         return Response.json({ subscription: { ...remote, actions: undefined }, actions });
       }
-      if (path.endsWith("/cancel")) return Response.json({ subscription: { ...remote, canceled_date: renewal } });
+      if (path.endsWith("/cancel")) return Response.json({ subscription: { ...remote, canceled_date: cancellationAt } });
       return Response.json({ subscription: { ...remote, actions: undefined }, actions });
     }
     if (!url.startsWith(base)) throw new Error("Unexpected external request blocked by billing test");
@@ -146,4 +147,42 @@ test("migration requires a verified stopped legacy payment and a paid-through da
   assert.equal(result.status, 200);
   assert.equal(await migrationBillingStart(subId), renewal);
   assert.equal(requests.filter(r => r.path.endsWith("/cancel")).length, 1);
+});
+test("legacy Maximum migration offers Platinum and changes benefits only after paid confirmation", async () => {
+  const maximum = (await storage.getMembershipPlans()).find(p => p.tier === "maximum");
+  assert.ok(maximum);
+  const platinum = await migrationOffer(maximum);
+  assert.equal(platinum.tier, "platinum");
+  assert.equal(platinum.priceMonthly, 699);
+  assert.equal(platinum.priceAnnual, 6500);
+  await db.delete(membershipBillingStates).where(eq(membershipBillingStates.subscriptionId, subId));
+  await db.update(membershipSubscriptions).set({ planId: maximum.id, squareSubscriptionId: remote.id }).where(eq(membershipSubscriptions.id, subId));
+  const start = new Date().toISOString().slice(0, 10);
+  await prepareMigrationOffer(subId, maximum.id, platinum, "annual", start);
+  await alignBillingStart(subId, maximum, start);
+  assert.equal((await storage.getMembershipSubscriptionByCustomer(customerId))?.planId, maximum.id);
+  assert.ok((await billingState(subId))?.commitmentEndDate);
+  const confirmed = { ...remote, plan_variation_id: platinum.squarePlanVariationIdAlt };
+  await reconcileScheduledMembership(confirmed);
+  assert.equal((await storage.getMembershipSubscriptionByCustomer(customerId))?.planId, maximum.id);
+  await reconcileScheduledMembership(confirmed, true);
+  assert.equal((await storage.getMembershipSubscriptionByCustomer(customerId))?.planId, platinum.id);
+  assert.equal((await billingState(subId))?.billingFrequency, "annual");
+  assert.equal((await billingState(subId))?.pendingPlanId, null);
+});
+test("a paid annual member can stop renewal while retaining access through the full term", async () => {
+  const state = await billingState(subId);
+  assert.ok(state?.commitmentEndDate);
+  cancellationAt = state.commitmentEndDate;
+  remote.charged_through_date = cancellationAt;
+  const sub = await storage.getMembershipSubscriptionByCustomer(customerId);
+  remote.plan_variation_id = (await storage.getMembershipPlan(sub!.planId))!.squarePlanVariationIdAlt;
+  await db.update(membershipSubscriptions).set({ currentPeriodEnd: cancellationAt }).where(eq(membershipSubscriptions.id, subId));
+  const overview = await request("/api/membership/billing");
+  assert.equal(((await overview.json()) as any).subscription.cancellationAllowed, true);
+  const result = await request("/api/membership/cancel", { confirmed: true });
+  assert.equal(result.status, 200);
+  assert.equal((await billingState(subId))?.cancellationDate, cancellationAt);
+  assert.equal((await storage.getMembershipSubscriptionByCustomer(customerId))?.status, "active");
+  assert.equal(requests.filter(r => r.path.endsWith("/cancel")).length, 2);
 });

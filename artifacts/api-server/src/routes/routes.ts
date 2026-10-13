@@ -10,12 +10,12 @@ import nodemailer from "nodemailer";
 import { storage, db } from "../storage";
 import { insertOfferSchema, insertPushTokenSchema, insertBookingSchema, insertContactMessageSchema, insertEventSchema, insertBannerImageSchema, isSafePublicUrl, tabs, tabItems, bookings as bookingsTable, tableSessions, marketingCampaigns, emailAutomations, emailUnsubscribes, emailSendLog, customers as customersTable, membershipSubscriptions as membershipSubsTable, venueRewardClaims, venueRewardTiers, venueRewardTiers as venueRewardTiersT, gamePlays, gamePrizes, staffUsers as staffUsersTable, stockCategories, stockItems, stockDeliveries, stockDeliveryLines, stockCounts, stockCountLines, stockItemPosLinks } from "@workspace/db";
 import type { InsertBannerImage } from "@workspace/db";
-import { normalizeBannerLinkType, POOL_TABLE_NUMBERS, isBookablePoolTable } from "@workspace/db";
+import { normalizeBannerLinkType, POOL_TABLE_NUMBERS, isBookablePoolTable, membershipPlanVariationAliases } from "@workspace/db";
 import { and as dAnd, eq as dEq, desc as dDesc, isNotNull as dIsNotNull, sql as dSql, gte as dGte, lte as dLte, asc as dAsc, lt as dLt, inArray as dInArray } from "drizzle-orm";
 import { getServerFeatureFlags } from "../featureFlags";
 import { hashPin, verifyPin, hashPassword, verifyPassword, hashEmail, decrypt } from "../encryption";
 import * as square from "../square";
-import { alignBillingStart, billingState, recordBillingTerms, migrationBillingStart, membershipSignupGuard, reconcileScheduledMembership, registerMembershipBilling, syncPaidMembershipGroups } from "../membership-billing";
+import { alignBillingStart, billingState, recordBillingTerms, migrationOffer, prepareMigrationOffer, migrationBillingStart, membershipSignupGuard, reconcileScheduledMembership, registerMembershipBilling, syncPaidMembershipGroups } from "../membership-billing";
 import { addCalendarMonths, minimumTermMonths, validDate, variationForFrequency } from "../membership-billing-policy";
 import * as teya from "../teya";
 import { buildReorderPayload, type ReorderMenuItem, type ReorderRawItem } from "../reorder-matching";
@@ -402,7 +402,9 @@ async function sendMigrationEmail(subId: number, req: Request): Promise<{ succes
   // request headers — Host / X-Forwarded-Proto are attacker-controllable
   // and an emailed link with a poisoned domain would be a phishing vector.
   const migrateUrl = `${getPublicAppOrigin()}/migrate/${token}`;
-  const { subject, html } = buildMigrationEmail({ name: sub.customer.name, plan: sub.plan, migrateUrl });
+  const plan = await migrationOffer(sub.plan).catch(() => null);
+  if (!plan) return { success: false, message: "Review this member's migration plan first." };
+  const { subject, html } = buildMigrationEmail({ name: sub.customer.name, plan, migrateUrl });
   const sent = await sendEmailViaSMTP(sub.customer.email, subject, html);
   if (!sent) return { success: false, message: "SMTP not configured or send failed" };
   await storage.updateMembershipSubscription(sub.id, { migrationEmailedAt: new Date() } as any);
@@ -3192,7 +3194,9 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     if (token.length < 16) return res.status(404).send(renderMigrationErrorPage("Invalid membership migration link."));
     const sub = (await storage.getMembershipSubscriptions()).find(s => s.migrationToken === token);
     if (!sub?.customer || !sub.plan) return res.status(404).send(renderMigrationErrorPage("This migration link is not available."));
-    res.send(renderMigrationLandingPage({ customer: sub.customer, plan: sub.plan, sub, token, alreadyDone: !!sub.migrationCompletedAt }));
+    const plan = await migrationOffer(sub.plan).catch(() => null);
+    if (!plan) return res.status(409).send(renderMigrationErrorPage("Ask staff to review the plan for this migration."));
+    res.send(renderMigrationLandingPage({ customer: sub.customer, plan, sub, token, alreadyDone: !!sub.migrationCompletedAt }));
   });
 
   app.post("/api/migrate/:token/checkout", async (req, res) => {
@@ -3205,8 +3209,9 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       if (sub.migrationCompletedAt) return res.status(400).json({ message: "This membership has already been activated." });
       if (sub.squareSubscriptionId) return res.status(400).json({ message: "Your card is already set up — refresh this page to confirm." });
       if (!sub.customer || !sub.plan) return res.status(404).json({ message: "Membership not found" });
+      const plan = await migrationOffer(sub.plan);
       if (!square.isConfigured()) return res.status(503).json({ message: "Payment system unavailable" });
-      if (req.body?.termsAccepted !== true || (minimumTermMonths(sub.plan) && req.body?.minimumTermAccepted !== true)) {
+      if (req.body?.termsAccepted !== true || (minimumTermMonths(plan) && req.body?.minimumTermAccepted !== true)) {
         return res.status(400).json({ message: "Accept the recurring billing terms and any 12-month minimum term before moving to Square." });
       }
       const frequency = req.body?.billingFrequency ?? "monthly";
@@ -3219,10 +3224,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       if (start > new Date().toISOString().slice(0, 10)) {
         return res.status(409).json({ message: `Your Wix membership is paid through ${start}. Activate Square on or after that date to avoid overlapping charges.` });
       }
-      const variationId = variationForFrequency(sub.plan, frequency);
+      const variationId = variationForFrequency(plan, frequency);
       await square.validateSquareBillingVariation(variationId, frequency,
-        frequency === "annual" ? sub.plan.priceAnnual! : sub.plan.priceMonthly);
-      await recordBillingTerms(sub.id, sub.plan, frequency, start);
+        frequency === "annual" ? plan.priceAnnual! : plan.priceMonthly);
+      await prepareMigrationOffer(sub.id, sub.planId, plan, frequency, start);
 
       // Ensure a Square customer exists and is linked
       let sqCustomerId = sub.squareCustomerId;
@@ -4323,6 +4328,13 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     const event = req.body;
     const eventType: string = event?.type ?? "";
     console.log("[WEBHOOK] Square event received:", eventType);
+    // Share one processor with the existing, authenticated Square endpoint.
+    if (eventType.startsWith("subscription.") ||
+        (event?.data?.object?.invoice?.subscription_id &&
+          ["invoice.payment_made", "invoice.scheduled_charge_failed", "invoice.payment_failed"].includes(eventType))) {
+      verifiedMembershipWebhookRequests.add(req);
+      return handleMembershipSquareWebhook(req, res);
+    }
 
     if (eventType === "catalog.version.updated") {
       square.invalidateMenuCache();
@@ -4363,7 +4375,8 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     }
 
     // ── invoice.payment_failed (recurring subscription renewal failure) ──────
-    if (eventType === "invoice.payment_failed") {
+    // Square's documented automatic-payment failure event; keep the old alias compatible.
+    if (eventType === "invoice.scheduled_charge_failed" || eventType === "invoice.payment_failed") {
       try {
         const invoice = event?.data?.object?.invoice;
         const sqSubId: string | undefined = invoice?.subscription_id;
@@ -4377,6 +4390,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
               failedPaymentAttempts: newAttempts,
               ...(shouldFreeze ? { status: "frozen" } : {}),
             });
+            if (shouldFreeze) await syncPaidMembershipGroups(local.id);
             console.log(`[WEBHOOK] Membership #${local.id} renewal failed (attempt ${newAttempts})${shouldFreeze ? " — FROZEN" : ""}`);
 
             const customer = await storage.getCustomerById(local.customerId).catch(() => null);
@@ -9913,7 +9927,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     try {
       if (!square.isConfigured()) return;
       const pendingMember = await storage.getMembershipSubscriptionByCustomer(customerId);
-      if (pendingMember && (await billingState(pendingMember.id))?.pendingPlanId) return;
+      if (pendingMember) {
+        const acceptedBilling = await billingState(pendingMember.id);
+        if (acceptedBilling?.pendingPlanId || (acceptedBilling?.termsVersion && pendingMember.squareSubscriptionId)) return;
+      }
       // This helper is called by user, staff, and scheduled flows. Enforce
       // mailbox ownership here rather than trusting every caller to remember
       // the check: an unverified sign-up must never inherit a Square-backed
@@ -9968,9 +9985,11 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       // Without this guard, anyone added directly to the VIP plan in
       // Square (intentionally or by mistake) would be auto-elevated on
       // their next app sign-in.
-      const subPlans = allPlans.filter(p => p.active && !p.hideFromSignup && (p.squarePlanVariationId || (p as any).squarePlanVariationIdAlt));
+      const legacyVariations = await db.select().from(membershipPlanVariationAliases);
+      const subPlans = allPlans.filter(p => p.active && (!p.hideFromSignup || p.tier === "maximum") && (p.squarePlanVariationId || (p as any).squarePlanVariationIdAlt));
       const planMatchesVariation = (p: any, variationId: string) =>
-        p.squarePlanVariationId === variationId || p.squarePlanVariationIdAlt === variationId;
+        p.squarePlanVariationId === variationId || p.squarePlanVariationIdAlt === variationId ||
+        legacyVariations.some(alias => alias.planId === p.id && alias.squareVariationId === variationId);
       const matchedSub = sqSubs.find((s: any) =>
         (s.status === "ACTIVE" || s.status === "PENDING") &&
         subPlans.some(p => planMatchesVariation(p, s.plan_variation_id))
@@ -12544,8 +12563,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   });
 
   // ── Membership — Square webhook ──────────────────────────────────────────
-  app.post("/api/membership/webhook", async (req, res) => {
+  const verifiedMembershipWebhookRequests = new WeakSet<import("express").Request>();
+  async function handleMembershipSquareWebhook(req: import("express").Request, res: import("express").Response) {
     try {
+      if (!verifiedMembershipWebhookRequests.has(req)) {
       // Square webhook signature verification is MANDATORY. If the signing
       // key isn't set we fail closed — this endpoint links/activates Square
       // subscriptions, so accepting unauthenticated POSTs would let anyone
@@ -12578,7 +12599,8 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         console.warn("[Square webhook] Invalid signature — rejected");
         return res.status(401).send("Invalid signature");
       }
-      const event = JSON.parse(bodyStr);
+      }
+      const event = req.body;
       const type: string = event?.type ?? "";
 
       // subscription.updated / subscription.activated
@@ -12689,7 +12711,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       }
 
       // invoice.payment_failed — recurring renewal failures
-      if (type === "invoice.payment_failed") {
+      if (type === "invoice.scheduled_charge_failed" || type === "invoice.payment_failed") {
         const invoice = event?.data?.object?.invoice;
         const sqSubId: string | undefined = invoice?.subscription_id;
         if (sqSubId) {
@@ -12702,6 +12724,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
               failedPaymentAttempts: newAttempts,
               ...(shouldFreeze ? { status: "frozen" } : {}),
             });
+            if (shouldFreeze) await syncPaidMembershipGroups(local.id);
             console.log(`[MEMBERSHIP WEBHOOK] Renewal failed for #${local.id} (attempt ${newAttempts})`);
             const customer = await storage.getCustomerById(local.customerId).catch(() => null);
             if (customer?.email) {
@@ -12722,9 +12745,11 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
 
       res.status(200).send("ok");
     } catch {
-      res.status(200).send("ok");
+      // Let Square retry a temporary failure rather than lose a paid event.
+      res.status(500).send("Membership event processing failed; please retry");
     }
-  });
+  }
+  app.post("/api/membership/webhook", handleMembershipSquareWebhook);
 
   // ── Membership — staff management ───────────────────────────────────────
   app.get("/api/staff/membership/stats", staffAuth, managerAuth, async (_req, res) => {

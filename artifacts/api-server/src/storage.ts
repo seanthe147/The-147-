@@ -1,3 +1,4 @@
+import { applyPlatinumOffer } from "./platinum-offer-migration";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { eq, lt, lte, sql, and, gt, isNull, isNotNull, gte, desc, inArray, ne, ilike, or } from "drizzle-orm";
@@ -212,6 +213,12 @@ export { db };
 export async function runStartupMigrations() {
   const client = await pool.connect();
   try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS membership_plan_variation_aliases (
+        square_variation_id TEXT PRIMARY KEY,
+        plan_id INTEGER NOT NULL REFERENCES membership_plans(id)
+      );
+    `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS membership_billing_states (
         subscription_id INTEGER PRIMARY KEY REFERENCES membership_subscriptions(id),
@@ -437,6 +444,8 @@ export async function runStartupMigrations() {
       CREATE INDEX IF NOT EXISTS staff_action_log_path_idx
         ON staff_action_log (path);
     `);
+
+    await applyPlatinumOffer(client);
 
     // Ensure VIP plan exists (10% food & drink, group-based, excludes stacking with deals)
     await client.query(`

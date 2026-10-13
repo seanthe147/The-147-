@@ -7,7 +7,7 @@ const temp = await mkdtemp(path.join(process.cwd(), ".membership-catalog-check-"
 try {
   const output = path.join(temp, "catalog.mjs");
   await build({
-    entryPoints: ["src/validate-membership-catalog.ts"], outfile: output,
+    entryPoints: [process.argv.includes("--configure-platinum") ? "src/configure-platinum-billing.ts" : "src/validate-membership-catalog.ts"], outfile: output,
     bundle: true, platform: "node", format: "esm",
     external: ["pg", "drizzle-orm", "drizzle-zod", "zod"],
   });
