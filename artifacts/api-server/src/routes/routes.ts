@@ -15,6 +15,8 @@ import { and as dAnd, eq as dEq, desc as dDesc, isNotNull as dIsNotNull, sql as 
 import { getServerFeatureFlags } from "../featureFlags";
 import { hashPin, verifyPin, hashPassword, verifyPassword, hashEmail, decrypt } from "../encryption";
 import * as square from "../square";
+import { alignBillingStart, billingState, recordBillingTerms, migrationBillingStart, membershipSignupGuard, reconcileScheduledMembership, registerMembershipBilling, syncPaidMembershipGroups } from "../membership-billing";
+import { addCalendarMonths, minimumTermMonths, validDate, variationForFrequency } from "../membership-billing-policy";
 import * as teya from "../teya";
 import { buildReorderPayload, type ReorderMenuItem, type ReorderRawItem } from "../reorder-matching";
 import {
@@ -1669,6 +1671,7 @@ async function getMarketingAudienceEmails(audience: string): Promise<string[]> {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  registerMembershipBilling(app, customerAuth, staffAuth, ownerAuth);
   // ── One-shot kitchen-category seeder ────────────────────────────────────
   // Auto-tags obvious food categories (Burgers, Pizzas, Mains, etc.) as
   // `isKitchen=true` the first time the server boots after this feature
@@ -3122,7 +3125,9 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         completed: imported.filter(s => s.migrationCompletedAt).length,
         pending: imported.filter(s => !s.migrationCompletedAt).length,
       };
-      const list = imported.map(s => ({
+      const list = (await Promise.all(imported.map(async s => {
+        const billing = await billingState(s.id);
+        return {
         id: s.id,
         customerName: s.customer?.name || "",
         customerEmail: s.customer?.email || "",
@@ -3132,7 +3137,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         emailedAt: s.migrationEmailedAt,
         completedAt: s.migrationCompletedAt,
         hasToken: !!s.migrationToken,
-      })).sort((a, b) => {
+        migrationApproved: !!billing?.legacyBillingStoppedAt,
+        migrationStartDate: billing?.legacyPaidThroughDate ?? null,
+      };
+      }))).sort((a, b) => {
         // Pending first, then completed
         if (!a.completedAt && b.completedAt) return -1;
         if (a.completedAt && !b.completedAt) return 1;
@@ -3176,6 +3184,17 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   });
 
   // Public — start Square checkout from a migration link
+  app.get("/migrate/:token", async (req, res) => {
+    const { renderMigrationLandingPage, renderMigrationErrorPage } = await import("../wix-migration");
+    res.set("Cache-Control", "no-store");
+    res.set("Referrer-Policy", "no-referrer");
+    const token = String(req.params.token);
+    if (token.length < 16) return res.status(404).send(renderMigrationErrorPage("Invalid membership migration link."));
+    const sub = (await storage.getMembershipSubscriptions()).find(s => s.migrationToken === token);
+    if (!sub?.customer || !sub.plan) return res.status(404).send(renderMigrationErrorPage("This migration link is not available."));
+    res.send(renderMigrationLandingPage({ customer: sub.customer, plan: sub.plan, sub, token, alreadyDone: !!sub.migrationCompletedAt }));
+  });
+
   app.post("/api/migrate/:token/checkout", async (req, res) => {
     try {
       const token = req.params.token;
@@ -3187,8 +3206,23 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       if (sub.squareSubscriptionId) return res.status(400).json({ message: "Your card is already set up — refresh this page to confirm." });
       if (!sub.customer || !sub.plan) return res.status(404).json({ message: "Membership not found" });
       if (!square.isConfigured()) return res.status(503).json({ message: "Payment system unavailable" });
-      const variationId = sub.plan.squarePlanVariationId;
-      if (!variationId) return res.status(503).json({ message: "Plan isn't set up for online payments yet — please contact us." });
+      if (req.body?.termsAccepted !== true || (minimumTermMonths(sub.plan) && req.body?.minimumTermAccepted !== true)) {
+        return res.status(400).json({ message: "Accept the recurring billing terms and any 12-month minimum term before moving to Square." });
+      }
+      const frequency = req.body?.billingFrequency ?? "monthly";
+      if (frequency !== "monthly" && frequency !== "annual") return res.status(400).json({ message: "Choose monthly or annual billing." });
+      const start = await migrationBillingStart(sub.id);
+      const existingBilling = await billingState(sub.id);
+      if (existingBilling?.termsVersion && existingBilling.billingFrequency !== frequency) {
+        return res.status(409).json({ message: "A checkout has already been started with a different billing frequency. Contact the club before changing it." });
+      }
+      if (start > new Date().toISOString().slice(0, 10)) {
+        return res.status(409).json({ message: `Your Wix membership is paid through ${start}. Activate Square on or after that date to avoid overlapping charges.` });
+      }
+      const variationId = variationForFrequency(sub.plan, frequency);
+      await square.validateSquareBillingVariation(variationId, frequency,
+        frequency === "annual" ? sub.plan.priceAnnual! : sub.plan.priceMonthly);
+      await recordBillingTerms(sub.id, sub.plan, frequency, start);
 
       // Ensure a Square customer exists and is linked
       let sqCustomerId = sub.squareCustomerId;
@@ -4320,6 +4354,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
               currentPeriodEnd: sqSub.charged_through_date ?? local.currentPeriodEnd ?? undefined,
               ...(nonActiveStatus ? { status: nonActiveStatus } : {}),
             });
+            if (nonActiveStatus === "cancelled" || nonActiveStatus === "paused") await syncPaidMembershipGroups(local.id);
             console.log(`[WEBHOOK] Local membership #${local.id} synced from Square subscription (sqStatus=${sqSub.status}, localStatus unchanged for ACTIVE)`);
           }
         }
@@ -4402,6 +4437,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
               currentPeriodStart: new Date().toISOString().slice(0, 10),
               currentPeriodEnd: nextPeriodEnd,
             });
+            await syncPaidMembershipGroups(local.id);
             console.log(`[WEBHOOK] Membership #${local.id} payment received — active until ${nextPeriodEnd}`);
             if (wasAlreadyActive) {
               const customer = await storage.getCustomerById(local.customerId).catch(() => null);
@@ -9876,6 +9912,8 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   async function syncSquareMembershipForCustomer(customerId: number, email: string) {
     try {
       if (!square.isConfigured()) return;
+      const pendingMember = await storage.getMembershipSubscriptionByCustomer(customerId);
+      if (pendingMember && (await billingState(pendingMember.id))?.pendingPlanId) return;
       // This helper is called by user, staff, and scheduled flows. Enforce
       // mailbox ownership here rather than trusting every caller to remember
       // the check: an unverified sign-up must never inherit a Square-backed
@@ -12069,6 +12107,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     // instead of brittle text matching.
     const enriched = visible.map((p: any) => ({
       ...p,
+      minimumTermMonths: minimumTermMonths(p),
       benefits: getPlanBenefitTexts(p),
       benefitsDetailed: getPlanBenefits(p),
     }));
@@ -12132,7 +12171,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   });
 
   // ── Membership — customer: join a plan ──────────────────────────────────────
-  app.post("/api/membership/join", customerAuth, async (req, res) => {
+  app.post("/api/membership/join", customerAuth, membershipSignupGuard, async (req, res) => {
     try {
       const customerId = (req as any).customerId as number;
       const { planId, billingFrequency = "monthly", startDate, termsAccepted } = req.body ?? {};
@@ -12161,13 +12200,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       const today = new Date().toISOString().slice(0, 10);
       // Honour startDate if it is a valid future date (staff-only feature sent from app)
       const periodStart = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) && startDate > today ? startDate : today;
-      const periodEndDate = new Date(periodStart + "T12:00:00Z");
-      if (isAnnual) {
-        periodEndDate.setFullYear(periodEndDate.getFullYear() + 1);
-      } else {
-        periodEndDate.setMonth(periodEndDate.getMonth() + 1);
-      }
-      const periodEnd = periodEndDate.toISOString().slice(0, 10);
+      const periodEnd = addCalendarMonths(periodStart, isAnnual ? 12 : 1);
 
       // If upgrading (existing sub on a different plan), cancel the old one
       if (existing && existing.id) {
@@ -12192,6 +12225,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         source: isAnnual ? "app_annual" : "app",
         termsAcceptedAt: new Date(),
       });
+      await recordBillingTerms(sub.id, plan, isAnnual ? "annual" : "monthly", periodStart);
 
       let checkoutUrl: string | null = null;
       // We must NEVER silently fall back from a recurring subscription
@@ -12223,37 +12257,18 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
             } else {
               await storage.updateMembershipSubscription(sub.id, { squareCustomerId: sqCustomer.id });
 
-              // ── Manage customer groups ──────────────────────────────────────
-              // All known membership tier group names
-              const allPlans = await storage.getMembershipPlans();
-              const allGroupNames = allPlans.map(p => square.membershipGroupName(p.name));
-
-              // Get the groups this customer currently belongs to
-              const currentGroupIds = await square.getCustomerGroupIds(sqCustomer.id).catch(() => [] as string[]);
-              const allGroups = await square.listCustomerGroups().catch(() => [] as { id: string; name: string }[]);
-
-              // Remove from any existing membership tier groups
-              for (const group of allGroups) {
-                if (allGroupNames.includes(group.name) && currentGroupIds.includes(group.id)) {
-                  await square.removeCustomerFromGroup(sqCustomer.id, group.id).catch(() => {});
-                }
-              }
-
-              // Add to the new plan's group
-              const newGroupId = await square.getOrCreateCustomerGroup(square.membershipGroupName(plan.name)).catch(() => null);
-              if (newGroupId) {
-                await square.addCustomerToGroup(sqCustomer.id, newGroupId).catch(() => {});
-              }
+              // Benefits and Square groups are assigned only after the signed
+              // invoice.payment_made event, never just for opening checkout.
 
               // ── Generate RECURRING subscription checkout payment link ───────
-              const redirectUrl = `https://the147bradford.replit.app/api/membership/${sub.id}/payment-return`;
+              const redirectUrl = `${getPublicAppOrigin()}/api/membership/${sub.id}/payment-return`;
 
               // Pick variation ID based on billing frequency. A variation ID
               // is REQUIRED — without it Square won't produce a recurring
               // checkout, and we refuse to send the customer to a one-time
               // payment page for a membership.
               const variationId = isAnnual
-                ? ((plan as any).squarePlanVariationIdAlt || plan.squarePlanVariationId)
+                ? plan.squarePlanVariationIdAlt
                 : plan.squarePlanVariationId;
 
               if (!variationId) {
@@ -12324,7 +12339,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   // resulting source_id (and optional 3DS verification_token) here. We save the
   // card on file against the Square customer and create a Square subscription
   // so future charges happen automatically without bouncing to a browser.
-  app.post("/api/membership/join-native", customerAuth, async (req, res) => {
+  app.post("/api/membership/join-native", customerAuth, membershipSignupGuard, async (req, res) => {
     try {
       const customerId = (req as any).customerId as number;
       const { planId, billingFrequency = "monthly", startDate, termsAccepted, sourceId, verificationToken } = req.body ?? {};
@@ -12357,10 +12372,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
 
       const today = new Date().toISOString().slice(0, 10);
       const periodStart = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) && startDate > today ? startDate : today;
-      const periodEndDate = new Date(periodStart + "T12:00:00Z");
-      if (isAnnual) periodEndDate.setFullYear(periodEndDate.getFullYear() + 1);
-      else periodEndDate.setMonth(periodEndDate.getMonth() + 1);
-      const periodEnd = periodEndDate.toISOString().slice(0, 10);
+      const periodEnd = addCalendarMonths(periodStart, isAnnual ? 12 : 1);
 
       // NOTE: We deliberately do NOT cancel the existing subscription here.
       // We only do that AFTER the new card + Square subscription are
@@ -12394,7 +12406,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
 
       // 3) Pick variation ID for billing frequency
       const variationId = isAnnual
-        ? ((plan as any).squarePlanVariationIdAlt || plan.squarePlanVariationId)
+        ? plan.squarePlanVariationIdAlt
         : plan.squarePlanVariationId;
       if (!variationId) {
         return res.status(503).json({ message: "Membership plan is not configured for in-app billing yet" });
@@ -12415,6 +12427,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         termsAcceptedAt: new Date(),
         squareCustomerId: sqCustomer.id,
       });
+      await recordBillingTerms(sub.id, plan, isAnnual ? "annual" : "monthly", periodStart);
 
       // 5) Create the Square subscription against the saved card
       const locationId = square.getPublicLocationId();
@@ -12442,24 +12455,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         });
       }
 
-      // 6) Manage customer groups (mirror /join behaviour)
-      try {
-        const allPlans = await storage.getMembershipPlans();
-        const allGroupNames = allPlans.map((p) => square.membershipGroupName(p.name));
-        const currentGroupIds = await square.getCustomerGroupIds(sqCustomer.id).catch(() => [] as string[]);
-        const allGroups = await square.listCustomerGroups().catch(() => [] as { id: string; name: string }[]);
-        for (const group of allGroups) {
-          if (allGroupNames.includes(group.name) && currentGroupIds.includes(group.id)) {
-            await square.removeCustomerFromGroup(sqCustomer.id, group.id).catch(() => {});
-          }
-        }
-        const newGroupId = await square.getOrCreateCustomerGroup(square.membershipGroupName(plan.name)).catch(() => null);
-        if (newGroupId) {
-          await square.addCustomerToGroup(sqCustomer.id, newGroupId).catch(() => {});
-        }
-      } catch (grpErr) {
-        console.warn("[membership/join-native] group management non-fatal error:", grpErr);
-      }
+      // Group benefits are assigned after Square confirms successful payment.
 
       // 7) Record the Square subscription ID but do NOT activate yet.
       // Activation happens exclusively via the invoice.payment_made webhook once Square
@@ -12635,11 +12631,9 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
             );
           }
           if (local) {
+            if (local.plan) await alignBillingStart(local.id, local.plan, sqSub.start_date);
             await storage.updateMembershipSubscription(local.id, {
               squareSubscriptionId: sqSub.id,
-              ...(local.migrationToken && !local.migrationCompletedAt
-                ? { migrationCompletedAt: new Date(), source: "wix_migrated" }
-                : {}),
             } as any);
             console.log(`[MEMBERSHIP WEBHOOK] Linked Square subscription ${sqSub.id} → local #${local.id}${local.migrationToken ? " (Wix migration complete)" : ""}`);
           }
@@ -12654,21 +12648,27 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
           const existingSubs = await storage.getMembershipSubscriptions();
           const local = existingSubs.find(s => s.squareSubscriptionId === sqSubId);
           if (local) {
+            const confirmedSubscription = await square.getSquareSubscription(sqSubId);
+            await reconcileScheduledMembership(confirmedSubscription, true);
+            const acceptedBilling = await billingState(local.id);
             // Calculate next period end from invoice scheduled_at or add one month
             let nextPeriodEnd: string | undefined;
             if (invoice.next_payment_amount_money || invoice.next_payment_due_date) {
               nextPeriodEnd = invoice.next_payment_due_date ?? undefined;
             }
             if (!nextPeriodEnd) {
-              const next = new Date();
-              next.setMonth(next.getMonth() + 1);
-              nextPeriodEnd = next.toISOString().slice(0, 10);
+              nextPeriodEnd = validDate(confirmedSubscription.charged_through_date)
+                ? confirmedSubscription.charged_through_date
+                : addCalendarMonths(new Date().toISOString().slice(0, 10),
+                  acceptedBilling?.billingFrequency === "annual" || (!acceptedBilling && local.source.includes("annual")) ? 12 : 1);
             }
             await storage.updateMembershipSubscription(local.id, {
               status: "active",
               failedPaymentAttempts: 0,
               currentPeriodStart: new Date().toISOString().slice(0, 10),
               currentPeriodEnd: nextPeriodEnd,
+              ...(local.migrationToken && !local.migrationCompletedAt
+                ? { migrationCompletedAt: new Date(), source: "wix_migrated" } : {}),
             });
             console.log(`[MEMBERSHIP WEBHOOK] Payment received for #${local.id} — activated, renews ${nextPeriodEnd}`);
             // Push notification on successful renewal (not first activation)

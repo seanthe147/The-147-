@@ -8,3 +8,9 @@ Membership billing must be one central system customers can access from The 147 
 **Why:** The user reports Wix subscription payments no longer work for the business and wants shared membership management rather than separate app and website subscriptions.
 
 **How to apply:** Extend the existing membership system instead of creating competing billing records. Confirm minimum-term plan eligibility, upgrade charging, renewal and migration rules before implementing financial behavior. Do not infer that monthly billing means cancel-anytime, or that a minimum term guarantees successful future card charges.
+
+The user confirmed: retain existing plans/prices; Black and Platinum require 12-month minimum terms; upgrades take effect at renewal; monthly plans continue rolling after the minimum term; include controlled Wix migration.
+
+**Why:** These are explicit business rules, not billing defaults. Minimum terms must not be imposed retroactively on memberships that did not accept them.
+
+**How to apply:** Require explicit consent to a new Black/Platinum minimum term at signup or an upgrade. A newly accepted upgrade to either plan starts its disclosed 12-month term at the effective renewal. Verify old Wix billing has stopped and the existing paid-through date before replacement authorisation; never charge concurrently or claim cards transfer automatically.

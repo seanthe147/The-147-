@@ -291,7 +291,20 @@ export function renderMigrationLandingPage(opts: {
         <div style="font-size:18px;font-weight:700;color:#0a0a0a">£${priceMonthly}<span style="font-size:13px;font-weight:500;color:#888">/month</span></div>
       </div>
     </div>
-    <button id="migrateBtn" style="width:100%;padding:15px;background:#d4af37;color:#0a0a0a;border:0;border-radius:12px;font-weight:700;font-size:15px;cursor:pointer">Set up my card with Square →</button>
+    <label style="display:block;margin:16px 0;font-size:14px">Billing:
+      <select id="billingFrequency">
+        <option value="monthly">Monthly — £${priceMonthly}/month</option>
+        ${opts.plan.priceAnnual != null ? `<option value="annual">Annual — £${(opts.plan.priceAnnual / 100).toFixed(2)}/year</option>` : ""}
+      </select>
+    </label>
+    <label style="display:block;margin:16px 0;font-size:14px;line-height:1.6">
+      <input id="migrationTerms" type="checkbox">
+      I accept recurring billing and the <a href="/terms" target="_blank" rel="noopener">membership terms</a>.
+      Black and Platinum have a 12-month minimum term; monthly billing continues monthly afterwards with cancellation allowed.
+      Other plans can be cancelled at renewal. Annual memberships renew yearly.
+    </label>
+    <p style="font-size:13px;color:#555">Staff must verify Wix recurring billing has stopped. Activate Square on or after your existing paid-through date to avoid overlapping charges. Your old card cannot transfer automatically.</p>
+    <button id="migrateBtn" style="width:100%;padding:15px;background:#d4af37;color:#0a0a0a;border:0;border-radius:12px;font-weight:700;font-size:15px;cursor:pointer">Authorise Square membership billing</button>
     <div id="migrateErr" style="display:none;margin-top:14px;padding:12px;background:#fef0f0;border:1px solid #f5c2c2;border-radius:8px;color:#a02525;font-size:13px"></div>
     <p style="margin:22px 0 0;font-size:12px;color:#888;line-height:1.5;text-align:center">Payment is processed securely by Square. We never see or store your card details. Apple Pay and Google Pay are supported.</p>
     <script>
@@ -299,7 +312,8 @@ export function renderMigrationLandingPage(opts: {
         var btn=this; var err=document.getElementById('migrateErr');
         btn.disabled=true; btn.textContent='Loading…'; err.style.display='none';
         try{
-          var r=await fetch(${JSON.stringify(`/api/migrate/${opts.token}/checkout`)},{method:'POST'});
+          if(!document.getElementById('migrationTerms').checked)throw new Error('Accept the recurring billing and minimum-term conditions first.');
+          var r=await fetch(${JSON.stringify(`/api/migrate/${opts.token}/checkout`)},{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({billingFrequency:document.getElementById('billingFrequency').value,termsAccepted:true,minimumTermAccepted:true})});
           var d=await r.json();
           if(!r.ok||!d.checkoutUrl)throw new Error(d.message||'Could not start checkout');
           window.location.href=d.checkoutUrl;

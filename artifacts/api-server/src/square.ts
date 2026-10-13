@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 const SQUARE_BASE_URL = process.env.SQUARE_ENVIRONMENT === "production"
   ? "https://connect.squareup.com"
   : "https://connect.squareupsandbox.com";
@@ -739,6 +741,25 @@ export async function cancelSquareSubscription(subscriptionId: string) {
   return data.subscription;
 }
 
+export async function swapSquareSubscriptionPlan(subscriptionId: string, variationId: string) {
+  const data = await squareRequest("POST", `/v2/subscriptions/${subscriptionId}/swap-plan`, {
+    new_plan_variation_id: variationId,
+  });
+  return { ...data.subscription, actions: data.actions ?? data.subscription?.actions ?? [] };
+}
+
+export async function validateSquareBillingVariation(variationId: string, frequency: "monthly" | "annual", expectedPence: number) {
+  const data = await squareRequest("GET", `/v2/catalog/object/${variationId}`);
+  const phases = data.object?.subscription_plan_variation_data?.phases;
+  if (!Array.isArray(phases) || phases.length !== 1 ||
+      phases[0].cadence !== (frequency === "annual" ? "ANNUAL" : "MONTHLY") ||
+      phases[0].pricing?.type !== "STATIC" ||
+      phases[0].pricing?.price_money?.amount !== expectedPence ||
+      phases[0].pricing?.price_money?.currency !== "GBP") {
+    throw new Error("This plan's Square price or billing schedule does not match the selected membership. Please contact the club.");
+  }
+}
+
 export async function pauseSquareSubscription(subscriptionId: string) {
   const data = await squareRequest("POST", `/v2/subscriptions/${subscriptionId}/pause`, {
     pause_subscription_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
@@ -755,7 +776,7 @@ export async function resumeSquareSubscription(subscriptionId: string) {
 
 export async function getSquareSubscription(subscriptionId: string) {
   const data = await squareRequest("GET", `/v2/subscriptions/${subscriptionId}`);
-  return data.subscription;
+  return { ...data.subscription, actions: data.actions ?? data.subscription?.actions ?? [] };
 }
 
 export async function listSquareSubscriptionsForCustomer(squareCustomerId: string) {
@@ -951,7 +972,7 @@ export async function createSubscriptionCheckoutLink(opts: {
 }): Promise<{ url: string; paymentLinkId: string }> {
   const locationId = getLocationId();
   const body: Record<string, unknown> = {
-    idempotency_key: `sub-checkout-${opts.subscriptionId}-${Date.now()}`,
+    idempotency_key: createHash("sha256").update(`membership-checkout:${opts.subscriptionId}:${opts.planVariationId}`).digest("hex").slice(0, 40),
     order: {
       location_id: locationId,
       line_items: [

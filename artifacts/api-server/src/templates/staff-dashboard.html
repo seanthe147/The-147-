@@ -11890,9 +11890,47 @@
         pill+
         (m.completedAt?'':'<button class="btn btn-secondary btn-sm" onclick="window.sendWixEmail('+m.id+',this)">'+(m.emailedAt?'Resend':'Send email')+'</button>')+
         (m.hasToken&&!m.completedAt?'<button class="btn btn-secondary btn-sm" title="Copy migration link" onclick="window.copyWixLink('+m.id+',this)">Copy link</button>':'')+
+        (m.migrationApproved?'':'<button class="btn btn-warning btn-sm" onclick="window.openWixReview('+m.id+')">Owner review</button>')+
+      '</div>'+
+      '<div style="flex-basis:100%;font-size:11.5px;color:var(--text-2)">'+
+        (m.migrationApproved
+          ?'<span class="pill pill-green">Approved</span> New billing starts '+esc(m.migrationStartDate||'—')
+          :'<span class="pill pill-gray">Awaiting owner review</span> Link stays inactive until old Wix billing is confirmed stopped and the paid-through date is set.')+
       '</div>'+
     '</div>';
   }
+  window.openWixReview=function(id){
+    if(el('wixReviewModal'))el('wixReviewModal').remove();
+    const ov=document.createElement('div');ov.id='wixReviewModal';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML='<div style="background:var(--surface);border-radius:16px;max-width:480px;width:100%;padding:24px">'+
+      '<h2 style="margin:0 0 8px;font-size:18px;color:var(--text)">Owner migration review</h2>'+
+      '<p style="font-size:13px;color:var(--text-2);line-height:1.55;margin:0 0 14px">The 147 never cancels Wix automatically. Before approving, stop this member\'s recurring payment in Wix yourself and check the date they have already paid through. Square billing starts after that date, so they are not charged twice.</p>'+
+      '<label class="form-label" for="wixPaidThrough">Paid through (last day covered by Wix)</label>'+
+      '<input type="date" id="wixPaidThrough" class="form-input" style="margin-bottom:14px">'+
+      '<label style="display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--text);margin-bottom:12px;cursor:pointer"><input type="checkbox" id="wixStopped" style="margin-top:3px;accent-color:var(--blue)"> I confirm the old Wix recurring payment for this member has been stopped.</label>'+
+      '<div id="wixReviewErr" class="modal-err"></div>'+
+      '<div style="display:flex;gap:10px;justify-content:flex-end">'+
+        '<button class="btn btn-secondary" onclick="el(\'wixReviewModal\').remove()">Cancel</button>'+
+        '<button class="btn btn-primary" id="wixReviewBtn" disabled onclick="window.submitWixReview('+Number(id)+')">Approve migration</button>'+
+      '</div></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+    const sync=()=>{el('wixReviewBtn').disabled=!(el('wixStopped').checked&&/^\d{4}-\d{2}-\d{2}$/.test(el('wixPaidThrough').value));};
+    el('wixStopped').addEventListener('change',sync);el('wixPaidThrough').addEventListener('input',sync);
+  };
+  window.submitWixReview=async function(id){
+    const btn=el('wixReviewBtn'),err=el('wixReviewErr');
+    const paidThroughDate=el('wixPaidThrough').value;
+    if(!el('wixStopped').checked||!/^\d{4}-\d{2}-\d{2}$/.test(paidThroughDate))return;
+    err.classList.remove('show');btn.disabled=true;btn.textContent='Approving…';
+    try{
+      const r=await fetch('/api/staff/wix-migration/'+id+'/review',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+getToken()},body:JSON.stringify({legacyBillingStopped:true,paidThroughDate})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.message||'Review failed');
+      el('wixReviewModal').remove();toast(d.message||'Migration approved','success');loadWixMigration();
+    }catch(e){err.textContent=e.message||'Network error';err.classList.add('show');btn.disabled=false;btn.textContent='Approve migration';}
+  };
   function timeAgo(iso){
     if(!iso)return'';
     const d=new Date(iso);const s=Math.floor((Date.now()-d.getTime())/1000);

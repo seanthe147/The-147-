@@ -27,6 +27,15 @@ import { SquarePaymentSheet } from "@/components/SquarePaymentSheet";
 import { AdaptiveGlassSurface } from "@/components/AdaptiveGlassSurface";
 import { getPlanBenefits, type BenefitKey } from "@workspace/db/schema";
 import { useColors } from "@/hooks/useColors";
+import {
+  getGetMembershipBillingQueryKey,
+  setAuthTokenGetter,
+  setBaseUrl,
+  useCancelMembershipBilling,
+  useChangeMembershipPlan,
+  useGetMembershipBilling,
+} from "@workspace/api-client-react";
+import type { MembershipBillingPlan, MembershipActionResult } from "@workspace/api-client-react";
 
 const TOKEN_KEY = "customer_session_token";
 
@@ -47,6 +56,7 @@ interface MembershipPlan {
   guestPassesMonthly: number | null;
   sortOrder: number | null;
   active: boolean;
+  minimumTermMonths?: number | null;
   // Server-computed benefit lines. The API renders these so any future
   // wording change is server-side only — no app submission required.
   benefits?: string[] | null;
@@ -101,6 +111,34 @@ function getPlanFeatures(plan: MembershipPlan): { icon: keyof typeof Ionicons.gl
 
 async function getToken(): Promise<string> {
   return (await AsyncStorage.getItem(TOKEN_KEY)) || "";
+}
+
+// Exact tier/name match only: Black and Platinum carry a 12-month minimum term.
+function isCommitmentPlan(p: { tier?: string | null; name?: string | null; minimumTermMonths?: number | null }) {
+  if (typeof p.minimumTermMonths === "number" && p.minimumTermMonths > 0) return true;
+  const t = (p.tier ?? "").trim().toLowerCase();
+  const n = (p.name ?? "").trim().toLowerCase();
+  return t === "black" || t === "platinum" || n === "black" || n === "platinum";
+}
+
+function commitmentCopy(p: { tier?: string | null; name?: string | null }) {
+  return isCommitmentPlan(p)
+    ? "12-month minimum term. Monthly billing then continues rolling after the term; annual renews automatically."
+    : "No minimum term. Monthly continues rolling and annual renews automatically; you can cancel to stop at your next renewal.";
+}
+
+// Generated contract client: same API origin + bearer session as the rest of the app.
+setBaseUrl(getApiUrl().replace(/\/$/, ""));
+setAuthTokenGetter(async () => (await getToken()) || null);
+
+function apiErrorMessage(err: unknown, fallback: string): string {
+  if (!err) return fallback;
+  const data = (err as { data?: unknown }).data;
+  if (data && typeof data === "object" && typeof (data as { message?: unknown }).message === "string") {
+    return (data as { message: string }).message;
+  }
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
 }
 
 function todayString() {
@@ -175,6 +213,9 @@ export default function MembershipScreen() {
       const token = await getToken();
       const url = new URL("/api/membership/join", getApiUrl());
       const body: Record<string, unknown> = { planId, billingFrequency: frequency, termsAccepted: accepted };
+      // Only set after the customer saw the plan-specific 12-month wording and ticked the box.
+      const p = plans.find((x) => x.id === planId);
+      if (accepted && p && isCommitmentPlan(p)) body.minimumTermAccepted = true;
       if (chosenStartDate && chosenStartDate !== todayString()) body.startDate = chosenStartDate;
       const res = await fetch(url.toString(), {
         method: "POST",
@@ -249,6 +290,7 @@ export default function MembershipScreen() {
         sourceId,
         verificationToken: verificationToken ?? null,
       };
+      if (termsAccepted && selectedPlan && isCommitmentPlan(selectedPlan)) body.minimumTermAccepted = true;
       if (isStaffLoggedIn && startDate !== todayString()) body.startDate = startDate;
       const res = await fetch(url.toString(), {
         method: "POST",
@@ -487,6 +529,9 @@ export default function MembershipScreen() {
                     )}
                   </View>
                 </View>
+                <Text style={[styles.planTagline, { marginBottom: 8 }]} testID={`plan-term-${plan.id}`}>
+                  {commitmentCopy(plan)}
+                </Text>
                 <View style={styles.featureList}>
                   {features.map((f, i) => (
                     <View key={i} style={styles.featureRow}>
@@ -569,6 +614,9 @@ export default function MembershipScreen() {
                       Terms & Conditions
                     </Text>
                     , including the membership deposit, recurring billing, and gift card terms.
+                    {selectedPlan && isCommitmentPlan(selectedPlan)
+                      ? ` I understand ${selectedPlan.name} has a 12-month minimum term and cannot be cancelled before it ends.`
+                      : " I understand my membership renews automatically until I cancel, and cancellation takes effect at my next renewal."}
                   </Text>
                 </Pressable>
                 <Pressable
@@ -923,16 +971,192 @@ function ActiveMembership({
         </View>
       )}
 
+      <ManageMembership />
+
       <View style={styles.contactBox}>
         <Ionicons name="information-circle-outline" size={18} color={Colors.light.textSecondary} />
         <Text style={styles.contactText}>
-          To make changes to your membership, please speak to a member of staff at the club or email{" "}
+          For anything else, please speak to a member of staff at the club or email{" "}
           <Text style={{ color: Colors.brand.blue }}>info@the147bradford.co.uk</Text>
         </Text>
       </View>
     </ScrollView>
   );
 }
+
+function ManageMembership() {
+  const colors = useColors();
+  const queryClient = useQueryClient();
+  const [planId, setPlanId] = useState<number | null>(null);
+  const [freq, setFreq] = useState<"monthly" | "annual">("monthly");
+  const [accepted, setAccepted] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const { data, isLoading, isError, error, refetch } = useGetMembershipBilling();
+
+  const onDone = (r: MembershipActionResult) => {
+    setNotice(r.message + (r.effectiveDate ? ` (effective ${fmt(r.effectiveDate)})` : ""));
+    setPlanId(null);
+    setAccepted(false);
+    setConfirmCancel(false);
+    queryClient.invalidateQueries({ queryKey: getGetMembershipBillingQueryKey() });
+    queryClient.invalidateQueries({ queryKey: ["/api/membership/my-subscription"] });
+  };
+  const change = useChangeMembershipPlan({ mutation: { onSuccess: onDone } });
+  const cancel = useCancelMembershipBilling({ mutation: { onSuccess: onDone } });
+
+  const box = { marginTop: 16, padding: 16, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface };
+  const h = { fontSize: 15, fontWeight: "700" as const, color: colors.text, marginBottom: 10 };
+  const muted = { fontSize: 13, color: colors.textSecondary, lineHeight: 19 };
+  const errStyle = { fontSize: 13, color: "#DF3131", marginTop: 8 };
+
+  if (isLoading) return <View style={box}><ActivityIndicator color={Colors.brand.blue} /></View>;
+  if (isError || !data) {
+    return (
+      <View style={box}>
+        <Text style={h}>Manage membership</Text>
+        <Text style={muted}>{apiErrorMessage(error, "Billing details could not be loaded.")}</Text>
+        <Pressable onPress={() => refetch()} style={{ marginTop: 10 }}>
+          <Text style={{ color: Colors.brand.blue, fontWeight: "700" }}>Try again</Text>
+        </Pressable>
+      </View>
+    );
+  }
+  const sub = data.subscription;
+  if (!sub) return null;
+
+  const current = data.plans.find((p) => p.id === sub.planId);
+  const priceOf = (p: MembershipBillingPlan, f: "monthly" | "annual") => (f === "annual" ? p.annualPence : p.monthlyPence);
+  const currentPrice = current ? priceOf(current, sub.frequency) ?? current.monthlyPence : 0;
+  // Options: higher-priced plans (either frequency), or same plan with the other frequency.
+  const options: { plan: MembershipBillingPlan; f: "monthly" | "annual" }[] = [];
+  data.plans.forEach((p) => {
+    (["monthly", "annual"] as const).forEach((f) => {
+      const price = priceOf(p, f);
+      if (price == null) return;
+      if (p.id === sub.planId) { if (f !== sub.frequency) options.push({ plan: p, f }); return; }
+      const monthlyEq = f === "annual" ? price / 12 : price;
+      const curMonthlyEq = sub.frequency === "annual" ? currentPrice / 12 : currentPrice;
+      if (monthlyEq > curMonthlyEq) options.push({ plan: p, f });
+    });
+  });
+  const chosen = options.find((o) => o.plan.id === planId && o.f === freq) ?? null;
+  const hasPending = !!sub.pendingPlanName || !!sub.cancellationDate;
+  const row = (label: string, value: string) => (
+    <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 5 }}>
+      <Text style={muted}>{label}</Text>
+      <Text style={{ fontSize: 13, fontWeight: "600", color: colors.text }}>{value}</Text>
+    </View>
+  );
+
+  return (
+    <View style={box} testID="manage-membership">
+      <Text style={h}>Manage membership</Text>
+      {row("Plan", sub.planName)}
+      {row("Billing", sub.frequency === "annual" ? "Annual (auto-renews)" : "Monthly")}
+      {row("Next renewal", fmt(sub.renewalDate))}
+      {sub.commitmentEndDate ? row("Minimum term ends", fmt(sub.commitmentEndDate)) : null}
+      {sub.pendingPlanName ? row("Scheduled change", `${sub.pendingPlanName} from ${fmt(sub.pendingDate)}`) : null}
+      {sub.cancellationDate ? row("Ends on", fmt(sub.cancellationDate)) : null}
+
+      {notice && <Text style={{ fontSize: 13, color: "#15803D", marginTop: 10 }}>{notice}</Text>}
+
+      {sub.migrationNeedsReview ? (
+        <Text style={[muted, { marginTop: 12 }]}>
+          Your move from the old website billing is being checked by the club. Changes will be available once the owner confirms your previous payments have stopped.
+        </Text>
+      ) : !sub.managedInSquare ? (
+        <Text style={[muted, { marginTop: 12 }]}>This membership is managed by the club. Please speak to staff to make changes.</Text>
+      ) : hasPending ? (
+        <Text style={[muted, { marginTop: 12 }]}>A change is already scheduled. Contact the club if you need to alter it.</Text>
+      ) : (
+        <>
+          <Text style={[h, { fontSize: 13, marginTop: 14, marginBottom: 6 }]}>Upgrade or switch billing</Text>
+          <Text style={[muted, { marginBottom: 8 }]}>Changes take effect at your next renewal ({fmt(sub.renewalDate)}).</Text>
+          {options.length === 0 ? (
+            <Text style={muted}>You are on the highest available option.</Text>
+          ) : options.map((o) => {
+            const on = chosen?.plan.id === o.plan.id && chosen.f === o.f;
+            const price = priceOf(o.plan, o.f) ?? 0;
+            return (
+              <Pressable
+                key={`${o.plan.id}-${o.f}`}
+                onPress={() => { setPlanId(o.plan.id); setFreq(o.f); setAccepted(false); change.reset(); }}
+                style={{ padding: 12, borderRadius: 10, borderWidth: on ? 2 : 1, borderColor: on ? Colors.brand.blue : colors.border, marginBottom: 8 }}
+                testID={`change-option-${o.plan.id}-${o.f}`}
+              >
+                <Text style={{ fontWeight: "700", color: colors.text }}>
+                  {o.plan.name} · £{(price / 100).toFixed(2)}/{o.f === "annual" ? "yr" : "mo"}
+                </Text>
+                <Text style={muted}>
+                  {o.plan.minimumTermMonths > 0 ? `${o.plan.minimumTermMonths}-month minimum term from the change date.` : "No minimum term."}
+                </Text>
+              </Pressable>
+            );
+          })}
+          {chosen && (
+            <>
+              <Pressable onPress={() => setAccepted((v) => !v)} style={{ flexDirection: "row", gap: 10, marginTop: 4 }} accessibilityRole="checkbox" accessibilityState={{ checked: accepted }}>
+                <View style={{ width: 20, height: 20, borderRadius: 5, borderWidth: 2, borderColor: Colors.brand.blue, backgroundColor: accepted ? Colors.brand.blue : "transparent", alignItems: "center", justifyContent: "center" }}>
+                  {accepted && <Ionicons name="checkmark" size={13} color="#fff" />}
+                </View>
+                <Text style={[muted, { flex: 1 }]}>
+                  I agree to the Terms & Conditions and to switching to {chosen.plan.name} ({chosen.f}) from {fmt(sub.renewalDate)}
+                  {chosen.plan.minimumTermMonths > 0 ? `, including a ${chosen.plan.minimumTermMonths}-month minimum term.` : "."}
+                </Text>
+              </Pressable>
+              <Pressable
+                disabled={!accepted || change.isPending}
+                onPress={() => change.mutate({ data: { planId: chosen.plan.id, billingFrequency: chosen.f, termsAccepted: true } })}
+                style={[styles_m.btn, { backgroundColor: Colors.brand.blue, opacity: !accepted || change.isPending ? 0.5 : 1 }]}
+              >
+                {change.isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles_m.btnText}>Schedule change</Text>}
+              </Pressable>
+            </>
+          )}
+          {change.error && <Text style={errStyle}>{apiErrorMessage(change.error, "Could not schedule the change.")}</Text>}
+
+          <Text style={[h, { fontSize: 13, marginTop: 18, marginBottom: 6 }]}>Cancel</Text>
+          {sub.cancellationAllowed ? (
+            confirmCancel ? (
+              <>
+                <Text style={muted}>Your membership will stop at {fmt(sub.renewalDate)}. Benefits continue until then.</Text>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <Pressable onPress={() => setConfirmCancel(false)} style={[styles_m.btn, { flex: 1, backgroundColor: colors.input }]}>
+                    <Text style={[styles_m.btnText, { color: colors.text }]}>Keep</Text>
+                  </Pressable>
+                  <Pressable disabled={cancel.isPending} onPress={() => cancel.mutate({ data: { confirmed: true } })} style={[styles_m.btn, { flex: 1, backgroundColor: "#DF3131", opacity: cancel.isPending ? 0.5 : 1 }]}>
+                    {cancel.isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles_m.btnText}>Confirm cancel</Text>}
+                  </Pressable>
+                </View>
+              </>
+            ) : (
+              <Pressable onPress={() => { setConfirmCancel(true); cancel.reset(); }}>
+                <Text style={{ color: "#DF3131", fontWeight: "700", fontSize: 13 }}>Cancel at next renewal</Text>
+              </Pressable>
+            )
+          ) : (
+            <Text style={muted}>
+              {sub.commitmentEndDate ? `Cancellation is available after your minimum term ends on ${fmt(sub.commitmentEndDate)}.` : "Cancellation is not available online for this membership."}
+            </Text>
+          )}
+          {cancel.error && <Text style={errStyle}>{apiErrorMessage(cancel.error, "Could not cancel.")}</Text>}
+        </>
+      )}
+    </View>
+  );
+}
+
+function fmt(d: string | null | undefined) {
+  if (!d) return "—";
+  return new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
+const styles_m = StyleSheet.create({
+  btn: { marginTop: 10, paddingVertical: 12, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  btnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+});
 
 const styleSource = {
   container: { flex: 1, backgroundColor: Colors.light.background },

@@ -263,6 +263,28 @@
     .page-foot{text-align:center;padding:0 20px 16px;font-size:12px;color:var(--text-3)}
     .page-foot a{color:var(--text-2);text-decoration:none;font-weight:600}
 
+    /* ─── BILLING TOGGLE + MANAGE ───────────── */
+    .freq-toggle{display:flex;justify-content:center;gap:4px;background:#E6ECF5;border-radius:12px;padding:4px;width:max-content;margin:-24px auto 32px}
+    .freq-btn{border:none;background:transparent;padding:9px 22px;border-radius:9px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:13px;color:var(--text-2);cursor:pointer}
+    .freq-btn.active{background:var(--surface);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.1)}
+    .plan-term{font-size:12px;color:var(--text-2);background:#F5F7FB;border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-bottom:16px;line-height:1.45;font-weight:500}
+    .manage-signin{text-align:center;font-size:13px;color:var(--text-2);margin-bottom:32px}
+    .manage-signin button{background:none;border:none;color:#0047AB;font-weight:700;font-family:inherit;font-size:13px;cursor:pointer;text-decoration:underline}
+    .manage-card{background:var(--surface);border:1.5px solid var(--border);border-radius:18px;padding:22px 24px;margin-bottom:40px;max-width:640px;margin-left:auto;margin-right:auto}
+    .manage-card h3{font-size:17px;font-weight:800;margin-bottom:12px}
+    .manage-card h4{font-size:13px;font-weight:800;margin:18px 0 6px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2)}
+    .m-row{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid #EEF2F8;font-size:13px}
+    .m-row span:first-child{color:var(--text-2)}.m-row span:last-child{font-weight:700;text-align:right}
+    .m-note{font-size:13px;color:var(--text-2);line-height:1.55;margin-top:10px}
+    .m-opt{display:flex;gap:10px;align-items:flex-start;border:1.5px solid var(--border);border-radius:11px;padding:10px 12px;margin-bottom:8px;cursor:pointer;font-size:13px}
+    .m-opt input{margin-top:3px;accent-color:#0047AB}
+    .m-btn{padding:11px 18px;border-radius:11px;border:none;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;background:#0047AB;color:#fff;margin-top:10px}
+    .m-btn:disabled{opacity:.5;cursor:not-allowed}
+    .m-btn.danger{background:var(--red)}.m-btn.ghost{background:#EEF2F8;color:var(--text)}
+    .m-msg{font-size:13px;padding:10px 12px;border-radius:10px;margin-top:10px;display:none}
+    .m-msg.err{display:block;background:#FEF2F2;border:1px solid #FCA5A5;color:var(--red)}
+    .m-msg.ok{display:block;background:#DCFCE7;border:1px solid #86EFAC;color:#166534}
+    .m-link{background:none;border:none;color:var(--text-2);font-family:inherit;font-size:12px;cursor:pointer;text-decoration:underline;margin-top:12px}
     @media(max-width:600px){
       .hero{padding:48px 16px 60px}
       .page-body{padding:36px 16px 48px}
@@ -303,7 +325,7 @@
     </span>
     <span class="hero-pill">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-      Cancel Anytime
+      Monthly or Annual
     </span>
     <span class="hero-pill">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
@@ -319,11 +341,21 @@
 <!-- ─── PAGE BODY ──────────────────────────────── -->
 <div class="page-body">
 
+  <!-- Member management -->
+  <div id="manageSection" class="manage-card" style="display:none"></div>
+  <div id="manageSignin" class="manage-signin">
+    Already a member? <button type="button" onclick="openManageLogin()">Sign in to manage your membership</button>
+  </div>
+
   <!-- Plans section -->
   <div class="fadein" id="plansSection">
     <p class="section-eyebrow">Membership Plans</p>
     <h2 class="section-title">Choose the Right Plan for You</h2>
-    <p class="section-sub">All plans include access to The 147 app, loyalty points, and full member benefits.<br>Change or cancel at any time — no lock-in.</p>
+    <p class="section-sub">All plans include access to The 147 app, loyalty points, and full member benefits.<br>Black and Platinum have a 12-month minimum term. Other plans can be cancelled to stop at the next renewal.</p>
+    <div class="freq-toggle" role="tablist" aria-label="Billing frequency">
+      <button type="button" class="freq-btn active" id="freqMonthly" onclick="setFreq('monthly')">Monthly</button>
+      <button type="button" class="freq-btn" id="freqAnnual" onclick="setFreq('annual')">Annual</button>
+    </div>
 
     <div id="plansGrid" class="plans-grid">
       <div class="loading-wrap"><div class="spinner"></div>Loading plans…</div>
@@ -366,7 +398,7 @@
     </div>
     <div class="trust-item">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-      Cancel anytime
+      Manage online with your The 147 login
     </div>
     <div class="trust-item">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
@@ -455,6 +487,10 @@
         <div class="tab-panel" id="panelLogin">
           <div class="fld"><label>Email</label><input type="email" id="lEmail" placeholder="john@example.com" autocomplete="email"></div>
           <div class="fld"><label>Password</label><input type="password" id="lPass" placeholder="Your password" autocomplete="current-password"></div>
+          <label id="joinTermsRow" style="display:flex;align-items:flex-start;gap:10px;margin:2px 0 14px;cursor:pointer">
+            <input type="checkbox" id="joinTerms" style="margin-top:3px;width:18px;height:18px;flex-shrink:0;accent-color:#0047AB">
+            <span style="font-size:12.5px;color:#475569;line-height:1.5">I agree to the <a href="/terms" target="_blank" rel="noopener" style="color:#0047AB;font-weight:600">Terms &amp; Conditions</a> and recurring billing. <span id="joinTermsCommit"></span></span>
+          </label>
           <div class="form-err" id="loginErr"></div>
           <div class="form-msg" id="loginMsg" style="display:none;background:#EFF6FF;border:1px solid #BFDBFE;color:#1E40AF;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.45;margin-bottom:10px;"></div>
           <button class="submit-btn" id="loginBtn" style="background:#0047AB;color:#fff" onclick="doLogin()">
@@ -499,6 +535,163 @@
   let authToken = null;
   let activeTab = 'reg';
   let allPlans = [];
+  let billingFreq = 'monthly';
+  let manageOnly = false;
+  let hasMembership = false;
+  let billing = null;
+  const inFrame = (function(){try{return window.self!==window.top}catch(_){return true}})();
+
+  function isCommitmentPlan(p){
+    if(typeof p.minimumTermMonths==='number'&&p.minimumTermMonths>0)return true;
+    const t=String(p.tier||'').trim().toLowerCase(), n=String(p.name||'').trim().toLowerCase();
+    return t==='black'||t==='platinum'||n==='black'||n==='platinum';
+  }
+  function commitmentCopy(p){
+    return isCommitmentPlan(p)
+      ? '12-month minimum term. Monthly then continues rolling after the term; annual renews automatically.'
+      : 'No minimum term. Renews automatically; cancel any time to stop at your next renewal.';
+  }
+  function openCheckout(url){
+    if(inFrame){
+      let w=null;try{w=window.open(url,'_blank','noopener')}catch(_){}
+      if(!w){try{window.top.location.href=url}catch(_){/* manual button remains */}}
+      return;
+    }
+    try{window.location.assign(url)}catch(_){window.location.href=url}
+  }
+  function fmtDate(d){if(!d)return '—';const x=new Date(d);return isNaN(x)?esc(d):x.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}
+  function getTok(){if(authToken)return authToken;try{return localStorage.getItem('the147_customer_token')}catch(_){return null}}
+
+  function openManageLogin(){
+    manageOnly=true;selectedPlan=null;
+    document.getElementById('modalPlanPill').style.cssText='background:rgba(212,168,67,.15);color:#D4A843';
+    document.getElementById('modalPlanPill').textContent='Member portal';
+    document.querySelector('#joinModal .modal-title').textContent='Manage your membership';
+    document.getElementById('modalHeadSub').textContent='Sign in with your The 147 account (not your Wix login)';
+    document.getElementById('successPane').classList.remove('show');
+    document.getElementById('formPane').style.display='';
+    document.getElementById('joinTermsRow').style.display='none';
+    switchTab('login');
+    document.getElementById('tabReg').style.display='none';
+    document.getElementById('loginBtn').lastChild.textContent='Sign In';
+    document.getElementById('joinModal').classList.add('open');
+  }
+  window.openManageLogin=openManageLogin;
+
+  async function loadManage(){
+    const tok=getTok();const sec=document.getElementById('manageSection');
+    if(!tok){sec.style.display='none';return}
+    try{
+      const r=await fetch(API+'/api/membership/billing',{headers:{Authorization:'Bearer '+tok}});
+      if(r.status===401){try{localStorage.removeItem('the147_customer_token')}catch(_){};authToken=null;sec.style.display='none';return}
+      const bd=await r.json().catch(()=>null);
+      if(!r.ok)throw new Error((bd&&bd.message)||('Could not load your billing details ('+r.status+').'));
+      billing=bd||{subscription:null,plans:[]};
+    }catch(e){
+      sec.style.display='block';
+      sec.innerHTML='<h3>Your membership</h3><p class="m-note">'+esc((e&&e.message)||'We could not load your billing details.')+'</p><button class="m-btn ghost" onclick="loadManage()">Try again</button>';
+      return;
+    }
+    authToken=tok;
+    hasMembership=!!(billing&&billing.subscription);
+    document.getElementById('manageSignin').style.display='none';
+    if(allPlans.length)renderPlans();
+    renderManage();
+  }
+  window.loadManage=loadManage;
+
+  function priceOf(p,f){return f==='annual'?p.annualPence:p.monthlyPence}
+  function renderManage(){
+    const sec=document.getElementById('manageSection');
+    const sub=billing&&billing.subscription;
+    sec.style.display='block';
+    const signOut='<button class="m-link" onclick="signOutPortal()">Sign out</button>';
+    if(!sub){sec.innerHTML='<h3>Signed in</h3><p class="m-note">You do not have an active membership yet. Choose a plan below to join.</p>'+signOut;return}
+    const plans=billing.plans||[];
+    const cur=plans.find(p=>p.id===sub.planId);
+    const curPrice=cur?(priceOf(cur,sub.frequency)??cur.monthlyPence):0;
+    const curEq=sub.frequency==='annual'?curPrice/12:curPrice;
+    const opts=[];
+    plans.forEach(p=>['monthly','annual'].forEach(f=>{
+      const pr=priceOf(p,f);if(pr==null)return;
+      if(p.id===sub.planId){if(f!==sub.frequency)opts.push({p,f,pr});return}
+      if((f==='annual'?pr/12:pr)>curEq)opts.push({p,f,pr});
+    }));
+    let h='<h3>Your membership</h3>'+
+      row('Plan',esc(sub.planName))+
+      row('Billing',sub.frequency==='annual'?'Annual (auto-renews)':'Monthly')+
+      row('Next renewal',fmtDate(sub.renewalDate))+
+      (sub.commitmentEndDate?row('Minimum term ends',fmtDate(sub.commitmentEndDate)):'')+
+      (sub.pendingPlanName?row('Scheduled change',esc(sub.pendingPlanName)+' from '+fmtDate(sub.pendingDate)):'')+
+      (sub.cancellationDate?row('Ends on',fmtDate(sub.cancellationDate)):'');
+    if(sub.migrationNeedsReview){
+      h+='<p class="m-note">Your move from the old website billing is being checked by the club. Changes are available once the owner confirms your previous payments have stopped.</p>';
+    }else if(!sub.managedInSquare){
+      h+='<p class="m-note">This membership is managed by the club. Please speak to staff to make changes.</p>';
+    }else if(sub.pendingPlanName||sub.cancellationDate){
+      h+='<p class="m-note">A change is already scheduled. Contact the club if you need to alter it.</p>';
+    }else{
+      h+='<h4>Upgrade or switch billing</h4><p class="m-note" style="margin:0 0 8px">Changes take effect at your next renewal ('+fmtDate(sub.renewalDate)+').</p>';
+      if(!opts.length)h+='<p class="m-note">You are on the highest available option.</p>';
+      else{
+        h+=opts.map((o,i)=>'<label class="m-opt"><input type="radio" name="mOpt" value="'+i+'" onchange="mOptChanged()"><span><strong>'+esc(o.p.name)+' · £'+(o.pr/100).toFixed(2)+'/'+(o.f==='annual'?'yr':'mo')+'</strong><br><span style="color:var(--text-2)">'+(o.p.minimumTermMonths>0?o.p.minimumTermMonths+'-month minimum term from the change date.':'No minimum term.')+'</span></span></label>').join('');
+        h+='<label class="m-opt" style="border:none;padding:4px 0"><input type="checkbox" id="mTerms" onchange="mOptChanged()"><span id="mTermsText">I agree to the <a href="/terms" target="_blank" rel="noopener">Terms &amp; Conditions</a> for the selected change, including any minimum term.</span></label>';
+        h+='<button class="m-btn" id="mChangeBtn" disabled onclick="mSubmitChange()">Schedule change</button>';
+      }
+      h+='<div class="m-msg" id="mChangeMsg"></div><h4>Cancel</h4>';
+      if(sub.cancellationAllowed){
+        h+='<div id="mCancelWrap"><button class="m-btn ghost" onclick="mAskCancel()">Cancel at next renewal</button></div>';
+      }else{
+        h+='<p class="m-note">'+(sub.commitmentEndDate?'Cancellation is available after your minimum term ends on '+fmtDate(sub.commitmentEndDate)+'.':'Cancellation is not available online for this membership.')+'</p>';
+      }
+      h+='<div class="m-msg" id="mCancelMsg"></div>';
+    }
+    sec.innerHTML=h+signOut;
+    sec._opts=opts;
+  }
+  function row(a,b){return '<div class="m-row"><span>'+a+'</span><span>'+b+'</span></div>'}
+  function selectedOpt(){const r=document.querySelector('input[name="mOpt"]:checked');const o=document.getElementById('manageSection')._opts||[];return r?o[Number(r.value)]:null}
+  window.mOptChanged=function(){
+    const o=selectedOpt();const t=document.getElementById('mTerms');const b=document.getElementById('mChangeBtn');
+    if(b)b.disabled=!(o&&t&&t.checked);
+  };
+  window.mSubmitChange=async function(){
+    const o=selectedOpt();const t=document.getElementById('mTerms');const b=document.getElementById('mChangeBtn');const m=document.getElementById('mChangeMsg');
+    if(!o||!t||!t.checked)return;
+    b.disabled=true;b.textContent='Scheduling…';m.className='m-msg';
+    try{
+      const r=await fetch(API+'/api/membership/change-plan',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+getTok()},body:JSON.stringify({planId:o.p.id,billingFrequency:o.f,termsAccepted:true})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.message||'Could not schedule the change.');
+      await loadManage();
+      const m2=document.getElementById('mChangeMsg')||document.getElementById('manageSection').appendChild(document.createElement('div'));
+      m2.className='m-msg ok';m2.textContent=(d.message||'Change scheduled.')+(d.effectiveDate?' Effective '+fmtDate(d.effectiveDate)+'.':'');
+    }catch(e){m.className='m-msg err';m.textContent=e.message||'Network error — please try again.';b.disabled=false;b.textContent='Schedule change'}
+  };
+  window.mAskCancel=function(){
+    const sub=billing.subscription;
+    document.getElementById('mCancelWrap').innerHTML='<p class="m-note">Your membership will stop at '+fmtDate(sub.renewalDate)+'. Benefits continue until then.</p><button class="m-btn ghost" onclick="renderManageAgain()">Keep membership</button> <button class="m-btn danger" id="mCancelBtn" onclick="mDoCancel()">Confirm cancellation</button>';
+  };
+  window.renderManageAgain=function(){renderManage()};
+  window.mDoCancel=async function(){
+    const b=document.getElementById('mCancelBtn');const m=document.getElementById('mCancelMsg');
+    b.disabled=true;b.textContent='Cancelling…';m.className='m-msg';
+    try{
+      const r=await fetch(API+'/api/membership/cancel',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+getTok()},body:JSON.stringify({confirmed:true})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.message||'Could not cancel.');
+      await loadManage();
+      const m2=document.getElementById('mCancelMsg')||document.getElementById('manageSection').appendChild(document.createElement('div'));
+      m2.className='m-msg ok';m2.textContent=d.message||'Cancellation scheduled.';
+    }catch(e){m.className='m-msg err';m.textContent=e.message||'Network error — please try again.';b.disabled=false;b.textContent='Confirm cancellation'}
+  };
+  window.signOutPortal=function(){
+    try{localStorage.removeItem('the147_customer_token')}catch(_){}
+    authToken=null;billing=null;hasMembership=false;
+    document.getElementById('manageSection').style.display='none';
+    document.getElementById('manageSignin').style.display='';
+    if(allPlans.length)renderPlans();
+  };
 
   /* ── helpers ── */
   function esc(s){const d=document.createElement('div');d.textContent=s??'';return d.innerHTML}
@@ -542,7 +735,9 @@
     const bg    = hexAlpha(color,.1);
     const icon  = tierIcon(p.tier||'rack',color);
     const feats = buildFeatures(p);
-    const price = '£'+(p.priceMonthly/100).toFixed(2);
+    const annual = billingFreq==='annual' && p.priceAnnual!=null;
+    const price = '£'+((annual?p.priceAnnual:p.priceMonthly)/100).toFixed(2);
+    const per = annual?'yr':'mo';
 
     return `
       <div class="plan-card${isPopular?' featured':''}">
@@ -559,7 +754,8 @@
           <div class="plan-price-row">
             <div class="plan-price" style="color:${color}">${price}</div>
           </div>
-          <div class="plan-period">per month &nbsp;·&nbsp; billed monthly</div>
+          <div class="plan-period">${annual?'per year &nbsp;·&nbsp; billed annually, auto-renews':'per month &nbsp;·&nbsp; billed monthly'}</div>
+          <div class="plan-term">${esc(commitmentCopy(p))}</div>
           <div class="plan-sep"></div>
           <ul class="plan-features">
             ${feats.map(f=>`
@@ -569,13 +765,28 @@
               </li>`).join('')}
           </ul>
           <button class="plan-cta" style="background:${color};color:#fff"
-            onclick="openModal(${p.id})">
+            onclick="${hasMembership?"document.getElementById('manageSection').scrollIntoView({behavior:'smooth'})":'openModal('+p.id+')'}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
-            Join ${esc(p.name)} — ${price}/mo
+            ${hasMembership?'Manage your membership above':'Join '+esc(p.name)+' — '+price+'/'+per}
           </button>
         </div>
       </div>`;
   }
+
+  function renderPlans(){
+    const list=billingFreq==='annual'?allPlans.filter(p=>p.priceAnnual!=null):allPlans;
+    const popIdx=list.length===3?1:0;
+    document.getElementById('plansGrid').innerHTML=list.length
+      ? list.map((p,i)=>renderPlan(p,i===popIdx)).join('')
+      : '<div class="loading-wrap">No annual plans are available right now.</div>';
+  }
+  function setFreq(f){
+    billingFreq=f;
+    document.getElementById('freqMonthly').classList.toggle('active',f==='monthly');
+    document.getElementById('freqAnnual').classList.toggle('active',f==='annual');
+    if(allPlans.length)renderPlans();
+  }
+  window.setFreq=setFreq;
 
   async function loadPlans(){
     try{
@@ -587,8 +798,7 @@
       // or just the one explicitly marked. We use the middle plan if 3 plans.
       const sorted=[...plans].sort((a,b)=>(a.sortOrder??0)-(b.sortOrder??0));
       allPlans=sorted;
-      const popIdx=sorted.length===3?1:0;
-      document.getElementById('plansGrid').innerHTML=sorted.map((p,i)=>renderPlan(p,i===popIdx)).join('');
+      renderPlans();
       // Drive the perks-strip's discount line from the actual plans so the
       // marketing copy never drifts from what plans really offer.
       const maxDisc=sorted.reduce((m,p)=>Math.max(m,p.foodDrinkDiscount||0),0);
@@ -603,21 +813,34 @@
 
   /* ── modal ── */
   function openModal(id){
+    // Signed-in current members manage here; never relaunch join.
+    if(hasMembership){const ms=document.getElementById('manageSection');if(ms)ms.scrollIntoView({behavior:'smooth'});return}
     const p=allPlans.find(pl=>pl.id===id);
     if(!p)return;
     const color=p.color||'#0047AB';
-    const price='£'+(p.priceMonthly/100).toFixed(2);
+    const annual=billingFreq==='annual'&&p.priceAnnual!=null;
+    const price='£'+((annual?p.priceAnnual:p.priceMonthly)/100).toFixed(2)+(annual?'/yr':'/mo');
     const name=p.name;
     const tier=p.tier||'rack';
-    selectedPlan={id,name,tier,color,price};
+    selectedPlan={id,name,tier,color,price,frequency:annual?'annual':'monthly',commitment:isCommitmentPlan(p)};
+    manageOnly=false;
+    document.getElementById('joinTermsRow').style.display='flex';
+    document.getElementById('joinTerms').checked=false;
+    document.getElementById('joinTermsCommit').textContent=isCommitmentPlan(p)
+      ? 'I understand '+name+' has a 12-month minimum term and cannot be cancelled before it ends.'
+      : 'I understand it renews automatically until I cancel, and cancellation takes effect at my next renewal.';
+    document.getElementById('tabReg').style.display='';
+    document.querySelector('#joinModal .modal-title').textContent='Join The 147';
+    document.getElementById('modalHeadSub').textContent='Create an account or sign in to continue';
+    document.getElementById('loginBtn').lastChild.textContent='Sign In & Pay';
     // pill
     const pill=document.getElementById('modalPlanPill');
     pill.style.cssText=`background:${hexAlpha(color,.15)};color:${color}`;
-    pill.textContent='🎱 '+name+' Membership · '+price+'/mo';
+    pill.textContent=name+' Membership · '+price;
     // success pill
     const sPill=document.getElementById('successPill');
     sPill.style.cssText=`background:${hexAlpha(color,.12)};color:${color}`;
-    sPill.textContent='✅ '+name+' Membership';
+    sPill.textContent=name+' Membership';
     // reset state
     document.getElementById('successPane').classList.remove('show');
     document.getElementById('formPane').style.display='';
@@ -740,6 +963,7 @@
     const err=document.getElementById('loginErr');
     err.classList.remove('show');
     if(!email||!pass){err.textContent='Please enter your email and password.';err.classList.add('show');return}
+    if(!manageOnly&&!document.getElementById('joinTerms').checked){err.textContent='Please tick the box to accept the membership terms.';err.classList.add('show');return}
     const btn=document.getElementById('loginBtn');
     btn.disabled=true;btn.textContent='Signing in…';
     try{
@@ -752,6 +976,9 @@
       authToken=d.token;
       try{localStorage.setItem('the147_customer_token',d.token)}catch(_){}
       if(d.customer && d.customer.emailVerified===false) showVerifyBanner(false);
+      if(manageOnly){closeModal();await loadManage();return}
+      await loadManage();
+      if(hasMembership){closeModal();document.getElementById('manageSection').scrollIntoView({behavior:'smooth'});return}
       await doJoin();
     }catch{err.textContent='Network error — please try again.';err.classList.add('show');}
     finally{btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>Sign In & Pay';}
@@ -826,7 +1053,7 @@
 
   /* ── join + redirect ── */
   async function doJoin(){
-    if(!authToken||!selectedPlan)return;
+    if(!authToken||!selectedPlan||manageOnly||hasMembership)return;
     document.getElementById('formPane').style.display='none';
     document.getElementById('successPane').classList.add('show');
     document.querySelector('.redirect-row').style.display='';
@@ -841,7 +1068,7 @@
       const r=await fetch(API+'/api/membership/join',{
         method:'POST',
         headers:{'Content-Type':'application/json','Authorization':'Bearer '+authToken},
-        body:JSON.stringify({planId:selectedPlan.id}),
+        body:JSON.stringify(Object.assign({planId:selectedPlan.id,billingFrequency:selectedPlan.frequency||'monthly',termsAccepted:true},selectedPlan.commitment&&document.getElementById('joinTerms').checked?{minimumTermAccepted:true}:{})),
         signal:ac.signal,
       });
       clearTimeout(watchdog);
@@ -859,14 +1086,14 @@
         // even if the auto-redirect is blocked by the browser or an extension.
         const btn=document.getElementById('manualPayBtn');
         btn.href=d.checkoutUrl;
+        btn.target=inFrame?'_blank':'_self';
         btn.style.display='inline-block';
         // Reveal hint text after a short pause if we haven't already navigated away
         setTimeout(()=>{document.getElementById('manualPayHint').style.display='block'},2500);
         // Auto-redirect attempt
-        setTimeout(()=>{
-          try{window.location.assign(d.checkoutUrl)}
-          catch(_){window.location.href=d.checkoutUrl}
-        },1200);
+        // Square checkout must run top-level: inside a Wix iframe third-party
+        // cookies are unreliable, so break out (or open a new tab).
+        setTimeout(()=>{openCheckout(d.checkoutUrl)},1200);
       }else if(d.status==='active'){
         // Activated without payment (free plan or Square not configured)
         document.querySelector('.success-sub').textContent='Your membership is now active! Download The 147 app to book tables, track loyalty points, and manage your account.';
@@ -899,6 +1126,7 @@
 
   loadPlans();
   checkVerificationStatus();
+  loadManage();
 })();
 </script>
 </body>

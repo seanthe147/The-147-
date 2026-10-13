@@ -212,6 +212,22 @@ export { db };
 export async function runStartupMigrations() {
   const client = await pool.connect();
   try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS membership_billing_states (
+        subscription_id INTEGER PRIMARY KEY REFERENCES membership_subscriptions(id),
+        billing_frequency TEXT NOT NULL DEFAULT 'monthly',
+        commitment_start_date TEXT,
+        commitment_end_date TEXT,
+        terms_version TEXT,
+        pending_plan_id INTEGER REFERENCES membership_plans(id),
+        pending_frequency TEXT,
+        pending_effective_date TEXT,
+        cancellation_date TEXT,
+        legacy_billing_stopped_at TIMESTAMP,
+        legacy_paid_through_date TEXT,
+        migration_reviewed_by TEXT
+      );
+    `);
     // Add columns introduced after initial deployment
     await client.query(`
       ALTER TABLE offers

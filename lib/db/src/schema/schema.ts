@@ -568,6 +568,23 @@ export const insertMembershipSubscriptionSchema = createInsertSchema(membershipS
 export type InsertMembershipSubscription = z.infer<typeof insertMembershipSubscriptionSchema>;
 export type MembershipSubscription = typeof membershipSubscriptions.$inferSelect;
 
+// Billing rules are snapshots accepted by the customer, never inferred
+// retroactively from a plan that staff might rename or edit later.
+export const membershipBillingStates = pgTable("membership_billing_states", {
+  subscriptionId: integer("subscription_id").primaryKey().references(() => membershipSubscriptions.id),
+  billingFrequency: text("billing_frequency").notNull().default("monthly"),
+  commitmentStartDate: text("commitment_start_date"),
+  commitmentEndDate: text("commitment_end_date"),
+  termsVersion: text("terms_version"),
+  pendingPlanId: integer("pending_plan_id").references(() => membershipPlans.id),
+  pendingFrequency: text("pending_frequency"),
+  pendingEffectiveDate: text("pending_effective_date"),
+  cancellationDate: text("cancellation_date"),
+  legacyBillingStoppedAt: timestamp("legacy_billing_stopped_at"),
+  legacyPaidThroughDate: text("legacy_paid_through_date"),
+  migrationReviewedBy: text("migration_reviewed_by"),
+});
+
 // ── App orders (from native ordering system) ──────────────────────────────────
 
 export const appOrders = pgTable("app_orders", {

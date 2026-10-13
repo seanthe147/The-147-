@@ -11,6 +11,59 @@ tags:
   - name: health
     description: Health operations
 paths:
+  /membership/billing:
+    get:
+      operationId: getMembershipBilling
+      responses:
+        "200":
+          description: Shared membership billing dashboard
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MembershipBilling" }
+  /membership/change-plan:
+    post:
+      operationId: changeMembershipPlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MembershipChange" }
+      responses:
+        "200":
+          description: Plan change scheduled for renewal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MembershipActionResult" }
+  /membership/cancel:
+    post:
+      operationId: cancelMembershipBilling
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MembershipCancellation" }
+      responses:
+        "200":
+          description: Cancellation scheduled at the end of the billing period
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MembershipActionResult" }
+  /staff/wix-migration/{id}/review:
+    post:
+      operationId: reviewMembershipMigration
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MembershipMigrationReview" }
+      responses:
+        "200":
+          description: Legacy billing verified stopped and replacement start date recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MembershipActionResult" }
   /healthz:
     get:
       operationId: healthCheck
@@ -26,6 +79,67 @@ paths:
                 $ref: "#/components/schemas/HealthStatus"
 components:
   schemas:
+    MembershipBilling:
+      type: object
+      required: [subscription, plans]
+      properties:
+        subscription:
+          anyOf:
+            - { $ref: "#/components/schemas/MembershipBillingSubscription" }
+            - { type: "null" }
+        plans:
+          type: array
+          items: { $ref: "#/components/schemas/MembershipBillingPlan" }
+    MembershipBillingPlan:
+      type: object
+      required: [id, name, monthlyPence, annualPence, minimumTermMonths]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        monthlyPence: { type: integer }
+        annualPence: { type: ["integer", "null"] }
+        minimumTermMonths: { type: integer }
+    MembershipBillingSubscription:
+      type: object
+      required: [id, planId, planName, frequency, status, renewalDate, commitmentEndDate, cancellationAllowed, pendingPlanName, pendingDate, cancellationDate, managedInSquare, migrationNeedsReview]
+      properties:
+        id: { type: integer }
+        planId: { type: integer }
+        planName: { type: string }
+        frequency: { type: string, enum: [monthly, annual] }
+        status: { type: string }
+        renewalDate: { type: ["string", "null"] }
+        commitmentEndDate: { type: ["string", "null"] }
+        cancellationAllowed: { type: boolean }
+        pendingPlanName: { type: ["string", "null"] }
+        pendingDate: { type: ["string", "null"] }
+        cancellationDate: { type: ["string", "null"] }
+        managedInSquare: { type: boolean }
+        migrationNeedsReview: { type: boolean }
+    MembershipChange:
+      type: object
+      required: [planId, billingFrequency, termsAccepted]
+      properties:
+        planId: { type: integer }
+        billingFrequency: { type: string, enum: [monthly, annual] }
+        termsAccepted: { type: boolean }
+    MembershipCancellation:
+      type: object
+      required: [confirmed]
+      properties:
+        confirmed: { type: boolean }
+    MembershipMigrationReview:
+      type: object
+      required: [legacyBillingStopped, paidThroughDate]
+      properties:
+        legacyBillingStopped: { type: boolean }
+        paidThroughDate: { type: string, format: date }
+    MembershipActionResult:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+        effectiveDate: { type: ["string", "null"] }
     HealthStatus:
       type: object
       properties:
