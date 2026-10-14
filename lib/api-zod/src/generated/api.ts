@@ -8,6 +8,24 @@
 import * as zod from 'zod';
 
 
+export const replaceMembershipCardBodySourceIdMax = 256;
+
+export const replaceMembershipCardBodyVerificationTokenMax = 2048;
+
+
+
+export const ReplaceMembershipCardBody = zod.object({
+  "sourceId": zod.string().min(1).max(replaceMembershipCardBodySourceIdMax),
+  "verificationToken": zod.string().min(1).max(replaceMembershipCardBodyVerificationTokenMax),
+  "authorised": zod.boolean()
+})
+
+export const ReplaceMembershipCardResponse = zod.object({
+  "message": zod.string(),
+  "effectiveDate": zod.string().nullish()
+})
+
+
 export const GetMembershipBillingResponse = zod.object({
   "subscription": zod.union([zod.object({
   "id": zod.number(),
@@ -22,7 +40,14 @@ export const GetMembershipBillingResponse = zod.object({
   "pendingDate": zod.string().nullable(),
   "cancellationDate": zod.string().nullable(),
   "managedInSquare": zod.boolean(),
-  "migrationNeedsReview": zod.boolean()
+  "migrationNeedsReview": zod.boolean(),
+  "cardReplacementAllowed": zod.boolean().optional(),
+  "paymentCard": zod.union([zod.object({
+  "brand": zod.string().nullable(),
+  "last4": zod.string().nullable(),
+  "expiryMonth": zod.number().nullable(),
+  "expiryYear": zod.number().nullable()
+}),zod.null()]).optional()
 }),zod.null()]),
   "plans": zod.array(zod.object({
   "id": zod.number(),

@@ -43,6 +43,7 @@ export function buildPaymentSheetHtml(opts: {
   intent?: "CHARGE" | "STORE" | "CHARGE_AND_STORE";
   buyerEmail?: string | null;
   recurringDescription?: string | null;
+  replaceMembershipCard?: boolean;
   /**
    * When true (and intent is "CHARGE_AND_STORE"), render an opt-in checkbox
    * below the card form labelled "Save card for one-tap reorder". The
@@ -333,6 +334,7 @@ export function buildPaymentSheetHtml(opts: {
       var INTENT = ${JSON.stringify(opts.intent || "CHARGE")};
       var BUYER_EMAIL = ${JSON.stringify(opts.buyerEmail || "")};
       var RECURRING_DESC = ${JSON.stringify(opts.recurringDescription || "")};
+      var REPLACE_CARD = ${JSON.stringify(!!opts.replaceMembershipCard)};
       var SHOW_SAVE_CARD = ${JSON.stringify(!!opts.showSaveCard)};
       var SDK_SRC = ${JSON.stringify(sdkSrc)};
       var SDK_TIMEOUT_MS = ${SDK_TIMEOUT_MS};
@@ -348,7 +350,7 @@ export function buildPaymentSheetHtml(opts: {
       // from one customer's attempt at the sheet (load → fail → retry).
       var SESSION_ID = (Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
       var IS_SUBSCRIPTION = INTENT === "STORE" && RECURRING_DESC.length > 0;
-      var PAY_LABEL = IS_SUBSCRIPTION
+      var PAY_LABEL = REPLACE_CARD ? "Authorise replacement card" : IS_SUBSCRIPTION
         ? "Start Membership · £" + AMOUNT
         : "Pay £" + AMOUNT;
 
@@ -448,7 +450,8 @@ export function buildPaymentSheetHtml(opts: {
       // membership / subscription sign-ups.
       if (IS_SUBSCRIPTION) {
         var labelEl = document.getElementById("amount-label");
-        if (labelEl) labelEl.textContent = "Membership";
+        if (labelEl) labelEl.textContent = REPLACE_CARD ? "Replace membership card" : "Membership";
+        if (REPLACE_CARD) document.querySelector(".amount-card .value").textContent = "No charge now";
         var recurEl = document.getElementById("amount-recurring");
         if (recurEl) {
           recurEl.textContent = RECURRING_DESC;
@@ -462,7 +465,9 @@ export function buildPaymentSheetHtml(opts: {
           // cause of the "spinner forever" bug — the inline script silently
           // SyntaxError'd at parse time and no timeout ever fired).
           var freq = RECURRING_DESC.replace(/^\\s*\\/\\s*/, "per ").replace(/—.*$/, "").trim();
-          noticeEl.textContent = "By continuing, you authorise The 147 to charge this card £" + AMOUNT + " " + freq + ", until you cancel your membership.";
+          noticeEl.textContent = REPLACE_CARD
+            ? "By continuing, you authorise this replacement card for your existing recurring membership payments. Your billing schedule and minimum term are unchanged."
+            : "By continuing, you authorise The 147 to charge this card £" + AMOUNT + " " + freq + ", until you cancel your membership.";
           noticeEl.style.display = "block";
         }
       }
@@ -649,9 +654,20 @@ export function buildPaymentSheetHtml(opts: {
             sellerKeyedIn: false,
             billingContact: BUYER_EMAIL ? { email: BUYER_EMAIL } : {},
           };
-          payments.verifyBuyer(token, verifyDetails).then(function (vr) {
+          if (REPLACE_CARD) { delete verifyDetails.amount; delete verifyDetails.currencyCode; }
+          return payments.verifyBuyer(token, verifyDetails).then(function (vr) {
+            if (REPLACE_CARD && !(vr && vr.token)) {
+              setStatus("Card authorisation was not completed. Please try again.");
+              send({ type: "error", message: "Card authorisation was not completed. Please try again." });
+              return;
+            }
             send({ type: "token", token: token, verificationToken: vr && vr.token ? vr.token : null, saveCard: saveCardChecked });
           }).catch(function (err) {
+            if (REPLACE_CARD) {
+              setStatus("Card authorisation failed or was cancelled. Please try again.");
+              send({ type: "error", message: "Card authorisation failed or was cancelled. Please try again." });
+              return;
+            }
             // verifyBuyer can reject for two benign reasons:
             //  1. "SCA not required" / "no challenge" — card is exempt
             //  2. A transient SDK error (e.g. network blip during the
@@ -664,6 +680,10 @@ export function buildPaymentSheetHtml(opts: {
             send({ type: "token", token: token, verificationToken: null, saveCard: saveCardChecked });
           });
         } catch (e) {
+          if (REPLACE_CARD) {
+            send({ type: "error", message: "Card authorisation failed. Please try again." });
+            return;
+          }
           send({ type: "token", token: token, verificationToken: null, saveCard: saveCardChecked });
         }
       }
@@ -676,7 +696,7 @@ export function buildPaymentSheetHtml(opts: {
             // Square. The native bridge will then POST it to /api/orders/:id/pay.
             // Pairs with payment_started so we can compute success rate.
             diag("payment_tokenized", { method: label });
-            verifyAndSend(result.token);
+            return verifyAndSend(result.token);
           } else if (result.status === "Cancel") {
             // User dismissed the payment sheet (e.g. closed the Google Pay or
             // Apple Pay overlay without completing the payment). This is not
@@ -810,7 +830,7 @@ export function buildPaymentSheetHtml(opts: {
         if (IS_SUBSCRIPTION) {
           var fp = document.getElementById("recurring-fineprint");
           if (fp) {
-            fp.textContent = "You can cancel anytime from your account.";
+            fp.textContent = REPLACE_CARD ? "Your existing membership terms still apply." : "You can cancel anytime from your account.";
             fp.style.display = "block";
           }
         }
@@ -894,6 +914,7 @@ export function buildPaymentSheetHtml(opts: {
       // Defined as a named function so tryCardInit can call it regardless of
       // source-order (function declarations are hoisted within this IIFE).
       function initWallets() {
+        if (REPLACE_CARD) return; // Card-on-file replacement is card-only.
 
         // Apple Pay (iOS Safari/WebKit only, requires verified domain).
       // Fully isolated — any failure here MUST NOT affect the card form.

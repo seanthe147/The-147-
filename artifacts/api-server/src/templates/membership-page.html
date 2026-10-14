@@ -539,6 +539,13 @@
   let manageOnly = false;
   let hasMembership = false;
   let billing = null;
+  let membershipCard=null, membershipPayments=null, cardWorking=false, cardSetup=0;
+  function closeMembershipCard(){
+    cardSetup++;
+    if(membershipCard){membershipCard.destroy().catch(()=>{});membershipCard=null}
+    membershipPayments=null;
+    const form=document.getElementById('mCardForm');if(form)form.style.display='none';
+  }
   const inFrame = (function(){try{return window.self!==window.top}catch(_){return true}})();
 
   function isCommitmentPlan(p){
@@ -583,7 +590,7 @@
     if(!tok){sec.style.display='none';return}
     try{
       const r=await fetch(API+'/api/membership/billing',{headers:{Authorization:'Bearer '+tok}});
-      if(r.status===401){try{localStorage.removeItem('the147_customer_token')}catch(_){};authToken=null;sec.style.display='none';return}
+      if(r.status===401){closeMembershipCard();try{localStorage.removeItem('the147_customer_token')}catch(_){};authToken=null;billing=null;sec.innerHTML='';sec.style.display='none';return}
       const bd=await r.json().catch(()=>null);
       if(!r.ok)throw new Error((bd&&bd.message)||('Could not load your billing details ('+r.status+').'));
       billing=bd||{subscription:null,plans:[]};
@@ -602,6 +609,7 @@
 
   function priceOf(p,f){return f==='annual'?p.annualPence:p.monthlyPence}
   function renderManage(){
+    closeMembershipCard();
     const sec=document.getElementById('manageSection');
     const sub=billing&&billing.subscription;
     sec.style.display='block';
@@ -624,6 +632,18 @@
       (sub.commitmentEndDate?row('Minimum term ends',fmtDate(sub.commitmentEndDate)):'')+
       (sub.pendingPlanName?row('Scheduled change',esc(sub.pendingPlanName)+' from '+fmtDate(sub.pendingDate)):'')+
       (sub.cancellationDate?row('Ends on',fmtDate(sub.cancellationDate)):'');
+    if(sub.cardReplacementAllowed){
+      const c=sub.paymentCard;
+      h+='<h4>Membership payment card</h4><p class="m-note">'+
+        (c&&c.last4?esc(c.brand||'Card')+' ending '+esc(c.last4)+' · expires '+esc(c.expiryMonth||'—')+'/'+esc(c.expiryYear||'—'):'No payment card on file.')+'</p>'+
+        '<p class="m-note">No payment is taken now. Your renewal date, minimum term and scheduled upgrade remain unchanged.</p>'+
+        '<button class="m-btn ghost" id="mCardOpen" onclick="mOpenCard()">Replace payment card</button>'+
+        '<div id="mCardForm" style="display:none;margin-top:14px"><div id="mCardContainer"></div>'+
+        '<label class="m-opt" style="border:none"><input type="checkbox" id="mCardConsent" onchange="mCardConsentChanged()"><span>I authorise this replacement card for my existing recurring membership payments.</span></label>'+
+        '<button class="m-btn" id="mCardSave" disabled onclick="mSaveCard()">Authorise replacement card</button> '+
+        '<button class="m-btn ghost" id="mCardClose" onclick="mCloseCard()">Close</button></div>'+
+        '<div class="m-msg" role="status" id="mCardMsg"></div>';
+    }
     if(sub.migrationNeedsReview){
       h+='<p class="m-note">Your move from the old website billing is being checked by the club. Changes are available once the owner confirms your previous payments have stopped.</p>';
     }else if(!sub.managedInSquare){
@@ -650,6 +670,65 @@
     sec._opts=opts;
   }
   function row(a,b){return '<div class="m-row"><span>'+a+'</span><span>'+b+'</span></div>'}
+  function cardMessage(text,error){
+    const m=document.getElementById('mCardMsg');
+    if(m){m.textContent=text;m.className='m-msg '+(error?'err':'ok')}
+  }
+  window.mCardConsentChanged=function(){
+    const b=document.getElementById('mCardSave'),c=document.getElementById('mCardConsent');
+    if(b)b.disabled=cardWorking||!membershipCard||!c||!c.checked;
+  };
+  window.mCloseCard=function(){if(!cardWorking){closeMembershipCard();document.getElementById('mCardOpen').disabled=false}};
+  window.mOpenCard=async function(){
+    if(cardWorking)return;
+    closeMembershipCard();
+    const setup=cardSetup,open=document.getElementById('mCardOpen');
+    open.disabled=true;cardMessage('Loading secure card form…',false);
+    try{
+      const r=await fetch(API+'/api/public/square-config'),cfg=await r.json();
+      if(!r.ok||!cfg.configured||!cfg.applicationId||!cfg.locationId)throw new Error('Secure card setup is unavailable. Please retry later.');
+      const src=cfg.environment==='production'?'https://web.squarecdn.com/v1/square.js':'https://sandbox.web.squarecdn.com/v1/square.js';
+      if(!window.Square)await new Promise((resolve,reject)=>{
+        const s=document.createElement('script');s.src=src;
+        const timeout=setTimeout(()=>{s.remove();reject(new Error('Card form timed out. Please retry.'))},15000);
+        s.onload=()=>{clearTimeout(timeout);resolve()};s.onerror=()=>{clearTimeout(timeout);s.remove();reject(new Error('Could not load the secure card form. Please retry.'))};
+        document.head.appendChild(s);
+      });
+      if(setup!==cardSetup)return;
+      membershipPayments=window.Square.payments(cfg.applicationId,cfg.locationId);
+      const card=await membershipPayments.card();
+      if(setup!==cardSetup){await card.destroy();return}
+      membershipCard=card;
+      document.getElementById('mCardForm').style.display='block';
+      document.getElementById('mCardConsent').checked=false;
+      await card.attach('#mCardContainer');
+      if(setup!==cardSetup)return;
+      cardMessage('',false);window.mCardConsentChanged();
+    }catch(e){if(setup===cardSetup){closeMembershipCard();cardMessage(e.message||'Could not load card form.',true);open.disabled=false}}
+  };
+  window.mSaveCard=async function(){
+    const consent=document.getElementById('mCardConsent');
+    if(cardWorking||!membershipCard||!consent||!consent.checked)return;
+    const ownerToken=getTok(),subscriptionId=billing&&billing.subscription&&billing.subscription.id;
+    if(!ownerToken||!subscriptionId)return;
+    cardWorking=true;window.mCardConsentChanged();document.getElementById('mCardClose').disabled=true;
+    cardMessage('Authorising card…',false);
+    try{
+      const result=await membershipCard.tokenize();
+      if(result.status!=='OK'||!result.token)throw new Error('Check your card details and try again.');
+      const verified=await membershipPayments.verifyBuyer(result.token,{intent:'STORE',customerInitiated:true,sellerKeyedIn:false,billingContact:{}});
+      if(!verified||!verified.token)throw new Error('Card authorisation was not completed. Please retry.');
+      if(getTok()!==ownerToken||!billing||!billing.subscription||billing.subscription.id!==subscriptionId)throw new Error('Your signed-in account changed. Please reopen the card form.');
+      const r=await fetch(API+'/api/membership/payment-card',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+ownerToken},
+        body:JSON.stringify({sourceId:result.token,verificationToken:verified.token,authorised:true})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.message||'Card update could not be confirmed. Refresh billing before retrying.');
+      cardWorking=false;closeMembershipCard();await loadManage();cardMessage(d.message,false);
+    }catch(e){
+      // Discard a used nonce. Retry always tokenises and authorises afresh.
+      cardWorking=false;await loadManage();cardMessage(e.message||'Card authorisation failed or was cancelled. Please retry.',true);
+    }finally{cardWorking=false;window.mCardConsentChanged()}
+  };
   function selectedOpt(){const r=document.querySelector('input[name="mOpt"]:checked');const o=document.getElementById('manageSection')._opts||[];return r?o[Number(r.value)]:null}
   window.mOptChanged=function(){
     const o=selectedOpt();const t=document.getElementById('mTerms');const b=document.getElementById('mChangeBtn');
@@ -686,8 +765,10 @@
     }catch(e){m.className='m-msg err';m.textContent=e.message||'Network error — please try again.';b.disabled=false;b.textContent='Confirm cancellation'}
   };
   window.signOutPortal=function(){
+    closeMembershipCard();
     try{localStorage.removeItem('the147_customer_token')}catch(_){}
     authToken=null;billing=null;hasMembership=false;
+    document.getElementById('manageSection').innerHTML='';
     document.getElementById('manageSection').style.display='none';
     document.getElementById('manageSignin').style.display='';
     if(allPlans.length)renderPlans();

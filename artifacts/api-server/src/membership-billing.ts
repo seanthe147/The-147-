@@ -1,4 +1,6 @@
 import type { Express, RequestHandler } from "express";
+import { createHash } from "node:crypto";
+import { ReplaceMembershipCardBody } from "@workspace/api-zod";
 import { eq, isNull, sql } from "drizzle-orm";
 import { membershipBillingStates as states, membershipSubscriptions as subscriptions } from "@workspace/db/schema";
 import { db, storage } from "./storage";
@@ -10,6 +12,19 @@ import {
 
 type Connection = Pick<typeof db, "select" | "insert" | "update" | "execute">;
 const today = () => new Date().toISOString().slice(0, 10);
+const replaceable = (sub: any, remote: any) => !!sub?.squareCustomerId &&
+  remote?.customer_id === sub.squareCustomerId &&
+  ["ACTIVE", "PAUSED", "PENDING"].includes(remote?.status) && sub.status !== "cancelled";
+
+// Never expose provider IDs, billing addresses, names, fingerprints or full PAN.
+function permittedCard(card: any) {
+  return card ? {
+    brand: typeof card.card_brand === "string" ? card.card_brand : null,
+    last4: /^\d{4}$/.test(card.last_4 ?? "") ? card.last_4 : null,
+    expiryMonth: Number.isInteger(card.exp_month) ? card.exp_month : null,
+    expiryYear: Number.isInteger(card.exp_year) ? card.exp_year : null,
+  } : null;
+}
 export async function billingState(id: number, connection: Connection = db) {
   const [state] = await connection.select().from(states).where(eq(states.subscriptionId, id));
   return state;
@@ -176,12 +191,62 @@ export async function syncPaidMembershipGroups(subscriptionId: number) {
 }
 
 export function registerMembershipBilling(app: Express, customerAuth: RequestHandler, staffAuth: RequestHandler, ownerAuth: RequestHandler) {
+  app.post("/api/membership/payment-card", customerAuth, async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const parsed = ReplaceMembershipCardBody.safeParse(req.body);
+    if (!parsed.success || parsed.data.authorised !== true ||
+        !parsed.data.sourceId.startsWith("cnon:") || !parsed.data.verificationToken.trim()) {
+      res.status(400).json({ message: "Authorise a new card using the secure card form before retrying." }); return;
+    }
+    try {
+      const sub = await storage.getMembershipSubscriptionByCustomer((req as any).customerId);
+      if (!sub?.squareSubscriptionId || !sub.squareCustomerId) {
+        res.status(409).json({ message: "This membership does not support card replacement. Please contact the club." }); return;
+      }
+      await db.transaction(async tx => {
+        // Same lock as upgrades/cancellations; pending upgrades remain untouched.
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(14702, ${sub.id})`);
+        const remote = await square.getSquareSubscription(sub.squareSubscriptionId!);
+        if (!replaceable(sub, remote) || !Number.isInteger(remote.version)) {
+          throw new Error("Subscription ownership or status could not be verified.");
+        }
+        const { sourceId, verificationToken } = parsed.data;
+        const card = await square.saveCardOnFile({
+          customerId: sub.squareCustomerId!, sourceId, verificationToken,
+          // A network retry with the same token must not create another card.
+          idempotencyKey: createHash("sha256").update(`${sub.id}:${sourceId}`).digest("hex"),
+        });
+        if (!card?.id || card.customer_id !== sub.squareCustomerId || card.enabled === false) {
+          throw new Error("Square did not confirm the replacement card.");
+        }
+        const updated = await square.updateSquareSubscriptionCard(remote.id, card.id, remote.version);
+        if (updated?.id !== remote.id || updated?.card_id !== card.id) {
+          throw new Error("Square did not confirm the subscription update.");
+        }
+      });
+      res.json({ message: "Your membership payment card has been updated. Your renewal date, minimum term and scheduled plan changes are unchanged. No payment was taken." });
+    } catch (error) {
+      // Do not echo provider payloads or card/token details to clients or logs.
+      const declined = error instanceof square.SquareError &&
+        ["CARD_DECLINED", "VERIFY_CVV_FAILURE", "VERIFY_AVS_FAILURE", "CARD_EXPIRED", "GENERIC_DECLINE", "CARD_TOKEN_EXPIRED", "INVALID_CARD", "CARD_NOT_SUPPORTED", "VERIFICATION_REQUIRED", "CARD_DECLINED_VERIFICATION_REQUIRED"].includes(error.code);
+      res.status(declined ? 422 : 409).json({ message: declined
+        ? "Square could not authorise this card. Check the details or try another card. Your existing subscription is unchanged."
+        : "We could not confirm the card update. Refresh your billing details before retrying. No payment was taken." });
+    }
+  });
   app.get("/api/membership/billing", customerAuth, async (req, res) => {
     try {
       let sub = await storage.getMembershipSubscriptionByCustomer((req as any).customerId);
       let remote: any = null;
+      let paymentCard = null;
       if (sub?.squareSubscriptionId) {
         remote = await square.getSquareSubscription(sub.squareSubscriptionId);
+        if (!sub.squareCustomerId || remote.customer_id !== sub.squareCustomerId) throw new Error("Subscription ownership mismatch");
+        if (remote.card_id) {
+          const card = await square.getSquareCard(remote.card_id);
+          if (card?.customer_id !== sub.squareCustomerId) throw new Error("Card ownership mismatch");
+          paymentCard = permittedCard(card);
+        }
         await reconcileScheduledMembership(remote);
         sub = await storage.getMembershipSubscriptionByCustomer((req as any).customerId);
       }
@@ -201,6 +266,7 @@ export function registerMembershipBilling(app: Express, customerAuth: RequestHan
           pendingPlanName: pending?.name ?? null, pendingDate: state?.pendingEffectiveDate ?? null,
           cancellationDate: state?.cancellationDate ?? null, managedInSquare: !!sub.squareSubscriptionId,
           migrationNeedsReview: sub.source === "wix_import" && !state?.legacyBillingStoppedAt,
+          cardReplacementAllowed: replaceable(sub, remote), paymentCard,
         } : null,
         plans: plans.map(p => ({ id: p.id, name: p.name, monthlyPence: p.priceMonthly,
           annualPence: p.priceAnnual ?? null, minimumTermMonths: minimumTermMonths(p) })),

@@ -24,6 +24,7 @@ import type {
   MembershipActionResult,
   MembershipBilling,
   MembershipCancellation,
+  MembershipCardReplacement,
   MembershipChange,
   MembershipMigrationReview
 } from './api.schemas';
@@ -39,6 +40,71 @@ type AwaitedInput<T> = PromiseLike<T> | T;
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
+
+export const getReplaceMembershipCardUrl = () => {
+
+
+
+
+  return `/api/membership/payment-card`
+}
+
+export const replaceMembershipCard = async (membershipCardReplacement: MembershipCardReplacement, options?: RequestInit): Promise<MembershipActionResult> => {
+
+  return customFetch<MembershipActionResult>(getReplaceMembershipCardUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      membershipCardReplacement,)
+  }
+);}
+
+
+
+
+export const getReplaceMembershipCardMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof replaceMembershipCard>>, TError,{data: BodyType<MembershipCardReplacement>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof replaceMembershipCard>>, TError,{data: BodyType<MembershipCardReplacement>}, TContext> => {
+
+const mutationKey = ['replaceMembershipCard'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof replaceMembershipCard>>, {data: BodyType<MembershipCardReplacement>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  replaceMembershipCard(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReplaceMembershipCardMutationResult = NonNullable<Awaited<ReturnType<typeof replaceMembershipCard>>>
+    export type ReplaceMembershipCardMutationBody = BodyType<MembershipCardReplacement>
+    export type ReplaceMembershipCardMutationError = ErrorType<unknown>
+
+    export const useReplaceMembershipCard = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof replaceMembershipCard>>, TError,{data: BodyType<MembershipCardReplacement>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof replaceMembershipCard>>,
+        TError,
+        {data: BodyType<MembershipCardReplacement>},
+        TContext
+      > => {
+      return useMutation(getReplaceMembershipCardMutationOptions(options));
+    }
 
 export const getGetMembershipBillingUrl = () => {
 

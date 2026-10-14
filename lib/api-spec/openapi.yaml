@@ -11,6 +11,20 @@ tags:
   - name: health
     description: Health operations
 paths:
+  /membership/payment-card:
+    post:
+      operationId: replaceMembershipCard
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MembershipCardReplacement" }
+      responses:
+        "200":
+          description: Existing subscription card updated without changing billing
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MembershipActionResult" }
   /membership/billing:
     get:
       operationId: getMembershipBilling
@@ -116,6 +130,27 @@ components:
         cancellationDate: { type: ["string", "null"] }
         managedInSquare: { type: boolean }
         migrationNeedsReview: { type: boolean }
+        cardReplacementAllowed: { type: boolean }
+        paymentCard:
+          anyOf:
+            - { $ref: "#/components/schemas/MembershipPaymentCard" }
+            - { type: "null" }
+    MembershipPaymentCard:
+      type: object
+      required: [brand, last4, expiryMonth, expiryYear]
+      properties:
+        brand: { type: ["string", "null"] }
+        last4: { type: ["string", "null"] }
+        expiryMonth: { type: ["integer", "null"] }
+        expiryYear: { type: ["integer", "null"] }
+    MembershipCardReplacement:
+      type: object
+      additionalProperties: false
+      required: [sourceId, verificationToken, authorised]
+      properties:
+        sourceId: { type: string, minLength: 1, maxLength: 256 }
+        verificationToken: { type: string, minLength: 1, maxLength: 2048 }
+        authorised: { type: boolean }
     MembershipChange:
       type: object
       required: [planId, billingFrequency, termsAccepted]

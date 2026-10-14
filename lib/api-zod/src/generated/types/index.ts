@@ -13,6 +13,8 @@ export * from './membershipBillingPlan';
 export * from './membershipBillingSubscription';
 export * from './membershipBillingSubscriptionFrequency';
 export * from './membershipCancellation';
+export * from './membershipCardReplacement';
 export * from './membershipChange';
 export * from './membershipChangeBillingFrequency';
 export * from './membershipMigrationReview';
+export * from './membershipPaymentCard';

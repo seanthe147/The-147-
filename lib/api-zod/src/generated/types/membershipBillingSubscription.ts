@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { MembershipBillingSubscriptionFrequency } from './membershipBillingSubscriptionFrequency';
+import type { MembershipPaymentCard } from './membershipPaymentCard';
 
 export interface MembershipBillingSubscription {
   id: number;
@@ -26,4 +27,6 @@ export interface MembershipBillingSubscription {
   cancellationDate: string | null;
   managedInSquare: boolean;
   migrationNeedsReview: boolean;
+  cardReplacementAllowed?: boolean;
+  paymentCard?: MembershipPaymentCard | null;
 }

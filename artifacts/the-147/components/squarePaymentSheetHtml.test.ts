@@ -4,6 +4,46 @@ import { runInNewContext } from "node:vm";
 
 import { buildCardFieldHtml } from "./squareCardFieldHtml.ts";
 import { buildPaymentSheetHtml } from "./squarePaymentSheetHtml.ts";
+test("replacement card requires fresh STORE authorisation and never forwards an unverified token", async () => {
+  const html = buildPaymentSheetHtml({ ...baseOptions, intent: "STORE", replaceMembershipCard: true,
+    amountPence: 0, recurringDescription: "Existing membership. No payment now." });
+  const start = html.indexOf("function verifyAndSend(token)");
+  const end = html.indexOf("function tokenizeAndSend", start);
+  const verifyCode = html.slice(start, end);
+  const messages: any[] = [];
+  let rejectSCA = true;
+  let missingToken = false;
+  const context = {
+    REPLACE_CARD: true, SHOW_SAVE_CARD: false, INTENT: "STORE", AMOUNT: "0.00",
+    CURRENCY: "GBP", BUYER_EMAIL: "",
+    payments: { async verifyBuyer(token: string, details: any) {
+      assert.equal(token, "cnon:fresh");
+      assert.equal(details.intent, "STORE");
+      assert.equal(details.amount, undefined);
+      assert.equal(details.customerInitiated, true);
+      if (rejectSCA) throw new Error("cancelled");
+      return missingToken ? {} : { token: "fresh-sca" };
+    } },
+    setStatus() {}, send(message: any) { messages.push(message); },
+  };
+  const verify = runInNewContext(`${verifyCode}; verifyAndSend`, context);
+  await verify("cnon:fresh");
+  assert.equal(messages.at(-1)?.type, "error");
+  assert.equal(messages.some(m => m.type === "token"), false);
+  rejectSCA = false; missingToken = true;
+  await verify("cnon:fresh");
+  assert.equal(messages.at(-1)?.type, "error");
+  missingToken = false;
+  await verify("cnon:fresh");
+  assert.equal(messages.at(-1)?.verificationToken, "fresh-sca");
+  assert.equal(messages.at(-1)?.token, "cnon:fresh");
+  assert.match(html, /Authorise replacement card/);
+  assert.match(html, /No charge now/);
+  assert.match(html, /if \(REPLACE_CARD\) return; \/\/ Card-on-file replacement is card-only/);
+  // Check every generated inline script for valid syntax.
+  const withoutComments = html.replace(/<!--[\s\S]*?-->/g, "");
+  for (const m of withoutComments.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)) new Function(m[1]);
+});
 import {
   GOOGLE_PAY_BUTTON_CLEAR_SPACE,
   GOOGLE_PAY_WEB_BUTTON_HEIGHT,

@@ -13,6 +13,17 @@ export const MembershipBillingSubscriptionFrequency = {
   annual: 'annual',
 } as const;
 
+export interface MembershipPaymentCard {
+  /** @nullable */
+  brand: string | null;
+  /** @nullable */
+  last4: string | null;
+  /** @nullable */
+  expiryMonth: number | null;
+  /** @nullable */
+  expiryYear: number | null;
+}
+
 export interface MembershipBillingSubscription {
   id: number;
   planId: number;
@@ -32,6 +43,8 @@ export interface MembershipBillingSubscription {
   cancellationDate: string | null;
   managedInSquare: boolean;
   migrationNeedsReview: boolean;
+  cardReplacementAllowed?: boolean;
+  paymentCard?: MembershipPaymentCard | null;
 }
 
 export interface MembershipBillingPlan {
@@ -46,6 +59,20 @@ export interface MembershipBillingPlan {
 export interface MembershipBilling {
   subscription: MembershipBillingSubscription | null;
   plans: MembershipBillingPlan[];
+}
+
+export interface MembershipCardReplacement {
+  /**
+     * @minLength 1
+     * @maxLength 256
+     */
+  sourceId: string;
+  /**
+     * @minLength 1
+     * @maxLength 2048
+     */
+  verificationToken: string;
+  authorised: boolean;
 }
 
 export type MembershipChangeBillingFrequency = typeof MembershipChangeBillingFrequency[keyof typeof MembershipChangeBillingFrequency];

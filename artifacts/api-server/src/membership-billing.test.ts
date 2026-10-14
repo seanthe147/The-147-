@@ -18,8 +18,14 @@ let server: ReturnType<ReturnType<typeof express>["listen"]>;
 const requests: { path: string; body: any }[] = [];
 let actions: any[] = [];
 let catalogPence = 2000;
+let declineCard = false;
+let failCardUpdate = false;
+const card: any = { id: "fixture-card-new", customer_id: "fixture-customer", enabled: true,
+  card_brand: "VISA", last_4: "1111", exp_month: 12, exp_year: 2030,
+  cardholder_name: "Must not be exposed", billing_address: { postal_code: "private" }, fingerprint: "private" };
 const renewal = "2099-11-13";
-const remote: any = { id: "billing-fixture-sub", status: "ACTIVE", plan_variation_id: "fixture-monthly", actions };
+const remote: any = { id: "billing-fixture-sub", customer_id: "fixture-customer", version: 3,
+  status: "ACTIVE", plan_variation_id: "fixture-monthly", card_id: "fixture-card-old", actions };
 let cancellationAt = renewal;
 
 before(async () => {
@@ -30,6 +36,17 @@ before(async () => {
       const path = new URL(url).pathname;
       const body = init?.body ? JSON.parse(String(init.body)) : {};
       requests.push({ path, body });
+      if (path === "/v2/cards") {
+        if (declineCard) return Response.json({ errors: [{ code: "CARD_DECLINED", detail: "private provider detail" }] }, { status: 400 });
+        return Response.json({ card });
+      }
+      if (path.startsWith("/v2/cards/")) return Response.json({ card });
+      if (path === `/v2/subscriptions/${remote.id}` && init?.method === "PUT") {
+        if (failCardUpdate) return Response.json({ errors: [{ code: "VERSION_MISMATCH" }] }, { status: 409 });
+        remote.card_id = body.subscription.card_id;
+        remote.version++;
+        return Response.json({ subscription: { ...remote, actions: undefined } });
+      }
       if (path.includes("/catalog/")) {
         return Response.json({ object: { subscription_plan_variation_data: { phases: [{ cadence: "MONTHLY", pricing: { type: "STATIC", price_money: { amount: catalogPence, currency: "GBP" } } }] } } });
       }
@@ -51,7 +68,7 @@ before(async () => {
   oldId = old.id;
   blackId = black.id;
   const sub = await storage.createMembershipSubscription({
-    customerId, planId: oldId, status: "active", squareSubscriptionId: remote.id,
+    customerId, planId: oldId, status: "active", squareSubscriptionId: remote.id, squareCustomerId: remote.customer_id,
     currentPeriodStart: "2099-10-13", currentPeriodEnd: renewal, source: "app",
   });
   subId = sub.id;
@@ -112,6 +129,83 @@ test("repeated upgrade and cancellation cannot overlap with pending upgrade", as
   assert.equal((await request("/api/membership/change-plan", { planId: blackId, billingFrequency: "monthly", termsAccepted: true })).status, 409);
   assert.equal((await request("/api/membership/cancel", { confirmed: true })).status, 409);
   assert.equal(requests.filter(r => r.path.endsWith("/swap-plan")).length, 1);
+});
+const replacement = { sourceId: "cnon:fixture-fresh-card", verificationToken: "fixture-sca", authorised: true };
+test("card replacement requires authentication and fresh authorisation, not a stored card ID", async () => {
+  const before = requests.length;
+  assert.equal((await request("/api/membership/payment-card", replacement, false)).status, 401);
+  for (const body of [
+    { ...replacement, verificationToken: "" }, { ...replacement, verificationToken: null },
+    { ...replacement, authorised: false }, { ...replacement, sourceId: "ccof:existing-card" },
+  ]) assert.equal((await request("/api/membership/payment-card", body)).status, 400);
+  assert.equal(requests.length, before);
+});
+test("foreign Square customer is rejected before storing a card; metadata fails closed too", async () => {
+  remote.customer_id = "another-customer";
+  const before = requests.filter(r => r.path === "/v2/cards").length;
+  try {
+    assert.equal((await request("/api/membership/payment-card", replacement)).status, 409);
+    assert.equal((await request("/api/membership/billing")).status, 503);
+    assert.equal(requests.filter(r => r.path === "/v2/cards").length, before);
+  } finally { remote.customer_id = "fixture-customer"; }
+});
+test("declined card keeps subscription unchanged and gives safe retry guidance", async () => {
+  declineCard = true;
+  const before = requests.filter(r => r.body.subscription?.card_id).length;
+  try {
+    const result = await request("/api/membership/payment-card", replacement);
+    assert.equal(result.status, 422);
+    assert.match((await result.json() as any).message, /try another card/);
+    assert.equal(remote.card_id, "fixture-card-old");
+    assert.equal(requests.filter(r => r.body.subscription?.card_id).length, before);
+  } finally { declineCard = false; }
+});
+test("retry changes only the existing subscription card and preserves pending upgrade and minimum term", async () => {
+  await db.update(membershipBillingStates).set({
+    commitmentStartDate: "2099-10-13", commitmentEndDate: "2100-10-13",
+  }).where(eq(membershipBillingStates.subscriptionId, subId));
+  const beforeSub = await storage.getMembershipSubscriptionByCustomer(customerId);
+  const beforeState = await billingState(subId);
+  assert.equal(beforeState?.pendingPlanId, blackId);
+  assert.equal(beforeState?.commitmentEndDate, "2100-10-13");
+  const result = await request("/api/membership/payment-card", { ...replacement, sourceId: "cnon:fixture-retry" });
+  assert.equal(result.status, 200);
+  const update = requests.find(r => r.body.subscription?.card_id);
+  assert.equal(update?.path, `/v2/subscriptions/${remote.id}`);
+  assert.deepEqual(update?.body, { subscription: { card_id: card.id, version: 3 } });
+  assert.deepEqual(await storage.getMembershipSubscriptionByCustomer(customerId), beforeSub);
+  assert.deepEqual(await billingState(subId), beforeState);
+  assert.equal(actions[0].type, "SWAP_PLAN");
+  assert.equal(requests.some(r => r.path === "/v2/payments" || r.path === "/v2/subscriptions"), false);
+  const saved = requests.filter(r => r.path === "/v2/cards").at(-1)!;
+  assert.equal(saved.body.card.customer_id, remote.customer_id);
+  assert.equal(saved.body.verification_token, replacement.verificationToken);
+});
+test("billing returns only permitted display metadata, never provider IDs or PII", async () => {
+  const result = await request("/api/membership/billing");
+  assert.equal(result.status, 200);
+  const data = await result.json() as any;
+  assert.deepEqual(data.subscription.paymentCard, { brand: "VISA", last4: "1111", expiryMonth: 12, expiryYear: 2030 });
+  assert.equal(data.subscription.cardReplacementAllowed, true);
+  assert.equal(JSON.stringify(data).includes("private"), false);
+  assert.equal(JSON.stringify(data).includes("fixture-card"), false);
+});
+test("failed subscription update can retry the same authorisation without duplicating the saved card", async () => {
+  failCardUpdate = true;
+  try {
+    assert.equal((await request("/api/membership/payment-card", replacement)).status, 409);
+  } finally { failCardUpdate = false; }
+  assert.equal((await request("/api/membership/payment-card", replacement)).status, 200);
+  const attempts = requests.filter(r => r.path === "/v2/cards" && r.body.source_id === replacement.sourceId);
+  assert.equal(attempts.at(-1)!.body.idempotency_key, attempts.at(-2)!.body.idempotency_key);
+});
+test("terminated memberships reject replacement before card authorisation", async () => {
+  remote.status = "CANCELED";
+  const before = requests.filter(r => r.path === "/v2/cards").length;
+  try {
+    assert.equal((await request("/api/membership/payment-card", replacement)).status, 409);
+    assert.equal(requests.filter(r => r.path === "/v2/cards").length, before);
+  } finally { remote.status = "ACTIVE"; }
 });
 test("a Square lifecycle event alone must not grant upgraded benefits", async () => {
   await reconcileScheduledMembership({ id: remote.id, plan_variation_id: "fixture-black-monthly", status: "ACTIVE" });

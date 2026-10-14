@@ -702,9 +702,10 @@ export async function saveCardOnFile(opts: {
   sourceId: string;
   verificationToken?: string | null;
   cardholderName?: string | null;
+  idempotencyKey?: string;
 }) {
   const body: Record<string, unknown> = {
-    idempotency_key: `card-${opts.customerId}-${Date.now()}`,
+    idempotency_key: opts.idempotencyKey ?? `card-${opts.customerId}-${Date.now()}`,
     source_id: opts.sourceId,
     card: {
       customer_id: opts.customerId,
@@ -779,6 +780,10 @@ export async function getSquareSubscription(subscriptionId: string) {
   return { ...data.subscription, actions: data.actions ?? data.subscription?.actions ?? [] };
 }
 
+export async function getSquareCard(cardId: string) {
+  const data = await squareRequest("GET", `/v2/cards/${encodeURIComponent(cardId)}`);
+  return data.card;
+}
 export async function listSquareSubscriptionsForCustomer(squareCustomerId: string) {
   const data = await squareRequest("POST", "/v2/subscriptions/search", {
     query: { filter: { customer_ids: [squareCustomerId] } },
@@ -2450,4 +2455,11 @@ export async function cancelTerminalCheckout(checkoutId: string): Promise<boolea
     console.error(`[SQUARE-TERMINAL] cancelTerminalCheckout(${checkoutId}) failed:`, err?.message || err);
     return false;
   }
+}
+
+export async function updateSquareSubscriptionCard(subscriptionId: string, cardId: string, version: number) {
+  const data = await squareRequest("PUT", `/v2/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+    subscription: { card_id: cardId, version },
+  });
+  return data.subscription;
 }

@@ -34,6 +34,7 @@ import {
   useCancelMembershipBilling,
   useChangeMembershipPlan,
   useGetMembershipBilling,
+  useReplaceMembershipCard,
 } from "@workspace/api-client-react";
 import type { MembershipBillingPlan, MembershipActionResult } from "@workspace/api-client-react";
 
@@ -993,6 +994,13 @@ function ManageMembership() {
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const { customer: billingCustomer } = useCustomerAuth();
+  const [cardOpen, setCardOpen] = useState(false);
+  const [cardConsent, setCardConsent] = useState(false);
+  const [cardError, setCardError] = useState<string | null>(null);
+  const [cardSheetKey, setCardSheetKey] = useState(0);
+  const { data: config } = useQuery<{
+    configured: boolean; applicationId: string | null; locationId: string | null; environment: "sandbox" | "production";
+  }>({ queryKey: ["/api/public/square-config"] });
 
   const { data, isLoading, isError, error, refetch } = useGetMembershipBilling({
     query: { queryKey: [...getGetMembershipBillingQueryKey(), billingCustomer?.id], refetchInterval: 30000, staleTime: 0 },
@@ -1008,6 +1016,15 @@ function ManageMembership() {
   };
   const change = useChangeMembershipPlan({ mutation: { onSuccess: onDone } });
   const cancel = useCancelMembershipBilling({ mutation: { onSuccess: onDone } });
+  const replaceCard = useReplaceMembershipCard({ mutation: {
+    onSuccess: (result) => { setCardOpen(false); setCardConsent(false); setCardError(null); onDone(result); },
+    onError: (error) => {
+      setCardError(apiErrorMessage(error, "Card replacement could not be confirmed. Refresh billing before retrying."));
+      // A new sheet produces a fresh nonce and fresh SCA authorisation.
+      setCardSheetKey(v => v + 1);
+      queryClient.invalidateQueries({ queryKey: getGetMembershipBillingQueryKey() });
+    },
+  } });
 
   const box = { marginTop: 16, padding: 16, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface };
   const h = { fontSize: 15, fontWeight: "700" as const, color: colors.text, marginBottom: 10 };
@@ -1064,6 +1081,43 @@ function ManageMembership() {
       {sub.cancellationDate ? row("Ends on", fmt(sub.cancellationDate)) : null}
 
       {notice && <Text style={{ fontSize: 13, color: "#15803D", marginTop: 10 }}>{notice}</Text>}
+
+      {sub.cardReplacementAllowed && (
+        <View style={{ marginTop: 14 }}>
+          <Text style={h}>Membership payment card</Text>
+          <Text style={muted}>
+            {sub.paymentCard?.last4
+              ? `${sub.paymentCard.brand ?? "Card"} ending ${sub.paymentCard.last4} · expires ${sub.paymentCard.expiryMonth ?? "—"}/${sub.paymentCard.expiryYear ?? "—"}`
+              : "No payment card on file."}
+          </Text>
+          <Text style={[muted, { marginTop: 8 }]}>Replacing your card does not change your renewal date, minimum term or scheduled upgrade. No payment is taken now.</Text>
+          <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: cardConsent }}
+            onPress={() => setCardConsent(v => !v)} style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
+            <Ionicons name={cardConsent ? "checkbox" : "square-outline"} size={22} color={Colors.brand.blue} />
+            <Text style={[muted, { flex: 1 }]}>I authorise this replacement card for my existing recurring membership payments.</Text>
+          </Pressable>
+          <Pressable testID="replace-membership-card" accessibilityRole="button"
+            disabled={!cardConsent || !config?.configured || replaceCard.isPending}
+            onPress={() => { setCardError(null); setCardSheetKey(v => v + 1); setCardOpen(true); prefetchSquarePaymentSdk(); }}
+            style={{ marginTop: 10, opacity: cardConsent && config?.configured ? 1 : 0.5 }}>
+            <Text style={{ color: Colors.brand.blue, fontWeight: "700" }}>Replace payment card</Text>
+          </Pressable>
+          {!config?.configured && <Text style={muted}>Secure card setup is unavailable. Please try again later.</Text>}
+          {cardError && !cardOpen && <Text style={errStyle}>{cardError}</Text>}
+          <SquarePaymentSheet key={cardSheetKey} visible={cardOpen}
+            applicationId={config?.applicationId ?? null} locationId={config?.locationId ?? null}
+            environment={config?.environment ?? "sandbox"} amountPence={0} currency="GBP"
+            intent="STORE" replaceMembershipCard recurringDescription="For your existing recurring membership. No payment taken now."
+            buyerEmail={billingCustomer?.email ?? null} inProgress={replaceCard.isPending} errorMessage={cardError}
+            onClose={() => { if (!replaceCard.isPending) setCardOpen(false); }}
+            onUnavailable={(message) => { setCardOpen(false); setCardError(message); }}
+            onTokenized={({ sourceId, verificationToken }) => {
+              if (!verificationToken) { setCardError("Please complete card authorisation before retrying."); return; }
+              setCardError(null);
+              replaceCard.mutate({ data: { sourceId, verificationToken, authorised: cardConsent } });
+            }} />
+        </View>
+      )}
 
       {sub.migrationNeedsReview ? (
         <Text style={[muted, { marginTop: 12 }]}>

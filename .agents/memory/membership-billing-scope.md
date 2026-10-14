@@ -27,3 +27,9 @@ app push warning on the second, and retain the suspension notice on the third.
 **Why:** On 2026-10-15 the user explicitly chose failure-count suspension rather than a 14-day unpaid grace period, with different notification channels for the first two failures.
 
 **How to apply:** Use this sequence for membership payment failures across app and website subscribers. Do not introduce a time-based hold or send a first-failure push instead of the requested email.
+
+Payment-card replacement must authorise a freshly tokenised card for storage and update the existing Square subscription only. It must not charge immediately, restart billing or minimum terms, or remove a scheduled renewal upgrade.
+
+**Why:** The self-service scope explicitly requires card replacement without changing the customer's existing membership agreement. Checkout's legacy fallback to an unverified token is not acceptable for this flow.
+
+**How to apply:** Require successful STORE buyer verification and explicit recurring-payment consent; keep card replacement available independently of pending plan changes. Verify failures with mocked or sandbox Square, never live charges.
