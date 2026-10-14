@@ -137,11 +137,13 @@ export async function reconcileScheduledMembership(sqSub: any, paymentConfirmed 
     await tx.execute(sql`SELECT pg_advisory_xact_lock(14702, ${local.id})`);
     const fresh = await billingState(local.id, tx);
     if (!fresh?.pendingPlanId) return;
+    // Changing payment frequency is not a new membership or a new minimum term.
+    const startsNewTerm = local.planId !== plan.id && minimumTermMonths(plan) > 0;
     await tx.update(subscriptions).set({ planId: plan.id }).where(eq(subscriptions.id, local.id));
     await tx.update(states).set({
       billingFrequency: fresh.pendingFrequency!,
-      commitmentStartDate: minimumTermMonths(plan) ? fresh.pendingEffectiveDate : fresh.commitmentStartDate,
-      commitmentEndDate: commitmentEnd(plan, fresh.pendingEffectiveDate!) ?? fresh.commitmentEndDate,
+      commitmentStartDate: startsNewTerm ? fresh.pendingEffectiveDate : fresh.commitmentStartDate,
+      commitmentEndDate: startsNewTerm ? commitmentEnd(plan, fresh.pendingEffectiveDate!) : fresh.commitmentEndDate,
       pendingPlanId: null, pendingFrequency: null, pendingEffectiveDate: null,
     }).where(eq(states.subscriptionId, local.id));
   });

@@ -170,6 +170,23 @@ test("legacy Maximum migration offers Platinum and changes benefits only after p
   assert.equal((await billingState(subId))?.billingFrequency, "annual");
   assert.equal((await billingState(subId))?.pendingPlanId, null);
 });
+test("changing only billing frequency preserves the accepted minimum-term dates", async () => {
+  const platinum = (await storage.getMembershipPlans()).find(p => p.tier === "platinum");
+  assert.ok(platinum);
+  const start = "2025-01-15";
+  const end = "2026-01-15";
+  await db.update(membershipBillingStates).set({
+    billingFrequency: "monthly", commitmentStartDate: start, commitmentEndDate: end,
+    pendingPlanId: platinum.id, pendingFrequency: "annual",
+    pendingEffectiveDate: new Date().toISOString().slice(0, 10),
+  }).where(eq(membershipBillingStates.subscriptionId, subId));
+  await reconcileScheduledMembership({ ...remote, plan_variation_id: platinum.squarePlanVariationIdAlt }, true);
+  const state = await billingState(subId);
+  assert.equal(state?.billingFrequency, "annual");
+  assert.equal(state?.commitmentStartDate, start);
+  assert.equal(state?.commitmentEndDate, end);
+  assert.equal(state?.pendingPlanId, null);
+});
 test("a paid annual member can stop renewal while retaining access through the full term", async () => {
   const state = await billingState(subId);
   assert.ok(state?.commitmentEndDate);

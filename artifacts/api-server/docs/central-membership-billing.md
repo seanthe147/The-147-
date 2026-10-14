@@ -17,6 +17,9 @@ Sources checked:
 
 ## Billing rules
 
+- Platinum is the new public name for the former Black membership, not a
+  separate tier or an upgrade. A name change alone must not change charges,
+  benefits or an accepted minimum term. Preserve historical Black identifiers.
 - Platinum is the sole public offer from the former Maximum/Platinum pair:
   £6.99/month or £65/year. Maximum remains hidden, not disabled/deleted.
   Existing subscribers' Square charges are not changed automatically.
@@ -30,6 +33,8 @@ Sources checked:
   when a customer schedules an upgrade.
 - An accepted upgrade to Platinum starts its disclosed 12-month term at
   the effective renewal.
+- A monthly/annual frequency change on the same plan preserves the existing
+  accepted minimum-term dates; it does not start another 12-month commitment.
 - After a monthly minimum term, billing continues monthly until cancelled.
   Cancellation stops billing at Square's confirmed date, not immediately.
 - Annual memberships renew annually; cancellation stops the next renewal.
