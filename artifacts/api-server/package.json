@@ -10,7 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:push": "node --experimental-strip-types --test src/push-core.test.ts",
     "test:menu": "node --experimental-strip-types --test src/square-menu.test.ts",
-    "test:membership-billing": "node --experimental-strip-types --test src/membership-billing-policy.test.ts src/platinum-offer-migration.test.ts && node run-membership-billing-test.mjs",
+    "test:membership-billing": "node --experimental-strip-types --test src/membership-billing-policy.test.ts src/platinum-offer-migration.test.ts src/membership-failure-notifications.test.ts && node run-membership-billing-test.mjs",
     "check:membership-catalog": "node run-membership-catalog-check.mjs",
     "test:deals": "node --experimental-strip-types --test src/square-deals.test.ts",
     "test:fixtures": "node --experimental-strip-types --test src/sports-fixtures.test.ts",

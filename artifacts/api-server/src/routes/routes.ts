@@ -15,6 +15,7 @@ import { and as dAnd, eq as dEq, desc as dDesc, isNotNull as dIsNotNull, sql as 
 import { getServerFeatureFlags } from "../featureFlags";
 import { hashPin, verifyPin, hashPassword, verifyPassword, hashEmail, decrypt } from "../encryption";
 import * as square from "../square";
+import { notifyMembershipPaymentFailure } from "../membership-failure-notifications";
 import { alignBillingStart, billingState, recordBillingTerms, migrationOffer, prepareMigrationOffer, migrationBillingStart, membershipSignupGuard, reconcileScheduledMembership, registerMembershipBilling, syncPaidMembershipGroups } from "../membership-billing";
 import { addCalendarMonths, minimumTermMonths, validDate, variationForFrequency } from "../membership-billing-policy";
 import * as teya from "../teya";
@@ -386,6 +387,26 @@ async function sendEmailViaSMTP(to: string, subject: string, html: string): Prom
 
 // Send the Wix → Square migration email to a single member.
 // Returns success/message; updates migrationEmailedAt on success.
+async function sendMembershipFailureNotice(customerId: number, attempt: number): Promise<void> {
+  try {
+    const customer = await storage.getCustomerById(customerId);
+    if (!customer?.email) {
+      logger.warn({ customerId, attempt }, "Membership payment notice has no customer email");
+      return;
+    }
+    await notifyMembershipPaymentFailure(customer.email, attempt, {
+      sendEmail: sendEmailViaSMTP,
+      sendPush: async (email, title, body) => {
+        const tokens = await storage.getPushTokensByEmail(email);
+        if (tokens.length) await sendTargetedPush(tokens.map(t => t.token), title, body);
+      },
+    });
+  } catch (error) {
+    // Notification delivery must not prevent recording failure or suspending benefits.
+    logger.error({ err: error, customerId, attempt }, "Membership payment notice delivery failed");
+  }
+}
+
 async function sendMigrationEmail(subId: number, req: Request): Promise<{ success: boolean; message?: string }> {
   const { buildMigrationEmail, makeMigrationToken } = await import("../wix-migration.js");
   const subs = await storage.getMembershipSubscriptions();
@@ -4393,19 +4414,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
             if (shouldFreeze) await syncPaidMembershipGroups(local.id);
             console.log(`[WEBHOOK] Membership #${local.id} renewal failed (attempt ${newAttempts})${shouldFreeze ? " — FROZEN" : ""}`);
 
-            const customer = await storage.getCustomerById(local.customerId).catch(() => null);
-            if (customer?.email) {
-              const tokens = await storage.getPushTokensByEmail(customer.email).catch(() => [] as { token: string }[]);
-              if (tokens.length > 0) {
-                const title = shouldFreeze ? "Membership Suspended" : newAttempts === 2 ? "Renewal Failed Again" : "Renewal Payment Failed";
-                const body = shouldFreeze
-                  ? "Your membership has been suspended after 3 failed renewal payments. Please update your payment details."
-                  : newAttempts === 2
-                  ? `Renewal failed (${newAttempts}/3). One more failure will suspend your membership.`
-                  : "Your monthly membership renewal payment failed. Please ensure your card is up to date.";
-                await sendTargetedPush(tokens.map((t: { token: string }) => t.token), title, body).catch(() => {});
-              }
-            }
+            await sendMembershipFailureNotice(local.customerId, newAttempts);
           }
         }
       } catch (err) { console.error("[WEBHOOK] invoice.payment_failed error:", err); }
@@ -4817,19 +4826,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
             });
             console.log(`[WEBHOOK] Membership #${subId} payment failed (attempt ${newAttempts})${shouldFreeze ? " — FROZEN" : ""}`);
 
-            const customer = await storage.getCustomerById(sub.customerId).catch(() => null);
-            if (customer?.email) {
-              const tokens = await storage.getPushTokensByEmail(customer.email).catch(() => [] as { token: string }[]);
-              if (tokens.length > 0) {
-                const title = shouldFreeze ? "Membership Suspended" : newAttempts === 2 ? "Payment Failed Again" : "Membership Payment Failed";
-                const body = shouldFreeze
-                  ? "Your membership benefits have been suspended after 3 failed payments. Please retry payment to restore access."
-                  : newAttempts === 2
-                  ? `Your membership payment failed (attempt ${newAttempts}/3). One more failure will suspend your benefits. Please retry.`
-                  : "Your membership payment failed. Please retry to keep your benefits active.";
-                await sendTargetedPush(tokens.map((t: { token: string }) => t.token), title, body).catch(() => {});
-              }
-            }
+            await sendMembershipFailureNotice(sub.customerId, newAttempts);
           }
         } catch (mErr) {
           console.error("[WEBHOOK] Membership payment error:", mErr);
@@ -12726,19 +12723,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
             });
             if (shouldFreeze) await syncPaidMembershipGroups(local.id);
             console.log(`[MEMBERSHIP WEBHOOK] Renewal failed for #${local.id} (attempt ${newAttempts})`);
-            const customer = await storage.getCustomerById(local.customerId).catch(() => null);
-            if (customer?.email) {
-              const tokens = await storage.getPushTokensByEmail(customer.email).catch(() => [] as { token: string }[]);
-              if (tokens.length > 0) {
-                const title = shouldFreeze ? "Membership Suspended" : newAttempts === 2 ? "Renewal Failed Again" : "Renewal Payment Failed";
-                const body = shouldFreeze
-                  ? "Your membership has been suspended after 3 failed renewal payments. Please update your payment details."
-                  : newAttempts === 2
-                  ? `Renewal failed (${newAttempts}/3). One more failure will suspend your membership.`
-                  : "Your monthly membership renewal payment failed. Please ensure your card is up to date.";
-                await sendTargetedPush(tokens.map((t: { token: string }) => t.token), title, body).catch(() => {});
-              }
-            }
+            await sendMembershipFailureNotice(local.customerId, newAttempts);
           }
         }
       }

@@ -41,6 +41,10 @@ Sources checked:
 - An active, paid annual member may request that next renewal be stopped during
   the year; access still lasts through the paid 12-month term.
 - Failed or missing webhook verification cannot grant paid membership benefits.
+- Payment failures: email on the first failure, app push warning on the second,
+  and freeze benefits with a suspension push on the third. Push requires a
+  registered device. Notification delivery errors are logged without blocking
+  suspension; these notices use the existing transactional SMTP service.
 
 ## Before going live
 

@@ -20,3 +20,10 @@ Changing only monthly/annual payment frequency on the same plan preserves its ac
 **Why:** A payment schedule change is not a newly accepted membership upgrade; extending the term silently would impose another commitment.
 
 **How to apply:** Keep frequency changes separate from actual tier upgrades when reconciling paid renewals. Do not create a fresh minimum term just because payment cadence changed.
+
+Keep the three-failure suspension policy: email on the first failed payment,
+app push warning on the second, and retain the suspension notice on the third.
+
+**Why:** On 2026-10-15 the user explicitly chose failure-count suspension rather than a 14-day unpaid grace period, with different notification channels for the first two failures.
+
+**How to apply:** Use this sequence for membership payment failures across app and website subscribers. Do not introduce a time-based hold or send a first-failure push instead of the requested email.
