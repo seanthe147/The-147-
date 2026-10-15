@@ -5,6 +5,12 @@ description: Business scope for shared app and Wix membership management through
 
 Membership billing must be one central system customers can access from The 147 app and the Wix website, with Square processing payments. Customers must be able to choose monthly or annual billing and upgrade plans. Selected plans require a 12-month minimum subscription term.
 
+Memberships must also cover purchases made directly through the Square till/POS and Square recurring subscriptions, alongside the newly built app/website system.
+
+**Why:** The user explicitly confirmed that all three purchase routes are used; app/website checkout alone does not cover the business.
+
+**How to apply:** Keep one customer membership across all three routes. Distinguish prepaid till purchases from authorised recurring billing, and never assume a till purchase authorises a new recurring subscription.
+
 **Why:** The user reports Wix subscription payments no longer work for the business and wants shared membership management rather than separate app and website subscriptions.
 
 **How to apply:** Extend the existing membership system instead of creating competing billing records. Confirm minimum-term plan eligibility, upgrade charging, renewal and migration rules before implementing financial behavior. Do not infer that monthly billing means cancel-anytime, or that a minimum term guarantees successful future card charges.
