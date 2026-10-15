@@ -9,6 +9,12 @@ Membership billing must be one central system customers can access from The 147 
 
 **How to apply:** Extend the existing membership system instead of creating competing billing records. Confirm minimum-term plan eligibility, upgrade charging, renewal and migration rules before implementing financial behavior. Do not infer that monthly billing means cancel-anytime, or that a minimum term guarantees successful future card charges.
 
+The Member tab is the membership entry point: existing members should manage their membership there, while signed-out customers and non-members should see every available membership and be able to start purchasing one. Loyalty enrolment must not be a prerequisite for browsing memberships. Keep rewards compact and secondary here; the separate Rewards tab is the full rewards experience.
+
+**Why:** The user explicitly requested this after the old loyalty-first overview made the new billing controls difficult to find, then specifically asked to reduce the rewards section.
+
+**How to apply:** Keep paid membership status separate from rewards enrolment. Check existing memberships before offering a new subscription, and require customer sign-in before purchase, not before showing available plans.
+
 The user clarified on 2026-10-13 that Platinum is the new name for Black membership, not a separate tier. Maximum and Platinum also refer to the same membership. Only Platinum should be available from those two plans, at £6.99/month or £65/year. Platinum requires a 12-month minimum term. Upgrades take effect at renewal; monthly plans continue rolling after the minimum term; include controlled Wix migration.
 
 **Why:** These are explicit business rules, not billing defaults. Minimum terms must not be imposed retroactively on memberships that did not accept them.

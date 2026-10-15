@@ -12,7 +12,7 @@ import {
   KeyboardAvoidingView,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomTabBarHeightContext } from "expo-router/js-tabs";
@@ -26,6 +26,7 @@ import { getApiUrl } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
 import { useResponsive } from "@/hooks/useResponsive";
+import { MemberTabMembership } from "@/components/MemberTabMembership";
 
 const SESSION_KEY = "loyalty_session";
 function loyaltyUrl(path: string): string {
@@ -141,6 +142,11 @@ interface LoyaltyMeResponse {
 }
 
 export default function LoyaltyScreen() {
+  const { setupRewards } = useLocalSearchParams<{ setupRewards?: string }>();
+  const [rewardsExpanded, setRewardsExpanded] = useState(false);
+  useEffect(() => {
+    if (setupRewards === "1") setRewardsExpanded(true);
+  }, [setupRewards]);
   const colors = useColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
@@ -171,10 +177,6 @@ export default function LoyaltyScreen() {
   const [quickLoading, setQuickLoading] = useState(false);
   const [quickError, setQuickError] = useState("");
   const [showEnrollFlow, setShowEnrollFlow] = useState(false);
-
-  const { data: membershipPlans = [] } = useQuery<MembershipPlan[]>({
-    queryKey: ["/api/membership/plans"],
-  });
 
   // ── New authenticated path: pulls everything in one call using the
   // customer's main session, no phone+OTP needed.
@@ -487,7 +489,7 @@ export default function LoyaltyScreen() {
             <Text style={styles.headerSubtitle}>
               {firstName
                 ? `Welcome back, ${firstName}`
-                : "Membership plans & your loyalty account"}
+                : "Membership plans & billing"}
             </Text>
           </AdaptiveGlassSurface>
         ) : (
@@ -497,11 +499,37 @@ export default function LoyaltyScreen() {
             <Text style={styles.headerSubtitle}>
               {firstName
                 ? `Welcome back, ${firstName}`
-                : "Membership plans & your loyalty account"}
+                : "Membership plans & billing"}
             </Text>
           </View>
         )}
 
+        <MemberTabMembership key={customer?.id ?? "signed-out"} />
+
+        <View style={styles.compactRewards}>
+          <Ionicons name="gift-outline" size={22} color={Colors.brand.gold} />
+          <Pressable
+            style={{ flex: 1 }}
+            accessibilityRole="button"
+            accessibilityLabel="Open Rewards: points, scratch cards and prizes"
+            onPress={() => router.push("/(tabs)/rewards")}
+          >
+            <Text style={styles.compactRewardsTitle}>Rewards</Text>
+            <Text style={styles.compactRewardsSubtitle}>Points, scratch cards & prizes</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setRewardsExpanded(value => !value)}
+            accessibilityRole="button"
+            accessibilityLabel={rewardsExpanded ? "Hide rewards account details" : "Show rewards account setup and details"}
+            accessibilityState={{ expanded: rewardsExpanded }}
+            style={{ padding: 12 }}
+          >
+            <Ionicons name={rewardsExpanded ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
+          </Pressable>
+        </View>
+
+        {rewardsExpanded && (
+          <>
         {(programLoading || step === "loading") ? (
           <View style={styles.loadingWrap}>
             <ActivityIndicator size="large" color={Colors.brand.blue} />
@@ -966,73 +994,8 @@ export default function LoyaltyScreen() {
             </View>
           </>
         )}
-
-        {/* ── Membership Section (always visible) ── */}
-        <View style={styles.membershipSection}>
-          <View style={styles.membershipDivider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerLabel}>MEMBERSHIP</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          <View style={styles.membershipHero}>
-            <View style={styles.membershipHeroIcon}>
-              <Ionicons name="card" size={24} color={Colors.brand.gold} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.membershipHeroTitle}>The 147 Membership</Text>
-              <Text style={styles.membershipHeroSub}>Exclusive perks, priority booking & more</Text>
-            </View>
-          </View>
-
-          {membershipPlans.map((plan, idx) => {
-            const planColor = plan.color || Colors.brand.blue;
-            const meta = PLAN_TIER_META[plan.tier] ?? { icon: "card", tagline: "" };
-            const features = getPlanDisplayFeatures(plan);
-            return (
-              <Pressable
-                key={plan.id}
-                onPress={() => router.push("/membership")}
-                style={[styles.membershipPlanCard, idx < membershipPlans.length - 1 && styles.membershipPlanCardBorder]}
-              >
-                <View style={[styles.planColorBar, { backgroundColor: planColor }]} />
-                <View style={styles.planCardContent}>
-                  <View style={styles.planCardTop}>
-                    <View style={[styles.planBadge, { backgroundColor: planColor + "22" }]}>
-                      <Ionicons name={meta.icon as any} size={16} color={planColor} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.planCardName}>{plan.name}</Text>
-                      <Text style={styles.planCardTagline}>{meta.tagline}</Text>
-                    </View>
-                    <View style={{ alignItems: "flex-end" }}>
-                      <Text style={[styles.planCardPrice, { color: planColor }]}>£{(plan.priceMonthly / 100).toFixed(2)}</Text>
-                      <Text style={styles.planCardPeriod}>/month</Text>
-                    </View>
-                  </View>
-                  <View style={styles.planFeatureList}>
-                    {features.map((f, i) => (
-                      <View key={i} style={styles.planFeatureRow}>
-                        <Ionicons name="checkmark-circle" size={13} color={planColor} />
-                        <Text style={styles.planFeatureText}>{f}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-                <View style={styles.planChevron}>
-                  <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-                </View>
-              </Pressable>
-            );
-          })}
-
-          <Pressable style={styles.membershipCtaBtn} onPress={() => router.push("/membership")}>
-            <Ionicons name="card-outline" size={16} color="#fff" />
-            <Text style={styles.membershipCtaBtnText}>View Plans & Join</Text>
-            <Ionicons name="chevron-forward" size={16} color="#fff" />
-          </Pressable>
-        </View>
-
+          </>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -1042,6 +1005,29 @@ export default function LoyaltyScreen() {
 const createStyles = (palette: ReturnType<typeof useColors>) => {
   const Colors = { ...baseColors, light: palette };
   return StyleSheet.create({
+  compactRewards: {
+    marginHorizontal: 20,
+    marginBottom: 20,
+    paddingLeft: 14,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: palette.surface,
+    borderColor: palette.border,
+    borderWidth: 1,
+    borderRadius: 14,
+  },
+  compactRewardsTitle: {
+    color: palette.text,
+    fontSize: 14,
+    fontFamily: "Montserrat_600SemiBold",
+  },
+  compactRewardsSubtitle: {
+    color: palette.textSecondary,
+    fontSize: 12,
+    marginTop: 3,
+  },
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,

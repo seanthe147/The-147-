@@ -811,7 +811,7 @@ export default function RewardsScreen() {
             Earn points every time you spend at the venue and unlock exclusive rewards and scratch cards.
           </Text>
           <Pressable
-            onPress={() => router.push("/(tabs)/loyalty")}
+            onPress={() => router.push({ pathname: "/(tabs)/loyalty", params: { setupRewards: "1" } })}
             style={({ pressed }) => [styles.enrollButton, { opacity: pressed ? 0.85 : 1 }]}
           >
             <Ionicons name="star" size={18} color="#FFF" />

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Colors from "@/constants/colors";
@@ -57,6 +57,7 @@ interface MembershipPlan {
   guestPassesMonthly: number | null;
   sortOrder: number | null;
   active: boolean;
+  hideFromSignup?: boolean;
   minimumTermMonths?: number | null;
   // Server-computed benefit lines. The API renders these so any future
   // wording change is server-side only — no app submission required.
@@ -147,6 +148,7 @@ function todayString() {
 }
 
 export default function MembershipScreen() {
+  const selection = useLocalSearchParams<{ planId?: string; billingFrequency?: string }>();
   const colors = useColors();
   const styles = useMemo(() => createThemeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
@@ -165,6 +167,14 @@ export default function MembershipScreen() {
   const [paymentSheetBusy, setPaymentSheetBusy] = useState(false);
   const queryClient = useQueryClient();
 
+  useEffect(() => {
+    const id = Number(selection.planId);
+    if (!Number.isSafeInteger(id) || id <= 0) return;
+    setSelectedPlanId(id);
+    setBillingFrequency(selection.billingFrequency === "annual" ? "annual" : "monthly");
+    setTermsAccepted(false);
+  }, [selection.planId, selection.billingFrequency]);
+
   const { data: squareConfig } = useQuery<{
     applicationId: string | null;
     locationId: string | null;
@@ -178,17 +188,19 @@ export default function MembershipScreen() {
   const useNativeSheet =
     Platform.OS !== "web" && !!squareConfig?.configured && !!squareConfig?.applicationId && !!squareConfig?.locationId;
 
-  const { data: plans = [], isLoading: plansLoading } = useQuery<MembershipPlan[]>({
+  const { data: availablePlans = [], isLoading: plansLoading } = useQuery<MembershipPlan[]>({
     queryKey: ["/api/membership/plans"],
   });
+  const plans = availablePlans.filter(plan => plan.active !== false && !plan.hideFromSignup);
 
   const {
     data: subscription,
     isLoading: subLoading,
+    isError: subscriptionError,
     isRefetching: subRefetching,
     refetch: refetchSubscription,
   } = useQuery<MembershipSubscription | null>({
-    queryKey: ["/api/membership/my-subscription"],
+    queryKey: ["/api/membership/my-subscription", customer?.id],
     enabled: isAuthenticated,
     // Hitting this endpoint also makes the server re-check Square for any
     // new customer-group / POS-granted memberships, so we want the page to
@@ -203,7 +215,7 @@ export default function MembershipScreen() {
       const res = await fetch(url.toString(), {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) return null;
+      if (!res.ok) throw new Error("Your existing membership could not be checked.");
       return res.json();
     },
   });
@@ -411,7 +423,16 @@ export default function MembershipScreen() {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.brand.blue} />
         </View>
-      ) : subscription ? (
+      ) : isAuthenticated && subscriptionError ? (
+        <View style={[styles.loadingContainer, { padding: 24 }]}>
+          <Text style={{ color: colors.text, textAlign: "center", marginBottom: 16 }}>
+            We couldn’t check your existing membership. Please retry before starting a new one.
+          </Text>
+          <Pressable style={styles.loginBtn} onPress={() => refetchSubscription()} accessibilityRole="button">
+            <Text style={styles.loginBtnText}>Try again</Text>
+          </Pressable>
+        </View>
+      ) : isAuthenticated && subscription && subscription.status !== "cancelled" ? (
         <ActiveMembership
           subscription={subscription}
           insets={insets}
@@ -985,7 +1006,7 @@ function ActiveMembership({
   );
 }
 
-function ManageMembership() {
+export function ManageMembership() {
   const colors = useColors();
   const queryClient = useQueryClient();
   const [planId, setPlanId] = useState<number | null>(null);
@@ -1147,7 +1168,9 @@ function ManageMembership() {
                   {o.plan.name} · £{(price / 100).toFixed(2)}/{o.f === "annual" ? "yr" : "mo"}
                 </Text>
                 <Text style={muted}>
-                  {o.plan.minimumTermMonths > 0 ? `${o.plan.minimumTermMonths}-month minimum term from the change date.` : "No minimum term."}
+                  {o.plan.id === sub.planId
+                    ? "Your existing minimum-term dates stay unchanged."
+                    : o.plan.minimumTermMonths > 0 ? `${o.plan.minimumTermMonths}-month minimum term from the change date.` : "No minimum term."}
                 </Text>
               </Pressable>
             );
@@ -1160,7 +1183,9 @@ function ManageMembership() {
                 </View>
                 <Text style={[muted, { flex: 1 }]}>
                   I agree to the Terms & Conditions and to switching to {chosen.plan.name} ({chosen.f}) from {fmt(sub.renewalDate)}
-                  {chosen.plan.minimumTermMonths > 0 ? `, including a ${chosen.plan.minimumTermMonths}-month minimum term.` : "."}
+                  {chosen.plan.id !== sub.planId && chosen.plan.minimumTermMonths > 0
+                    ? `, including a ${chosen.plan.minimumTermMonths}-month minimum term.`
+                    : chosen.plan.id === sub.planId ? ". My existing minimum-term dates stay unchanged." : "."}
                 </Text>
               </Pressable>
               <Pressable
