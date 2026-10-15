@@ -17,6 +17,8 @@ import { hashPin, verifyPin, hashPassword, verifyPassword, hashEmail, decrypt } 
 import * as square from "../square";
 import { notifyMembershipPaymentFailure } from "../membership-failure-notifications";
 import { alignBillingStart, billingState, recordBillingTerms, migrationOffer, prepareMigrationOffer, migrationBillingStart, membershipSignupGuard, reconcileScheduledMembership, registerMembershipBilling, syncPaidMembershipGroups } from "../membership-billing";
+import { membershipPlanChanges, membershipPlanCreation, membershipMemberChanges, protectedMembership, changesProtectedBilling } from "../membership-admin-policy";
+import { prepareMembershipSaleRates } from "../membership-plan-admin";
 import { addCalendarMonths, minimumTermMonths, validDate, variationForFrequency } from "../membership-billing-policy";
 import * as teya from "../teya";
 import { buildReorderPayload, type ReorderMenuItem, type ReorderRawItem } from "../reorder-matching";
@@ -1694,7 +1696,7 @@ async function getMarketingAudienceEmails(audience: string): Promise<string[]> {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  registerMembershipBilling(app, customerAuth, staffAuth, ownerAuth);
+  registerMembershipBilling(app, customerAuth, staffAuth, ownerAuth, managerAuth);
   // ── One-shot kitchen-category seeder ────────────────────────────────────
   // Auto-tags obvious food categories (Burgers, Pizzas, Mains, etc.) as
   // `isKitchen=true` the first time the server boots after this feature
@@ -12747,7 +12749,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     const plans = await storage.getMembershipPlans();
     // Attach the canonical benefits list so the staff dashboard renders the
     // same wording as the customer app and marketing page.
-    const enriched = plans.map((p: any) => ({ ...p, benefits: getPlanBenefitTexts(p) }));
+    const enriched = plans.map((p: any) => ({ ...p, benefits: getPlanBenefitTexts(p), minimumTermMonths: minimumTermMonths(p) }));
     res.json(enriched);
   });
 
@@ -12762,7 +12764,9 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   });
 
   app.post("/api/staff/membership/plans", staffAuth, managerAuth, async (req, res) => {
-    const { name, tier, priceMonthly, priceAnnual, hoursIncluded, hoursUnit, snookerUnlimited, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, squarePlanVariationIdAlt, squareCustomerGroupId, excludeWithDeals, active, hideFromSignup, sortOrder, color, description } = req.body ?? {};
+    const parsed = membershipPlanCreation.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Check the plan fields: prices must be whole pence, percentages 0–100, and allowances non-negative.", errors: parsed.error.flatten().fieldErrors });
+    const { name, tier, priceMonthly, priceAnnual, hoursIncluded, hoursUnit, snookerUnlimited, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, squarePlanVariationIdAlt, squareCustomerGroupId, excludeWithDeals, active, hideFromSignup, sortOrder, color, description } = parsed.data;
     if (!name?.trim()) return res.status(400).json({ message: "Plan name is required" });
     if (priceMonthly == null || isNaN(Number(priceMonthly))) return res.status(400).json({ message: "Monthly price is required" });
     // Auto-generate a tier slug from the name if not provided
@@ -12785,12 +12789,19 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         squareCustomerGroupId: squareCustomerGroupId?.trim() || null,
         excludeWithDeals: !!excludeWithDeals,
         active: active !== false,
-        hideFromSignup: !!hideFromSignup,
+        // New public offers remain hidden until Square confirms their rates.
+        hideFromSignup: true,
         sortOrder: Number(sortOrder) || 0,
         color: isValidCssColor(color) ? color : "#0047AB",
         description: description?.trim() || null,
       } as any);
-      res.json(plan);
+      try {
+        const sale = await prepareMembershipSaleRates({ ...plan, hideFromSignup: !!hideFromSignup });
+        const ready = await storage.updateMembershipPlan(plan.id, { ...sale.rates, hideFromSignup: !!hideFromSignup });
+        res.json({ ...ready, squareSynced: sale.squareSynced, squareSyncError: null });
+      } catch {
+        res.json({ ...plan, squareSynced: false, squareSyncError: "Plan saved as staff-only. Square billing could not be confirmed; edit this plan and retry before making it available to customers." });
+      }
     } catch (err: any) {
       console.error("[PLAN CREATE]", err.message);
       res.status(500).json({ message: err.message });
@@ -12798,13 +12809,18 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   });
 
   app.put("/api/staff/membership/plans/:id", staffAuth, managerAuth, async (req, res) => {
-    const id = parseInt(req.params.id as string);
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ message: "Invalid plan ID." });
+    const parsed = membershipPlanChanges.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Check the plan fields: prices must be whole pence, percentages 0–100, and allowances non-negative.", errors: parsed.error.flatten().fieldErrors });
 
     // Capture old values before updating so we can detect changes
     const oldPlan = await storage.getMembershipPlan(id);
     if (!oldPlan) return res.status(404).json({ message: "Plan not found" });
 
-    const updateBody = { ...req.body };
+    const updateBody = { ...parsed.data };
+    // Tier is an internal identity used by entitlement and minimum-term rules.
+    delete updateBody.tier;
     if ("color" in updateBody) {
       updateBody.color = isValidCssColor(updateBody.color) ? updateBody.color : "#0047AB";
     }
@@ -12829,41 +12845,13 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     // Don't persist the confirmation flag — it's not a column.
     delete updateBody.confirmDisable;
 
-    let plan = await storage.updateMembershipPlan(id, updateBody);
-    if (!plan) return res.status(404).json({ message: "Plan not found" });
-
-    // Sync price or name changes to Square Catalog automatically
-    let squareSynced = false;
-    let squareSyncError: string | null = null;
-    if (plan.squarePlanVariationId && square.isConfigured() && oldPlan) {
-      const priceChanged = req.body.priceMonthly !== undefined && req.body.priceMonthly !== oldPlan.priceMonthly;
-      const nameChanged = req.body.name !== undefined && req.body.name !== oldPlan.name;
-      if (priceChanged || nameChanged) {
-        try {
-          const { newVariationId } = await square.syncPlanToSquareCatalog({
-            localPlanId: id,
-            planVariationId: plan.squarePlanVariationId,
-            planName: plan.name,
-            newAmountPence: plan.priceMonthly,
-            priceChanged,
-            nameChanged,
-          });
-          // Price change creates a new Square plan — save the new variation ID
-          if (newVariationId) {
-            await storage.updateMembershipPlan(id, { squarePlanVariationId: newVariationId });
-            plan = { ...plan, squarePlanVariationId: newVariationId };
-            console.log(`[PLAN EDIT] New Square plan created for price change: ${newVariationId}`);
-          }
-          squareSynced = true;
-          console.log(`[PLAN EDIT] Square synced — ${plan.name} price=£${(plan.priceMonthly / 100).toFixed(2)}`);
-        } catch (sqErr: any) {
-          squareSyncError = sqErr?.message ?? "Square sync failed";
-          console.error("[PLAN EDIT] Square sync error:", sqErr?.message);
-        }
-      }
+    try {
+      const sale = await prepareMembershipSaleRates({ ...oldPlan, ...updateBody }, oldPlan);
+      const plan = await storage.updateMembershipPlan(id, { ...updateBody, ...sale.rates });
+      res.json({ ...plan, squareSynced: sale.squareSynced, squareSyncError: null });
+    } catch {
+      res.status(503).json({ message: "Square could not confirm the sale rates. The plan was not changed. Existing subscriptions are unchanged; please retry." });
     }
-
-    res.json({ ...plan, squareSynced, squareSyncError });
   });
 
   app.post("/api/staff/membership/plans/seed", staffAuth, managerAuth, async (_req, res) => {
@@ -12886,19 +12874,14 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       const results: Array<{ planId: number; name: string; squarePlanVariationId: string; skipped?: boolean }> = [];
 
       for (const plan of plans) {
-        // Skip if already set up
-        if (plan.squarePlanVariationId) {
-          results.push({ planId: plan.id, name: plan.name, squarePlanVariationId: plan.squarePlanVariationId, skipped: true });
-          continue;
-        }
-        const result = await square.createCatalogSubscriptionPlan({
-          localPlanId: plan.id,
-          name: plan.name,
-          amountPence: plan.priceMonthly,
-        });
-        await storage.updateMembershipPlan(plan.id, { squarePlanVariationId: result.squarePlanVariationId });
-        results.push({ planId: plan.id, name: plan.name, squarePlanVariationId: result.squarePlanVariationId });
-        console.log(`[SQUARE SETUP] Created plan variation for ${plan.name}: ${result.squarePlanVariationId}`);
+        if (!plan.active || plan.hideFromSignup) continue;
+        // Treat each cadence independently; having monthly billing configured
+        // must never silently skip a missing annual variation.
+        const sale = await prepareMembershipSaleRates(plan);
+        await storage.updateMembershipPlan(plan.id, sale.rates);
+        results.push({ planId: plan.id, name: plan.name,
+          squarePlanVariationId: sale.rates.squarePlanVariationId ?? plan.squarePlanVariationId!,
+          skipped: !sale.squareSynced });
       }
 
       res.json({ success: true, results });
@@ -13817,28 +13800,32 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   });
 
   app.patch("/api/staff/membership/subscriptions/:id", staffAuth, managerAuth, async (req, res) => {
-    const id = parseInt(req.params.id as string);
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ message: "Invalid membership ID." });
+    const parsed = membershipMemberChanges.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Check the member fields: use valid dates, whole non-negative usage and a valid status.", errors: parsed.error.flatten().fieldErrors });
     const sub = await storage.getMembershipSubscription(id);
     if (!sub) return res.status(404).json({ message: "Subscription not found" });
-    const { status, staffNotes, planId, hoursUsedThisPeriod, guestPassesUsed, currentPeriodStart, currentPeriodEnd } = req.body ?? {};
+    if (protectedMembership(sub) && changesProtectedBilling(sub, parsed.data)) {
+      return res.status(409).json({ code: "USE_CENTRAL_BILLING", message: "Use the central billing controls for paid memberships, or the reviewed Wix migration process. Direct status, plan and billing-date edits are blocked. Notes and usage can still be saved." });
+    }
+    const { status, staffNotes, planId, hoursUsedThisPeriod, guestPassesUsed, currentPeriodStart, currentPeriodEnd } = parsed.data;
+    if (planId !== undefined && !protectedMembership(sub)) {
+      const plan = await storage.getMembershipPlan(planId);
+      if (!plan?.active) return res.status(400).json({ message: "Choose an active plan." });
+    }
+    if (currentPeriodStart && currentPeriodEnd && currentPeriodEnd < currentPeriodStart) return res.status(400).json({ message: "The expiry date must not precede the start date." });
     const updates: Record<string, unknown> = {};
     if (staffNotes !== undefined) updates.staffNotes = staffNotes;
-    if (planId !== undefined) updates.planId = parseInt(planId);
-    if (hoursUsedThisPeriod !== undefined) updates.hoursUsedThisPeriod = parseInt(hoursUsedThisPeriod);
-    if (guestPassesUsed !== undefined) updates.guestPassesUsed = parseInt(guestPassesUsed);
-    if (currentPeriodStart !== undefined) updates.currentPeriodStart = currentPeriodStart || null;
-    if (currentPeriodEnd !== undefined) updates.currentPeriodEnd = currentPeriodEnd || null;
-    if (status !== undefined) {
+    if (planId !== undefined && !protectedMembership(sub)) updates.planId = planId;
+    if (hoursUsedThisPeriod !== undefined) updates.hoursUsedThisPeriod = hoursUsedThisPeriod;
+    if (guestPassesUsed !== undefined) updates.guestPassesUsed = guestPassesUsed;
+    if (currentPeriodStart !== undefined && !protectedMembership(sub)) updates.currentPeriodStart = currentPeriodStart || null;
+    if (currentPeriodEnd !== undefined && !protectedMembership(sub)) updates.currentPeriodEnd = currentPeriodEnd || null;
+    if (status !== undefined && !protectedMembership(sub)) {
       updates.status = status;
       if (status === "cancelled") updates.cancelledAt = new Date();
-      // Mirror to Square if possible
-      if (sub.squareSubscriptionId && square.isConfigured()) {
-        try {
-          if (status === "cancelled") await square.cancelSquareSubscription(sub.squareSubscriptionId);
-          else if (status === "paused") await square.pauseSquareSubscription(sub.squareSubscriptionId);
-          else if (status === "active" && sub.status === "paused") await square.resumeSquareSubscription(sub.squareSubscriptionId);
-        } catch { /* Square call failed — local update still applied */ }
-      }
+      else if (status === "active") updates.cancelledAt = null;
     }
     const updated = await storage.updateMembershipSubscription(id, updates as any);
 

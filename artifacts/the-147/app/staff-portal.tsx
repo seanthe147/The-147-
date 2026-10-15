@@ -20,7 +20,7 @@ import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import { useKiosk } from "@/contexts/KioskContext";
-import { apiRequest } from "@/lib/query-client";
+import { apiRequest, getApiUrl } from "@/lib/query-client";
 import { useResponsive } from "@/hooks/useResponsive";
 import BaseColors from "@/constants/colors";
 import { useColors } from "@/hooks/useColors";
@@ -1864,14 +1864,6 @@ function DashboardScreen() {
                 onPress={() => router.push("/staff-hr")}
                 testID="portal-leave-booking"
               />
-              <AdminTool
-                icon="card"
-                title="Memberships"
-                description="View and set up customer memberships"
-                color={Colors.brand.blue}
-                onPress={() => router.push("/membership")}
-                testID="portal-memberships"
-              />
             </>
           )}
         </View>
@@ -1946,9 +1938,23 @@ function DashboardScreen() {
               <AdminTool
                 icon="card"
                 title="Memberships"
-                description="View and set up customer memberships"
+                description="Manage plans, prices and member billing (opens the web dashboard; sign in there)"
                 color={Colors.brand.blue}
-                onPress={() => router.push("/membership")}
+                onPress={async () => {
+                  try {
+                    const url = new URL("/staff?section=memberships", getApiUrl()).toString();
+                    if (Platform.OS === "web" && typeof window !== "undefined") {
+                      const win = window.open(url, "_blank");
+                      if (win) {
+                        win.opener = null;
+                        return;
+                      }
+                    }
+                    await Linking.openURL(url);
+                  } catch (e: any) {
+                    Alert.alert("Could not open dashboard", e?.message || "Please try again.");
+                  }
+                }}
                 testID="portal-memberships"
               />
               <AdminTool

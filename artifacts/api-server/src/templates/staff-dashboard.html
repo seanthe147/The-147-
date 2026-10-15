@@ -2897,18 +2897,21 @@
         </div>
       </div>
 
+      <div id="epMinTerm" style="display:none;font-size:12px;color:var(--text-2);background:var(--surface-2,#F8F9FB);border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-bottom:10px;line-height:1.5"></div>
+      <div style="font-size:11px;color:var(--text-3);margin-bottom:10px;line-height:1.5">Price changes apply to new sign-ups only. Existing Square subscriptions keep the price they signed up on.</div>
       <!-- Active toggle -->
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
         <input type="checkbox" id="epActive" style="width:16px;height:16px;cursor:pointer">
-        <label for="epActive" style="font-size:13px;color:var(--text);cursor:pointer">Plan is active (visible for new subscriptions)</label>
+        <label for="epActive" style="font-size:13px;color:var(--text);cursor:pointer">Plan is active (benefits apply; visible for new subscriptions)</label>
       </div>
+      <div style="font-size:11px;color:var(--amber);margin:0 0 8px 26px;line-height:1.5">Disabling a plan affects member benefits. To stop new sign-ups only, use "hide from public sign-up" below instead.</div>
 
       <!-- Staff-assigned only toggle -->
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px">
         <input type="checkbox" id="epHideFromSignup" style="width:16px;height:16px;cursor:pointer;margin-top:2px">
         <div style="flex:1">
           <label for="epHideFromSignup" style="font-size:13px;color:var(--text);cursor:pointer;font-weight:500">Staff-assigned only (hide from public sign-up)</label>
-          <div style="font-size:11px;color:var(--text-3);margin-top:3px;line-height:1.5">Customers won't see this plan in the app's "Join a membership" list and can't subscribe to it themselves. Only staff can assign members to it (e.g. VIP, Blue Light, comps). Existing subscriptions and member discounts are unaffected.</div>
+          <div style="font-size:11px;color:var(--text-3);margin-top:3px;line-height:1.5">Hiding stops NEW customer sign-ups only. Existing members keep their entitlements, discounts and billing. Only staff can assign members to it (e.g. VIP, Blue Light, comps).</div>
         </div>
       </div>
 
@@ -2933,6 +2936,9 @@
     </div>
     <div class="modal-bd" style="display:flex;flex-direction:column;gap:0">
 
+      <div id="msProtectedNote" style="display:none;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px 14px;font-size:12px;color:#1E40AF;line-height:1.5;margin-bottom:14px"></div>
+      <div id="msBillingPanel" style="display:none;border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px"></div>
+      <div id="msManualFields">
       <!-- Status & Plan row -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
         <div class="form-group" style="margin:0">
@@ -2965,8 +2971,9 @@
           </div>
         </div>
         <div style="font-size:11px;color:var(--text-3,#9CA3AF);margin-top:8px;line-height:1.5">
-          Setting an expiry date lets you manually control when access ends, regardless of Square billing. Leave blank for open-ended access.
+          Manual memberships only: the expiry date controls when access ends. Leave blank for open-ended access.
         </div>
+      </div>
       </div>
 
       <!-- Usage this period -->
@@ -2998,7 +3005,7 @@
       <div id="msSquareRow" style="display:none;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px 14px;font-size:12px;color:#1E40AF;line-height:1.5;margin-bottom:14px">
         <div style="font-weight:700;margin-bottom:2px">Square Subscription</div>
         <div id="msSquareId" style="font-family:monospace;word-break:break-all"></div>
-        <div style="margin-top:4px;color:#3B82F6">Status changes are mirrored to Square automatically.</div>
+        <div style="margin-top:4px;color:#3B82F6">Billing is managed centrally in Square. Use the billing controls above for plan changes and cancellation.</div>
       </div>
 
       <!-- History drawer: queryable audit log of every staff action on this membership -->
@@ -3023,10 +3030,10 @@
       </div>
 
       <!-- Danger zone -->
-      <div style="border:1px solid var(--red-light,#FEE2E2);border-radius:10px;padding:12px 16px">
+      <div id="msDangerZone" style="border:1px solid var(--red-light,#FEE2E2);border-radius:10px;padding:12px 16px">
         <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Danger Zone</div>
         <div style="display:flex;align-items:center;gap:12px">
-          <div style="flex:1;font-size:12px;color:var(--text-2);line-height:1.5">Permanently cancel this membership. Cannot be undone.</div>
+          <div style="flex:1;font-size:12px;color:var(--text-2);line-height:1.5">Cancel this manual (non-Square) membership immediately.</div>
           <button class="btn btn-danger btn-sm" id="msCancelBtn" onclick="window.msCancelSubscription()">Cancel Membership</button>
         </div>
       </div>
@@ -3767,7 +3774,12 @@
     const tabNavIds={bookings:'navBookings',messages:'navMessages',comms:'navComms',crm:'navCrm',staff:'navStaff',memberships:'navMemberships',menu:'navMenu',kiosk:'navKiosk',website:'navWebsite',banners:'navBanners',offers:'navOffers',deals:'navDeals',loyaltygame:'navLoyaltyGame',venuerewards:'navVenueRewards',payments:'navPayments',hr:'navHR',gdpr:'navGDPR',auditlog:'navAuditLog',settings:'navSettings'};
     let initialPage='bookings';
     try{
-      const hash=(window.location.hash||'').replace(/^#/,'').toLowerCase();
+      let hash=(window.location.hash||'').replace(/^#/,'').toLowerCase();
+      try{
+        const sec=(new URLSearchParams(window.location.search).get('section')||'').toLowerCase();
+        if(sec&&tabNavIds[sec])hash=sec;
+        if(sec){const u=new URL(window.location.href);u.searchParams.delete('section');window.history.replaceState(null,'',u.pathname+u.search+(hash?'#'+hash:''));}
+      }catch(_){}
       const navId=tabNavIds[hash];
       if(navId){
         const navEl=document.getElementById(navId);
@@ -10319,6 +10331,8 @@
             </div>
             ${p.squarePlanVariationId?`<div style="margin-top:8px;font-size:11px;color:var(--text-3,#9CA3AF)">Square subscription ID: <code style="font-size:10px">${esc(p.squarePlanVariationId)}</code></div>`:''}
             ${p.squareCustomerGroupId?`<div style="margin-top:4px;font-size:11px;color:var(--text-3,#9CA3AF)">Square group: <code style="font-size:10px">${esc(p.squareCustomerGroupId)}</code></div>`:''}
+            ${p.minimumTermMonths?`<div style="margin-top:6px;font-size:11px;color:var(--text-2)">Minimum term: ${Number(p.minimumTermMonths)} months</div>`:''}
+            ${p.hideFromSignup?`<div style="margin-top:4px;font-size:11px;color:var(--text-2)">Hidden from new sign-ups</div>`:''}
             ${p.excludeWithDeals?`<div style="margin-top:4px;font-size:11px;color:var(--amber)">Discount excluded when offers active</div>`:''}
             ${!p.squarePlanVariationId&&!p.squareCustomerGroupId&&isManager?`<div style="margin-top:8px;font-size:11px;color:var(--amber)">⚠ No Square link — must be assigned manually</div>`:''}
           </div>
@@ -10408,6 +10422,7 @@
         <div class="staff-actions">
           ${isManager
             ? `<button class="btn btn-primary btn-sm" onclick="window.openManageSubModal(${sub.id})">Manage</button>`
+            : isProtectedSub(sub) ? `<button class="btn btn-secondary btn-sm" onclick="window.openMemberNoteModal(${sub.id})">Note</button>`
             : `${sub.status==='active'?`<button class="btn btn-secondary btn-sm" onclick="window.pauseMember(${sub.id})">Pause</button>`:''}
                ${sub.status==='paused'?`<button class="btn btn-secondary btn-sm" onclick="window.resumeMember(${sub.id})">Resume</button>`:''}
                ${sub.status!=='cancelled'?`<button class="btn btn-danger btn-sm" onclick="window.cancelMember(${sub.id})">Cancel</button>`:''}
@@ -10467,6 +10482,9 @@
     el('epExcludeWithDeals').checked=false;
     el('epActive').checked=true;
     el('epHideFromSignup').checked=false;
+    el('epMinTerm').style.display='none';
+    el('editPlanModal').dataset.wasActive='1';
+    el('editPlanModal').dataset.wasHidden='';
     el('epErr').classList.remove('show');
     el('editPlanModal').dataset.planId='';
     openOverlay('editPlanModal');
@@ -10524,6 +10542,10 @@
     }
     el('epActive').checked=plan.active!==false;
     el('epHideFromSignup').checked=!!plan.hideFromSignup;
+    el('editPlanModal').dataset.wasActive=plan.active!==false?'1':'';
+    el('editPlanModal').dataset.wasHidden=plan.hideFromSignup?'1':'';
+    const mt=el('epMinTerm');
+    if(plan.minimumTermMonths){mt.textContent='Minimum term: '+Number(plan.minimumTermMonths)+' months (fixed for this plan). Applies to new sign-ups.';mt.style.display='';}else{mt.style.display='none';}
     el('epErr').classList.remove('show');
     el('editPlanModal').dataset.planId=planId;
     openOverlay('editPlanModal');
@@ -10563,6 +10585,18 @@
       active:el('epActive').checked,
       hideFromSignup:el('epHideFromSignup').checked,
     };
+    const epM=el('editPlanModal');
+    if(!isCreate&&epM.dataset.wasActive==='1'&&!payload.active){
+      if(!confirm('Disable this plan?\n\nDisabling affects member benefits for anyone on this plan. If you only want to stop NEW sign-ups, cancel and use "hide from public sign-up" instead.'))return;
+    }
+    if(!isCreate&&epM.dataset.wasHidden!=='1'&&payload.hideFromSignup){
+      if(!confirm('Hide this plan from sign-up?\n\nThis stops NEW customer sign-ups. Existing members keep their entitlements and billing.'))return;
+    }
+    if(!isCreate){const old=membershipsData.plans.find(x=>x.id===planId);
+      if(old&&(old.priceMonthly!==payload.priceMonthly||(old.priceAnnual||null)!==payload.priceAnnual)){
+        if(!confirm('Change the price?\n\nNew prices apply to new sign-ups only. Existing Square subscriptions are not changed.'))return;
+      }}
+    if(el('epSaveBtn').disabled)return;
     el('epSaveBtn').disabled=true;
     try{
       const url=isCreate?'/api/staff/membership/plans':'/api/staff/membership/plans/'+planId;
@@ -10570,13 +10604,19 @@
       const r=await api(url,{method,body:JSON.stringify(payload)});
       if(!r.ok){const d=await r.json();err.textContent=d.message||'Failed to save plan';err.classList.add('show');return}
       const d=await r.json();
+      if(d&&d.squareSyncError){
+        loadMemberships();
+        el('editPlanModal').dataset.planId=String(d.id||planId||'');
+        err.textContent='Plan saved, but Square sync FAILED: '+String(d.squareSyncError)+'. Fix the Square references and save again.';
+        err.classList.add('show');
+        toast('Square sync failed','error');
+        return;
+      }
       closeOverlay('editPlanModal');
       if(isCreate){
-        toast('Plan "'+name+'" created','success');
-      }else if(d.squareSyncError){
-        toast('Plan saved — Square sync failed: '+d.squareSyncError,'error');
+        toast('Plan "'+name+'" created'+(d&&d.squareSynced?' and synced to Square':''),'success');
       }else if(d.squareSynced){
-        toast('Plan saved & Square billing updated ✓','success');
+        toast('Plan saved and Square billing updated','success');
       }else{
         toast('Plan updated','success');
       }
@@ -10613,6 +10653,7 @@
   };
 
   window.pauseMember=async function(id){
+    {const ps=membershipsData.subs.find(x=>x.id===id);if(ps&&isProtectedSub(ps)){toast('This membership is billed centrally. Use Manage to change or cancel it.','error');return;}}
     if(!confirm('Pause this membership?'))return;
     try{
       const r=await api('/api/staff/membership/subscriptions/'+id,{method:'PATCH',body:JSON.stringify({status:'paused'})});
@@ -10622,6 +10663,7 @@
   };
 
   window.resumeMember=async function(id){
+    {const ps=membershipsData.subs.find(x=>x.id===id);if(ps&&isProtectedSub(ps)){toast('This membership is billed centrally. Use Manage to change or cancel it.','error');return;}}
     try{
       const r=await api('/api/staff/membership/subscriptions/'+id,{method:'PATCH',body:JSON.stringify({status:'active'})});
       if(!r.ok){const d=await r.json();toast(d.message||'Failed','error');return}
@@ -10630,6 +10672,7 @@
   };
 
   window.cancelMember=async function(id){
+    {const ps=membershipsData.subs.find(x=>x.id===id);if(ps&&isProtectedSub(ps)){toast('This membership is billed centrally. Use Manage to change or cancel it.','error');return;}}
     if(!confirm('Cancel this membership? This cannot be undone.'))return;
     try{
       const r=await api('/api/staff/membership/subscriptions/'+id,{method:'PATCH',body:JSON.stringify({status:'cancelled'})});
@@ -10637,6 +10680,105 @@
       toast('Membership cancelled','success');loadMemberships();
     }catch(e){if(e.message!=='Session expired')toast('Network error','error')}
   };
+
+  function isProtectedSub(sub){
+    if(!sub)return false;
+    const src=String(sub.source||'').toLowerCase();
+    return !!sub.squareSubscriptionId||src==='square'||src==='wix'||!!sub.managedInSquare;
+  }
+  window.isProtectedSub=isProtectedSub;
+  function fmtBillDate(v){if(!v)return '';const d=new Date(v);return isNaN(d)?String(v):d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});}
+  let msBilling=null;
+  async function loadSubBilling(id){
+    const panel=el('msBillingPanel');
+    panel.style.display='';
+    panel.innerHTML='<div class="loading-state" style="padding:12px"><div class="spinner"></div>Loading billing…</div>';
+    try{
+      const r=await api('/api/staff/membership/subscriptions/'+id+'/billing');
+      const d=await r.json().catch(()=>({}));
+      if(parseInt(el('manageSubModal').dataset.subId)!==id)return;
+      if(!r.ok){throw new Error(d.message||'Could not load billing');}
+      msBilling=d;renderSubBilling(id);
+    }catch(e){
+      if(e.message==='Session expired')return;
+      panel.innerHTML='<div style="font-size:12px;color:var(--red);margin-bottom:8px">'+esc(e.message||'Could not load billing')+'</div><button type="button" class="btn btn-secondary btn-sm" id="msBillRetry">Retry</button>';
+      el('msBillRetry').onclick=()=>loadSubBilling(id);
+    }
+  }
+  function renderSubBilling(id){
+    const panel=el('msBillingPanel');
+    const b=(msBilling&&msBilling.subscription)||{};
+    const plans=(msBilling&&Array.isArray(msBilling.plans))?msBilling.plans:[];
+    const row=(k,v)=>v?'<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0"><span style="color:var(--text-2)">'+esc(k)+'</span><strong style="color:var(--text);text-align:right">'+esc(String(v))+'</strong></div>':'';
+    const statusTxt=b.status?String(STATUS_LABELS[b.status]||b.status).replace(/^[^A-Za-z]+/,''):'';
+    let h='<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-bottom:8px">Central Billing</div>';
+    h+=row('Plan',b.planName)+row('Status',statusTxt)+row('Billing',b.frequency)+row('Source',b.source)+row('Next renewal',fmtBillDate(b.renewalDate))+row('Minimum term ends',fmtBillDate(b.commitmentEndDate));
+    if(b.pendingPlanName)h+='<div style="margin-top:8px;font-size:12px;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:6px;padding:7px 10px">Scheduled change to '+esc(b.pendingPlanName)+(b.pendingDate?' on '+esc(fmtBillDate(b.pendingDate)):'')+'.</div>';
+    if(b.cancellationDate)h+='<div style="margin-top:8px;font-size:12px;background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;border-radius:6px;padding:7px 10px">Cancellation scheduled. Access ends '+esc(fmtBillDate(b.cancellationDate))+'.</div>';
+    if(b.migrationNeedsReview||(String(b.source||'').toLowerCase()==='wix'&&!b.managedInSquare)){
+      h+='<div style="margin-top:10px;font-size:12px;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:6px;padding:8px 10px;line-height:1.5">This is a Wix membership awaiting migration review. Billing controls are unavailable until an owner completes the review in the Wix migration panel.</div>';
+      panel.innerHTML=h;return;
+    }
+    if(!b.managedInSquare){h+='<div style="margin-top:8px;font-size:12px;color:var(--text-2)">Not managed in Square, so no central billing controls are available.</div>';panel.innerHTML=h;return;}
+    const cancelled=b.status==='cancelled'||!!b.cancellationDate;
+    if(!cancelled){
+      const opts=[];
+      plans.forEach(p=>{
+        const term=p.minimumTermMonths?' ('+Number(p.minimumTermMonths)+'-month minimum)':'';
+        if(p.monthlyPence!=null)opts.push({v:p.id+'|monthly',l:p.name+' - monthly £'+(p.monthlyPence/100).toFixed(2)+term});
+        if(p.annualPence)opts.push({v:p.id+'|annual',l:p.name+' - annual £'+(p.annualPence/100).toFixed(2)+term});
+      });
+      const cur=b.planId+'|'+String(b.frequency||'').toLowerCase();
+      const avail=opts.filter(o=>o.v!==cur);
+      h+='<div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px"><div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px">Change plan</div>';
+      if(avail.length===0){h+='<div style="font-size:12px;color:var(--text-2)">No eligible plan changes.</div>';}
+      else{
+        h+='<select class="form-input" id="msBillPlan">'+avail.map(o=>'<option value="'+esc(o.v)+'">'+esc(o.l)+'</option>').join('')+'</select>';
+        h+='<div style="font-size:11px;color:var(--text-3);margin:6px 0;line-height:1.5">Takes effect at the next renewal. Upgrades, or switching billing frequency on the same plan, only. A same-plan frequency switch does not restart the minimum term. No card details are collected here.</div>';
+        h+='<label style="display:flex;gap:8px;align-items:flex-start;font-size:12px;color:var(--text);cursor:pointer;margin-bottom:8px"><input type="checkbox" id="msBillAuth" style="margin-top:2px"><span>The customer has authorised this change and accepted the membership terms.</span></label>';
+        h+='<button type="button" class="btn btn-primary btn-sm" id="msBillChangeBtn">Schedule plan change</button>';
+      }
+      h+='</div>';
+      h+='<div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px"><div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px">Cancel membership</div>';
+      if(b.cancellationAllowed===false){h+='<div style="font-size:12px;color:var(--text-2)">Cancellation is not available yet'+(b.commitmentEndDate?'. Minimum term runs until '+esc(fmtBillDate(b.commitmentEndDate)):'')+'.</div>';}
+      else h+='<div style="font-size:11px;color:var(--text-3);margin-bottom:8px;line-height:1.5">Cancels at the end of the paid period, respecting any minimum term. The member keeps access until then.</div><button type="button" class="btn btn-danger btn-sm" id="msBillCancelBtn">Cancel at end of term</button>';
+      h+='</div>';
+    }
+    h+='<div id="msBillMsg" style="display:none;margin-top:10px;font-size:12px;border-radius:6px;padding:7px 10px;line-height:1.5"></div>';
+    panel.innerHTML=h;
+    const msg=t=>{const m=el('msBillMsg');if(!m)return;m.style.display='';m.style.background=t.ok?'#F0FDF4':'#FEF2F2';m.style.color=t.ok?'var(--green,#16a34a)':'var(--red)';m.textContent=t.text;};
+    const cb=el('msBillChangeBtn');
+    if(cb)cb.onclick=async()=>{
+      if(cb.disabled)return;
+      if(!el('msBillAuth').checked){msg({ok:false,text:'Confirm the customer has authorised the change and accepted the terms.'});return;}
+      const parts=el('msBillPlan').value.split('|');
+      cb.disabled=true;cb.textContent='Scheduling…';
+      try{
+        const r=await api('/api/staff/membership/subscriptions/'+id+'/change-plan',{method:'POST',body:JSON.stringify({planId:parseInt(parts[0]),billingFrequency:parts[1],termsAccepted:true,customerAuthorised:true})});
+        const d=await r.json().catch(()=>({}));
+        if(!r.ok)throw new Error(d.message||'Plan change failed');
+        const eff=d.effectiveDate||d.pendingDate;
+        toast('Plan change scheduled','success');
+        loadMemberships();await loadSubBilling(id);
+        msg({ok:true,text:'Plan change scheduled'+(eff?' for '+fmtBillDate(eff):' for the next renewal')+'.'});
+      }catch(e){if(e.message!=='Session expired')msg({ok:false,text:e.message||'Plan change failed'});cb.disabled=false;cb.textContent='Schedule plan change';}
+    };
+    const xb=el('msBillCancelBtn');
+    if(xb)xb.onclick=async()=>{
+      if(xb.disabled)return;
+      if(!confirm('Cancel this membership at the end of its current term?\n\nThe member keeps access until the paid period (and any minimum term) ends.'))return;
+      xb.disabled=true;xb.textContent='Cancelling…';
+      try{
+        const r=await api('/api/staff/membership/subscriptions/'+id+'/cancel',{method:'POST',body:JSON.stringify({confirmed:true})});
+        const d=await r.json().catch(()=>({}));
+        if(!r.ok)throw new Error(d.message||'Cancellation failed');
+        const eff=d.effectiveDate||d.cancellationDate;
+        toast('Cancellation scheduled','success');
+        loadMemberships();await loadSubBilling(id);
+        msg({ok:true,text:'Cancellation scheduled'+(eff?'. Access ends '+fmtBillDate(eff):'')+'.'});
+      }catch(e){if(e.message!=='Session expired')msg({ok:false,text:e.message||'Cancellation failed'});xb.disabled=false;xb.textContent='Cancel at end of term';}
+    };
+  }
 
   /* helpers: convert ISO/date-string to yyyy-mm-dd for <input type=date> */
   function toDateInput(v){
@@ -10687,6 +10829,17 @@
 
     // Disable cancel btn if already cancelled
     el('msCancelBtn').disabled=sub.status==='cancelled';
+    const prot=isProtectedSub(sub);
+    el('manageSubModal').dataset.protected=prot?'1':'';
+    el('msManualFields').style.display=prot?'none':'';
+    ['msStatus','msPlanId','msPeriodStart','msPeriodEnd'].forEach(k=>{el(k).disabled=prot;});
+    el('msDangerZone').style.display=prot?'none':'';
+    el('msSaveBtn').textContent=prot?'Save Notes & Usage':'Save Changes';
+    const pn=el('msProtectedNote');
+    if(prot){pn.style.display='';pn.textContent=(String(sub.source||'').toLowerCase()==='wix'?'Wix-sourced membership.':'Square-managed membership.')+' Status, plan and dates are controlled by central billing. Only notes and usage can be edited here.';}
+    else{pn.style.display='none';pn.textContent='';}
+    msBilling=null;
+    if(prot){loadSubBilling(id);}else{el('msBillingPanel').style.display='none';el('msBillingPanel').innerHTML='';}
 
     // Store current sub id and customer info
     el('manageSubModal').dataset.subId=id;
@@ -10790,6 +10943,8 @@
 
   window.msCancelSubscription=async function(){
     const id=parseInt(el('manageSubModal').dataset.subId);
+    if(el('manageSubModal').dataset.protected==='1'){toast('Use the central billing controls to cancel this membership.','error');return;}
+    if(el('msCancelBtn').disabled)return;
     if(!confirm('Cancel this membership permanently? This cannot be undone.'))return;
     el('msCancelBtn').disabled=true;
     try{
@@ -10811,6 +10966,18 @@
     const hoursUsed=parseFloat(el('msHoursUsed').value)||0;
     const guestPasses=parseInt(el('msGuestPasses').value)||0;
     const notes=el('msNotes').value.trim()||null;
+    if(el('msSaveBtn').disabled)return;
+    if(el('manageSubModal').dataset.protected==='1'){
+      el('msSaveBtn').disabled=true;
+      try{
+        const r=await api('/api/staff/membership/subscriptions/'+id,{method:'PATCH',body:JSON.stringify({notes,hoursUsedThisPeriod:hoursUsed,guestPassesUsed:guestPasses})});
+        if(!r.ok){const d=await r.json().catch(()=>({}));err.textContent=d.message||'Failed to save';err.classList.add('show');return}
+        toast('Notes and usage saved','success');
+        loadMemberships();
+      }catch(e){if(e.message!=='Session expired'){err.textContent='Network error';err.classList.add('show')}}
+      finally{el('msSaveBtn').disabled=false}
+      return;
+    }
 
     // Validate: if active, end date must be blank or in the future
     if(periodEnd){
