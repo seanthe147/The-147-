@@ -8,6 +8,11 @@ import { db, runStartupMigrations, storage } from "./storage";
 import { alignBillingStart, billingState, migrationOffer, prepareMigrationOffer, migrationBillingStart, recordBillingTerms, registerMembershipBilling, reconcileScheduledMembership, membershipSignupGuard } from "./membership-billing";
 
 const realFetch = globalThis.fetch;
+if (process.env.MEMBERSHIP_BILLING_ISOLATED_TEST !== "yes" ||
+  process.env.SQUARE_ACCESS_TOKEN !== "fixture-square-token" ||
+  process.env.SQUARE_ENVIRONMENT !== "sandbox") {
+  throw new Error("Run membership tests through the isolated test runner, never against the app database.");
+}
 const tag = randomUUID();
 let customerId: number;
 let subId: number;
@@ -18,6 +23,8 @@ let server: ReturnType<ReturnType<typeof express>["listen"]>;
 const requests: { path: string; body: any }[] = [];
 let actions: any[] = [];
 let catalogPence = 2000;
+let catalogCadence = "MONTHLY";
+const blockedRequests: string[] = [];
 let declineCard = false;
 let failCardUpdate = false;
 const card: any = { id: "fixture-card-new", customer_id: "fixture-customer", enabled: true,
@@ -47,25 +54,32 @@ before(async () => {
         remote.version++;
         return Response.json({ subscription: { ...remote, actions: undefined } });
       }
-      if (path.includes("/catalog/")) {
-        return Response.json({ object: { subscription_plan_variation_data: { phases: [{ cadence: "MONTHLY", pricing: { type: "STATIC", price_money: { amount: catalogPence, currency: "GBP" } } }] } } });
+      if (path === "/v2/catalog/object/fixture-black-monthly") {
+        return Response.json({ object: { subscription_plan_variation_data: { phases: [{ cadence: catalogCadence, pricing: { type: "STATIC", price_money: { amount: catalogPence, currency: "GBP" } } }] } } });
       }
       if (path.endsWith("/swap-plan")) {
         actions = [{ type: "SWAP_PLAN", effective_date: renewal }];
         return Response.json({ subscription: { ...remote, actions: undefined }, actions });
       }
       if (path.endsWith("/cancel")) return Response.json({ subscription: { ...remote, canceled_date: cancellationAt } });
-      return Response.json({ subscription: { ...remote, actions: undefined }, actions });
+      if (path === `/v2/subscriptions/${remote.id}` && (!init?.method || init.method === "GET")) {
+        return Response.json({ subscription: { ...remote, actions: undefined }, actions });
+      }
+      blockedRequests.push(path);
+      throw new Error(`Unexpected Square request blocked: ${path}`);
     }
-    if (!url.startsWith(base)) throw new Error("Unexpected external request blocked by billing test");
+    if (!base || new URL(url).origin !== base) {
+      blockedRequests.push(url);
+      throw new Error("Unexpected external request blocked by billing test");
+    }
     return realFetch(input, init);
   };
   await runStartupMigrations();
   const customer = await storage.createCustomer(`billing-${tag}@example.invalid`, "Billing test customer", null, "!locked-fixture");
   customerId = customer.id;
   const old = await storage.createMembershipPlan({ name: "Billing fixture base", tier: `fixture-base-${tag}`, priceMonthly: 1000 });
-  const black = await storage.createMembershipPlan({ name: "Black", tier: `fixture-black-${tag}`, priceMonthly: 2000, squarePlanVariationId: "fixture-black-monthly" });
   oldId = old.id;
+  const black = await storage.createMembershipPlan({ name: "Black", tier: `fixture-black-${tag}`, priceMonthly: 2000, squarePlanVariationId: "fixture-black-monthly" });
   blackId = black.id;
   const sub = await storage.createMembershipSubscription({
     customerId, planId: oldId, status: "active", squareSubscriptionId: remote.id, squareCustomerId: remote.customer_id,
@@ -87,7 +101,6 @@ before(async () => {
 });
 
 after(async () => {
-  globalThis.fetch = realFetch;
   if (server) await new Promise<void>(resolve => server.close(() => resolve()));
   if (subId) {
     await db.delete(membershipBillingStates).where(eq(membershipBillingStates.subscriptionId, subId));
@@ -95,7 +108,16 @@ after(async () => {
     await db.delete(membershipSubscriptions).where(eq(membershipSubscriptions.id, subId));
   }
   if (customerId) await db.delete(customers).where(eq(customers.id, customerId));
-  if (oldId && blackId) await db.delete(membershipPlans).where(inArray(membershipPlans.id, [oldId, blackId]));
+  const plans = [oldId, blackId].filter(Boolean);
+  if (plans.length) await db.delete(membershipPlans).where(inArray(membershipPlans.id, plans));
+  assert.equal((await db.select().from(customers)).length, 0, "customer fixtures removed");
+  assert.equal((await db.select().from(membershipSubscriptions)).length, 0, "subscription fixtures removed");
+  assert.equal((await db.select().from(membershipBillingStates)).length, 0, "billing fixtures removed");
+  assert.equal((await db.select().from(membershipAuditLog)).length, 0, "audit fixtures removed");
+  assert.deepEqual(blockedRequests, [], "unexpected requests must fail even if routes catch the error");
+  assert.equal(requests.some(r => r.path.includes("/payments") || r.path === "/v2/subscriptions"), false,
+    "management tests must not charge or enroll");
+  globalThis.fetch = realFetch;
 });
 
 const request = (path: string, body?: unknown, auth = true) => fetch(base + path, {
@@ -115,6 +137,16 @@ test("a mismatched Square price is rejected before changing any subscription", a
     assert.equal(result.status, 409);
     assert.equal(requests.filter(r => r.path.endsWith("/swap-plan")).length, 0);
   } finally { catalogPence = 2000; }
+});
+test("a mismatched Square cadence is rejected before changing any subscription", async () => {
+  catalogCadence = "ANNUAL";
+  try {
+    assert.equal((await request("/api/membership/change-plan", {
+      planId: blackId, billingFrequency: "monthly", termsAccepted: true,
+    })).status, 409);
+    assert.equal(requests.filter(r => r.path.endsWith("/swap-plan")).length, 0);
+    assert.equal((await billingState(subId))?.pendingPlanId ?? null, null);
+  } finally { catalogCadence = "MONTHLY"; }
 });
 test("an upgrade uses Square swap-plan, keeps current local benefits, and schedules renewal", async () => {
   const result = await request("/api/membership/change-plan", { planId: blackId, billingFrequency: "monthly", termsAccepted: true });
@@ -211,6 +243,11 @@ test("a Square lifecycle event alone must not grant upgraded benefits", async ()
   await reconcileScheduledMembership({ id: remote.id, plan_variation_id: "fixture-black-monthly", status: "ACTIVE" });
   assert.equal((await storage.getMembershipSubscriptionByCustomer(customerId))?.planId, oldId);
 });
+test("even paid confirmation cannot apply an upgrade before its renewal date", async () => {
+  await reconcileScheduledMembership({ id: remote.id, plan_variation_id: "fixture-black-monthly", status: "ACTIVE" }, true);
+  assert.equal((await storage.getMembershipSubscriptionByCustomer(customerId))?.planId, oldId);
+  assert.equal((await billingState(subId))?.pendingEffectiveDate, renewal);
+});
 test("existing members cannot use signup to create a second subscription", async () => {
   const result = await request("/api/membership/join", { planId: blackId, billingFrequency: "monthly", termsAccepted: true, minimumTermAccepted: true });
   assert.equal(result.status, 409);
@@ -237,6 +274,17 @@ test("terms snapshot cannot be overwritten by retry, and expired term allows can
 test("migration requires a verified stopped legacy payment and a paid-through date", async () => {
   await assert.rejects(() => migrationBillingStart(subId), /verify/);
   await db.update(membershipSubscriptions).set({ source: "wix_import", squareSubscriptionId: null }).where(eq(membershipSubscriptions.id, subId));
+  assert.equal((await request(`/api/staff/wix-migration/${subId}/review`, {
+    legacyBillingStopped: true, paidThroughDate: renewal,
+  }, false)).status, 401);
+  for (const body of [
+    { legacyBillingStopped: false, paidThroughDate: renewal },
+    { legacyBillingStopped: true, paidThroughDate: "2026-02-30" },
+    { legacyBillingStopped: true },
+  ]) {
+    assert.equal((await request(`/api/staff/wix-migration/${subId}/review`, body)).status, 400);
+    await assert.rejects(() => migrationBillingStart(subId), /verify/);
+  }
   const result = await request(`/api/staff/wix-migration/${subId}/review`, { legacyBillingStopped: true, paidThroughDate: renewal });
   assert.equal(result.status, 200);
   assert.equal(await migrationBillingStart(subId), renewal);

@@ -24,3 +24,4 @@
 - [Banner destination compatibility](banner-destinations.md) — preserve historical destination spellings on reads; normalize new writes without recreating stored banners
 - [Bookable pool tables](booking-pool-tables.md) — Pool Table 6 is retired; offer only Pool Tables 1–5 without deleting or silently reassigning old bookings
 - [Central membership billing](membership-billing-scope.md) — one Square membership system for app and Wix; monthly/annual choices, upgrades, and selected 12-month terms
+- [Unattended Expo dependency checks](expo-dependency-validation.md) — dependency mismatches can prompt indefinitely; CI mode must fail rather than wait for input

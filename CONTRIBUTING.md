@@ -146,6 +146,18 @@ have permission to release `com.the147bradford.venue`.
 Review and commit the changed `app.json`, then run the safety checks before every
 binary build:
 
+Membership billing is a required release gate (`pnpm run validate:release` from
+the workspace root). It also runs in `prebuild:check`, production Android build
+and production OTA scripts, and on CI pull requests, main pushes and version tags.
+Any failure blocks the scripted build/update; do not bypass it with a direct EAS
+command. For direct iOS builds and OTA commands below, run the gate first.
+PostgreSQL tools (`initdb`, `pg_ctl`, `createdb`) must be available; on macOS install
+PostgreSQL 16 and set `MEMBERSHIP_TEST_PG_BIN` to its bin directory if needed.
+The runner creates and deletes its own private Unix-socket database, ignores the
+project database/credentials, uses fake Square credentials and intercepts every
+Square request. No live customer accounts or real cards are used. Missing tools,
+policy/route failures, unexpected requests and leftover fixtures fail the check.
+
 ```bash
 pnpm run prebuild:check
 pnpm run check-expo-deps

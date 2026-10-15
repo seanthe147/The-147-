@@ -33,6 +33,21 @@ minimumReleaseAgeExclude:
   # this setting guards against does not apply to our own packages.
   - '@replit/*'
   - stripe-replit-sync
+  # Owner-approved Expo compatibility patches (2026-10-15).
+  # Version-specific only; remove after the 24-hour release window has passed.
+  - expo@57.0.29
+  - expo-constants@57.0.22
+  - expo-linking@57.0.13
+  - expo-notifications@57.0.23
+  - expo-router@57.0.27
+  # Required dependencies from the same Expo patch release.
+  - '@expo/cli@57.0.30'
+  - '@expo/prebuild-config@57.0.19'
+  - '@expo/metro-runtime@57.0.17'
+  - '@expo/ui@57.0.24'
+  - expo-modules-autolinking@57.0.16
+  - expo-modules-core@57.0.23
+  - expo-asset@57.0.20
 
 # Scoped security exception for image-size 1.2.1:
 # - Advisories: GHSA-5p2g-fcmc-qvqq / CVE-2025-71329 and
