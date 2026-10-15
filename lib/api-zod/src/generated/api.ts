@@ -8,6 +8,76 @@
 import * as zod from 'zod';
 
 
+export const enableMembershipAutoRenewBodySourceIdMax = 256;
+
+export const enableMembershipAutoRenewBodyVerificationTokenMax = 2048;
+
+
+
+export const EnableMembershipAutoRenewBody = zod.object({
+  "billingFrequency": zod.enum(['monthly', 'annual']),
+  "termsAccepted": zod.boolean(),
+  "minimumTermAccepted": zod.boolean().optional(),
+  "sourceId": zod.string().min(1).max(enableMembershipAutoRenewBodySourceIdMax),
+  "verificationToken": zod.string().min(1).max(enableMembershipAutoRenewBodyVerificationTokenMax)
+})
+
+export const EnableMembershipAutoRenewResponse = zod.object({
+  "message": zod.string(),
+  "effectiveDate": zod.string().nullish()
+})
+
+
+export const GetMembershipPosCatalogResponse = zod.object({
+  "items": zod.array(zod.object({
+  "variationId": zod.string(),
+  "itemName": zod.string(),
+  "variationName": zod.string(),
+  "pricePence": zod.number().nullable(),
+  "currency": zod.string().nullable()
+}))
+})
+
+
+export const GetMembershipPosPurchasesResponse = zod.object({
+  "purchases": zod.array(zod.object({
+  "id": zod.string(),
+  "planName": zod.string(),
+  "purchasedAt": zod.coerce.date().nullable(),
+  "periodEnd": zod.string().nullable(),
+  "status": zod.string(),
+  "reviewReason": zod.string().nullable(),
+  "customerMatched": zod.boolean()
+}))
+})
+
+
+export const importMembershipPosPurchaseBodyOrderIdMax = 192;
+
+
+export const importMembershipPosPurchaseBodyOrderIdRegExp = new RegExp('^[A-Za-z0-9_-]+$');
+
+
+export const ImportMembershipPosPurchaseBody = zod.object({
+  "orderId": zod.string().min(1).max(importMembershipPosPurchaseBodyOrderIdMax).regex(importMembershipPosPurchaseBodyOrderIdRegExp)
+})
+
+export const ImportMembershipPosPurchaseResponse = zod.object({
+  "message": zod.string(),
+  "effectiveDate": zod.string().nullish()
+})
+
+
+export const RetryMembershipPosPurchaseParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const RetryMembershipPosPurchaseResponse = zod.object({
+  "message": zod.string(),
+  "effectiveDate": zod.string().nullish()
+})
+
+
 
 
 
@@ -24,6 +94,12 @@ export const GetStaffMembershipBillingResponse = zod.object({
   "frequency": zod.enum(['monthly', 'annual']),
   "status": zod.string(),
   "renewalDate": zod.string().nullable(),
+  "firstPaidAt": zod.coerce.date().nullish(),
+  "lastPaidAt": zod.coerce.date().nullish(),
+  "prepaidUntilDate": zod.string().nullish(),
+  "autoRenewEligible": zod.boolean().optional(),
+  "autoRenewScheduled": zod.boolean().optional(),
+  "autoRenewStartDate": zod.string().nullish(),
   "commitmentEndDate": zod.string().nullable(),
   "cancellationAllowed": zod.boolean(),
   "pendingPlanName": zod.string().nullable(),
@@ -116,6 +192,12 @@ export const GetMembershipBillingResponse = zod.object({
   "frequency": zod.enum(['monthly', 'annual']),
   "status": zod.string(),
   "renewalDate": zod.string().nullable(),
+  "firstPaidAt": zod.coerce.date().nullish(),
+  "lastPaidAt": zod.coerce.date().nullish(),
+  "prepaidUntilDate": zod.string().nullish(),
+  "autoRenewEligible": zod.boolean().optional(),
+  "autoRenewScheduled": zod.boolean().optional(),
+  "autoRenewStartDate": zod.string().nullish(),
   "commitmentEndDate": zod.string().nullable(),
   "cancellationAllowed": zod.boolean(),
   "pendingPlanName": zod.string().nullable(),

@@ -2891,6 +2891,15 @@
           </select>
           <div style="font-size:11px;color:var(--text-3);margin-top:4px;line-height:1.5">For group-based plans (e.g. VIP, Blue Light). Members in this Square group auto-sync when they log in.</div>
         </div>
+        <div class="form-group" style="margin-bottom:10px" id="epPosWrap">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <label class="form-label" style="margin:0">Square POS annual items (till sales)</label>
+            <button type="button" id="epPosLoadBtn" onclick="loadPosCatalog()" style="font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface);cursor:pointer;color:var(--text-2)">Load POS items</button>
+          </div>
+          <div style="font-size:11px;color:var(--amber);background:var(--amber-light);border-radius:6px;padding:6px 8px;line-height:1.5;margin-bottom:6px">Selected till items grant 12 months prepaid membership on this plan with no auto renewal. Pick the exact item variations; nothing is matched by price or name. Each variation can map to one plan only. These are not subscription plan IDs.</div>
+          <div id="epPosList" style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px"></div>
+          <div id="epPosErr" style="display:none;font-size:11px;color:var(--red);margin-top:4px"></div>
+        </div>
         <div style="display:flex;align-items:center;gap:10px">
           <input type="checkbox" id="epExcludeWithDeals" style="width:14px;height:14px;cursor:pointer">
           <label for="epExcludeWithDeals" style="font-size:13px;color:var(--text);cursor:pointer">Exclude discount when active offers apply to cart items</label>
@@ -10125,6 +10134,102 @@
   const STATUS_COLORS={active:'pill-green',paused:'pill-amber',cancelled:'pill-red',pending:'pill-amber',pending_payment:'pill-amber',past_due:'pill-red',frozen:'pill-red'};
   const STATUS_LABELS={active:'Active',paused:'Paused',cancelled:'Cancelled',pending:'Pending',pending_payment:'⏳ Awaiting Payment',past_due:'Past Due',frozen:'Frozen'};
 
+  /* ── Square POS (till) prepaid memberships ── */
+  let epPosIds=[],posCatalog=null;
+  function fmtD(d){if(!d)return null;const x=new Date(d);return isNaN(x)?null:x.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}
+  function prepaidSubLine(sub){
+    const isPos=sub.source==='square_pos';
+    if(!isPos)return sub.currentPeriodEnd?' · Renews '+new Date(sub.currentPeriodEnd).toLocaleDateString('en-GB',{day:'numeric',month:'short'}):'';
+    return '<br>Purchased '+esc(fmtD(sub.firstPaidAt)||'Unknown')+
+      (sub.lastPaidAt&&sub.lastPaidAt!==sub.firstPaidAt?' · Last paid '+esc(fmtD(sub.lastPaidAt)):'')+
+      ' · Paid through '+esc(fmtD(sub.prepaidUntilDate)||'Unknown')+
+      ' · Expires '+esc(fmtD(sub.currentPeriodEnd)||'Unknown');
+  }
+  function renderPosList(){
+    const box=el('epPosList');if(!box)return;
+    const rows=[];const seen=new Set();
+    (posCatalog||[]).forEach(it=>{seen.add(it.variationId);rows.push(it)});
+    epPosIds.forEach(id=>{if(!seen.has(id))rows.push({variationId:id,itemName:null,variationName:null,pricePence:null,currency:null,missing:posCatalog!==null})});
+    if(!rows.length){box.innerHTML='<div style="color:var(--text-3)">'+(posCatalog?'No POS item variations found in Square.':'None mapped. Load POS items to choose.')+'</div>';return}
+    box.innerHTML=rows.map((it,i)=>{
+      const on=epPosIds.includes(it.variationId);
+      const price=it.pricePence!=null?' · '+(it.currency&&it.currency!=='GBP'?esc(it.currency)+' ':'£')+(it.pricePence/100).toFixed(2):'';
+      const label=it.itemName?esc(it.itemName)+(it.variationName?' / '+esc(it.variationName):'')+price:'<span style="color:var(--text-2)">'+(it.missing?'Not found in catalogue':'Mapped variation')+'</span>';
+      return '<label style="display:flex;gap:8px;align-items:flex-start;padding:4px 0;cursor:pointer"><input type="checkbox" data-posidx="'+i+'" '+(on?'checked':'')+' style="margin-top:3px"><span>'+label+'<br><code style="font-size:10px;color:var(--text-3)">'+esc(it.variationId)+'</code></span></label>';
+    }).join('');
+    box.querySelectorAll('input[data-posidx]').forEach(cb=>cb.addEventListener('change',()=>{
+      const id=rows[Number(cb.dataset.posidx)].variationId;
+      epPosIds=cb.checked?Array.from(new Set(epPosIds.concat(id))):epPosIds.filter(x=>x!==id);
+    }));
+  }
+  window.loadPosCatalog=async function(){
+    const btn=el('epPosLoadBtn'),err=el('epPosErr');
+    btn.disabled=true;btn.textContent='Loading…';err.style.display='none';
+    try{
+      const r=await api('/api/staff/membership/pos-catalog');
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.message||'Could not load POS items ('+r.status+')');
+      posCatalog=Array.isArray(d.items)?d.items:[];renderPosList();
+    }catch(e){if(e.message!=='Session expired'){err.textContent=e.message||'Could not load POS items';err.style.display='block'}}
+    finally{btn.disabled=false;btn.textContent='Reload POS items'}
+  };
+  const POS_STATUS={active:['pill-green','Active'],matched:['pill-green','Matched'],unclaimed:['pill-amber','Unclaimed'],needs_review:['pill-red','Needs review'],review:['pill-red','Needs review'],failed:['pill-red','Failed'],pending:['pill-gray','Pending'],ignored:['pill-gray','Ignored']};
+  async function loadPosPurchases(){
+    const box=el('posPurchasesPanel');if(!box)return;
+    const head=`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <div><div style="font-size:16px;font-weight:800;color:var(--text)">Till (Square POS) membership sales</div>
+      <div style="font-size:12px;color:var(--text-2)">Latest 100. 12 months prepaid from purchase, no auto renewal. Sales stay unclaimed until a verified customer matches; members with active recurring billing need review to avoid double billing.</div></div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <input class="form-input" id="posImportOrderId" placeholder="Square order ID" style="width:200px;padding:6px 10px;font-size:12px;font-family:monospace">
+        <button class="btn btn-secondary btn-sm" id="posImportBtn" onclick="importPosOrder()">Import order</button>
+        <button class="btn btn-ghost btn-sm" onclick="loadPosPurchases()">Refresh</button>
+      </div></div><div id="posImportMsg" style="display:none;font-size:12px;margin-bottom:8px"></div>`;
+    box.innerHTML='<div class="settings-section" style="max-width:none">'+head+'<div class="loading-state" style="padding:24px"><div class="spinner"></div>Loading till sales…</div></div>';
+    try{
+      const r=await api('/api/staff/membership/pos-purchases');
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.message||'Could not load till sales ('+r.status+')');
+      const list=Array.isArray(d.purchases)?d.purchases:[];
+      let body;
+      if(!list.length)body='<div class="empty-desc" style="padding:16px 0">No till membership sales recorded yet.</div>';
+      else body='<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="text-align:left;color:var(--text-2)"><th style="padding:6px">Plan</th><th style="padding:6px">Purchased</th><th style="padding:6px">Paid through</th><th style="padding:6px">Status</th><th style="padding:6px">Customer</th><th style="padding:6px"></th></tr></thead><tbody>'+
+        list.map(pu=>{
+          const st=POS_STATUS[pu.status]||['pill-gray',String(pu.status||'Unknown')];
+          const canRetry=pu.status!=='active'&&pu.status!=='matched';
+          return '<tr style="border-top:1px solid var(--border)"><td style="padding:6px;font-weight:600">'+esc(pu.planName||'Unknown plan')+'</td><td style="padding:6px">'+esc(fmtD(pu.purchasedAt)||'Unknown')+'</td><td style="padding:6px">'+esc(fmtD(pu.periodEnd)||'Unknown')+'</td><td style="padding:6px"><span class="pill '+st[0]+'">'+esc(st[1])+'</span>'+(pu.reviewReason?'<div style="color:var(--text-2);margin-top:3px;max-width:260px">'+esc(pu.reviewReason)+'</div>':'')+'</td><td style="padding:6px">'+(pu.customerMatched?'Matched':'<span style="color:var(--amber)">Not matched</span>')+'</td><td style="padding:6px;text-align:right">'+(canRetry?'<button class="btn btn-secondary btn-sm" data-posretry="'+esc(pu.id)+'">Retry match</button>':'')+'</td></tr>';
+        }).join('')+'</tbody></table>';
+      box.innerHTML='<div class="settings-section" style="max-width:none">'+head+body+'</div>';
+      box.querySelectorAll('[data-posretry]').forEach(b=>b.addEventListener('click',()=>retryPosPurchase(b.dataset.posretry,b)));
+    }catch(e){
+      if(e.message==='Session expired')return;
+      box.innerHTML='<div class="settings-section" style="max-width:none">'+head+'<div style="color:var(--red);font-size:13px;font-weight:600;padding:8px 0">'+esc(e.message)+'</div><button class="btn btn-secondary btn-sm" onclick="loadPosPurchases()">Try again</button></div>';
+    }
+  }
+  window.loadPosPurchases=loadPosPurchases;
+  async function retryPosPurchase(id,btn){
+    btn.disabled=true;btn.textContent='Retrying…';
+    try{
+      const r=await api('/api/staff/membership/pos-purchases/'+encodeURIComponent(id)+'/retry',{method:'POST'});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.message||'Retry failed');
+      toast(d.message||'Retry complete','success');loadPosPurchases();loadMemberships();
+    }catch(e){if(e.message!=='Session expired')toast(e.message||'Retry failed','error');btn.disabled=false;btn.textContent='Retry match'}
+  }
+  window.importPosOrder=async function(){
+    const inp=el('posImportOrderId'),btn=el('posImportBtn'),msg=el('posImportMsg');
+    const orderId=(inp.value||'').trim();
+    const show=(t,e)=>{msg.style.display='block';msg.style.color=e?'var(--red)':'var(--green)';msg.style.fontWeight='600';msg.textContent=t};
+    if(!orderId){show('Enter a Square order ID.',true);return}
+    btn.disabled=true;btn.textContent='Importing…';
+    try{
+      const r=await api('/api/staff/membership/pos-purchases/import',{method:'POST',body:JSON.stringify({orderId})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.message||'Import failed');
+      toast(d.message||'Order imported','success');loadPosPurchases();loadMemberships();
+    }catch(e){if(e.message!=='Session expired')show(e.message||'Import failed',true)}
+    finally{const b=el('posImportBtn');if(b){b.disabled=false;b.textContent='Import order'}}
+  };
+
   async function loadMemberships(){
     el('membershipsContent').innerHTML='<div class="loading-state"><div class="spinner"></div>Loading memberships…</div>';
     try{
@@ -10139,7 +10244,7 @@
       membershipsData={plans,subs};
       renderMemberships(stats,plans,subs);
       if(state.role==='owner')loadWixMigration();
-      if(state.role==='manager'||state.role==='owner'){loadLeftoverOneTime();loadOnboardingGap();loadLoyaltyBackfill();loadMembershipAuditLogPanel();loadPwResetHistoryPanel();}
+      if(state.role==='manager'||state.role==='owner'){loadPosPurchases();loadLeftoverOneTime();loadOnboardingGap();loadLoyaltyBackfill();loadMembershipAuditLogPanel();loadPwResetHistoryPanel();}
     }catch(e){
       if(e.message!=='Session expired')el('membershipsContent').innerHTML='<div class="empty-state"><div class="empty-title">Failed to load memberships</div></div>';
     }
@@ -10230,7 +10335,7 @@
             </div>
             <div class="staff-username">${esc(cust?cust.email:'')} ${cust&&cust.phone?'· '+esc(cust.phone):''}</div>
             <div class="staff-joined">Joined ${new Date(sub.createdAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}
-              ${sub.currentPeriodEnd?' · Renews '+new Date(sub.currentPeriodEnd).toLocaleDateString('en-GB',{day:'numeric',month:'short'}):''}
+              ${prepaidSubLine(sub)}
             </div>
           </div>
         </div>`;
@@ -10330,6 +10435,7 @@
               ${perks.map(pk=>`<span style="font-size:11px;background:${esc(p.color)}18;color:${esc(p.color)};padding:3px 8px;border-radius:6px;font-weight:600">${esc(pk)}</span>`).join('')}
             </div>
             ${p.squarePlanVariationId?`<div style="margin-top:8px;font-size:11px;color:var(--text-3,#9CA3AF)">Square subscription ID: <code style="font-size:10px">${esc(p.squarePlanVariationId)}</code></div>`:''}
+            ${Array.isArray(p.squarePosVariationIds)&&p.squarePosVariationIds.length?`<div style="margin-top:4px;font-size:11px;color:var(--text-3,#9CA3AF)">POS till items (12 months prepaid, no auto renewal): ${p.squarePosVariationIds.map(v=>'<code style="font-size:10px">'+esc(v)+'</code>').join(', ')}</div>`:''}
             ${p.squareCustomerGroupId?`<div style="margin-top:4px;font-size:11px;color:var(--text-3,#9CA3AF)">Square group: <code style="font-size:10px">${esc(p.squareCustomerGroupId)}</code></div>`:''}
             ${p.minimumTermMonths?`<div style="margin-top:6px;font-size:11px;color:var(--text-2)">Minimum term: ${Number(p.minimumTermMonths)} months</div>`:''}
             ${p.hideFromSignup?`<div style="margin-top:4px;font-size:11px;color:var(--text-2)">Hidden from new sign-ups</div>`:''}
@@ -10393,6 +10499,7 @@
       </button>`;
     });
     html+=`</div><div id="memberListContainer"></div>`;
+    html+=`<div id="posPurchasesPanel" style="margin-top:28px"></div>`;
     html+=`<div id="membershipAuditLogPanel" style="margin-top:28px"></div>`;
     html+=`<div id="pwResetHistoryPanel" style="margin-top:16px"></div>`;
     el('membershipsContent').innerHTML=html;
@@ -10414,7 +10521,7 @@
           </div>
           <div class="staff-username">${esc(cust?cust.email:'')} ${cust&&cust.phone?'· '+esc(cust.phone):''}</div>
           <div class="staff-joined">Joined ${new Date(sub.createdAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}
-            ${sub.currentPeriodEnd?' · Renews '+new Date(sub.currentPeriodEnd).toLocaleDateString('en-GB',{day:'numeric',month:'short'}):''}
+            ${prepaidSubLine(sub)}
             ${plan&&plan.hoursIncluded?' · '+sub.hoursUsedThisPeriod+'/'+plan.hoursIncluded+' hrs used ('+(plan.hoursUnit==='year'?'yr':'mo')+')':''}
             ${sub.staffNotes?'<br><em style="color:var(--text-2)">'+esc(sub.staffNotes)+'</em>':''}
           </div>
@@ -10479,6 +10586,7 @@
     el('epSquareId').value='';
     el('epSquareIdAlt').value='';
     el('epSquareGroupId').innerHTML='<option value="">— None —</option>';
+    epPosIds=[];posCatalog=null;renderPosList();
     el('epExcludeWithDeals').checked=false;
     el('epActive').checked=true;
     el('epHideFromSignup').checked=false;
@@ -10528,6 +10636,7 @@
     el('epPriorityBooking').checked=!!plan.priorityBooking;
     el('epSquareId').value=plan.squarePlanVariationId||'';
     el('epSquareIdAlt').value=plan.squarePlanVariationIdAlt||'';
+    epPosIds=Array.isArray(plan.squarePosVariationIds)?plan.squarePosVariationIds.slice():[];posCatalog=null;renderPosList();
     el('epExcludeWithDeals').checked=!!plan.excludeWithDeals;
     // Populate group dropdown with current value
     const groupSel=el('epSquareGroupId');
@@ -10586,6 +10695,7 @@
       squarePlanVariationId:el('epSquareId').value.trim()||null,
       squarePlanVariationIdAlt:el('epSquareIdAlt').value.trim()||null,
       squareCustomerGroupId:el('epSquareGroupId').value.trim()||null,
+      squarePosVariationIds:epPosIds.slice(),
       excludeWithDeals:el('epExcludeWithDeals').checked,
       active:el('epActive').checked,
       hideFromSignup:el('epHideFromSignup').checked,

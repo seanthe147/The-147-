@@ -44,6 +44,7 @@ export function buildPaymentSheetHtml(opts: {
   buyerEmail?: string | null;
   recurringDescription?: string | null;
   replaceMembershipCard?: boolean;
+  prepaidAutoRenew?: boolean;
   /**
    * When true (and intent is "CHARGE_AND_STORE"), render an opt-in checkbox
    * below the card form labelled "Save card for one-tap reorder". The
@@ -335,6 +336,7 @@ export function buildPaymentSheetHtml(opts: {
       var BUYER_EMAIL = ${JSON.stringify(opts.buyerEmail || "")};
       var RECURRING_DESC = ${JSON.stringify(opts.recurringDescription || "")};
       var REPLACE_CARD = ${JSON.stringify(!!opts.replaceMembershipCard)};
+      var PREPAID_RENEWAL = ${JSON.stringify(!!opts.prepaidAutoRenew)};
       var SHOW_SAVE_CARD = ${JSON.stringify(!!opts.showSaveCard)};
       var SDK_SRC = ${JSON.stringify(sdkSrc)};
       var SDK_TIMEOUT_MS = ${SDK_TIMEOUT_MS};
@@ -350,7 +352,7 @@ export function buildPaymentSheetHtml(opts: {
       // from one customer's attempt at the sheet (load → fail → retry).
       var SESSION_ID = (Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
       var IS_SUBSCRIPTION = INTENT === "STORE" && RECURRING_DESC.length > 0;
-      var PAY_LABEL = REPLACE_CARD ? "Authorise replacement card" : IS_SUBSCRIPTION
+      var PAY_LABEL = PREPAID_RENEWAL ? "Authorise automatic renewal" : REPLACE_CARD ? "Authorise replacement card" : IS_SUBSCRIPTION
         ? "Start Membership · £" + AMOUNT
         : "Pay £" + AMOUNT;
 
@@ -450,7 +452,7 @@ export function buildPaymentSheetHtml(opts: {
       // membership / subscription sign-ups.
       if (IS_SUBSCRIPTION) {
         var labelEl = document.getElementById("amount-label");
-        if (labelEl) labelEl.textContent = REPLACE_CARD ? "Replace membership card" : "Membership";
+        if (labelEl) labelEl.textContent = PREPAID_RENEWAL ? "Enable automatic renewal" : REPLACE_CARD ? "Replace membership card" : "Membership";
         if (REPLACE_CARD) document.querySelector(".amount-card .value").textContent = "No charge now";
         var recurEl = document.getElementById("amount-recurring");
         if (recurEl) {
@@ -830,7 +832,7 @@ export function buildPaymentSheetHtml(opts: {
         if (IS_SUBSCRIPTION) {
           var fp = document.getElementById("recurring-fineprint");
           if (fp) {
-            fp.textContent = REPLACE_CARD ? "Your existing membership terms still apply." : "You can cancel anytime from your account.";
+            fp.textContent = PREPAID_RENEWAL ? "No charge today. The first payment starts after your prepaid membership ends; the renewal terms shown above apply." : REPLACE_CARD ? "Your existing membership terms still apply." : "Renewal and cancellation follow the membership terms shown above.";
             fp.style.display = "block";
           }
         }

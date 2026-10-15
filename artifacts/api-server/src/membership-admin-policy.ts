@@ -17,6 +17,7 @@ export const membershipPlanChanges = z.object({
   guestPassesMonthly: z.number().int().min(0).max(100_000).optional(),
   squarePlanVariationId: providerId,
   squarePlanVariationIdAlt: providerId,
+  squarePosVariationIds: z.array(z.string().trim().min(1).max(192)).max(100).optional(),
   squareCustomerGroupId: providerId,
   excludeWithDeals: z.boolean().optional(),
   active: z.boolean().optional(),

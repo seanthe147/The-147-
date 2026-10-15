@@ -53,9 +53,10 @@ try {
   await run(process.execPath, ["--experimental-strip-types", "--test",
     "src/membership-billing-policy.test.ts", "src/platinum-offer-migration.test.ts",
     "src/membership-failure-notifications.test.ts"]);
-  const output = path.join(temp, "membership-billing.test.mjs");
+  for (const entry of ["membership-billing", "membership-square-sync"]) {
+  const output = path.join(temp, `${entry}.test.mjs`);
   await build({
-    absWorkingDir: cwd, entryPoints: ["src/membership-billing.test.ts"], outfile: output,
+    absWorkingDir: cwd, entryPoints: [`src/${entry}.test.ts`], outfile: output,
     bundle: true, platform: "node", format: "esm",
     external: ["express", "pg", "drizzle-orm", "drizzle-zod", "zod"],
   });
@@ -66,7 +67,7 @@ try {
     const verify = new pg.Client({ connectionString: env.DATABASE_URL });
     try {
       await verify.connect();
-      for (const table of ["customers", "membership_subscriptions", "membership_billing_states", "membership_audit_log"]) {
+      for (const table of ["customers", "membership_subscriptions", "membership_billing_states", "membership_audit_log", "membership_purchase_records", "membership_square_events"]) {
         const result = await verify.query(`SELECT count(*)::int AS count FROM ${table}`);
         if (result.rows[0].count !== 0) throw new Error(`Membership test left fixtures in ${table}`);
       }
@@ -74,6 +75,7 @@ try {
       if (plans.rows[0].count !== 0) throw new Error("Membership test left fixture plans");
       console.log("Membership fixture cleanup verified.");
     } finally { await verify.end(); }
+  }
   }
 } finally {
   try {

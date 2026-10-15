@@ -1,4 +1,4 @@
-import { applyPlatinumOffer } from "./platinum-offer-migration";
+import { applyPlatinumOffer, applyPlatinumTillMapping } from "./platinum-offer-migration";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { eq, lt, lte, sql, and, gt, isNull, isNotNull, gte, desc, inArray, ne, ilike, or } from "drizzle-orm";
@@ -214,6 +214,27 @@ export async function runStartupMigrations() {
   const client = await pool.connect();
   try {
     await client.query(`
+      ALTER TABLE membership_plans ADD COLUMN IF NOT EXISTS square_pos_variation_ids TEXT[] NOT NULL DEFAULT '{}';
+      ALTER TABLE membership_subscriptions ADD COLUMN IF NOT EXISTS first_paid_at TIMESTAMP;
+      ALTER TABLE membership_subscriptions ADD COLUMN IF NOT EXISTS last_paid_at TIMESTAMP;
+      ALTER TABLE membership_subscriptions ADD COLUMN IF NOT EXISTS prepaid_until_date TEXT;
+      ALTER TABLE membership_subscriptions ADD COLUMN IF NOT EXISTS square_group_sync_pending BOOLEAN NOT NULL DEFAULT FALSE;
+      CREATE TABLE IF NOT EXISTS membership_purchase_records (
+        id TEXT PRIMARY KEY, square_customer_id TEXT NOT NULL, square_payment_id TEXT,
+        square_order_id TEXT, square_subscription_id TEXT,
+        subscription_id INTEGER REFERENCES membership_subscriptions(id), customer_id INTEGER,
+        plan_id INTEGER NOT NULL REFERENCES membership_plans(id), source TEXT NOT NULL,
+        frequency TEXT NOT NULL, amount_pence INTEGER NOT NULL, purchased_at TIMESTAMP,
+        period_start TEXT, period_end TEXT, months INTEGER NOT NULL DEFAULT 12,
+        status TEXT NOT NULL DEFAULT 'unclaimed', review_reason TEXT,
+        recorded_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS membership_purchase_customer_idx ON membership_purchase_records(square_customer_id);
+      CREATE TABLE IF NOT EXISTS membership_square_events (
+        id TEXT PRIMARY KEY, event_type TEXT NOT NULL, processed_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`
       CREATE TABLE IF NOT EXISTS membership_plan_variation_aliases (
         square_variation_id TEXT PRIMARY KEY,
         plan_id INTEGER NOT NULL REFERENCES membership_plans(id)
@@ -235,6 +256,7 @@ export async function runStartupMigrations() {
         migration_reviewed_by TEXT
       );
     `);
+    await client.query(`ALTER TABLE membership_billing_states ADD COLUMN IF NOT EXISTS recurring_start_date TEXT;`);
     // Add columns introduced after initial deployment
     await client.query(`
       ALTER TABLE offers
@@ -446,6 +468,7 @@ export async function runStartupMigrations() {
     `);
 
     await applyPlatinumOffer(client);
+    await applyPlatinumTillMapping(client);
 
     // Ensure VIP plan exists (10% food & drink, group-based, excludes stacking with deals)
     await client.query(`
@@ -2347,6 +2370,20 @@ export class DatabaseStorage implements IStorage {
     const [plan] = await db.select().from(membershipPlans)
       .where(and(eq(membershipPlans.id, sub.planId), eq(membershipPlans.active, true)));
     return { ...sub, plan: plan || null };
+  }
+
+  // Management needs pending/held/cancelled records too. Keep the active-only
+  // entitlement lookup above unchanged for pricing and access decisions.
+  async getLatestMembershipSubscriptionByCustomer(customerId: number): Promise<(MembershipSubscription & { plan: MembershipPlan | null }) | null> {
+    const [sub] = await db.select().from(membershipSubscriptions)
+      .where(eq(membershipSubscriptions.customerId, customerId))
+      .orderBy(sql`CASE WHEN ${membershipSubscriptions.status} = 'active' THEN 0
+        WHEN ${membershipSubscriptions.status} IN ('pending', 'pending_payment', 'pending_start') THEN 1
+        WHEN ${membershipSubscriptions.status} IN ('frozen', 'paused') THEN 2 ELSE 3 END`,
+        desc(membershipSubscriptions.createdAt));
+    if (!sub) return null;
+    const plan = await this.getMembershipPlan(sub.planId);
+    return { ...sub, plan: plan ?? null };
   }
 
   async getMembershipSubscription(id: number): Promise<MembershipSubscription | undefined> {

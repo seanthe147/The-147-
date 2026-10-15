@@ -18,6 +18,16 @@ export interface MembershipBillingSubscription {
   /** @nullable */
   renewalDate: string | null;
   /** @nullable */
+  firstPaidAt?: Date | null;
+  /** @nullable */
+  lastPaidAt?: Date | null;
+  /** @nullable */
+  prepaidUntilDate?: string | null;
+  autoRenewEligible?: boolean;
+  autoRenewScheduled?: boolean;
+  /** @nullable */
+  autoRenewStartDate?: string | null;
+  /** @nullable */
   commitmentEndDate: string | null;
   cancellationAllowed: boolean;
   /** @nullable */

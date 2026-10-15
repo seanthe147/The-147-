@@ -1,4 +1,9 @@
 export type BillingFrequency = "monthly" | "annual";
+export function membershipBusinessDate(date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(date);
+}
 export const BILLING_TERMS_VERSION = "membership-12-month-rolling";
 
 export function isPlatinumConsolidation(current: { tier?: string }, target: { tier?: string }): boolean {

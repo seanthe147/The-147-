@@ -521,6 +521,7 @@ export const membershipPlans = pgTable("membership_plans", {
   priceAnnual: integer("price_annual"),
   squarePlanVariationId: text("square_plan_variation_id"),
   squarePlanVariationIdAlt: text("square_plan_variation_id_alt"),
+  squarePosVariationIds: text("square_pos_variation_ids").array().notNull().default(sql`ARRAY[]::text[]`),
   squareCustomerGroupId: text("square_customer_group_id"),
   excludeWithDeals: boolean("exclude_with_deals").notNull().default(false),
   active: boolean("active").notNull().default(true),
@@ -564,6 +565,10 @@ export const membershipSubscriptions = pgTable("membership_subscriptions", {
   migrationCompletedAt: timestamp("migration_completed_at"),
   legacyExternalRef: text("legacy_external_ref"),
   termsAcceptedAt: timestamp("terms_accepted_at"),
+  firstPaidAt: timestamp("first_paid_at"),
+  lastPaidAt: timestamp("last_paid_at"),
+  prepaidUntilDate: text("prepaid_until_date"),
+  squareGroupSyncPending: boolean("square_group_sync_pending").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -584,9 +589,39 @@ export const membershipBillingStates = pgTable("membership_billing_states", {
   pendingFrequency: text("pending_frequency"),
   pendingEffectiveDate: text("pending_effective_date"),
   cancellationDate: text("cancellation_date"),
+  recurringStartDate: text("recurring_start_date"),
   legacyBillingStoppedAt: timestamp("legacy_billing_stopped_at"),
   legacyPaidThroughDate: text("legacy_paid_through_date"),
   migrationReviewedBy: text("migration_reviewed_by"),
+});
+
+// Provider references are immutable, deduplicated payment evidence. Till sales
+// may exist before the customer creates/verifies their app account.
+export const membershipPurchaseRecords = pgTable("membership_purchase_records", {
+  id: text("id").primaryKey(),
+  squareCustomerId: text("square_customer_id").notNull(),
+  squarePaymentId: text("square_payment_id"),
+  squareOrderId: text("square_order_id"),
+  squareSubscriptionId: text("square_subscription_id"),
+  subscriptionId: integer("subscription_id").references(() => membershipSubscriptions.id),
+  customerId: integer("customer_id"),
+  planId: integer("plan_id").notNull().references(() => membershipPlans.id),
+  source: text("source").notNull(),
+  frequency: text("frequency").notNull(),
+  amountPence: integer("amount_pence").notNull(),
+  purchasedAt: timestamp("purchased_at"),
+  periodStart: text("period_start"),
+  periodEnd: text("period_end"),
+  months: integer("months").notNull().default(12),
+  status: text("status").notNull().default("unclaimed"),
+  reviewReason: text("review_reason"),
+  recordedAt: timestamp("recorded_at").notNull().defaultNow(),
+});
+
+export const membershipSquareEvents = pgTable("membership_square_events", {
+  id: text("id").primaryKey(),
+  eventType: text("event_type").notNull(),
+  processedAt: timestamp("processed_at").notNull().defaultNow(),
 });
 
 // ── App orders (from native ordering system) ──────────────────────────────────

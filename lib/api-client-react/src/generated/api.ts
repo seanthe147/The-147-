@@ -20,13 +20,17 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  GetMembershipPosCatalog200,
+  GetMembershipPosPurchases200,
   HealthStatus,
   MembershipActionResult,
+  MembershipAutoRenew,
   MembershipBilling,
   MembershipCancellation,
   MembershipCardReplacement,
   MembershipChange,
   MembershipMigrationReview,
+  MembershipPosImport,
   StaffMembershipChange
 } from './api.schemas';
 
@@ -41,6 +45,342 @@ type AwaitedInput<T> = PromiseLike<T> | T;
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
+
+export const getEnableMembershipAutoRenewUrl = () => {
+
+
+
+
+  return `/api/membership/enable-auto-renew`
+}
+
+export const enableMembershipAutoRenew = async (membershipAutoRenew: MembershipAutoRenew, options?: RequestInit): Promise<MembershipActionResult> => {
+
+  return customFetch<MembershipActionResult>(getEnableMembershipAutoRenewUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      membershipAutoRenew,)
+  }
+);}
+
+
+
+
+export const getEnableMembershipAutoRenewMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof enableMembershipAutoRenew>>, TError,{data: BodyType<MembershipAutoRenew>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof enableMembershipAutoRenew>>, TError,{data: BodyType<MembershipAutoRenew>}, TContext> => {
+
+const mutationKey = ['enableMembershipAutoRenew'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof enableMembershipAutoRenew>>, {data: BodyType<MembershipAutoRenew>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  enableMembershipAutoRenew(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EnableMembershipAutoRenewMutationResult = NonNullable<Awaited<ReturnType<typeof enableMembershipAutoRenew>>>
+    export type EnableMembershipAutoRenewMutationBody = BodyType<MembershipAutoRenew>
+    export type EnableMembershipAutoRenewMutationError = ErrorType<void>
+
+    export const useEnableMembershipAutoRenew = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof enableMembershipAutoRenew>>, TError,{data: BodyType<MembershipAutoRenew>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof enableMembershipAutoRenew>>,
+        TError,
+        {data: BodyType<MembershipAutoRenew>},
+        TContext
+      > => {
+      return useMutation(getEnableMembershipAutoRenewMutationOptions(options));
+    }
+
+export const getGetMembershipPosCatalogUrl = () => {
+
+
+
+
+  return `/api/staff/membership/pos-catalog`
+}
+
+export const getMembershipPosCatalog = async ( options?: RequestInit): Promise<GetMembershipPosCatalog200> => {
+
+  return customFetch<GetMembershipPosCatalog200>(getGetMembershipPosCatalogUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMembershipPosCatalogQueryKey = () => {
+    return [
+    `/api/staff/membership/pos-catalog`
+    ] as const;
+    }
+
+
+export const getGetMembershipPosCatalogQueryOptions = <TData = Awaited<ReturnType<typeof getMembershipPosCatalog>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMembershipPosCatalog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMembershipPosCatalogQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMembershipPosCatalog>>> = ({ signal }) => getMembershipPosCatalog({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMembershipPosCatalog>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMembershipPosCatalogQueryResult = NonNullable<Awaited<ReturnType<typeof getMembershipPosCatalog>>>
+export type GetMembershipPosCatalogQueryError = ErrorType<void>
+
+
+
+export function useGetMembershipPosCatalog<TData = Awaited<ReturnType<typeof getMembershipPosCatalog>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMembershipPosCatalog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMembershipPosCatalogQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetMembershipPosPurchasesUrl = () => {
+
+
+
+
+  return `/api/staff/membership/pos-purchases`
+}
+
+export const getMembershipPosPurchases = async ( options?: RequestInit): Promise<GetMembershipPosPurchases200> => {
+
+  return customFetch<GetMembershipPosPurchases200>(getGetMembershipPosPurchasesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMembershipPosPurchasesQueryKey = () => {
+    return [
+    `/api/staff/membership/pos-purchases`
+    ] as const;
+    }
+
+
+export const getGetMembershipPosPurchasesQueryOptions = <TData = Awaited<ReturnType<typeof getMembershipPosPurchases>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMembershipPosPurchases>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMembershipPosPurchasesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMembershipPosPurchases>>> = ({ signal }) => getMembershipPosPurchases({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMembershipPosPurchases>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMembershipPosPurchasesQueryResult = NonNullable<Awaited<ReturnType<typeof getMembershipPosPurchases>>>
+export type GetMembershipPosPurchasesQueryError = ErrorType<void>
+
+
+
+export function useGetMembershipPosPurchases<TData = Awaited<ReturnType<typeof getMembershipPosPurchases>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMembershipPosPurchases>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMembershipPosPurchasesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getImportMembershipPosPurchaseUrl = () => {
+
+
+
+
+  return `/api/staff/membership/pos-purchases/import`
+}
+
+export const importMembershipPosPurchase = async (membershipPosImport: MembershipPosImport, options?: RequestInit): Promise<MembershipActionResult> => {
+
+  return customFetch<MembershipActionResult>(getImportMembershipPosPurchaseUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      membershipPosImport,)
+  }
+);}
+
+
+
+
+export const getImportMembershipPosPurchaseMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importMembershipPosPurchase>>, TError,{data: BodyType<MembershipPosImport>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof importMembershipPosPurchase>>, TError,{data: BodyType<MembershipPosImport>}, TContext> => {
+
+const mutationKey = ['importMembershipPosPurchase'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importMembershipPosPurchase>>, {data: BodyType<MembershipPosImport>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  importMembershipPosPurchase(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ImportMembershipPosPurchaseMutationResult = NonNullable<Awaited<ReturnType<typeof importMembershipPosPurchase>>>
+    export type ImportMembershipPosPurchaseMutationBody = BodyType<MembershipPosImport>
+    export type ImportMembershipPosPurchaseMutationError = ErrorType<void>
+
+    export const useImportMembershipPosPurchase = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importMembershipPosPurchase>>, TError,{data: BodyType<MembershipPosImport>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof importMembershipPosPurchase>>,
+        TError,
+        {data: BodyType<MembershipPosImport>},
+        TContext
+      > => {
+      return useMutation(getImportMembershipPosPurchaseMutationOptions(options));
+    }
+
+export const getRetryMembershipPosPurchaseUrl = (id: string,) => {
+
+
+
+
+  return `/api/staff/membership/pos-purchases/${id}/retry`
+}
+
+export const retryMembershipPosPurchase = async (id: string, options?: RequestInit): Promise<MembershipActionResult> => {
+
+  return customFetch<MembershipActionResult>(getRetryMembershipPosPurchaseUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRetryMembershipPosPurchaseMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryMembershipPosPurchase>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof retryMembershipPosPurchase>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['retryMembershipPosPurchase'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryMembershipPosPurchase>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  retryMembershipPosPurchase(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RetryMembershipPosPurchaseMutationResult = NonNullable<Awaited<ReturnType<typeof retryMembershipPosPurchase>>>
+
+    export type RetryMembershipPosPurchaseMutationError = ErrorType<void>
+
+    export const useRetryMembershipPosPurchase = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryMembershipPosPurchase>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof retryMembershipPosPurchase>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getRetryMembershipPosPurchaseMutationOptions(options));
+    }
 
 export const getGetStaffMembershipBillingUrl = (id: number,) => {
 

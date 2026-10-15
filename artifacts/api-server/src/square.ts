@@ -58,6 +58,40 @@ export class SquareError extends Error {
   }
 }
 
+export async function getSquareInvoice(id: string) {
+  return (await squareRequest("GET", `/v2/invoices/${encodeURIComponent(id)}`)).invoice;
+}
+
+export async function getSquareBillingFrequency(variationId: string): Promise<"monthly" | "annual"> {
+  const data = await squareRequest("GET", `/v2/catalog/object/${encodeURIComponent(variationId)}`);
+  const cadence = data.object?.subscription_plan_variation_data?.phases?.[0]?.cadence;
+  if (cadence === "MONTHLY") return "monthly";
+  if (cadence === "ANNUAL") return "annual";
+  throw new Error("Unsupported Square membership billing frequency");
+}
+
+export async function listMembershipPosCatalog() {
+  const items: any[] = [];
+  let cursor: string | undefined;
+  do {
+    const data = await squareRequest("GET", "/v2/catalog/list?types=ITEM" + (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""));
+    for (const item of data.objects ?? []) {
+      if (item.is_deleted) continue;
+      for (const variant of item.item_data?.variations ?? []) {
+        if (variant.is_deleted) continue;
+        items.push({
+          variationId: variant.id, itemName: item.item_data.name,
+          variationName: variant.item_variation_data?.name ?? "",
+          pricePence: variant.item_variation_data?.price_money?.amount ?? null,
+          currency: variant.item_variation_data?.price_money?.currency ?? null,
+        });
+      }
+    }
+    cursor = data.cursor;
+  } while (cursor);
+  return items;
+}
+
 export function toE164(phone: string): string {
   const digits = phone.replace(/\D/g, "");
   if (digits.startsWith("44")) return `+${digits}`;
@@ -640,11 +674,14 @@ export async function createSquareCustomer(name: string, email: string, phone?: 
 }
 
 export async function findSquareCustomerByEmail(email: string) {
+  const normalized = email.trim().toLowerCase();
   const data = await squareRequest("POST", "/v2/customers/search", {
-    query: { filter: { email_address: { fuzzy: email } } },
-    limit: 1,
+    query: { filter: { email_address: { exact: normalized } } },
+    limit: 100,
   });
-  return data.customers?.[0] || null;
+  const matches = (data.customers ?? []).filter((c: any) => c.email_address?.trim().toLowerCase() === normalized);
+  if (matches.length > 1) throw new SquareError("Multiple Square customer records use this email. Ask staff to merge them before starting membership billing.", "DUPLICATE_CUSTOMER", 409);
+  return matches[0] || null;
 }
 
 /**
@@ -722,11 +759,12 @@ export async function createSquareSubscription(
   planVariationId: string,
   locationId: string,
   cardId?: string,
-  startDate?: string
+  startDate?: string,
+  idempotencyKey?: string
 ) {
   const today = new Date().toISOString().slice(0, 10);
   const body: Record<string, unknown> = {
-    idempotency_key: `sub-${squareCustomerId}-${Date.now()}`,
+    idempotency_key: idempotencyKey ?? `sub-${squareCustomerId}-${Date.now()}`,
     location_id: locationId,
     plan_variation_id: planVariationId,
     customer_id: squareCustomerId,

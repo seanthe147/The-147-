@@ -17,6 +17,7 @@ import { hashPin, verifyPin, hashPassword, verifyPassword, hashEmail, decrypt } 
 import * as square from "../square";
 import { notifyMembershipPaymentFailure } from "../membership-failure-notifications";
 import { alignBillingStart, billingState, recordBillingTerms, migrationOffer, prepareMigrationOffer, migrationBillingStart, membershipSignupGuard, reconcileScheduledMembership, registerMembershipBilling, syncPaidMembershipGroups } from "../membership-billing";
+import { processSquareMembershipEvent, processMembershipPosPayment, refreshExternalSquareMembership, registerSquareMembershipSync, recordLegacyMembershipPayment, validatePosMapping } from "../membership-square-sync";
 import { membershipPlanChanges, membershipPlanCreation, membershipMemberChanges, protectedMembership, changesProtectedBilling } from "../membership-admin-policy";
 import { prepareMembershipSaleRates } from "../membership-plan-admin";
 import { addCalendarMonths, minimumTermMonths, validDate, variationForFrequency } from "../membership-billing-policy";
@@ -3255,7 +3256,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       // Ensure a Square customer exists and is linked
       let sqCustomerId = sub.squareCustomerId;
       if (!sqCustomerId) {
-        const sqCustomer = await square.findSquareCustomerByEmail(sub.customer.email).catch(() => null)
+        const sqCustomer = await square.findSquareCustomerByEmail(sub.customer.email)
           || await square.createSquareCustomer(sub.customer.name, sub.customer.email, sub.customer.phone || undefined).catch(() => null);
         if (sqCustomer) {
           sqCustomerId = sqCustomer.id;
@@ -4746,6 +4747,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       }
     }
 
+    if (paymentStatus === "COMPLETED" && payment.order_id) {
+      try { await processMembershipPosPayment(payment); }
+      catch (error: any) { console.error("[MEMBERSHIP] Till purchase processing needs retry:", error.message); return res.status(500).send("Membership purchase processing failed; retry required."); }
+    }
     // ── Customer-group prize auto-removal on payment ────────────────────────
     // When a payment completes for an identified Square customer, remove them
     // from any active Winners groups — the discount has been used.
@@ -4773,6 +4778,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     // ── Membership payment (completed or failed) ────────────────────────────
     if (paymentNote.startsWith("MEMBERSHIP:")) {
       const subId = parseInt(paymentNote.split(":")[1] ?? "");
+      if (Number.isSafeInteger(subId)) {
+        await recordLegacyMembershipPayment(payment, subId);
+        return res.sendStatus(200);
+      }
       if (!isNaN(subId)) {
         try {
           const sub = await storage.getMembershipSubscription(subId);
@@ -9925,11 +9934,6 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   async function syncSquareMembershipForCustomer(customerId: number, email: string) {
     try {
       if (!square.isConfigured()) return;
-      const pendingMember = await storage.getMembershipSubscriptionByCustomer(customerId);
-      if (pendingMember) {
-        const acceptedBilling = await billingState(pendingMember.id);
-        if (acceptedBilling?.pendingPlanId || (acceptedBilling?.termsVersion && pendingMember.squareSubscriptionId)) return;
-      }
       // This helper is called by user, staff, and scheduled flows. Enforce
       // mailbox ownership here rather than trusting every caller to remember
       // the check: an unverified sign-up must never inherit a Square-backed
@@ -9937,15 +9941,16 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       const customer = await storage.getCustomerById(customerId);
       if (!customer?.emailVerified) return;
       email = customer.email;
+      const sqForMembership = await square.findSquareCustomerByEmail(email);
+      if (sqForMembership && await refreshExternalSquareMembership(customerId, sqForMembership)) return;
 
       const existing = await storage.getMembershipSubscriptionByCustomer(customerId);
       const allPlans = await storage.getMembershipPlans();
-      const today = new Date().toISOString().slice(0, 10);
 
       // ── If customer already has a group-synced subscription, re-check membership ──
       // This handles removal: if they've been taken out of the Square group, cancel locally
       if (existing && (existing as any).source === "square_group_sync") {
-        const sqCustomerForCheck = await square.findSquareCustomerByEmail(email).catch(() => null);
+        const sqCustomerForCheck = await square.findSquareCustomerByEmail(email);
         if (sqCustomerForCheck) {
           const groupPlansForCheck = allPlans.filter(p => p.active && (p as any).squareCustomerGroupId);
           const currentGroupIds = await square.getCustomerGroupIds(sqCustomerForCheck.id).catch(() => [] as string[]);
@@ -9960,10 +9965,8 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
             console.log(`[MEMBERSHIP] Group membership cancelled for #${customerId} (${email}) — no longer in Square group`);
             // Fall through to check if they're now in a different group
           } else {
-            // Still in group — refresh the period end date to keep it rolling
-            const refreshedEnd = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-            await storage.updateMembershipSubscription(existing.id, { currentPeriodEnd: refreshedEnd } as any);
-            return; // Membership valid, nothing else to do
+            // Staff group grants have no verified payment or expiry date.
+            return;
           }
         } else {
           return; // Can't reach Square — leave as-is
@@ -9973,40 +9976,8 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       }
 
       // ── No existing subscription — find the Square customer and check ──────
-      const sqCustomer = await square.findSquareCustomerByEmail(email).catch(() => null);
+      const sqCustomer = await square.findSquareCustomerByEmail(email);
       if (!sqCustomer) return;
-
-      // ── 1. Check Square subscriptions ──────────────────────────────────────
-      const sqSubs: any[] = await square.listSquareSubscriptionsForCustomer(sqCustomer.id).catch(() => []);
-      // hideFromSignup plans (VIP, complimentary tiers, etc.) are
-      // staff-assigned only — never auto-grant them via Square sync, even
-      // if the customer is found in the corresponding Square subscription.
-      // Without this guard, anyone added directly to the VIP plan in
-      // Square (intentionally or by mistake) would be auto-elevated on
-      // their next app sign-in.
-      const legacyVariations = await db.select().from(membershipPlanVariationAliases);
-      const subPlans = allPlans.filter(p => p.active && (!p.hideFromSignup || p.tier === "maximum") && (p.squarePlanVariationId || (p as any).squarePlanVariationIdAlt));
-      const planMatchesVariation = (p: any, variationId: string) =>
-        p.squarePlanVariationId === variationId || p.squarePlanVariationIdAlt === variationId ||
-        legacyVariations.some(alias => alias.planId === p.id && alias.squareVariationId === variationId);
-      const matchedSub = sqSubs.find((s: any) =>
-        (s.status === "ACTIVE" || s.status === "PENDING") &&
-        subPlans.some(p => planMatchesVariation(p, s.plan_variation_id))
-      );
-      if (matchedSub) {
-        const plan = subPlans.find(p => planMatchesVariation(p, matchedSub.plan_variation_id))!;
-        const periodEnd = matchedSub.charged_through_date ??
-          new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-        await storage.createMembershipSubscription({
-          customerId, planId: plan.id, status: "active",
-          currentPeriodStart: matchedSub.start_date ?? today, currentPeriodEnd: periodEnd,
-          hoursUsedThisPeriod: 0, guestPassesUsed: 0,
-          squareSubscriptionId: matchedSub.id, squareCustomerId: sqCustomer.id,
-          source: "square_sync", staffNotes: "Auto-synced from Square on app sign-in",
-        });
-        console.log(`[MEMBERSHIP] Auto-synced Square subscription ${matchedSub.id} → customer #${customerId} (${email})`);
-        return;
-      }
 
       // ── 2. Check Square customer groups ────────────────────────────────────
       // Square customer groups can ONLY be managed from the Square dashboard
@@ -10016,15 +9987,15 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       // hideFromSignup plans (e.g. VIP) are allowed through this path. This
       // is how the venue wants VIP to work: invitation-only via Square group,
       // no self-signup, automatic discount on next app sign-in.
-      const groupPlans = allPlans.filter(p => p.active && (p as any).squareCustomerGroupId);
+      const groupPlans = allPlans.filter(p => p.active && p.hideFromSignup &&
+        p.priceMonthly === 0 && (p.priceAnnual ?? 0) === 0 && p.squareCustomerGroupId);
       if (groupPlans.length) {
         const customerGroupIds = await square.getCustomerGroupIds(sqCustomer.id).catch(() => [] as string[]);
         const groupMatch = groupPlans.find(p => customerGroupIds.includes((p as any).squareCustomerGroupId));
         if (groupMatch) {
-          const periodEnd = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
           await storage.createMembershipSubscription({
             customerId, planId: groupMatch.id, status: "active",
-            currentPeriodStart: today, currentPeriodEnd: periodEnd,
+            currentPeriodStart: null, currentPeriodEnd: null,
             hoursUsedThisPeriod: 0, guestPassesUsed: 0,
             squareCustomerId: sqCustomer.id,
             source: "square_group_sync",
@@ -10119,7 +10090,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       };
       if (customer.squareCustomerId) return; // already enrolled
 
-      const existing = await square.findSquareCustomerByEmail(customer.email).catch(() => null);
+      const existing = await square.findSquareCustomerByEmail(customer.email);
       let sqCustomerId: string;
 
       if (existing) {
@@ -12176,7 +12147,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     // and we want the very first render to show their card, not the
     // join flow.
     if (shouldSync) {
-      const existingSub = await storage.getMembershipSubscriptionByCustomer(customerId);
+      const existingSub = await storage.getLatestMembershipSubscriptionByCustomer(customerId);
       const syncPromise = syncSquareMembershipForCustomer(customerId, customerEmail).catch((e: any) =>
         console.warn("[MEMBERSHIP] my-subscription auto-sync failed (non-fatal):", e?.message),
       );
@@ -12184,7 +12155,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         await syncPromise;
       }
     }
-    const sub = await storage.getMembershipSubscriptionByCustomer(customerId);
+    const sub = await storage.getLatestMembershipSubscriptionByCustomer(customerId);
     res.json(sub ?? null);
   });
 
@@ -12264,7 +12235,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
             checkoutFailureCode = "CUSTOMER_NOT_FOUND";
           } else {
             // Create or find Square customer
-            let sqCustomer = await square.findSquareCustomerByEmail(customer.email).catch(() => null);
+            let sqCustomer = await square.findSquareCustomerByEmail(customer.email);
             if (!sqCustomer) {
               sqCustomer = await square.createSquareCustomer(customer.name, customer.email, customer.phone || undefined).catch(() => null);
             }
@@ -12398,7 +12369,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       // customer without active access.
 
       // 1) Find or create the Square customer record
-      let sqCustomer = await square.findSquareCustomerByEmail(customer.email).catch(() => null);
+      let sqCustomer = await square.findSquareCustomerByEmail(customer.email);
       if (!sqCustomer) {
         sqCustomer = await square.createSquareCustomer(customer.name, customer.email, customer.phone || undefined).catch(() => null);
       }
@@ -12601,6 +12572,11 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       }
       const event = req.body;
       const type: string = event?.type ?? "";
+      if (await processSquareMembershipEvent(event, sendMembershipFailureNotice)) return res.sendStatus(200);
+      if (type === "payment.updated") {
+        await processMembershipPosPayment(event?.data?.object?.payment);
+        return res.sendStatus(200);
+      }
 
       // subscription.updated / subscription.activated
       // NOTE: We intentionally do NOT promote local status to "active" here.
@@ -12739,6 +12715,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   app.post("/api/membership/webhook", handleMembershipSquareWebhook);
 
   // ── Membership — staff management ───────────────────────────────────────
+  registerSquareMembershipSync(app, staffAuth, managerAuth);
   app.get("/api/staff/membership/stats", staffAuth, managerAuth, async (_req, res) => {
     const stats = await storage.getMembershipStats();
     res.json(stats);
@@ -12766,7 +12743,9 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   app.post("/api/staff/membership/plans", staffAuth, managerAuth, async (req, res) => {
     const parsed = membershipPlanCreation.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Check the plan fields: prices must be whole pence, percentages 0–100, and allowances non-negative.", errors: parsed.error.flatten().fieldErrors });
-    const { name, tier, priceMonthly, priceAnnual, hoursIncluded, hoursUnit, snookerUnlimited, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, squarePlanVariationIdAlt, squareCustomerGroupId, excludeWithDeals, active, hideFromSignup, sortOrder, color, description } = parsed.data;
+    const { name, tier, priceMonthly, priceAnnual, hoursIncluded, hoursUnit, snookerUnlimited, foodDrinkDiscount, priorityBooking, loyaltyMultiplier, guestPassesMonthly, squarePlanVariationId, squarePlanVariationIdAlt, squareCustomerGroupId, excludeWithDeals, active, hideFromSignup, sortOrder, color, description, squarePosVariationIds } = parsed.data;
+    try { await validatePosMapping(squarePosVariationIds ?? []); }
+    catch (error: any) { return res.status(400).json({ message: error.message || "Till item mapping could not be verified." }); }
     if (!name?.trim()) return res.status(400).json({ message: "Plan name is required" });
     if (priceMonthly == null || isNaN(Number(priceMonthly))) return res.status(400).json({ message: "Monthly price is required" });
     // Auto-generate a tier slug from the name if not provided
@@ -12786,6 +12765,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         priceAnnual: priceAnnual ?? null,
         squarePlanVariationId: squarePlanVariationId?.trim() || null,
         squarePlanVariationIdAlt: squarePlanVariationIdAlt?.trim() || null,
+        squarePosVariationIds: squarePosVariationIds ?? [],
         squareCustomerGroupId: squareCustomerGroupId?.trim() || null,
         excludeWithDeals: !!excludeWithDeals,
         active: active !== false,
@@ -12819,6 +12799,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     if (!oldPlan) return res.status(404).json({ message: "Plan not found" });
 
     const updateBody = { ...parsed.data };
+    if (updateBody.squarePosVariationIds) {
+      try { await validatePosMapping(updateBody.squarePosVariationIds, id); }
+      catch (error: any) { return res.status(400).json({ message: error.message || "Till item mapping could not be verified." }); }
+    }
     // Tier is an internal identity used by entitlement and minimum-term rules.
     delete updateBody.tier;
     if ("color" in updateBody) {
@@ -12990,7 +12974,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
 
       // No active sub after sync — explain why.
       if (!after) {
-        const sqCustomer = await square.findSquareCustomerByEmail(email.trim()).catch(() => null);
+        const sqCustomer = await square.findSquareCustomerByEmail(email.trim());
         if (!sqCustomer) {
           return res.json({ status: "no_square_customer", message: `No Square customer found for ${email}. They may need to be added to Square first, or the email on their Square profile must match exactly.` });
         }
@@ -13062,7 +13046,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         });
       }
 
-      const sqCustomer = await square.findSquareCustomerByEmail(rawEmail).catch(() => null);
+      const sqCustomer = await square.findSquareCustomerByEmail(rawEmail);
       if (!sqCustomer) {
         return res.status(404).json({
           code: "SQUARE_NOT_FOUND",

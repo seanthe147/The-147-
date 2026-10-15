@@ -627,11 +627,13 @@
     }));
     let h='<h3>Your membership</h3>'+
       row('Plan',esc(sub.planName))+
-      row('Billing',sub.frequency==='annual'?'Annual (auto-renews)':'Monthly')+
-      row('Next renewal',fmtDate(sub.renewalDate))+
+      (sub.source==='square_pos'
+        ?row('Billing',sub.autoRenewScheduled?'Prepaid (automatic billing scheduled)':'Prepaid 12 months (no auto renewal)')
+        :row('Billing',sub.frequency==='annual'?'Annual (auto-renews)':'Monthly')+row('Next renewal',fmtDate(sub.renewalDate)))+
       (sub.commitmentEndDate?row('Minimum term ends',fmtDate(sub.commitmentEndDate)):'')+
       (sub.pendingPlanName?row('Scheduled change',esc(sub.pendingPlanName)+' from '+fmtDate(sub.pendingDate)):'')+
       (sub.cancellationDate?row('Ends on',fmtDate(sub.cancellationDate)):'');
+    if(sub.source==='square_pos')h+=renderPrepaid(sub,cur);
     if(sub.cardReplacementAllowed){
       const c=sub.paymentCard;
       h+='<h4>Membership payment card</h4><p class="m-note">'+
@@ -644,9 +646,11 @@
         '<button class="m-btn ghost" id="mCardClose" onclick="mCloseCard()">Close</button></div>'+
         '<div class="m-msg" role="status" id="mCardMsg"></div>';
     }
-    if(sub.migrationNeedsReview){
+    if(sub.source==='square_pos'){
+      // Prepaid renewal/withdrawal controls are rendered above, not generic swaps.
+    }else if(sub.migrationNeedsReview){
       h+='<p class="m-note">Your move from the old website billing is being checked by the club. Changes are available once the owner confirms your previous payments have stopped.</p>';
-    }else if(!sub.managedInSquare){
+    }else if(!sub.managedInSquare&&sub.source!=='square_pos'){
       h+='<p class="m-note">This membership is managed by the club. Please speak to staff to make changes.</p>';
     }else if(sub.pendingPlanName||sub.cancellationDate){
       h+='<p class="m-note">A change is already scheduled. Contact the club if you need to alter it.</p>';
@@ -669,6 +673,117 @@
     sec.innerHTML=h+signOut;
     sec._opts=opts;
   }
+  function addMonthsIso(d,n){if(!d)return null;const x=new Date(String(d).slice(0,10)+'T12:00:00Z');if(isNaN(x))return null;const day=x.getUTCDate();x.setUTCDate(1);x.setUTCMonth(x.getUTCMonth()+n);const last=new Date(Date.UTC(x.getUTCFullYear(),x.getUTCMonth()+1,0)).getUTCDate();x.setUTCDate(Math.min(day,last));return x.toISOString().slice(0,10)}
+  function arStart(sub){return sub.autoRenewStartDate||sub.prepaidUntilDate||null}
+  function renderPrepaid(sub,cur){
+    let h='<h4>Prepaid membership</h4>'+
+      row('Purchased',sub.firstPaidAt?fmtDate(sub.firstPaidAt):'Unknown')+
+      (sub.lastPaidAt&&sub.lastPaidAt!==sub.firstPaidAt?row('Last renewed',fmtDate(sub.lastPaidAt)):'')+
+      row('Paid through',sub.prepaidUntilDate?fmtDate(sub.prepaidUntilDate):'Unknown');
+    if(sub.autoRenewScheduled){
+      h+=row('Automatic billing starts',fmtDate(sub.autoRenewStartDate))+
+        '<p class="m-note">Automatic '+(sub.frequency==='annual'?'annual':'monthly')+' billing is scheduled. Nothing is charged before '+fmtDate(sub.autoRenewStartDate)+'.</p>'+
+        (sub.cancellationDate?'':'<div id="mArCancelWrap"><button class="m-btn ghost" id="mArCancelAsk" onclick="mArAskCancel()">Cancel automatic billing</button></div>')+
+        '<div class="m-msg" role="status" id="mArCancelMsg"></div>';
+      return h;
+    }
+    h+='<p class="m-note">Bought at the club till: 12 months prepaid, with no future charges unless you turn on automatic billing below.</p>';
+    if(!sub.autoRenewEligible||!cur||!arStart(sub)){
+      h+='<p class="m-note">Automatic billing is not available for this membership online. Please speak to staff.</p>';return h;
+    }
+    const start=arStart(sub);
+    const opt=f=>{const pr=priceOf(cur,f);if(pr==null)return '';const thr=addMonthsIso(start,f==='annual'?12:1);
+      return '<label class="m-opt"><input type="radio" name="mArFreq" value="'+f+'" onchange="mArChanged()"><span><strong>'+esc(cur.name)+' · £'+(pr/100).toFixed(2)+'/'+(f==='annual'?'yr':'mo')+'</strong><br><span style="color:var(--text-2)">First charge '+fmtDate(start)+', covering to '+fmtDate(thr)+'. '+(cur.minimumTermMonths>0?cur.minimumTermMonths+'-month minimum term starting '+fmtDate(start)+' (ends '+fmtDate(addMonthsIso(start,cur.minimumTermMonths))+').':'No minimum term.')+'</span></span></label>'};
+    h+='<h4>Turn on automatic billing</h4><p class="m-note" style="margin:0 0 8px">Keep the same plan after your prepaid period. No charge today. The minimum term (if any) starts at the first billing date, not your till purchase.</p>'+
+      opt('monthly')+opt('annual')+
+      '<button class="m-btn ghost" id="mArOpen" disabled onclick="mArOpenCard()">Set up card</button>'+
+      '<div id="mArForm" style="display:none;margin-top:14px"><div id="mArContainer"></div>'+
+      '<label class="m-opt" style="border:none"><input type="checkbox" id="mArTerms" onchange="mArChanged()"><span id="mArTermsText"></span></label>'+
+      '<button class="m-btn" id="mArSave" disabled onclick="mArSave()">Authorise card and schedule billing</button> '+
+      '<button class="m-btn ghost" id="mArClose" onclick="mArClose()">Close</button></div>'+
+      '<div class="m-msg" role="status" id="mArMsg"></div>';
+    return h;
+  }
+  function arFreq(){const r=document.querySelector('input[name="mArFreq"]:checked');return r?r.value:null}
+  function arMsg(t,e){const m=document.getElementById('mArMsg');if(m){m.textContent=t;m.className='m-msg'+(t?(e?' err':' ok'):'')}}
+  window.mArChanged=function(){
+    const f=arFreq(),sub=billing&&billing.subscription,cur=sub&&(billing.plans||[]).find(p=>p.id===sub.planId);
+    const o=document.getElementById('mArOpen');if(o&&!membershipCard)o.disabled=!f||cardWorking;
+    const tt=document.getElementById('mArTermsText');
+    if(tt&&f&&cur){const start=arStart(sub),pr=priceOf(cur,f);
+      tt.innerHTML='I agree to the <a href="/terms" target="_blank" rel="noopener">Terms &amp; Conditions</a> and authorise The 147 to charge this card £'+(pr/100).toFixed(2)+' '+(f==='annual'?'every year':'every month')+' from '+fmtDate(start)+' until I cancel.'+(cur.minimumTermMonths>0?' I accept a '+cur.minimumTermMonths+'-month minimum term starting '+fmtDate(start)+'.':'')+' Nothing is charged today.'}
+    const t=document.getElementById('mArTerms'),b=document.getElementById('mArSave');
+    if(b)b.disabled=cardWorking||!membershipCard||!f||!t||!t.checked;
+  };
+  window.mArClose=function(){if(cardWorking)return;closeMembershipCard();const fm=document.getElementById('mArForm');if(fm)fm.style.display='none';arMsg('',false);window.mArChanged()};
+  window.mArOpenCard=async function(){
+    if(cardWorking||!arFreq())return;
+    closeMembershipCard();
+    const setup=cardSetup,open=document.getElementById('mArOpen');
+    open.disabled=true;arMsg('Loading secure card form…',false);
+    try{
+      const r=await fetch(API+'/api/public/square-config'),cfg=await r.json();
+      if(!r.ok||!cfg.configured||!cfg.applicationId||!cfg.locationId)throw new Error('Secure card setup is unavailable. Please retry later.');
+      const src=cfg.environment==='production'?'https://web.squarecdn.com/v1/square.js':'https://sandbox.web.squarecdn.com/v1/square.js';
+      if(!window.Square)await new Promise((resolve,reject)=>{
+        const s=document.createElement('script');s.src=src;
+        const timeout=setTimeout(()=>{s.remove();reject(new Error('Card form timed out. Please retry.'))},15000);
+        s.onload=()=>{clearTimeout(timeout);resolve()};s.onerror=()=>{clearTimeout(timeout);s.remove();reject(new Error('Could not load the secure card form. Please retry.'))};
+        document.head.appendChild(s);
+      });
+      if(setup!==cardSetup)return;
+      membershipPayments=window.Square.payments(cfg.applicationId,cfg.locationId);
+      const card=await membershipPayments.card();
+      if(setup!==cardSetup){await card.destroy();return}
+      membershipCard=card;
+      document.getElementById('mArForm').style.display='block';
+      document.getElementById('mArTerms').checked=false;
+      await card.attach('#mArContainer');
+      if(setup!==cardSetup)return;
+      arMsg('',false);window.mArChanged();
+    }catch(e){if(setup===cardSetup){closeMembershipCard();arMsg(e.message||'Could not load card form.',true);open.disabled=false}}
+  };
+  window.mArSave=async function(){
+    const f=arFreq(),t=document.getElementById('mArTerms');
+    if(cardWorking||!membershipCard||!f||!t||!t.checked)return;
+    const ownerToken=getTok(),sub=billing&&billing.subscription,subscriptionId=sub&&sub.id;
+    const cur=sub&&(billing.plans||[]).find(p=>p.id===sub.planId);
+    if(!ownerToken||!subscriptionId||!cur)return;
+    cardWorking=true;window.mArChanged();document.getElementById('mArClose').disabled=true;
+    arMsg('Authorising card…',false);
+    try{
+      const result=await membershipCard.tokenize();
+      if(result.status!=='OK'||!result.token)throw new Error('Check your card details and try again.');
+      const verified=await membershipPayments.verifyBuyer(result.token,{intent:'STORE',customerInitiated:true,sellerKeyedIn:false,billingContact:{}});
+      if(!verified||!verified.token)throw new Error('Card authorisation was not completed. Please retry.');
+      if(getTok()!==ownerToken||!billing||!billing.subscription||billing.subscription.id!==subscriptionId)throw new Error('Your signed-in account changed. Please reopen the card form.');
+      const body={billingFrequency:f,termsAccepted:true,sourceId:result.token,verificationToken:verified.token};
+      if(cur.minimumTermMonths>0)body.minimumTermAccepted=true;
+      const r=await fetch(API+'/api/membership/enable-auto-renew',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+ownerToken},body:JSON.stringify(body)});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.message||'Automatic billing could not be confirmed. Refresh before retrying.');
+      cardWorking=false;closeMembershipCard();await loadManage();
+      const m=document.getElementById('mArCancelMsg');if(m){m.className='m-msg ok';m.textContent=(d.message||'Automatic billing scheduled.')+(d.effectiveDate?' First charge '+fmtDate(d.effectiveDate)+'.':'')}
+    }catch(e){
+      cardWorking=false;await loadManage();arMsg(e.message||'Card authorisation failed or was cancelled. Please retry.',true);
+    }finally{cardWorking=false}
+  };
+  window.mArAskCancel=function(){
+    const sub=billing.subscription;
+    document.getElementById('mArCancelWrap').innerHTML='<p class="m-note">Automatic billing will not start. Your prepaid access continues until '+fmtDate(sub.prepaidUntilDate)+'.</p><button class="m-btn ghost" onclick="renderManageAgain()">Keep automatic billing</button> <button class="m-btn danger" id="mArCancelBtn" onclick="mArDoCancel()">Confirm cancellation</button>';
+  };
+  window.mArDoCancel=async function(){
+    const b=document.getElementById('mArCancelBtn'),m=document.getElementById('mArCancelMsg');
+    b.disabled=true;b.textContent='Cancelling…';m.className='m-msg';
+    try{
+      const r=await fetch(API+'/api/membership/cancel',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+getTok()},body:JSON.stringify({confirmed:true})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.message||'Could not cancel.');
+      await loadManage();
+      const m2=document.getElementById('mArCancelMsg')||document.getElementById('manageSection').appendChild(document.createElement('div'));
+      m2.className='m-msg ok';m2.textContent=d.message||'Automatic billing cancelled.';
+    }catch(e){m.className='m-msg err';m.textContent=e.message||'Network error — please try again.';b.disabled=false;b.textContent='Confirm cancellation'}
+  };
   function row(a,b){return '<div class="m-row"><span>'+a+'</span><span>'+b+'</span></div>'}
   function cardMessage(text,error){
     const m=document.getElementById('mCardMsg');

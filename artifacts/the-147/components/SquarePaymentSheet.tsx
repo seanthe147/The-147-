@@ -73,6 +73,7 @@ export interface SquarePaymentSheetProps {
    */
   recurringDescription?: string | null;
   replaceMembershipCard?: boolean;
+  prepaidAutoRenew?: boolean;
   /**
    * When true (and intent is "CHARGE_AND_STORE") render an opt-in
    * "Save card for one-tap reorder" checkbox below the pay button. The
@@ -245,11 +246,12 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
       buyerEmail: props.buyerEmail || null,
       recurringDescription: props.recurringDescription || null,
       replaceMembershipCard: props.replaceMembershipCard,
+      prepaidAutoRenew: props.prepaidAutoRenew,
       showSaveCard: !!props.showSaveCard,
       platform: Platform.OS,
       appearance: colors.scheme,
     });
-  }, [props.applicationId, props.locationId, props.environment, props.amountPence, props.currency, props.intent, props.buyerEmail, props.recurringDescription, props.replaceMembershipCard, props.showSaveCard, colors.scheme]);
+  }, [props.applicationId, props.locationId, props.environment, props.amountPence, props.currency, props.intent, props.buyerEmail, props.recurringDescription, props.replaceMembershipCard, props.prepaidAutoRenew, props.showSaveCard, colors.scheme]);
 
   // Reset error when the sheet is reopened
   useEffect(() => {
@@ -343,7 +345,7 @@ export function SquarePaymentSheet(props: SquarePaymentSheetProps) {
         <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
           <View style={styles.headerLeft}>
             <Ionicons name="lock-closed" size={16} color={Colors.brand.blue} />
-            <Text style={styles.title}>{props.replaceMembershipCard ? "Replace membership card" : "Secure Payment"}</Text>
+            <Text style={styles.title}>{props.prepaidAutoRenew ? "Enable automatic renewal" : props.replaceMembershipCard ? "Replace membership card" : "Secure Payment"}</Text>
           </View>
           <Pressable
             onPress={props.onClose}

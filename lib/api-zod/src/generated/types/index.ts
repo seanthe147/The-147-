@@ -6,8 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './getMembershipPosCatalog200';
+export * from './getMembershipPosPurchases200';
 export * from './healthStatus';
 export * from './membershipActionResult';
+export * from './membershipAutoRenew';
+export * from './membershipAutoRenewBillingFrequency';
 export * from './membershipBilling';
 export * from './membershipBillingPlan';
 export * from './membershipBillingSubscription';
@@ -18,5 +22,8 @@ export * from './membershipChange';
 export * from './membershipChangeBillingFrequency';
 export * from './membershipMigrationReview';
 export * from './membershipPaymentCard';
+export * from './membershipPosImport';
+export * from './membershipPosItem';
+export * from './membershipPosPurchase';
 export * from './staffMembershipChange';
 export * from './staffMembershipChangeBillingFrequency';

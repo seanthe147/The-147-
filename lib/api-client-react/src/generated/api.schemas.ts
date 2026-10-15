@@ -5,6 +5,62 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export interface MembershipPosImport {
+  /**
+     * @minLength 1
+     * @maxLength 192
+     * @pattern ^[A-Za-z0-9_-]+$
+     */
+  orderId: string;
+}
+
+export type MembershipAutoRenewBillingFrequency = typeof MembershipAutoRenewBillingFrequency[keyof typeof MembershipAutoRenewBillingFrequency];
+
+
+export const MembershipAutoRenewBillingFrequency = {
+  monthly: 'monthly',
+  annual: 'annual',
+} as const;
+
+export interface MembershipAutoRenew {
+  billingFrequency: MembershipAutoRenewBillingFrequency;
+  termsAccepted: boolean;
+  minimumTermAccepted?: boolean;
+  /**
+     * @minLength 1
+     * @maxLength 256
+     */
+  sourceId: string;
+  /**
+     * @minLength 1
+     * @maxLength 2048
+     */
+  verificationToken: string;
+}
+
+export interface MembershipPosItem {
+  variationId: string;
+  itemName: string;
+  variationName: string;
+  /** @nullable */
+  pricePence: number | null;
+  /** @nullable */
+  currency: string | null;
+}
+
+export interface MembershipPosPurchase {
+  id: string;
+  planName: string;
+  /** @nullable */
+  purchasedAt: string | null;
+  /** @nullable */
+  periodEnd: string | null;
+  status: string;
+  /** @nullable */
+  reviewReason: string | null;
+  customerMatched: boolean;
+}
+
 export type MembershipBillingSubscriptionFrequency = typeof MembershipBillingSubscriptionFrequency[keyof typeof MembershipBillingSubscriptionFrequency];
 
 
@@ -33,6 +89,16 @@ export interface MembershipBillingSubscription {
   status: string;
   /** @nullable */
   renewalDate: string | null;
+  /** @nullable */
+  firstPaidAt?: string | null;
+  /** @nullable */
+  lastPaidAt?: string | null;
+  /** @nullable */
+  prepaidUntilDate?: string | null;
+  autoRenewEligible?: boolean;
+  autoRenewScheduled?: boolean;
+  /** @nullable */
+  autoRenewStartDate?: string | null;
   /** @nullable */
   commitmentEndDate: string | null;
   cancellationAllowed: boolean;
@@ -124,4 +190,12 @@ export interface MembershipActionResult {
 export interface HealthStatus {
   status: string;
 }
+
+export type GetMembershipPosCatalog200 = {
+  items: MembershipPosItem[];
+};
+
+export type GetMembershipPosPurchases200 = {
+  purchases: MembershipPosPurchase[];
+};
 

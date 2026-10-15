@@ -11,6 +11,84 @@ tags:
   - name: health
     description: Health operations
 paths:
+  /membership/enable-auto-renew:
+    post:
+      operationId: enableMembershipAutoRenew
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MembershipAutoRenew" }
+      responses:
+        "200":
+          description: Customer-authorised billing begins after prepaid access; no charge today
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MembershipActionResult" }
+        "400": { description: Fresh STORE verification and consent required }
+        "409": { description: Renewal could not be safely scheduled; prepaid access unchanged }
+  /staff/membership/pos-catalog:
+    get:
+      operationId: getMembershipPosCatalog
+      responses:
+        "200":
+          description: Exact till variations available for manager mapping
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/MembershipPosItem" }
+        "403": { description: Manager access required }
+        "502": { description: Square catalogue unavailable }
+  /staff/membership/pos-purchases:
+    get:
+      operationId: getMembershipPosPurchases
+      responses:
+        "200":
+          description: Last 100 prepaid receipt matching/review outcomes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [purchases]
+                properties:
+                  purchases:
+                    type: array
+                    items: { $ref: "#/components/schemas/MembershipPosPurchase" }
+        "403": { description: Manager access required }
+  /staff/membership/pos-purchases/import:
+    post:
+      operationId: importMembershipPosPurchase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MembershipPosImport" }
+      responses:
+        "200":
+          description: Paid receipt imported idempotently without creating a charge
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MembershipActionResult" }
+        "403": { description: Manager access required }
+        "409": { description: Receipt or customer matching needs review }
+  /staff/membership/pos-purchases/{id}/retry:
+    post:
+      operationId: retryMembershipPosPurchase
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Existing prepaid evidence matched without another charge
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MembershipActionResult" }
+        "403": { description: Manager access required }
+        "409": { description: Verified customer or billing review still needed }
   /staff/membership/subscriptions/{id}/billing:
     get:
       operationId: getStaffMembershipBilling
@@ -142,6 +220,42 @@ paths:
                 $ref: "#/components/schemas/HealthStatus"
 components:
   schemas:
+    MembershipPosImport:
+      type: object
+      additionalProperties: false
+      required: [orderId]
+      properties:
+        orderId: { type: string, minLength: 1, maxLength: 192, pattern: "^[A-Za-z0-9_-]+$" }
+    MembershipAutoRenew:
+      type: object
+      additionalProperties: false
+      required: [billingFrequency, termsAccepted, sourceId, verificationToken]
+      properties:
+        billingFrequency: { type: string, enum: [monthly, annual] }
+        termsAccepted: { type: boolean }
+        minimumTermAccepted: { type: boolean }
+        sourceId: { type: string, minLength: 1, maxLength: 256 }
+        verificationToken: { type: string, minLength: 1, maxLength: 2048 }
+    MembershipPosItem:
+      type: object
+      required: [variationId, itemName, variationName, pricePence, currency]
+      properties:
+        variationId: { type: string }
+        itemName: { type: string }
+        variationName: { type: string }
+        pricePence: { type: ["integer", "null"] }
+        currency: { type: ["string", "null"] }
+    MembershipPosPurchase:
+      type: object
+      required: [id, planName, purchasedAt, periodEnd, status, reviewReason, customerMatched]
+      properties:
+        id: { type: string }
+        planName: { type: string }
+        purchasedAt: { type: ["string", "null"], format: date-time }
+        periodEnd: { type: ["string", "null"] }
+        status: { type: string }
+        reviewReason: { type: ["string", "null"] }
+        customerMatched: { type: boolean }
     MembershipBilling:
       type: object
       required: [subscription, plans]
@@ -173,6 +287,12 @@ components:
         frequency: { type: string, enum: [monthly, annual] }
         status: { type: string }
         renewalDate: { type: ["string", "null"] }
+        firstPaidAt: { type: ["string", "null"], format: date-time }
+        lastPaidAt: { type: ["string", "null"], format: date-time }
+        prepaidUntilDate: { type: ["string", "null"] }
+        autoRenewEligible: { type: boolean }
+        autoRenewScheduled: { type: boolean }
+        autoRenewStartDate: { type: ["string", "null"] }
         commitmentEndDate: { type: ["string", "null"] }
         cancellationAllowed: { type: boolean }
         pendingPlanName: { type: ["string", "null"] }

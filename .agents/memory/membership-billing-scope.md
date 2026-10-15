@@ -11,6 +11,18 @@ Memberships must also cover purchases made directly through the Square till/POS 
 
 **How to apply:** Keep one customer membership across all three routes. Distinguish prepaid till purchases from authorised recurring billing, and never assume a till purchase authorises a new recurring subscription.
 
+Square till/POS membership purchases grant 12 months prepaid without automatic renewal. The new app/website system must also support automatic renewal.
+
+**Why:** The user explicitly confirmed the till duration and no-renewal rule, while requesting auto-renew capability in the new system.
+
+**How to apply:** Keep the one-off till entitlement separate from a recurring-payment mandate. Any later opt-in must collect explicit customer authorisation and preserve existing prepaid access rather than double-charging for it.
+
+An opt-in after a prepaid year starts its newly accepted recurring minimum term at the first future charge, not at the original till purchase. Withdrawing that mandate before its start must preserve the prepaid year and must not impose the unstarted recurring term.
+
+**Why:** Authorising future payments does not replace time already purchased, and the new agreement must not be applied retroactively.
+
+**How to apply:** Disclose the first charge and commitment dates before consent. Keep withdrawing future billing separate from ending paid access.
+
 **Why:** The user reports Wix subscription payments no longer work for the business and wants shared membership management rather than separate app and website subscriptions.
 
 **How to apply:** Extend the existing membership system instead of creating competing billing records. Confirm minimum-term plan eligibility, upgrade charging, renewal and migration rules before implementing financial behavior. Do not infer that monthly billing means cancel-anytime, or that a minimum term guarantees successful future card charges.
@@ -63,3 +75,33 @@ Payment-card replacement must authorise a freshly tokenised card for storage and
 **Why:** The self-service scope explicitly requires card replacement without changing the customer's existing membership agreement. Checkout's legacy fallback to an unverified token is not acceptable for this flow.
 
 **How to apply:** Require successful STORE buyer verification and explicit recurring-payment consent; keep card replacement available independently of pending plan changes. Verify failures with mocked or sandbox Square, never live charges.
+
+Square-only paid customers can receive their Square benefits before registering in the app. Linking that payment identity to a private app account requires verified, exact email ownership; ambiguous duplicate Square customers must be resolved rather than creating another billing identity.
+
+**Why:** Till customers do not necessarily have app accounts, but a similar email or an unverified registration must never inherit another customer's membership or card management.
+
+**How to apply:** Separate Square entitlement from app identity. Do not fuzzy-match email ownership or silently create a new Square customer when lookup fails.
+
+Held memberships lose paid benefits but keep billing and card-recovery access; they must not be treated as brand-new customers eligible for another subscription.
+
+**Why:** The three-failure policy suspends benefits, not the customer's ability to recover the existing agreement. Hiding the record can cause duplicate billing.
+
+**How to apply:** Distinguish management history from active discount eligibility.
+
+Historical purchase dates must come from paid evidence, not the time an account was imported. Unknown dates remain unknown. Billing day boundaries use Europe/London.
+
+**Why:** Importing a customer is not a purchase or renewal. UTC day boundaries can end access a day early during British summer time.
+
+**How to apply:** Preserve original paid dates and chronological prepaid coverage; do not extend a paid year merely because an old receipt was imported later.
+
+Square can expose monthly and annual products with the same Platinum Membership name.
+
+**Why:** A monthly-priced till item must not accidentally grant the annual prepaid entitlement.
+
+**How to apply:** Require explicit mapping of exact till variation IDs. Do not infer entitlement from a matching product name or map every variation of the product.
+
+The owner confirmed on 2026-10-15 that the £65 Platinum till item grants 12 months prepaid. The £6.99 Platinum product is separate monthly billing and must not grant a prepaid year.
+
+**Why:** The owner explicitly chose the annual till item after reviewing the two identically named Square products.
+
+**How to apply:** Keep that distinction when changing till mappings, prices or renewal rules. Do not enable automatic renewal merely because the £65 item was purchased.

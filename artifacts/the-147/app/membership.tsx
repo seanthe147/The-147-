@@ -1006,6 +1006,28 @@ function ActiveMembership({
   );
 }
 
+type PrepaidFields = {
+  source?: string;
+  firstPaidAt?: string | null;
+  lastPaidAt?: string | null;
+  prepaidUntilDate?: string | null;
+  autoRenewEligible?: boolean;
+  autoRenewScheduled?: boolean;
+  autoRenewStartDate?: string | null;
+};
+
+function addMonthsIso(d: string | null, n: number): string | null {
+  if (!d) return null;
+  const x = new Date(String(d).slice(0, 10) + "T12:00:00Z");
+  if (isNaN(x.getTime())) return null;
+  const day = x.getUTCDate();
+  x.setUTCDate(1);
+  x.setUTCMonth(x.getUTCMonth() + n);
+  const last = new Date(Date.UTC(x.getUTCFullYear(), x.getUTCMonth() + 1, 0)).getUTCDate();
+  x.setUTCDate(Math.min(day, last));
+  return x.toISOString().slice(0, 10);
+}
+
 export function ManageMembership() {
   const colors = useColors();
   const queryClient = useQueryClient();
@@ -1047,6 +1069,38 @@ export function ManageMembership() {
     },
   } });
 
+  // Prepaid (till) -> automatic billing for the same plan. No charge today.
+  const [arFreq, setArFreq] = useState<"monthly" | "annual" | null>(null);
+  const [arAccepted, setArAccepted] = useState(false);
+  const [arOpen, setArOpen] = useState(false);
+  const [arError, setArError] = useState<string | null>(null);
+  const [arSheetKey, setArSheetKey] = useState(0);
+  const [arConfirmCancel, setArConfirmCancel] = useState(false);
+  const enableAutoRenew = useMutation({
+    mutationFn: async (body: Record<string, unknown>): Promise<MembershipActionResult> => {
+      const token = await getToken();
+      const res = await fetch(new URL("/api/membership/enable-auto-renew", getApiUrl()).toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d?.message || "Automatic billing could not be confirmed. Refresh before retrying.");
+      return d as MembershipActionResult;
+    },
+    onSuccess: (r) => {
+      setArOpen(false); setArFreq(null); setArAccepted(false); setArError(null);
+      setNotice(r.message + (r.effectiveDate ? ` First charge ${fmt(r.effectiveDate)}.` : ""));
+      queryClient.invalidateQueries({ queryKey: getGetMembershipBillingQueryKey() });
+      queryClient.invalidateQueries({ queryKey: ["/api/membership/my-subscription"] });
+    },
+    onError: (e: Error) => {
+      setArError(e.message);
+      setArSheetKey(v => v + 1); // fresh nonce + fresh SCA on retry
+      queryClient.invalidateQueries({ queryKey: getGetMembershipBillingQueryKey() });
+    },
+  });
+
   const box = { marginTop: 16, padding: 16, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface };
   const h = { fontSize: 15, fontWeight: "700" as const, color: colors.text, marginBottom: 10 };
   const muted = { fontSize: 13, color: colors.textSecondary, lineHeight: 19 };
@@ -1068,6 +1122,9 @@ export function ManageMembership() {
   if (!sub) return null;
 
   const current = data.plans.find((p) => p.id === sub.planId);
+  const pp = sub as typeof sub & PrepaidFields;
+  const isPrepaid = pp.source === "square_pos";
+  const arStart = pp.autoRenewStartDate ?? pp.prepaidUntilDate ?? null;
   const priceOf = (p: MembershipBillingPlan, f: "monthly" | "annual") => (f === "annual" ? p.annualPence : p.monthlyPence);
   const currentPrice = current ? priceOf(current, sub.frequency) ?? current.monthlyPence : 0;
   // Options: higher-priced plans (either frequency), or same plan with the other frequency.
@@ -1095,13 +1152,126 @@ export function ManageMembership() {
     <View style={box} testID="manage-membership">
       <Text style={h}>Manage membership</Text>
       {row("Plan", sub.planName)}
-      {row("Billing", sub.frequency === "annual" ? "Annual (auto-renews)" : "Monthly")}
-      {row("Next renewal", fmt(sub.renewalDate))}
+      {pp.source === "square_pos" ? (
+        row("Billing", pp.autoRenewScheduled ? "Prepaid (automatic billing scheduled)" : "Prepaid 12 months (no auto renewal)")
+      ) : (
+        <>
+          {row("Billing", sub.frequency === "annual" ? "Annual (auto-renews)" : "Monthly")}
+          {row("Next renewal", fmt(sub.renewalDate))}
+        </>
+      )}
+      {isPrepaid ? (
+        <>
+          {row("Purchased", pp.firstPaidAt ? fmt(pp.firstPaidAt) : "Unknown")}
+          {pp.lastPaidAt && pp.lastPaidAt !== pp.firstPaidAt ? row("Last renewed", fmt(pp.lastPaidAt)) : null}
+          {row("Paid through", pp.prepaidUntilDate ? fmt(pp.prepaidUntilDate) : "Unknown")}
+          {pp.autoRenewScheduled ? row("Automatic billing starts", fmt(pp.autoRenewStartDate)) : null}
+        </>
+      ) : null}
       {sub.commitmentEndDate ? row("Minimum term ends", fmt(sub.commitmentEndDate)) : null}
       {sub.pendingPlanName ? row("Scheduled change", `${sub.pendingPlanName} from ${fmt(sub.pendingDate)}`) : null}
       {sub.cancellationDate ? row("Ends on", fmt(sub.cancellationDate)) : null}
 
       {notice && <Text style={{ fontSize: 13, color: "#15803D", marginTop: 10 }}>{notice}</Text>}
+
+      {isPrepaid && (
+        <View style={{ marginTop: 14 }} testID="prepaid-auto-renew">
+          {pp.autoRenewScheduled ? (
+            <>
+              <Text style={muted}>
+                Automatic {sub.frequency === "annual" ? "annual" : "monthly"} billing is scheduled. Nothing is charged before {fmt(pp.autoRenewStartDate)}.
+              </Text>
+              {!sub.cancellationDate && (arConfirmCancel ? (
+                <>
+                  <Text style={[muted, { marginTop: 8 }]}>Automatic billing will not start. Your prepaid access continues until {fmt(pp.prepaidUntilDate)}.</Text>
+                  <View style={{ flexDirection: "row", gap: 10 }}>
+                    <Pressable onPress={() => setArConfirmCancel(false)} style={[styles_m.btn, { backgroundColor: colors.border }]}>
+                      <Text style={[styles_m.btnText, { color: colors.text }]}>Keep</Text>
+                    </Pressable>
+                    <Pressable testID="cancel-auto-renew-confirm" disabled={cancel.isPending}
+                      onPress={() => cancel.mutate({ data: { confirmed: true } }, { onSuccess: () => setArConfirmCancel(false) })}
+                      style={[styles_m.btn, { backgroundColor: "#DF3131", opacity: cancel.isPending ? 0.5 : 1 }]}>
+                      {cancel.isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles_m.btnText}>Confirm cancellation</Text>}
+                    </Pressable>
+                  </View>
+                </>
+              ) : (
+                <Pressable testID="cancel-auto-renew" onPress={() => setArConfirmCancel(true)} style={{ marginTop: 10 }}>
+                  <Text style={{ color: "#DF3131", fontWeight: "700" }}>Cancel automatic billing</Text>
+                </Pressable>
+              ))}
+              {cancel.error && <Text style={errStyle}>{apiErrorMessage(cancel.error, "Could not cancel.")}</Text>}
+            </>
+          ) : !pp.autoRenewEligible || !current || !arStart ? (
+            <Text style={muted}>Bought at the club till: 12 months prepaid with no future charges. Automatic billing is not available online for this membership; please speak to staff.</Text>
+          ) : (
+            <>
+              <Text style={h}>Turn on automatic billing</Text>
+              <Text style={muted}>
+                Bought at the club till: 12 months prepaid, no future charges by default. Keep {current.name} going after {fmt(arStart)}. No charge today. Any minimum term starts at the first billing date, not your till purchase.
+              </Text>
+              {(["monthly", "annual"] as const).map((f) => {
+                const price = priceOf(current, f);
+                if (price == null) return null;
+                const on = arFreq === f;
+                return (
+                  <Pressable key={f} testID={`auto-renew-${f}`} onPress={() => { setArFreq(f); setArAccepted(false); setArError(null); }}
+                    style={{ marginTop: 8, padding: 12, borderRadius: 10, borderWidth: on ? 2 : 1, borderColor: on ? Colors.brand.blue : colors.border }}>
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: colors.text }}>
+                      {current.name} · £{(price / 100).toFixed(2)}/{f === "annual" ? "yr" : "mo"}
+                    </Text>
+                    <Text style={muted}>
+                      First charge {fmt(arStart)}, covering to {fmt(addMonthsIso(arStart, f === "annual" ? 12 : 1))}.
+                      {current.minimumTermMonths > 0
+                        ? ` ${current.minimumTermMonths}-month minimum term from ${fmt(arStart)} (ends ${fmt(addMonthsIso(arStart, current.minimumTermMonths))}).`
+                        : " No minimum term."}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+              {arFreq && (() => {
+                const price = priceOf(current, arFreq) ?? 0;
+                return (
+                  <>
+                    <Pressable onPress={() => setArAccepted(v => !v)} accessibilityRole="checkbox" accessibilityState={{ checked: arAccepted }}
+                      style={{ flexDirection: "row", gap: 8, marginTop: 10 }} testID="auto-renew-terms">
+                      <Ionicons name={arAccepted ? "checkbox" : "square-outline"} size={22} color={Colors.brand.blue} />
+                      <Text style={[muted, { flex: 1 }]}>
+                        I agree to the Terms & Conditions and authorise The 147 to charge my card £{(price / 100).toFixed(2)} {arFreq === "annual" ? "every year" : "every month"} from {fmt(arStart)} until I cancel.
+                        {current.minimumTermMonths > 0 ? ` I accept a ${current.minimumTermMonths}-month minimum term starting ${fmt(arStart)}.` : ""} Nothing is charged today.
+                      </Text>
+                    </Pressable>
+                    <Pressable testID="auto-renew-setup-card"
+                      disabled={!arAccepted || !config?.configured || enableAutoRenew.isPending}
+                      onPress={() => { setArError(null); setArSheetKey(v => v + 1); setArOpen(true); prefetchSquarePaymentSdk(); }}
+                      style={[styles_m.btn, { backgroundColor: Colors.brand.blue, opacity: arAccepted && config?.configured && !enableAutoRenew.isPending ? 1 : 0.5 }]}>
+                      {enableAutoRenew.isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles_m.btnText}>Set up card (no charge today)</Text>}
+                    </Pressable>
+                    {!config?.configured && <Text style={muted}>Secure card setup is unavailable. Please try again later.</Text>}
+                  </>
+                );
+              })()}
+              {arError && !arOpen && <Text style={errStyle}>{arError}</Text>}
+              <SquarePaymentSheet key={`ar-${arSheetKey}`} visible={arOpen}
+                applicationId={config?.applicationId ?? null} locationId={config?.locationId ?? null}
+                environment={config?.environment ?? "sandbox"} amountPence={0} currency="GBP"
+                intent="STORE" replaceMembershipCard prepaidAutoRenew googlePayAvailable={false}
+                recurringDescription={`Automatic billing from ${fmt(arStart)}. No payment taken now.`}
+                buyerEmail={billingCustomer?.email ?? null} inProgress={enableAutoRenew.isPending} errorMessage={arError}
+                onClose={() => { if (!enableAutoRenew.isPending) setArOpen(false); }}
+                onUnavailable={(message) => { setArOpen(false); setArError(message); }}
+                onTokenized={({ sourceId, verificationToken }) => {
+                  if (!verificationToken) { setArError("Please complete card authorisation before retrying."); return; }
+                  if (!arFreq || !arAccepted) return;
+                  setArError(null);
+                  const body: Record<string, unknown> = { billingFrequency: arFreq, termsAccepted: true, sourceId, verificationToken };
+                  if (current.minimumTermMonths > 0) body.minimumTermAccepted = true;
+                  enableAutoRenew.mutate(body);
+                }} />
+            </>
+          )}
+        </View>
+      )}
 
       {sub.cardReplacementAllowed && (
         <View style={{ marginTop: 14 }}>
@@ -1140,11 +1310,11 @@ export function ManageMembership() {
         </View>
       )}
 
-      {sub.migrationNeedsReview ? (
+      {isPrepaid ? null : sub.migrationNeedsReview ? (
         <Text style={[muted, { marginTop: 12 }]}>
           Your move from the old website billing is being checked by the club. Changes will be available once the owner confirms your previous payments have stopped.
         </Text>
-      ) : !sub.managedInSquare ? (
+      ) : !sub.managedInSquare && !isPrepaid ? (
         <Text style={[muted, { marginTop: 12 }]}>This membership is managed by the club. Please speak to staff to make changes.</Text>
       ) : hasPending ? (
         <Text style={[muted, { marginTop: 12 }]}>A change is already scheduled. Contact the club if you need to alter it.</Text>
