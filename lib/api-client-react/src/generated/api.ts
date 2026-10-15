@@ -26,7 +26,8 @@ import type {
   MembershipCancellation,
   MembershipCardReplacement,
   MembershipChange,
-  MembershipMigrationReview
+  MembershipMigrationReview,
+  StaffMembershipChange
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -40,6 +41,209 @@ type AwaitedInput<T> = PromiseLike<T> | T;
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
+
+export const getGetStaffMembershipBillingUrl = (id: number,) => {
+
+
+
+
+  return `/api/staff/membership/subscriptions/${id}/billing`
+}
+
+export const getStaffMembershipBilling = async (id: number, options?: RequestInit): Promise<MembershipBilling> => {
+
+  return customFetch<MembershipBilling>(getGetStaffMembershipBillingUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStaffMembershipBillingQueryKey = (id: number,) => {
+    return [
+    `/api/staff/membership/subscriptions/${id}/billing`
+    ] as const;
+    }
+
+
+export const getGetStaffMembershipBillingQueryOptions = <TData = Awaited<ReturnType<typeof getStaffMembershipBilling>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStaffMembershipBilling>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStaffMembershipBillingQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStaffMembershipBilling>>> = ({ signal }) => getStaffMembershipBilling(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStaffMembershipBilling>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStaffMembershipBillingQueryResult = NonNullable<Awaited<ReturnType<typeof getStaffMembershipBilling>>>
+export type GetStaffMembershipBillingQueryError = ErrorType<void>
+
+
+
+export function useGetStaffMembershipBilling<TData = Awaited<ReturnType<typeof getStaffMembershipBilling>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStaffMembershipBilling>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStaffMembershipBillingQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getChangeStaffMembershipPlanUrl = (id: number,) => {
+
+
+
+
+  return `/api/staff/membership/subscriptions/${id}/change-plan`
+}
+
+export const changeStaffMembershipPlan = async (id: number,
+    staffMembershipChange: StaffMembershipChange, options?: RequestInit): Promise<MembershipActionResult> => {
+
+  return customFetch<MembershipActionResult>(getChangeStaffMembershipPlanUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      staffMembershipChange,)
+  }
+);}
+
+
+
+
+export const getChangeStaffMembershipPlanMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof changeStaffMembershipPlan>>, TError,{id: number;data: BodyType<StaffMembershipChange>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof changeStaffMembershipPlan>>, TError,{id: number;data: BodyType<StaffMembershipChange>}, TContext> => {
+
+const mutationKey = ['changeStaffMembershipPlan'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof changeStaffMembershipPlan>>, {id: number;data: BodyType<StaffMembershipChange>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  changeStaffMembershipPlan(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ChangeStaffMembershipPlanMutationResult = NonNullable<Awaited<ReturnType<typeof changeStaffMembershipPlan>>>
+    export type ChangeStaffMembershipPlanMutationBody = BodyType<StaffMembershipChange>
+    export type ChangeStaffMembershipPlanMutationError = ErrorType<void>
+
+    export const useChangeStaffMembershipPlan = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof changeStaffMembershipPlan>>, TError,{id: number;data: BodyType<StaffMembershipChange>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof changeStaffMembershipPlan>>,
+        TError,
+        {id: number;data: BodyType<StaffMembershipChange>},
+        TContext
+      > => {
+      return useMutation(getChangeStaffMembershipPlanMutationOptions(options));
+    }
+
+export const getCancelStaffMembershipBillingUrl = (id: number,) => {
+
+
+
+
+  return `/api/staff/membership/subscriptions/${id}/cancel`
+}
+
+export const cancelStaffMembershipBilling = async (id: number,
+    membershipCancellation: MembershipCancellation, options?: RequestInit): Promise<MembershipActionResult> => {
+
+  return customFetch<MembershipActionResult>(getCancelStaffMembershipBillingUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      membershipCancellation,)
+  }
+);}
+
+
+
+
+export const getCancelStaffMembershipBillingMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelStaffMembershipBilling>>, TError,{id: number;data: BodyType<MembershipCancellation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelStaffMembershipBilling>>, TError,{id: number;data: BodyType<MembershipCancellation>}, TContext> => {
+
+const mutationKey = ['cancelStaffMembershipBilling'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelStaffMembershipBilling>>, {id: number;data: BodyType<MembershipCancellation>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  cancelStaffMembershipBilling(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelStaffMembershipBillingMutationResult = NonNullable<Awaited<ReturnType<typeof cancelStaffMembershipBilling>>>
+    export type CancelStaffMembershipBillingMutationBody = BodyType<MembershipCancellation>
+    export type CancelStaffMembershipBillingMutationError = ErrorType<void>
+
+    export const useCancelStaffMembershipBilling = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelStaffMembershipBilling>>, TError,{id: number;data: BodyType<MembershipCancellation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof cancelStaffMembershipBilling>>,
+        TError,
+        {id: number;data: BodyType<MembershipCancellation>},
+        TContext
+      > => {
+      return useMutation(getCancelStaffMembershipBillingMutationOptions(options));
+    }
 
 export const getReplaceMembershipCardUrl = () => {
 

@@ -22,7 +22,7 @@ export const membershipPlanChanges = z.object({
   active: z.boolean().optional(),
   hideFromSignup: z.boolean().optional(),
   sortOrder: z.number().int().min(-100_000).max(100_000).optional(),
-  color: z.string().max(100).nullable().optional(),
+  color: z.string().max(100).optional(),
   description: z.string().trim().max(5000).nullable().optional(),
   confirmDisable: z.boolean().optional(),
 }).strict();
@@ -30,7 +30,7 @@ export const membershipPlanCreation = membershipPlanChanges.required({ name: tru
 
 const calendarDate = z.string().refine(validDate, "Use a valid YYYY-MM-DD date.").nullable().optional();
 export const membershipMemberChanges = z.object({
-  status: z.enum(["active", "paused", "past_due", "pending", "pending_payment", "frozen", "cancelled"]).optional(),
+  status: z.enum(["active", "paused", "past_due", "pending", "pending_start", "pending_payment", "frozen", "cancelled", "expired"]).optional(),
   staffNotes: z.string().max(500).nullable().optional(),
   planId: z.number().int().positive().optional(),
   hoursUsedThisPeriod: z.number().int().min(0).max(100_000).optional(),
@@ -40,7 +40,7 @@ export const membershipMemberChanges = z.object({
 }).strict();
 
 export function protectedMembership(sub: { squareSubscriptionId?: string | null; source: string }): boolean {
-  return !!sub.squareSubscriptionId || sub.source === "wix_import";
+  return !!sub.squareSubscriptionId || /^(?:square|wix|app)(?:_|$)/.test(sub.source);
 }
 
 export function changesProtectedBilling(

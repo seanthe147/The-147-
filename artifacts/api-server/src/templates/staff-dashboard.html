@@ -2982,7 +2982,7 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
           <div class="form-group" style="margin:0">
             <label class="form-label">Hours Used</label>
-            <input class="form-input" type="number" id="msHoursUsed" min="0" max="999" step="0.5">
+            <input class="form-input" type="number" id="msHoursUsed" min="0" max="999" step="1">
           </div>
           <div class="form-group" style="margin:0">
             <label class="form-label">Guest Passes Used</label>
@@ -3078,7 +3078,7 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="amPaymentGrid">
           <label class="am-pay-option" data-val="paylink">
             <input type="radio" name="amPayMethod" value="paylink" style="display:none">
-            <div class="am-pay-card">🔗 Payment Link</div>
+            <div class="am-pay-card">🔗 Sign-up Link</div>
           </label>
           <label class="am-pay-option" data-val="complimentary" id="amPayComp" style="display:none">
             <input type="radio" name="amPayMethod" value="complimentary" style="display:none">
@@ -3086,7 +3086,7 @@
           </label>
         </div>
         <div id="amPaylinkHint" style="display:none;margin-top:8px;font-size:12px;color:var(--text-2);line-height:1.5">
-          A Square checkout link will be generated for the customer to pay on their phone or a tablet. The membership is activated once payment is confirmed.
+          Share the central sign-up page. The customer signs in, chooses monthly or annual billing, and accepts their minimum term before paying through Square. This does not create a pending membership or send an email.
         </div>
       </div>
 
@@ -10252,7 +10252,7 @@
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px">
         <div class="settings-section" style="margin:0;padding:18px 20px;text-align:center">
           <div style="font-size:26px;font-weight:800;color:var(--green)">£${mrr}</div>
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-top:4px">MRR</div>
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-top:4px" title="Estimate at current plan prices, not payments collected. Complimentary memberships excluded.">Estimated monthly plan value</div>
         </div>
         <div class="settings-section" style="margin:0;padding:18px 20px;text-align:center">
           <div style="font-size:26px;font-weight:800;color:var(--blue)">${stats.active}</div>
@@ -10562,6 +10562,11 @@
     if(!name){err.textContent='Plan name is required';err.classList.add('show');return}
     const priceVal=parseFloat(priceStr);
     if(isNaN(priceVal)||priceVal<0){err.textContent='Enter a valid price (e.g. 19.99)';err.classList.add('show');return}
+    for(const [id,label] of [['epHours','Included hours'],['epLoyaltyMult','Loyalty multiplier'],['epGuestPasses','Guest passes'],['epDiscount','Discount'],['epSortOrder','Sort order']]){
+      const input=el(id);if(!input)continue;
+      const raw=input.value.trim();
+      if(raw!==''&&!Number.isInteger(Number(raw))){err.textContent=label+' must be a whole number; fractional values are not rounded.';err.classList.add('show');return;}
+    }
     const hoursRaw=el('epHours').value;
     const annualStr=el('epPriceAnnual').value.trim();
     const annualVal=annualStr!==''?parseFloat(annualStr):null;
@@ -10588,6 +10593,7 @@
     const epM=el('editPlanModal');
     if(!isCreate&&epM.dataset.wasActive==='1'&&!payload.active){
       if(!confirm('Disable this plan?\n\nDisabling affects member benefits for anyone on this plan. If you only want to stop NEW sign-ups, cancel and use "hide from public sign-up" instead.'))return;
+      payload.confirmDisable=true;
     }
     if(!isCreate&&epM.dataset.wasHidden!=='1'&&payload.hideFromSignup){
       if(!confirm('Hide this plan from sign-up?\n\nThis stops NEW customer sign-ups. Existing members keep their entitlements and billing.'))return;
@@ -10635,7 +10641,7 @@
   };
 
   window.setupSquareBilling=async function(){
-    if(!confirm('This will create monthly subscription plans in your Square account for each membership tier. This only needs to be done once. Continue?'))return;
+    if(!confirm('This will check monthly and offered annual billing for active public plans, creating missing rates in Square. Existing customer subscriptions and prices will not change. Continue?'))return;
     const btn=document.querySelector('button[onclick="window.setupSquareBilling()"]');
     if(btn){btn.textContent='Setting up…';btn.disabled=true;}
     try{
@@ -10684,7 +10690,7 @@
   function isProtectedSub(sub){
     if(!sub)return false;
     const src=String(sub.source||'').toLowerCase();
-    return !!sub.squareSubscriptionId||src==='square'||src==='wix'||!!sub.managedInSquare;
+    return !!sub.squareSubscriptionId||/^(?:square|wix|app)(?:_|$)/.test(src)||!!sub.managedInSquare;
   }
   window.isProtectedSub=isProtectedSub;
   function fmtBillDate(v){if(!v)return '';const d=new Date(v);return isNaN(d)?String(v):d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});}
@@ -10715,21 +10721,23 @@
     h+=row('Plan',b.planName)+row('Status',statusTxt)+row('Billing',b.frequency)+row('Source',b.source)+row('Next renewal',fmtBillDate(b.renewalDate))+row('Minimum term ends',fmtBillDate(b.commitmentEndDate));
     if(b.pendingPlanName)h+='<div style="margin-top:8px;font-size:12px;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:6px;padding:7px 10px">Scheduled change to '+esc(b.pendingPlanName)+(b.pendingDate?' on '+esc(fmtBillDate(b.pendingDate)):'')+'.</div>';
     if(b.cancellationDate)h+='<div style="margin-top:8px;font-size:12px;background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;border-radius:6px;padding:7px 10px">Cancellation scheduled. Access ends '+esc(fmtBillDate(b.cancellationDate))+'.</div>';
-    if(b.migrationNeedsReview||(String(b.source||'').toLowerCase()==='wix'&&!b.managedInSquare)){
-      h+='<div style="margin-top:10px;font-size:12px;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:6px;padding:8px 10px;line-height:1.5">This is a Wix membership awaiting migration review. Billing controls are unavailable until an owner completes the review in the Wix migration panel.</div>';
+    if(b.migrationNeedsReview||(['wix','wix_import'].includes(String(b.source||'').toLowerCase())&&!b.managedInSquare)){
+      h+='<div style="margin-top:10px;font-size:12px;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:6px;padding:8px 10px;line-height:1.5">This Wix membership must complete its reviewed migration to Square before central billing changes are available. Use the Wix migration panel; the customer must authorise the new billing.</div>';
       panel.innerHTML=h;return;
     }
     if(!b.managedInSquare){h+='<div style="margin-top:8px;font-size:12px;color:var(--text-2)">Not managed in Square, so no central billing controls are available.</div>';panel.innerHTML=h;return;}
     const cancelled=b.status==='cancelled'||!!b.cancellationDate;
     if(!cancelled){
       const opts=[];
+      const currentPlan=plans.find(p=>p.id===b.planId);
       plans.forEach(p=>{
+        if(p.id!==b.planId&&currentPlan&&p.monthlyPence<=currentPlan.monthlyPence)return;
         const term=p.minimumTermMonths?' ('+Number(p.minimumTermMonths)+'-month minimum)':'';
         if(p.monthlyPence!=null)opts.push({v:p.id+'|monthly',l:p.name+' - monthly £'+(p.monthlyPence/100).toFixed(2)+term});
         if(p.annualPence)opts.push({v:p.id+'|annual',l:p.name+' - annual £'+(p.annualPence/100).toFixed(2)+term});
       });
       const cur=b.planId+'|'+String(b.frequency||'').toLowerCase();
-      const avail=opts.filter(o=>o.v!==cur);
+      const avail=b.status==='active'&&!b.pendingPlanName?opts.filter(o=>o.v!==cur):[];
       h+='<div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px"><div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px">Change plan</div>';
       if(avail.length===0){h+='<div style="font-size:12px;color:var(--text-2)">No eligible plan changes.</div>';}
       else{
@@ -10836,7 +10844,7 @@
     el('msDangerZone').style.display=prot?'none':'';
     el('msSaveBtn').textContent=prot?'Save Notes & Usage':'Save Changes';
     const pn=el('msProtectedNote');
-    if(prot){pn.style.display='';pn.textContent=(String(sub.source||'').toLowerCase()==='wix'?'Wix-sourced membership.':'Square-managed membership.')+' Status, plan and dates are controlled by central billing. Only notes and usage can be edited here.';}
+    if(prot){pn.style.display='';pn.textContent=(String(sub.source||'').toLowerCase().startsWith('wix')?'Wix-sourced membership.':sub.squareSubscriptionId?'Square-managed membership.':'App/online membership.')+' Status, plan and dates are controlled by central billing. Only notes and usage can be edited here.';}
     else{pn.style.display='none';pn.textContent='';}
     msBilling=null;
     if(prot){loadSubBilling(id);}else{el('msBillingPanel').style.display='none';el('msBillingPanel').innerHTML='';}
@@ -10970,7 +10978,7 @@
     if(el('manageSubModal').dataset.protected==='1'){
       el('msSaveBtn').disabled=true;
       try{
-        const r=await api('/api/staff/membership/subscriptions/'+id,{method:'PATCH',body:JSON.stringify({notes,hoursUsedThisPeriod:hoursUsed,guestPassesUsed:guestPasses})});
+        const r=await api('/api/staff/membership/subscriptions/'+id,{method:'PATCH',body:JSON.stringify({staffNotes:notes,hoursUsedThisPeriod:hoursUsed,guestPassesUsed:guestPasses})});
         if(!r.ok){const d=await r.json().catch(()=>({}));err.textContent=d.message||'Failed to save';err.classList.add('show');return}
         toast('Notes and usage saved','success');
         loadMemberships();
@@ -11043,7 +11051,7 @@
     const todayStr=new Date().toISOString().slice(0,10);
     el('amStartDate').value=todayStr;
     el('amStartDate').min=todayStr;
-    el('amStartDateHint').textContent='Leave as today to start immediately. Set a future date to delay the first payment.';
+    el('amStartDateHint').textContent='For complimentary memberships, choose when access starts. Paid members choose billing options through the shared sign-up page.';
     // Reset payment selection
     document.querySelectorAll('input[name="amPayMethod"]').forEach(r=>r.checked=false);
     document.querySelectorAll('.am-pay-option').forEach(o=>o.classList.remove('selected'));
@@ -11052,6 +11060,7 @@
     el('amPaymentGrid').style.display='grid';
     el('amPaylinkHint').style.display='none';
     el('amSaveBtn').textContent='Add Member';
+    el('amSaveBtn').onclick=null;
     el('amSaveBtn').disabled=false;
     // Show complimentary only for managers/owners
     const isManager=state.role==='manager'||state.role==='owner';
@@ -11212,13 +11221,27 @@
     let payLabel=payMethod==='complimentary'?'Payment: Complimentary':'Payment: Square Link (pending)';
     const staffNotes=[`[${payLabel}]`,notes].filter(Boolean).join(' ');
     const startDate=el('amStartDate').value||new Date().toISOString().slice(0,10);
+    if(payMethod==='paylink'){
+      if(!plan||!plan.active||plan.hideFromSignup){err.textContent='Choose an active public plan for online sign-up. Hidden plans are not sold to customers.';err.classList.add('show');return;}
+      const signup=new URL('/widget/membership',window.location.origin);
+      signup.searchParams.set('planId',String(plan.id));
+      const url=signup.toString();
+      el('amFormFields').style.display='none';el('amPaymentGrid').style.display='none';el('amPaylinkHint').style.display='none';el('amPlanPrice').textContent='';
+      el('amLinkUrl').value=url;el('amLinkOpen').href=url;
+      el('amLinkQr').src='https://api.qrserver.com/v1/create-qr-code/?data='+encodeURIComponent(url)+'&size=200x200&margin=8&color=166534';
+      el('amLinkResult').querySelector('div').textContent='Share secure sign-up. The customer signs in, chooses monthly or annual billing and accepts the terms. No membership or charge is created here, and no email has been sent.';
+      el('amLinkResult').style.display='block';
+      el('amSaveBtn').textContent='Done';
+      el('amSaveBtn').onclick=function(){closeOverlay('addMemberModal');el('amSaveBtn').onclick=null;};
+      return;
+    }
 
     el('amSaveBtn').disabled=true;
     el('amSaveBtn').textContent='Saving…';
     try{
       // 1. Create subscription
       const initialStatus=payMethod==='paylink'?'pending_payment':'active';
-      const r=await api('/api/staff/membership/subscriptions',{method:'POST',body:JSON.stringify({customerId,planId,staffNotes,status:initialStatus,source:'staff',startDate})});
+      const r=await api('/api/staff/membership/subscriptions',{method:'POST',body:JSON.stringify({customerId,planId,staffNotes,status:initialStatus,source:'complimentary',startDate})});
       if(!r.ok){const d=await r.json();err.textContent=d.message||'Failed';err.classList.add('show');el('amSaveBtn').disabled=false;el('amSaveBtn').textContent='Add Member & Generate Link';return}
       const sub=await r.json();
 

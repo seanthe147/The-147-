@@ -18,3 +18,5 @@ export * from './membershipChange';
 export * from './membershipChangeBillingFrequency';
 export * from './membershipMigrationReview';
 export * from './membershipPaymentCard';
+export * from './staffMembershipChange';
+export * from './staffMembershipChangeBillingFrequency';

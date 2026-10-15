@@ -3,9 +3,13 @@ import * as square from "./square";
 
 /** Prepare immutable sale rates BEFORE publishing local price changes.
  * Existing Square subscriptions retain their original variations and prices. */
-export async function prepareMembershipSaleRates(plan: MembershipPlan, previous?: MembershipPlan) {
+export async function prepareMembershipSaleRates(
+  plan: MembershipPlan,
+  previous?: MembershipPlan,
+  provider: Pick<typeof square, "isConfigured" | "createCatalogSubscriptionPlan" | "validateSquareBillingVariation"> = square,
+) {
   if (!plan.active || plan.hideFromSignup) return { squareSynced: false, rates: {} };
-  if (!square.isConfigured()) throw new Error("Square must be configured before publishing a membership for customer purchase.");
+  if (!provider.isConfigured()) throw new Error("Square must be configured before publishing a membership for customer purchase.");
   const rates: { squarePlanVariationId?: string; squarePlanVariationIdAlt?: string | null } = {};
   for (const frequency of ["monthly", "annual"] as const) {
     const key = frequency === "monthly" ? "squarePlanVariationId" : "squarePlanVariationIdAlt";
@@ -18,11 +22,11 @@ export async function prepareMembershipSaleRates(plan: MembershipPlan, previous?
       !previous.active || previous.hideFromSignup || !id;
     if (!changed && !suppliedNewId) continue;
     if (!id || (changed && previous && !suppliedNewId)) {
-      id = (await square.createCatalogSubscriptionPlan({
+      id = (await provider.createCatalogSubscriptionPlan({
         localPlanId: plan.id, name: plan.name, amountPence: amount, frequency,
       })).squarePlanVariationId;
     }
-    await square.validateSquareBillingVariation(id, frequency, amount);
+    await provider.validateSquareBillingVariation(id, frequency, amount);
     rates[key] = id;
   }
   return { squareSynced: Object.keys(rates).length > 0, rates };

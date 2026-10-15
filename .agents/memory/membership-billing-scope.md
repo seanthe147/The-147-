@@ -15,6 +15,24 @@ The Member tab is the membership entry point: existing members should manage the
 
 **How to apply:** Keep paid membership status separate from rewards enrolment. Check existing memberships before offering a new subscription, and require customer sign-in before purchase, not before showing available plans.
 
+Staff plan/member management uses the existing manager/owner web dashboard, not the customer membership screen. Opening it from the native staff portal may require a separate browser sign-in; never transfer staff bearer tokens in URLs.
+
+**Why:** One administrative surface avoids competing membership editors, and keeping tokens out of navigation URLs prevents leaks into browser history and logs.
+
+**How to apply:** Preserve manager/owner access checks on the server. Keep Square/app/Wix billing protected from manual local status, plan and date overrides; notes and usage remain editable. Use the same renewal and minimum-term rules for staff and customer billing actions.
+
+Advertised plan-price edits apply to new sales, not existing Square contracts or previously agreed pending changes.
+
+**Why:** Existing members have already agreed their price and commitment; changing a public offer is not authorisation to change their contract.
+
+**How to apply:** Preserve old rate identities for existing memberships and pending paid transitions. Require explicit customer authorisation before staff schedules a plan or billing-frequency change.
+
+Complimentary/manual access must never automatically create Square billing. Staff share the central customer sign-up page for paid memberships without first creating a pending manual member record.
+
+**Why:** A legacy staff flow could create a provider subscription before customer authorisation, even for complimentary access. A pending manual record can also block the central checkout's duplicate-membership protection.
+
+**How to apply:** Keep complimentary classification separate from editable notes and exclude it from revenue estimates. Paid customers must select their billing frequency and accept the shared terms themselves; staff sign-up links contain no login tokens or customer details.
+
 The user clarified on 2026-10-13 that Platinum is the new name for Black membership, not a separate tier. Maximum and Platinum also refer to the same membership. Only Platinum should be available from those two plans, at £6.99/month or £65/year. Platinum requires a 12-month minimum term. Upgrades take effect at renewal; monthly plans continue rolling after the minimum term; include controlled Wix migration.
 
 **Why:** These are explicit business rules, not billing defaults. Minimum terms must not be imposed retroactively on memberships that did not accept them.

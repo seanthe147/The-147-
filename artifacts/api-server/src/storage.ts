@@ -2,7 +2,7 @@ import { applyPlatinumOffer } from "./platinum-offer-migration";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { eq, lt, lte, sql, and, gt, isNull, isNotNull, gte, desc, inArray, ne, ilike, or } from "drizzle-orm";
-import { POOL_TABLE_NUMBERS } from "@workspace/db/schema";
+import { POOL_TABLE_NUMBERS, membershipPlanVariationAliases } from "@workspace/db/schema";
 import {
   type User,
   type InsertUser,
@@ -2303,8 +2303,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateMembershipPlan(id: number, data: Partial<InsertMembershipPlan>): Promise<MembershipPlan | undefined> {
-    const [plan] = await db.update(membershipPlans).set(data).where(eq(membershipPlans.id, id)).returning();
-    return plan;
+    return db.transaction(async tx => {
+      const [previous] = await tx.select().from(membershipPlans).where(eq(membershipPlans.id, id)).for("update");
+      if (!previous) return undefined;
+      for (const key of ["squarePlanVariationId", "squarePlanVariationIdAlt"] as const) {
+        const oldId = previous[key];
+        if (oldId && data[key] !== undefined && data[key] !== oldId) {
+          await tx.insert(membershipPlanVariationAliases).values({ squareVariationId: oldId, planId: id }).onConflictDoNothing();
+        }
+      }
+      const [plan] = await tx.update(membershipPlans).set(data).where(eq(membershipPlans.id, id)).returning();
+      return plan;
+    });
   }
 
   // ── Membership Subscriptions ────────────────────────────────────────────────
@@ -2451,6 +2461,7 @@ export class DatabaseStorage implements IStorage {
     const cancelled = all.filter(s => s.status === "cancelled");
     let mrr = 0;
     for (const sub of active) {
+      if (sub.source === "complimentary" || (sub.source === "staff" && sub.staffNotes?.startsWith("[Payment: Complimentary]"))) continue;
       const [plan] = await db.select().from(membershipPlans).where(eq(membershipPlans.id, sub.planId));
       if (plan) mrr += plan.priceMonthly;
     }

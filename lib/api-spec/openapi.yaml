@@ -11,6 +11,55 @@ tags:
   - name: health
     description: Health operations
 paths:
+  /staff/membership/subscriptions/{id}/billing:
+    get:
+      operationId: getStaffMembershipBilling
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        "200":
+          description: Manager-only central membership billing details
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MembershipBilling" }
+        "403": { description: Manager access required }
+        "503": { description: Square billing could not be verified }
+  /staff/membership/subscriptions/{id}/change-plan:
+    post:
+      operationId: changeStaffMembershipPlan
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StaffMembershipChange" }
+      responses:
+        "200":
+          description: Customer-authorised change confirmed by Square for next renewal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MembershipActionResult" }
+        "403": { description: Manager access required }
+        "409": { description: Change blocked or not confirmed by Square }
+  /staff/membership/subscriptions/{id}/cancel:
+    post:
+      operationId: cancelStaffMembershipBilling
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MembershipCancellation" }
+      responses:
+        "200":
+          description: Term-compliant cancellation confirmed by Square; paid access retained
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MembershipActionResult" }
+        "403": { description: Manager access required }
+        "409": { description: Cancellation blocked or not confirmed by Square }
   /membership/payment-card:
     post:
       operationId: replaceMembershipCard
@@ -120,6 +169,7 @@ components:
         id: { type: integer }
         planId: { type: integer }
         planName: { type: string }
+        source: { type: string }
         frequency: { type: string, enum: [monthly, annual] }
         status: { type: string }
         renewalDate: { type: ["string", "null"] }
@@ -151,6 +201,15 @@ components:
         sourceId: { type: string, minLength: 1, maxLength: 256 }
         verificationToken: { type: string, minLength: 1, maxLength: 2048 }
         authorised: { type: boolean }
+    StaffMembershipChange:
+      type: object
+      additionalProperties: false
+      required: [planId, billingFrequency, termsAccepted, customerAuthorised]
+      properties:
+        planId: { type: integer, minimum: 1 }
+        billingFrequency: { type: string, enum: [monthly, annual] }
+        termsAccepted: { type: boolean }
+        customerAuthorised: { type: boolean }
     MembershipChange:
       type: object
       required: [planId, billingFrequency, termsAccepted]

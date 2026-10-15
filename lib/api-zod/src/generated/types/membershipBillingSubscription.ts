@@ -12,6 +12,7 @@ export interface MembershipBillingSubscription {
   id: number;
   planId: number;
   planName: string;
+  source?: string;
   frequency: MembershipBillingSubscriptionFrequency;
   status: string;
   /** @nullable */

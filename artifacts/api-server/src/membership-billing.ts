@@ -2,7 +2,7 @@ import type { Express, RequestHandler } from "express";
 import { createHash } from "node:crypto";
 import { ReplaceMembershipCardBody } from "@workspace/api-zod";
 import { eq, isNull, sql } from "drizzle-orm";
-import { membershipBillingStates as states, membershipSubscriptions as subscriptions, membershipAuditLog } from "@workspace/db/schema";
+import { membershipBillingStates as states, membershipSubscriptions as subscriptions, membershipAuditLog, membershipPlanVariationAliases } from "@workspace/db/schema";
 import { db, storage } from "./storage";
 import * as square from "./square";
 import {
@@ -145,7 +145,15 @@ export async function reconcileScheduledMembership(sqSub: any, paymentConfirmed 
   const state = await billingState(local.id);
   if (!state?.pendingPlanId || !state.pendingFrequency || !state.pendingEffectiveDate || state.pendingEffectiveDate > today()) return;
   const plan = await storage.getMembershipPlan(state.pendingPlanId);
-  if (!plan || variationForFrequency(plan, state.pendingFrequency as BillingFrequency) !== sqSub.plan_variation_id) return;
+  if (!plan || !sqSub.plan_variation_id) return;
+  const currentVariation = state.pendingFrequency === "annual" ? plan.squarePlanVariationIdAlt : plan.squarePlanVariationId;
+  if (currentVariation !== sqSub.plan_variation_id) {
+    // Staff can change prices for new sales while an older agreed upgrade
+    // is pending. Its paid historic variation still identifies the same plan.
+    const [alias] = await db.select().from(membershipPlanVariationAliases)
+      .where(eq(membershipPlanVariationAliases.squareVariationId, sqSub.plan_variation_id));
+    if (alias?.planId !== plan.id) return;
+  }
   // A scheduled action does not grant the new benefits early. Square must
   // report that the target variation is actually in use.
   await db.transaction(async tx => {

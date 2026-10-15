@@ -12776,14 +12776,14 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         name: name.trim(),
         tier: resolvedTier,
         priceMonthly: Number(priceMonthly),
-        hoursIncluded: hoursIncluded != null && hoursIncluded !== "" ? Number(hoursIncluded) : null,
+        hoursIncluded: hoursIncluded ?? null,
         hoursUnit: hoursUnit || "month",
         snookerUnlimited: !!snookerUnlimited,
         foodDrinkDiscount: Number(foodDrinkDiscount) || 0,
         priorityBooking: !!priorityBooking,
         loyaltyMultiplier: Number(loyaltyMultiplier) || 1,
         guestPassesMonthly: Number(guestPassesMonthly) || 0,
-        priceAnnual: priceAnnual != null && priceAnnual !== "" ? Number(priceAnnual) : null,
+        priceAnnual: priceAnnual ?? null,
         squarePlanVariationId: squarePlanVariationId?.trim() || null,
         squarePlanVariationIdAlt: squarePlanVariationIdAlt?.trim() || null,
         squareCustomerGroupId: squareCustomerGroupId?.trim() || null,
@@ -13659,20 +13659,33 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   scheduleWeeklyLeftoverAudit();
 
   app.post("/api/staff/membership/subscriptions", staffAuth, managerAuth, async (req, res) => {
-    const { customerId, planId, status = "active", staffNotes, source = "staff", startDate } = req.body ?? {};
-    if (!customerId || !planId) return res.status(400).json({ message: "customerId and planId are required" });
+    const { customerId, planId, status = "active", staffNotes, source: requestedSource = "staff", startDate } = req.body ?? {};
+    if (!["number", "string"].includes(typeof customerId) || !["number", "string"].includes(typeof planId) ||
+        !Number.isSafeInteger(Number(customerId)) || Number(customerId) <= 0 ||
+        !Number.isSafeInteger(Number(planId)) || Number(planId) <= 0) {
+      return res.status(400).json({ message: "Valid customerId and planId are required" });
+    }
+    if (status === "pending_payment") return res.status(409).json({ message: "Paid memberships must be authorised by the customer using the app or shared website sign-up. Do not create a pending manual membership first.", code: "USE_CENTRAL_SIGNUP" });
+    if (!["active", "paused"].includes(status) || !["staff", "complimentary"].includes(requestedSource) ||
+        (staffNotes != null && (typeof staffNotes !== "string" || staffNotes.length > 500)) ||
+        (startDate != null && !validDate(startDate))) {
+      return res.status(400).json({ message: "Use valid manual membership details, notes and start date." });
+    }
+    const [customer, plan, existing] = await Promise.all([
+      storage.getCustomerById(Number(customerId)), storage.getMembershipPlan(Number(planId)),
+      storage.getMembershipSubscriptionByCustomer(Number(customerId)),
+    ]);
+    if (!customer || !plan?.active) return res.status(400).json({ message: "Choose an existing customer and an active plan." });
+    if (existing && !["cancelled", "expired"].includes(existing.status)) return res.status(409).json({ message: "This customer already has a membership. Manage the existing membership instead." });
+    const source = requestedSource === "complimentary" || staffNotes?.startsWith("[Payment: Complimentary]") ? "complimentary" : "staff";
     const today = new Date().toISOString().slice(0, 10);
-    // Use provided startDate if valid, else fall back to today
-    const periodStart = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) ? startDate : today;
-    const periodStartDate = new Date(periodStart + "T12:00:00Z");
-    const periodEndDate = new Date(periodStartDate);
-    periodEndDate.setMonth(periodEndDate.getMonth() + 1);
-    const periodEnd = periodEndDate.toISOString().slice(0, 10);
+    const periodStart = startDate || today;
+    const periodEnd = addCalendarMonths(periodStart, 1);
     // If start date is in the future, create as pending until it starts
     const effectiveStatus = startDate && startDate > today ? "pending_start" : status;
     const sub = await storage.createMembershipSubscription({
-      customerId: parseInt(customerId),
-      planId: parseInt(planId),
+      customerId: Number(customerId),
+      planId: Number(planId),
       status: effectiveStatus,
       currentPeriodStart: periodStart,
       currentPeriodEnd: periodEnd,
@@ -13681,29 +13694,9 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       staffNotes: staffNotes || null,
       source,
     });
-    // Optionally create Square subscription if configured and plan has a Square plan variation ID
-    if (square.isConfigured()) {
-      try {
-        const plan = await storage.getMembershipPlan(parseInt(planId));
-        const customer = await storage.getCustomerById(parseInt(customerId));
-        if (plan?.squarePlanVariationId && customer) {
-          let sqCustomer = await square.findSquareCustomerByEmail(customer.email).catch(() => null);
-          if (!sqCustomer) sqCustomer = await square.createSquareCustomer(customer.name, customer.email, customer.phone || undefined);
-          if (sqCustomer) {
-            const locationId = (process.env.SQUARE_LOC_ID || process.env.SQUARE_LOCATION_ID)!;
-            const sqSub = await square.createSquareSubscription(sqCustomer.id, plan.squarePlanVariationId, locationId, undefined, periodStart).catch(() => null);
-            if (sqSub) {
-              await storage.updateMembershipSubscription(sub.id, {
-                squareSubscriptionId: sqSub.id,
-                squareCustomerId: sqCustomer.id,
-                currentPeriodEnd: sqSub.charged_through_date ?? sub.currentPeriodEnd,
-              });
-            }
-          }
-        }
-      } catch { /* Square not set up yet — subscription saved locally */ }
-    }
-    const staffUser = (req as any).staffUser?.username || "staff";
+    // Manual/complimentary access never creates a provider subscription.
+    // Paid signup must collect customer consent through the shared customer flow.
+    const staffUser = (req as any).staffUsername || (req as any).staffUser?.username || "staff";
     await storage.logMembershipAction({
       subscriptionId: sub.id,
       customerId: sub.customerId,
@@ -13714,64 +13707,11 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     res.status(201).json(sub);
   });
 
-  app.post("/api/staff/membership/payment-link", staffAuth, managerAuth, async (req, res) => {
-    const { subscriptionId, planId } = req.body ?? {};
-    if (!subscriptionId || !planId) return res.status(400).json({ message: "subscriptionId and planId required" });
-    if (!square.isConfigured()) return res.status(503).json({ message: "Square is not configured" });
-    try {
-      const [plan, sub] = await Promise.all([
-        storage.getMembershipPlan(parseInt(planId)),
-        storage.getMembershipSubscription(parseInt(subscriptionId)),
-      ]);
-      if (!plan) return res.status(404).json({ message: "Plan not found" });
-      // Memberships must use a RECURRING subscription checkout. Never send
-      // a customer a one-time payment link for a membership signup —
-      // otherwise their card is charged once and never billed again.
-      const variationId = plan.squarePlanVariationId;
-      if (!variationId) {
-        return res.status(503).json({
-          message: "This plan isn't set up for online recurring billing yet — set the Square plan variation first.",
-          code: "PLAN_NOT_BILLABLE",
-        });
-      }
-      const customer = sub ? await storage.getCustomerById(sub.customerId).catch(() => null) : null;
-      const redirectUrl = `${process.env.REPLIT_INTERNAL_APP_DOMAIN ? `https://${process.env.REPLIT_INTERNAL_APP_DOMAIN}` : "https://the147bradford.replit.app"}/staff`;
-      const link = await square.createSubscriptionCheckoutLink({
-        planVariationId: variationId,
-        subscriptionId: parseInt(subscriptionId),
-        buyerEmail: customer?.email,
-        redirectUrl,
-      });
-
-      // Email the payment link to the customer
-      let emailSent = false;
-      if (sub) {
-        const customer = await storage.getCustomerById(sub.customerId).catch(() => null);
-        if (customer?.email) {
-          emailSent = await sendMembershipPaymentLinkEmail({
-            customerName: customer.name,
-            customerEmail: customer.email,
-            planName: plan.name,
-            priceMonthly: plan.priceMonthly,
-            paymentUrl: link.url,
-          });
-        }
-      }
-
-      const staffUser = (req as any).staffUser?.username || "staff";
-      await storage.logMembershipAction({
-        subscriptionId: sub?.id ?? null,
-        customerId: sub?.customerId ?? null,
-        action: "payment_link_sent",
-        staffUsername: staffUser,
-        note: `Generated Square recurring payment link for plan "${plan.name}"${customer?.email ? " (emailed to customer)" : ""}.`,
-      }).catch((e) => console.warn("[MEMBERSHIP] audit log write failed:", e?.message ?? e));
-
-      res.json({ url: link.url, paymentLinkId: link.paymentLinkId, emailSent });
-    } catch (err: any) {
-      console.error("[PAYMENT LINK]", err?.message);
-      res.status(500).json({ message: err?.message || "Failed to create payment link" });
-    }
+  app.post("/api/staff/membership/payment-link", staffAuth, managerAuth, async (_req, res) => {
+    res.status(409).json({
+      code: "USE_CENTRAL_SIGNUP",
+      message: "Use the shared membership sign-up page or app so the customer chooses monthly or annual billing and accepts their minimum term. Review any old pending membership before retrying; no subscription or payment link was created.",
+    });
   });
 
   // Per-subscription audit log feed for the staff dashboard history drawer.
@@ -13831,7 +13771,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
 
     // Audit log: record the meaningful changes in a single combined entry so
     // the per-member history drawer reads like a human-friendly diary.
-    const staffUser = (req as any).staffUser?.username || "staff";
+    const staffUser = (req as any).staffUsername || (req as any).staffUser?.username || "staff";
     const changes: string[] = [];
     let action: string | null = null;
     if (status !== undefined && status !== sub.status) {
@@ -13841,14 +13781,17 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       else if (status === "active" && sub.status === "paused") action = "resumed";
       else action = "status_changed";
     }
-    if (planId !== undefined && parseInt(planId) !== sub.planId) {
-      changes.push(`plan ${sub.planId} → ${parseInt(planId)}`);
+    if (planId !== undefined && planId !== sub.planId) {
+      changes.push(`plan ${sub.planId} → ${planId}`);
       if (!action) action = "plan_changed";
     }
     if (currentPeriodEnd !== undefined && (currentPeriodEnd || null) !== (sub.currentPeriodEnd || null)) {
       changes.push(`expiry ${sub.currentPeriodEnd ?? "—"} → ${currentPeriodEnd || "—"}`);
       if (!action) action = "expiry_changed";
     }
+    if (staffNotes !== undefined && staffNotes !== sub.staffNotes) changes.push("staff notes updated");
+    if (hoursUsedThisPeriod !== undefined && hoursUsedThisPeriod !== sub.hoursUsedThisPeriod) changes.push(`hours used ${sub.hoursUsedThisPeriod} → ${hoursUsedThisPeriod}`);
+    if (guestPassesUsed !== undefined && guestPassesUsed !== sub.guestPassesUsed) changes.push(`guest passes used ${sub.guestPassesUsed} → ${guestPassesUsed}`);
     if (changes.length) {
       await storage.logMembershipAction({
         subscriptionId: id,

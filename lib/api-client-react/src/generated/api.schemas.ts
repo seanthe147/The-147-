@@ -28,6 +28,7 @@ export interface MembershipBillingSubscription {
   id: number;
   planId: number;
   planName: string;
+  source?: string;
   frequency: MembershipBillingSubscriptionFrequency;
   status: string;
   /** @nullable */
@@ -73,6 +74,22 @@ export interface MembershipCardReplacement {
      */
   verificationToken: string;
   authorised: boolean;
+}
+
+export type StaffMembershipChangeBillingFrequency = typeof StaffMembershipChangeBillingFrequency[keyof typeof StaffMembershipChangeBillingFrequency];
+
+
+export const StaffMembershipChangeBillingFrequency = {
+  monthly: 'monthly',
+  annual: 'annual',
+} as const;
+
+export interface StaffMembershipChange {
+  /** @minimum 1 */
+  planId: number;
+  billingFrequency: StaffMembershipChangeBillingFrequency;
+  termsAccepted: boolean;
+  customerAuthorised: boolean;
 }
 
 export type MembershipChangeBillingFrequency = typeof MembershipChangeBillingFrequency[keyof typeof MembershipChangeBillingFrequency];

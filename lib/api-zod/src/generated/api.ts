@@ -8,6 +8,87 @@
 import * as zod from 'zod';
 
 
+
+
+
+export const GetStaffMembershipBillingParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const GetStaffMembershipBillingResponse = zod.object({
+  "subscription": zod.union([zod.object({
+  "id": zod.number(),
+  "planId": zod.number(),
+  "planName": zod.string(),
+  "source": zod.string().optional(),
+  "frequency": zod.enum(['monthly', 'annual']),
+  "status": zod.string(),
+  "renewalDate": zod.string().nullable(),
+  "commitmentEndDate": zod.string().nullable(),
+  "cancellationAllowed": zod.boolean(),
+  "pendingPlanName": zod.string().nullable(),
+  "pendingDate": zod.string().nullable(),
+  "cancellationDate": zod.string().nullable(),
+  "managedInSquare": zod.boolean(),
+  "migrationNeedsReview": zod.boolean(),
+  "cardReplacementAllowed": zod.boolean().optional(),
+  "paymentCard": zod.union([zod.object({
+  "brand": zod.string().nullable(),
+  "last4": zod.string().nullable(),
+  "expiryMonth": zod.number().nullable(),
+  "expiryYear": zod.number().nullable()
+}),zod.null()]).optional()
+}),zod.null()]),
+  "plans": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "monthlyPence": zod.number(),
+  "annualPence": zod.number().nullable(),
+  "minimumTermMonths": zod.number()
+}))
+})
+
+
+
+
+
+export const ChangeStaffMembershipPlanParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+
+
+
+export const ChangeStaffMembershipPlanBody = zod.object({
+  "planId": zod.number().min(1),
+  "billingFrequency": zod.enum(['monthly', 'annual']),
+  "termsAccepted": zod.boolean(),
+  "customerAuthorised": zod.boolean()
+})
+
+export const ChangeStaffMembershipPlanResponse = zod.object({
+  "message": zod.string(),
+  "effectiveDate": zod.string().nullish()
+})
+
+
+
+
+
+export const CancelStaffMembershipBillingParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const CancelStaffMembershipBillingBody = zod.object({
+  "confirmed": zod.boolean()
+})
+
+export const CancelStaffMembershipBillingResponse = zod.object({
+  "message": zod.string(),
+  "effectiveDate": zod.string().nullish()
+})
+
+
 export const replaceMembershipCardBodySourceIdMax = 256;
 
 export const replaceMembershipCardBodyVerificationTokenMax = 2048;
@@ -31,6 +112,7 @@ export const GetMembershipBillingResponse = zod.object({
   "id": zod.number(),
   "planId": zod.number(),
   "planName": zod.string(),
+  "source": zod.string().optional(),
   "frequency": zod.enum(['monthly', 'annual']),
   "status": zod.string(),
   "renewalDate": zod.string().nullable(),
