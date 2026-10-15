@@ -48,6 +48,7 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+artifacts/api-server/.membership-billing-test-*/
 
 # Data exports / backups — never commit customer data
 artifacts/api-server/backups/
