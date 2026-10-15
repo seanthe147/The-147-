@@ -10,6 +10,7 @@
 - [Private push destination ownership](private-push-destinations.md) — never treat public token registration as device attestation; bind private pushes through authenticated accounts
 - [Expo Launch Node runtime](expo-launch-node-runtime.md) — Replit iOS publishing and direct EAS builds read separate profiles; keep their Node versions aligned
 - [App Store release versions](app-store-release-versions.md) — closed approved versions require a new release version, not just a higher build number.
+- [Android releases](android-release-workflow.md) — existing Expo build/manual Play upload process; verify remote source and used version codes before building.
 - [pnpm ignored-audit behavior](pnpm-audit-ignored.md) — plain audit exits 0 for configured exceptions, while JSON mode still exits 1 and counts ignored findings
 - [Expo web appearance override](expo-web-appearance.md) — native Appearance overrides are unavailable on Expo web and must be platform-guarded
 - [Native appearance chrome](native-appearance-chrome.md) — Android navigation controls and the native root background must track the resolved app theme
