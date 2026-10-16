@@ -148,3 +148,16 @@ packages = ["glib", "nss", "nspr", "atk", "cups", "libdrm", "pango", "cairo", "l
 [[ports]]
 localPort = 8080
 externalPort = 80
+
+[[ports]]
+localPort = 19289
+externalPort = 3001
+exposeLocalhost = true
+
+[[ports]]
+localPort = 19390
+externalPort = 3000
+
+[[ports]]
+localPort = 23636
+externalPort = 3002
