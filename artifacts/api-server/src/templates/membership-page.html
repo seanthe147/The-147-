@@ -19,7 +19,7 @@
   <meta name="twitter:image" content="{{SITE_ORIGIN}}/assets/logo-147.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     :root{
@@ -294,13 +294,132 @@
       .plan-body{padding:22px}
       .perks-strip{grid-template-columns:1fr 1fr}
     }
+
+    /* The 147 club room — warm, local and considered, without touching checkout logic. */
+    :root{
+      --gold:#B87837;--gold-dim:#F4E9DC;--gold-border:#D9B796;
+      --dark:#24332D;--navy:#31483E;--navy2:#3D574A;
+      --surface:#FFFCF7;--bg:#F5F0E7;
+      --text:#26332D;--text-2:#52645A;--text-3:#64766B;
+      --border:#DED8CC;--red:#A83B35;
+      --club-green:#315D4A;--club-cream:#F5F0E7;--club-orange:#B87837;
+      --font-display:'Fraunces',Georgia,serif;--font-body:'DM Sans',sans-serif;
+    }
+    html{scroll-behavior:smooth}
+    body{font-family:var(--font-body);background:var(--bg);color:var(--text);font-size:15px}
+    button,input{font:inherit}
+    button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid #9A5A20;outline-offset:3px}
+    .hero{background:#263A31;padding:58px 24px 62px;text-align:left;min-height:390px;display:flex;flex-direction:column;justify-content:center;align-items:flex-start}
+    .hero::after{content:"";position:absolute;width:340px;height:340px;border:1px solid rgba(237,211,174,.13);border-radius:50%;right:7%;top:50%;transform:translateY(-50%);box-shadow:0 0 0 34px rgba(237,211,174,.025),0 0 0 68px rgba(237,211,174,.02);pointer-events:none}
+    .hero-grid{opacity:.22;background-size:64px 64px;mask-image:linear-gradient(90deg,black,transparent 80%)}
+    .hero-glow{display:none}
+    .hero-badge{background:transparent;border:0;color:#E4C39D;border-radius:0;padding:0;margin-bottom:25px;font-size:11px;letter-spacing:2px}
+    .hero-badge-dot{background:#D6A46F;animation:none}
+    .hero-title{font-family:var(--font-display);font-weight:600;font-size:clamp(46px,7vw,76px);line-height:.98;letter-spacing:-1.5px;margin-bottom:18px}
+    .hero-title em{color:#E9C99F}
+    .hero-sub{margin:0 0 29px;max-width:530px;color:#E4E8E2;font-size:16px;line-height:1.75;font-weight:400}
+    .hero-pills{justify-content:flex-start;gap:8px}
+    .hero-pill{border-color:rgba(255,255,255,.2);background:rgba(255,255,255,.07);color:#F3F0E9;padding:8px 12px;font-weight:500}
+    .wave-divider{height:38px;background:var(--dark)}
+    .page-body{max-width:1080px;padding:44px 24px 64px}
+    .section-eyebrow{text-align:left;color:#8A5D35;letter-spacing:1.8px;font-size:10px}
+    .section-title{text-align:left;font-family:var(--font-display);font-size:clamp(29px,4vw,43px);font-weight:600;letter-spacing:-.5px;margin-bottom:8px}
+    .section-sub{text-align:left;max-width:710px;color:#52645A;margin-bottom:30px;line-height:1.75}
+    .plans-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:18px;margin-bottom:50px}
+    .plan-card{background:var(--surface);border:1px solid #D9D0C1;border-radius:18px;box-shadow:0 7px 22px rgba(51,47,38,.055);transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease}
+    .plan-card:hover{transform:translateY(-3px);box-shadow:0 14px 30px rgba(51,47,38,.1)}
+    .plan-card.featured,.plan-card.selected{border-color:#B87837;box-shadow:0 8px 26px rgba(112,76,43,.12);transform:none}
+    .plan-card.selected{outline:2px solid #B87837;outline-offset:3px}
+    .plan-selection-note{color:#315D4A;background:#EAEFE8;border-radius:7px;padding:5px 9px;font-size:11px;font-weight:700;letter-spacing:.03em;margin:-7px 0 14px;width:max-content}
+    .plan-accent{height:5px}
+    .plan-featured-badge{background:#315D4A;color:#fff;right:15px;top:16px}
+    .plan-body{padding:26px}
+    .plan-selection-note{margin:0 0 16px}
+    .plan-icon-wrap{border-radius:14px}
+    .plan-name{font-family:var(--font-display);font-size:24px;font-weight:600}
+    .plan-tagline{font-size:13px;color:#52645A}
+    .plan-price{font-family:var(--font-display);font-weight:600;font-size:46px;letter-spacing:-1.1px}
+    .plan-period{font-size:13px;color:#52645A;margin-bottom:15px}
+    .plan-term{background:#F5EEE4;border:1px solid #E4D5C2;color:#4D473C;border-radius:10px;padding:11px 12px;margin-bottom:18px;font-size:12px;line-height:1.55}
+    .plan-sep{background:#E7E0D5;margin-bottom:18px}
+    .plan-features{gap:12px;margin-bottom:23px}
+    .plan-features li{font-size:13px;font-weight:500;align-items:flex-start;line-height:1.45}
+    .feat-icon{width:23px;height:23px;border-radius:50%;margin-top:-2px;background:#EAEFE8!important;color:#315D4A}
+    .feat-icon span{font-family:var(--font-body);font-size:13px!important;font-weight:700}
+    .plan-cta,.submit-btn,.m-btn{background:#315D4A!important;color:#fff!important;border-radius:11px;font-family:var(--font-body);font-size:14px;font-weight:700;min-height:48px}
+    .plan-cta:hover,.submit-btn:hover,.m-btn:hover{filter:brightness(1.12)}
+    .perks-strip{background:#DED8CC;border-color:#DED8CC;border-radius:16px;margin-bottom:32px}
+    .perk-cell{background:var(--surface);padding:22px 18px;text-align:left}
+    .perk-emoji{font-size:0;width:34px;height:34px;margin-bottom:13px;border-radius:11px;background:#EAEFE8;color:#315D4A;display:flex;align-items:center;justify-content:center}
+    .perk-emoji::before{content:"";width:12px;height:12px;border:2px solid currentColor;border-radius:50%;display:block}
+    .perk-cell:nth-child(2) .perk-emoji::before{width:13px;height:10px;border-radius:2px;border-width:2px}
+    .perk-cell:nth-child(3) .perk-emoji::before{content:"";width:13px;height:13px;border:0;background:currentColor;clip-path:polygon(50% 0,62% 35%,100% 38%,72% 62%,81% 100%,50% 78%,19% 100%,28% 62%,0 38%,38% 35%)}
+    .perk-cell:nth-child(4) .perk-emoji::before{width:10px;height:16px;border-radius:3px}
+    .perk-title{font-size:14px;font-weight:700}
+    .perk-text{font-size:12px;line-height:1.6}
+    .trust-bar,.manage-card{background:var(--surface);border:1px solid #DED8CC;border-radius:15px}
+    .trust-bar{margin-bottom:34px}
+    .trust-item{color:#52645A}
+    .trust-item:first-child{color:#315D4A!important}
+    .manage-signin button,.m-link{color:#315D4A}
+    .manage-card{padding:24px;margin-bottom:36px}
+    .manage-card h3,.success-title{font-family:var(--font-display);font-size:25px;font-weight:600}
+    .manage-card h4{color:#52645A}
+    .m-btn.ghost{background:#EAEFE8!important;color:#26332D!important}
+    .m-btn.danger{background:#A83B35!important}
+    .freq-toggle{background:#E8E1D6;border-radius:11px;margin:-8px 0 24px;padding:4px}
+    .freq-btn{font-family:var(--font-body);color:#42564A;border-radius:8px;padding:10px 18px}
+    .freq-btn.active,.tab.active{background:var(--surface);color:#26332D;box-shadow:0 1px 4px rgba(48,42,32,.12)}
+    .modal{background:var(--surface);border-radius:18px}
+    .modal-head{background:#263A31;padding:26px 28px 22px}
+    .modal-title{font-family:var(--font-display);font-size:27px;font-weight:600}
+    .modal-sub{color:#E0E6DF}
+    .modal-body{padding:23px 28px}
+    .tabs{background:#EAE5DB}
+    .tab{font-family:var(--font-body);color:#52645A}
+    .fld label{font-family:var(--font-body);color:#48594F;letter-spacing:.5px}
+    .fld input{font-family:var(--font-body);background:#FFFEFB;border-color:#D6D0C6;border-radius:9px;min-height:46px}
+    .fld input:focus{border-color:#315D4A;box-shadow:0 0 0 3px rgba(49,93,74,.16)}
+    .form-note{color:#58665D}
+    .form-err{color:#8B2724;background:#FCEDEC;border-color:#D89893}
+    .cancel-btn{font-family:var(--font-body);border-radius:10px}
+    .success-ring{box-shadow:none}
+    .success-pill{background:#EAEFE8!important;color:#315D4A!important}
+    .page-foot{color:#5E6A61}
+    .page-foot a{color:#315D4A}
+    .loading-wrap{color:#52645A}
+    .spinner{border-color:#DED8CC;border-top-color:#315D4A}
+    #verifyBanner{font-family:var(--font-body)!important;background:#F8EEDC!important;border-color:#D9B796!important;color:#59442B!important}
+    #verifyResendBtn{background:#315D4A!important}
+    #verifyBanner strong{font-size:14px}
+    @media(max-width:600px){
+      .hero{min-height:350px;padding:42px 20px 46px}
+      .hero::after{width:190px;height:190px;right:-65px;top:24%}
+      .hero-title{font-size:clamp(43px,13vw,60px)}
+      .hero-sub{font-size:15px}
+      .hero-pills{gap:7px}
+      .hero-pill{font-size:11px}
+      .page-body{padding:32px 17px 48px}
+      .section-title{font-size:32px}
+      .freq-toggle{width:100%;display:grid;grid-template-columns:1fr 1fr}
+      .plan-body{padding:23px}
+      .plan-card.featured{transform:none}
+      .perks-strip{grid-template-columns:1fr 1fr}
+      .perk-cell{padding:17px 14px}
+      .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
+      .modal-body,.modal-footer{padding-left:19px;padding-right:19px}
+    }
+    @media(prefers-reduced-motion:reduce){
+      *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+      .fadein{opacity:1;transform:none}
+    }
   </style>
 </head>
 <body>
 
 <!-- ─── Email verification banner (shown to any logged-in unverified customer) ── -->
 <div id="verifyBanner" style="display:none;background:#FFFBEB;border-bottom:1.5px solid #FCD34D;padding:14px 18px;text-align:center;font-size:13px;color:#92400E;line-height:1.5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif">
-  <strong>📧 Confirm your email.</strong>
+  <strong>Confirm your email.</strong>
   <span id="verifyBannerMsg">We sent a verification link — please click it so you can recover access if you ever lose your password.</span>
   <button id="verifyResendBtn" type="button" onclick="resendVerifyEmail()"
     style="margin-left:10px;background:#92400E;color:#fff;border:none;padding:6px 14px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">
@@ -316,20 +435,20 @@
     <span class="hero-badge-dot"></span>
     The 147 Snooker Club · Bradford
   </div>
-  <h1 class="hero-title">Become a<br><em>Member</em></h1>
-  <p class="hero-sub">Priority tables. Food & drink savings. Loyalty rewards. Everything you need to play more and pay less.</p>
+  <h1 class="hero-title">More than<br><em>a good frame.</em></h1>
+  <p class="hero-sub">Make The 147 your regular place to play. Membership brings you closer to the tables, the people and the little extras that make a night out.</p>
   <div class="hero-pills">
-    <span class="hero-pill">
+      <span class="hero-pill">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-      Secure Payments via Square
+      Secure payment with Square
     </span>
     <span class="hero-pill">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-      Monthly or Annual
+      Monthly or annual
     </span>
     <span class="hero-pill">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-      Works in The 147 App
+      Your membership, in the app
     </span>
   </div>
 </div>
@@ -349,12 +468,12 @@
 
   <!-- Plans section -->
   <div class="fadein" id="plansSection">
-    <p class="section-eyebrow">Membership Plans</p>
-    <h2 class="section-title">Choose the Right Plan for You</h2>
-    <p class="section-sub">Platinum is £6.99 monthly or £65 annually and includes access to The 147 app, loyalty points, and member benefits.<br>Platinum has a 12-month minimum term. Monthly billing continues monthly afterwards, with cancellation allowed.</p>
-    <div class="freq-toggle" role="tablist" aria-label="Billing frequency">
-      <button type="button" class="freq-btn active" id="freqMonthly" onclick="setFreq('monthly')">Monthly</button>
-      <button type="button" class="freq-btn" id="freqAnnual" onclick="setFreq('annual')">Annual</button>
+        <p class="section-eyebrow">A place at the table</p>
+      <h2 class="section-title">Find your kind of membership</h2>
+      <p class="section-sub">Choose the plan that suits how you play. You can look through every option before signing in or creating an account.</p>
+    <div class="freq-toggle" role="group" aria-label="Billing frequency">
+      <button type="button" class="freq-btn active" id="freqMonthly" aria-pressed="true" onclick="setFreq('monthly')">Monthly</button>
+      <button type="button" class="freq-btn" id="freqAnnual" aria-pressed="false" onclick="setFreq('annual')">Annual</button>
     </div>
 
     <div id="plansGrid" class="plans-grid">
@@ -365,22 +484,22 @@
   <!-- Perks strip -->
   <div class="fadein perks-strip" id="perksStrip">
     <div class="perk-cell">
-      <span class="perk-emoji">🎱</span>
+      <span class="perk-emoji" aria-hidden="true"></span>
       <div class="perk-title">Priority Tables</div>
       <div class="perk-text">Get first pick at peak times — no waiting around</div>
     </div>
     <div class="perk-cell">
-      <span class="perk-emoji">🍽️</span>
+      <span class="perk-emoji" aria-hidden="true"></span>
       <div class="perk-title">Food &amp; Drink Savings</div>
       <div class="perk-text" id="perkDiscountText">Save on every food &amp; drink order, every visit</div>
     </div>
     <div class="perk-cell">
-      <span class="perk-emoji">⭐</span>
+      <span class="perk-emoji" aria-hidden="true"></span>
       <div class="perk-title">Loyalty Points</div>
       <div class="perk-text">Earn and redeem points for free games &amp; extras</div>
     </div>
     <div class="perk-cell">
-      <span class="perk-emoji">📱</span>
+      <span class="perk-emoji" aria-hidden="true"></span>
       <div class="perk-title">App Access</div>
       <div class="perk-text">Book tables, track benefits, and manage everything in the app</div>
     </div>
@@ -414,12 +533,12 @@
 
 <!-- ─── JOIN MODAL ─────────────────────────────── -->
 <div class="backdrop" id="joinModal">
-  <div class="modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
 
     <!-- Modal header -->
     <div class="modal-head">
       <div class="modal-plan-pill" id="modalPlanPill"></div>
-      <div class="modal-title">Join The 147</div>
+      <div class="modal-title" id="modalTitle">Join The 147</div>
       <div class="modal-sub" id="modalHeadSub">Create an account or sign in to continue</div>
     </div>
 
@@ -431,7 +550,7 @@
       <h3 class="success-title">You're in!</h3>
       <p class="success-sub">Your account is ready. Taking you to Square to complete your payment — your membership activates automatically once done.</p>
       <div id="verifyNotice" style="display:none;background:#FFFBEB;border:1.5px solid #FCD34D;border-radius:12px;padding:12px 14px;margin:0 0 18px;text-align:left;font-size:13px;color:#92400E;line-height:1.5">
-        <strong>📧 Check your inbox.</strong> We've sent a verification link to confirm your email — please click it so you can recover your bookings if you ever lose access. (You don't need to do this before paying.)
+        <strong>Check your inbox.</strong> We've sent a verification link to confirm your email — please click it so you can recover your bookings if you ever lose access. (You don't need to do this before paying.)
       </div>
       <div class="success-pill" id="successPill"></div>
       <div class="redirect-row">
@@ -458,12 +577,12 @@
         <!-- Register -->
         <div class="tab-panel active" id="panelReg">
           <div class="form-row">
-            <div class="fld"><label>First Name</label><input type="text" id="rFirst" placeholder="John" autocomplete="given-name"></div>
-            <div class="fld"><label>Last Name</label><input type="text" id="rLast" placeholder="Smith" autocomplete="family-name"></div>
+            <div class="fld"><label for="rFirst">First Name</label><input type="text" id="rFirst" placeholder="First name" autocomplete="given-name"></div>
+            <div class="fld"><label for="rLast">Last Name</label><input type="text" id="rLast" placeholder="Last name" autocomplete="family-name"></div>
           </div>
-          <div class="fld"><label>Email</label><input type="email" id="rEmail" placeholder="john@example.com" autocomplete="email"></div>
-          <div class="fld"><label>Phone</label><input type="tel" id="rPhone" placeholder="07xxx xxxxxx" autocomplete="tel"></div>
-          <div class="fld"><label>Password</label><input type="password" id="rPass" placeholder="Min. 6 characters" autocomplete="new-password"></div>
+          <div class="fld"><label for="rEmail">Email</label><input type="email" id="rEmail" placeholder="name@example.com" autocomplete="email"></div>
+          <div class="fld"><label for="rPhone">Phone</label><input type="tel" id="rPhone" placeholder="07xxx xxxxxx" autocomplete="tel"></div>
+          <div class="fld"><label for="rPass">Password</label><input type="password" id="rPass" placeholder="Min. 6 characters" autocomplete="new-password"></div>
           <p class="form-note" style="margin-bottom:14px">Your account works across The 147 app and this website.</p>
           <label for="rConsent" id="rConsentRow" style="display:flex;align-items:flex-start;gap:10px;margin:6px 0 14px;cursor:pointer;user-select:none">
             <input type="checkbox" id="rConsent" style="margin-top:3px;width:18px;height:18px;flex-shrink:0;accent-color:#0047AB;cursor:pointer">
@@ -485,8 +604,8 @@
 
         <!-- Login -->
         <div class="tab-panel" id="panelLogin">
-          <div class="fld"><label>Email</label><input type="email" id="lEmail" placeholder="john@example.com" autocomplete="email"></div>
-          <div class="fld"><label>Password</label><input type="password" id="lPass" placeholder="Your password" autocomplete="current-password"></div>
+          <div class="fld"><label for="lEmail">Email</label><input type="email" id="lEmail" placeholder="name@example.com" autocomplete="email"></div>
+          <div class="fld"><label for="lPass">Password</label><input type="password" id="lPass" placeholder="Your password" autocomplete="current-password"></div>
           <label id="joinTermsRow" style="display:flex;align-items:flex-start;gap:10px;margin:2px 0 14px;cursor:pointer">
             <input type="checkbox" id="joinTerms" style="margin-top:3px;width:18px;height:18px;flex-shrink:0;accent-color:#0047AB">
             <span style="font-size:12.5px;color:#475569;line-height:1.5">I agree to the <a href="/terms" target="_blank" rel="noopener" style="color:#0047AB;font-weight:600">Terms &amp; Conditions</a> and recurring billing. <span id="joinTermsCommit"></span></span>
@@ -505,7 +624,7 @@
         <!-- Forgot password -->
         <div class="tab-panel" id="panelForgot" style="display:none;">
           <p style="color:#4B5A72;font-size:13px;line-height:1.5;margin-bottom:14px;">Enter the email on your account and we'll send you a reset link.</p>
-          <div class="fld"><label>Email</label><input type="email" id="fEmail" placeholder="john@example.com" autocomplete="email"></div>
+          <div class="fld"><label for="fEmail">Email</label><input type="email" id="fEmail" placeholder="name@example.com" autocomplete="email"></div>
           <div class="form-err" id="forgotErr"></div>
           <div class="form-msg" id="forgotMsg" style="display:none;background:#DCFCE7;border:1px solid #86EFAC;color:#166534;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.45;margin-bottom:10px;"></div>
           <button class="submit-btn" id="forgotBtn" style="background:#0047AB;color:#fff" onclick="doForgot()">
@@ -536,6 +655,8 @@
   let activeTab = 'reg';
   let allPlans = [];
   let billingFreq = 'monthly';
+  let requestedPlanId = '';
+  try { requestedPlanId = new URLSearchParams(window.location.search).get('planId') || ''; } catch (_) {}
   let manageOnly = false;
   let hasMembership = false;
   let billing = null;
@@ -551,12 +672,17 @@
   function isCommitmentPlan(p){
     if(typeof p.minimumTermMonths==='number'&&p.minimumTermMonths>0)return true;
     const t=String(p.tier||'').trim().toLowerCase(), n=String(p.name||'').trim().toLowerCase();
-    return t==='black'||t==='platinum'||n==='black'||n==='platinum';
+    return /\b(black|platinum)\b/.test(t)||/\b(black|platinum)\b/.test(n);
   }
-  function commitmentCopy(p){
-    return isCommitmentPlan(p)
-      ? '12-month minimum term. Monthly then continues rolling after the term; annual renews automatically.'
-      : 'No minimum term. Renews automatically; cancel any time to stop at your next renewal.';
+  function commitmentCopy(p,f){
+    if(isCommitmentPlan(p)){
+      return f==='annual'
+        ? '12-month minimum term. Billed annually and renews automatically each year until cancelled.'
+        : '12-month minimum term. Billed monthly; after the first year it continues month to month until cancelled.';
+    }
+    return f==='annual'
+      ? 'No minimum term. Renews automatically each year until cancelled.'
+      : 'No minimum term. Renews monthly until cancelled.';
   }
   function openCheckout(url){
     if(inFrame){
@@ -900,13 +1026,13 @@
        /api/membership/plans (built by shared/membership-benefits.ts) so
        wording stays in sync with the customer app and staff dashboard.
        Icons are mapped from the stable `key` (not text matching). ── */
-  const BENEFIT_ICONS={hours:'🕐',discount:'🍽️',priority:'⚡',guests:'👥',loyalty:'⭐',app:'📱'};
+  const BENEFIT_ICONS={hours:'◷',discount:'−',priority:'↗',guests:'+',loyalty:'✦',app:'▣'};
   function buildFeatures(p){
     const list=Array.isArray(p.benefitsDetailed)?p.benefitsDetailed:[];
     return list.map(b=>{
       let icon=BENEFIT_ICONS[b.key]||'✓';
       // Single special case: unlimited (no hours) gets the infinity glyph
-      if(b.key==='hours'&&p.snookerUnlimited)icon='♾️';
+      if(b.key==='hours'&&p.snookerUnlimited)icon='∞';
       return {icon,text:b.text};
     });
   }
@@ -926,7 +1052,7 @@
     return icons[tier]||icons.rack;
   }
 
-  function renderPlan(p, isPopular){
+  function renderPlan(p, isPopular, isSelected){
     const color = safeColor(p.color)||'#0047AB';
     const bg    = hexAlpha(color,.1);
     const icon  = tierIcon(p.tier||'rack',color);
@@ -936,7 +1062,7 @@
     const per = annual?'yr':'mo';
 
     return `
-      <div class="plan-card${isPopular?' featured':''}">
+      <div class="plan-card${isPopular?' featured':''}${isSelected?' selected':''}"${isSelected?' aria-current="true"':''}>
         <div class="plan-accent" style="background:${color}"></div>
         ${isPopular?'<div class="plan-featured-badge">Most Popular</div>':''}
         <div class="plan-body">
@@ -947,23 +1073,24 @@
               <div class="plan-tagline">${esc(p.description||'')}</div>
             </div>
           </div>
+          ${isSelected?'<div class="plan-selection-note" role="status">Selected from your link</div>':''}
           <div class="plan-price-row">
             <div class="plan-price" style="color:${color}">${price}</div>
           </div>
           <div class="plan-period">${annual?'per year &nbsp;·&nbsp; billed annually, auto-renews':'per month &nbsp;·&nbsp; billed monthly'}</div>
-          <div class="plan-term">${esc(commitmentCopy(p))}</div>
+          <div class="plan-term">${esc(commitmentCopy(p,billingFreq))}</div>
           <div class="plan-sep"></div>
           <ul class="plan-features">
             ${feats.map(f=>`
               <li>
-                <div class="feat-icon" style="background:${bg}"><span style="font-size:12px">${f.icon}</span></div>
+                <div class="feat-icon" style="background:${bg}"><span style="font-size:12px">${esc(f.icon)}</span></div>
                 ${esc(f.text)}
               </li>`).join('')}
           </ul>
           <button class="plan-cta" style="background:${color};color:#fff"
             onclick="${hasMembership?"document.getElementById('manageSection').scrollIntoView({behavior:'smooth'})":'openModal('+p.id+')'}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
-            ${hasMembership?'Manage your membership above':'Join '+esc(p.name)+' — '+price+'/'+per}
+            ${hasMembership?'Manage your membership above':(isSelected?'Start with '+esc(p.name):'Join '+esc(p.name))+' — '+price+'/'+per}
           </button>
         </div>
       </div>`;
@@ -971,15 +1098,18 @@
 
   function renderPlans(){
     const list=billingFreq==='annual'?allPlans.filter(p=>p.priceAnnual!=null):allPlans;
-    const popIdx=list.length===3?1:0;
+    // Don't call a sole available plan "Most Popular" when customers have no comparison.
+    const popIdx=list.length===1?-1:(list.length===3?1:0);
     document.getElementById('plansGrid').innerHTML=list.length
-      ? list.map((p,i)=>renderPlan(p,i===popIdx)).join('')
+      ? list.map((p,i)=>renderPlan(p,i===popIdx,String(p.id)===requestedPlanId)).join('')
       : '<div class="loading-wrap">No annual plans are available right now.</div>';
   }
   function setFreq(f){
     billingFreq=f;
     document.getElementById('freqMonthly').classList.toggle('active',f==='monthly');
     document.getElementById('freqAnnual').classList.toggle('active',f==='annual');
+    document.getElementById('freqMonthly').setAttribute('aria-pressed',f==='monthly'?'true':'false');
+    document.getElementById('freqAnnual').setAttribute('aria-pressed',f==='annual'?'true':'false');
     if(allPlans.length)renderPlans();
   }
   window.setFreq=setFreq;
@@ -994,6 +1124,9 @@
       // or just the one explicitly marked. We use the middle plan if 3 plans.
       const sorted=[...plans].sort((a,b)=>(a.sortOrder??0)-(b.sortOrder??0));
       allPlans=sorted;
+      // The staff-shared planId is a hint for visual preselection only. It is
+      // honoured only when the public plans endpoint returns that active plan.
+      if(requestedPlanId&&!allPlans.some(p=>String(p.id)===requestedPlanId))requestedPlanId='';
       renderPlans();
       // Drive the perks-strip's discount line from the actual plans so the
       // marketing copy never drifts from what plans really offer.
@@ -1023,8 +1156,12 @@
     document.getElementById('joinTermsRow').style.display='flex';
     document.getElementById('joinTerms').checked=false;
     document.getElementById('joinTermsCommit').textContent=isCommitmentPlan(p)
-      ? 'I understand '+name+' has a 12-month minimum term and cannot be cancelled before it ends.'
-      : 'I understand it renews automatically until I cancel, and cancellation takes effect at my next renewal.';
+      ? (annual
+        ? 'I understand this has a 12-month minimum term, bills annually and renews automatically each year until cancelled.'
+        : 'I understand this has a 12-month minimum term, bills monthly and continues month to month afterwards until cancelled.')
+      : (annual
+        ? 'I understand this renews automatically each year until cancelled.'
+        : 'I understand this renews monthly until cancelled.');
     document.getElementById('tabReg').style.display='';
     document.querySelector('#joinModal .modal-title').textContent='Join The 147';
     document.getElementById('modalHeadSub').textContent='Create an account or sign in to continue';
