@@ -471,7 +471,52 @@
     .avail-modal-box{background:var(--surface);border-radius:14px;padding:28px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
     .badge-sold-out{display:inline-block;background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:1px 6px;border-radius:4px;border:1px solid #fcd34d;margin-left:6px}
     .badge-hidden{display:inline-block;background:#fee2e2;color:#991b1b;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:1px 6px;border-radius:4px;border:1px solid #fca5a5;margin-left:6px}
-  </style>
+      .md-hero{display:grid;grid-template-columns:1fr auto;gap:18px;align-items:start;background:var(--bg2);border:1px solid var(--border);border-left:4px solid var(--blue);border-radius:12px;padding:18px 20px;margin-bottom:16px}
+    .md-h{font-size:16px;font-weight:800;color:var(--text);margin:0 0 8px}
+    .md-paths{margin:0;padding-left:18px;font-size:12.5px;color:var(--text-2);line-height:1.55;display:grid;gap:4px}
+    .md-paths strong{color:var(--text);margin-right:4px}
+    .md-hero-cta{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+    .md-s{font-size:11.5px;color:var(--text-2);font-weight:500}
+    .md-stats{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--border);border-radius:12px;margin-bottom:22px;overflow:hidden}
+    .md-stats>div{padding:12px 14px;border-right:1px solid var(--border)}.md-stats>div:last-child{border-right:0}
+    .md-stats b{display:block;font-size:20px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums}
+    .md-stats span{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2)}
+    .md-toolbar{display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-bottom:10px}
+    .md-search input{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg2);color:var(--text);font-size:14px}
+    .md-toolbar .form-input{width:100%}
+    .md-chips{display:flex;gap:6px;flex-wrap:wrap}
+    .md-chips .member-tab{background:transparent;border:1px solid var(--border);color:var(--text-2);padding:6px 12px;border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+    .md-chips .member-tab span{background:var(--bg2);padding:1px 7px;border-radius:999px;font-size:11px}
+    .md-chips .member-tab.on{background:var(--blue);border-color:var(--blue);color:#fff}.md-chips .member-tab.on span{background:rgba(255,255,255,.22);color:#fff}
+    .md-chips .member-tab:focus-visible,.md-fold summary:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+    .md-list{list-style:none;margin:0;padding:0;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+    .md-row{display:grid;grid-template-columns:minmax(200px,2fr) 1.2fr 1.3fr 1.1fr 1fr auto;gap:12px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--border);background:var(--card,transparent)}
+    .md-row:last-child{border-bottom:0}
+    .md-who{display:flex;gap:10px;align-items:center;min-width:0}
+    .md-av{width:34px;height:34px;border-radius:50%;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0}
+    .md-name{font-weight:700;color:var(--text);font-size:14px}
+    .md-contact{font-size:12px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .md-plan{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;color:var(--pc);border:1px solid var(--pc)}
+    .md-k{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text-2)}
+    .md-v{font-size:13px;font-weight:600;color:var(--text)}
+    .md-act{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+    .md-flags{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end}.md-flags span{font-size:10.5px;font-weight:700;color:var(--amber);background:rgba(217,119,6,.1);padding:2px 6px;border-radius:4px}
+    .md-fold{border:1px solid var(--border);border-radius:12px;margin-top:14px}
+    .md-fold>summary{cursor:pointer;padding:14px 16px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-weight:800;color:var(--text);font-size:14px}
+    .md-fold-body{padding:0 16px 16px}
+    .md-plans{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+    .md-plan-card{border:1px solid var(--border);border-top:3px solid var(--pc);border-radius:10px;padding:12px 14px}
+    .md-price{font-size:18px;font-weight:800;color:var(--text);margin:6px 0 2px}.md-price small{font-size:11px;color:var(--text-2)}
+    .md-tech{font-size:11px;color:var(--text-2);margin-top:6px}.md-tech code{font-size:10px}
+    .md-skel{display:grid;gap:10px}.md-skel div{height:54px;border-radius:10px;background:var(--bg2);animation:mdPulse 1.2s ease-in-out infinite}
+    @keyframes mdPulse{50%{opacity:.5}}
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+    @media(max-width:900px){.md-row{grid-template-columns:1fr 1fr}.md-who{grid-column:1/-1}.md-act{grid-column:1/-1;flex-direction:row;justify-content:space-between;align-items:center}}
+    @media(max-width:640px){.md-hero{grid-template-columns:1fr}.md-hero-cta{align-items:stretch}.md-stats{grid-template-columns:repeat(2,1fr)}.md-stats>div{border-bottom:1px solid var(--border)}.md-toolbar{grid-template-columns:1fr}}
+    /* Keep wrapped mobile header controls inside their own layout area.
+       This must follow the desktop topbar rule, which sets a fixed height. */
+    @media(max-width:767px){.topbar{height:auto;min-height:52px;flex-wrap:wrap;padding:8px 14px;gap:8px 10px}}
+</style>
 </head>
 <body>
 
@@ -3067,7 +3112,7 @@
       <div class="modal-err" id="amErr"></div>
       <input type="hidden" id="amCustomerId">
 
-      <div class="form-group">
+      <div class="form-group" id="amCustomerGroup">
         <label class="form-label">Customer</label>
         <div class="customer-search-wrap">
           <input class="form-input" type="text" id="amCustomerSearch" placeholder="Search by name or email…" autocomplete="off">
@@ -3084,23 +3129,24 @@
 
       <div class="form-group">
         <label class="form-label">Payment Method</label>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="amPaymentGrid">
-          <label class="am-pay-option" data-val="paylink">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="amPaymentGrid" role="radiogroup" aria-label="Sign-up type">
+          <label class="am-pay-option" data-val="paylink" tabindex="0" role="radio" aria-checked="false">
             <input type="radio" name="amPayMethod" value="paylink" style="display:none">
-            <div class="am-pay-card">🔗 Sign-up Link</div>
+            <div class="am-pay-card"><strong>Paid: customer checkout</strong><br><span style="font-size:11px;font-weight:500">Customer signs in, picks monthly or annual and pays</span></div>
           </label>
-          <label class="am-pay-option" data-val="complimentary" id="amPayComp" style="display:none">
+          <label class="am-pay-option" data-val="complimentary" tabindex="0" role="radio" aria-checked="false" id="amPayComp" style="display:none">
             <input type="radio" name="amPayMethod" value="complimentary" style="display:none">
-            <div class="am-pay-card">🎁 Complimentary</div>
+            <div class="am-pay-card"><strong>Complimentary</strong><br><span style="font-size:11px;font-weight:500">Free access, never charged</span></div>
           </label>
         </div>
         <div id="amPaylinkHint" style="display:none;margin-top:8px;font-size:12px;color:var(--text-2);line-height:1.5">
           Share the central sign-up page. The customer signs in, chooses monthly or annual billing, and accepts their minimum term before paying through Square. This does not create a pending membership or send an email.
         </div>
+        <div style="margin-top:8px;font-size:12px;color:var(--text-2);line-height:1.5;background:var(--bg2);border-radius:8px;padding:8px 10px">Paying at the till? Ring up the £65 Platinum annual item on Square POS. It grants 12 months prepaid with no auto renewal and appears here after the till purchase is imported. Do not also create a membership here.</div>
       </div>
 
       <div id="amLinkResult" style="display:none;background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:16px;text-align:center;margin-bottom:4px">
-        <div style="font-size:13px;font-weight:700;color:#166534;margin-bottom:12px">✅ Member added — share this payment link</div>
+        <div style="font-size:13px;font-weight:700;color:#166534;margin-bottom:12px">Member added. Share this payment link</div>
         <img id="amLinkQr" src="" alt="QR Code" style="width:160px;height:160px;border-radius:8px;border:1px solid #BBF7D0;margin-bottom:12px">
         <div style="display:flex;gap:8px;align-items:center">
           <input class="form-input" id="amLinkUrl" readonly style="font-size:12px;flex:1;cursor:pointer" onclick="this.select()">
@@ -10230,23 +10276,117 @@
     finally{const b=el('posImportBtn');if(b){b.disabled=false;b.textContent='Import order'}}
   };
 
+  /* MEMBERSHIP-DIRECTORY-HELPERS:START (pure; exercised by tests/membership-directory.test.mjs) */
+  function mdSource(sub){
+    const src=String((sub&&sub.source)||'').toLowerCase();
+    const recurring=!!(sub.squareSubscriptionId||sub.managedInSquare);
+    const freq=sub.billingFrequency?String(sub.billingFrequency).toLowerCase()+' ':'';
+    if(src==='square_group_sync')return {key:'group',label:'Square group',hint:'Linked from Square'};
+    if(src==='square_pos'){
+      if(sub.squareSubscriptionId)return {key:'till',label:'Till prepaid, then card',hint:'Prepaid year, then '+freq+'auto renewal'+(sub.recurringStartDate?' from '+mdDate(sub.recurringStartDate):'')};
+      return {key:'till',label:'Till prepaid',hint:'12 months prepaid, no auto renewal'};
+    }
+    if(src==='complimentary')return {key:'comp',label:'Complimentary',hint:'No charge'};
+    if(src.startsWith('wix')){
+      if(recurring)return {key:'card',label:'Card, central billing',hint:'Migrated from Wix'};
+      return {key:'wix',label:'Wix (legacy)',hint:sub.migrationCompletedAt?'Migration completed, not yet billing centrally':'Needs reviewed migration'};
+    }
+    if(recurring||/^(?:square|app)(?:_|$)/.test(src))return {key:'card',label:'Card, central billing',hint:freq?freq+'auto renewal':'Auto renewal'};
+    return {key:'manual',label:'Manual',hint:'Staff managed'};
+  }
+  function mdPeriod(sub,src){
+    const st=sub.status;
+    if(sub.cancellationDate)return {label:'Access ends',date:sub.cancellationDate};
+    if(st==='cancelled'||st==='paused'||st==='frozen')return {label:'Recorded period end',date:sub.currentPeriodEnd};
+    if(mdStatusGroup(st)==='attention')return {label:'Billing period ends',date:sub.currentPeriodEnd};
+    if(src.key==='till')return {label:'Paid through',date:sub.prepaidUntilDate||sub.currentPeriodEnd};
+    if(src.key==='comp')return {label:'Access until',date:sub.currentPeriodEnd};
+    if(st==='active'&&src.key==='card')return {label:'Next renewal',date:sub.currentPeriodEnd};
+    return {label:'Period ends',date:sub.currentPeriodEnd};
+  }
+  function mdStatusGroup(st){return (st==='pending'||st==='pending_payment'||st==='past_due'||st==='frozen')?'attention':(st||'other');}
+  function mdDate(v){if(!v)return null;const d=new Date(v);return isNaN(d)?null:d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'Europe/London'});}
+  function mdFilter(subs,f){
+    const q=String(f.q||'').trim().toLowerCase();
+    const qd=q.replace(/[^0-9]/g,'');
+    return subs.filter(s=>{
+      if(f.status&&f.status!=='all'&&mdStatusGroup(s.status)!==f.status)return false;
+      if(f.plan&&f.plan!=='all'&&String(s.planId)!==String(f.plan))return false;
+      if(f.source&&f.source!=='all'&&mdSource(s).key!==f.source)return false;
+      if(!q)return true;
+      const c=s.customer||{};
+      if(String(c.name||'').toLowerCase().includes(q)||String(c.email||'').toLowerCase().includes(q))return true;
+      return qd.length>=3&&String(c.phone||'').replace(/[^0-9]/g,'').includes(qd);
+    });
+  }
+  function mdCounts(subs){
+    const c={all:subs.length,active:0,attention:0,paused:0,cancelled:0};
+    subs.forEach(s=>{const g=mdStatusGroup(s.status);if(c[g]!=null)c[g]++;});
+    return c;
+  }
+  function mdRowHtml(sub){
+    const cust=sub.customer||null,plan=sub.plan||null;
+    const name=cust&&cust.name?cust.name:'Unknown customer';
+    const initials=name.split(' ').filter(Boolean).map(w=>w[0]).slice(0,2).join('').toUpperCase()||'?';
+    const src=mdSource(sub);
+    const statusLabel=String(STATUS_LABELS[sub.status]||sub.status||'Unknown').replace(/^[^A-Za-z]+/,'');
+    const per=mdPeriod(sub,src);
+    const paid=mdDate(per.date);
+    const paidLbl=per.label;
+    const term=sub.commitmentEndDate?'Until '+mdDate(sub.commitmentEndDate):'Not recorded';
+    const flags=[];
+    if(sub.cancellationDate)flags.push('Cancels '+mdDate(sub.cancellationDate));
+    if(sub.pendingPlanId||sub.pendingEffectiveDate)flags.push('Change scheduled'+(sub.pendingEffectiveDate?' '+mdDate(sub.pendingEffectiveDate):''));
+    if(sub.failedPaymentAttempts>0)flags.push(sub.failedPaymentAttempts+' failed payment'+(sub.failedPaymentAttempts===1?'':'s'));
+    return `<li class="md-row" data-testid="row-member-${sub.id}">
+      <div class="md-who">
+        <span class="md-av" style="background:${esc(plan&&plan.color||'#6B7280')}" aria-hidden="true">${esc(initials)}</span>
+        <div style="min-width:0">
+          <div class="md-name">${esc(name)}</div>
+          <div class="md-contact">${esc(cust&&cust.email||'No email')}${cust&&cust.phone?' · '+esc(cust.phone):''}</div>
+        </div>
+      </div>
+      <div class="md-cell"><span class="pill ${STATUS_COLORS[sub.status]||'pill-gray'}">${esc(statusLabel)}</span>${plan?` <span class="md-plan" style="--pc:${esc(plan.color||'#6B7280')}">${esc(plan.name)}</span>`:''}</div>
+      <div class="md-cell"><div class="md-k">Payment</div><div class="md-v">${esc(src.label)}</div><div class="md-s">${esc(src.hint)}</div></div>
+      <div class="md-cell"><div class="md-k">${paidLbl}</div><div class="md-v">${esc(paid||'Not recorded')}</div>${src.key==='till'&&sub.firstPaidAt?`<div class="md-s">Bought ${esc(mdDate(sub.firstPaidAt))}</div>`:''}</div>
+      <div class="md-cell"><div class="md-k">Minimum term</div><div class="md-v">${esc(term)}</div></div>
+      <div class="md-act">
+        ${flags.length?`<div class="md-flags">${flags.map(f=>`<span>${esc(f)}</span>`).join('')}</div>`:''}
+        <button class="btn btn-primary btn-sm" data-testid="button-manage-${sub.id}" onclick="window.openManageSubModal(${sub.id})" aria-label="Manage membership for ${esc(name)}">Manage</button>
+      </div>
+    </li>`;
+  }
+  /* MEMBERSHIP-DIRECTORY-HELPERS:END */
+
+  async function mdFetchJson(path,expect){
+    const r=await api(path);
+    let d=null;try{d=await r.json();}catch(_){d=null;}
+    if(!r.ok)throw new Error((d&&d.message)||('Request failed ('+r.status+') for '+path));
+    if(expect==='array'&&!Array.isArray(d))throw new Error('Unexpected response from '+path);
+    if(expect==='object'&&(!d||typeof d!=='object'||Array.isArray(d)))throw new Error('Unexpected response from '+path);
+    return d;
+  }
+  let mdFilters={q:'',status:'active',plan:'all',source:'all'};
+
   async function loadMemberships(){
-    el('membershipsContent').innerHTML='<div class="loading-state"><div class="spinner"></div>Loading memberships…</div>';
+    const box=el('membershipsContent');
+    box.innerHTML='<div class="md-skel" aria-busy="true" aria-label="Loading memberships"><div></div><div></div><div></div><div></div></div>';
+    const isManager=state.role==='manager'||state.role==='owner';
     try{
-      const [statsR,plansR,subsR]=await Promise.all([
-        api('/api/staff/membership/stats'),
-        api('/api/staff/membership/plans'),
-        api('/api/staff/membership/subscriptions'),
+      const [stats,plans,subs]=await Promise.all([
+        isManager?mdFetchJson('/api/staff/membership/stats','object'):Promise.resolve(null),
+        mdFetchJson('/api/staff/membership/plans','array'),
+        mdFetchJson('/api/staff/membership/subscriptions','array'),
       ]);
-      const stats=await statsR.json();
-      const plans=await plansR.json();
-      const subs=await subsR.json();
       membershipsData={plans,subs};
-      renderMemberships(stats,plans,subs);
+      renderMemberships(stats||{},plans,subs);
       if(state.role==='owner')loadWixMigration();
-      if(state.role==='manager'||state.role==='owner'){loadPosPurchases();loadLeftoverOneTime();loadOnboardingGap();loadLoyaltyBackfill();loadMembershipAuditLogPanel();loadPwResetHistoryPanel();}
+      if(isManager){loadPosPurchases();loadLeftoverOneTime();loadOnboardingGap();loadLoyaltyBackfill();loadMembershipAuditLogPanel();loadPwResetHistoryPanel();}
     }catch(e){
-      if(e.message!=='Session expired')el('membershipsContent').innerHTML='<div class="empty-state"><div class="empty-title">Failed to load memberships</div></div>';
+      if(e.message==='Session expired')return;
+      membershipsData={plans:[],subs:[]};
+      box.innerHTML='<div class="empty-state" role="alert"><div class="empty-title">Memberships could not be loaded</div><div class="empty-desc">'+esc(e.message||'Unknown error')+'. Nothing shown here is stale data.</div><button class="btn btn-primary btn-sm" style="margin-top:12px" id="mdRetry">Retry</button></div>';
+      el('mdRetry').onclick=loadMemberships;
     }
   }
 
@@ -10350,222 +10490,130 @@
 
   function renderMemberships(stats,plans,subs){
     const isManager=state.role==='manager'||state.role==='owner';
-    const mrr=(stats.mrr/100).toFixed(2);
-    const needsSeed=plans.length===0;
     if(!isManager){renderMembershipsStaff(plans,subs);return;}
-    let html=`
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px">
-        <div class="settings-section" style="margin:0;padding:18px 20px;text-align:center">
-          <div style="font-size:26px;font-weight:800;color:var(--green)">£${mrr}</div>
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-top:4px" title="Estimate at current plan prices, not payments collected. Complimentary memberships excluded.">Estimated monthly plan value</div>
-        </div>
-        <div class="settings-section" style="margin:0;padding:18px 20px;text-align:center">
-          <div style="font-size:26px;font-weight:800;color:var(--blue)">${stats.active}</div>
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-top:4px">Active</div>
-        </div>
-        <div class="settings-section" style="margin:0;padding:18px 20px;text-align:center">
-          <div style="font-size:26px;font-weight:800;color:var(--amber)">${stats.paused}</div>
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-top:4px">Paused</div>
-        </div>
-        <div class="settings-section" style="margin:0;padding:18px 20px;text-align:center">
-          <div style="font-size:26px;font-weight:800;color:var(--red)">${stats.cancelled}</div>
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2);margin-top:4px">Cancelled</div>
-        </div>
-      </div>`;
-
+    const needsSeed=plans.length===0;
     const isOwnerRole=state.role==='owner';
-    if(isOwnerRole){
-      html+=`<div id="wixMigrationPanel" style="margin-bottom:24px"></div>`;
-    }
+    const counts=mdCounts(subs);
+    const mrr=((Number(stats.mrr)||0)/100).toFixed(2);
+    const signupPlans=plans.filter(p=>p.active!==false&&!p.hideFromSignup);
+    let html=`
+    <section class="md-hero" aria-labelledby="mdSignupTitle">
+      <div>
+        <h2 id="mdSignupTitle" class="md-h">Sign up a customer</h2>
+        <ol class="md-paths">
+          <li><strong>Paid, monthly or annual</strong> Share the customer checkout. They sign in, choose billing, accept the minimum term and pay through Square. Nothing is created until they authorise it.</li>
+          <li><strong>Paying at the till</strong> Ring up the £65 Platinum annual item on Square POS. That is 12 months prepaid with no auto renewal, imported below.</li>
+          <li><strong>Complimentary</strong> Grant free access. It is never charged and is excluded from plan value.</li>
+        </ol>
+      </div>
+      <div class="md-hero-cta">
+        ${plans.length>0?`<button class="btn btn-primary" data-testid="button-signup-member" onclick="window.openAddMemberModal()">Sign up member</button>`:`<span class="pill pill-gray">Add a plan first</span>`}
+        <div class="md-s">${signupPlans.length} plan${signupPlans.length===1?'':'s'} on sale</div>
+      </div>
+    </section>
+    <div class="md-stats">
+      <div><b style="color:var(--green)">£${mrr}</b><span title="Estimate at current plan prices, not payments collected. Complimentary memberships excluded.">Est. monthly plan value</span></div>
+      <div><b>${Number(stats.active)||0}</b><span>Active</span></div>
+      <div><b style="color:var(--amber)">${counts.attention}</b><span>Need attention</span></div>
+      <div><b>${Number(stats.paused)||0}</b><span>Paused</span></div>
+      <div><b style="color:var(--text-2)">${Number(stats.cancelled)||0}</b><span>Cancelled</span></div>
+    </div>
+    <section aria-labelledby="mdDirTitle">
+      <div class="md-dir-head">
+        <h2 id="mdDirTitle" class="md-h">Customer directory <span class="md-s">(${subs.length})</span></h2>
+      </div>
+      <div class="md-toolbar">
+        <label class="md-search"><span class="sr-only">Search members</span>
+          <input id="mdSearch" type="search" placeholder="Search name, email or phone" autocomplete="off" data-testid="input-member-search" value="${esc(mdFilters.q)}">
+        </label>
+        <label><span class="sr-only">Plan</span><select id="mdPlan" class="form-input" data-testid="select-member-plan">
+          <option value="all">All plans</option>${plans.map(p=>`<option value="${p.id}">${esc(p.name)} (${subs.filter(s=>s.planId===p.id).length})</option>`).join('')}
+        </select></label>
+        <label><span class="sr-only">Payment source</span><select id="mdSource" class="form-input" data-testid="select-member-source">
+          <option value="all">All payment sources</option>
+          ${[['card','Card, central billing'],['till','Till prepaid'],['comp','Complimentary'],['wix','Wix (legacy)'],['group','Square group'],['manual','Manual']].map(([k,l])=>`<option value="${k}">${l} (${subs.filter(s=>mdSource(s).key===k).length})</option>`).join('')}
+        </select></label>
+      </div>
+      <div id="memberTabs" class="md-chips" role="tablist" aria-label="Status">
+        ${[['active','Active'],['attention','Need attention'],['paused','Paused'],['cancelled','Cancelled'],['all','All']].map(([k,l])=>`<button class="member-tab" role="tab" data-tab="${k}" data-testid="tab-status-${k}">${l}<span>${counts[k]}</span></button>`).join('')}
+      </div>
+      <div id="mdResultNote" class="md-s" aria-live="polite" style="margin:4px 0 8px"></div>
+      <div id="memberListContainer"></div>
+    </section>
 
-    // Leftover one-time fallback audit panel (manager-only).
-    html+=`<div id="leftoverOneTimePanel" style="margin-bottom:24px"></div>`;
-
-    // VIP onboarding gap panel — Square VIPs without an app account (manager-only).
-    html+=`<div id="onboardingGapPanel" style="margin-bottom:24px"></div>`;
-
-    // Loyalty backfill panel — link existing app accounts to their Square loyalty points.
-    html+=`<div id="loyaltyBackfillPanel" style="margin-bottom:24px"></div>`;
-
-    if(isManager){
-      const allHaveSquareIds=plans.length>0&&plans.every(p=>p.squarePlanVariationId);
-      html+=`<div class="settings-section" style="margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-        <div>
-          <div class="settings-title" style="margin-bottom:2px">Membership Plans</div>
-          <div class="settings-desc" style="margin:0">${needsSeed?'No plans yet — seed the defaults to get started.':'Reset all plans to defaults (Rack / Century / Maximum) with correct prices. Existing Square IDs are preserved.'}</div>
+    <details class="md-fold" id="mdPlansFold">
+      <summary><span>Plans and pricing</span><span class="md-s">${plans.length} plan${plans.length===1?'':'s'}. Price edits apply to new sales only.</span></summary>
+      <div class="md-fold-body">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+          ${plans.length>0&&!plans.every(p=>p.squarePlanVariationId)?`<button class="btn btn-secondary btn-sm" onclick="window.setupSquareBilling()">Enable recurring billing</button>`:''}
+          <button class="btn btn-secondary btn-sm" onclick="window.openCreatePlanModal()">Add plan</button>
+          <button class="btn btn-secondary btn-sm" onclick="window.seedMembershipPlans()">${needsSeed?'Seed default plans':'Reset to default plans'}</button>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          ${!allHaveSquareIds?`<button class="btn btn-secondary" style="flex-shrink:0;border-color:#10B981;color:#10B981" onclick="window.setupSquareBilling()">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            Enable Recurring Billing
-          </button>`:''}
-          <button class="btn btn-secondary" style="flex-shrink:0" onclick="window.openCreatePlanModal()">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Add Plan
-          </button>
-          <button class="btn btn-primary" style="flex-shrink:0" onclick="window.seedMembershipPlans()">${needsSeed?'Seed Default Plans':'Reset to Default Plans'}</button>
+        ${needsSeed?'<div class="md-s">No plans yet. Seed the defaults to get started.</div>':''}
+        <div class="md-plans">${plans.map(p=>{
+          const act=subs.filter(s=>s.planId===p.id&&s.status==='active').length;
+          return `<div class="md-plan-card" style="--pc:${esc(p.color||'#6B7280')}">
+            <div style="display:flex;justify-content:space-between;gap:8px"><strong>${esc(p.name)}</strong><span class="pill ${p.active?'pill-green':'pill-gray'}">${p.active?'On':'Off'}</span></div>
+            <div class="md-price">£${(p.priceMonthly/100).toFixed(2)}<small>/mo</small>${p.priceAnnual?` · £${(p.priceAnnual/100).toFixed(2)}<small>/yr</small>`:''}</div>
+            <div class="md-s">${act} active${p.minimumTermMonths?' · '+Number(p.minimumTermMonths)+'-month minimum':''}${p.hideFromSignup?' · hidden from sign-up':''}${p.excludeWithDeals?' · no discount with offers':''}</div>
+            ${!p.squarePlanVariationId&&!p.squareCustomerGroupId?'<div class="md-s" style="color:var(--amber)">No Square link</div>':''}
+            <details class="md-tech"><summary>Square IDs</summary>
+              ${p.squarePlanVariationId?`<div>Subscription: <code>${esc(p.squarePlanVariationId)}</code></div>`:''}
+              ${Array.isArray(p.squarePosVariationIds)&&p.squarePosVariationIds.length?`<div>Till items (12 months prepaid): ${p.squarePosVariationIds.map(v=>'<code>'+esc(v)+'</code>').join(', ')}</div>`:''}
+              ${p.squareCustomerGroupId?`<div>Group: <code>${esc(p.squareCustomerGroupId)}</code></div>`:''}
+            </details>
+            <button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="window.openEditPlanModal(${p.id})">Edit plan</button>
+          </div>`;}).join('')}</div>
+      </div>
+    </details>
+
+    <details class="md-fold" id="mdToolsFold">
+      <summary><span>Square, Wix and migration tools</span><span class="md-s">Sync, till imports, onboarding and loyalty backfill</span></summary>
+      <div class="md-fold-body">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+          <button class="btn btn-secondary btn-sm" id="syncAllBtn" onclick="window.syncAllMembers()">Sync all customers</button>
+          <button class="btn btn-secondary btn-sm" onclick="window.openSquareSyncModal()">Sync one from Square</button>
         </div>
-      </div>`;
-    }
+        ${isOwnerRole?'<div id="wixMigrationPanel" style="margin-bottom:24px"></div>':''}
+        <div id="posPurchasesPanel" style="margin-bottom:24px"></div>
+        <div id="leftoverOneTimePanel" style="margin-bottom:24px"></div>
+        <div id="onboardingGapPanel" style="margin-bottom:24px"></div>
+        <div id="loyaltyBackfillPanel" style="margin-bottom:8px"></div>
+      </div>
+    </details>
 
-    if(plans.length>0){
-      html+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:24px">`;
-      plans.forEach(p=>{
-        const activeCnt=subs.filter(s=>s.planId===p.id&&s.status==='active').length;
-        const pausedCnt=subs.filter(s=>s.planId===p.id&&s.status==='paused').length;
-        // Canonical benefits list from /api/membership/plans (shared/membership-benefits.ts)
-        const perks=Array.isArray(p.benefits)?p.benefits:[];
-        html+=`<div class="settings-section" style="margin:0;padding:0;border-top:4px solid ${esc(p.color)};overflow:hidden">
-          <div style="padding:16px 18px 14px">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px">
-              <div>
-                <div style="font-size:16px;font-weight:800;color:var(--text)">${esc(p.name)}</div>
-                ${p.description?`<div style="font-size:11px;color:var(--text-2);margin-top:2px;line-height:1.4">${esc(p.description)}</div>`:''}
-              </div>
-              <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
-                <span class="pill pill-green">${activeCnt} active</span>
-                ${pausedCnt?`<span class="pill pill-amber">${pausedCnt} paused</span>`:''}
-              </div>
-            </div>
-            <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
-              <div style="font-size:24px;font-weight:800;color:${esc(p.color)}">£${(p.priceMonthly/100).toFixed(2)}<span style="font-size:13px;font-weight:600;color:var(--text-2)">/mo</span></div>
-              ${p.priceAnnual?`<div style="font-size:14px;font-weight:600;color:var(--text-2)">£${(p.priceAnnual/100).toFixed(2)}<span style="font-size:11px;font-weight:500;color:var(--text-3)">/yr</span> <span style="font-size:10px;background:${esc(p.color)}18;color:${esc(p.color)};padding:2px 6px;border-radius:4px;font-weight:700">ANNUAL</span></div>`:''}
-            </div>
-            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
-              ${perks.map(pk=>`<span style="font-size:11px;background:${esc(p.color)}18;color:${esc(p.color)};padding:3px 8px;border-radius:6px;font-weight:600">${esc(pk)}</span>`).join('')}
-            </div>
-            ${p.squarePlanVariationId?`<div style="margin-top:8px;font-size:11px;color:var(--text-3,#9CA3AF)">Square subscription ID: <code style="font-size:10px">${esc(p.squarePlanVariationId)}</code></div>`:''}
-            ${Array.isArray(p.squarePosVariationIds)&&p.squarePosVariationIds.length?`<div style="margin-top:4px;font-size:11px;color:var(--text-3,#9CA3AF)">POS till items (12 months prepaid, no auto renewal): ${p.squarePosVariationIds.map(v=>'<code style="font-size:10px">'+esc(v)+'</code>').join(', ')}</div>`:''}
-            ${p.squareCustomerGroupId?`<div style="margin-top:4px;font-size:11px;color:var(--text-3,#9CA3AF)">Square group: <code style="font-size:10px">${esc(p.squareCustomerGroupId)}</code></div>`:''}
-            ${p.minimumTermMonths?`<div style="margin-top:6px;font-size:11px;color:var(--text-2)">Minimum term: ${Number(p.minimumTermMonths)} months</div>`:''}
-            ${p.hideFromSignup?`<div style="margin-top:4px;font-size:11px;color:var(--text-2)">Hidden from new sign-ups</div>`:''}
-            ${p.excludeWithDeals?`<div style="margin-top:4px;font-size:11px;color:var(--amber)">Discount excluded when offers active</div>`:''}
-            ${!p.squarePlanVariationId&&!p.squareCustomerGroupId&&isManager?`<div style="margin-top:8px;font-size:11px;color:var(--amber)">⚠ No Square link — must be assigned manually</div>`:''}
-          </div>
-          ${isManager?`<div style="border-top:1px solid var(--border);padding:10px 18px;display:flex;justify-content:flex-end;gap:8px">
-            <span class="pill ${p.active?'pill-green':'pill-gray'}" style="flex:1">${p.active?'Active':'Inactive'}</span>
-            <button class="btn btn-secondary btn-sm" onclick="window.openEditPlanModal(${p.id})">Edit Plan</button>
-          </div>`:''}
-        </div>`;
-      });
-      html+=`</div>`;
-    }
-
-    html+=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
-      <div style="font-size:16px;font-weight:800;color:var(--text)">All Members (${subs.length})</div>`;
-    if(isManager){
-      html+=`<div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-secondary btn-sm" id="syncAllBtn" onclick="window.syncAllMembers()" style="border-color:#7C3AED;color:#7C3AED">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
-          Sync All Customers
-        </button>
-        <button class="btn btn-secondary btn-sm" onclick="window.openSquareSyncModal()" style="border-color:#10B981;color:#10B981">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
-          Sync from Square
-        </button>
-        ${plans.length>0?`<button class="btn btn-primary btn-sm" onclick="window.openAddMemberModal()">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:4px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Add Member
-        </button>`:''}
-      </div>`;
-    }
-    html+=`</div>`;
-
-    if(subs.length===0){
-      html+=`<div class="empty-state"><div class="empty-icon">🪙</div><div class="empty-title">No members yet</div><div class="empty-desc">Members added here will appear in this list. The subscription service is not yet live for customers.</div></div>`;
-      el('membershipsContent').innerHTML=html;
-      return;
-    }
-
-    /* Filter tabs — default to Active so cancelled members are hidden by default */
-    const counts={
-      active:subs.filter(s=>s.status==='active').length,
-      paused:subs.filter(s=>s.status==='paused').length,
-      pending:subs.filter(s=>s.status==='pending'||s.status==='pending_payment'||s.status==='past_due').length,
-      cancelled:subs.filter(s=>s.status==='cancelled').length,
-      all:subs.length,
-    };
-    const tabs=[
-      {key:'active',label:'Active',count:counts.active},
-      {key:'paused',label:'Paused',count:counts.paused},
-      {key:'pending',label:'Pending',count:counts.pending},
-      {key:'cancelled',label:'Cancelled',count:counts.cancelled},
-      {key:'all',label:'All',count:counts.all},
-    ];
-    html+=`<div id="memberTabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:10px">`;
-    tabs.forEach(t=>{
-      html+=`<button class="member-tab" data-tab="${t.key}" style="background:transparent;border:1px solid var(--border);color:var(--text-2);padding:6px 12px;border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
-        ${t.label}<span style="background:var(--bg2);color:var(--text-2);padding:1px 7px;border-radius:999px;font-size:11px;font-weight:800">${t.count}</span>
-      </button>`;
-    });
-    html+=`</div><div id="memberListContainer"></div>`;
-    html+=`<div id="posPurchasesPanel" style="margin-top:28px"></div>`;
-    html+=`<div id="membershipAuditLogPanel" style="margin-top:28px"></div>`;
-    html+=`<div id="pwResetHistoryPanel" style="margin-top:16px"></div>`;
+    <details class="md-fold" id="mdHistoryFold">
+      <summary><span>History</span><span class="md-s">Membership audit log and password resets</span></summary>
+      <div class="md-fold-body">
+        <div id="membershipAuditLogPanel" style="margin-bottom:16px"></div>
+        <div id="pwResetHistoryPanel"></div>
+      </div>
+    </details>`;
     el('membershipsContent').innerHTML=html;
+    el('mdPlan').value=mdFilters.plan;if(el('mdPlan').value!==mdFilters.plan){mdFilters.plan='all';el('mdPlan').value='all';}
+    el('mdSource').value=mdFilters.source;
 
-    function cardHtml(sub){
-      const cust=sub.customer;
-      const plan=sub.plan;
-      const initials=cust?cust.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase():'?';
-      const planColor=plan?plan.color:'#888';
-      const statusClass=STATUS_COLORS[sub.status]||'pill-gray';
-      const statusLabel=STATUS_LABELS[sub.status]||sub.status;
-      return `<div class="staff-card">
-        <div class="staff-avatar" style="background:${esc(planColor)}">${esc(initials)}</div>
-        <div class="staff-info">
-          <div class="staff-name-row">
-            <span class="staff-name">${esc(cust?cust.name:'Unknown')}</span>
-            <span class="pill ${statusClass}">${statusLabel}</span>
-            ${plan?`<span class="pill" style="background:${esc(plan.color)}22;color:${esc(plan.color)}">${esc(plan.name)}</span>`:''}
-          </div>
-          <div class="staff-username">${esc(cust?cust.email:'')} ${cust&&cust.phone?'· '+esc(cust.phone):''}</div>
-          <div class="staff-joined">Joined ${new Date(sub.createdAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}
-            ${prepaidSubLine(sub)}
-            ${plan&&plan.hoursIncluded?' · '+sub.hoursUsedThisPeriod+'/'+plan.hoursIncluded+' hrs used ('+(plan.hoursUnit==='year'?'yr':'mo')+')':''}
-            ${sub.staffNotes?'<br><em style="color:var(--text-2)">'+esc(sub.staffNotes)+'</em>':''}
-          </div>
-        </div>
-        <div class="staff-actions">
-          ${isManager
-            ? `<button class="btn btn-primary btn-sm" onclick="window.openManageSubModal(${sub.id})">Manage</button>`
-            : isProtectedSub(sub) ? `<button class="btn btn-secondary btn-sm" onclick="window.openMemberNoteModal(${sub.id})">Note</button>`
-            : `${sub.status==='active'?`<button class="btn btn-secondary btn-sm" onclick="window.pauseMember(${sub.id})">Pause</button>`:''}
-               ${sub.status==='paused'?`<button class="btn btn-secondary btn-sm" onclick="window.resumeMember(${sub.id})">Resume</button>`:''}
-               ${sub.status!=='cancelled'?`<button class="btn btn-danger btn-sm" onclick="window.cancelMember(${sub.id})">Cancel</button>`:''}
-               <button class="btn btn-secondary btn-sm" onclick="window.openMemberNoteModal(${sub.id})">Note</button>`
-          }
-        </div>
-      </div>`;
-    }
-
-    function paint(tab){
-      let filtered;
-      if(tab==='all')filtered=subs;
-      else if(tab==='pending')filtered=subs.filter(s=>s.status==='pending'||s.status==='pending_payment'||s.status==='past_due');
-      else filtered=subs.filter(s=>s.status===tab);
+    function paint(){
+      const list=mdFilter(subs,mdFilters);
       const c=el('memberListContainer');
-      if(filtered.length===0){
-        c.innerHTML=`<div class="empty-state" style="padding:30px"><div class="empty-title" style="font-size:14px">No ${tab==='all'?'members':tab+' members'}</div></div>`;
-      }else{
-        c.innerHTML='<div class="staff-grid">'+filtered.map(cardHtml).join('')+'</div>';
+      document.querySelectorAll('#memberTabs .member-tab').forEach(b=>{const on=b.dataset.tab===mdFilters.status;b.classList.toggle('on',on);b.setAttribute('aria-selected',on?'true':'false');});
+      const limit=150;
+      el('mdResultNote').textContent=subs.length?`Showing ${Math.min(list.length,limit)} of ${list.length} matching`+(list.length>limit?'. Refine the search to see more.':''):'';
+      if(subs.length===0){
+        c.innerHTML='<div class="empty-state"><div class="empty-title">No members yet</div><div class="empty-desc">Use Sign up member above. Till purchases appear once imported from the tools section.</div></div>';return;
       }
-      document.querySelectorAll('#memberTabs .member-tab').forEach(b=>{
-        const on=b.dataset.tab===tab;
-        b.style.background=on?'var(--blue)':'transparent';
-        b.style.color=on?'#fff':'var(--text-2)';
-        b.style.borderColor=on?'var(--blue)':'var(--border)';
-      });
-      try{localStorage.setItem('membershipTab',tab)}catch(_){}
+      if(list.length===0){
+        c.innerHTML='<div class="empty-state" style="padding:28px"><div class="empty-title" style="font-size:14px">No matching members</div><div class="empty-desc">Try All statuses, or they may not be a member yet. <button class="btn btn-secondary btn-sm" id="mdClear" style="margin-left:6px">Clear filters</button></div></div>';
+        el('mdClear').onclick=()=>{mdFilters={q:'',status:'all',plan:'all',source:'all'};el('mdSearch').value='';el('mdPlan').value='all';el('mdSource').value='all';paint();};
+        return;
+      }
+      c.innerHTML='<ul class="md-list">'+list.slice(0,limit).map(mdRowHtml).join('')+'</ul>';
     }
-
-    document.querySelectorAll('#memberTabs .member-tab').forEach(b=>{
-      b.addEventListener('click',()=>paint(b.dataset.tab));
-    });
-
-    let initial='active';
-    try{const saved=localStorage.getItem('membershipTab');if(saved&&tabs.some(t=>t.key===saved))initial=saved;}catch(_){}
-    paint(initial);
+    document.querySelectorAll('#memberTabs .member-tab').forEach(b=>b.addEventListener('click',()=>{mdFilters.status=b.dataset.tab;paint();}));
+    let t;el('mdSearch').addEventListener('input',e=>{clearTimeout(t);t=setTimeout(()=>{mdFilters.q=e.target.value;paint();},120);});
+    el('mdPlan').addEventListener('change',e=>{mdFilters.plan=e.target.value;paint();});
+    el('mdSource').addEventListener('change',e=>{mdFilters.source=e.target.value;paint();});
+    paint();
   }
 
   /* ── Create / Edit Plan ── */
@@ -11131,7 +11179,7 @@
     const planId=parseInt(el('amPlanId').value);
     const plan=membershipsData.plans.find(p=>p.id===planId);
     const priceEl=el('amPlanPrice');
-    if(plan){priceEl.textContent=`£${(plan.priceMonthly/100).toFixed(2)} per month`}
+    if(plan){priceEl.textContent=`£${(plan.priceMonthly/100).toFixed(2)} per month`+(plan.priceAnnual?` or £${(plan.priceAnnual/100).toFixed(2)} per year`:'')+(plan.minimumTermMonths?` · ${Number(plan.minimumTermMonths)}-month minimum`:'')}
     else{priceEl.textContent=''}
     // Show the canonical benefit list for the selected plan (same wording as the customer app)
     const benefitsEl=el('amPlanBenefits');
@@ -11149,9 +11197,20 @@
     if(plan&&el('amPaymentAmount')){el('amPaymentAmount').placeholder=(plan.priceMonthly/100).toFixed(2)}
   }
 
+  function amPlanLabel(p){return esc(p.name)+' — £'+(p.priceMonthly/100).toFixed(2)+'/mo'+(p.priceAnnual?' or £'+(p.priceAnnual/100).toFixed(2)+'/yr':'');}
+  function amSetMode(mode){
+    const paid=mode==='paylink';
+    const list=membershipsData.plans.filter(p=>p.active!==false&&(!paid||!p.hideFromSignup));
+    const prev=el('amPlanId').value;
+    el('amPlanId').innerHTML=list.length?list.map(p=>`<option value="${p.id}">${amPlanLabel(p)}${!paid&&p.hideFromSignup?' (hidden from sign-up)':''}</option>`).join(''):'<option value="">No eligible plans</option>';
+    if(list.some(p=>String(p.id)===prev))el('amPlanId').value=prev;
+    el('amCustomerGroup').style.display=paid?'none':'';
+    el('amFormFields').style.display=paid?'none':'block';
+    amUpdatePlanPrice();
+  }
   window.openAddMemberModal=function(){
     el('amCustomerId').value='';
-    el('amPlanId').innerHTML=membershipsData.plans.map(p=>`<option value="${p.id}">£${(p.priceMonthly/100).toFixed(2)}/mo — ${esc(p.name)}</option>`).join('');
+    amSetMode(null);
     el('amCustomerSearch').value='';
     el('amCustomerDropdown').classList.remove('open');
     el('amCustomerDropdown').innerHTML='';
@@ -11161,10 +11220,10 @@
     const todayStr=new Date().toISOString().slice(0,10);
     el('amStartDate').value=todayStr;
     el('amStartDate').min=todayStr;
-    el('amStartDateHint').textContent='For complimentary memberships, choose when access starts. Paid members choose billing options through the shared sign-up page.';
+    el('amStartDateHint').textContent='Free access starts on this date. No payment is taken.';el('amStartDateHint').style.color='var(--text-2)';
     // Reset payment selection
     document.querySelectorAll('input[name="amPayMethod"]').forEach(r=>r.checked=false);
-    document.querySelectorAll('.am-pay-option').forEach(o=>o.classList.remove('selected'));
+    document.querySelectorAll('.am-pay-option').forEach(o=>{o.classList.remove('selected');o.setAttribute('aria-checked','false');});
     el('amLinkResult').style.display='none';
     el('amFormFields').style.display='block';
     el('amPaymentGrid').style.display='grid';
@@ -11184,12 +11243,12 @@
     const today=new Date().toISOString().slice(0,10);
     const chosen=this.value;
     if(!chosen||chosen<=today){
-      el('amStartDateHint').textContent='Leave as today to start immediately. Set a future date to delay the first payment.';
+      el('amStartDateHint').textContent='Free access starts today. No payment is taken.';
       el('amStartDateHint').style.color='var(--text-2)';
     }else{
       const d=new Date(chosen+'T12:00:00Z');
       const formatted=d.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-      el('amStartDateHint').textContent='⏳ Membership starts '+formatted+'. First payment taken on that date.';
+      el('amStartDateHint').textContent='Free access starts '+formatted+'. No payment is taken.';
       el('amStartDateHint').style.color='var(--blue,#3b82f6)';
     }
   });
@@ -11260,13 +11319,16 @@
   document.querySelectorAll('.am-pay-option').forEach(opt=>{
     opt.addEventListener('click',function(){
       document.querySelectorAll('.am-pay-option').forEach(o=>o.classList.remove('selected'));
-      this.classList.add('selected');
+      document.querySelectorAll('.am-pay-option').forEach(o=>o.setAttribute('aria-checked','false'));
+      this.classList.add('selected');this.setAttribute('aria-checked','true');
       const val=this.dataset.val;
       el('amPaylinkHint').style.display=val==='paylink'?'block':'none';
-      el('amSaveBtn').textContent=val==='paylink'?'Add Member & Generate Link':'Add Member';
+      el('amSaveBtn').textContent=val==='paylink'?'Get checkout link':'Add complimentary member';
+      amSetMode(val);
     });
   });
 
+  document.querySelectorAll('.am-pay-option').forEach(opt=>opt.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();opt.click();}}));
   window.amCopyLink=function(){
     const url=el('amLinkUrl').value;
     if(navigator.clipboard){navigator.clipboard.writeText(url).then(()=>toast('Link copied!','success'))}
@@ -11314,83 +11376,46 @@
   };
 
   el('amSaveBtn').addEventListener('click',async()=>{
+    // Result screen visible: this click is "Done". Close only; never POST again.
+    if(el('amLinkResult').style.display==='block'){closeOverlay('addMemberModal');return;}
     const err=el('amErr');err.classList.remove('show');
-    const customerId=el('amCustomerId').value;
-    const planId=el('amPlanId').value;
-    const notes=el('amNotes').value.trim();
-    if(!customerId){err.textContent='Select a customer first';err.classList.add('show');return}
-    if(isNaN(parseInt(customerId))){err.textContent='That customer has no app account — they need to register in the app first';err.classList.add('show');return}
-    if(!planId){err.textContent='Select a plan';err.classList.add('show');return}
-
-    // Payment method
     const payMethod=document.querySelector('.am-pay-option.selected')?.dataset.val;
-    if(!payMethod){err.textContent='Select a payment method';err.classList.add('show');return}
-
-    // Build notes prefix
+    if(!payMethod){err.textContent='Choose paid checkout or complimentary';err.classList.add('show');return}
+    const planId=el('amPlanId').value;
+    if(!planId){err.textContent='Select a plan';err.classList.add('show');return}
     const plan=membershipsData.plans.find(p=>p.id===parseInt(planId));
-    let payLabel=payMethod==='complimentary'?'Payment: Complimentary':'Payment: Square Link (pending)';
-    const staffNotes=[`[${payLabel}]`,notes].filter(Boolean).join(' ');
-    const startDate=el('amStartDate').value||new Date().toISOString().slice(0,10);
     if(payMethod==='paylink'){
-      if(!plan||!plan.active||plan.hideFromSignup){err.textContent='Choose an active public plan for online sign-up. Hidden plans are not sold to customers.';err.classList.add('show');return;}
+      // Public checkout: no customer record needed. New customers create their account during checkout.
+      if(!plan||plan.active===false||plan.hideFromSignup){err.textContent='Choose an active public plan for online sign-up. Hidden plans are not sold to customers.';err.classList.add('show');return;}
       const signup=new URL('/widget/membership',window.location.origin);
       signup.searchParams.set('planId',String(plan.id));
       const url=signup.toString();
-      el('amFormFields').style.display='none';el('amPaymentGrid').style.display='none';el('amPaylinkHint').style.display='none';el('amPlanPrice').textContent='';
+      el('amCustomerGroup').style.display='none';el('amFormFields').style.display='none';el('amPaymentGrid').style.display='none';el('amPaylinkHint').style.display='none';el('amPlanPrice').textContent='';
       el('amLinkUrl').value=url;el('amLinkOpen').href=url;
       el('amLinkQr').src='https://api.qrserver.com/v1/create-qr-code/?data='+encodeURIComponent(url)+'&size=200x200&margin=8&color=166534';
-      el('amLinkResult').querySelector('div').textContent='Share secure sign-up. The customer signs in, chooses monthly or annual billing and accepts the terms. No membership or charge is created here, and no email has been sent.';
+      el('amLinkResult').querySelector('div').textContent='Share secure sign-up. The customer signs in or creates an account, chooses monthly or annual billing and accepts the terms. No membership or charge is created here, and no email has been sent.';
       el('amLinkResult').style.display='block';
       el('amSaveBtn').textContent='Done';
-      el('amSaveBtn').onclick=function(){closeOverlay('addMemberModal');el('amSaveBtn').onclick=null;};
       return;
     }
-
+    // Complimentary: requires an existing app customer. Never charged.
+    const customerId=el('amCustomerId').value;
+    if(!customerId){err.textContent='Select a customer first';err.classList.add('show');return}
+    if(isNaN(parseInt(customerId))){err.textContent='That customer has no app account. They need to register in the app first';err.classList.add('show');return}
+    const notes=el('amNotes').value.trim();
+    const staffNotes=['[Payment: Complimentary]',notes].filter(Boolean).join(' ');
+    const startDate=el('amStartDate').value||new Date().toISOString().slice(0,10);
+    if(el('amSaveBtn').disabled)return;
     el('amSaveBtn').disabled=true;
     el('amSaveBtn').textContent='Saving…';
     try{
-      // 1. Create subscription
-      const initialStatus=payMethod==='paylink'?'pending_payment':'active';
-      const r=await api('/api/staff/membership/subscriptions',{method:'POST',body:JSON.stringify({customerId,planId,staffNotes,status:initialStatus,source:'complimentary',startDate})});
-      if(!r.ok){const d=await r.json();err.textContent=d.message||'Failed';err.classList.add('show');el('amSaveBtn').disabled=false;el('amSaveBtn').textContent='Add Member & Generate Link';return}
-      const sub=await r.json();
-
-      if(payMethod==='paylink'){
-        // 2. Generate Square payment link
-        el('amSaveBtn').textContent='Generating link…';
-        const lr=await api('/api/staff/membership/payment-link',{method:'POST',body:JSON.stringify({subscriptionId:sub.id,planId})});
-        if(!lr.ok){
-          // Subscription created but link failed — still show success, warn about link
-          const ld=await lr.json();
-          closeOverlay('addMemberModal');
-          toast('Member added but link failed: '+ld.message,'error');
-          loadMemberships();
-          return;
-        }
-        const {url,emailSent}=await lr.json();
-        // Show result in modal
-        el('amFormFields').style.display='none';
-        el('amPaymentGrid').style.display='none';
-        el('amPaylinkHint').style.display='none';
-        el('amPlanPrice').textContent='';
-        el('amLinkUrl').value=url;
-        el('amLinkOpen').href=url;
-        el('amLinkQr').src=`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(url)}&size=200x200&margin=8&color=166534`;
-        // Update result title to show email status
-        el('amLinkResult').querySelector('div').textContent=emailSent
-          ?'✅ Member added — payment link sent to their email'
-          :'✅ Member added — share this payment link';
-        el('amLinkResult').style.display='block';
-        el('amSaveBtn').textContent='Done';
-        el('amSaveBtn').disabled=false;
-        el('amSaveBtn').onclick=function(){closeOverlay('addMemberModal');el('amSaveBtn').onclick=null;loadMemberships()};
-      }else{
-        closeOverlay('addMemberModal');
-        toast('Member added — marked as complimentary','success');
-        loadMemberships();
-      }
-    }catch(e){if(e.message!=='Session expired'){err.textContent='Network error';err.classList.add('show');el('amSaveBtn').disabled=false;el('amSaveBtn').textContent='Add Member & Generate Link'}}
-    finally{}
+      const r=await api('/api/staff/membership/subscriptions',{method:'POST',body:JSON.stringify({customerId,planId,staffNotes,status:'active',source:'complimentary',startDate})});
+      if(!r.ok){const d=await r.json().catch(()=>({}));err.textContent=d.message||'Failed to add member';err.classList.add('show');return}
+      closeOverlay('addMemberModal');
+      toast('Complimentary member added','success');
+      loadMemberships();
+    }catch(e){if(e.message!=='Session expired'){err.textContent='Network error';err.classList.add('show')}}
+    finally{el('amSaveBtn').disabled=false;if(el('amLinkResult').style.display!=='block')el('amSaveBtn').textContent='Add complimentary member';}
   });
 
   el('mnSaveBtn').addEventListener('click',async()=>{

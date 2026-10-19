@@ -182,8 +182,8 @@ test("staff plan UI rejects fractional multipliers instead of silently truncatin
   assert.equal(form.requestCount(), 0);
 });
 
-test("staff signup links use central customer consent without creating a subscription or emailing", async () => {
-  const form = dashboardClick("amSaveBtn", { amCustomerId: "1", amPlanId: "42", amNotes: "Private staff note", amStartDate: "2026-10-15" }, {
+test("staff signup links work without an existing app customer and never create a subscription or email", async () => {
+  const form = dashboardClick("amSaveBtn", { amCustomerId: "", amPlanId: "42", amNotes: "Private staff note", amStartDate: "2026-10-15" }, {
     document: { querySelector: () => ({ dataset: { val: "paylink" } }) },
     membershipsData: { plans: [{ id: 42, active: true, hideFromSignup: false }] },
   });

@@ -17,6 +17,7 @@
     "test:fixtures": "node --experimental-strip-types --test src/sports-fixtures.test.ts",
     "test:banner-schema": "node run-banner-schema-test.mjs",
     "test:booking-tables": "node run-banner-schema-test.mjs src/booking-tables.test.ts",
+    "test:membership-directory": "node --experimental-strip-types --test src/membership-directory.test.ts",
     "test:staff-fixtures": "node run-staff-fixtures-test.mjs"
   },
   "dependencies": {
