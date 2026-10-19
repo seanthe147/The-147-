@@ -5,6 +5,7 @@ const { Readable } = require("stream");
 const { pipeline } = require("stream/promises");
 
 let metroProcess = null;
+let metroExitMessage = null;
 
 const projectRoot = path.resolve(__dirname, "..");
 
@@ -163,6 +164,12 @@ async function startMetro(expoPublicDomain, expoPublicReplId) {
       env,
     },
   );
+  metroProcess.on("error", (error) => {
+    metroExitMessage = `failed to start: ${error.message}`;
+  });
+  metroProcess.on("exit", (code, signal) => {
+    metroExitMessage = `exited before becoming ready (code ${code ?? "unknown"}, signal ${signal ?? "none"})`;
+  });
 
   if (metroProcess.stdout) {
     metroProcess.stdout.on("data", (data) => {
@@ -177,7 +184,13 @@ async function startMetro(expoPublicDomain, expoPublicReplId) {
     });
   }
 
-  for (let i = 0; i < 60; i++) {
+  const startupTimeoutMs =
+    Number(process.env.EXPO_METRO_STARTUP_TIMEOUT_MS) || 180_000;
+  console.log(
+    `Waiting up to ${Math.ceil(startupTimeoutMs / 1000)} seconds for Metro startup...`,
+  );
+  const startupStartedAt = Date.now();
+  while (Date.now() - startupStartedAt < startupTimeoutMs) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
     const healthy = await checkMetroHealth();
@@ -185,10 +198,14 @@ async function startMetro(expoPublicDomain, expoPublicReplId) {
       console.log("Metro ready");
       return;
     }
+    if (metroExitMessage) {
+      exitWithError(`Metro ${metroExitMessage}`);
+    }
   }
 
-  console.error("Metro timeout");
-  process.exit(1);
+  exitWithError(
+    `Metro did not become ready within ${Math.ceil(startupTimeoutMs / 1000)} seconds`,
+  );
 }
 
 async function downloadFile(url, outputPath) {

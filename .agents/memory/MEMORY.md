@@ -25,3 +25,4 @@
 - [Bookable pool tables](booking-pool-tables.md) — Pool Table 6 is retired; offer only Pool Tables 1–5 without deleting or silently reassigning old bookings
 - [Central membership billing](membership-billing-scope.md) — one Square membership system for app and Wix; monthly/annual choices, upgrades, and selected 12-month terms
 - [Unattended Expo dependency checks](expo-dependency-validation.md) — dependency mismatches can prompt indefinitely; CI mode must fail rather than wait for input
+- [Expo static publish Metro startup](expo-static-publish-metro-startup.md) — cold Metro startup can exceed 60 seconds before bundling begins, even when the code is healthy
