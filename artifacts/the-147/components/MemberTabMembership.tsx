@@ -1,15 +1,18 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { getGetMembershipBillingQueryKey, useGetMembershipBilling } from "@workspace/api-client-react";
+import { getGetMembershipBillingQueryKey, useGetMembershipBilling, useReactivateMembership } from "@workspace/api-client-react";
+import type { MembershipReactivationOffer } from "@workspace/api-client-react";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useColors } from "@/hooks/useColors";
 import { ManageMembership } from "@/app/membership";
-import { getApiUrl } from "@/lib/query-client";
+import { getApiUrl, prefetchSquarePaymentSdk } from "@/lib/query-client";
+import { SquarePaymentSheet } from "@/components/SquarePaymentSheet";
 import {
   BENEFIT_ICON,
+  apiErrorMessage,
   billingSummary,
   canonicalBenefits,
   fmtDate,
@@ -106,6 +109,13 @@ export function MemberTabMembership() {
         <Text style={s.muted}>Please retry before starting a new one, so you are never billed twice.</Text>
         {retryBtn(() => (existing.isError ? existing.refetch() : billing.refetch()), "member-tab-retry")}
       </View>
+    );
+  } else if (billing.data?.reactivation?.available) {
+    body = (
+      <MembershipReactivationCard
+        offer={billing.data.reactivation}
+        email={customer?.email ?? null}
+      />
     );
   } else if (manageable && sub) {
     const st = statusInfo(sub);
@@ -252,8 +262,138 @@ export function MemberTabMembership() {
 
   return (
     <View style={s.section} testID="member-tab-membership">
-      <Text style={s.title}>{manageable || existingLive ? "Your membership" : "Memberships"}</Text>
+      <Text style={s.title}>{manageable || existingLive || billing.data?.reactivation?.available ? "Your membership" : "Memberships"}</Text>
       {body}
+    </View>
+  );
+}
+
+function MembershipReactivationCard({
+  offer,
+  email,
+}: {
+  offer: MembershipReactivationOffer;
+  email: string | null;
+}) {
+  const colors = useColors();
+  const s = useMemo(() => createStyles(colors), [colors]);
+  const [accepted, setAccepted] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [sheetKey, setSheetKey] = useState(0);
+  const queryClient = useQueryClient();
+  const { data: config } = useQuery<{
+    configured: boolean;
+    applicationId: string | null;
+    locationId: string | null;
+    environment: "sandbox" | "production";
+  }>({ queryKey: ["/api/public/square-config"] });
+  const reactivate = useReactivateMembership({
+    mutation: {
+      onSuccess: result => {
+        setSheetOpen(false);
+        setAccepted(false);
+        setError(null);
+        setSuccess(result.message);
+        queryClient.invalidateQueries({ queryKey: ["/api/membership/my-subscription"] });
+        queryClient.invalidateQueries({ queryKey: getGetMembershipBillingQueryKey() });
+      },
+      onError: err => {
+        setSuccess(null);
+        setError(apiErrorMessage(err, "Could not reactivate your membership. Please refresh and try again."));
+        setSheetKey(value => value + 1);
+        queryClient.invalidateQueries({ queryKey: getGetMembershipBillingQueryKey() });
+      },
+    },
+  });
+
+  return (
+    <View style={s.card} testID="member-tab-reactivation">
+      <View style={s.reactivationHead}>
+        <View style={s.reactivationIcon}>
+          <Ionicons name="refresh" size={20} color={colors.tint} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.cardTitle}>Reactivate {offer.planName}</Text>
+          <Text style={s.muted}>Your previous paid access ended {fmtDate(offer.paidThroughDate)}.</Text>
+        </View>
+      </View>
+      <Text style={s.reactivationPrice}>
+        {money(offer.pricePence)}<Text style={s.muted}>/{offer.frequency === "annual" ? "year" : "month"}</Text>
+      </Text>
+      <Text style={s.muted}>
+        Reactivate by {fmtDate(offer.deadline, true)}. Your first payment starts today when you confirm. After this date, choose a current plan as a new membership.
+      </Text>
+      {offer.minimumTermMonths > 0 && (
+        <Text style={s.reactivationTerm}>{offer.minimumTermMonths}-month minimum term starts today.</Text>
+      )}
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: accepted }}
+        onPress={() => setAccepted(value => !value)}
+        style={s.reactivationConsent}
+        testID="reactivation-terms"
+      >
+        <Ionicons name={accepted ? "checkbox" : "square-outline"} size={22} color={colors.tint} />
+        <Text style={s.muted}>
+          I authorise recurring {offer.frequency} payments of {money(offer.pricePence)} for {offer.planName}, starting today, and agree to the membership terms.
+          {offer.minimumTermMonths > 0 ? ` I accept the ${offer.minimumTermMonths}-month minimum term.` : ""}
+        </Text>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        disabled={!accepted || !config?.configured || reactivate.isPending}
+        onPress={() => {
+          setError(null);
+          setSuccess(null);
+          setSheetKey(value => value + 1);
+          setSheetOpen(true);
+          prefetchSquarePaymentSdk();
+        }}
+        style={[s.primaryBtn, (!accepted || !config?.configured || reactivate.isPending) && s.disabled]}
+        testID="reactivate-membership"
+      >
+        {reactivate.isPending
+          ? <Text style={s.primaryBtnText}>Submitting…</Text>
+          : <Text style={s.primaryBtnText}>Reactivate and pay {money(offer.pricePence)}</Text>}
+      </Pressable>
+      {config && !config.configured && <Text style={s.muted}>Secure membership payments are unavailable right now.</Text>}
+      {error && !sheetOpen && <Text style={s.reactivationError} testID="reactivation-message">{error}</Text>}
+      {success && !sheetOpen && <Text style={s.reactivationSuccess} testID="reactivation-success">{success}</Text>}
+      <SquarePaymentSheet
+        key={sheetKey}
+        visible={sheetOpen}
+        applicationId={config?.applicationId ?? null}
+        locationId={config?.locationId ?? null}
+        environment={config?.environment ?? "sandbox"}
+        amountPence={offer.pricePence}
+        currency="GBP"
+        intent="STORE"
+        recurringDescription={`Reactivate ${offer.planName} with ${offer.frequency} recurring payments starting today.`}
+        buyerEmail={email}
+        inProgress={reactivate.isPending}
+        errorMessage={error}
+        onClose={() => { if (!reactivate.isPending) setSheetOpen(false); }}
+        onUnavailable={message => { setSheetOpen(false); setError(message); }}
+        onTokenized={({ sourceId, verificationToken }) => {
+          if (!verificationToken) {
+            setError("Please complete card authorisation before continuing.");
+            return;
+          }
+          setError(null);
+          reactivate.mutate({
+            data: {
+              planId: offer.planId,
+              billingFrequency: offer.frequency,
+              termsAccepted: accepted,
+              ...(offer.minimumTermMonths > 0 ? { minimumTermAccepted: accepted } : {}),
+              sourceId,
+              verificationToken,
+            },
+          });
+        }}
+      />
     </View>
   );
 }
@@ -303,5 +443,13 @@ function createStyles(c: Palette) {
     fine: { marginTop: 12, color: c.textSecondary, fontFamily: "Montserrat_400Regular", fontSize: 12, lineHeight: 17 },
     primaryBtn: { flexDirection: "row", gap: 8, backgroundColor: "#0047AB", borderRadius: 12, minHeight: 46, paddingHorizontal: 14, alignItems: "center", justifyContent: "center", marginTop: 6 },
     primaryBtnText: { color: "#fff", fontFamily: "Montserrat_700Bold", fontSize: 14 },
+    disabled: { opacity: 0.48 },
+    reactivationHead: { flexDirection: "row", alignItems: "center", gap: 12 },
+    reactivationIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: c.surfaceElevated },
+    reactivationPrice: { color: c.text, fontFamily: "Montserrat_700Bold", fontSize: 24, marginTop: 4 },
+    reactivationTerm: { color: c.gold, fontFamily: "Montserrat_700Bold", fontSize: 13 },
+    reactivationConsent: { flexDirection: "row", gap: 10, alignItems: "flex-start", marginTop: 6 },
+    reactivationError: { color: c.accent, fontFamily: "Montserrat_600SemiBold", fontSize: 13, lineHeight: 19, marginTop: 6 },
+    reactivationSuccess: { color: c.tint, fontFamily: "Montserrat_600SemiBold", fontSize: 13, lineHeight: 19, marginTop: 6 },
   });
 }

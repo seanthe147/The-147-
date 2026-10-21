@@ -33,6 +33,12 @@ export function addCalendarMonths(date: string, months: number): string {
   return start.toISOString().slice(0, 10);
 }
 
+export function membershipReactivationDeadline(paidThroughDate: string | null | undefined, today: string): string | null {
+  if (!validDate(paidThroughDate) || !validDate(today) || paidThroughDate >= today) return null;
+  const deadline = addCalendarMonths(paidThroughDate, 1);
+  return today <= deadline ? deadline : null;
+}
+
 export function commitmentEnd(plan: { name: string; tier?: string }, start: string): string | null {
   const months = minimumTermMonths(plan);
   return months ? addCalendarMonths(start, months) : null;

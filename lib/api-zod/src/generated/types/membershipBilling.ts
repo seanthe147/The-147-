@@ -7,8 +7,10 @@
  */
 import type { MembershipBillingPlan } from './membershipBillingPlan';
 import type { MembershipBillingSubscription } from './membershipBillingSubscription';
+import type { MembershipReactivationOffer } from './membershipReactivationOffer';
 
 export interface MembershipBilling {
   subscription: MembershipBillingSubscription | null;
   plans: MembershipBillingPlan[];
+  reactivation: MembershipReactivationOffer | null;
 }

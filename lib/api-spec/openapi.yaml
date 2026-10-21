@@ -161,6 +161,20 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MembershipBilling" }
+  /membership/reactivate:
+    post:
+      operationId: reactivateMembership
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MembershipReactivation" }
+      responses:
+        "201":
+          description: Reactivation submitted to Square; access remains pending until payment confirmation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MembershipActionResult" }
   /membership/change-plan:
     post:
       operationId: changeMembershipPlan
@@ -258,7 +272,7 @@ components:
         customerMatched: { type: boolean }
     MembershipBilling:
       type: object
-      required: [subscription, plans]
+      required: [subscription, plans, reactivation]
       properties:
         subscription:
           anyOf:
@@ -267,6 +281,22 @@ components:
         plans:
           type: array
           items: { $ref: "#/components/schemas/MembershipBillingPlan" }
+        reactivation:
+          anyOf:
+            - { $ref: "#/components/schemas/MembershipReactivationOffer" }
+            - { type: "null" }
+    MembershipReactivationOffer:
+      type: object
+      required: [available, planId, planName, frequency, pricePence, minimumTermMonths, paidThroughDate, deadline]
+      properties:
+        available: { type: boolean }
+        planId: { type: integer }
+        planName: { type: string }
+        frequency: { type: string, enum: [monthly, annual] }
+        pricePence: { type: integer }
+        minimumTermMonths: { type: integer }
+        paidThroughDate: { type: string, format: date }
+        deadline: { type: string, format: date }
     MembershipBillingPlan:
       type: object
       required: [id, name, tier, monthlyPence, annualPence, minimumTermMonths]
@@ -345,6 +375,17 @@ components:
       required: [confirmed]
       properties:
         confirmed: { type: boolean }
+    MembershipReactivation:
+      type: object
+      additionalProperties: false
+      required: [planId, billingFrequency, termsAccepted, sourceId, verificationToken]
+      properties:
+        planId: { type: integer, minimum: 1 }
+        billingFrequency: { type: string, enum: [monthly, annual] }
+        termsAccepted: { type: boolean }
+        minimumTermAccepted: { type: boolean }
+        sourceId: { type: string, minLength: 1, maxLength: 256 }
+        verificationToken: { type: string, minLength: 1, maxLength: 2048 }
     MembershipMigrationReview:
       type: object
       required: [legacyBillingStopped, paidThroughDate]

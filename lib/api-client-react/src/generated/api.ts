@@ -31,6 +31,7 @@ import type {
   MembershipChange,
   MembershipMigrationReview,
   MembershipPosImport,
+  MembershipReactivation,
   StaffMembershipChange
 } from './api.schemas';
 
@@ -720,6 +721,71 @@ export function useGetMembershipBilling<TData = Awaited<ReturnType<typeof getMem
 
 
 
+
+export const getReactivateMembershipUrl = () => {
+
+
+
+
+  return `/api/membership/reactivate`
+}
+
+export const reactivateMembership = async (membershipReactivation: MembershipReactivation, options?: RequestInit): Promise<MembershipActionResult> => {
+
+  return customFetch<MembershipActionResult>(getReactivateMembershipUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      membershipReactivation,)
+  }
+);}
+
+
+
+
+export const getReactivateMembershipMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reactivateMembership>>, TError,{data: BodyType<MembershipReactivation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reactivateMembership>>, TError,{data: BodyType<MembershipReactivation>}, TContext> => {
+
+const mutationKey = ['reactivateMembership'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reactivateMembership>>, {data: BodyType<MembershipReactivation>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  reactivateMembership(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReactivateMembershipMutationResult = NonNullable<Awaited<ReturnType<typeof reactivateMembership>>>
+    export type ReactivateMembershipMutationBody = BodyType<MembershipReactivation>
+    export type ReactivateMembershipMutationError = ErrorType<unknown>
+
+    export const useReactivateMembership = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reactivateMembership>>, TError,{data: BodyType<MembershipReactivation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reactivateMembership>>,
+        TError,
+        {data: BodyType<MembershipReactivation>},
+        TContext
+      > => {
+      return useMutation(getReactivateMembershipMutationOptions(options));
+    }
 
 export const getChangeMembershipPlanUrl = () => {
 

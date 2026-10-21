@@ -124,7 +124,17 @@ export const GetStaffMembershipBillingResponse = zod.object({
   "monthlyPence": zod.number(),
   "annualPence": zod.number().nullable(),
   "minimumTermMonths": zod.number()
-}))
+})),
+  "reactivation": zod.union([zod.object({
+  "available": zod.boolean(),
+  "planId": zod.number(),
+  "planName": zod.string(),
+  "frequency": zod.enum(['monthly', 'annual']),
+  "pricePence": zod.number(),
+  "minimumTermMonths": zod.number(),
+  "paidThroughDate": zod.coerce.date(),
+  "deadline": zod.coerce.date()
+}),zod.null()])
 })
 
 
@@ -225,7 +235,34 @@ export const GetMembershipBillingResponse = zod.object({
   "monthlyPence": zod.number(),
   "annualPence": zod.number().nullable(),
   "minimumTermMonths": zod.number()
-}))
+})),
+  "reactivation": zod.union([zod.object({
+  "available": zod.boolean(),
+  "planId": zod.number(),
+  "planName": zod.string(),
+  "frequency": zod.enum(['monthly', 'annual']),
+  "pricePence": zod.number(),
+  "minimumTermMonths": zod.number(),
+  "paidThroughDate": zod.coerce.date(),
+  "deadline": zod.coerce.date()
+}),zod.null()])
+})
+
+
+
+export const reactivateMembershipBodySourceIdMax = 256;
+
+export const reactivateMembershipBodyVerificationTokenMax = 2048;
+
+
+
+export const ReactivateMembershipBody = zod.object({
+  "planId": zod.number().min(1),
+  "billingFrequency": zod.enum(['monthly', 'annual']),
+  "termsAccepted": zod.boolean(),
+  "minimumTermAccepted": zod.boolean().optional(),
+  "sourceId": zod.string().min(1).max(reactivateMembershipBodySourceIdMax),
+  "verificationToken": zod.string().min(1).max(reactivateMembershipBodyVerificationTokenMax)
 })
 
 

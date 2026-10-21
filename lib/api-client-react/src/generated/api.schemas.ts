@@ -128,9 +128,29 @@ export interface MembershipBillingPlan {
   minimumTermMonths: number;
 }
 
+export type MembershipReactivationOfferFrequency = typeof MembershipReactivationOfferFrequency[keyof typeof MembershipReactivationOfferFrequency];
+
+
+export const MembershipReactivationOfferFrequency = {
+  monthly: 'monthly',
+  annual: 'annual',
+} as const;
+
+export interface MembershipReactivationOffer {
+  available: boolean;
+  planId: number;
+  planName: string;
+  frequency: MembershipReactivationOfferFrequency;
+  pricePence: number;
+  minimumTermMonths: number;
+  paidThroughDate: string;
+  deadline: string;
+}
+
 export interface MembershipBilling {
   subscription: MembershipBillingSubscription | null;
   plans: MembershipBillingPlan[];
+  reactivation: MembershipReactivationOffer | null;
 }
 
 export interface MembershipCardReplacement {
@@ -179,6 +199,32 @@ export interface MembershipChange {
 
 export interface MembershipCancellation {
   confirmed: boolean;
+}
+
+export type MembershipReactivationBillingFrequency = typeof MembershipReactivationBillingFrequency[keyof typeof MembershipReactivationBillingFrequency];
+
+
+export const MembershipReactivationBillingFrequency = {
+  monthly: 'monthly',
+  annual: 'annual',
+} as const;
+
+export interface MembershipReactivation {
+  /** @minimum 1 */
+  planId: number;
+  billingFrequency: MembershipReactivationBillingFrequency;
+  termsAccepted: boolean;
+  minimumTermAccepted?: boolean;
+  /**
+     * @minLength 1
+     * @maxLength 256
+     */
+  sourceId: string;
+  /**
+     * @minLength 1
+     * @maxLength 2048
+     */
+  verificationToken: string;
 }
 
 export interface MembershipMigrationReview {

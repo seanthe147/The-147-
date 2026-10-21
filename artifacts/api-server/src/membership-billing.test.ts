@@ -6,6 +6,7 @@ import { eq, inArray } from "drizzle-orm";
 import { customers, membershipPlans, membershipSubscriptions, membershipBillingStates, membershipAuditLog } from "@workspace/db/schema";
 import { db, runStartupMigrations, storage } from "./storage";
 import { alignBillingStart, billingState, migrationOffer, prepareMigrationOffer, migrationBillingStart, recordBillingTerms, registerMembershipBilling, reconcileScheduledMembership, membershipSignupGuard } from "./membership-billing";
+import { addCalendarMonths, membershipBusinessDate } from "./membership-billing-policy";
 
 const realFetch = globalThis.fetch;
 if (process.env.MEMBERSHIP_BILLING_ISOLATED_TEST !== "yes" ||
@@ -18,6 +19,10 @@ let customerId: number;
 let subId: number;
 let oldId: number;
 let blackId: number;
+let reactivationPlanId: number | null = null;
+let reactivationVariationId: string | null = null;
+let reactivationPricePence = 0;
+let reactivatedSubId: number | null = null;
 let base: string;
 let server: ReturnType<ReturnType<typeof express>["listen"]>;
 const requests: { path: string; body: any }[] = [];
@@ -47,6 +52,17 @@ before(async () => {
         if (declineCard) return Response.json({ errors: [{ code: "CARD_DECLINED", detail: "private provider detail" }] }, { status: 400 });
         return Response.json({ card });
       }
+      if (path === "/v2/subscriptions/search") return Response.json({ subscriptions: [remote] });
+      if (path === "/v2/subscriptions" && init?.method === "POST") {
+        return Response.json({ subscription: {
+          id: "fixture-reactivated-sub",
+          customer_id: body.customer_id,
+          plan_variation_id: body.plan_variation_id,
+          start_date: body.start_date,
+          status: "PENDING",
+          card_id: body.card_id,
+        } });
+      }
       if (path.startsWith("/v2/cards/")) return Response.json({ card });
       if (path === `/v2/subscriptions/${remote.id}` && init?.method === "PUT") {
         if (failCardUpdate) return Response.json({ errors: [{ code: "VERSION_MISMATCH" }] }, { status: 409 });
@@ -54,8 +70,12 @@ before(async () => {
         remote.version++;
         return Response.json({ subscription: { ...remote, actions: undefined } });
       }
-      if (path === "/v2/catalog/object/fixture-black-monthly") {
-        return Response.json({ object: { subscription_plan_variation_data: { phases: [{ cadence: catalogCadence, pricing: { type: "STATIC", price_money: { amount: catalogPence, currency: "GBP" } } }] } } });
+      if (path === "/v2/catalog/object/fixture-black-monthly" ||
+          (reactivationVariationId && path === `/v2/catalog/object/${reactivationVariationId}`)) {
+        const amount = path.includes("fixture-black")
+          ? catalogPence
+          : reactivationPricePence;
+        return Response.json({ object: { subscription_plan_variation_data: { phases: [{ cadence: catalogCadence, pricing: { type: "STATIC", price_money: { amount, currency: "GBP" } } }] } } });
       }
       if (path.endsWith("/swap-plan")) {
         actions = [{ type: "SWAP_PLAN", effective_date: renewal }];
@@ -107,6 +127,11 @@ after(async () => {
     await db.delete(membershipAuditLog).where(eq(membershipAuditLog.subscriptionId, subId));
     await db.delete(membershipSubscriptions).where(eq(membershipSubscriptions.id, subId));
   }
+  if (reactivatedSubId) {
+    await db.delete(membershipBillingStates).where(eq(membershipBillingStates.subscriptionId, reactivatedSubId));
+    await db.delete(membershipAuditLog).where(eq(membershipAuditLog.subscriptionId, reactivatedSubId));
+    await db.delete(membershipSubscriptions).where(eq(membershipSubscriptions.id, reactivatedSubId));
+  }
   if (customerId) await db.delete(customers).where(eq(customers.id, customerId));
   const plans = [oldId, blackId].filter(Boolean);
   if (plans.length) await db.delete(membershipPlans).where(inArray(membershipPlans.id, plans));
@@ -115,8 +140,8 @@ after(async () => {
   assert.equal((await db.select().from(membershipBillingStates)).length, 0, "billing fixtures removed");
   assert.equal((await db.select().from(membershipAuditLog)).length, 0, "audit fixtures removed");
   assert.deepEqual(blockedRequests, [], "unexpected requests must fail even if routes catch the error");
-  assert.equal(requests.some(r => r.path.includes("/payments") || r.path === "/v2/subscriptions"), false,
-    "management tests must not charge or enroll");
+  assert.equal(requests.some(r => r.path.includes("/payments")), false,
+    "membership management must not call the direct payments endpoint");
   globalThis.fetch = realFetch;
 });
 
@@ -359,4 +384,78 @@ test("a paid annual member can stop renewal while retaining access through the f
   assert.equal((await billingState(subId))?.cancellationDate, cancellationAt);
   assert.equal((await storage.getMembershipSubscriptionByCustomer(customerId))?.status, "active");
   assert.equal(requests.filter(r => r.path.endsWith("/cancel")).length, 2);
+});
+
+test("expired Square members can reactivate only within one month and start a consented Square subscription", async () => {
+  const todayDate = membershipBusinessDate();
+  const insideWindow = addCalendarMonths(todayDate, -1);
+  const outsideWindow = addCalendarMonths(todayDate, -2);
+  const customer = await storage.getCustomerById(customerId);
+  assert.ok(customer);
+  await db.update(customers).set({ emailVerified: true }).where(eq(customers.id, customerId));
+  const platinum = (await storage.getMembershipPlans(true)).find(plan => plan.tier === "platinum");
+  assert.ok(platinum?.squarePlanVariationId);
+  reactivationPlanId = platinum.id;
+  reactivationVariationId = platinum.squarePlanVariationId;
+  reactivationPricePence = platinum.priceMonthly;
+  catalogCadence = "MONTHLY";
+  await db.update(membershipSubscriptions).set({
+    planId: blackId,
+    status: "cancelled",
+    currentPeriodEnd: outsideWindow,
+    source: "app",
+  }).where(eq(membershipSubscriptions.id, subId));
+  await db.update(membershipBillingStates).set({
+    billingFrequency: "monthly",
+    cancellationDate: outsideWindow,
+    commitmentEndDate: outsideWindow,
+    pendingPlanId: null,
+    pendingFrequency: null,
+    pendingEffectiveDate: null,
+  }).where(eq(membershipBillingStates.subscriptionId, subId));
+  Object.assign(remote, {
+    status: "CANCELED",
+    plan_variation_id: "fixture-black-monthly",
+    canceled_date: outsideWindow,
+    charged_through_date: outsideWindow,
+  });
+
+  const body = {
+    planId: platinum.id,
+    billingFrequency: "monthly",
+    termsAccepted: true,
+    minimumTermAccepted: true,
+    sourceId: "cnon:fixture-reactivation",
+    verificationToken: "fixture-verification",
+  };
+  const cardRequestsBefore = requests.filter(r => r.path === "/v2/cards").length;
+  const tooLate = await request("/api/membership/reactivate", body);
+  assert.equal(tooLate.status, 409);
+  assert.equal(requests.filter(r => r.path === "/v2/cards").length, cardRequestsBefore,
+    "out-of-window requests must fail before storing a card");
+  assert.equal(requests.filter(r => r.path === "/v2/subscriptions").length, 0,
+    "out-of-window requests must not create Square subscriptions");
+
+  await db.update(membershipSubscriptions).set({ currentPeriodEnd: insideWindow }).where(eq(membershipSubscriptions.id, subId));
+  await db.update(membershipBillingStates).set({ cancellationDate: insideWindow }).where(eq(membershipBillingStates.subscriptionId, subId));
+  Object.assign(remote, { canceled_date: insideWindow, charged_through_date: insideWindow });
+  const result = await request("/api/membership/reactivate", body);
+  assert.equal(result.status, 201);
+  assert.match((await result.json() as any).message, /first payment/);
+
+  const newSub = await storage.getLatestMembershipSubscriptionByCustomer(customerId);
+  assert.ok(newSub);
+  assert.notEqual(newSub.id, subId);
+  assert.equal(newSub.status, "pending");
+  assert.equal(newSub.planId, platinum.id);
+  assert.equal(newSub.squareSubscriptionId, "fixture-reactivated-sub");
+  reactivatedSubId = newSub.id;
+  assert.equal((await billingState(newSub.id))?.billingFrequency, "monthly");
+  assert.equal((await billingState(newSub.id))?.commitmentEndDate, addCalendarMonths(todayDate, 12));
+  const squareCreate = requests.find(r => r.path === "/v2/subscriptions");
+  assert.equal(squareCreate?.body.start_date, todayDate);
+  assert.equal(squareCreate?.body.plan_variation_id, reactivationVariationId);
+  assert.equal(squareCreate?.body.idempotency_key.length <= 45, true);
+  assert.equal(requests.filter(r => r.path.includes("/payments")).length, 0,
+    "recurring reactivation must not use a separate immediate-payment endpoint");
 });

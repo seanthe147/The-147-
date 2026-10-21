@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addCalendarMonths, cancellationAllowed, commitmentEnd, minimumTermMonths, validDate, variationForFrequency } from "./membership-billing-policy.ts";
+import { addCalendarMonths, cancellationAllowed, commitmentEnd, membershipReactivationDeadline, minimumTermMonths, validDate, variationForFrequency } from "./membership-billing-policy.ts";
 
 test("only Black and Platinum receive 12-month minimum terms", () => {
   assert.equal(minimumTermMonths({ name: "Black", tier: "black" }), 12);
@@ -17,6 +17,13 @@ test("commitments expire after 12 calendar months, including leap day", () => {
 test("monthly renewals clamp to month end instead of skipping February", () => {
   assert.equal(addCalendarMonths("2026-01-31", 1), "2026-02-28");
   assert.equal(addCalendarMonths("2024-01-31", 1), "2024-02-29");
+});
+test("membership reactivation is available for one calendar month after paid access ends", () => {
+  assert.equal(membershipReactivationDeadline("2026-01-31", "2026-01-31"), null);
+  assert.equal(membershipReactivationDeadline("2026-01-31", "2026-02-01"), "2026-02-28");
+  assert.equal(membershipReactivationDeadline("2026-01-31", "2026-02-28"), "2026-02-28");
+  assert.equal(membershipReactivationDeadline("2026-01-31", "2026-03-01"), null);
+  assert.equal(membershipReactivationDeadline("invalid", "2026-02-01"), null);
 });
 test("cancellation allowed on/after minimum-term end", () => {
   assert.equal(cancellationAllowed("2027-10-13", "2027-10-12"), false);

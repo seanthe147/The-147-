@@ -1,13 +1,14 @@
 import type { Express, RequestHandler } from "express";
 import { createHash } from "node:crypto";
-import { ReplaceMembershipCardBody, EnableMembershipAutoRenewBody } from "@workspace/api-zod";
+import { ReplaceMembershipCardBody, EnableMembershipAutoRenewBody, ReactivateMembershipBody } from "@workspace/api-zod";
 import { eq, isNull, sql } from "drizzle-orm";
 import { membershipBillingStates as states, membershipSubscriptions as subscriptions, membershipAuditLog, membershipPlanVariationAliases } from "@workspace/db/schema";
 import { db, storage } from "./storage";
 import * as square from "./square";
 import {
   BILLING_TERMS_VERSION, cancellationAllowed, commitmentEnd, minimumTermMonths, isPlatinumConsolidation,
-  validDate, variationForFrequency, membershipBusinessDate, type BillingFrequency,
+  addCalendarMonths, validDate, variationForFrequency, membershipBusinessDate,
+  membershipReactivationDeadline, type BillingFrequency,
 } from "./membership-billing-policy";
 
 type Connection = Pick<typeof db, "select" | "insert" | "update" | "execute">;
@@ -240,8 +241,40 @@ async function membershipBillingDetails(sub: BillingSubscription | null | undefi
   const state = sub ? await billingState(sub.id) : null;
   const current = sub ? await storage.getMembershipPlan(sub.planId) : null;
   const pending = state?.pendingPlanId ? await storage.getMembershipPlan(state.pendingPlanId) : null;
-  const frequency = state?.billingFrequency ?? (sub?.source.includes("annual") ? "annual" : "monthly");
+  const frequency = state?.billingFrequency ?? (sub?.source.includes("annual") || sub?.source.startsWith("square_pos") ? "annual" : "monthly");
+  const paidThroughDate = [state?.cancellationDate, sub?.prepaidUntilDate, sub?.currentPeriodEnd]
+    .filter((date): date is string => validDate(date))
+    .sort()
+    .at(-1) ?? null;
+  const reactivationDeadline = sub?.status === "cancelled" && sub.source !== "wix_import"
+    ? membershipReactivationDeadline(paidThroughDate, today())
+    : null;
+  const isLegacyPlatinumName = current &&
+    (["black", "maximum"].includes(current.tier ?? "") || /^(?:the 147\s+)?black(?:\s+membership)?$/i.test(current.name));
+  const reactivationPlan = isLegacyPlatinumName
+    ? plans.find(plan => plan.tier === "platinum") ?? null
+    : current?.active && !current.hideFromSignup ? current : null;
+  const reactivationPricePence = reactivationPlan
+    ? (frequency === "annual" ? reactivationPlan.priceAnnual : reactivationPlan.priceMonthly)
+    : null;
+  const reactivationVariation = reactivationPlan
+    ? (frequency === "annual" ? reactivationPlan.squarePlanVariationIdAlt : reactivationPlan.squarePlanVariationId)
+    : null;
+  const reactivation = reactivationDeadline && reactivationPlan && reactivationPricePence != null &&
+      reactivationVariation && square.isConfigured()
+    ? {
+        available: true,
+        planId: reactivationPlan.id,
+        planName: reactivationPlan.name,
+        frequency,
+        pricePence: reactivationPricePence,
+        minimumTermMonths: minimumTermMonths(reactivationPlan),
+        paidThroughDate,
+        deadline: reactivationDeadline,
+      }
+    : null;
   return {
+    reactivation,
     subscription: sub ? {
       id: sub.id, planId: sub.planId, planName: current?.name ?? "Membership", source: sub.source,
       currentTier: current?.tier ?? null, currentMonthlyPence: current?.priceMonthly ?? null,
@@ -465,6 +498,165 @@ export function registerMembershipBilling(app: Express, customerAuth: RequestHan
       res.json(await membershipBillingDetails(sub));
     } catch {
       res.status(503).json({ message: "Unable to load billing from Square. Please retry; no payments have been changed." });
+    }
+  });
+
+  app.post("/api/membership/reactivate", customerAuth, async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const parsed = ReactivateMembershipBody.safeParse(req.body);
+    if (!parsed.success || parsed.data.termsAccepted !== true ||
+        !parsed.data.sourceId.startsWith("cnon:") || !parsed.data.verificationToken.trim()) {
+      res.status(400).json({ message: "Accept the recurring membership terms and authorise a card before reactivating." });
+      return;
+    }
+    const body = parsed.data;
+    const customerId = (req as any).customerId as number;
+    let pendingSubscriptionId: number | null = null;
+    let squareCustomerId: string | null = null;
+    let squareSubscriptionId: string | null = null;
+    try {
+      const customer = await storage.getCustomerById(customerId);
+      if (!customer?.emailVerified) throw new Error("Verify your email before reactivating membership.");
+      if (!square.isConfigured()) throw new Error("Square recurring billing is not configured.");
+      const locationId = square.getPublicLocationId();
+      if (!locationId) throw new Error("Square payment location is not configured.");
+
+      const offer = await db.transaction(async tx => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(14701, ${customerId})`);
+        const existing = await storage.getLatestMembershipSubscriptionByCustomer(customerId);
+        if (!existing || existing.status !== "cancelled" || existing.source === "wix_import") {
+          throw new Error("This membership cannot be reactivated. Choose a current plan or contact the club.");
+        }
+        const details = await membershipBillingDetails(existing);
+        const reactivation = details.reactivation;
+        if (!reactivation || reactivation.planId !== body.planId || reactivation.frequency !== body.billingFrequency) {
+          throw new Error("The reactivation period has ended or this offer changed. Refresh your membership details.");
+        }
+        if (reactivation.minimumTermMonths > 0 && body.minimumTermAccepted !== true) {
+          throw new Error(`Please accept the ${reactivation.minimumTermMonths}-month minimum term to reactivate.`);
+        }
+        const plan = await storage.getMembershipPlan(reactivation.planId);
+        if (!plan?.active || plan.hideFromSignup) throw new Error("This membership is no longer available to reactivate.");
+        const variation = variationForFrequency(plan, reactivation.frequency);
+        await square.validateSquareBillingVariation(variation, reactivation.frequency, reactivation.pricePence);
+
+        squareCustomerId = existing.squareCustomerId ?? null;
+        if (!squareCustomerId) {
+          const found = await square.findSquareCustomerByEmail(customer.email);
+          const squareCustomer = found ?? await square.createSquareCustomer(customer.name, customer.email, customer.phone || undefined);
+          squareCustomerId = squareCustomer?.id ?? null;
+        }
+        if (!squareCustomerId) throw new Error("Could not verify your Square customer profile.");
+
+        const remoteSubscriptions = await square.listSquareSubscriptionsForCustomer(squareCustomerId);
+        const membershipPlans = await storage.getMembershipPlans();
+        const aliases = await tx.select().from(membershipPlanVariationAliases);
+        const knownVariations = new Set([
+          ...membershipPlans.flatMap(p => [p.squarePlanVariationId, p.squarePlanVariationIdAlt]).filter(Boolean),
+          ...aliases.map(alias => alias.squareVariationId),
+        ]);
+        if (remoteSubscriptions.some((remote: any) =>
+          ["ACTIVE", "PENDING", "PAUSED"].includes(remote.status) && knownVariations.has(remote.plan_variation_id))) {
+          throw new Error("Square already has an active membership for this account. Refresh your membership details or contact the club.");
+        }
+        const localSubscriptions = await tx.select().from(subscriptions).where(eq(subscriptions.customerId, customerId));
+        if (localSubscriptions.some(local => local.id !== existing.id &&
+            ["active", "pending", "pending_payment", "pending_start", "held", "frozen"].includes(local.status))) {
+          throw new Error("Another membership is already active or being processed for this account.");
+        }
+
+        const todayDate = today();
+        const newSubscription = await tx.insert(subscriptions).values({
+          customerId,
+          planId: plan.id,
+          status: "pending",
+          currentPeriodStart: todayDate,
+          currentPeriodEnd: addCalendarMonths(todayDate, reactivation.frequency === "annual" ? 12 : 1),
+          hoursUsedThisPeriod: 0,
+          guestPassesUsed: 0,
+          source: "app_reactivation",
+          termsAcceptedAt: new Date(),
+          squareCustomerId,
+        }).returning();
+        const created = newSubscription[0];
+        if (!created) throw new Error("Could not prepare the membership reactivation.");
+        pendingSubscriptionId = created.id;
+        await tx.insert(states).values({ subscriptionId: created.id, billingFrequency: reactivation.frequency })
+          .onConflictDoNothing({ target: states.subscriptionId });
+        await tx.update(states).set({
+          commitmentStartDate: todayDate,
+          commitmentEndDate: commitmentEnd(plan, todayDate),
+          termsVersion: BILLING_TERMS_VERSION,
+        }).where(eq(states.subscriptionId, created.id));
+        await tx.insert(membershipAuditLog).values({
+          subscriptionId: created.id,
+          customerId,
+          action: "reactivation_started",
+          staffUsername: "customer",
+          note: `Plan ${plan.name}; ${reactivation.frequency}; first billing starts ${todayDate}; reactivated from membership ${existing.id}`,
+        });
+        return { plan, variation, frequency: reactivation.frequency, todayDate, previousId: existing.id };
+      });
+
+      const card = await square.saveCardOnFile({
+        customerId: squareCustomerId!,
+        sourceId: body.sourceId,
+        verificationToken: body.verificationToken,
+        cardholderName: customer.name,
+        idempotencyKey: createHash("sha256").update(`membership-reactivation-card:${customerId}:${body.sourceId}`).digest("hex").slice(0, 45),
+      });
+      if (!card?.id || card.customer_id !== squareCustomerId) throw new Error("Square could not verify the authorised payment card.");
+
+      let createdSquareSubscription: any;
+      try {
+        createdSquareSubscription = await square.createSquareSubscription(
+          squareCustomerId!,
+          offer.variation,
+          locationId,
+          card.id,
+          offer.todayDate,
+          createHash("sha256").update(`membership-reactivation:${offer.previousId}:${offer.todayDate}:${offer.variation}:${body.sourceId}`).digest("hex").slice(0, 45),
+        );
+      } catch (error) {
+        // A timed-out create can still have succeeded at Square. Reconcile by
+        // the exact customer, variation and start date before allowing retry.
+        const remoteSubscriptions = await square.listSquareSubscriptionsForCustomer(squareCustomerId!).catch(() => null);
+        createdSquareSubscription = remoteSubscriptions?.find((remote: any) =>
+          ["ACTIVE", "PENDING", "PAUSED"].includes(remote.status) &&
+          remote.plan_variation_id === offer.variation &&
+          remote.start_date === offer.todayDate &&
+          remote.customer_id === squareCustomerId) ?? null;
+        if (!createdSquareSubscription) throw error;
+      }
+      if (!createdSquareSubscription?.id || createdSquareSubscription.customer_id !== squareCustomerId ||
+          createdSquareSubscription.plan_variation_id !== offer.variation ||
+          createdSquareSubscription.start_date !== offer.todayDate) {
+        throw new Error("Square did not confirm the new recurring membership. Please contact the club before retrying.");
+      }
+      squareSubscriptionId = createdSquareSubscription.id;
+      await db.update(subscriptions).set({ squareSubscriptionId }).where(eq(subscriptions.id, pendingSubscriptionId!));
+      res.status(201).json({
+        message: "Reactivation submitted. Square will confirm the first payment; membership benefits resume after payment succeeds.",
+        effectiveDate: offer.todayDate,
+      });
+    } catch (error: any) {
+      if (pendingSubscriptionId && !squareSubscriptionId) {
+        const remoteSubscriptions = squareCustomerId
+          ? await square.listSquareSubscriptionsForCustomer(squareCustomerId).catch(() => null)
+          : null;
+        const uncertain = remoteSubscriptions?.some((remote: any) =>
+          ["ACTIVE", "PENDING", "PAUSED"].includes(remote.status) && remote.customer_id === squareCustomerId);
+        if (!uncertain) {
+          await db.transaction(async tx => {
+            await tx.delete(states).where(eq(states.subscriptionId, pendingSubscriptionId!));
+            await tx.delete(membershipAuditLog).where(eq(membershipAuditLog.subscriptionId, pendingSubscriptionId!));
+            await tx.delete(subscriptions).where(eq(subscriptions.id, pendingSubscriptionId!));
+          }).catch(() => {});
+        }
+      }
+      if (!res.headersSent) res.status(409).json({
+        message: error.message || "Could not reactivate membership. Refresh your membership details before retrying.",
+      });
     }
   });
 

@@ -105,3 +105,9 @@ The owner confirmed on 2026-10-15 that the £65 Platinum till item grants 12 mon
 **Why:** The owner explicitly chose the annual till item after reviewing the two identically named Square products.
 
 **How to apply:** Keep that distinction when changing till mappings, prices or renewal rules. Do not enable automatic renewal merely because the £65 item was purchased.
+
+After paid access ends, a cancelled member may reactivate the same still-available plan and billing frequency for one calendar month. Reactivation creates a new Square subscription and begins charging immediately; after the window, the customer must buy a new membership.
+
+**Why:** The owner explicitly chose the window to start after paid access ends and approved charging when the customer reactivates.
+
+**How to apply:** Require fresh card verification and clear recurring-term consent. Keep the new membership pending until Square confirms payment; do not reverse the old cancellation or restore benefits just because the reactivation form was submitted.
