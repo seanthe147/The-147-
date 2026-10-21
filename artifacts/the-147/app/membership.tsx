@@ -25,18 +25,16 @@ import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import { getApiUrl, prefetchSquarePaymentSdk } from "@/lib/query-client";
 import { SquarePaymentSheet } from "@/components/SquarePaymentSheet";
 import { AdaptiveGlassSurface } from "@/components/AdaptiveGlassSurface";
-import { getPlanBenefits, type BenefitKey } from "@workspace/db/schema";
+import { ManageMembership } from "@/components/membership/ManageMembership";
+import { billingSummary, canonicalBenefits, fmtDate, hasManageableMembership, statusInfo } from "@/lib/membershipDisplay";
+import { type BenefitKey } from "@workspace/db/schema";
 import { useColors } from "@/hooks/useColors";
 import {
   getGetMembershipBillingQueryKey,
   setAuthTokenGetter,
   setBaseUrl,
-  useCancelMembershipBilling,
-  useChangeMembershipPlan,
   useGetMembershipBilling,
-  useReplaceMembershipCard,
 } from "@workspace/api-client-react";
-import type { MembershipBillingPlan, MembershipActionResult } from "@workspace/api-client-react";
 
 const TOKEN_KEY = "customer_session_token";
 
@@ -79,9 +77,11 @@ interface MembershipSubscription {
 }
 
 const PLAN_ICONS: Record<string, { name: keyof typeof Ionicons.glyphMap; tagline: string; popular?: boolean }> = {
-  rack: { name: "ellipse", tagline: "Perfect for casual players" },
-  century: { name: "trophy", tagline: "Most popular", popular: true },
-  maximum: { name: "diamond", tagline: "The full experience" },
+  rack: { name: "ellipse", tagline: "" },
+  century: { name: "trophy", tagline: "" },
+  black: { name: "diamond", tagline: "" },
+  platinum: { name: "diamond", tagline: "" },
+  maximum: { name: "diamond", tagline: "" },
 };
 
 function getPlanMeta(tier: string) {
@@ -102,9 +102,8 @@ function getPlanFeatures(plan: MembershipPlan): { icon: keyof typeof Ionicons.gl
   // staff dashboard / web without needing an app rebuild. Falls back to
   // the local computation if an older server build hasn't shipped the
   // field yet.
-  const detailed = Array.isArray(plan.benefitsDetailed) && plan.benefitsDetailed.length > 0
-    ? plan.benefitsDetailed
-    : getPlanBenefits(plan);
+  // Canonical only: server benefitsDetailed, else shared getPlanBenefits. Never plan.description.
+  const detailed = canonicalBenefits(plan);
   return detailed.map((b: { key: string; text: string }) => ({
     icon: b.key === "hours" && plan.snookerUnlimited ? "infinite-outline" : BENEFIT_ICONS[b.key as BenefitKey],
     text: b.text,
@@ -132,16 +131,6 @@ function commitmentCopy(p: { tier?: string | null; name?: string | null }) {
 // Generated contract client: same API origin + bearer session as the rest of the app.
 setBaseUrl(getApiUrl().replace(/\/$/, ""));
 setAuthTokenGetter(async () => (await getToken()) || null);
-
-function apiErrorMessage(err: unknown, fallback: string): string {
-  if (!err) return fallback;
-  const data = (err as { data?: unknown }).data;
-  if (data && typeof data === "object" && typeof (data as { message?: unknown }).message === "string") {
-    return (data as { message: string }).message;
-  }
-  if (err instanceof Error && err.message) return err.message;
-  return fallback;
-}
 
 function todayString() {
   return new Date().toISOString().slice(0, 10);
@@ -219,6 +208,20 @@ export default function MembershipScreen() {
       return res.json();
     },
   });
+
+  const membershipBilling = useGetMembershipBilling({
+    query: {
+      queryKey: [...getGetMembershipBillingQueryKey(), customer?.id],
+      enabled: isAuthenticated && !!subscription,
+      staleTime: 0,
+    },
+  });
+  const showActive = !!subscription && (
+    subscription.status !== "cancelled" ||
+    membershipBilling.isPending ||
+    membershipBilling.isError ||
+    hasManageableMembership(membershipBilling.data?.subscription)
+  );
 
   // Hosted-checkout fallback (web, or native when in-app sheet is unavailable)
   const joinMutation = useMutation({
@@ -432,7 +435,7 @@ export default function MembershipScreen() {
             <Text style={styles.loginBtnText}>Try again</Text>
           </Pressable>
         </View>
-      ) : isAuthenticated && subscription && subscription.status !== "cancelled" ? (
+      ) : isAuthenticated && subscription && showActive ? (
         <ActiveMembership
           subscription={subscription}
           insets={insets}
@@ -503,7 +506,7 @@ export default function MembershipScreen() {
 
           {visiblePlans.map((plan) => {
             const meta = getPlanMeta(plan.tier);
-            const planColor = plan.color || Colors.brand.blue;
+            const planColor = colors.scheme === "dark" ? colors.gold : plan.color || Colors.brand.blue;
             const isSelected = selectedPlanId === plan.id;
             const features = getPlanFeatures(plan);
             const displayPrice = getDisplayPrice(plan);
@@ -537,7 +540,7 @@ export default function MembershipScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.planName}>{plan.name}</Text>
-                    <Text style={styles.planTagline}>{meta.tagline}</Text>
+                    {plan.minimumTermMonths ? <Text style={styles.planTagline}>{plan.minimumTermMonths}-month minimum term</Text> : null}
                   </View>
                   <View style={styles.priceBlock}>
                     <Text style={[styles.planPrice, { color: planColor }]}>
@@ -769,7 +772,7 @@ function ActiveMembership({
   const styles = useMemo(() => createThemeStyles(colors), [colors]);
   const { tabletPad } = useResponsive();
   const plan = subscription.plan;
-  const planColor = plan?.color || Colors.brand.blue;
+  const planColor = colors.scheme === "dark" ? colors.gold : plan?.color || Colors.brand.blue;
   const meta = plan ? getPlanMeta(plan.tier) : { name: "card" as const, tagline: "" };
   // Personalised greeting + cardholder name. The member card renders
   // the customer's full name as the "cardholder" so it feels like a
@@ -778,6 +781,11 @@ function ActiveMembership({
   const { customer } = useCustomerAuth();
   const { greeting } = useCustomerGreeting();
   const cardholderName = customer?.name?.trim() || null;
+  const billingQuery = useGetMembershipBilling({
+    query: { queryKey: [...getGetMembershipBillingQueryKey(), customer?.id], staleTime: 0 },
+  });
+  const billingSub = billingQuery.data?.subscription ?? null;
+  const billingLoading = billingQuery.isLoading;
 
   const retryMutation = useMutation({
     mutationFn: async () => {
@@ -818,16 +826,7 @@ function ActiveMembership({
       : subscription.status === "frozen"
       ? "#EF4444"
       : "#F59E0B";
-  const statusLabel =
-    subscription.status === "active"
-      ? "Active"
-      : subscription.status === "paused"
-      ? "Paused"
-      : subscription.status === "pending"
-      ? "Payment Pending"
-      : subscription.status === "frozen"
-      ? "Suspended"
-      : "Cancelled";
+  const statusLabel = statusInfo(billingSub ?? subscription).label;
 
   return (
     <ScrollView
@@ -886,14 +885,19 @@ function ActiveMembership({
 
           <View style={styles.memberCardStats}>
             <View style={styles.memberCardStat}>
-              <Text style={styles.memberCardStatLabel}>Monthly signup price</Text>
-              <Text style={styles.memberCardStatValue}>
-                £{plan ? (plan.priceMonthly / 100).toFixed(2) : "—"}
+              <Text style={styles.memberCardStatLabel}>Payment</Text>
+              <Text style={styles.memberCardStatValue} testID="member-card-billing" numberOfLines={2}>
+                {billingSub ? billingSummary(billingSub).method : billingLoading ? "Checking" : "See below"}
               </Text>
             </View>
-            {plan?.hoursIncluded ? (
+            {plan?.snookerUnlimited ? (
               <View style={styles.memberCardStat}>
-                <Text style={styles.memberCardStatLabel}>Hours used</Text>
+                <Text style={styles.memberCardStatLabel}>Snooker</Text>
+                <Text style={styles.memberCardStatValue}>Unlimited</Text>
+              </View>
+            ) : plan?.hoursIncluded ? (
+              <View style={styles.memberCardStat}>
+                <Text style={styles.memberCardStatLabel}>Hours used / {plan.hoursUnit === "year" ? "year" : "month"}</Text>
                 <Text style={styles.memberCardStatValue}>
                   {subscription.hoursUsedThisPeriod ?? 0}/{plan.hoursIncluded}h
                 </Text>
@@ -907,14 +911,17 @@ function ActiveMembership({
             ) : null}
           </View>
 
-          <View style={styles.memberCardDivider} />
-
-          <View style={styles.memberCardDates}>
-            <Ionicons name="calendar-outline" size={14} color={Colors.light.textSecondary} />
-            <Text style={styles.memberCardDatesText}>
-              Renews {formatDate(subscription.currentPeriodEnd)}
-            </Text>
-          </View>
+          {billingSub ? (
+            <>
+              <View style={styles.memberCardDivider} />
+              <View style={styles.memberCardDates} testID="member-card-date">
+                <Ionicons name="calendar-outline" size={14} color={Colors.light.textSecondary} />
+                <Text style={styles.memberCardDatesText}>
+                  {billingSummary(billingSub).dateLabel} {fmtDate(billingSummary(billingSub).date, true)}
+                </Text>
+              </View>
+            </>
+          ) : null}
         </View>
       </View>
 
@@ -950,7 +957,7 @@ function ActiveMembership({
           </View>
           <View style={{ flex: 1 }}>
             <Text style={[styles.paymentBannerTitle, { color: "#D4A843" }]}>Payment Pending</Text>
-            <Text style={[styles.paymentBannerBody, { color: "rgba(255,255,255,0.7)" }]}>
+            <Text style={[styles.paymentBannerBody, { color: colors.textSecondary }]}>
               Complete your payment to activate your membership benefits.
             </Text>
           </View>
@@ -971,7 +978,7 @@ function ActiveMembership({
       {!isFrozen && !isPending && failedAttempts > 0 && (
         <View style={[styles.paymentBanner, { borderColor: "rgba(212,168,67,0.25)", backgroundColor: "rgba(212,168,67,0.08)" }]}>
           <Ionicons name="alert-circle-outline" size={20} color="#D4A843" />
-          <Text style={[styles.paymentBannerBody, { color: "rgba(255,255,255,0.7)", marginLeft: 8, flex: 1 }]}>
+          <Text style={[styles.paymentBannerBody, { color: colors.textSecondary, marginLeft: 8, flex: 1 }]}>
             {failedAttempts === 1
               ? "A payment recently failed. Ensure your card details are up to date."
               : `${failedAttempts}/3 payments have failed. One more failure will suspend your benefits.`}
@@ -1006,409 +1013,7 @@ function ActiveMembership({
   );
 }
 
-type PrepaidFields = {
-  source?: string;
-  firstPaidAt?: string | null;
-  lastPaidAt?: string | null;
-  prepaidUntilDate?: string | null;
-  autoRenewEligible?: boolean;
-  autoRenewScheduled?: boolean;
-  autoRenewStartDate?: string | null;
-};
-
-function addMonthsIso(d: string | null, n: number): string | null {
-  if (!d) return null;
-  const x = new Date(String(d).slice(0, 10) + "T12:00:00Z");
-  if (isNaN(x.getTime())) return null;
-  const day = x.getUTCDate();
-  x.setUTCDate(1);
-  x.setUTCMonth(x.getUTCMonth() + n);
-  const last = new Date(Date.UTC(x.getUTCFullYear(), x.getUTCMonth() + 1, 0)).getUTCDate();
-  x.setUTCDate(Math.min(day, last));
-  return x.toISOString().slice(0, 10);
-}
-
-export function ManageMembership() {
-  const colors = useColors();
-  const queryClient = useQueryClient();
-  const [planId, setPlanId] = useState<number | null>(null);
-  const [freq, setFreq] = useState<"monthly" | "annual">("monthly");
-  const [accepted, setAccepted] = useState(false);
-  const [confirmCancel, setConfirmCancel] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const { customer: billingCustomer } = useCustomerAuth();
-  const [cardOpen, setCardOpen] = useState(false);
-  const [cardConsent, setCardConsent] = useState(false);
-  const [cardError, setCardError] = useState<string | null>(null);
-  const [cardSheetKey, setCardSheetKey] = useState(0);
-  const { data: config } = useQuery<{
-    configured: boolean; applicationId: string | null; locationId: string | null; environment: "sandbox" | "production";
-  }>({ queryKey: ["/api/public/square-config"] });
-
-  const { data, isLoading, isError, error, refetch } = useGetMembershipBilling({
-    query: { queryKey: [...getGetMembershipBillingQueryKey(), billingCustomer?.id], refetchInterval: 30000, staleTime: 0 },
-  });
-
-  const onDone = (r: MembershipActionResult) => {
-    setNotice(r.message + (r.effectiveDate ? ` (effective ${fmt(r.effectiveDate)})` : ""));
-    setPlanId(null);
-    setAccepted(false);
-    setConfirmCancel(false);
-    queryClient.invalidateQueries({ queryKey: getGetMembershipBillingQueryKey() });
-    queryClient.invalidateQueries({ queryKey: ["/api/membership/my-subscription"] });
-  };
-  const change = useChangeMembershipPlan({ mutation: { onSuccess: onDone } });
-  const cancel = useCancelMembershipBilling({ mutation: { onSuccess: onDone } });
-  const replaceCard = useReplaceMembershipCard({ mutation: {
-    onSuccess: (result) => { setCardOpen(false); setCardConsent(false); setCardError(null); onDone(result); },
-    onError: (error) => {
-      setCardError(apiErrorMessage(error, "Card replacement could not be confirmed. Refresh billing before retrying."));
-      // A new sheet produces a fresh nonce and fresh SCA authorisation.
-      setCardSheetKey(v => v + 1);
-      queryClient.invalidateQueries({ queryKey: getGetMembershipBillingQueryKey() });
-    },
-  } });
-
-  // Prepaid (till) -> automatic billing for the same plan. No charge today.
-  const [arFreq, setArFreq] = useState<"monthly" | "annual" | null>(null);
-  const [arAccepted, setArAccepted] = useState(false);
-  const [arOpen, setArOpen] = useState(false);
-  const [arError, setArError] = useState<string | null>(null);
-  const [arSheetKey, setArSheetKey] = useState(0);
-  const [arConfirmCancel, setArConfirmCancel] = useState(false);
-  const enableAutoRenew = useMutation({
-    mutationFn: async (body: Record<string, unknown>): Promise<MembershipActionResult> => {
-      const token = await getToken();
-      const res = await fetch(new URL("/api/membership/enable-auto-renew", getApiUrl()).toString(), {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(body),
-      });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(d?.message || "Automatic billing could not be confirmed. Refresh before retrying.");
-      return d as MembershipActionResult;
-    },
-    onSuccess: (r) => {
-      setArOpen(false); setArFreq(null); setArAccepted(false); setArError(null);
-      setNotice(r.message + (r.effectiveDate ? ` First charge ${fmt(r.effectiveDate)}.` : ""));
-      queryClient.invalidateQueries({ queryKey: getGetMembershipBillingQueryKey() });
-      queryClient.invalidateQueries({ queryKey: ["/api/membership/my-subscription"] });
-    },
-    onError: (e: Error) => {
-      setArError(e.message);
-      setArSheetKey(v => v + 1); // fresh nonce + fresh SCA on retry
-      queryClient.invalidateQueries({ queryKey: getGetMembershipBillingQueryKey() });
-    },
-  });
-
-  const box = { marginTop: 16, padding: 16, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface };
-  const h = { fontSize: 15, fontWeight: "700" as const, color: colors.text, marginBottom: 10 };
-  const muted = { fontSize: 13, color: colors.textSecondary, lineHeight: 19 };
-  const errStyle = { fontSize: 13, color: "#DF3131", marginTop: 8 };
-
-  if (isLoading) return <View style={box}><ActivityIndicator color={Colors.brand.blue} /></View>;
-  if (isError || !data) {
-    return (
-      <View style={box}>
-        <Text style={h}>Manage membership</Text>
-        <Text style={muted}>{apiErrorMessage(error, "Billing details could not be loaded.")}</Text>
-        <Pressable onPress={() => refetch()} style={{ marginTop: 10 }}>
-          <Text style={{ color: Colors.brand.blue, fontWeight: "700" }}>Try again</Text>
-        </Pressable>
-      </View>
-    );
-  }
-  const sub = data.subscription;
-  if (!sub) return null;
-
-  const current = data.plans.find((p) => p.id === sub.planId);
-  const pp = sub as typeof sub & PrepaidFields;
-  const isPrepaid = pp.source === "square_pos";
-  const arStart = pp.autoRenewStartDate ?? pp.prepaidUntilDate ?? null;
-  const priceOf = (p: MembershipBillingPlan, f: "monthly" | "annual") => (f === "annual" ? p.annualPence : p.monthlyPence);
-  const currentPrice = current ? priceOf(current, sub.frequency) ?? current.monthlyPence : 0;
-  // Options: higher-priced plans (either frequency), or same plan with the other frequency.
-  const options: { plan: MembershipBillingPlan; f: "monthly" | "annual" }[] = [];
-  data.plans.forEach((p) => {
-    (["monthly", "annual"] as const).forEach((f) => {
-      const price = priceOf(p, f);
-      if (price == null) return;
-      if (p.id === sub.planId) { if (f !== sub.frequency) options.push({ plan: p, f }); return; }
-      const monthlyEq = f === "annual" ? price / 12 : price;
-      const curMonthlyEq = sub.frequency === "annual" ? currentPrice / 12 : currentPrice;
-      if (monthlyEq > curMonthlyEq) options.push({ plan: p, f });
-    });
-  });
-  const chosen = options.find((o) => o.plan.id === planId && o.f === freq) ?? null;
-  const hasPending = !!sub.pendingPlanName || !!sub.cancellationDate;
-  const row = (label: string, value: string) => (
-    <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 5 }}>
-      <Text style={muted}>{label}</Text>
-      <Text style={{ fontSize: 13, fontWeight: "600", color: colors.text }}>{value}</Text>
-    </View>
-  );
-
-  return (
-    <View style={box} testID="manage-membership">
-      <Text style={h}>Manage membership</Text>
-      {row("Plan", sub.planName)}
-      {pp.source === "square_pos" ? (
-        row("Billing", pp.autoRenewScheduled ? "Prepaid (automatic billing scheduled)" : "Prepaid 12 months (no auto renewal)")
-      ) : (
-        <>
-          {row("Billing", sub.frequency === "annual" ? "Annual (auto-renews)" : "Monthly")}
-          {row("Next renewal", fmt(sub.renewalDate))}
-        </>
-      )}
-      {isPrepaid ? (
-        <>
-          {row("Purchased", pp.firstPaidAt ? fmt(pp.firstPaidAt) : "Unknown")}
-          {pp.lastPaidAt && pp.lastPaidAt !== pp.firstPaidAt ? row("Last renewed", fmt(pp.lastPaidAt)) : null}
-          {row("Paid through", pp.prepaidUntilDate ? fmt(pp.prepaidUntilDate) : "Unknown")}
-          {pp.autoRenewScheduled ? row("Automatic billing starts", fmt(pp.autoRenewStartDate)) : null}
-        </>
-      ) : null}
-      {sub.commitmentEndDate ? row("Minimum term ends", fmt(sub.commitmentEndDate)) : null}
-      {sub.pendingPlanName ? row("Scheduled change", `${sub.pendingPlanName} from ${fmt(sub.pendingDate)}`) : null}
-      {sub.cancellationDate ? row("Ends on", fmt(sub.cancellationDate)) : null}
-
-      {notice && <Text style={{ fontSize: 13, color: "#15803D", marginTop: 10 }}>{notice}</Text>}
-
-      {isPrepaid && (
-        <View style={{ marginTop: 14 }} testID="prepaid-auto-renew">
-          {pp.autoRenewScheduled ? (
-            <>
-              <Text style={muted}>
-                Automatic {sub.frequency === "annual" ? "annual" : "monthly"} billing is scheduled. Nothing is charged before {fmt(pp.autoRenewStartDate)}.
-              </Text>
-              {!sub.cancellationDate && (arConfirmCancel ? (
-                <>
-                  <Text style={[muted, { marginTop: 8 }]}>Automatic billing will not start. Your prepaid access continues until {fmt(pp.prepaidUntilDate)}.</Text>
-                  <View style={{ flexDirection: "row", gap: 10 }}>
-                    <Pressable onPress={() => setArConfirmCancel(false)} style={[styles_m.btn, { backgroundColor: colors.border }]}>
-                      <Text style={[styles_m.btnText, { color: colors.text }]}>Keep</Text>
-                    </Pressable>
-                    <Pressable testID="cancel-auto-renew-confirm" disabled={cancel.isPending}
-                      onPress={() => cancel.mutate({ data: { confirmed: true } }, { onSuccess: () => setArConfirmCancel(false) })}
-                      style={[styles_m.btn, { backgroundColor: "#DF3131", opacity: cancel.isPending ? 0.5 : 1 }]}>
-                      {cancel.isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles_m.btnText}>Confirm cancellation</Text>}
-                    </Pressable>
-                  </View>
-                </>
-              ) : (
-                <Pressable testID="cancel-auto-renew" onPress={() => setArConfirmCancel(true)} style={{ marginTop: 10 }}>
-                  <Text style={{ color: "#DF3131", fontWeight: "700" }}>Cancel automatic billing</Text>
-                </Pressable>
-              ))}
-              {cancel.error && <Text style={errStyle}>{apiErrorMessage(cancel.error, "Could not cancel.")}</Text>}
-            </>
-          ) : !pp.autoRenewEligible || !current || !arStart ? (
-            <Text style={muted}>Bought at the club till: 12 months prepaid with no future charges. Automatic billing is not available online for this membership; please speak to staff.</Text>
-          ) : (
-            <>
-              <Text style={h}>Turn on automatic billing</Text>
-              <Text style={muted}>
-                Bought at the club till: 12 months prepaid, no future charges by default. Keep {current.name} going after {fmt(arStart)}. No charge today. Any minimum term starts at the first billing date, not your till purchase.
-              </Text>
-              {(["monthly", "annual"] as const).map((f) => {
-                const price = priceOf(current, f);
-                if (price == null) return null;
-                const on = arFreq === f;
-                return (
-                  <Pressable key={f} testID={`auto-renew-${f}`} onPress={() => { setArFreq(f); setArAccepted(false); setArError(null); }}
-                    style={{ marginTop: 8, padding: 12, borderRadius: 10, borderWidth: on ? 2 : 1, borderColor: on ? Colors.brand.blue : colors.border }}>
-                    <Text style={{ fontSize: 14, fontWeight: "700", color: colors.text }}>
-                      {current.name} · £{(price / 100).toFixed(2)}/{f === "annual" ? "yr" : "mo"}
-                    </Text>
-                    <Text style={muted}>
-                      First charge {fmt(arStart)}, covering to {fmt(addMonthsIso(arStart, f === "annual" ? 12 : 1))}.
-                      {current.minimumTermMonths > 0
-                        ? ` ${current.minimumTermMonths}-month minimum term from ${fmt(arStart)} (ends ${fmt(addMonthsIso(arStart, current.minimumTermMonths))}).`
-                        : " No minimum term."}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-              {arFreq && (() => {
-                const price = priceOf(current, arFreq) ?? 0;
-                return (
-                  <>
-                    <Pressable onPress={() => setArAccepted(v => !v)} accessibilityRole="checkbox" accessibilityState={{ checked: arAccepted }}
-                      style={{ flexDirection: "row", gap: 8, marginTop: 10 }} testID="auto-renew-terms">
-                      <Ionicons name={arAccepted ? "checkbox" : "square-outline"} size={22} color={Colors.brand.blue} />
-                      <Text style={[muted, { flex: 1 }]}>
-                        I agree to the Terms & Conditions and authorise The 147 to charge my card £{(price / 100).toFixed(2)} {arFreq === "annual" ? "every year" : "every month"} from {fmt(arStart)} until I cancel.
-                        {current.minimumTermMonths > 0 ? ` I accept a ${current.minimumTermMonths}-month minimum term starting ${fmt(arStart)}.` : ""} Nothing is charged today.
-                      </Text>
-                    </Pressable>
-                    <Pressable testID="auto-renew-setup-card"
-                      disabled={!arAccepted || !config?.configured || enableAutoRenew.isPending}
-                      onPress={() => { setArError(null); setArSheetKey(v => v + 1); setArOpen(true); prefetchSquarePaymentSdk(); }}
-                      style={[styles_m.btn, { backgroundColor: Colors.brand.blue, opacity: arAccepted && config?.configured && !enableAutoRenew.isPending ? 1 : 0.5 }]}>
-                      {enableAutoRenew.isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles_m.btnText}>Set up card (no charge today)</Text>}
-                    </Pressable>
-                    {!config?.configured && <Text style={muted}>Secure card setup is unavailable. Please try again later.</Text>}
-                  </>
-                );
-              })()}
-              {arError && !arOpen && <Text style={errStyle}>{arError}</Text>}
-              <SquarePaymentSheet key={`ar-${arSheetKey}`} visible={arOpen}
-                applicationId={config?.applicationId ?? null} locationId={config?.locationId ?? null}
-                environment={config?.environment ?? "sandbox"} amountPence={0} currency="GBP"
-                intent="STORE" replaceMembershipCard prepaidAutoRenew googlePayAvailable={false}
-                recurringDescription={`Automatic billing from ${fmt(arStart)}. No payment taken now.`}
-                buyerEmail={billingCustomer?.email ?? null} inProgress={enableAutoRenew.isPending} errorMessage={arError}
-                onClose={() => { if (!enableAutoRenew.isPending) setArOpen(false); }}
-                onUnavailable={(message) => { setArOpen(false); setArError(message); }}
-                onTokenized={({ sourceId, verificationToken }) => {
-                  if (!verificationToken) { setArError("Please complete card authorisation before retrying."); return; }
-                  if (!arFreq || !arAccepted) return;
-                  setArError(null);
-                  const body: Record<string, unknown> = { billingFrequency: arFreq, termsAccepted: true, sourceId, verificationToken };
-                  if (current.minimumTermMonths > 0) body.minimumTermAccepted = true;
-                  enableAutoRenew.mutate(body);
-                }} />
-            </>
-          )}
-        </View>
-      )}
-
-      {sub.cardReplacementAllowed && (
-        <View style={{ marginTop: 14 }}>
-          <Text style={h}>Membership payment card</Text>
-          <Text style={muted}>
-            {sub.paymentCard?.last4
-              ? `${sub.paymentCard.brand ?? "Card"} ending ${sub.paymentCard.last4} · expires ${sub.paymentCard.expiryMonth ?? "—"}/${sub.paymentCard.expiryYear ?? "—"}`
-              : "No payment card on file."}
-          </Text>
-          <Text style={[muted, { marginTop: 8 }]}>Replacing your card does not change your renewal date, minimum term or scheduled upgrade. No payment is taken now.</Text>
-          <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: cardConsent }}
-            onPress={() => setCardConsent(v => !v)} style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
-            <Ionicons name={cardConsent ? "checkbox" : "square-outline"} size={22} color={Colors.brand.blue} />
-            <Text style={[muted, { flex: 1 }]}>I authorise this replacement card for my existing recurring membership payments.</Text>
-          </Pressable>
-          <Pressable testID="replace-membership-card" accessibilityRole="button"
-            disabled={!cardConsent || !config?.configured || replaceCard.isPending}
-            onPress={() => { setCardError(null); setCardSheetKey(v => v + 1); setCardOpen(true); prefetchSquarePaymentSdk(); }}
-            style={{ marginTop: 10, opacity: cardConsent && config?.configured ? 1 : 0.5 }}>
-            <Text style={{ color: Colors.brand.blue, fontWeight: "700" }}>Replace payment card</Text>
-          </Pressable>
-          {!config?.configured && <Text style={muted}>Secure card setup is unavailable. Please try again later.</Text>}
-          {cardError && !cardOpen && <Text style={errStyle}>{cardError}</Text>}
-          <SquarePaymentSheet key={cardSheetKey} visible={cardOpen}
-            applicationId={config?.applicationId ?? null} locationId={config?.locationId ?? null}
-            environment={config?.environment ?? "sandbox"} amountPence={0} currency="GBP"
-            intent="STORE" replaceMembershipCard recurringDescription="For your existing recurring membership. No payment taken now."
-            buyerEmail={billingCustomer?.email ?? null} inProgress={replaceCard.isPending} errorMessage={cardError}
-            onClose={() => { if (!replaceCard.isPending) setCardOpen(false); }}
-            onUnavailable={(message) => { setCardOpen(false); setCardError(message); }}
-            onTokenized={({ sourceId, verificationToken }) => {
-              if (!verificationToken) { setCardError("Please complete card authorisation before retrying."); return; }
-              setCardError(null);
-              replaceCard.mutate({ data: { sourceId, verificationToken, authorised: cardConsent } });
-            }} />
-        </View>
-      )}
-
-      {isPrepaid ? null : sub.migrationNeedsReview ? (
-        <Text style={[muted, { marginTop: 12 }]}>
-          Your move from the old website billing is being checked by the club. Changes will be available once the owner confirms your previous payments have stopped.
-        </Text>
-      ) : !sub.managedInSquare && !isPrepaid ? (
-        <Text style={[muted, { marginTop: 12 }]}>This membership is managed by the club. Please speak to staff to make changes.</Text>
-      ) : hasPending ? (
-        <Text style={[muted, { marginTop: 12 }]}>A change is already scheduled. Contact the club if you need to alter it.</Text>
-      ) : (
-        <>
-          <Text style={[h, { fontSize: 13, marginTop: 14, marginBottom: 6 }]}>Upgrade or switch billing</Text>
-          <Text style={[muted, { marginBottom: 8 }]}>Changes take effect at your next renewal ({fmt(sub.renewalDate)}).</Text>
-          {options.length === 0 ? (
-            <Text style={muted}>You are on the highest available option.</Text>
-          ) : options.map((o) => {
-            const on = chosen?.plan.id === o.plan.id && chosen.f === o.f;
-            const price = priceOf(o.plan, o.f) ?? 0;
-            return (
-              <Pressable
-                key={`${o.plan.id}-${o.f}`}
-                onPress={() => { setPlanId(o.plan.id); setFreq(o.f); setAccepted(false); change.reset(); }}
-                style={{ padding: 12, borderRadius: 10, borderWidth: on ? 2 : 1, borderColor: on ? Colors.brand.blue : colors.border, marginBottom: 8 }}
-                testID={`change-option-${o.plan.id}-${o.f}`}
-              >
-                <Text style={{ fontWeight: "700", color: colors.text }}>
-                  {o.plan.name} · £{(price / 100).toFixed(2)}/{o.f === "annual" ? "yr" : "mo"}
-                </Text>
-                <Text style={muted}>
-                  {o.plan.id === sub.planId
-                    ? "Your existing minimum-term dates stay unchanged."
-                    : o.plan.minimumTermMonths > 0 ? `${o.plan.minimumTermMonths}-month minimum term from the change date.` : "No minimum term."}
-                </Text>
-              </Pressable>
-            );
-          })}
-          {chosen && (
-            <>
-              <Pressable onPress={() => setAccepted((v) => !v)} style={{ flexDirection: "row", gap: 10, marginTop: 4 }} accessibilityRole="checkbox" accessibilityState={{ checked: accepted }}>
-                <View style={{ width: 20, height: 20, borderRadius: 5, borderWidth: 2, borderColor: Colors.brand.blue, backgroundColor: accepted ? Colors.brand.blue : "transparent", alignItems: "center", justifyContent: "center" }}>
-                  {accepted && <Ionicons name="checkmark" size={13} color="#fff" />}
-                </View>
-                <Text style={[muted, { flex: 1 }]}>
-                  I agree to the Terms & Conditions and to switching to {chosen.plan.name} ({chosen.f}) from {fmt(sub.renewalDate)}
-                  {chosen.plan.id !== sub.planId && chosen.plan.minimumTermMonths > 0
-                    ? `, including a ${chosen.plan.minimumTermMonths}-month minimum term.`
-                    : chosen.plan.id === sub.planId ? ". My existing minimum-term dates stay unchanged." : "."}
-                </Text>
-              </Pressable>
-              <Pressable
-                disabled={!accepted || change.isPending}
-                onPress={() => change.mutate({ data: { planId: chosen.plan.id, billingFrequency: chosen.f, termsAccepted: true } })}
-                style={[styles_m.btn, { backgroundColor: Colors.brand.blue, opacity: !accepted || change.isPending ? 0.5 : 1 }]}
-              >
-                {change.isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles_m.btnText}>Schedule change</Text>}
-              </Pressable>
-            </>
-          )}
-          {change.error && <Text style={errStyle}>{apiErrorMessage(change.error, "Could not schedule the change.")}</Text>}
-
-          <Text style={[h, { fontSize: 13, marginTop: 18, marginBottom: 6 }]}>Cancel</Text>
-          {sub.cancellationAllowed ? (
-            confirmCancel ? (
-              <>
-                <Text style={muted}>Your membership will stop at {fmt(sub.renewalDate)}. Benefits continue until then.</Text>
-                <View style={{ flexDirection: "row", gap: 8 }}>
-                  <Pressable onPress={() => setConfirmCancel(false)} style={[styles_m.btn, { flex: 1, backgroundColor: colors.input }]}>
-                    <Text style={[styles_m.btnText, { color: colors.text }]}>Keep</Text>
-                  </Pressable>
-                  <Pressable disabled={cancel.isPending} onPress={() => cancel.mutate({ data: { confirmed: true } })} style={[styles_m.btn, { flex: 1, backgroundColor: "#DF3131", opacity: cancel.isPending ? 0.5 : 1 }]}>
-                    {cancel.isPending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles_m.btnText}>Confirm cancel</Text>}
-                  </Pressable>
-                </View>
-              </>
-            ) : (
-              <Pressable onPress={() => { setConfirmCancel(true); cancel.reset(); }}>
-                <Text style={{ color: "#DF3131", fontWeight: "700", fontSize: 13 }}>Cancel at next renewal</Text>
-              </Pressable>
-            )
-          ) : (
-            <Text style={muted}>
-              {sub.commitmentEndDate ? `Cancellation is available after your minimum term ends on ${fmt(sub.commitmentEndDate)}.` : "Cancellation is not available online for this membership."}
-            </Text>
-          )}
-          {cancel.error && <Text style={errStyle}>{apiErrorMessage(cancel.error, "Could not cancel.")}</Text>}
-        </>
-      )}
-    </View>
-  );
-}
-
-function fmt(d: string | null | undefined) {
-  if (!d) return "—";
-  return new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-}
-
-const styles_m = StyleSheet.create({
-  btn: { marginTop: 10, paddingVertical: 12, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  btnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-});
+export { ManageMembership };
 
 const styleSource = {
   container: { flex: 1, backgroundColor: Colors.light.background },

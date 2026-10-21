@@ -484,22 +484,22 @@ export default function LoyaltyScreen() {
             style={styles.headerGradient}
             pointerEvents="box-none"
           >
-            <Ionicons name="diamond" size={28} color={Colors.brand.gold} />
+            <Ionicons name="diamond" size={18} color={Colors.brand.gold} />
             <Text style={styles.headerTitle}>Membership</Text>
             <Text style={styles.headerSubtitle}>
               {firstName
                 ? `Welcome back, ${firstName}`
-                : "Membership plans & billing"}
+                : "Plans, billing and your card"}
             </Text>
           </AdaptiveGlassSurface>
         ) : (
           <View style={[styles.headerGradient, { backgroundColor: colors.surface }]}>
-            <Ionicons name="diamond" size={28} color={Colors.brand.gold} />
+            <Ionicons name="diamond" size={18} color={Colors.brand.gold} />
             <Text style={styles.headerTitle}>Membership</Text>
             <Text style={styles.headerSubtitle}>
               {firstName
                 ? `Welcome back, ${firstName}`
-                : "Membership plans & billing"}
+                : "Plans, billing and your card"}
             </Text>
           </View>
         )}
@@ -1038,9 +1038,11 @@ const createStyles = (palette: ReturnType<typeof useColors>) => {
   headerGradient: {
     marginHorizontal: 20,
     borderRadius: 16,
-    padding: 24,
-    alignItems: "center",
-    gap: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    marginBottom: 16,
+    alignItems: "flex-start",
+    gap: 2,
     overflow: "hidden" as const,
   },
   headerTitle: {
@@ -1052,7 +1054,6 @@ const createStyles = (palette: ReturnType<typeof useColors>) => {
   headerSubtitle: {
     fontSize: 14,
     color: palette.textSecondary,
-    textAlign: "center",
     fontFamily: "Montserrat_400Regular",
   },
   personalIntro: {
