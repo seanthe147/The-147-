@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { accessEndDate, addMonthsIso, billingSummary, canonicalBenefits, hasManageableMembership, isUpgradeOffer, statusInfo, type BillingSub } from "./membershipDisplay";
 
 const sub = (overrides: Partial<BillingSub> = {}): BillingSub => ({
-  id: 1, planId: 4, planName: "Platinum", source: "app",
+  id: 1, planId: 4, planName: "Platinum", currentTier: "platinum", currentMonthlyPence: 699, source: "app",
   frequency: "monthly", status: "active", renewalDate: "2030-08-01",
   commitmentEndDate: null, cancellationAllowed: true, pendingPlanName: null,
   pendingDate: null, cancellationDate: null, managedInSquare: true,

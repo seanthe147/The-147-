@@ -130,6 +130,21 @@ test("billing and financial actions require authentication", async () => {
   assert.equal((await request("/api/membership/billing", undefined, false)).status, 401);
   assert.equal((await request("/api/membership/change-plan", { planId: blackId }, false)).status, 401);
 });
+test("billing exposes current and eligible plan rank so the app can offer valid upgrades", async () => {
+  const response = await request("/api/membership/billing");
+  assert.equal(response.status, 200);
+  const data = await response.json() as any;
+  assert.equal(data.subscription.planId, oldId);
+  assert.equal(data.subscription.currentTier, `fixture-base-${tag}`);
+  assert.equal(data.subscription.currentMonthlyPence, 1000);
+  assert.deepEqual(
+    data.plans.find((plan: any) => plan.id === blackId),
+    {
+      id: blackId, name: "Black", tier: `fixture-black-${tag}`,
+      monthlyPence: 2000, annualPence: null, minimumTermMonths: 12,
+    },
+  );
+});
 test("a mismatched Square price is rejected before changing any subscription", async () => {
   catalogPence = 999;
   try {

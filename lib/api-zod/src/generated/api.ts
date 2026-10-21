@@ -90,6 +90,8 @@ export const GetStaffMembershipBillingResponse = zod.object({
   "id": zod.number(),
   "planId": zod.number(),
   "planName": zod.string(),
+  "currentTier": zod.string().nullable(),
+  "currentMonthlyPence": zod.number().nullable(),
   "source": zod.string().optional(),
   "frequency": zod.enum(['monthly', 'annual']),
   "status": zod.string(),
@@ -118,6 +120,7 @@ export const GetStaffMembershipBillingResponse = zod.object({
   "plans": zod.array(zod.object({
   "id": zod.number(),
   "name": zod.string(),
+  "tier": zod.string(),
   "monthlyPence": zod.number(),
   "annualPence": zod.number().nullable(),
   "minimumTermMonths": zod.number()
@@ -188,6 +191,8 @@ export const GetMembershipBillingResponse = zod.object({
   "id": zod.number(),
   "planId": zod.number(),
   "planName": zod.string(),
+  "currentTier": zod.string().nullable(),
+  "currentMonthlyPence": zod.number().nullable(),
   "source": zod.string().optional(),
   "frequency": zod.enum(['monthly', 'annual']),
   "status": zod.string(),
@@ -216,6 +221,7 @@ export const GetMembershipBillingResponse = zod.object({
   "plans": zod.array(zod.object({
   "id": zod.number(),
   "name": zod.string(),
+  "tier": zod.string(),
   "monthlyPence": zod.number(),
   "annualPence": zod.number().nullable(),
   "minimumTermMonths": zod.number()

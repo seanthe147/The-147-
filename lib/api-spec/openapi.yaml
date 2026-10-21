@@ -269,20 +269,23 @@ components:
           items: { $ref: "#/components/schemas/MembershipBillingPlan" }
     MembershipBillingPlan:
       type: object
-      required: [id, name, monthlyPence, annualPence, minimumTermMonths]
+      required: [id, name, tier, monthlyPence, annualPence, minimumTermMonths]
       properties:
         id: { type: integer }
         name: { type: string }
+        tier: { type: string }
         monthlyPence: { type: integer }
         annualPence: { type: ["integer", "null"] }
         minimumTermMonths: { type: integer }
     MembershipBillingSubscription:
       type: object
-      required: [id, planId, planName, frequency, status, renewalDate, commitmentEndDate, cancellationAllowed, pendingPlanName, pendingDate, cancellationDate, managedInSquare, migrationNeedsReview]
+      required: [id, planId, planName, currentTier, currentMonthlyPence, frequency, status, renewalDate, commitmentEndDate, cancellationAllowed, pendingPlanName, pendingDate, cancellationDate, managedInSquare, migrationNeedsReview]
       properties:
         id: { type: integer }
         planId: { type: integer }
         planName: { type: string }
+        currentTier: { type: ["string", "null"] }
+        currentMonthlyPence: { type: ["integer", "null"] }
         source: { type: string }
         frequency: { type: string, enum: [monthly, annual] }
         status: { type: string }

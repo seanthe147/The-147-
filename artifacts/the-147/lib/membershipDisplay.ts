@@ -24,8 +24,8 @@ export function money(pence: number | null | undefined) {
 }
 
 /** Match server upgrade policy: compare plan prices, not annual-discount equivalents. */
-export function isUpgradeOffer(currentMonthly: number | null | undefined, currentTier: string | undefined,
-  targetMonthly: number, targetTier: string | undefined) {
+export function isUpgradeOffer(currentMonthly: number | null | undefined, currentTier: string | null | undefined,
+  targetMonthly: number, targetTier: string | null | undefined) {
   return (currentTier === "maximum" && targetTier === "platinum") ||
     (currentMonthly != null && targetMonthly > currentMonthly);
 }

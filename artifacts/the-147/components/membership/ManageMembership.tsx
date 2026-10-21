@@ -69,14 +69,6 @@ export function ManageMembership() {
   const { data, isLoading, isError, error, refetch, isRefetching } = useGetMembershipBilling({
     query: { queryKey: [...getGetMembershipBillingQueryKey(), billingCustomer?.id], refetchInterval: 30000, staleTime: 0 },
   });
-  // Both entry screens already fetched these records. Read their customer-scoped
-  // cache so hidden historical plans can be compared without inventing a price.
-  const { data: existingRecord } = useQuery<{ plan?: { priceMonthly: number; tier: string } | null } | null>({
-    queryKey: ["/api/membership/my-subscription", billingCustomer?.id], enabled: false,
-  });
-  const { data: publicPlans = [] } = useQuery<{ id: number; tier: string }[]>({
-    queryKey: ["/api/membership/plans"], enabled: false,
-  });
   const offerSignature = JSON.stringify(data?.plans ?? []);
   useEffect(() => {
     setAccepted(false);
@@ -84,7 +76,7 @@ export function ManageMembership() {
     setConfirmCancel(false);
   }, [billingCustomer?.id, data?.subscription?.id, data?.subscription?.renewalDate,
     data?.subscription?.pendingDate, data?.subscription?.cancellationDate, offerSignature,
-    existingRecord?.plan?.priceMonthly, existingRecord?.plan?.tier]);
+    data?.subscription?.currentTier, data?.subscription?.currentMonthlyPence]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: getGetMembershipBillingQueryKey() });
@@ -166,8 +158,8 @@ export function ManageMembership() {
   const isHeld = sub.status === "frozen" || sub.status === "held";
   const arStart = sub.autoRenewStartDate ?? sub.prepaidUntilDate ?? null;
   const priceOf = (p: MembershipBillingPlan, f: Freq) => (f === "annual" ? p.annualPence : p.monthlyPence);
-  const currentMonthly = current?.monthlyPence ?? existingRecord?.plan?.priceMonthly;
-  const currentTier = existingRecord?.plan?.tier ?? publicPlans.find(p => p.id === sub.planId)?.tier;
+  const currentMonthly = current?.monthlyPence ?? sub.currentMonthlyPence;
+  const currentTier = sub.currentTier;
 
   const upgrades: { plan: MembershipBillingPlan; f: Freq }[] = [];
   const frequencySwitch: { plan: MembershipBillingPlan; f: Freq }[] = [];
@@ -176,7 +168,7 @@ export function ManageMembership() {
       const price = priceOf(p, f);
       if (price == null) return;
       if (p.id === sub.planId) { if (f !== sub.frequency) frequencySwitch.push({ plan: p, f }); return; }
-      if (isUpgradeOffer(currentMonthly, currentTier, p.monthlyPence, publicPlans.find(x => x.id === p.id)?.tier)) {
+      if (isUpgradeOffer(currentMonthly, currentTier, p.monthlyPence, p.tier)) {
         upgrades.push({ plan: p, f });
       }
     });

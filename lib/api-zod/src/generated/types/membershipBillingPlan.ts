@@ -9,6 +9,7 @@
 export interface MembershipBillingPlan {
   id: number;
   name: string;
+  tier: string;
   monthlyPence: number;
   /** @nullable */
   annualPence: number | null;

@@ -12,6 +12,10 @@ export interface MembershipBillingSubscription {
   id: number;
   planId: number;
   planName: string;
+  /** @nullable */
+  currentTier: string | null;
+  /** @nullable */
+  currentMonthlyPence: number | null;
   source?: string;
   frequency: MembershipBillingSubscriptionFrequency;
   status: string;

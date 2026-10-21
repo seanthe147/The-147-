@@ -244,6 +244,7 @@ async function membershipBillingDetails(sub: BillingSubscription | null | undefi
   return {
     subscription: sub ? {
       id: sub.id, planId: sub.planId, planName: current?.name ?? "Membership", source: sub.source,
+      currentTier: current?.tier ?? null, currentMonthlyPence: current?.priceMonthly ?? null,
       frequency, status: sub.status, renewalDate: sub.currentPeriodEnd ?? null,
       firstPaidAt: sub.firstPaidAt?.toISOString() ?? null, lastPaidAt: sub.lastPaidAt?.toISOString() ?? null,
       prepaidUntilDate: sub.prepaidUntilDate ?? null,
@@ -260,7 +261,7 @@ async function membershipBillingDetails(sub: BillingSubscription | null | undefi
       migrationNeedsReview: sub.source === "wix_import" && !state?.legacyBillingStoppedAt,
       cardReplacementAllowed: replaceable(sub, remote), paymentCard,
     } : null,
-    plans: plans.map(p => ({ id: p.id, name: p.name, monthlyPence: p.priceMonthly,
+    plans: plans.map(p => ({ id: p.id, name: p.name, tier: p.tier, monthlyPence: p.priceMonthly,
       annualPence: p.priceAnnual ?? null, minimumTermMonths: minimumTermMonths(p) })),
   };
 }
