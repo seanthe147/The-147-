@@ -9,6 +9,7 @@ import {
   useChangeMembershipPlan,
   useGetMembershipBilling,
   useReplaceMembershipCard,
+  useUndoScheduledMembershipCancellation,
 } from "@workspace/api-client-react";
 import type { MembershipActionResult, MembershipBillingPlan } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
@@ -91,6 +92,7 @@ export function ManageMembership() {
   };
   const change = useChangeMembershipPlan({ mutation: { onSuccess: onDone } });
   const cancel = useCancelMembershipBilling({ mutation: { onSuccess: onDone } });
+  const undoCancellation = useUndoScheduledMembershipCancellation({ mutation: { onSuccess: onDone } });
   const replaceCard = useReplaceMembershipCard({ mutation: {
     onSuccess: (result) => { setCardOpen(false); setCardConsent(false); setCardError(null); onDone(result); },
     onError: (e) => {
@@ -227,7 +229,25 @@ export function ManageMembership() {
         {sub.cancellationDate ? (
           <View style={s.callout} testID="manage-cancellation-scheduled">
             <Ionicons name="information-circle-outline" size={16} color={colors.accent} />
-            <Text style={[s.muted, { flex: 1 }]}>Membership ends {fmt(sub.cancellationDate)}. You keep your paid access and benefits until then.</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={s.muted}>Membership is scheduled to end {fmt(sub.cancellationDate)}. Your paid access and benefits continue until then.</Text>
+              {sub.cancellationReversible ? (
+                <>
+                  <Text style={[s.muted, { marginTop: 6 }]}>Keep it active and your normal recurring payments continue at the usual renewal. Nothing is charged today.</Text>
+                  <Pressable testID="undo-membership-cancellation" accessibilityRole="button"
+                    disabled={undoCancellation.isPending}
+                    onPress={() => undoCancellation.mutate({ data: { confirmed: true } })}
+                    style={[s.primaryBtn, undoCancellation.isPending && s.disabled]}>
+                    {undoCancellation.isPending
+                      ? <ActivityIndicator color="#fff" size="small" />
+                      : <Text style={s.primaryBtnText}>Keep membership</Text>}
+                  </Pressable>
+                </>
+              ) : (
+                <Text style={[s.muted, { marginTop: 6 }]}>This cancellation can no longer be changed in the app. Contact the club if you need help.</Text>
+              )}
+              {undoCancellation.error && <Text style={s.err}>{apiErrorMessage(undoCancellation.error, "Could not keep the membership. Refresh and try again.")}</Text>}
+            </View>
           </View>
         ) : null}
         <Text style={[s.muted, { marginTop: 8, fontSize: 12 }]}>Prices shown below are current prices for new choices. Your existing agreement keeps the price you signed up at.</Text>

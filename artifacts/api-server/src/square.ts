@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 const SQUARE_BASE_URL = process.env.SQUARE_ENVIRONMENT === "production"
   ? "https://connect.squareup.com"
   : "https://connect.squareupsandbox.com";
+const SUBSCRIPTION_ACTIONS_API_VERSION = "2026-09-16";
 
 // SQUARE_LOC_ID takes precedence over SQUARE_LOCATION_ID (which may be set to wrong value)
 function getLocationId(): string {
@@ -11,21 +12,21 @@ function getLocationId(): string {
   return loc;
 }
 
-function getHeaders(): Record<string, string> {
+function getHeaders(apiVersion = "2024-01-18"): Record<string, string> {
   const token = process.env.SQUARE_ACCESS_TOKEN;
   if (!token) throw new Error("SQUARE_ACCESS_TOKEN not configured");
   return {
     "Authorization": `Bearer ${token}`,
     "Content-Type": "application/json",
-    "Square-Version": "2024-01-18",
+    "Square-Version": apiVersion,
   };
 }
 
-async function squareRequest(method: string, path: string, body?: unknown): Promise<any> {
+async function squareRequest(method: string, path: string, body?: unknown, apiVersion?: string): Promise<any> {
   const url = `${SQUARE_BASE_URL}${path}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15_000);
-  const options: RequestInit = { method, headers: getHeaders(), signal: controller.signal };
+  const options: RequestInit = { method, headers: getHeaders(apiVersion), signal: controller.signal };
   if (body) options.body = JSON.stringify(body);
 
   let response: Response;
@@ -814,7 +815,22 @@ export async function resumeSquareSubscription(subscriptionId: string) {
 }
 
 export async function getSquareSubscription(subscriptionId: string) {
-  const data = await squareRequest("GET", `/v2/subscriptions/${subscriptionId}`);
+  const data = await squareRequest(
+    "GET",
+    `/v2/subscriptions/${encodeURIComponent(subscriptionId)}?include=actions`,
+    undefined,
+    SUBSCRIPTION_ACTIONS_API_VERSION,
+  );
+  return { ...data.subscription, actions: data.actions ?? data.subscription?.actions ?? [] };
+}
+
+export async function deleteSquareSubscriptionAction(subscriptionId: string, actionId: string) {
+  const data = await squareRequest(
+    "DELETE",
+    `/v2/subscriptions/${encodeURIComponent(subscriptionId)}/actions/${encodeURIComponent(actionId)}`,
+    undefined,
+    SUBSCRIPTION_ACTIONS_API_VERSION,
+  );
   return { ...data.subscription, actions: data.actions ?? data.subscription?.actions ?? [] };
 }
 

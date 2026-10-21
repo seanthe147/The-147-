@@ -778,8 +778,17 @@
       h+='<p class="m-note">Your move from the old website billing is being checked by the club. Changes are available once the owner confirms your previous payments have stopped.</p>';
     }else if(!sub.managedInSquare&&sub.source!=='square_pos'){
       h+='<p class="m-note">This membership is managed by the club. Please speak to staff to make changes.</p>';
-    }else if(sub.pendingPlanName||sub.cancellationDate){
-      h+='<p class="m-note">A change is already scheduled. Contact the club if you need to alter it.</p>';
+    }else if(sub.cancellationDate){
+      if(sub.cancellationReversible){
+        h+='<h4>Cancellation scheduled</h4>'+
+          '<p class="m-note">Your paid access continues until the date shown above. Keep the membership active and normal recurring payments continue at the usual renewal. Nothing is charged today.</p>'+
+          '<div id="mUndoCancelWrap"><button class="m-btn" id="mUndoCancelBtn" onclick="mUndoCancel()">Keep membership</button></div>'+
+          '<div class="m-msg" role="status" id="mUndoCancelMsg"></div>';
+      }else{
+        h+='<p class="m-note">This cancellation can no longer be changed online. Contact the club if you need help.</p>';
+      }
+    }else if(sub.pendingPlanName){
+      h+='<p class="m-note">A plan change is already scheduled. Contact the club if you need to alter it.</p>';
     }else{
       h+='<h4>Upgrade or switch billing</h4><p class="m-note" style="margin:0 0 8px">Changes take effect at your next renewal ('+fmtDate(sub.renewalDate)+').</p>';
       if(!opts.length)h+='<p class="m-note">You are on the highest available option.</p>';
@@ -1004,6 +1013,22 @@
       const m2=document.getElementById('mCancelMsg')||document.getElementById('manageSection').appendChild(document.createElement('div'));
       m2.className='m-msg ok';m2.textContent=d.message||'Cancellation scheduled.';
     }catch(e){m.className='m-msg err';m.textContent=e.message||'Network error — please try again.';b.disabled=false;b.textContent='Confirm cancellation'}
+  };
+  window.mUndoCancel=async function(){
+    const b=document.getElementById('mUndoCancelBtn'),m=document.getElementById('mUndoCancelMsg');
+    if(!b||!m)return;
+    const ownerToken=getTok(),subscriptionId=billing&&billing.subscription&&billing.subscription.id;
+    if(!ownerToken||!subscriptionId)return;
+    b.disabled=true;b.textContent='Keeping membership…';m.className='m-msg';
+    try{
+      if(getTok()!==ownerToken||!billing||!billing.subscription||billing.subscription.id!==subscriptionId)throw new Error('Your signed-in account changed. Refresh your membership details.');
+      const r=await fetch(API+'/api/membership/undo-cancel',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+ownerToken},body:JSON.stringify({confirmed:true})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.message||'Could not keep the membership.');
+      await loadManage();
+      const m2=document.getElementById('mUndoCancelMsg')||document.getElementById('manageSection').appendChild(document.createElement('div'));
+      m2.className='m-msg ok';m2.setAttribute('role','status');m2.textContent=d.message||'Your membership continues on its existing billing schedule.';
+    }catch(e){m.className='m-msg err';m.textContent=e.message||'Network error — please try again.';b.disabled=false;b.textContent='Keep membership'}
   };
   window.signOutPortal=function(){
     closeMembershipCard();

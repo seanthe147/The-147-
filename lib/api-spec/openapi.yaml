@@ -203,6 +203,20 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MembershipActionResult" }
+  /membership/undo-cancel:
+    post:
+      operationId: undoScheduledMembershipCancellation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MembershipCancellation" }
+      responses:
+        "200":
+          description: Scheduled cancellation removed without changing paid access or billing dates
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MembershipActionResult" }
   /staff/wix-migration/{id}/review:
     post:
       operationId: reviewMembershipMigration
@@ -309,7 +323,7 @@ components:
         minimumTermMonths: { type: integer }
     MembershipBillingSubscription:
       type: object
-      required: [id, planId, planName, currentTier, currentMonthlyPence, frequency, status, renewalDate, commitmentEndDate, cancellationAllowed, pendingPlanName, pendingDate, cancellationDate, managedInSquare, migrationNeedsReview]
+      required: [id, planId, planName, currentTier, currentMonthlyPence, frequency, status, renewalDate, commitmentEndDate, cancellationAllowed, cancellationReversible, pendingPlanName, pendingDate, cancellationDate, managedInSquare, migrationNeedsReview]
       properties:
         id: { type: integer }
         planId: { type: integer }
@@ -328,6 +342,7 @@ components:
         autoRenewStartDate: { type: ["string", "null"] }
         commitmentEndDate: { type: ["string", "null"] }
         cancellationAllowed: { type: boolean }
+        cancellationReversible: { type: boolean }
         pendingPlanName: { type: ["string", "null"] }
         pendingDate: { type: ["string", "null"] }
         cancellationDate: { type: ["string", "null"] }

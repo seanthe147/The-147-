@@ -104,6 +104,7 @@ export const GetStaffMembershipBillingResponse = zod.object({
   "autoRenewStartDate": zod.string().nullish(),
   "commitmentEndDate": zod.string().nullable(),
   "cancellationAllowed": zod.boolean(),
+  "cancellationReversible": zod.boolean(),
   "pendingPlanName": zod.string().nullable(),
   "pendingDate": zod.string().nullable(),
   "cancellationDate": zod.string().nullable(),
@@ -215,6 +216,7 @@ export const GetMembershipBillingResponse = zod.object({
   "autoRenewStartDate": zod.string().nullish(),
   "commitmentEndDate": zod.string().nullable(),
   "cancellationAllowed": zod.boolean(),
+  "cancellationReversible": zod.boolean(),
   "pendingPlanName": zod.string().nullable(),
   "pendingDate": zod.string().nullable(),
   "cancellationDate": zod.string().nullable(),
@@ -283,6 +285,16 @@ export const CancelMembershipBillingBody = zod.object({
 })
 
 export const CancelMembershipBillingResponse = zod.object({
+  "message": zod.string(),
+  "effectiveDate": zod.string().nullish()
+})
+
+
+export const UndoScheduledMembershipCancellationBody = zod.object({
+  "confirmed": zod.boolean()
+})
+
+export const UndoScheduledMembershipCancellationResponse = zod.object({
   "message": zod.string(),
   "effectiveDate": zod.string().nullish()
 })

@@ -111,3 +111,9 @@ After paid access ends, a cancelled member may reactivate the same still-availab
 **Why:** The owner explicitly chose the window to start after paid access ends and approved charging when the customer reactivates.
 
 **How to apply:** Require fresh card verification and clear recurring-term consent. Keep the new membership pending until Square confirms payment; do not reverse the old cancellation or restore benefits just because the reactivation form was submitted.
+
+Before paid access ends, a member may reverse a scheduled cancellation by removing only the pending Square cancellation. This is different from reactivation after expiry.
+
+**Why:** A scheduled cancellation leaves the current subscription and paid term active; creating a new subscription or changing dates could duplicate billing or alter the accepted term.
+
+**How to apply:** Keep the existing subscription, renewal schedule and commitment dates unchanged, take no immediate payment, and use the separate one-month reactivation flow only after paid access ends.

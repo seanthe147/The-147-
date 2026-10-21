@@ -917,6 +917,71 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       return useMutation(getCancelMembershipBillingMutationOptions(options));
     }
 
+export const getUndoScheduledMembershipCancellationUrl = () => {
+
+
+
+
+  return `/api/membership/undo-cancel`
+}
+
+export const undoScheduledMembershipCancellation = async (membershipCancellation: MembershipCancellation, options?: RequestInit): Promise<MembershipActionResult> => {
+
+  return customFetch<MembershipActionResult>(getUndoScheduledMembershipCancellationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      membershipCancellation,)
+  }
+);}
+
+
+
+
+export const getUndoScheduledMembershipCancellationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof undoScheduledMembershipCancellation>>, TError,{data: BodyType<MembershipCancellation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof undoScheduledMembershipCancellation>>, TError,{data: BodyType<MembershipCancellation>}, TContext> => {
+
+const mutationKey = ['undoScheduledMembershipCancellation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof undoScheduledMembershipCancellation>>, {data: BodyType<MembershipCancellation>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  undoScheduledMembershipCancellation(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UndoScheduledMembershipCancellationMutationResult = NonNullable<Awaited<ReturnType<typeof undoScheduledMembershipCancellation>>>
+    export type UndoScheduledMembershipCancellationMutationBody = BodyType<MembershipCancellation>
+    export type UndoScheduledMembershipCancellationMutationError = ErrorType<unknown>
+
+    export const useUndoScheduledMembershipCancellation = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof undoScheduledMembershipCancellation>>, TError,{data: BodyType<MembershipCancellation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof undoScheduledMembershipCancellation>>,
+        TError,
+        {data: BodyType<MembershipCancellation>},
+        TContext
+      > => {
+      return useMutation(getUndoScheduledMembershipCancellationMutationOptions(options));
+    }
+
 export const getReviewMembershipMigrationUrl = (id: number,) => {
 
 

@@ -34,6 +34,7 @@ export interface MembershipBillingSubscription {
   /** @nullable */
   commitmentEndDate: string | null;
   cancellationAllowed: boolean;
+  cancellationReversible: boolean;
   /** @nullable */
   pendingPlanName: string | null;
   /** @nullable */

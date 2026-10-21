@@ -32,6 +32,7 @@ let catalogCadence = "MONTHLY";
 const blockedRequests: string[] = [];
 let declineCard = false;
 let failCardUpdate = false;
+let failActionDelete = false;
 const card: any = { id: "fixture-card-new", customer_id: "fixture-customer", enabled: true,
   card_brand: "VISA", last_4: "1111", exp_month: 12, exp_year: 2030,
   cardholder_name: "Must not be exposed", billing_address: { postal_code: "private" }, fingerprint: "private" };
@@ -81,8 +82,26 @@ before(async () => {
         actions = [{ type: "SWAP_PLAN", effective_date: renewal }];
         return Response.json({ subscription: { ...remote, actions: undefined }, actions });
       }
+      if (path === `/v2/subscriptions/${remote.id}/actions/fixture-cancel-action` && init?.method === "DELETE") {
+        if (new Headers(init.headers).get("Square-Version") !== "2026-09-16") {
+          blockedRequests.push(`${path} wrong Square API version`);
+          throw new Error("Scheduled subscription actions require the supported API version.");
+        }
+        if (failActionDelete) return Response.json({ errors: [{ code: "VERSION_MISMATCH", detail: "action delete failed" }] }, { status: 409 });
+        actions = actions.filter(action => action.id !== "fixture-cancel-action");
+        remote.canceled_date = null;
+        return Response.json({ subscription: { ...remote, actions } });
+      }
       if (path.endsWith("/cancel")) return Response.json({ subscription: { ...remote, canceled_date: cancellationAt } });
       if (path === `/v2/subscriptions/${remote.id}` && (!init?.method || init.method === "GET")) {
+        if (new URL(url).searchParams.get("include") !== "actions") {
+          blockedRequests.push(`${path} missing include=actions`);
+          throw new Error("Subscription actions must be explicitly requested.");
+        }
+        if (new Headers(init?.headers).get("Square-Version") !== "2026-09-16") {
+          blockedRequests.push(`${path} wrong Square API version`);
+          throw new Error("Subscription actions require the supported API version.");
+        }
         return Response.json({ subscription: { ...remote, actions: undefined }, actions });
       }
       blockedRequests.push(path);
@@ -154,6 +173,7 @@ const request = (path: string, body?: unknown, auth = true) => fetch(base + path
 test("billing and financial actions require authentication", async () => {
   assert.equal((await request("/api/membership/billing", undefined, false)).status, 401);
   assert.equal((await request("/api/membership/change-plan", { planId: blackId }, false)).status, 401);
+  assert.equal((await request("/api/membership/undo-cancel", { confirmed: true }, false)).status, 401);
 });
 test("billing exposes current and eligible plan rank so the app can offer valid upgrades", async () => {
   const response = await request("/api/membership/billing");
@@ -384,6 +404,63 @@ test("a paid annual member can stop renewal while retaining access through the f
   assert.equal((await billingState(subId))?.cancellationDate, cancellationAt);
   assert.equal((await storage.getMembershipSubscriptionByCustomer(customerId))?.status, "active");
   assert.equal(requests.filter(r => r.path.endsWith("/cancel")).length, 2);
+});
+
+test("a member can reverse a scheduled cancellation without changing dates or charging again", async () => {
+  const preservedStart = "2098-11-13";
+  const preservedEnd = "2099-11-13";
+  await db.update(membershipBillingStates).set({
+    cancellationDate: renewal,
+    billingFrequency: "annual",
+    commitmentStartDate: preservedStart,
+    commitmentEndDate: preservedEnd,
+  }).where(eq(membershipBillingStates.subscriptionId, subId));
+  await db.update(membershipSubscriptions).set({ status: "active", currentPeriodEnd: renewal }).where(eq(membershipSubscriptions.id, subId));
+  remote.status = "ACTIVE";
+  remote.canceled_date = renewal;
+  actions = [];
+
+  const beforePayments = requests.filter(r => r.path === "/v2/payments").length;
+  const beforeSubscriptions = requests.filter(r => r.path === "/v2/subscriptions" && r.body?.plan_variation_id).length;
+  const details = await request("/api/membership/billing");
+  assert.equal(((await details.json()) as any).subscription.cancellationReversible, false);
+
+  const missingAction = await request("/api/membership/undo-cancel", { confirmed: true });
+  assert.equal(missingAction.status, 409);
+  assert.equal((await billingState(subId))?.cancellationDate, renewal);
+  assert.equal(requests.filter(r => r.path.includes("/actions/")).length, 0);
+
+  actions = [{ id: "fixture-cancel-action", type: "CANCEL", effective_date: renewal }];
+  const ready = await request("/api/membership/billing");
+  assert.equal(((await ready.json()) as any).subscription.cancellationReversible, true);
+  failActionDelete = true;
+  const providerFailure = await request("/api/membership/undo-cancel", { confirmed: true });
+  failActionDelete = false;
+  assert.equal(providerFailure.status, 409);
+  assert.equal((await billingState(subId))?.cancellationDate, renewal);
+  assert.equal(remote.canceled_date, renewal);
+
+  const response = await request("/api/membership/undo-cancel", { confirmed: true });
+  assert.equal(response.status, 200);
+  assert.match((await response.json() as any).message, /no payment was taken today/i);
+
+  const afterState = await billingState(subId);
+  const afterSub = await storage.getMembershipSubscriptionByCustomer(customerId);
+  assert.equal(afterState?.cancellationDate, null);
+  assert.equal(afterState?.billingFrequency, "annual");
+  assert.equal(afterState?.commitmentStartDate, preservedStart);
+  assert.equal(afterState?.commitmentEndDate, preservedEnd);
+  assert.equal(afterSub?.status, "active");
+  assert.equal(afterSub?.currentPeriodEnd, renewal);
+  assert.equal(remote.status, "ACTIVE");
+  assert.equal(remote.canceled_date, null);
+  assert.equal(actions.some(action => action.type === "CANCEL"), false);
+  assert.equal(requests.filter(r => r.path === "/v2/payments").length, beforePayments);
+  assert.equal(requests.filter(r => r.path === "/v2/subscriptions" && r.body?.plan_variation_id).length, beforeSubscriptions);
+  assert.equal(requests.filter(r => r.path === `/v2/subscriptions/${remote.id}/actions/fixture-cancel-action`).length, 2);
+  assert.equal((await request("/api/membership/undo-cancel", { confirmed: true })).status, 409);
+  remote.canceled_date = null;
+  actions = [];
 });
 
 test("expired Square members can reactivate only within one month and start a consented Square subscription", async () => {

@@ -260,6 +260,11 @@ async function membershipBillingDetails(sub: BillingSubscription | null | undefi
   const reactivationVariation = reactivationPlan
     ? (frequency === "annual" ? reactivationPlan.squarePlanVariationIdAlt : reactivationPlan.squarePlanVariationId)
     : null;
+  const cancellationAction = remote?.actions?.find((action: any) => action.type === "CANCEL");
+  const cancellationReversible = !!sub?.squareSubscriptionId && sub.status === "active" &&
+    !!state?.cancellationDate && state.cancellationDate >= today() && !state.pendingPlanId &&
+    remote?.status === "ACTIVE" && remote.canceled_date === state.cancellationDate &&
+    cancellationAction?.id && cancellationAction.effective_date === state.cancellationDate;
   const reactivation = reactivationDeadline && reactivationPlan && reactivationPricePence != null &&
       reactivationVariation && square.isConfigured()
     ? {
@@ -289,6 +294,7 @@ async function membershipBillingDetails(sub: BillingSubscription | null | undefi
       cancellationAllowed: ((state?.recurringStartDate ?? "") > today() || cancellationAllowed(state?.commitmentEndDate ?? null, today(),
         frequency === "annual" && sub.status === "active" ? remote?.charged_through_date ?? null : null)) &&
         !!sub.squareSubscriptionId && sub.status !== "cancelled" && !state?.pendingPlanId && !state?.cancellationDate,
+       cancellationReversible: !!cancellationReversible,
       pendingPlanName: pending?.name ?? null, pendingDate: state?.pendingEffectiveDate ?? null,
       cancellationDate: state?.cancellationDate ?? null, managedInSquare: !!sub.squareSubscriptionId,
       migrationNeedsReview: sub.source === "wix_import" && !state?.legacyBillingStoppedAt,
@@ -370,6 +376,58 @@ export async function scheduleMembershipCancellation(sub: BillingSubscription, a
     await tx.insert(membershipAuditLog).values({ subscriptionId: sub.id, customerId: sub.customerId,
       action: "cancellation_scheduled", staffUsername: actor, note: `Effective ${effectiveDate}` });
     return { message: "Cancellation is scheduled. Access continues through the paid billing period.", effectiveDate };
+  });
+}
+
+export async function reverseScheduledMembershipCancellation(sub: BillingSubscription, actor: string) {
+  if (!sub.squareSubscriptionId || sub.status !== "active") {
+    throw new Error("An active Square subscription is required to keep this membership.");
+  }
+  return db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(14702, ${sub.id})`);
+    const state = await billingState(sub.id, tx);
+    const scheduledDate = state?.cancellationDate;
+    if (!validDate(scheduledDate) || scheduledDate < today()) {
+      throw new Error("There is no upcoming cancellation to reverse.");
+    }
+    if (state?.pendingPlanId) throw new Error("A plan change is also scheduled. Refresh billing and contact the club.");
+
+    const remote = await square.getSquareSubscription(sub.squareSubscriptionId!);
+    if (!sub.squareCustomerId || remote.customer_id !== sub.squareCustomerId) {
+      throw new Error("Subscription ownership could not be verified.");
+    }
+    if (remote.status !== "ACTIVE") throw new Error("Square has already ended this subscription; contact the club.");
+
+    // Recover safely if Square already removed the action but the local save did not complete.
+    if (!remote.canceled_date && !remote.actions?.some((action: any) => action.type === "CANCEL")) {
+      await tx.update(states).set({ cancellationDate: null }).where(eq(states.subscriptionId, sub.id));
+      await tx.insert(membershipAuditLog).values({
+        subscriptionId: sub.id, customerId: sub.customerId, action: "cancellation_reversed",
+        staffUsername: actor, note: "Square already had no scheduled cancellation; local billing state reconciled",
+      });
+      return { message: "Your scheduled cancellation has been removed. Your billing schedule is unchanged, and no payment was taken today." };
+    }
+
+    const cancelAction = remote.actions?.find((action: any) =>
+      action.type === "CANCEL" && action.effective_date === scheduledDate);
+    if (remote.canceled_date !== scheduledDate || !cancelAction?.id ||
+        !validDate(cancelAction.effective_date) || cancelAction.effective_date < today()) {
+      throw new Error("Square's scheduled cancellation could not be safely verified. Contact the club before retrying.");
+    }
+
+    await square.deleteSquareSubscriptionAction(sub.squareSubscriptionId!, cancelAction.id);
+    const confirmed = await square.getSquareSubscription(sub.squareSubscriptionId!);
+    if (confirmed.status !== "ACTIVE" || confirmed.canceled_date ||
+        confirmed.actions?.some((action: any) => action.type === "CANCEL")) {
+      throw new Error("Square did not confirm removing the scheduled cancellation. Refresh billing before retrying.");
+    }
+
+    await tx.update(states).set({ cancellationDate: null }).where(eq(states.subscriptionId, sub.id));
+    await tx.insert(membershipAuditLog).values({
+      subscriptionId: sub.id, customerId: sub.customerId, action: "cancellation_reversed",
+      staffUsername: actor, note: `Scheduled cancellation removed; existing billing dates retained through ${scheduledDate}`,
+    });
+    return { message: "Your scheduled cancellation has been removed. Your billing schedule is unchanged, and no payment was taken today." };
   });
 }
 
@@ -684,6 +742,19 @@ export function registerMembershipBilling(app: Express, customerAuth: RequestHan
       res.json(await scheduleMembershipCancellation(sub, "customer"));
     } catch (error: any) {
       if (!res.headersSent) res.status(409).json({ message: error.message || "Could not cancel membership." });
+    }
+  });
+
+  app.post("/api/membership/undo-cancel", customerAuth, async (req, res) => {
+    try {
+      if (req.body?.confirmed !== true) {
+        res.status(400).json({ message: "Confirm that you want to keep your recurring membership." }); return;
+      }
+      const sub = await storage.getLatestMembershipSubscriptionByCustomer((req as any).customerId);
+      if (!sub) throw new Error("No membership was found.");
+      res.json(await reverseScheduledMembershipCancellation(sub, "customer"));
+    } catch (error: any) {
+      if (!res.headersSent) res.status(409).json({ message: error.message || "Could not remove the scheduled cancellation." });
     }
   });
 

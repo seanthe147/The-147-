@@ -5,7 +5,7 @@ import { accessEndDate, addMonthsIso, billingSummary, canonicalBenefits, hasMana
 const sub = (overrides: Partial<BillingSub> = {}): BillingSub => ({
   id: 1, planId: 4, planName: "Platinum", currentTier: "platinum", currentMonthlyPence: 699, source: "app",
   frequency: "monthly", status: "active", renewalDate: "2030-08-01",
-  commitmentEndDate: null, cancellationAllowed: true, pendingPlanName: null,
+  commitmentEndDate: null, cancellationAllowed: true, cancellationReversible: false, pendingPlanName: null,
   pendingDate: null, cancellationDate: null, managedInSquare: true,
   migrationNeedsReview: false, ...overrides,
 });
