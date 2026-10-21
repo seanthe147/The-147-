@@ -1,39 +1,28 @@
 ---
 name: EAS OTA push from Replit
-description: Durable rules for publishing Expo OTA updates and building binaries — channel wiring, runtime version, git lock, and production server separation.
+description: Runtime compatibility and publishing constraints for installed Expo apps.
 ---
 
-## Production binary facts
+## Follow the current publishing skill
 
-- The production binary connects to a **separate server** — NOT `the147bradford.replit.app`. Replit is dev/staging only. Database changes on Replit have no effect on what the installed app sees.
-- The TestFlight binary (v2.8.7) was built from the old Mac monolithic repo (`~/The-147`), not the Replit pnpm workspace. Future builds should come from Replit (build number starts at 68 to exceed old Mac's 67).
+Use Expo Launch for iOS store publishing. Do not run or suggest EAS CLI commands, including update commands. Older notes recommending manual EAS commands are superseded by the Expo skill.
 
-**Why:** EXPO_PUBLIC_API_BASE_URL is baked into the binary at build time. Changing Replit's DB won't affect a binary pointing elsewhere.
+**Why:** Current platform instructions explicitly prohibit that publishing route. Historical successful commands are not authorization to reuse it.
 
-## Runtime version must match exactly
+**How to apply:** Read the Expo skill for publishing requests and consult official Replit documentation for platform capabilities. Do not imply a website/backend republish sends mobile code to installed apps.
 
-OTA delivery requires an exact string match between the binary's embedded `runtimeVersion` and the published update's `runtimeVersion`. Mismatch = silent 0 downloads, no error.
+## Establish actual native compatibility before OTA
 
-Replit's `app.json` uses `"runtimeVersion": "2.8.7"` (hardcoded string matching the binary). After any new binary build, check EAS build metadata for `Runtime Version` and update `app.json` to match before pushing OTAs.
+Matching runtime strings are necessary but not sufficient: the installed binary must also contain the native modules and compatible Expo/React Native versions required by the bundle. Do not change runtime strings merely to force an update onto an older binary.
 
-## Channel must be explicitly wired
+**Why:** A manually maintained runtime string can remain unchanged across native dependency changes. Marketing version and build number alone do not prove OTA compatibility.
 
-Without `expo-channel-name` in `updates.requestHeaders` and `channel` in each `eas.json` build profile, the binary polls no channel and receives no OTAs. Both are now set in `app.json` and `eas.json`.
+**How to apply:** Obtain the installed build's metadata or native manifest; compare native dependencies, runtime, update project and channel against the release source. Verify the release API destination separately. If build evidence is unavailable, report that limitation rather than certify an OTA.
 
-## eas update from Replit (works, ~30s iOS-only)
+## Build-history sources can differ
 
-```bash
-cd /home/runner/workspace/artifacts/the-147
-GIT_INDEX_FILE=/tmp/eas-git-index EXPO_TOKEN=$EXPO_TOKEN EAS_SKIP_AUTO_FINGERPRINT=1 \
-  npx eas-cli update --channel production --platform ios --message "..." --non-interactive
-```
+The configured project's EAS build list and Expo Launch session lookup may not expose the installed TestFlight build.
 
-`GIT_INDEX_FILE` redirects the lock file away from the protected `.git/` directory.
+**Why:** The connected EAS history did not contain the user-reported newer TestFlight build, while the Launch lookup returned no session. Neither establishes that the user's installed build does not exist.
 
-## eas build from Replit — blocked
-
-`eas build` archives the git working tree and writes `.git/index.lock` — blocked by Replit main agent. Must run from the Mac terminal. Build number must be set manually (not `autoIncrement: true`) to a value above the last submitted build (67).
-
-## Ordering override (Replit DB only)
-
-`ordering_enabled` staff toggle only controls the venue kill switch — does not override the bar/kitchen schedule. To force-open for testing outside hours, upsert `ordering_overrides` in `site_settings` as a JSON array: `[{"date":"YYYY-MM-DD","closed":false,"startTime":"00:00","endTime":"28:00"}]`. This only works when the app is connected to Replit's server.
+**How to apply:** Ask for the actual Expo build link or build metadata when the installed build is missing; do not substitute the latest visible historical build or claim a publish succeeded.
