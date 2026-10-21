@@ -12,6 +12,7 @@
 - [App Store release versions](app-store-release-versions.md) — closed approved versions require a new release version, not just a higher build number.
 - [Android releases](android-release-workflow.md) — existing Expo build/manual Play upload process; verify remote source and used version codes before building.
 - [pnpm ignored-audit behavior](pnpm-audit-ignored.md) — plain audit exits 0 for configured exceptions, while JSON mode still exits 1 and counts ignored findings
+- [pnpm release-age policy](pnpm-release-age-policy.md) — first matching package exemption wins; duplicate version-specific entries do not merge
 - [Expo web appearance override](expo-web-appearance.md) — native Appearance overrides are unavailable on Expo web and must be platform-guarded
 - [Native appearance chrome](native-appearance-chrome.md) — Android navigation controls and the native root background must track the resolved app theme
 - [Marketing email dark mode](marketing-email-dark-mode.md) — declare the intended dark color scheme and use solid text colors to avoid Gmail dark-mode inversion
