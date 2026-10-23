@@ -34,6 +34,10 @@ export interface PushDeliveryResult {
   deadTokens: string[];
 }
 
+function summarizeExpoErrors(errors: ExpoError[] | undefined) {
+  return (errors ?? []).map(({ code, message }) => ({ code, message }));
+}
+
 export function isValidExpoPushToken(token: unknown): token is string {
   return typeof token === "string"
     && /^(?:Exponent|Expo)PushToken\[[^\]\s]+\]$/.test(token)
@@ -89,12 +93,6 @@ export async function deliverExpoPushMessages(
       return;
     }
 
-    if (!response.ok) {
-      console.error(`[push] Expo HTTP ${response.status}:`, JSON.stringify(responseData));
-      failureCount += batch.length;
-      return;
-    }
-
     const mixedError = responseData.errors?.find(
       (error) => error.code === "PUSH_TOO_MANY_EXPERIENCE_IDS",
     );
@@ -110,8 +108,16 @@ export async function deliverExpoPushMessages(
       return;
     }
 
+    if (!response.ok) {
+      console.error(`[push] Expo HTTP ${response.status}:`, JSON.stringify({
+        errors: summarizeExpoErrors(responseData.errors),
+      }));
+      failureCount += batch.length;
+      return;
+    }
+
     if (responseData.errors?.length) {
-      console.error("[push] Expo API error:", JSON.stringify(responseData.errors));
+      console.error("[push] Expo API error:", JSON.stringify(summarizeExpoErrors(responseData.errors)));
       failureCount += batch.length;
       return;
     }

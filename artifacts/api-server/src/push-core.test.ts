@@ -97,3 +97,40 @@ test("batches at Expo's 100-message limit", async () => {
   assert.equal(result.successCount, 205);
   assert.equal(result.failureCount, 0);
 });
+
+test("retries mixed Expo project batches as separate project groups even on HTTP 400", async () => {
+  const tokens = [
+    "ExpoPushToken[project-a-1]",
+    "ExpoPushToken[project-b-1]",
+    "ExpoPushToken[project-a-2]",
+  ];
+  const batchSizes: number[] = [];
+  const result = await deliverExpoPushMessages(
+    tokens.map(notification),
+    async (_url, init) => {
+      const batch = JSON.parse(String(init?.body)) as { to: string }[];
+      batchSizes.push(batch.length);
+
+      if (batch.length === 3) {
+        return new Response(JSON.stringify({
+          errors: [{
+            code: "PUSH_TOO_MANY_EXPERIENCE_IDS",
+            message: "All messages must be for the same project.",
+            details: {
+              "@project-a": [tokens[0], tokens[2]],
+              "@project-b": [tokens[1]],
+            },
+          }],
+        }), { status: 400 }) as never;
+      }
+
+      return new Response(JSON.stringify({
+        data: batch.map(() => ({ status: "ok" })),
+      }), { status: 200 }) as never;
+    },
+  );
+
+  assert.deepEqual(batchSizes, [3, 2, 1]);
+  assert.equal(result.successCount, 3);
+  assert.equal(result.failureCount, 0);
+});
