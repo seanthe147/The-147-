@@ -432,6 +432,53 @@ export async function reverseScheduledMembershipCancellation(sub: BillingSubscri
 }
 
 export function registerMembershipBilling(app: Express, customerAuth: RequestHandler, staffAuth: RequestHandler, ownerAuth: RequestHandler, managerAuth: RequestHandler = ownerAuth) {
+  // Temporary local-only Square Sandbox preflight for task #313. Remove after verification.
+  app.get("/api/__sandbox/membership-preflight", async (req, res) => {
+    const remoteAddress = req.socket.remoteAddress?.replace(/^::ffff:/, "");
+    if (remoteAddress !== "127.0.0.1" && remoteAddress !== "::1") return res.sendStatus(404);
+    if (process.env.NODE_ENV === "production" || process.env.REPLIT_ENVIRONMENT === "production") return res.sendStatus(404);
+    const token = process.env.SQUARE_SANDBOX_ACCESS_TOKEN;
+    if (!token) return res.status(503).json({ message: "Square Sandbox credentials are unavailable to the development API." });
+    const headers = { Authorization: `Bearer ${token}`, "Square-Version": "2026-09-16" };
+    const get = async (path: string) => {
+      const response = await fetch(`https://connect.squareupsandbox.com${path}`, { headers });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(`${path} returned ${response.status}: ${(data.errors ?? []).map((e: any) => e.code).join(",")}`);
+      return data;
+    };
+    try {
+      const [catalog, groups, webhooks] = await Promise.all([
+        get("/v2/catalog/list?types=SUBSCRIPTION_PLAN,SUBSCRIPTION_PLAN_VARIATION"),
+        get("/v2/customers/groups"),
+        get("/v2/webhooks/subscriptions"),
+      ]);
+      res.setHeader("Cache-Control", "no-store");
+      res.json({
+        environment: "sandbox",
+        sandboxApplicationConfigured: !!process.env.SQUARE_SANDBOX_APPLICATION_ID,
+        sandboxLocationConfigured: !!process.env.SQUARE_SANDBOX_LOCATION_ID,
+        sandboxWebhookKeyConfigured: !!process.env.SQUARE_SANDBOX_WEBHOOK_SIGNATURE_KEY,
+        plans: (catalog.objects ?? []).map((object: any) => ({
+          type: object.type,
+          id: object.id,
+          name: object.subscription_plan_variation_data?.name ?? object.subscription_plan_data?.name ?? null,
+          planId: object.subscription_plan_variation_data?.subscription_plan_id ?? null,
+          phases: object.subscription_plan_variation_data?.phases ?? null,
+        })),
+        groups: (groups.groups ?? []).map((group: any) => ({ id: group.id, name: group.name })),
+        webhooks: (webhooks.subscriptions ?? []).map((webhook: any) => ({
+          id: webhook.id,
+          name: webhook.name,
+          enabled: webhook.enabled,
+          notificationUrl: webhook.notification_url,
+          eventTypes: webhook.event_types,
+        })),
+      });
+    } catch (error: any) {
+      res.status(502).json({ message: "Square Sandbox preflight failed.", detail: error.message });
+    }
+  });
+
   app.post("/api/membership/enable-auto-renew", customerAuth, async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     const parsed = EnableMembershipAutoRenewBody.safeParse(req.body);
