@@ -57,6 +57,34 @@ test("public booking widget renders exactly Pool Tables 1–5", () => {
   assert(html.includes("Select your preferred table (1–5)"));
 });
 
+test("Wix booking widget prices pool per game, not per booked hour", () => {
+  const html = readFileSync("src/templates/booking-widget.html", "utf8");
+  assert.match(html, /data-type="pool"[\s\S]*?<div class="table-price">£1 per game<\/div>/);
+  const pricingCode = html.match(
+    /const HOURLY_RATES = [\s\S]*?function getPriceInfo\(tableType, duration\) \{[\s\S]*?\n  \}/,
+  )?.[0];
+  assert(pricingCode, "widget price calculation should be available");
+  const priceForOneHour = vm.runInNewContext(
+    `${pricingCode}; getPriceInfo("pool", 1)`,
+    {},
+  );
+  const priceForThreeHours = vm.runInNewContext(
+    `${pricingCode}; getPriceInfo("pool", 3)`,
+    {},
+  );
+  assert.equal(priceForOneHour.label, "Price");
+  assert.equal(priceForOneHour.amount, "£1.00 per game");
+  assert.equal(priceForThreeHours.amount, "£1.00 per game");
+  assert.equal(priceForOneHour.estimate, "Pool: £1.00 per game");
+
+  const snookerPrice = vm.runInNewContext(
+    `${pricingCode}; getPriceInfo("snooker", 2)`,
+    {},
+  );
+  assert.equal(snookerPrice.amount, "~£15.90");
+  assert.doesNotMatch(pricingCode, /pool:\s*5(?:\.00)?/);
+});
+
 test("staff dashboard excludes Pool Table 6 without silently reassigning existing bookings", () => {
   const html = readFileSync("src/templates/staff-dashboard.html", "utf8");
   const body = html.match(/function buildTableNumChips\(type\)\{([\s\S]*?)\n  \}/)?.[0];

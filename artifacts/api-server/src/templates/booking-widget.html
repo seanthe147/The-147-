@@ -413,7 +413,7 @@
         <div class="table-card" data-type="pool" onclick="selectTableType(this)">
           <div class="table-icon">🟢</div>
           <div class="table-name">Pool</div>
-          <div class="table-price">£5/hr</div>
+          <div class="table-price">£1 per game</div>
         </div>
         <div class="table-card" data-type="dining" onclick="selectTableType(this)">
           <div class="table-icon">🍽️</div>
@@ -632,16 +632,33 @@
   const API_BASE = 'https://the147bradford.replit.app';
   const TABLE_HOURS = ['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00'];
   const TABLE_NAMES = { snooker: 'Snooker', pool: 'Pool', dining: 'Dining', darts: 'Darts', shuffleboard: 'Shuffleboard' };
-  // Hourly rates (£) — update these to match actual pricing
-  const HOURLY_RATES = { snooker: 7.95, pool: 5.00, darts: 6.00, dining: 0 };
+  // Pool is charged by games played, not by the booked table duration.
+  const HOURLY_RATES = { snooker: 7.95, darts: 6.00, dining: 0 };
+  const PER_GAME_RATES = { pool: 1.00 };
+
+  function getPriceInfo(tableType, duration) {
+    const gameRate = PER_GAME_RATES[tableType];
+    if (gameRate != null) {
+      const amount = `£${gameRate.toFixed(2)} per game`;
+      return { label: 'Price', amount, estimate: `Pool: ${amount}` };
+    }
+
+    const hourlyRate = HOURLY_RATES[tableType];
+    if (hourlyRate == null || hourlyRate === 0) return null;
+    const total = (hourlyRate * duration).toFixed(2);
+    return {
+      label: 'Est. Cost',
+      amount: `~£${total}`,
+      estimate: `Estimated cost: £${total} (${duration} hr × £${hourlyRate.toFixed(2)}/hr)`,
+    };
+  }
 
   function updatePriceEstimate() {
     const el = document.getElementById('priceEstimate');
     if (!el) return;
-    const rate = HOURLY_RATES[state.tableType];
-    if (rate == null || rate === 0) { el.style.display = 'none'; return; }
-    const total = (rate * state.duration).toFixed(2);
-    el.textContent = `Estimated cost: £${total} (${state.duration} hr × £${rate.toFixed(2)}/hr)`;
+    const price = getPriceInfo(state.tableType, state.duration);
+    if (!price) { el.style.display = 'none'; return; }
+    el.textContent = price.estimate;
     el.style.display = 'block';
   }
 
@@ -1077,11 +1094,11 @@
     document.getElementById('sumDate').textContent = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
     document.getElementById('sumTime').textContent = state.time;
     document.getElementById('sumDuration').textContent = state.duration + ' hour' + (state.duration > 1 ? 's' : '');
-    const rate = HOURLY_RATES[state.tableType];
     const costRow = document.getElementById('sumCostRow');
-    if (rate != null && rate > 0) {
-      const total = (rate * state.duration).toFixed(2);
-      document.getElementById('sumCost').textContent = `~£${total}`;
+    const priceInfo = getPriceInfo(state.tableType, state.duration);
+    if (priceInfo) {
+      costRow.querySelector('.summary-label').textContent = priceInfo.label;
+      document.getElementById('sumCost').textContent = priceInfo.amount;
       costRow.style.display = 'flex';
     } else {
       costRow.style.display = 'none';
