@@ -27,3 +27,4 @@
 - [Central membership billing](membership-billing-scope.md) — one Square membership system for app and Wix; monthly/annual choices, upgrades, and selected 12-month terms
 - [Unattended Expo dependency checks](expo-dependency-validation.md) — dependency mismatches can prompt indefinitely; CI mode must fail rather than wait for input
 - [Expo static publish Metro startup](expo-static-publish-metro-startup.md) — cold Metro startup can exceed 60 seconds before bundling begins, even when the code is healthy
+- [Dependency compatibility](dependency-remediation-compatibility.md) — exercise codegen and asset processing; type checks miss export-shape breaks and scanners miss local backports

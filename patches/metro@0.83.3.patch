@@ -1,0 +1,25 @@
+diff --git a/src/Assets.js b/src/Assets.js
+index 0870a4c62c7ef9e7fb3a93c0bed74aa8ea5a765e..3645c19457784a1f665a4076f87862761a512ab5 100644
+--- a/src/Assets.js
++++ b/src/Assets.js
+@@ -14,7 +14,7 @@ var AssetPaths = _interopRequireWildcard(
+ );
+ var _crypto = _interopRequireDefault(require("crypto"));
+ var _fs = _interopRequireDefault(require("fs"));
+-var _imageSize = _interopRequireDefault(require("image-size"));
++var _imageSize = { default: require("image-size").imageSize };
+ var _path = _interopRequireDefault(require("path"));
+ function _interopRequireDefault(e) {
+   return e && e.__esModule ? e : { default: e };
+@@ -167,9 +167,9 @@ async function getAssetData(
+   assetUrlPath = (0, _pathUtils.normalizePathSeparatorsToPosix)(assetUrlPath);
+   const isImage = isAssetTypeAnImage(_path.default.extname(assetPath).slice(1));
+   const assetInfo = await getAbsoluteAssetInfo(assetPath, platform);
+-  const isImageInput = assetInfo.files[0].includes(".zip/")
++  const isImageInput = isImage
+     ? _fs.default.readFileSync(assetInfo.files[0])
+-    : assetInfo.files[0];
++    : null;
+   const dimensions = isImage ? (0, _imageSize.default)(isImageInput) : null;
+   const scale = assetInfo.scales[0];
+   const assetData = {
