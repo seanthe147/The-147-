@@ -1,7 +1,13 @@
 ---
 name: Expo iOS 27 readiness
-description: Scene lifecycle settings and Expo Router migration checks for iOS 27-capable Expo builds.
+description: iOS 27 build readiness, Expo Router migration, and adaptive layouts for iPhone Duo.
 ---
+
+Keep the customer app responsive to the current window size for iPhone Duo's outer and inner displays. Avoid module-level screen-dimension snapshots for layout; use `useWindowDimensions` and realign carousel position when the window changes. Do not add an explicit full-screen-only setting without confirming its effect on resizing and multitasking.
+
+**Why:** The user wants The 147 prepared for iPhone Duo. Fold/unfold and multitasking can change the available window while the app remains open, so launch-time dimensions can leave content incorrectly sized.
+
+**How to apply:** Validate compact and expanded widths plus orientation changes, then test on the Duo simulator or hardware before claiming device readiness. A web viewport check is useful but does not replace native testing.
 
 For an Xcode 27/iOS 27 build, confirm the selected Expo SDK supports UIKit scenes and enable them through `expo-build-properties` when required. With SDK 57, set the iOS `enableSceneSupport` option and verify generated native output contains the scene manifest and app delegate; config introspection alone is not enough. Do not raise the minimum iOS version without separate compatibility evidence.
 

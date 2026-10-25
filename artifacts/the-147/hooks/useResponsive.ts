@@ -3,9 +3,9 @@ import { useWindowDimensions } from "react-native";
 /**
  * Single source of truth for responsive layout decisions.
  *
- * `isTablet` uses the same 700pt smallest-dimension threshold the
- * kiosk components already adopted — captures every real iPad in
- * either orientation while keeping every iPhone in the phone bucket.
+ * Layout mode follows the current window dimensions rather than the
+ * device model. A foldable can therefore move from the compact layout
+ * to the expanded layout as its usable display area grows.
  *
  * `tabletPad` is extra horizontal padding to add to a top-level
  * scroll container so its content is constrained to roughly

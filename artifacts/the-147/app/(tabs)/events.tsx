@@ -8,7 +8,7 @@ import {
   ScrollView,
   Linking,
   ActivityIndicator,
-  Dimensions,
+  useWindowDimensions,
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from "react-native";
@@ -25,14 +25,11 @@ import { AdaptiveGlassSurface } from "@/components/AdaptiveGlassSurface";
 const baseColors = Colors;
 import { getApiUrl } from "@/lib/query-client";
 import { useResponsive } from "@/hooks/useResponsive";
+import { getBannerFrame, getBannerPageOffset } from "@/lib/responsive-banner-layout";
 import type { Event, BannerImage } from "@workspace/db/schema";
 import { resolveBannerDestination } from "@workspace/db/schema";
 import { openBannerDestination } from "@/lib/banner-navigation";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const BANNER_WIDTH = SCREEN_WIDTH - 40;
-// Ratio matches the recommended 1500×650 upload size (2.308:1).
-const BANNER_HEIGHT = Math.round(BANNER_WIDTH / 2.3);
 const AUTO_SCROLL_INTERVAL = 5000;
 
 function resolveImageUrl(path: string): string {
@@ -55,6 +52,8 @@ const BannerCarousel = memo(function BannerCarousel({ images }: { images: Banner
   const scrollRef = useRef<ScrollView>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { width: windowWidth } = useWindowDimensions();
+  const { width: bannerWidth, height: bannerHeight } = getBannerFrame(windowWidth, 40);
 
   const startAutoScroll = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -62,23 +61,30 @@ const BannerCarousel = memo(function BannerCarousel({ images }: { images: Banner
     timerRef.current = setInterval(() => {
       setActiveIndex((prev) => {
         const next = (prev + 1) % images.length;
-        scrollRef.current?.scrollTo({ x: next * (BANNER_WIDTH + 12), animated: true });
+        scrollRef.current?.scrollTo({ x: getBannerPageOffset(next, bannerWidth, 12), animated: true });
         return next;
       });
     }, AUTO_SCROLL_INTERVAL);
-  }, [images.length]);
+  }, [images.length, bannerWidth]);
 
   useEffect(() => {
     startAutoScroll();
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [startAutoScroll]);
 
+  useEffect(() => {
+    scrollRef.current?.scrollTo({
+      x: getBannerPageOffset(activeIndex, bannerWidth, 12),
+      animated: false,
+    });
+  }, [activeIndex, bannerWidth]);
+
   const onScrollEnd = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const x = e.nativeEvent.contentOffset.x;
-    const idx = Math.round(x / (BANNER_WIDTH + 12));
+    const idx = Math.round(x / (bannerWidth + 12));
     setActiveIndex(idx);
     startAutoScroll();
-  }, [startAutoScroll]);
+  }, [bannerWidth, startAutoScroll]);
 
   return (
     <View style={styles.bannerSection}>
@@ -86,7 +92,7 @@ const BannerCarousel = memo(function BannerCarousel({ images }: { images: Banner
         ref={scrollRef}
         horizontal
         showsHorizontalScrollIndicator={false}
-        snapToInterval={BANNER_WIDTH + 12}
+        snapToInterval={bannerWidth + 12}
         decelerationRate="fast"
         contentContainerStyle={{ paddingHorizontal: 20 }}
         onMomentumScrollEnd={onScrollEnd}
@@ -107,6 +113,7 @@ const BannerCarousel = memo(function BannerCarousel({ images }: { images: Banner
               accessibilityLabel={hasLink ? (item.title || "Open banner destination") : undefined}
               style={({ pressed }) => [
                 styles.bannerSlide,
+                { width: bannerWidth, height: bannerHeight },
                 hasLink && { opacity: pressed ? 0.88 : 1 },
               ]}
               onPress={hasLink ? handleBannerPress : undefined}
@@ -690,8 +697,6 @@ const createStyles = (palette: ReturnType<typeof useColors>) => {
     marginBottom: 4,
   },
   bannerSlide: {
-    width: BANNER_WIDTH,
-    height: BANNER_HEIGHT,
     borderRadius: 16,
     overflow: "hidden",
     marginRight: 12,

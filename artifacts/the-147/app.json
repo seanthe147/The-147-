@@ -9,7 +9,6 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "requireFullScreen": true,
       "bundleIdentifier": "com.the147bradford.app",
       "buildNumber": "143",
       "entitlements": {

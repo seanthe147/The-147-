@@ -18,7 +18,6 @@ import {
   Modal,
   Linking,
   Alert,
-  Dimensions,
   NativeSyntheticEvent,
   NativeScrollEvent,
   TextInput,
@@ -77,10 +76,7 @@ import {
   calculateMemberDiscountPreviewPence,
   getMemberDiscountPreviewExcludedItemIds,
 } from "@/lib/member-discount";
-
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-// Ratio matches the recommended 1500×650 upload size (2.308:1).
-const BANNER_HEIGHT = Math.round(SCREEN_WIDTH / 2.3);
+import { getBannerFrame, getBannerPageOffset } from "@/lib/responsive-banner-layout";
 
 const FOOD_CATEGORIES = new Set([
   "Starters", "Sharers", "Pub Classic Mains", "Burgers", "Turkish Mains",
@@ -154,6 +150,9 @@ function BannerCarousel({ banners }: { banners: BannerImage[] }) {
   const [current, setCurrent] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { width: windowWidth, tabletPad } = useResponsive(1100);
+  const carouselWidth = Math.max(0, windowWidth - tabletPad * 2);
+  const { height: bannerHeight } = getBannerFrame(carouselWidth);
 
   const startTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -161,25 +160,32 @@ function BannerCarousel({ banners }: { banners: BannerImage[] }) {
     timerRef.current = setInterval(() => {
       setCurrent((prev) => {
         const next = (prev + 1) % banners.length;
-        scrollRef.current?.scrollTo({ x: next * SCREEN_WIDTH, animated: true });
+        scrollRef.current?.scrollTo({ x: getBannerPageOffset(next, carouselWidth), animated: true });
         return next;
       });
     }, 4000);
-  }, [banners.length]);
+  }, [banners.length, carouselWidth]);
 
   useEffect(() => {
     startTimer();
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [startTimer]);
 
+  useEffect(() => {
+    scrollRef.current?.scrollTo({
+      x: getBannerPageOffset(current, carouselWidth),
+      animated: false,
+    });
+  }, [current, carouselWidth]);
+
   const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const x = e.nativeEvent.contentOffset.x;
-    const idx = Math.round(x / SCREEN_WIDTH);
+    const idx = Math.round(x / carouselWidth);
     if (idx !== current) {
       setCurrent(idx);
       startTimer();
     }
-  }, [current, startTimer]);
+  }, [carouselWidth, current, startTimer]);
 
   if (banners.length === 0) return null;
 
@@ -198,7 +204,7 @@ function BannerCarousel({ banners }: { banners: BannerImage[] }) {
           return (
           <Pressable
             key={banner.id}
-            style={bannerStyles.slide}
+            style={[bannerStyles.slide, { width: carouselWidth, height: bannerHeight }]}
             testID={`banner-order-${banner.id}`}
             disabled={!destination}
             accessibilityRole={destination ? "link" : undefined}
@@ -234,7 +240,7 @@ function BannerCarousel({ banners }: { banners: BannerImage[] }) {
 
 const bannerStyles = StyleSheet.create({
   container: { position: "relative" },
-  slide: { width: SCREEN_WIDTH, height: BANNER_HEIGHT },
+  slide: {},
   image: { width: "100%", height: "100%" },
   titleOverlay: {
     position: "absolute",
