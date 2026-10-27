@@ -21,393 +21,239 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
   <style>
+    /* The 147 — "Club baize & brass": deep table-green, warm cream card stock, brass gold. */
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     :root{
-      --gold:#D4A843;--gold-dim:rgba(212,168,67,.12);--gold-border:rgba(212,168,67,.3);
-      --dark:#060D1A;--navy:#0C1A30;--navy2:#112040;
-      --surface:#fff;--bg:#F2F5FA;
-      --text:#0D1526;--text-2:#4B5A72;--text-3:#8EA0BB;
-      --border:#DDE4EE;
-      --red:#DC2626;
+      --baize:#1F4A3A;--baize-deep:#14332A;--baize-ink:#0F2820;--baize-soft:#E3ECE4;
+      --brass:#C8913E;--brass-lite:#E9C78E;--brass-wash:#F6E8CF;
+      --cream:#F6F0E4;--paper:#FFFBF3;--line:#E2D8C6;--line-2:#D2C5AE;
+      --text:#1E2B25;--text-2:#4C5E54;--text-3:#6B7A70;
+      --red:#A3362F;--ok:#2C6B4A;
+      --gold:var(--brass);--surface:var(--paper);--bg:var(--cream);--border:var(--line);
+      --font-display:'Fraunces',Georgia,serif;--font-body:'DM Sans',system-ui,sans-serif;
+      --ease:cubic-bezier(.22,1,.36,1);
+      --shadow:0 1px 0 rgba(255,255,255,.6) inset,0 18px 40px -18px rgba(20,51,42,.35),0 4px 10px -4px rgba(20,51,42,.12);
     }
-    html{scroll-behavior:smooth}
-    body{font-family:'Montserrat',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+    html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+    body{font-family:var(--font-body);background:var(--cream);color:var(--text);min-height:100dvh;font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+    body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.35;
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .3 0 0 0 0 .25 0 0 0 0 .15 0 0 0 .08 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+    button,input{font:inherit;color:inherit}
+    a{color:var(--baize)}
+    button:focus-visible,a:focus-visible,input:focus-visible,label:focus-within{outline:3px solid var(--brass);outline-offset:3px;border-radius:8px}
+    .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
-    /* ─── HERO ─────────────────────────────── */
-    .hero{
-      background:var(--dark);
-      padding:64px 24px 72px;
-      text-align:center;
-      position:relative;
-      overflow:hidden;
-    }
-    .hero-grid{
-      position:absolute;inset:0;
-      background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);
-      background-size:48px 48px;
-      mask-image:radial-gradient(ellipse 80% 60% at 50% 50%,black 40%,transparent 100%);
-    }
-    .hero-glow{position:absolute;top:-80px;left:50%;transform:translateX(-50%);width:600px;height:280px;background:radial-gradient(ellipse,rgba(212,168,67,.13) 0%,transparent 70%);pointer-events:none}
-    .hero-badge{
-      position:relative;display:inline-flex;align-items:center;gap:7px;
-      background:var(--gold-dim);border:1px solid var(--gold-border);
-      color:var(--gold);font-weight:700;font-size:11px;letter-spacing:1.8px;
-      text-transform:uppercase;padding:7px 18px;border-radius:100px;margin-bottom:22px;
-    }
-    .hero-badge-dot{width:6px;height:6px;border-radius:50%;background:var(--gold);animation:pulse 2s ease-in-out infinite}
-    @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
-    .hero-title{
-      position:relative;font-weight:900;
-      font-size:clamp(30px,6vw,52px);
-      color:#fff;line-height:1.1;
-      margin-bottom:16px;letter-spacing:-.5px;
-    }
-    .hero-title em{font-style:normal;color:var(--gold)}
-    .hero-sub{position:relative;font-size:15px;color:rgba(255,255,255,.5);line-height:1.7;max-width:500px;margin:0 auto 32px;font-weight:500}
-    .hero-pills{position:relative;display:flex;flex-wrap:wrap;justify-content:center;gap:10px}
-    .hero-pill{
-      display:inline-flex;align-items:center;gap:6px;
-      background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
-      color:rgba(255,255,255,.7);font-size:12px;font-weight:600;
-      padding:7px 14px;border-radius:100px;
-    }
-    .hero-pill svg{width:13px;height:13px;opacity:.7}
+    /* ─── HERO ─── */
+    .hero{position:relative;z-index:1;overflow:hidden;color:#F4EFE3;
+      background:radial-gradient(120% 90% at 85% 0%,#2B5F4B 0%,var(--baize) 38%,var(--baize-deep) 100%);
+      padding:28px 22px 112px}
+    .hero::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
+      background:repeating-linear-gradient(115deg,rgba(255,255,255,.018) 0 2px,transparent 2px 5px)}
+    .hero-inner{position:relative;max-width:1040px;margin:0 auto}
+    .hero-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:34px}
+    .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--brass-lite)}
+    .brand-mark{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-family:var(--font-display);font-weight:700;font-size:12px;letter-spacing:0;
+      color:var(--baize-ink);background:radial-gradient(circle at 35% 30%,#F6DDA9,var(--brass) 60%,#8E6326);box-shadow:0 3px 8px rgba(0,0,0,.3)}
+    .hero-signin{min-height:44px;padding:0 16px;border-radius:999px;border:1px solid rgba(233,199,142,.45);background:rgba(255,255,255,.05);color:#F4EFE3;font-weight:600;font-size:13px;cursor:pointer;transition:background .2s,border-color .2s,transform .15s var(--ease);white-space:nowrap}
+    .hero-signin:hover{background:rgba(233,199,142,.14);border-color:var(--brass-lite)}
+    .hero-signin:active{transform:scale(.97)}
+    .hero-kicker{font-size:12px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--brass-lite);margin-bottom:12px;display:flex;align-items:center;gap:10px}
+    .hero-kicker::before{content:"";width:22px;height:1px;background:currentColor}
+    .hero-title{font-family:var(--font-display);font-weight:600;font-size:clamp(38px,9.5vw,72px);line-height:.98;letter-spacing:-.02em;max-width:12ch;margin-bottom:16px}
+    .hero-title em{font-style:italic;color:var(--brass-lite)}
+    .hero-sub{max-width:520px;font-size:16px;line-height:1.65;color:rgba(244,239,227,.82)}
+    .hero-balls{position:absolute;right:-10px;top:40px;width:240px;height:240px;pointer-events:none}
+    .ball{position:absolute;border-radius:50%;box-shadow:inset -8px -10px 18px rgba(0,0,0,.35),0 14px 24px -8px rgba(0,0,0,.45);animation:drift 9s ease-in-out infinite}
+    .ball::after{content:"";position:absolute;width:30%;height:22%;top:16%;left:22%;border-radius:50%;background:rgba(255,255,255,.55);filter:blur(1px)}
+    .ball.red{width:64px;height:64px;right:110px;top:34px;background:radial-gradient(circle at 35% 30%,#E1654F,#A42B22 65%,#6E1812)}
+    .ball.black{width:92px;height:92px;right:22px;top:90px;background:radial-gradient(circle at 35% 30%,#4B5550,#161B19 65%,#050706);animation-delay:-3s}
+    .ball.cream{width:42px;height:42px;right:150px;top:150px;background:radial-gradient(circle at 35% 30%,#FFFDF5,#E8DEC8 65%,#BCAE90);animation-delay:-6s}
+    @keyframes drift{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(0,-8px,0)}}
 
-    /* ─── SCALLOP / WAVE divider ─── */
-    .wave-divider{display:block;width:100%;height:56px;background:var(--dark);margin-bottom:-1px}
-    .wave-divider path{fill:var(--bg)}
-
-    /* ─── BODY ──────────────────────────────── */
-    .page-body{max-width:1120px;margin:0 auto;padding:48px 24px 64px}
-
-    .section-eyebrow{
-      text-align:center;font-weight:700;font-size:11px;letter-spacing:2.5px;
-      text-transform:uppercase;color:var(--text-3);margin-bottom:12px;
-    }
-    .section-title{text-align:center;font-weight:800;font-size:clamp(22px,3.5vw,30px);color:var(--text);margin-bottom:8px}
-    .section-sub{text-align:center;font-size:14px;color:var(--text-2);margin-bottom:40px;line-height:1.7}
-
-    /* ─── PLANS ─────────────────────────────── */
-    .plans-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:20px;margin-bottom:64px;align-items:start}
-    .plan-card{
-      background:var(--surface);border-radius:24px;border:1.5px solid var(--border);
-      overflow:hidden;display:flex;flex-direction:column;
-      box-shadow:0 2px 16px rgba(0,0,0,.06);
-      transition:transform .25s cubic-bezier(.34,1.56,.64,1),box-shadow .25s ease;
-      position:relative;
-    }
-    .plan-card:hover{transform:translateY(-6px);box-shadow:0 12px 40px rgba(0,0,0,.12)}
-    .plan-card.featured{
-      border-color:var(--gold);
-      box-shadow:0 4px 32px rgba(212,168,67,.2);
-      transform:translateY(-8px);
-    }
-    .plan-card.featured:hover{transform:translateY(-14px);box-shadow:0 16px 48px rgba(212,168,67,.25)}
-    .plan-accent{height:4px;width:100%;transition:height .2s}
-    .plan-card:hover .plan-accent{height:6px}
-    .plan-featured-badge{
-      position:absolute;top:20px;right:18px;
-      background:var(--gold);color:#fff;
-      font-size:10px;font-weight:800;letter-spacing:.5px;
-      padding:4px 11px;border-radius:100px;
-      text-transform:uppercase;
-    }
-    .plan-body{padding:28px;flex:1;display:flex;flex-direction:column}
-    .plan-header{display:flex;align-items:flex-start;gap:14px;margin-bottom:20px}
-    .plan-icon-wrap{
-      width:52px;height:52px;border-radius:16px;
-      display:flex;align-items:center;justify-content:center;flex-shrink:0;
-    }
-    .plan-icon-wrap svg{width:26px;height:26px}
-    .plan-meta{flex:1}
-    .plan-name{font-weight:800;font-size:20px;color:var(--text);line-height:1.2;margin-bottom:2px}
-    .plan-tagline{font-size:12px;color:var(--text-2);line-height:1.5;font-weight:500}
-    .plan-price-row{display:flex;align-items:baseline;gap:4px;margin-bottom:4px}
-    .plan-price{font-weight:900;font-size:40px;line-height:1;letter-spacing:-1px}
-    .plan-period{font-size:13px;color:var(--text-2);font-weight:600;margin-bottom:22px}
-    .plan-sep{height:1px;background:var(--border);margin-bottom:20px}
-    .plan-features{list-style:none;display:flex;flex-direction:column;gap:11px;flex:1;margin-bottom:24px}
-    .plan-features li{display:flex;align-items:center;gap:11px;font-size:13px;color:var(--text);font-weight:500}
-    .feat-icon{width:24px;height:24px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-    .feat-icon svg{width:12px;height:12px}
-    .plan-cta{
-      width:100%;padding:15px;border-radius:14px;border:none;
-      font-family:'Montserrat',sans-serif;font-weight:700;font-size:14px;
-      cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;
-      transition:filter .15s,transform .1s;letter-spacing:.2px;
-    }
-    .plan-cta:hover{filter:brightness(1.08)}
-    .plan-cta:active{transform:scale(.98)}
-    .plan-cta svg{width:16px;height:16px}
-
-    /* ─── PERKS STRIP ───────────────────────── */
-    .perks-strip{
-      display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
-      gap:1px;background:var(--border);
-      border:1.5px solid var(--border);border-radius:20px;overflow:hidden;
-      margin-bottom:48px;
-    }
-    .perk-cell{
-      background:var(--surface);padding:24px 20px;text-align:center;
-    }
-    .perk-emoji{font-size:28px;margin-bottom:10px;display:block}
-    .perk-title{font-weight:700;font-size:13px;color:var(--text);margin-bottom:4px}
-    .perk-text{font-size:12px;color:var(--text-2);line-height:1.5}
-
-    /* ─── TRUST BAR ─────────────────────────── */
-    .trust-bar{
-      display:flex;flex-wrap:wrap;justify-content:center;align-items:center;
-      gap:20px 32px;padding:20px 24px;
-      background:var(--surface);border:1.5px solid var(--border);border-radius:16px;
-      margin-bottom:48px;
-    }
-    .trust-item{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--text-2)}
-    .trust-item svg{width:16px;height:16px;flex-shrink:0}
-
-    /* ─── LOADING ────────────────────────────── */
-    .loading-wrap{display:flex;align-items:center;justify-content:center;padding:64px 20px;gap:12px;color:var(--text-2);font-size:14px}
-    .spinner{width:28px;height:28px;border:3px solid var(--border);border-top-color:#0047AB;border-radius:50%;animation:spin .7s linear infinite}
+    /* ─── BODY ─── */
+    .page-body{position:relative;z-index:2;max-width:1040px;margin:-84px auto 0;padding:0 16px 56px}
+    .manage-signin{display:none}
+    .loading-wrap{display:flex;align-items:center;justify-content:center;gap:12px;padding:56px 20px;color:var(--text-2);font-size:14px;text-align:center}
+    .spinner{width:24px;height:24px;border:3px solid var(--line);border-top-color:var(--baize);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
     @keyframes spin{to{transform:rotate(360deg)}}
+    .skel{background:var(--paper);border:1px solid var(--line);border-radius:24px;padding:28px;box-shadow:var(--shadow)}
+    .skel i{display:block;height:14px;border-radius:7px;margin-bottom:14px;background:linear-gradient(90deg,#EFE6D5,#F8F2E6,#EFE6D5);background-size:200% 100%;animation:shimmer 1.4s linear infinite}
+    @keyframes shimmer{to{background-position:-200% 0}}
+    .fadein{opacity:0;transform:translateY(16px);transition:opacity .6s var(--ease),transform .6s var(--ease)}
+    .fadein.visible{opacity:1;transform:none}
 
-    /* ─── FADE-IN ────────────────────────────── */
-    .fadein{opacity:0;transform:translateY(20px);transition:opacity .5s ease,transform .5s ease}
-    .fadein.visible{opacity:1;transform:translateY(0)}
+    /* ─── OFFER ─── */
+    .offer-shell{background:var(--paper);border:1px solid var(--line);border-radius:26px;box-shadow:var(--shadow);overflow:hidden}
+    .offer-bar{display:flex;flex-direction:column;gap:12px;padding:18px 18px 0}
+    .offer-bar-label{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text-3)}
+    .freq-toggle{position:relative;display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:5px;border-radius:16px;background:#EDE4D3;box-shadow:inset 0 1px 3px rgba(60,45,20,.12)}
+    .freq-btn{position:relative;z-index:1;min-height:52px;border:0;border-radius:12px;background:transparent;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:6px 8px;color:var(--text-2);font-weight:700;font-size:15px;transition:color .25s,background .25s,box-shadow .25s,transform .15s var(--ease)}
+    .freq-btn small{font-size:11.5px;font-weight:600;color:var(--text-3);letter-spacing:.01em}
+    .freq-btn:active{transform:scale(.98)}
+    .freq-btn.active{background:var(--paper);color:var(--baize-ink);box-shadow:0 2px 6px rgba(40,30,10,.14),0 0 0 1.5px var(--baize)}
+    .freq-btn.active small{color:var(--baize)}
+    .freq-save{display:inline-block;margin-left:4px;padding:1px 7px;border-radius:999px;background:var(--brass);color:var(--baize-ink);font-size:10.5px;font-weight:800;letter-spacing:.02em}
+    .freq-save:empty{display:none}
 
-    /* ─── MODAL ──────────────────────────────── */
-    .backdrop{
-      display:none;position:fixed;inset:0;
-      background:rgba(6,13,26,.6);backdrop-filter:blur(6px);
-      z-index:300;align-items:center;justify-content:center;padding:20px;
-    }
-    .backdrop.open{display:flex;animation:fade-bg .2s ease}
+    .plans-grid{display:block}
+    .plan-card{position:relative;display:grid;grid-template-columns:1fr;padding:18px}
+    .plan-card + .plan-card{border-top:1px dashed var(--line-2)}
+    .plan-main{display:flex;flex-direction:column}
+    .plan-head{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+    .plan-icon-wrap{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;border:1.5px solid}
+    .plan-icon-wrap svg{width:22px;height:22px}
+    .plan-name{font-family:var(--font-display);font-weight:600;font-size:28px;line-height:1.05;letter-spacing:-.01em}
+    .plan-tagline{font-size:13px;color:var(--text-2);line-height:1.45;margin-top:2px}
+    .plan-selection-note{display:inline-flex;align-items:center;gap:6px;width:max-content;margin-bottom:12px;padding:5px 10px;border-radius:999px;background:var(--baize-soft);color:var(--baize);font-size:12px;font-weight:700}
+    .plan-selection-note::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+    .price-plate{border-radius:20px;padding:18px 18px 16px;background:linear-gradient(160deg,var(--baize) 0%,var(--baize-deep) 100%);color:#F4EFE3;position:relative;overflow:hidden}
+    .price-plate::after{content:"";position:absolute;right:-50px;bottom:-60px;width:170px;height:170px;border-radius:50%;border:1px solid rgba(233,199,142,.2);box-shadow:0 0 0 22px rgba(233,199,142,.04)}
+    .plan-price-row{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+    .plan-price{font-family:var(--font-display);font-weight:700;font-size:56px;line-height:1;letter-spacing:-.03em;color:#FFF8EA;animation:pop .45s var(--ease)}
+    @keyframes pop{from{opacity:.2;transform:translateY(6px)}to{opacity:1;transform:none}}
+    .plan-per{font-size:16px;font-weight:600;color:var(--brass-lite)}
+    .plan-period{font-size:13px;color:rgba(244,239,227,.78);margin-top:6px;position:relative;z-index:1}
+    .plan-saving{position:relative;z-index:1;display:flex;align-items:flex-start;gap:8px;margin-top:12px;padding:10px 12px;border-radius:12px;background:rgba(233,199,142,.14);border:1px solid rgba(233,199,142,.3);font-size:13px;line-height:1.45;color:#F8EBD2}
+    .plan-saving strong{color:#FFE2A8}
+    .plan-saving svg{width:16px;height:16px;flex-shrink:0;margin-top:2px;color:var(--brass-lite)}
+    .plan-saving.nudge{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14);color:rgba(244,239,227,.85)}
+    .plan-saving button{background:none;border:0;padding:0;color:#FFE2A8;font-weight:700;text-decoration:underline;text-underline-offset:3px;cursor:pointer;min-height:24px}
+    .plan-term{display:flex;gap:10px;align-items:flex-start;margin-top:14px;padding:12px 14px;border-radius:14px;background:var(--brass-wash);border:1px solid #E8D2AA;color:#5A4320;font-size:13px;line-height:1.5}
+    .plan-term svg{width:18px;height:18px;flex-shrink:0;margin-top:1px;color:#9C6B26}
+    .plan-term b{display:block;color:#3E2D12;font-size:13.5px}
+    .plan-cta{margin-top:16px;width:100%;min-height:58px;border:0;border-radius:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;padding:12px 18px;
+      background:linear-gradient(180deg,#D8A453,var(--brass) 55%,#B07A2E);color:var(--baize-ink);font-weight:800;font-size:16px;letter-spacing:.01em;
+      box-shadow:0 1px 0 rgba(255,255,255,.45) inset,0 10px 20px -10px rgba(140,90,20,.8);transition:transform .18s var(--ease),box-shadow .2s,filter .2s}
+    .plan-cta:hover{transform:translateY(-2px);filter:saturate(1.08);box-shadow:0 1px 0 rgba(255,255,255,.45) inset,0 16px 26px -12px rgba(140,90,20,.85)}
+    .plan-cta:active{transform:translateY(0) scale(.985)}
+    .plan-cta svg{width:18px;height:18px;transition:transform .2s var(--ease)}
+    .plan-cta:hover svg{transform:translateX(3px)}
+    .plan-cta.manage{background:var(--baize);color:#F4EFE3}
+    .cta-note{margin-top:10px;text-align:center;font-size:12.5px;color:var(--text-3);display:flex;align-items:center;justify-content:center;gap:6px}
+    .cta-note svg{width:13px;height:13px}
+    .plan-side{margin-top:22px}
+    .plan-side-title{font-family:var(--font-display);font-size:20px;font-weight:600;margin-bottom:12px}
+    .plan-features{list-style:none;display:flex;flex-direction:column;gap:2px}
+    .plan-features li{display:flex;align-items:flex-start;gap:12px;padding:10px 4px;border-bottom:1px solid #EFE7D8;font-size:14.5px;line-height:1.45;font-weight:500}
+    .plan-features li:last-child{border-bottom:0}
+    .feat-icon{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;background:var(--baize-soft);color:var(--baize);font-weight:700;font-size:14px;margin-top:-3px}
+    .plan-features.empty li{color:var(--text-3)}
+
+    /* ─── PERKS / TRUST ─── */
+    .perks-strip{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:22px 0 0}
+    .perk-cell{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:16px;transition:transform .25s var(--ease),border-color .25s}
+    .perk-cell:hover{transform:translateY(-2px);border-color:var(--line-2)}
+    .perk-emoji{width:34px;height:34px;border-radius:10px;background:var(--baize-soft);color:var(--baize);display:grid;place-items:center;margin-bottom:10px}
+    .perk-emoji svg{width:17px;height:17px}
+    .perk-title{font-weight:700;font-size:14px;margin-bottom:3px}
+    .perk-text{font-size:12.5px;color:var(--text-2);line-height:1.5}
+    .trust-bar{display:flex;flex-wrap:wrap;gap:8px 18px;justify-content:center;margin:22px 0 0;padding:14px 16px;border-radius:16px;border:1px dashed var(--line-2)}
+    .trust-item{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--text-2)}
+    .trust-item svg{width:15px;height:15px;color:var(--baize)}
+    .member-strip{margin-top:22px;display:flex;flex-direction:column;gap:12px;align-items:flex-start;padding:20px;border-radius:20px;background:var(--baize-deep);color:#F4EFE3}
+    .member-strip h3{font-family:var(--font-display);font-weight:600;font-size:21px}
+    .member-strip p{font-size:13.5px;color:rgba(244,239,227,.75)}
+    .member-strip button{min-height:48px;padding:0 20px;border-radius:12px;border:1px solid var(--brass-lite);background:transparent;color:var(--brass-lite);font-weight:700;cursor:pointer;transition:background .2s,color .2s}
+    .member-strip button:hover{background:var(--brass-lite);color:var(--baize-ink)}
+    .page-foot{margin-top:22px;text-align:center;font-size:12.5px;color:var(--text-3);padding:0 8px}
+    .page-foot a{color:var(--baize);font-weight:700}
+
+    /* ─── MANAGE PORTAL ─── */
+    .manage-card{background:var(--paper);border:1px solid var(--line);border-top:5px solid var(--baize);border-radius:22px;padding:22px 18px;margin-bottom:18px;box-shadow:var(--shadow)}
+    .manage-card h3{font-family:var(--font-display);font-weight:600;font-size:26px;margin-bottom:12px}
+    .manage-card h4{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);margin:22px 0 8px}
+    .m-row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid #EFE7D8;font-size:14px}
+    .m-row span:first-child{color:var(--text-2)}.m-row span:last-child{font-weight:700;text-align:right}
+    .m-note{font-size:13.5px;color:var(--text-2);line-height:1.6;margin-top:10px}
+    .m-note a,.m-opt a{color:var(--baize);font-weight:700}
+    .m-opt{display:flex;gap:12px;align-items:flex-start;border:1.5px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:8px;cursor:pointer;font-size:14px;line-height:1.5;transition:border-color .2s,background .2s}
+    .m-opt:hover{border-color:var(--line-2)}
+    .m-opt:has(input[type=radio]:checked){border-color:var(--baize);background:#F1F5EF}
+    .m-opt input{margin-top:3px;width:18px;height:18px;flex-shrink:0;accent-color:var(--baize)}
+    .m-btn{min-height:48px;padding:0 20px;border-radius:12px;border:0;font-weight:700;font-size:14px;cursor:pointer;background:var(--baize);color:#F4EFE3;margin-top:10px;transition:filter .2s,transform .15s var(--ease)}
+    .m-btn:hover{filter:brightness(1.12)}.m-btn:active{transform:scale(.98)}
+    .m-btn:disabled{opacity:.45;cursor:not-allowed;filter:none;transform:none}
+    .m-btn.danger{background:var(--red)}.m-btn.ghost{background:var(--baize-soft);color:var(--baize-ink)}
+    .m-msg{font-size:13.5px;padding:10px 12px;border-radius:12px;margin-top:10px;display:none}
+    .m-msg.err{display:block;background:#F9E7E4;border:1px solid #E0A69F;color:var(--red)}
+    .m-msg.ok{display:block;background:#E3EEE4;border:1px solid #A9C9B1;color:var(--ok)}
+    .m-link{display:inline-flex;align-items:center;min-height:44px;background:none;border:0;color:var(--text-2);font-size:13px;cursor:pointer;text-decoration:underline;text-underline-offset:3px;margin-top:8px}
+
+    /* ─── MODAL ─── */
+    .backdrop{display:none;position:fixed;inset:0;z-index:300;background:rgba(15,40,32,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);align-items:flex-end;justify-content:center;padding:0}
+    .backdrop.open{display:flex;animation:fade-bg .25s ease}
     @keyframes fade-bg{from{opacity:0}to{opacity:1}}
-    .modal{
-      background:var(--surface);border-radius:24px;width:100%;max-width:500px;
-      overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.3);
-      animation:slide-up .25s cubic-bezier(.34,1.56,.64,1);
-    }
-    @keyframes slide-up{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
-    .modal-head{
-      background:linear-gradient(135deg,var(--dark) 0%,var(--navy2) 100%);
-      padding:28px 28px 22px;position:relative;overflow:hidden;
-    }
-    .modal-head::after{
-      content:'';position:absolute;bottom:-40px;right:-40px;
-      width:160px;height:160px;
-      background:radial-gradient(circle,rgba(212,168,67,.15) 0%,transparent 70%);border-radius:50%;
-    }
-    .modal-plan-pill{
-      display:inline-flex;align-items:center;gap:6px;
-      font-weight:700;font-size:11px;letter-spacing:.5px;
-      padding:5px 12px;border-radius:100px;margin-bottom:14px;
-    }
-    .modal-title{font-weight:800;font-size:22px;color:#fff;margin-bottom:4px;position:relative}
-    .modal-sub{font-size:13px;color:rgba(255,255,255,.5);position:relative;font-weight:500}
-    .modal-body{padding:24px 28px}
-    .tabs{display:flex;background:#EEF2F8;border-radius:12px;padding:4px;margin-bottom:22px;gap:3px}
-    .tab{flex:1;padding:9px;border:none;background:transparent;border-radius:9px;font-family:'Montserrat',sans-serif;font-size:13px;font-weight:700;cursor:pointer;color:var(--text-2);transition:.15s}
-    .tab.active{background:var(--surface);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.1)}
-    .tab-panel{display:none}
-    .tab-panel.active{display:block}
+    .modal{width:100%;max-width:520px;max-height:94dvh;overflow-y:auto;overscroll-behavior:contain;background:var(--paper);border-radius:24px 24px 0 0;box-shadow:0 -20px 60px rgba(0,0,0,.3);animation:sheet .38s var(--ease)}
+    @keyframes sheet{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
+    .modal-head{position:relative;overflow:hidden;padding:24px 20px 20px;background:linear-gradient(160deg,var(--baize),var(--baize-deep));color:#F4EFE3}
+    .modal-head::before{content:"";position:absolute;top:8px;left:50%;width:40px;height:4px;margin-left:-20px;border-radius:2px;background:rgba(255,255,255,.3)}
+    .modal-head::after{content:"";position:absolute;right:-40px;top:-40px;width:150px;height:150px;border-radius:50%;border:1px solid rgba(233,199,142,.25)}
+    .modal-plan-pill{display:inline-flex;align-items:center;padding:5px 12px;border-radius:999px;font-weight:700;font-size:12px;margin-bottom:10px;background:rgba(233,199,142,.18)!important;color:var(--brass-lite)!important;border:1px solid rgba(233,199,142,.35)}
+    .modal-plan-pill:empty{display:none}
+    .modal-title{position:relative;font-family:var(--font-display);font-weight:600;font-size:28px;line-height:1.1;margin-bottom:4px}
+    .modal-sub{position:relative;font-size:13.5px;color:rgba(244,239,227,.78)}
+    .modal-body{padding:20px}
+    .tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:14px;background:#EDE4D3;margin-bottom:18px}
+    .tabs:has(#tabReg[style*="none"]){display:none}
+    .tab{min-height:46px;border:0;border-radius:10px;background:transparent;font-weight:700;font-size:14px;color:var(--text-2);cursor:pointer;transition:background .2s,color .2s,box-shadow .2s}
+    .tab.active{background:var(--paper);color:var(--baize-ink);box-shadow:0 1px 4px rgba(40,30,10,.14)}
+    .tab-panel{display:none}.tab-panel.active{display:block;animation:pop .3s var(--ease)}
     .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     .fld{margin-bottom:14px}
-    .fld label{display:block;font-weight:700;font-size:12px;color:var(--text-2);margin-bottom:6px;letter-spacing:.3px;text-transform:uppercase}
-    .fld input{
-      width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;
-      font-family:'Montserrat',sans-serif;font-size:14px;color:var(--text);
-      background:var(--surface);outline:none;transition:border-color .15s,box-shadow .15s;
-    }
-    .fld input:focus{border-color:#0047AB;box-shadow:0 0 0 3px rgba(0,71,171,.1)}
-    .form-note{font-size:12px;color:var(--text-3);line-height:1.5;margin-top:4px;font-weight:500}
-    .form-err{
-      display:none;font-size:13px;color:var(--red);
-      padding:11px 14px;background:#FEF2F2;border-radius:10px;border:1px solid #FCA5A5;
-      margin-bottom:14px;font-weight:600;line-height:1.4;
-    }
+    .fld label{display:block;font-weight:700;font-size:12.5px;color:var(--text-2);margin-bottom:6px}
+    .fld input{width:100%;min-height:50px;padding:12px 14px;border:1.5px solid var(--line-2);border-radius:12px;background:#FFFEFA;font-size:16px;outline:none;transition:border-color .2s,box-shadow .2s}
+    .fld input:focus{border-color:var(--baize);box-shadow:0 0 0 4px rgba(31,74,58,.14)}
+    .form-note{font-size:12.5px;color:var(--text-3);line-height:1.5}
+    .consent-row{display:flex;align-items:flex-start;gap:12px;margin:6px 0 14px;padding:12px 14px;border-radius:14px;background:#F7F0E2;border:1px solid var(--line);cursor:pointer;font-size:13px;color:var(--text-2);line-height:1.55}
+    .consent-row input{margin-top:2px;width:20px;height:20px;flex-shrink:0;accent-color:var(--baize);cursor:pointer}
+    .consent-row a{color:var(--baize);font-weight:700}
+    .consent-row #joinTermsCommit{display:block;margin-top:4px;color:#5A4320;font-weight:600}
+    .form-err{display:none;font-size:13.5px;color:var(--red);padding:11px 14px;background:#F9E7E4;border:1px solid #E0A69F;border-radius:12px;margin-bottom:12px;font-weight:600;line-height:1.45}
     .form-err.show{display:block;animation:shake .3s ease}
-    @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
-    .submit-btn{
-      width:100%;padding:15px;border-radius:13px;border:none;
-      font-family:'Montserrat',sans-serif;font-weight:800;font-size:14px;cursor:pointer;
-      display:flex;align-items:center;justify-content:center;gap:8px;
-      transition:filter .15s,transform .1s;letter-spacing:.2px;margin-top:4px;
-    }
-    .submit-btn:hover{filter:brightness(1.08)}
-    .submit-btn:active{transform:scale(.98)}
+    @keyframes shake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+    .form-ok{display:none;background:#E3EEE4;border:1px solid #A9C9B1;color:var(--ok);padding:11px 14px;border-radius:12px;font-size:13.5px;line-height:1.45;margin-bottom:12px}
+    .submit-btn{width:100%;min-height:54px;border:0;border-radius:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;font-weight:800;font-size:15px;margin-top:4px;background:var(--baize);color:#F4EFE3;transition:filter .2s,transform .15s var(--ease)}
+    .submit-btn:hover{filter:brightness(1.12)}.submit-btn:active{transform:scale(.985)}
     .submit-btn:disabled{opacity:.5;cursor:not-allowed}
-    .submit-btn svg{width:16px;height:16px}
-    .cancel-btn{
-      width:100%;padding:12px;border-radius:12px;border:1.5px solid var(--border);
-      background:transparent;color:var(--text-2);font-family:'Montserrat',sans-serif;
-      font-weight:600;font-size:13px;cursor:pointer;margin-top:10px;transition:.15s;
-    }
+    .submit-btn svg{width:17px;height:17px}
+    .text-link{display:inline-flex;align-items:center;min-height:44px;color:var(--baize);font-size:13.5px;font-weight:700;text-decoration:none}
+    .text-link:hover{text-decoration:underline}
+    .modal-footer{padding:0 20px 20px}
+    .cancel-btn{width:100%;min-height:48px;border-radius:12px;border:1.5px solid var(--line-2);background:transparent;color:var(--text-2);font-weight:600;font-size:14px;cursor:pointer;transition:border-color .2s,color .2s}
     .cancel-btn:hover{border-color:var(--text-3);color:var(--text)}
-    .modal-footer{padding:0 28px 24px}
-
-    /* ─── SUCCESS ────────────────────────────── */
-    .success-pane{display:none;text-align:center;padding:40px 28px}
+    .success-pane{display:none;text-align:center;padding:34px 22px 28px}
     .success-pane.show{display:block}
-    .success-ring{
-      width:80px;height:80px;border-radius:50%;
-      background:linear-gradient(135deg,#d1fae5,#a7f3d0);
-      display:flex;align-items:center;justify-content:center;margin:0 auto 20px;
-      box-shadow:0 8px 24px rgba(22,163,74,.2);
-    }
-    .success-ring svg{width:40px;height:40px}
-    .success-title{font-weight:800;font-size:22px;color:var(--text);margin-bottom:8px}
-    .success-sub{font-size:14px;color:var(--text-2);line-height:1.7;margin-bottom:28px}
-    .success-pill{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:13px;padding:8px 18px;border-radius:100px;margin-bottom:28px}
-    .redirect-row{display:flex;align-items:center;justify-content:center;gap:10px;color:var(--text-2);font-size:13px;font-weight:600}
+    .success-ring{width:76px;height:76px;border-radius:50%;margin:0 auto 18px;display:grid;place-items:center;background:var(--baize-soft);animation:pop .5s var(--ease)}
+    .success-ring svg{width:36px;height:36px}
+    .success-title{font-family:var(--font-display);font-weight:600;font-size:28px;margin-bottom:8px}
+    .success-sub{font-size:14.5px;color:var(--text-2);line-height:1.65;margin-bottom:20px}
+    .success-pill{display:inline-flex;padding:7px 16px;border-radius:999px;font-weight:700;font-size:13px;margin-bottom:20px;background:var(--brass-wash)!important;color:#5A4320!important}
+    .redirect-row{display:flex;align-items:center;justify-content:center;gap:10px;color:var(--text-2);font-size:13.5px;font-weight:600}
+    #manualPayBtn{min-height:50px;line-height:22px}
 
-    /* ─── FOOTER ─────────────────────────────── */
-    .page-foot{text-align:center;padding:0 20px 16px;font-size:12px;color:var(--text-3)}
-    .page-foot a{color:var(--text-2);text-decoration:none;font-weight:600}
+    /* Verification banner */
+    #verifyBanner{position:relative;z-index:5;font-family:var(--font-body)!important;background:var(--brass-wash)!important;border-bottom:1px solid #E1C38E!important;color:#5A4320!important;font-size:13.5px!important}
+    #verifyResendBtn{background:var(--baize)!important;min-height:40px;margin-top:4px}
 
-    /* ─── BILLING TOGGLE + MANAGE ───────────── */
-    .freq-toggle{display:flex;justify-content:center;gap:4px;background:#E6ECF5;border-radius:12px;padding:4px;width:max-content;margin:-24px auto 32px}
-    .freq-btn{border:none;background:transparent;padding:9px 22px;border-radius:9px;font-family:'Montserrat',sans-serif;font-weight:700;font-size:13px;color:var(--text-2);cursor:pointer}
-    .freq-btn.active{background:var(--surface);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.1)}
-    .plan-term{font-size:12px;color:var(--text-2);background:#F5F7FB;border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-bottom:16px;line-height:1.45;font-weight:500}
-    .manage-signin{text-align:center;font-size:13px;color:var(--text-2);margin-bottom:32px}
-    .manage-signin button{background:none;border:none;color:#0047AB;font-weight:700;font-family:inherit;font-size:13px;cursor:pointer;text-decoration:underline}
-    .manage-card{background:var(--surface);border:1.5px solid var(--border);border-radius:18px;padding:22px 24px;margin-bottom:40px;max-width:640px;margin-left:auto;margin-right:auto}
-    .manage-card h3{font-size:17px;font-weight:800;margin-bottom:12px}
-    .manage-card h4{font-size:13px;font-weight:800;margin:18px 0 6px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-2)}
-    .m-row{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid #EEF2F8;font-size:13px}
-    .m-row span:first-child{color:var(--text-2)}.m-row span:last-child{font-weight:700;text-align:right}
-    .m-note{font-size:13px;color:var(--text-2);line-height:1.55;margin-top:10px}
-    .m-opt{display:flex;gap:10px;align-items:flex-start;border:1.5px solid var(--border);border-radius:11px;padding:10px 12px;margin-bottom:8px;cursor:pointer;font-size:13px}
-    .m-opt input{margin-top:3px;accent-color:#0047AB}
-    .m-btn{padding:11px 18px;border-radius:11px;border:none;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;background:#0047AB;color:#fff;margin-top:10px}
-    .m-btn:disabled{opacity:.5;cursor:not-allowed}
-    .m-btn.danger{background:var(--red)}.m-btn.ghost{background:#EEF2F8;color:var(--text)}
-    .m-msg{font-size:13px;padding:10px 12px;border-radius:10px;margin-top:10px;display:none}
-    .m-msg.err{display:block;background:#FEF2F2;border:1px solid #FCA5A5;color:var(--red)}
-    .m-msg.ok{display:block;background:#DCFCE7;border:1px solid #86EFAC;color:#166534}
-    .m-link{background:none;border:none;color:var(--text-2);font-family:inherit;font-size:12px;cursor:pointer;text-decoration:underline;margin-top:12px}
-    @media(max-width:600px){
-      .hero{padding:48px 16px 60px}
-      .page-body{padding:36px 16px 48px}
-      .form-row{grid-template-columns:1fr}
-      .modal-body,.modal-footer{padding-left:20px;padding-right:20px}
-      .modal-head{padding:22px 20px 18px}
-      .plan-body{padding:22px}
-      .perks-strip{grid-template-columns:1fr 1fr}
+    /* ─── RESPONSIVE ─── */
+    @media(max-width:430px){.form-row{grid-template-columns:1fr;gap:0}.hero-balls{opacity:.45;transform:scale(.7);transform-origin:top right}.brand-name{display:none}}
+    @media(min-width:640px){
+      .hero{padding:32px 32px 128px}
+      .page-body{padding:0 28px 72px}
+      .backdrop{align-items:center;padding:24px}
+      .modal{border-radius:24px;max-height:calc(100dvh - 48px)}
+      .modal-head::before{display:none}
+      .modal-head{padding:26px 28px 22px}.modal-body{padding:24px 28px}.modal-footer{padding:0 28px 24px}
+      .perks-strip{grid-template-columns:repeat(4,1fr)}
+      .member-strip{flex-direction:row;align-items:center;justify-content:space-between;padding:22px 26px}
+      .manage-card{padding:28px}
+      .offer-bar{flex-direction:row;align-items:center;justify-content:space-between;padding:22px 26px 0}
+      .freq-toggle{min-width:380px}
     }
-
-    /* The 147 club room — warm, local and considered, without touching checkout logic. */
-    :root{
-      --gold:#B87837;--gold-dim:#F4E9DC;--gold-border:#D9B796;
-      --dark:#24332D;--navy:#31483E;--navy2:#3D574A;
-      --surface:#FFFCF7;--bg:#F5F0E7;
-      --text:#26332D;--text-2:#52645A;--text-3:#64766B;
-      --border:#DED8CC;--red:#A83B35;
-      --club-green:#315D4A;--club-cream:#F5F0E7;--club-orange:#B87837;
-      --font-display:'Fraunces',Georgia,serif;--font-body:'DM Sans',sans-serif;
-    }
-    html{scroll-behavior:smooth}
-    body{font-family:var(--font-body);background:var(--bg);color:var(--text);font-size:15px}
-    button,input{font:inherit}
-    button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid #9A5A20;outline-offset:3px}
-    .hero{background:#263A31;padding:58px 24px 62px;text-align:left;min-height:390px;display:flex;flex-direction:column;justify-content:center;align-items:flex-start}
-    .hero::after{content:"";position:absolute;width:340px;height:340px;border:1px solid rgba(237,211,174,.13);border-radius:50%;right:7%;top:50%;transform:translateY(-50%);box-shadow:0 0 0 34px rgba(237,211,174,.025),0 0 0 68px rgba(237,211,174,.02);pointer-events:none}
-    .hero-grid{opacity:.22;background-size:64px 64px;mask-image:linear-gradient(90deg,black,transparent 80%)}
-    .hero-glow{display:none}
-    .hero-badge{background:transparent;border:0;color:#E4C39D;border-radius:0;padding:0;margin-bottom:25px;font-size:11px;letter-spacing:2px}
-    .hero-badge-dot{background:#D6A46F;animation:none}
-    .hero-title{font-family:var(--font-display);font-weight:600;font-size:clamp(46px,7vw,76px);line-height:.98;letter-spacing:-1.5px;margin-bottom:18px}
-    .hero-title em{color:#E9C99F}
-    .hero-sub{margin:0 0 29px;max-width:530px;color:#E4E8E2;font-size:16px;line-height:1.75;font-weight:400}
-    .hero-pills{justify-content:flex-start;gap:8px}
-    .hero-pill{border-color:rgba(255,255,255,.2);background:rgba(255,255,255,.07);color:#F3F0E9;padding:8px 12px;font-weight:500}
-    .wave-divider{height:38px;background:var(--dark)}
-    .page-body{max-width:1080px;padding:44px 24px 64px}
-    .section-eyebrow{text-align:left;color:#8A5D35;letter-spacing:1.8px;font-size:10px}
-    .section-title{text-align:left;font-family:var(--font-display);font-size:clamp(29px,4vw,43px);font-weight:600;letter-spacing:-.5px;margin-bottom:8px}
-    .section-sub{text-align:left;max-width:710px;color:#52645A;margin-bottom:30px;line-height:1.75}
-    .plans-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:18px;margin-bottom:50px}
-    .plan-card{background:var(--surface);border:1px solid #D9D0C1;border-radius:18px;box-shadow:0 7px 22px rgba(51,47,38,.055);transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease}
-    .plan-card:hover{transform:translateY(-3px);box-shadow:0 14px 30px rgba(51,47,38,.1)}
-    .plan-card.featured,.plan-card.selected{border-color:#B87837;box-shadow:0 8px 26px rgba(112,76,43,.12);transform:none}
-    .plan-card.selected{outline:2px solid #B87837;outline-offset:3px}
-    .plan-selection-note{color:#315D4A;background:#EAEFE8;border-radius:7px;padding:5px 9px;font-size:11px;font-weight:700;letter-spacing:.03em;margin:-7px 0 14px;width:max-content}
-    .plan-accent{height:5px}
-    .plan-featured-badge{background:#315D4A;color:#fff;right:15px;top:16px}
-    .plan-body{padding:26px}
-    .plan-selection-note{margin:0 0 16px}
-    .plan-icon-wrap{border-radius:14px}
-    .plan-name{font-family:var(--font-display);font-size:24px;font-weight:600}
-    .plan-tagline{font-size:13px;color:#52645A}
-    .plan-price{font-family:var(--font-display);font-weight:600;font-size:46px;letter-spacing:-1.1px}
-    .plan-period{font-size:13px;color:#52645A;margin-bottom:15px}
-    .plan-term{background:#F5EEE4;border:1px solid #E4D5C2;color:#4D473C;border-radius:10px;padding:11px 12px;margin-bottom:18px;font-size:12px;line-height:1.55}
-    .plan-sep{background:#E7E0D5;margin-bottom:18px}
-    .plan-features{gap:12px;margin-bottom:23px}
-    .plan-features li{font-size:13px;font-weight:500;align-items:flex-start;line-height:1.45}
-    .feat-icon{width:23px;height:23px;border-radius:50%;margin-top:-2px;background:#EAEFE8!important;color:#315D4A}
-    .feat-icon span{font-family:var(--font-body);font-size:13px!important;font-weight:700}
-    .plan-cta,.submit-btn,.m-btn{background:#315D4A!important;color:#fff!important;border-radius:11px;font-family:var(--font-body);font-size:14px;font-weight:700;min-height:48px}
-    .plan-cta:hover,.submit-btn:hover,.m-btn:hover{filter:brightness(1.12)}
-    .perks-strip{background:#DED8CC;border-color:#DED8CC;border-radius:16px;margin-bottom:32px}
-    .perk-cell{background:var(--surface);padding:22px 18px;text-align:left}
-    .perk-emoji{font-size:0;width:34px;height:34px;margin-bottom:13px;border-radius:11px;background:#EAEFE8;color:#315D4A;display:flex;align-items:center;justify-content:center}
-    .perk-emoji::before{content:"";width:12px;height:12px;border:2px solid currentColor;border-radius:50%;display:block}
-    .perk-cell:nth-child(2) .perk-emoji::before{width:13px;height:10px;border-radius:2px;border-width:2px}
-    .perk-cell:nth-child(3) .perk-emoji::before{content:"";width:13px;height:13px;border:0;background:currentColor;clip-path:polygon(50% 0,62% 35%,100% 38%,72% 62%,81% 100%,50% 78%,19% 100%,28% 62%,0 38%,38% 35%)}
-    .perk-cell:nth-child(4) .perk-emoji::before{width:10px;height:16px;border-radius:3px}
-    .perk-title{font-size:14px;font-weight:700}
-    .perk-text{font-size:12px;line-height:1.6}
-    .trust-bar,.manage-card{background:var(--surface);border:1px solid #DED8CC;border-radius:15px}
-    .trust-bar{margin-bottom:34px}
-    .trust-item{color:#52645A}
-    .trust-item:first-child{color:#315D4A!important}
-    .manage-signin button,.m-link{color:#315D4A}
-    .manage-card{padding:24px;margin-bottom:36px}
-    .manage-card h3,.success-title{font-family:var(--font-display);font-size:25px;font-weight:600}
-    .manage-card h4{color:#52645A}
-    .m-btn.ghost{background:#EAEFE8!important;color:#26332D!important}
-    .m-btn.danger{background:#A83B35!important}
-    .freq-toggle{background:#E8E1D6;border-radius:11px;margin:-8px 0 24px;padding:4px}
-    .freq-btn{font-family:var(--font-body);color:#42564A;border-radius:8px;padding:10px 18px}
-    .freq-btn.active,.tab.active{background:var(--surface);color:#26332D;box-shadow:0 1px 4px rgba(48,42,32,.12)}
-    .modal{background:var(--surface);border-radius:18px}
-    .modal-head{background:#263A31;padding:26px 28px 22px}
-    .modal-title{font-family:var(--font-display);font-size:27px;font-weight:600}
-    .modal-sub{color:#E0E6DF}
-    .modal-body{padding:23px 28px}
-    .tabs{background:#EAE5DB}
-    .tab{font-family:var(--font-body);color:#52645A}
-    .fld label{font-family:var(--font-body);color:#48594F;letter-spacing:.5px}
-    .fld input{font-family:var(--font-body);background:#FFFEFB;border-color:#D6D0C6;border-radius:9px;min-height:46px}
-    .fld input:focus{border-color:#315D4A;box-shadow:0 0 0 3px rgba(49,93,74,.16)}
-    .form-note{color:#58665D}
-    .form-err{color:#8B2724;background:#FCEDEC;border-color:#D89893}
-    .cancel-btn{font-family:var(--font-body);border-radius:10px}
-    .success-ring{box-shadow:none}
-    .success-pill{background:#EAEFE8!important;color:#315D4A!important}
-    .page-foot{color:#5E6A61}
-    .page-foot a{color:#315D4A}
-    .loading-wrap{color:#52645A}
-    .spinner{border-color:#DED8CC;border-top-color:#315D4A}
-    #verifyBanner{font-family:var(--font-body)!important;background:#F8EEDC!important;border-color:#D9B796!important;color:#59442B!important}
-    #verifyResendBtn{background:#315D4A!important}
-    #verifyBanner strong{font-size:14px}
-    @media(max-width:600px){
-      .hero{min-height:350px;padding:42px 20px 46px}
-      .hero::after{width:190px;height:190px;right:-65px;top:24%}
-      .hero-title{font-size:clamp(43px,13vw,60px)}
-      .hero-sub{font-size:15px}
-      .hero-pills{gap:7px}
-      .hero-pill{font-size:11px}
-      .page-body{padding:32px 17px 48px}
-      .section-title{font-size:32px}
-      .freq-toggle{width:100%;display:grid;grid-template-columns:1fr 1fr}
-      .plan-body{padding:23px}
-      .plan-card.featured{transform:none}
-      .perks-strip{grid-template-columns:1fr 1fr}
-      .perk-cell{padding:17px 14px}
-      .modal{max-height:calc(100dvh - 24px);overflow-y:auto}
-      .modal-body,.modal-footer{padding-left:19px;padding-right:19px}
+    @media(min-width:860px){
+      .hero-balls{right:20px;top:30px;transform:scale(1.15);transform-origin:top right}
+      .plan-card{grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:36px;padding:26px}
+      .plan-side{margin-top:0;padding-left:36px;border-left:1px solid #EFE7D8}
     }
     @media(prefers-reduced-motion:reduce){
       *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
@@ -428,108 +274,84 @@
 </div>
 
 <!-- ─── HERO ──────────────────────────────────── -->
-<div class="hero">
-  <div class="hero-grid"></div>
-  <div class="hero-glow"></div>
-  <div class="hero-badge">
-    <span class="hero-badge-dot"></span>
-    The 147 Snooker Club · Bradford
+<header class="hero">
+  <div class="hero-balls" aria-hidden="true"><span class="ball red"></span><span class="ball black"></span><span class="ball cream"></span></div>
+  <div class="hero-inner">
+    <div class="hero-top">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">147</span><span class="brand-name">The 147 · Bradford</span></div>
+      <button type="button" class="hero-signin" onclick="openManageLogin()">Member sign in</button>
+    </div>
+    <p class="hero-kicker">Club membership</p>
+    <h1 class="hero-title">Your table, <em>your club.</em></h1>
+    <p class="hero-sub">One membership for regulars at The 147. See exactly what you get, pick how you pay, and you are done in a couple of minutes.</p>
   </div>
-  <h1 class="hero-title">More than<br><em>a good frame.</em></h1>
-  <p class="hero-sub">Make The 147 your regular place to play. Membership brings you closer to the tables, the people and the little extras that make a night out.</p>
-  <div class="hero-pills">
-      <span class="hero-pill">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-      Secure payment with Square
-    </span>
-    <span class="hero-pill">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-      Monthly or annual
-    </span>
-    <span class="hero-pill">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-      Your membership, in the app
-    </span>
-  </div>
-</div>
-
-<svg class="wave-divider" viewBox="0 0 1440 56" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-  <path d="M0,0 C360,56 1080,56 1440,0 L1440,56 L0,56 Z"/>
-</svg>
+</header>
 
 <!-- ─── PAGE BODY ──────────────────────────────── -->
-<div class="page-body">
+<main class="page-body">
 
   <!-- Member management -->
-  <div id="manageSection" class="manage-card" style="display:none"></div>
-  <div id="manageSignin" class="manage-signin">
-    Already a member? <button type="button" onclick="openManageLogin()">Sign in to manage your membership</button>
-  </div>
+  <section id="manageSection" class="manage-card" style="display:none" aria-live="polite"></section>
+  <div id="manageSignin" class="manage-signin"></div>
 
-  <!-- Plans section -->
-  <div class="fadein" id="plansSection">
-        <p class="section-eyebrow">A place at the table</p>
-      <h2 class="section-title">Find your kind of membership</h2>
-      <p class="section-sub">Choose the plan that suits how you play. You can look through every option before signing in or creating an account.</p>
-    <div class="freq-toggle" role="group" aria-label="Billing frequency">
-      <button type="button" class="freq-btn active" id="freqMonthly" aria-pressed="true" onclick="setFreq('monthly')">Monthly</button>
-      <button type="button" class="freq-btn" id="freqAnnual" aria-pressed="false" onclick="setFreq('annual')">Annual</button>
+  <!-- Offer -->
+  <section class="fadein offer-shell" id="plansSection" aria-labelledby="offerLabel">
+    <div class="offer-bar">
+      <h2 class="offer-bar-label" id="offerLabel">How would you like to pay?</h2>
+      <div class="freq-toggle" role="group" aria-label="Billing frequency">
+        <button type="button" class="freq-btn active" id="freqMonthly" aria-pressed="true" onclick="setFreq('monthly')">Monthly<small id="freqMonthlyHint">Pay as you go</small></button>
+        <button type="button" class="freq-btn" id="freqAnnual" aria-pressed="false" onclick="setFreq('annual')"><span>Annual<span class="freq-save" id="freqSave"></span></span><small id="freqAnnualHint">One payment a year</small></button>
+      </div>
     </div>
-
-    <div id="plansGrid" class="plans-grid">
-      <div class="loading-wrap"><div class="spinner"></div>Loading plans…</div>
+    <div id="plansGrid" class="plans-grid" aria-live="polite">
+      <div class="plan-card" aria-busy="true"><span class="sr-only">Loading membership…</span>
+        <div class="skel" style="box-shadow:none"><i style="width:40%;height:24px"></i><i style="width:70%"></i><i style="width:55%;height:46px"></i><i></i><i style="width:80%"></i></div>
+      </div>
     </div>
-  </div>
+  </section>
 
   <!-- Perks strip -->
   <div class="fadein perks-strip" id="perksStrip">
     <div class="perk-cell">
-      <span class="perk-emoji" aria-hidden="true"></span>
+      <span class="perk-emoji" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="8" cy="12" r="1.5"/></svg></span>
       <div class="perk-title">Priority Tables</div>
-      <div class="perk-text">Get first pick at peak times — no waiting around</div>
+      <div class="perk-text">First pick at peak times, less waiting around</div>
     </div>
     <div class="perk-cell">
-      <span class="perk-emoji" aria-hidden="true"></span>
+      <span class="perk-emoji" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 010 8h-1"/><path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z"/></svg></span>
       <div class="perk-title">Food &amp; Drink Savings</div>
-      <div class="perk-text" id="perkDiscountText">Save on every food &amp; drink order, every visit</div>
+      <div class="perk-text" id="perkDiscountText">Save on food &amp; drink, every visit</div>
     </div>
     <div class="perk-cell">
-      <span class="perk-emoji" aria-hidden="true"></span>
+      <span class="perk-emoji" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span>
       <div class="perk-title">Loyalty Points</div>
-      <div class="perk-text">Earn and redeem points for free games &amp; extras</div>
+      <div class="perk-text">Earn and redeem points for games &amp; extras</div>
     </div>
     <div class="perk-cell">
-      <span class="perk-emoji" aria-hidden="true"></span>
+      <span class="perk-emoji" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></span>
       <div class="perk-title">App Access</div>
-      <div class="perk-text">Book tables, track benefits, and manage everything in the app</div>
+      <div class="perk-text">Book tables and manage everything in the app</div>
     </div>
   </div>
 
   <!-- Trust bar -->
   <div class="fadein trust-bar" id="trustBar">
-    <div class="trust-item" style="color:#16A34A">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-      Secured by Square
-    </div>
-    <div class="trust-item">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-      Bank-level encryption
-    </div>
-    <div class="trust-item">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-      Manage online with your The 147 login
-    </div>
-    <div class="trust-item">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-      100s of members
-    </div>
+    <div class="trust-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Payment handled securely by Square</div>
+    <div class="trust-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>We never see your card number</div>
+    <div class="trust-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Manage online any time</div>
+  </div>
+
+  <!-- Existing member -->
+  <div class="fadein member-strip" id="memberStrip">
+    <div><h3>Already a member?</h3><p>Sign in with your The 147 account to see renewals, change billing or update your card.</p></div>
+    <button type="button" onclick="openManageLogin()">Sign in to manage</button>
   </div>
 
   <div class="fadein page-foot" id="pageFoot">
-    Your account also works in The 147 app — <a href="https://the147bradford.replit.app" target="_blank">download it here</a> to book tables, track loyalty points, and manage your membership.
+    Your account also works in The 147 app. <a href="https://the147bradford.replit.app" target="_blank" rel="noopener">Get the app</a> to book tables and track loyalty points.
   </div>
 
-</div>
+</main>
 
 <!-- ─── JOIN MODAL ─────────────────────────────── -->
 <div class="backdrop" id="joinModal">
@@ -545,11 +367,11 @@
     <!-- Success pane -->
     <div class="success-pane" id="successPane">
       <div class="success-ring">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="#1F4A3A" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
       </div>
       <h3 class="success-title">You're in!</h3>
       <p class="success-sub">Your account is ready. Taking you to Square to complete your payment — your membership activates automatically once done.</p>
-      <div id="verifyNotice" style="display:none;background:#FFFBEB;border:1.5px solid #FCD34D;border-radius:12px;padding:12px 14px;margin:0 0 18px;text-align:left;font-size:13px;color:#92400E;line-height:1.5">
+      <div id="verifyNotice" style="display:none;background:#F6E8CF;border:1px solid #E1C38E;border-radius:12px;padding:12px 14px;margin:0 0 18px;text-align:left;font-size:13px;color:#5A4320;line-height:1.5">
         <strong>Check your inbox.</strong> We've sent a verification link to confirm your email — please click it so you can recover your bookings if you ever lose access. (You don't need to do this before paying.)
       </div>
       <div class="success-pill" id="successPill"></div>
@@ -558,7 +380,7 @@
         Redirecting to payment…
       </div>
       <a id="manualPayBtn" href="#" target="_self" rel="noopener"
-         style="display:none;margin-top:18px;padding:14px 22px;background:#0047AB;color:#fff;border-radius:12px;font-weight:700;text-decoration:none;font-size:14px">
+         style="display:none;margin-top:18px;padding:14px 22px;background:#1F4A3A;color:#F4EFE3;border-radius:12px;font-weight:700;text-decoration:none;font-size:14px">
         Open Payment Page
       </a>
       <div id="manualPayHint" style="display:none;margin-top:10px;font-size:12px;color:#64748B">
@@ -570,12 +392,12 @@
     <div id="formPane">
       <div class="modal-body">
         <div class="tabs">
-          <button class="tab active" id="tabReg" onclick="switchTab('reg')">New Account</button>
-          <button class="tab" id="tabLogin" onclick="switchTab('login')">Sign In</button>
+          <button type="button" class="tab active" id="tabReg" onclick="switchTab('reg')">New Account</button>
+          <button type="button" class="tab" id="tabLogin" onclick="switchTab('login')">Sign In</button>
         </div>
 
         <!-- Register -->
-        <div class="tab-panel active" id="panelReg">
+        <form class="tab-panel active" id="panelReg" onsubmit="doRegister();return false">
           <div class="form-row">
             <div class="fld"><label for="rFirst">First Name</label><input type="text" id="rFirst" placeholder="First name" autocomplete="given-name"></div>
             <div class="fld"><label for="rLast">Last Name</label><input type="text" id="rLast" placeholder="Last name" autocomplete="family-name"></div>
@@ -583,62 +405,62 @@
           <div class="fld"><label for="rEmail">Email</label><input type="email" id="rEmail" placeholder="name@example.com" autocomplete="email"></div>
           <div class="fld"><label for="rPhone">Phone</label><input type="tel" id="rPhone" placeholder="07xxx xxxxxx" autocomplete="tel"></div>
           <div class="fld"><label for="rPass">Password</label><input type="password" id="rPass" placeholder="Min. 6 characters" autocomplete="new-password"></div>
-          <p class="form-note" style="margin-bottom:14px">Your account works across The 147 app and this website.</p>
-          <label for="rConsent" id="rConsentRow" style="display:flex;align-items:flex-start;gap:10px;margin:6px 0 14px;cursor:pointer;user-select:none">
-            <input type="checkbox" id="rConsent" style="margin-top:3px;width:18px;height:18px;flex-shrink:0;accent-color:#0047AB;cursor:pointer">
-            <span style="font-size:12.5px;color:#475569;line-height:1.5">
+          <p class="form-note" style="margin-bottom:6px">Your account works across The 147 app and this website.</p>
+          <label for="rConsent" id="rConsentRow" class="consent-row">
+            <input type="checkbox" id="rConsent">
+            <span>
               I agree to The 147's
-              <a href="/privacy-policy" target="_blank" rel="noopener" style="color:#0047AB;font-weight:600;text-decoration:underline">Privacy Policy</a>
+              <a href="/privacy-policy" target="_blank" rel="noopener">Privacy Policy</a>
               and
-              <a href="/terms" target="_blank" rel="noopener" style="color:#0047AB;font-weight:600;text-decoration:underline">Terms &amp; Conditions</a>,
+              <a href="/terms" target="_blank" rel="noopener">Terms &amp; Conditions</a>,
               and consent to my personal data being processed to manage my account and membership.
             </span>
           </label>
           <div class="form-err" id="regErr"></div>
-          <div id="regMsg" style="display:none;background:#DCFCE7;border:1px solid #86EFAC;color:#166534;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.45;margin-bottom:10px;"></div>
-          <button class="submit-btn" id="regBtn" style="background:#0047AB;color:#fff;opacity:.55;cursor:not-allowed" disabled onclick="doRegister()">
+          <div id="regMsg" class="form-ok" role="status"></div>
+          <button type="submit" class="submit-btn" id="regBtn" disabled>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
             Create Account
           </button>
-        </div>
+        </form>
 
         <!-- Login -->
-        <div class="tab-panel" id="panelLogin">
+        <form class="tab-panel" id="panelLogin" onsubmit="doLogin();return false">
           <div class="fld"><label for="lEmail">Email</label><input type="email" id="lEmail" placeholder="name@example.com" autocomplete="email"></div>
           <div class="fld"><label for="lPass">Password</label><input type="password" id="lPass" placeholder="Your password" autocomplete="current-password"></div>
-          <label id="joinTermsRow" style="display:flex;align-items:flex-start;gap:10px;margin:2px 0 14px;cursor:pointer">
-            <input type="checkbox" id="joinTerms" style="margin-top:3px;width:18px;height:18px;flex-shrink:0;accent-color:#0047AB">
-            <span style="font-size:12.5px;color:#475569;line-height:1.5">I agree to the <a href="/terms" target="_blank" rel="noopener" style="color:#0047AB;font-weight:600">Terms &amp; Conditions</a> and recurring billing. <span id="joinTermsCommit"></span></span>
+          <label id="joinTermsRow" class="consent-row">
+            <input type="checkbox" id="joinTerms">
+            <span>I agree to the <a href="/terms" target="_blank" rel="noopener">Terms &amp; Conditions</a> and recurring billing. <span id="joinTermsCommit"></span></span>
           </label>
           <div class="form-err" id="loginErr"></div>
-          <div class="form-msg" id="loginMsg" style="display:none;background:#EFF6FF;border:1px solid #BFDBFE;color:#1E40AF;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.45;margin-bottom:10px;"></div>
-          <button class="submit-btn" id="loginBtn" style="background:#0047AB;color:#fff" onclick="doLogin()">
+          <div class="form-msg form-ok" id="loginMsg" role="status"></div>
+          <button type="submit" class="submit-btn" id="loginBtn">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
             Sign In &amp; Pay
           </button>
           <div style="margin-top:10px;text-align:center;">
-            <a href="#" id="forgotLink" onclick="showForgot();return false;" style="color:#0047AB;font-size:13px;font-weight:600;text-decoration:none;">Forgot password?</a>
+            <a href="#" id="forgotLink" onclick="showForgot();return false;" class="text-link">Forgot password?</a>
           </div>
-        </div>
+        </form>
 
         <!-- Forgot password -->
-        <div class="tab-panel" id="panelForgot" style="display:none;">
-          <p style="color:#4B5A72;font-size:13px;line-height:1.5;margin-bottom:14px;">Enter the email on your account and we'll send you a reset link.</p>
+        <form class="tab-panel" id="panelForgot" style="display:none;" onsubmit="doForgot();return false">
+          <p class="form-note" style="margin-bottom:14px">Enter the email on your account and we'll send you a reset link.</p>
           <div class="fld"><label for="fEmail">Email</label><input type="email" id="fEmail" placeholder="name@example.com" autocomplete="email"></div>
           <div class="form-err" id="forgotErr"></div>
-          <div class="form-msg" id="forgotMsg" style="display:none;background:#DCFCE7;border:1px solid #86EFAC;color:#166534;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.45;margin-bottom:10px;"></div>
-          <button class="submit-btn" id="forgotBtn" style="background:#0047AB;color:#fff" onclick="doForgot()">
+          <div class="form-msg form-ok" id="forgotMsg" role="status"></div>
+          <button type="submit" class="submit-btn" id="forgotBtn">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
             Send reset link
           </button>
           <div style="margin-top:10px;text-align:center;">
-            <a href="#" onclick="hideForgot();return false;" style="color:#0047AB;font-size:13px;font-weight:600;text-decoration:none;">← Back to sign in</a>
+            <a href="#" onclick="hideForgot();return false;" class="text-link">Back to sign in</a>
           </div>
-        </div>
+        </form>
       </div>
 
       <div class="modal-footer">
-        <button class="cancel-btn" onclick="closeModal()">Cancel</button>
+        <button type="button" class="cancel-btn" onclick="closeModal()">Cancel</button>
       </div>
     </div>
 
@@ -697,7 +519,7 @@
 
   function openManageLogin(){
     manageOnly=true;selectedPlan=null;
-    document.getElementById('modalPlanPill').style.cssText='background:rgba(212,168,67,.15);color:#D4A843';
+    document.getElementById('modalPlanPill').style.cssText='';
     document.getElementById('modalPlanPill').textContent='Member portal';
     document.querySelector('#joinModal .modal-title').textContent='Manage your membership';
     document.getElementById('modalHeadSub').textContent='Sign in with your The 147 account (not your Wix login)';
@@ -727,7 +549,7 @@
     }
     authToken=tok;
     hasMembership=!!(billing&&billing.subscription);
-    document.getElementById('manageSignin').style.display='none';
+    document.getElementById('manageSignin').style.display='none';{const ms=document.getElementById('memberStrip');if(ms)ms.style.display='none'}
     if(allPlans.length)renderPlans();
     renderManage();
   }
@@ -1036,7 +858,7 @@
     authToken=null;billing=null;hasMembership=false;
     document.getElementById('manageSection').innerHTML='';
     document.getElementById('manageSection').style.display='none';
-    document.getElementById('manageSignin').style.display='';
+    document.getElementById('manageSignin').style.display='';{const ms=document.getElementById('memberStrip');if(ms)ms.style.display=''}
     if(allPlans.length)renderPlans();
   };
 
@@ -1077,54 +899,76 @@
     return icons[tier]||icons.rack;
   }
 
+  function money(pence){const v=pence/100;return '£'+(Number.isInteger(v)?String(v):v.toFixed(2))}
+  function annualSaving(p){
+    if(p.priceMonthly==null||p.priceAnnual==null)return 0;
+    const d=p.priceMonthly*12-p.priceAnnual;return d>0?d:0;
+  }
+  const ICON_ARROW='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>';
   function renderPlan(p, isPopular, isSelected){
-    const color = safeColor(p.color)||'#0047AB';
-    const bg    = hexAlpha(color,.1);
-    const icon  = tierIcon(p.tier||'rack',color);
+    const color = safeColor(p.color);
+    const icon  = tierIcon(p.tier||'rack','#1F4A3A');
     const feats = buildFeatures(p);
     const annual = billingFreq==='annual' && p.priceAnnual!=null;
-    const price = '£'+((annual?p.priceAnnual:p.priceMonthly)/100).toFixed(2);
+    const pence = annual?p.priceAnnual:p.priceMonthly;
+    const price = '£'+(pence/100).toFixed(2);
     const per = annual?'yr':'mo';
-
+    const save = annualSaving(p);
+    const commit = isCommitmentPlan(p);
+    let saving='';
+    if(annual&&save>0){
+      saving='<div class="plan-saving"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg><span>Works out at <strong>'+money(Math.round(p.priceAnnual/12))+' a month</strong>. That is <strong>'+money(save)+' less</strong> than 12 monthly payments of '+money(p.priceMonthly)+'.</span></div>';
+    }else if(!annual&&save>0){
+      saving='<div class="plan-saving nudge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Paying yearly is '+money(p.priceAnnual)+', saving '+money(save)+'. <button type="button" onclick="setFreq(\'annual\')">Switch to annual</button></span></div>';
+    }
+    const ctaAction = hasMembership?"document.getElementById('manageSection').scrollIntoView({behavior:'smooth'})":'openModal('+p.id+')';
+    const ctaLabel = hasMembership?'Manage your membership above':'Join '+esc(p.name)+' for '+price+'/'+per;
     return `
-      <div class="plan-card${isPopular?' featured':''}${isSelected?' selected':''}"${isSelected?' aria-current="true"':''}>
-        <div class="plan-accent" style="background:${color}"></div>
-        ${isPopular?'<div class="plan-featured-badge">Most Popular</div>':''}
-        <div class="plan-body">
-          <div class="plan-header">
-            <div class="plan-icon-wrap" style="background:${bg}">${icon}</div>
-            <div class="plan-meta">
+      <article class="plan-card${isPopular?' featured':''}${isSelected?' selected':''}"${isSelected?' aria-current="true"':''} aria-label="${esc(p.name)} membership">
+        <div class="plan-main">
+          ${isSelected?'<div class="plan-selection-note" role="status">Selected from your link</div>':''}
+          <div class="plan-head">
+            <div class="plan-icon-wrap" style="border-color:${hexAlpha(color,.5)};background:#E3ECE4">${icon}</div>
+            <div>
               <div class="plan-name">${esc(p.name)}</div>
-              <div class="plan-tagline">${esc(p.description||'')}</div>
+              <div class="plan-tagline">One clear membership for regular players</div>
             </div>
           </div>
-          ${isSelected?'<div class="plan-selection-note" role="status">Selected from your link</div>':''}
-          <div class="plan-price-row">
-            <div class="plan-price" style="color:${color}">${price}</div>
+          <div class="price-plate">
+            <div class="plan-price-row"><span class="plan-price" key="${billingFreq}">${price}</span><span class="plan-per">/ ${annual?'year':'month'}</span></div>
+            <div class="plan-period">${annual?'One payment a year, renews automatically':'Billed monthly by card'}</div>
+            ${saving}
           </div>
-          <div class="plan-period">${annual?'per year &nbsp;·&nbsp; billed annually, auto-renews':'per month &nbsp;·&nbsp; billed monthly'}</div>
-          <div class="plan-term">${esc(commitmentCopy(p,billingFreq))}</div>
-          <div class="plan-sep"></div>
-          <ul class="plan-features">
-            ${feats.map(f=>`
-              <li>
-                <div class="feat-icon" style="background:${bg}"><span style="font-size:12px">${esc(f.icon)}</span></div>
-                ${esc(f.text)}
-              </li>`).join('')}
-          </ul>
-          <button class="plan-cta" style="background:${color};color:#fff"
-            onclick="${hasMembership?"document.getElementById('manageSection').scrollIntoView({behavior:'smooth'})":'openModal('+p.id+')'}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
-            ${hasMembership?'Manage your membership above':(isSelected?'Start with '+esc(p.name):'Join '+esc(p.name))+' — '+price+'/'+per}
-          </button>
+          <div class="plan-term">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <span><b>${commit?'12-month membership':'Flexible membership'}</b>${esc(commitmentCopy(p,billingFreq))}</span>
+          </div>
+          <button type="button" class="plan-cta${hasMembership?' manage':''}" onclick="${ctaAction}">${ctaLabel}${ICON_ARROW}</button>
+          ${hasMembership?'':'<p class="cta-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>Create or sign in to your account, then pay on Square</p>'}
         </div>
-      </div>`;
+        <div class="plan-side">
+          <h3 class="plan-side-title">What you get</h3>
+          <ul class="plan-features${feats.length?'':' empty'}">
+            ${feats.length?feats.map(f=>`
+              <li><span class="feat-icon" aria-hidden="true">${esc(f.icon)}</span><span>${esc(f.text)}</span></li>`).join(''):'<li>Benefit details are shown at the club.</li>'}
+          </ul>
+        </div>
+      </article>`;
   }
 
   function renderPlans(){
     const list=billingFreq==='annual'?allPlans.filter(p=>p.priceAnnual!=null):allPlans;
     // Don't call a sole available plan "Most Popular" when customers have no comparison.
     const popIdx=list.length===1?-1:(list.length===3?1:0);
+    // Toggle hints reflect the focused (link-selected, else first) plan's real prices.
+    const focus=allPlans.find(p=>String(p.id)===requestedPlanId)||allPlans[0];
+    if(focus){
+      const mh=document.getElementById('freqMonthlyHint'),ah=document.getElementById('freqAnnualHint'),sv=document.getElementById('freqSave');
+      if(mh&&focus.priceMonthly!=null)mh.textContent=money(focus.priceMonthly)+' a month';
+      if(ah&&focus.priceAnnual!=null)ah.textContent=money(focus.priceAnnual)+' a year';
+      const save=annualSaving(focus);
+      if(sv)sv.textContent=save>0?'Save '+money(save):'';
+    }
     document.getElementById('plansGrid').innerHTML=list.length
       ? list.map((p,i)=>renderPlan(p,i===popIdx,String(p.id)===requestedPlanId)).join('')
       : '<div class="loading-wrap">No annual plans are available right now.</div>';
@@ -1161,7 +1005,7 @@
       // Trigger fade-in
       document.getElementById('plansSection').classList.add('visible');
     }catch{
-      document.getElementById('plansGrid').innerHTML=`<div class="loading-wrap" style="color:#DC2626">Could not load plans — please refresh.</div>`;
+      document.getElementById('plansGrid').innerHTML=`<div class="loading-wrap" style="color:var(--red);flex-direction:column">We could not load the membership details just now.<button type="button" class="m-btn ghost" onclick="location.reload()">Try again</button></div>`;
     }
   }
 
