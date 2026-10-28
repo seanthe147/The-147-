@@ -10375,11 +10375,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   app.get("/api/game/my-prizes", customerAuth, async (req: Request & { customerId?: number }, res) => {
     const customerId = req.customerId!;
     try {
-      const [todayPlays, allPending] = await Promise.all([
+      const [todayPlays, pendingClaims] = await Promise.all([
         storage.getGamePlaysToday(customerId, getGameLondonDate()),
-        storage.getPendingRewardClaims(),
+        storage.getPendingRewardClaims({ customerId, limit: 50 }),
       ]);
-      const pendingClaims = allPending.filter(p => p.customerId === customerId);
       res.json({ playedToday: todayPlays.length > 0, plays: todayPlays, pendingClaims });
     } catch {
       res.json({ playedToday: false, plays: [], pendingClaims: [] });
@@ -10391,8 +10390,25 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
   // List all unclaimed reward_tier game wins so staff can mark them as collected.
   app.get("/api/staff/game/pending-claims", staffAuth, async (_req, res) => {
     try {
-      const claims = await storage.getPendingRewardClaims();
-      res.json(claims);
+      const limit = 100;
+      const rawBeforeDate = _req.query.beforeDate;
+      const rawBeforeId = _req.query.beforeId;
+      let before: { playedAt: Date; id: number } | undefined;
+      if (rawBeforeDate !== undefined || rawBeforeId !== undefined) {
+        const playedAt = typeof rawBeforeDate === "string" ? new Date(rawBeforeDate) : new Date(Number.NaN);
+        const id = typeof rawBeforeId === "string" ? Number(rawBeforeId) : Number.NaN;
+        if (!Number.isFinite(playedAt.getTime()) || !Number.isInteger(id) || id < 1) {
+          return res.status(400).json({ message: "Invalid pending-claim page cursor." });
+        }
+        before = { playedAt, id };
+      }
+      const claims = await storage.getPendingRewardClaims({ limit, before });
+      const hasMore = claims.length === limit;
+      const last = claims.at(-1);
+      res.json({
+        claims,
+        nextCursor: hasMore && last ? { playedAt: last.playedAt, id: last.id } : null,
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

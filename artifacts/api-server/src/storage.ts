@@ -3674,41 +3674,52 @@ export class DatabaseStorage implements IStorage {
     return play;
   }
 
-  // Returns all unclaimed wins that need manual staff action, newest first.
-  // Includes reward_tier prizes (staff redeem Square reward) and customer_group
-  // prizes that have a prizeClaimCode (staff apply discount manually and enter
-  // the code to record it). Loyalty-points and gift-card prizes are fully
-  // automatic and never appear here.
-  async getPendingRewardClaims(): Promise<Array<{ id: number; customerId: number; customerName: string | null; prizeName: string; prizeType: string; playedAt: Date; londonDate: string; prizeClaimCode: string | null; prizeClaimExpiresAt: Date | null }>> {
-    const now = new Date();
-    const plays = await db.select().from(gamePlays)
-      .where(and(isNotNull(gamePlays.prizeId), isNull(gamePlays.claimedAt)))
-      .orderBy(desc(gamePlays.playedAt));
-    const result: Array<{ id: number; customerId: number; customerName: string | null; prizeName: string; prizeType: string; playedAt: Date; londonDate: string; prizeClaimCode: string | null; prizeClaimExpiresAt: Date | null }> = [];
-    for (const play of plays) {
-      if (!play.prizeId) continue;
-      const [prize] = await db.select().from(gamePrizes).where(eq(gamePrizes.id, play.prizeId));
-      // Only reward_tier and customer_group (with a claim code) need staff action.
-      if (!prize) continue;
-      if (prize.prizeType !== "reward_tier" && prize.prizeType !== "customer_group") continue;
-      // Old customer_group plays (auto-added to Square group, no claim code) are skipped.
-      if (prize.prizeType === "customer_group" && !play.prizeClaimCode) continue;
-      // Skip expired codes — they can no longer be redeemed.
-      if (play.prizeClaimExpiresAt && play.prizeClaimExpiresAt < now) continue;
-      const [cust] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, play.customerId));
-      result.push({
-        id: play.id,
-        customerId: play.customerId,
-        customerName: cust ? decrypt(cust.name) : null,
-        prizeName: prize.name,
-        prizeType: prize.prizeType,
-        playedAt: play.playedAt,
-        londonDate: play.londonDate,
-        prizeClaimCode: play.prizeClaimCode ?? null,
-        prizeClaimExpiresAt: play.prizeClaimExpiresAt ?? null,
-      });
+  // Returns unclaimed wins that need manual staff action, newest first.
+  // Join and filter in SQL so the customer endpoint never loads other
+  // customers' claims and the staff endpoint avoids per-row database lookups.
+  async getPendingRewardClaims(options: { customerId?: number; limit?: number; before?: { playedAt: Date; id: number } } = {}): Promise<Array<{ id: number; customerId: number; customerName: string | null; prizeName: string; prizeType: string; playedAt: Date; londonDate: string; prizeClaimCode: string | null; prizeClaimExpiresAt: Date | null }>> {
+    const limit = Math.max(1, Math.min(100, Math.floor(options.limit ?? 100)));
+    const conditions = [
+      isNotNull(gamePlays.prizeId),
+      isNull(gamePlays.claimedAt),
+      or(
+        eq(gamePrizes.prizeType, "reward_tier"),
+        and(eq(gamePrizes.prizeType, "customer_group"), isNotNull(gamePlays.prizeClaimCode)),
+      ),
+      or(isNull(gamePlays.prizeClaimExpiresAt), gt(gamePlays.prizeClaimExpiresAt, new Date())),
+    ];
+    if (options.customerId !== undefined) conditions.push(eq(gamePlays.customerId, options.customerId));
+    if (options.before) {
+      conditions.push(or(
+        lt(gamePlays.playedAt, options.before.playedAt),
+        and(eq(gamePlays.playedAt, options.before.playedAt), lt(gamePlays.id, options.before.id)),
+      ));
     }
-    return result;
+
+    const rows = await db.select({
+      id: gamePlays.id,
+      customerId: gamePlays.customerId,
+      customerName: customers.name,
+      prizeName: gamePrizes.name,
+      prizeType: gamePrizes.prizeType,
+      playedAt: gamePlays.playedAt,
+      londonDate: gamePlays.londonDate,
+      prizeClaimCode: gamePlays.prizeClaimCode,
+      prizeClaimExpiresAt: gamePlays.prizeClaimExpiresAt,
+    })
+      .from(gamePlays)
+      .innerJoin(gamePrizes, eq(gamePlays.prizeId, gamePrizes.id))
+      .leftJoin(customers, eq(gamePlays.customerId, customers.id))
+      .where(and(...conditions))
+      .orderBy(desc(gamePlays.playedAt), desc(gamePlays.id))
+      .limit(limit)
+
+    return rows.map(row => ({
+      ...row,
+      customerName: row.customerName ? decrypt(row.customerName) : null,
+      prizeClaimCode: row.prizeClaimCode ?? null,
+      prizeClaimExpiresAt: row.prizeClaimExpiresAt ?? null,
+    }));
   }
 
   async redeemGamePlayByCode(code: string, staffId: number): Promise<{ id: number; customerName: string | null; prizeName: string } | null> {

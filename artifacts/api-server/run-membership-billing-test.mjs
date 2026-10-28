@@ -53,7 +53,7 @@ try {
   await run(process.execPath, ["--experimental-strip-types", "--test",
     "src/membership-billing-policy.test.ts", "src/platinum-offer-migration.test.ts",
     "src/membership-failure-notifications.test.ts"]);
-  for (const entry of ["membership-billing", "membership-square-sync"]) {
+  for (const entry of ["membership-billing", "membership-square-sync", "game-claims"]) {
   const output = path.join(temp, `${entry}.test.mjs`);
   await build({
     absWorkingDir: cwd, entryPoints: [`src/${entry}.test.ts`], outfile: output,
@@ -69,11 +69,13 @@ try {
       await verify.connect();
       for (const table of ["customers", "membership_subscriptions", "membership_billing_states", "membership_audit_log", "membership_purchase_records", "membership_square_events"]) {
         const result = await verify.query(`SELECT count(*)::int AS count FROM ${table}`);
-        if (result.rows[0].count !== 0) throw new Error(`Membership test left fixtures in ${table}`);
+        if (result.rows[0].count !== 0) throw new Error(`Integration test left fixtures in ${table}`);
       }
+      const gameFixtures = await verify.query(`SELECT count(*)::int AS count FROM game_prizes WHERE name LIKE 'fixture-game-claims-%'`);
+      if (gameFixtures.rows[0].count !== 0) throw new Error("Game-claims test left fixture prizes");
       const plans = await verify.query("SELECT count(*)::int AS count FROM membership_plans WHERE tier LIKE 'fixture-%'");
       if (plans.rows[0].count !== 0) throw new Error("Membership test left fixture plans");
-      console.log("Membership fixture cleanup verified.");
+      console.log("Integration fixture cleanup verified.");
     } finally { await verify.end(); }
   }
   }

@@ -4733,18 +4733,34 @@
     finally{btn.disabled=false;btn.textContent='Save Scratch Card Settings';}
   }
 
-  async function loadPendingGameClaims(){
+  let pendingGameClaimsCache=[];
+  let pendingGameClaimsCursor=null;
+  let pendingGameClaimsLoading=false;
+  async function loadPendingGameClaims(append=false){
     const targets=[el('gamePendingClaimsBody'),el('venuePendingClaimsBody')].filter(Boolean);
-    if(!targets.length)return;
-    targets.forEach(d=>d.innerHTML='<span style="font-size:13px;color:var(--text-2)">Loading…</span>');
+    if(!targets.length||pendingGameClaimsLoading)return;
+    pendingGameClaimsLoading=true;
+    if(!append){
+      pendingGameClaimsCache=[];
+      pendingGameClaimsCursor=null;
+      targets.forEach(d=>d.innerHTML='<span style="font-size:13px;color:var(--text-2)">Loading…</span>');
+    }
     try{
-      const r=await api('/api/staff/game/pending-claims');
+      const params=new URLSearchParams();
+      if(append&&pendingGameClaimsCursor){
+        params.set('beforeDate',pendingGameClaimsCursor.playedAt);
+        params.set('beforeId',String(pendingGameClaimsCursor.id));
+      }
+      const r=await api('/api/staff/game/pending-claims'+(params.size?'?'+params.toString():''));
       if(!r.ok){
-        targets.forEach(d=>d.innerHTML='<span style="font-size:13px;color:var(--red)">Could not load pending prizes.</span>');
+        if(!append)targets.forEach(d=>d.innerHTML='<span style="font-size:13px;color:var(--red)">Could not load pending prizes.</span>');
         return;
       }
-      const claims=await r.json();
-      if(!claims||!claims.length){
+      const page=await r.json();
+      const claims=Array.isArray(page?.claims)?page.claims:[];
+      pendingGameClaimsCache=append?pendingGameClaimsCache.concat(claims):claims;
+      pendingGameClaimsCursor=page?.nextCursor||null;
+      if(!pendingGameClaimsCache.length){
         targets.forEach(d=>d.innerHTML='<p style="font-size:13px;color:var(--text-2);margin:0">No unclaimed prizes right now.</p>');
         return;
       }
@@ -4757,7 +4773,7 @@
           <th style="text-align:left;padding:6px 8px;color:var(--text-2);font-weight:600">Expires</th>
           <th style="text-align:right;padding:6px 8px;color:var(--text-2);font-weight:600"></th>
         </tr></thead>
-        <tbody>${claims.map((c,i)=>{
+        <tbody>${pendingGameClaimsCache.map((c,i)=>{
           const d=new Date(c.playedAt).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
           let expiry='—';
           if(c.prizeClaimExpiresAt){
@@ -4779,11 +4795,13 @@
             </td>
           </tr>`;
         }).join('')}</tbody>
-      </table>`;
+      </table>${pendingGameClaimsCursor?'<button class="btn btn-sm" style="margin-top:8px;background:var(--bg);border:1px solid var(--border);color:var(--text)" onclick="loadPendingGameClaims(true)">Load older claims</button>':''}`;
       targets.forEach(d=>d.innerHTML=html);
     }catch(e){
       if(e.message==='Session expired')return;
-      targets.forEach(d=>d.innerHTML='<span style="font-size:13px;color:var(--red)">Unable to load.</span>');
+      if(!append)targets.forEach(d=>d.innerHTML='<span style="font-size:13px;color:var(--red)">Unable to load.</span>');
+    }finally{
+      pendingGameClaimsLoading=false;
     }
   }
 
@@ -4793,6 +4811,7 @@
     try{
       const r=await api(`/api/staff/game/plays/${playId}/claim`,{method:'POST'});
       if(r.ok){
+        pendingGameClaimsCache=pendingGameClaimsCache.filter(c=>Number(c.id)!==Number(playId));
         const row=el('pending-claim-row-'+playId);
         if(row){
           row.style.opacity='0.4';
