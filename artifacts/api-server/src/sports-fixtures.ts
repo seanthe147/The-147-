@@ -83,7 +83,7 @@ const TEAMS: TeamConfig[] = [
 const SPORTSDB_BASE = "https://www.thesportsdb.com/api/v1/json/123";
 const CACHE_TTL = 5 * 60_000; // 5 minutes — short enough that a finished game drops off the bar within one poll cycle
 const DAILY_LEAGUE_IDS = new Set([4328, 4329, 4392, 4396]);
-const DAILY_LOOKAHEAD_DAYS = 5;
+const DAILY_LOOKAHEAD_DAYS = 4;
 
 let cache: { at: number; data: Fixture[]; priorityIds: string[] } | null = null;
 

@@ -117,7 +117,7 @@ test("authenticated fixture response stays bounded, canonical, and dashboard-com
         strTVStation: "Sky Sports Main Event",
       })]);
     }
-    if (url.endsWith("eventsnextleague.php?id=4328")) {
+    if (url.includes("eventsday.php?") && url.includes("&l=4328")) {
       return response(generalFixtures);
     }
     return response([]);
@@ -305,7 +305,7 @@ test("browser smoke check renders the authenticated fixture strip", async () => 
         strTVStation: "BT Sport 1",
       })]);
     }
-    if (url.endsWith("eventsnextleague.php?id=4328")) {
+    if (url.includes("eventsday.php?") && url.includes("&l=4328")) {
       return response([]);
     }
     return response([]);

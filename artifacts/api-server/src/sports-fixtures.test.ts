@@ -127,7 +127,7 @@ test("uses the documented public key and retains both Friday and Sunday fixtures
       fixtures.map((fixture) => fixture.id),
       ["friday-sheffield-wrexham", "sunday-liverpool-arsenal"],
     );
-    assert(requestedUrls.length <= 30, "public API calls should remain below its per-minute limit");
+    assert(requestedUrls.length <= 25, "public API calls should leave headroom under its per-minute limit");
     assert(requestedUrls.every((url) => url.includes("/json/123/")), "must use the current public key");
   } finally {
     Date.now = originalNow;
