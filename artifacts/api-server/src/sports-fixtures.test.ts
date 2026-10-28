@@ -55,7 +55,7 @@ test("prioritizes confirmed Bradford and Leeds TV fixtures and deduplicates leag
         strTVStation: "Sky Sports Main Event",
       })]);
     }
-    if (url.endsWith("eventsnextleague.php?id=4328")) {
+    if (url.includes("eventsday.php?") && url.includes("&l=4328")) {
       return response([
         ...Array.from({ length: 5 }, (_, index) => providerEvent({
           idEvent: `general-${index + 1}`,
@@ -85,6 +85,52 @@ test("prioritizes confirmed Bradford and Leeds TV fixtures and deduplicates leag
     assert.equal(fixtures[2].channel, "Sky Sports");
     assert.equal(fixtures[0].homeLogo, "https://example.com/home.png");
   } finally {
+    globalThis.fetch = originalFetch;
+    invalidateFixturesCache();
+  }
+});
+
+test("uses the documented public key and retains both Friday and Sunday fixtures", async () => {
+  invalidateFixturesCache();
+  const originalNow = Date.now;
+  Date.now = () => Date.parse("2026-10-28T12:00:00Z");
+  const requestedUrls: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    requestedUrls.push(url);
+    if (url.endsWith("eventsday.php?d=2026-10-30&l=4329")) {
+      return response([providerEvent({
+        idEvent: "friday-sheffield-wrexham",
+        idLeague: "4329",
+        dateEvent: "2026-10-30",
+        strTime: "20:00:00",
+        strHomeTeam: "Sheffield United",
+        strAwayTeam: "Wrexham",
+      })]);
+    }
+    if (url.endsWith("eventsday.php?d=2026-11-01&l=4328")) {
+      return response([providerEvent({
+        idEvent: "sunday-liverpool-arsenal",
+        idLeague: "4328",
+        dateEvent: "2026-11-01",
+        strTime: "16:30:00",
+        strHomeTeam: "Liverpool",
+        strAwayTeam: "Arsenal",
+      })]);
+    }
+    return response([]);
+  }) as typeof fetch;
+
+  try {
+    const fixtures = await getUpcomingFixtures(5);
+    assert.deepEqual(
+      fixtures.map((fixture) => fixture.id),
+      ["friday-sheffield-wrexham", "sunday-liverpool-arsenal"],
+    );
+    assert(requestedUrls.length <= 30, "public API calls should remain below its per-minute limit");
+    assert(requestedUrls.every((url) => url.includes("/json/123/")), "must use the current public key");
+  } finally {
+    Date.now = originalNow;
     globalThis.fetch = originalFetch;
     invalidateFixturesCache();
   }
@@ -131,7 +177,7 @@ test("keeps general fixtures available when a team provider request fails", asyn
     if (url.endsWith("eventsnext.php?id=134189")) {
       throw new Error("temporary provider outage");
     }
-    if (url.endsWith("eventsnextleague.php?id=4328")) {
+    if (url.includes("eventsday.php?") && url.includes("&l=4328")) {
       return response([providerEvent({ idEvent: "general-after-failure" })]);
     }
     return response([]);

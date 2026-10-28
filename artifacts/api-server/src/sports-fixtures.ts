@@ -1,6 +1,6 @@
 // Upcoming sports fixtures for the staff dashboard bar.
 //
-// Fetches from TheSportsDB (free, unauthenticated) for leagues relevant to a
+// Fetches from TheSportsDB's documented public API key for leagues relevant to a
 // UK sports venue: Premier League, Championship, FA Cup, Champions League,
 // Europa League, England internationals, Super League Rugby League, and the
 // Rugby League Challenge Cup. Bradford City and Leeds United are also fetched
@@ -40,6 +40,7 @@ const LEAGUES: { id: number; name: string; sport: Fixture["sport"]; defaultChann
   { id: 4328, name: "Premier League",   sport: "football",     defaultChannel: "Sky Sports",      enabled: true  },
   { id: 4329, name: "Championship",     sport: "football",     defaultChannel: "Sky Sports",      enabled: true  },
   { id: 4392, name: "FA Cup",           sport: "football",     defaultChannel: "BBC / ITV",       enabled: true  },
+  { id: 4396, name: "League One",       sport: "football",     defaultChannel: "",                enabled: true  },
   // Football — European (TNT Sports only — enable when subscribed)
   { id: 4480, name: "Champions League", sport: "football",     defaultChannel: "TNT Sports",      enabled: false },
   { id: 4481, name: "Europa League",    sport: "football",     defaultChannel: "TNT Sports",      enabled: false },
@@ -77,8 +78,12 @@ const TEAMS: TeamConfig[] = [
   },
 ];
 
-const SPORTSDB_BASE = "https://www.thesportsdb.com/api/v1/json/3";
+// TheSportsDB's current public key is 123. Key 3 is a legacy test key and
+// returns HTTP 403 from production servers.
+const SPORTSDB_BASE = "https://www.thesportsdb.com/api/v1/json/123";
 const CACHE_TTL = 5 * 60_000; // 5 minutes — short enough that a finished game drops off the bar within one poll cycle
+const DAILY_LEAGUE_IDS = new Set([4328, 4329, 4392, 4396]);
+const DAILY_LOOKAHEAD_DAYS = 5;
 
 let cache: { at: number; data: Fixture[]; priorityIds: string[] } | null = null;
 
@@ -199,6 +204,41 @@ async function fetchLeagueFixtures(
   return fixtures;
 }
 
+function ukDateOffset(daysAhead: number): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(Date.now()));
+  const year = Number(parts.find((part) => part.type === "year")?.value);
+  const month = Number(parts.find((part) => part.type === "month")?.value);
+  const day = Number(parts.find((part) => part.type === "day")?.value);
+  return new Date(Date.UTC(year, month - 1, day + daysAhead)).toISOString().slice(0, 10);
+}
+
+async function fetchLeagueFixturesForDate(
+  league: (typeof LEAGUES)[number],
+  date: string,
+): Promise<Fixture[]> {
+  const url = `${SPORTSDB_BASE}/eventsday.php?d=${date}&l=${league.id}`;
+  const res = await fetch(url, {
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw new Error(`TheSportsDB ${league.id} on ${date}: HTTP ${res.status}`);
+  const json: any = await res.json();
+  const events: any[] = Array.isArray(json?.events) ? json.events : [];
+  return events
+    .map((ev) => parseFixtureEvent(ev, {
+      fallbackId: String(league.id),
+      leagueName: league.name,
+      sport: league.sport,
+      defaultChannel: league.defaultChannel,
+    }))
+    .filter((fixture): fixture is Fixture => fixture !== null);
+}
+
 function eventBelongsToTeam(ev: any, team: TeamConfig): boolean {
   const teamId = String(team.id);
   const homeId = ev?.idHomeTeam == null ? "" : String(ev.idHomeTeam);
@@ -255,12 +295,25 @@ function selectFixtures(data: Fixture[], priorityIds: string[], limit: number): 
   const preferred = data.filter((fixture) => priority.has(fixture.id));
   const general = data.filter((fixture) => !priority.has(fixture.id));
 
-  // Team-specific televised events are selected first so a requested match
-  // cannot be pushed out by unrelated early league events. Sort again after
-  // selection so the endpoint remains chronological for the existing strip.
-  return [...preferred, ...general]
-    .slice(0, boundedLimit)
-    .sort((a, b) => a.kickoffMs - b.kickoffMs);
+  // Keep confirmed Bradford/Leeds TV matches first, then represent different
+  // match days before filling any remaining slots. This prevents several
+  // Saturday matches from hiding the Friday and Sunday fixtures.
+  const selected: Fixture[] = [];
+  const selectedIds = new Set<string>();
+  const selectedDays = new Set<string>();
+  const add = (fixture: Fixture) => {
+    if (selected.length >= boundedLimit || selectedIds.has(fixture.id)) return;
+    selected.push(fixture);
+    selectedIds.add(fixture.id);
+    selectedDays.add(fixture.kickoffIso.slice(0, 10));
+  };
+  for (const fixture of preferred) add(fixture);
+  for (const fixture of general) {
+    if (selected.length >= boundedLimit) break;
+    if (!selectedDays.has(fixture.kickoffIso.slice(0, 10))) add(fixture);
+  }
+  for (const fixture of general) add(fixture);
+  return selected.sort((a, b) => a.kickoffMs - b.kickoffMs);
 }
 
 export async function getUpcomingFixtures(limit = 3): Promise<Fixture[]> {
@@ -269,19 +322,27 @@ export async function getUpcomingFixtures(limit = 3): Promise<Fixture[]> {
     return selectFixtures(cache.data, cache.priorityIds, limit);
   }
 
-  // Fan out all enabled league requests in parallel; individual failures are
-  // swallowed so one unavailable league doesn't blank the whole bar.
-  const [leagueResults, teamResults] = await Promise.all([
+  // The free provider endpoint for "next league event" returns only one
+  // match, which can hide later Friday/Sunday games behind Saturday's first
+  // kickoff. Read a short UK-date window for the main domestic leagues. The
+  // total stays below the provider's 30 requests/minute public rate limit.
+  const dailyLeagues = LEAGUES.filter((league) => league.enabled && DAILY_LEAGUE_IDS.has(league.id));
+  const nextOnlyLeagues = LEAGUES.filter((league) => league.enabled && !DAILY_LEAGUE_IDS.has(league.id));
+  const dates = Array.from({ length: DAILY_LOOKAHEAD_DAYS + 1 }, (_, index) => ukDateOffset(index));
+  const [dailyResults, leagueResults, teamResults] = await Promise.all([
     Promise.allSettled(
-      LEAGUES.filter((l) => l.enabled).map((l) =>
-        fetchLeagueFixtures(l.id, l.name, l.sport, l.defaultChannel),
+      dates.flatMap((date) => dailyLeagues.map((league) => fetchLeagueFixturesForDate(league, date))),
+    ),
+    Promise.allSettled(
+      nextOnlyLeagues.map((league) =>
+        fetchLeagueFixtures(league.id, league.name, league.sport, league.defaultChannel),
       ),
     ),
     Promise.allSettled(TEAMS.map((team) => fetchTeamFixtures(team))),
   ]);
 
   const general: Fixture[] = [];
-  for (const r of leagueResults) {
+  for (const r of [...dailyResults, ...leagueResults]) {
     if (r.status === "fulfilled") general.push(...r.value);
     else console.warn("[FIXTURES] League fetch failed:", r.reason?.message ?? r.reason);
   }
