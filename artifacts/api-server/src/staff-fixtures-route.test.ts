@@ -147,6 +147,14 @@ test("authenticated fixture response stays bounded, canonical, and dashboard-com
     assert(Array.isArray(body.fixtures));
     assert(body.fixtures.length <= 5);
     assert(body.fixtures.length > 0);
+    const fullResult = await originalFetch(`${baseUrl}${ROUTE}?view=all`, {
+      headers: { Authorization: `Bearer ${SESSION_TOKEN}` },
+    });
+    assert.equal(fullResult.status, 200);
+    const fullBody = await fullResult.json() as { fixtures?: unknown };
+    assert(Array.isArray(fullBody.fixtures));
+    assert(fullBody.fixtures.length > 5);
+    assert.equal(fullBody.fixtures.length, 8);
 
     for (const fixture of body.fixtures) {
       assert.deepEqual(Object.keys(fixture as object).sort(), fixtureKeys);
@@ -354,6 +362,69 @@ test("browser smoke check renders the authenticated fixture strip", async () => 
   }
 });
 
+test("browser smoke check opens the full fixture list on a small screen", async () => {
+  const allFixtures = Array.from({ length: 7 }, (_, index) =>
+    providerEvent({
+      idEvent: `mobile-fixture-${index + 1}`,
+      dateEvent: `2099-01-${String(index + 1).padStart(2, "0")}`,
+      strHomeTeam: index === 1
+        ? "International Sporting Association of West Yorkshire"
+        : `Home ${index + 1}`,
+      strAwayTeam: `Away ${index + 1}`,
+      strTVStation: index === 0 ? "Sky Sports" : null,
+    }),
+  );
+  const providerFetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.includes("eventsday.php?") && url.includes("&l=4328")) {
+      return response(allFixtures);
+    }
+    if (url.includes("eventsday.php?") && url.includes("&l=4396")) {
+      return response([providerEvent({
+        idEvent: "mobile-no-channel",
+        idLeague: "4396",
+        dateEvent: "2099-01-08",
+        strHomeTeam: "Bradford City",
+        strAwayTeam: "Cambridge United",
+      })]);
+    }
+    return response([]);
+  }) as typeof fetch;
+  const dashboardServer = await startStaffDashboardServer(providerFetch);
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({ timezoneId: "UTC", viewport: { width: 390, height: 844 } });
+  const page = await context.newPage();
+
+  try {
+    const browserErrors = await openStaffDashboard(page, dashboardServer.baseUrl);
+    const fixtureBar = page.locator("#fixturesBar");
+    await page.locator("#fixturesStripCards [role='group']").first().waitFor();
+    assert.equal(await fixtureBar.getByRole("group").count(), 5);
+    const expandButton = fixtureBar.getByRole("button", { name: "View full schedule" });
+    assert.equal(await expandButton.isVisible(), true);
+    await expandButton.click();
+
+    const fullPanel = page.locator("#fixturesFullPanel");
+    await page.waitForFunction("document.querySelectorAll('#fixturesFullPanel [role=listitem]').length === 8");
+    assert.equal(await fullPanel.getByRole("listitem").count(), 8);
+    const fullText = await fullPanel.innerText();
+    assert.match(fullText, /Home 1 vs Away 1/);
+    assert.match(fullText, /International Sporting Association of West Yorkshire/);
+    assert.match(fullText, /Premier League/);
+    assert.match(fullText, /Sky Sports/);
+    assert.match(fullText, /Channel not listed/);
+    assert.equal(await expandButton.getAttribute("aria-expanded"), "true");
+    assert(await page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"));
+    await assertDashboardHasNoBrowserErrors(page, browserErrors);
+  } finally {
+    await page.close();
+    await context.close();
+    await browser.close();
+    dashboardServer.restore();
+    await closeServer(dashboardServer.server);
+  }
+});
+
 test("browser smoke check politely announces changed fixture data once", async () => {
   const dashboardServer = await startStaffDashboardServer(
     (async (input: string | URL | Request) => {
@@ -396,6 +467,12 @@ test("browser smoke check politely announces changed fixture data once", async (
       `,
     });
     const browserErrors = await openStaffDashboard(page, dashboardServer.baseUrl);
+    await page.waitForFunction(`
+      (() => {
+        const bar = document.querySelector("#fixturesBar");
+        return Boolean(bar && bar.style.display !== "none" && bar.querySelectorAll("div > div").length > 0);
+      })()
+    `);
     await page.route(`**${ROUTE}`, async (route) => {
       await route.fulfill({
         status: 200,
@@ -403,12 +480,6 @@ test("browser smoke check politely announces changed fixture data once", async (
         body: JSON.stringify({ fixtures: [] }),
       });
     });
-    await page.waitForFunction(`
-      (() => {
-        const bar = document.querySelector("#fixturesBar");
-        return Boolean(bar && bar.style.display !== "none" && bar.querySelectorAll("div > div").length > 0);
-      })()
-    `);
 
     const announcement = page.locator("#fixturesAnnouncement");
     assert.equal(await announcement.textContent(), "");

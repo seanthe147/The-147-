@@ -287,8 +287,12 @@ async function fetchTeamFixtures(team: TeamConfig): Promise<Fixture[]> {
   return fixtures;
 }
 
-function selectFixtures(data: Fixture[], priorityIds: string[], limit: number): Fixture[] {
-  const boundedLimit = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : data.length;
+function selectFixtures(data: Fixture[], priorityIds: string[], limit?: number | null): Fixture[] {
+  const boundedLimit = limit == null
+    ? data.length
+    : Number.isFinite(limit)
+      ? Math.max(0, Math.floor(limit))
+      : data.length;
   if (boundedLimit === 0) return [];
 
   const priority = new Set(priorityIds);
@@ -316,7 +320,7 @@ function selectFixtures(data: Fixture[], priorityIds: string[], limit: number): 
   return selected.sort((a, b) => a.kickoffMs - b.kickoffMs);
 }
 
-export async function getUpcomingFixtures(limit = 3): Promise<Fixture[]> {
+export async function getUpcomingFixtures(limit: number | null = 3): Promise<Fixture[]> {
   const now = Date.now();
   if (cache && now - cache.at < CACHE_TTL) {
     return selectFixtures(cache.data, cache.priorityIds, limit);

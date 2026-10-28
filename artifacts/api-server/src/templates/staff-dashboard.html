@@ -124,8 +124,11 @@
       #orderingStatusReason{display:none!important}
       /* Fixtures strip: single scrollable row instead of a tall stack */
       #fixturesBar{padding:8px 14px}
-      #fixturesBar>div:last-child{flex-wrap:nowrap!important;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}
-      #fixturesBar>div:last-child>div{flex:0 0 auto;max-width:85vw}
+      #fixturesStripCards{flex-wrap:nowrap!important;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}
+      #fixturesStripCards>div{flex:0 0 auto;max-width:85vw}
+      #fixturesFullPanel{max-height:55vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+      .fixture-full-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px 10px;padding:10px 12px;border-bottom:1px solid var(--border)}
+      .fixture-full-date{grid-column:1/-1}
       /* Use dynamic viewport height so the browser URL bar doesn't hide content */
       #app,.app-layout{height:100dvh}
       .sidebar{height:100dvh}
@@ -4309,6 +4312,9 @@
   function channelColour(ch){return CHANNEL_COLOURS[ch]||'var(--text-3,#9CA3AF)';}
 
   let previousFixtures=null;
+  let fullFixturesExpanded=false;
+  let fullFixturesCache=null;
+  let fullFixturesLoading=false;
   function fixtureKey(f){
     return [
       f.id,f.sport,f.leagueName,f.homeTeam,f.awayTeam,f.kickoffIso,
@@ -4345,6 +4351,62 @@
     const announcement=el('fixturesAnnouncement');
     if(announcement)announcement.textContent='Fixture schedule updated: '+parts.join('; ')+'.';
   }
+
+  function renderFullFixtures(){
+    const panel=el('fixturesFullPanel');if(!panel)return;
+    if(fullFixturesLoading){
+      panel.innerHTML='<div style="padding:14px;color:var(--text-2);font-size:13px">Loading full fixture list…</div>';
+      return;
+    }
+    if(!fullFixturesCache){
+      panel.innerHTML='<div style="padding:14px;color:var(--text-2);font-size:13px">Unable to load the full fixture list. Close and reopen it to try again.</div>';
+      return;
+    }
+    if(!fullFixturesCache.length){
+      panel.innerHTML='<div style="padding:14px;color:var(--text-2);font-size:13px">No upcoming fixtures in this schedule window.</div>';
+      return;
+    }
+    panel.innerHTML='<div role="list">'+fullFixturesCache.map(f=>{
+      const ko=new Date(f.kickoffIso);
+      const dayLabel=ko.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+      const timeLabel=ko.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+      const channel=f.channel?`<span style="font-size:11px;font-weight:700;color:${channelColour(f.channel)}">${esc(f.channel)}</span>`:'<span style="font-size:11px;color:var(--text-3,#9CA3AF)">Channel not listed</span>';
+      return`<div class="fixture-full-row" role="listitem">
+        <span class="fixture-full-date" style="font-size:12px;color:var(--text-2);white-space:nowrap">${esc(dayLabel)} · ${esc(timeLabel)}</span>
+        <span style="min-width:0"><span style="display:block;font-size:10px;color:var(--text-3,#9CA3AF);margin-bottom:2px">${esc(f.leagueName)}</span><span style="font-size:13px;font-weight:700;color:var(--text);overflow-wrap:anywhere">${esc(f.homeTeam)} vs ${esc(f.awayTeam)}</span></span>
+        ${channel}
+      </div>`;
+    }).join('')+'</div>';
+  }
+
+  async function loadFullFixtures(){
+    if(fullFixturesLoading)return;
+    fullFixturesLoading=true;
+    renderFullFixtures();
+    try{
+      const r=await api('/api/staff/fixtures/upcoming?view=all');
+      if(!r.ok)throw new Error('Unable to load fixtures');
+      const data=await r.json();
+      fullFixturesCache=Array.isArray(data.fixtures)?data.fixtures:[];
+    }catch(e){
+      if(e.message==='Session expired')return;
+      fullFixturesCache=null;
+    }finally{
+      fullFixturesLoading=false;
+      if(fullFixturesExpanded)renderFullFixtures();
+    }
+  }
+
+  function toggleFullFixtures(){
+    fullFixturesExpanded=!fullFixturesExpanded;
+    const button=el('fixturesFullToggle');
+    const panel=el('fixturesFullPanel');
+    if(button)button.setAttribute('aria-expanded',String(fullFixturesExpanded));
+    if(panel)panel.style.display=fullFixturesExpanded?'':'none';
+    if(!fullFixturesExpanded)return;
+    loadFullFixtures();
+  }
+  window.toggleFullFixtures=toggleFullFixtures;
 
   async function loadFixturesBar(){
     const bar=el('fixturesBar');if(!bar)return;
@@ -4411,10 +4473,17 @@
         </div>`;
       }).join('');
 
-      bar.innerHTML=`<div style="margin-bottom:4px">
+      bar.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px">
         <span style="font-size:10px;font-weight:700;letter-spacing:.6px;color:var(--text-3,#9CA3AF);text-transform:uppercase">Coming up</span>
+        <button id="fixturesFullToggle" type="button" class="btn btn-sm" aria-controls="fixturesFullPanel" aria-expanded="${fullFixturesExpanded}" onclick="toggleFullFixtures()" style="white-space:nowrap">View full schedule</button>
       </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">${cards}</div>`;
+      <div id="fixturesStripCards" style="display:flex;gap:10px;flex-wrap:wrap">${cards}</div>
+      <div id="fixturesFullPanel" style="display:${fullFixturesExpanded?'':'none'};margin-top:10px;background:var(--surface);border:1px solid var(--border);border-radius:10px">${fullFixturesExpanded?'':''}</div>`;
+
+      if(fullFixturesExpanded){
+        if(!fullFixturesLoading)loadFullFixtures();
+        else renderFullFixtures();
+      }
 
       // Schedule the next refresh for just after the soonest kickoff — no
       // earlier refresh is ever needed because the data only changes when a

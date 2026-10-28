@@ -1275,13 +1275,14 @@ async function ownerAuth(req: Request, res: Response, next: NextFunction) {
 
 export function registerStaffFixturesRoute(app: Express): void {
   // Staff-only: upcoming sports fixtures for the bookings page bar.
-  // Returns up to 5 general fixtures plus confirmed Bradford City/Leeds United
-  // TV fixtures, sorted by kickoff time. The fixture module applies the
-  // team-specific priority before enforcing the response limit.
-  app.get("/api/staff/fixtures/upcoming", staffAuth, async (_req, res) => {
+  // Compact requests return five fixtures; view=all returns all fixtures
+  // currently available for the schedule window.
+  app.get("/api/staff/fixtures/upcoming", staffAuth, async (req, res) => {
     try {
       const { getUpcomingFixtures } = await import("../sports-fixtures.js");
-      const fixtures = await getUpcomingFixtures(5);
+      const fixtures = req.query.view === "all"
+        ? await getUpcomingFixtures(null)
+        : await getUpcomingFixtures(5);
       res.json({ fixtures });
     } catch (err: any) {
       console.error("/api/staff/fixtures/upcoming error:", err.message);
