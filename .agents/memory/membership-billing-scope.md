@@ -57,6 +57,12 @@ The user clarified on 2026-10-13 that Platinum is the new name for Black members
 
 **How to apply:** Use Platinum as the public name for the former Black membership. A name change alone is not a plan upgrade, must not restart a minimum term, and must not change existing billing or benefits. Preserve Black as a historical identifier where needed; do not offer it as a separate tier. Hide Maximum from new signup rather than deleting it or disabling historical memberships. Require explicit consent to a new Platinum minimum term at signup or an actual upgrade. A newly accepted upgrade starts its disclosed 12-month term at the effective renewal. Verify old Wix billing has stopped and the existing paid-through date before replacement authorisation; never charge concurrently or claim cards transfer automatically.
 
+Blue is £3.99 every 30 days. Pink is £2.99 every 30 days or £20 annually. The recurring monthly offers use Square's exact 30-day cadence; Platinum's existing £6.99 monthly and £65 annual terms stay unchanged.
+
+**Why:** The owner explicitly kept both Pink payment options and specified a 30-day renewal interval; this is not the same as a calendar-month cadence.
+
+**How to apply:** Keep Blue monthly-only and Pink monthly/annual. Verify the exact Square cadence as well as price before exposing a plan. Do not change Platinum or existing memberships when provisioning these offers.
+
 Changing only monthly/annual payment frequency on the same plan preserves its accepted minimum-term dates.
 
 **Why:** A payment schedule change is not a newly accepted membership upgrade; extending the term silently would impose another commitment.

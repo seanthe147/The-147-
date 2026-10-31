@@ -13683,7 +13683,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     const source = requestedSource === "complimentary" || staffNotes?.startsWith("[Payment: Complimentary]") ? "complimentary" : "staff";
     const today = new Date().toISOString().slice(0, 10);
     const periodStart = startDate || today;
-    const periodEnd = addCalendarMonths(periodStart, 1);
+    const periodEnd = billingPeriodEnd(plan, "monthly", periodStart);
     // If start date is in the future, create as pending until it starts
     const effectiveStatus = startDate && startDate > today ? "pending_start" : status;
     const sub = await storage.createMembershipSubscription({

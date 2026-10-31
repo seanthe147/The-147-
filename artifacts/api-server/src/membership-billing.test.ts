@@ -6,7 +6,7 @@ import { eq, inArray } from "drizzle-orm";
 import { customers, membershipPlans, membershipSubscriptions, membershipBillingStates, membershipAuditLog } from "@workspace/db/schema";
 import { db, runStartupMigrations, storage } from "./storage";
 import { alignBillingStart, billingState, migrationOffer, prepareMigrationOffer, migrationBillingStart, recordBillingTerms, registerMembershipBilling, reconcileScheduledMembership, membershipSignupGuard } from "./membership-billing";
-import { addCalendarMonths, membershipBusinessDate } from "./membership-billing-policy";
+import { addCalendarDays, addCalendarMonths, membershipBusinessDate } from "./membership-billing-policy";
 
 const realFetch = globalThis.fetch;
 if (process.env.MEMBERSHIP_BILLING_ISOLATED_TEST !== "yes" ||
@@ -465,7 +465,9 @@ test("a member can reverse a scheduled cancellation without changing dates or ch
 
 test("expired Square members can reactivate only within one month and start a consented Square subscription", async () => {
   const todayDate = membershipBusinessDate();
-  const insideWindow = addCalendarMonths(todayDate, -1);
+  // Keep this fixture well inside the one-month window even on 31st-of-month
+  // dates, where month-end clamping can otherwise make -1 month already expired.
+  const insideWindow = addCalendarDays(todayDate, -25);
   const outsideWindow = addCalendarMonths(todayDate, -2);
   const customer = await storage.getCustomerById(customerId);
   assert.ok(customer);
