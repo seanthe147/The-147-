@@ -86,6 +86,22 @@ const DAILY_LEAGUE_IDS = new Set([4328, 4329, 4392, 4396]);
 const DAILY_LOOKAHEAD_DAYS = 4;
 
 let cache: { at: number; data: Fixture[]; priorityIds: string[] } | null = null;
+let failedRequestCount = 0;
+let lastSuccessfulRefreshAt: string | null = null;
+
+export type FixtureFeedStatus = {
+  isDegraded: boolean;
+  failedRequestCount: number;
+  lastSuccessfulRefreshAt: string | null;
+};
+
+export function getFixtureFeedStatus(): FixtureFeedStatus {
+  return {
+    isDegraded: failedRequestCount > 0,
+    failedRequestCount,
+    lastSuccessfulRefreshAt,
+  };
+}
 
 function sportsDbStatus(
   raw: string | null | undefined,
@@ -344,6 +360,11 @@ export async function getUpcomingFixtures(limit: number | null = 3): Promise<Fix
     ),
     Promise.allSettled(TEAMS.map((team) => fetchTeamFixtures(team))),
   ]);
+  const allResults = [...dailyResults, ...leagueResults, ...teamResults];
+  failedRequestCount = allResults.filter((result) => result.status === "rejected").length;
+  if (failedRequestCount === 0) {
+    lastSuccessfulRefreshAt = new Date(Date.now()).toISOString();
+  }
 
   const general: Fixture[] = [];
   for (const r of [...dailyResults, ...leagueResults]) {
@@ -386,4 +407,6 @@ export async function getUpcomingFixtures(limit: number | null = 3): Promise<Fix
 
 export function invalidateFixturesCache(): void {
   cache = null;
+  failedRequestCount = 0;
+  lastSuccessfulRefreshAt = null;
 }

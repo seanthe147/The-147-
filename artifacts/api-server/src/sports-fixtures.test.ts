@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getUpcomingFixtures, invalidateFixturesCache } from "./sports-fixtures.ts";
+import { getFixtureFeedStatus, getUpcomingFixtures, invalidateFixturesCache } from "./sports-fixtures.ts";
 
 const originalFetch = globalThis.fetch;
 
@@ -186,7 +186,50 @@ test("keeps general fixtures available when a team provider request fails", asyn
   try {
     const fixtures = await getUpcomingFixtures(5);
     assert.deepEqual(fixtures.map((fixture) => fixture.id), ["general-after-failure"]);
+    assert.equal(getFixtureFeedStatus().isDegraded, true);
+    assert(getFixtureFeedStatus().failedRequestCount > 0);
   } finally {
+    globalThis.fetch = originalFetch;
+    invalidateFixturesCache();
+  }
+});
+
+
+test("reports feed failures with the last complete refresh and clears them after recovery", async () => {
+  invalidateFixturesCache();
+  const originalNow = Date.now;
+  let now = Date.parse("2026-10-28T12:00:00Z");
+  Date.now = () => now;
+  let shouldFail = false;
+  globalThis.fetch = (async () => {
+    if (shouldFail) throw new Error("temporary provider outage");
+    return response([]);
+  }) as typeof fetch;
+
+  try {
+    await getUpcomingFixtures(5);
+    const successfulStatus = getFixtureFeedStatus();
+    assert.equal(successfulStatus.isDegraded, false);
+    assert.equal(successfulStatus.failedRequestCount, 0);
+    assert.equal(successfulStatus.lastSuccessfulRefreshAt, new Date(now).toISOString());
+
+    now += 5 * 60_001;
+    shouldFail = true;
+    await getUpcomingFixtures(5);
+    const failedStatus = getFixtureFeedStatus();
+    assert.equal(failedStatus.isDegraded, true);
+    assert(failedStatus.failedRequestCount > 0);
+    assert.equal(failedStatus.lastSuccessfulRefreshAt, successfulStatus.lastSuccessfulRefreshAt);
+
+    now += 5 * 60_001;
+    shouldFail = false;
+    await getUpcomingFixtures(5);
+    const recoveredStatus = getFixtureFeedStatus();
+    assert.equal(recoveredStatus.isDegraded, false);
+    assert.equal(recoveredStatus.failedRequestCount, 0);
+    assert.equal(recoveredStatus.lastSuccessfulRefreshAt, new Date(now).toISOString());
+  } finally {
+    Date.now = originalNow;
     globalThis.fetch = originalFetch;
     invalidateFixturesCache();
   }

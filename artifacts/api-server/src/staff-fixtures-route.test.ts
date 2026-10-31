@@ -142,11 +142,21 @@ test("authenticated fixture response stays bounded, canonical, and dashboard-com
     });
     assert.equal(result.status, 200);
 
-    const body = await result.json() as { fixtures?: unknown };
-    assert.deepEqual(Object.keys(body), ["fixtures"]);
+    const body = await result.json() as {
+      fixtures?: unknown;
+      feedStatus?: {
+        isDegraded?: boolean;
+        failedRequestCount?: number;
+        lastSuccessfulRefreshAt?: string | null;
+      };
+    };
+    assert.deepEqual(Object.keys(body).sort(), ["feedStatus", "fixtures"]);
     assert(Array.isArray(body.fixtures));
     assert(body.fixtures.length <= 5);
     assert(body.fixtures.length > 0);
+    assert.equal(body.feedStatus?.isDegraded, false);
+    assert.equal(body.feedStatus?.failedRequestCount, 0);
+    assert.equal(typeof body.feedStatus?.lastSuccessfulRefreshAt, "string");
     const fullResult = await originalFetch(`${baseUrl}${ROUTE}?view=all`, {
       headers: { Authorization: `Bearer ${SESSION_TOKEN}` },
     });
@@ -521,7 +531,7 @@ test("browser smoke check politely announces changed fixture data once", async (
   }
 });
 
-test("browser smoke check keeps the dashboard usable when fixtures are empty or fail", async () => {
+test("browser smoke check stays quiet for an empty schedule and warns on feed failure", async () => {
   const dashboardServer = await startStaffDashboardServer(
     (async () => response([])) as typeof fetch,
   );
@@ -536,15 +546,55 @@ test("browser smoke check keeps the dashboard usable when fixtures are empty or 
         : (async () => response([])) as typeof fetch;
       const page = await context.newPage();
       try {
+        if (fixtureFailure) {
+          await page.addInitScript({
+            content: `
+              (() => {
+                const pendingFixtureRefreshes = [];
+                const originalSetTimeout = window.setTimeout.bind(window);
+                window.__pendingFixtureRefreshes = pendingFixtureRefreshes;
+                window.setTimeout = (handler, timeout, ...args) => {
+                  if (typeof handler === "function" && (timeout || 0) >= 60000) {
+                    pendingFixtureRefreshes.push(handler);
+                    return 0;
+                  }
+                  return originalSetTimeout(handler, timeout, ...args);
+                };
+              })();
+            `,
+          });
+        }
         const browserErrors = await openStaffDashboard(page, dashboardServer.baseUrl);
-        await page.waitForFunction(`
-          (() => {
-            const bar = document.querySelector("#fixturesBar");
-            return bar?.style.display === "none";
-          })()
-        `);
+        if (fixtureFailure) {
+          await page.locator("#fixturesBar [role='alert']").waitFor();
+          assert.match(await page.locator("#fixturesBar").innerText(), /Fixture schedule unavailable or incomplete/);
+          assert.match(await page.locator("#fixturesBar").innerText(), /No successful refresh recorded yet/);
+        } else {
+          await page.waitForFunction(`
+            (() => {
+              const bar = document.querySelector("#fixturesBar");
+              return bar?.style.display === "none";
+            })()
+          `);
+          assert.equal(await page.locator("#fixturesBar [role='alert']").count(), 0);
+        }
         assert.equal(await page.locator("#topbarTitle").innerText(), "Bookings");
         assert.equal(await page.locator("#pageBookings").isVisible(), true);
+        if (fixtureFailure) {
+          globalThis.fetch = (async () => response([])) as typeof fetch;
+          invalidateFixturesCache();
+          await page.evaluate(`
+            (() => {
+              const refresh = window.__pendingFixtureRefreshes?.pop();
+              if (!refresh) throw new Error("fixture retry timer was not captured");
+              refresh();
+            })()
+          `);
+          await page.waitForFunction(
+            `document.querySelector("#fixturesBar")?.style.display === "none"`,
+          );
+          assert.equal(await page.locator("#fixturesBar [role='alert']").count(), 0);
+        }
         await assertDashboardHasNoBrowserErrors(page, browserErrors);
       } finally {
         await page.close();

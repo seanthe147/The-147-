@@ -3954,7 +3954,7 @@
   function stopFixturesPolling(){
     if(fixturesPollTimeout){clearTimeout(fixturesPollTimeout);fixturesPollTimeout=null;}
   }
-  function scheduleFixturesRefresh(fixtures){
+  function scheduleFixturesRefresh(fixtures,delayOverride){
     // Cancel any previously scheduled refresh before setting a new one.
     if(fixturesPollTimeout){clearTimeout(fixturesPollTimeout);fixturesPollTimeout=null;}
 
@@ -3971,7 +3971,9 @@
     }
 
     let delay;
-    if(soonestKickoff<Infinity){
+    if(typeof delayOverride==='number'){
+      delay=delayOverride;
+    }else if(soonestKickoff<Infinity){
       // Refresh 90 seconds after the earliest kickoff — that is the moment
       // that game drops off the "upcoming" list and the next one should
       // surface.  No earlier refresh is needed because the data won't change
@@ -4312,6 +4314,7 @@
   function channelColour(ch){return CHANNEL_COLOURS[ch]||'var(--text-3,#9CA3AF)';}
 
   let previousFixtures=null;
+  let lastSuccessfulFixtureRefreshAt=null;
   let fullFixturesExpanded=false;
   let fullFixturesCache=null;
   let fullFixturesLoading=false;
@@ -4323,6 +4326,15 @@
   }
   function fixtureCount(count,label){
     return count+' '+label+(count===1?'':'s');
+  }
+  function fixtureFeedWarningHtml(){
+    const lastRefresh=lastSuccessfulFixtureRefreshAt
+      ?new Date(lastSuccessfulFixtureRefreshAt).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'})
+      :'No successful refresh recorded yet';
+    return`<div role="alert" style="margin-bottom:8px;padding:9px 12px;border:1px solid #D9770644;border-radius:8px;background:var(--amber-light);color:var(--text);font-size:12px">
+      <strong style="color:var(--amber)">Fixture schedule unavailable or incomplete.</strong>
+      <span>Last successful refresh: ${esc(lastRefresh)}.</span>
+    </div>`;
   }
   function announceFixtureChanges(previous,current){
     if(previous===null)return;
@@ -4412,12 +4424,23 @@
     const bar=el('fixturesBar');if(!bar)return;
     try{
       const r=await api('/api/staff/fixtures/upcoming');
-      if(!r.ok){bar.style.display='none';return;}
+      if(!r.ok)throw new Error('Unable to load fixtures');
       const data=await r.json();
       const fixtures=data.fixtures||[];
+      const feedStatus=data.feedStatus||{};
+      if(feedStatus.lastSuccessfulRefreshAt){
+        lastSuccessfulFixtureRefreshAt=feedStatus.lastSuccessfulRefreshAt;
+      }
+      const feedWarning=feedStatus.isDegraded===true;
       announceFixtureChanges(previousFixtures,fixtures);
       previousFixtures=fixtures.slice();
-      if(!fixtures.length){bar.style.display='none';scheduleFixturesRefresh([]);return;}
+      if(!fixtures.length&&!feedWarning){bar.style.display='none';bar.innerHTML='';scheduleFixturesRefresh([]);return;}
+      if(!fixtures.length&&feedWarning){
+        bar.innerHTML=fixtureFeedWarningHtml();
+        bar.style.display='';
+        scheduleFixturesRefresh([],5*60*1000);
+        return;
+      }
       bar.style.display='';
 
       const cards=fixtures.map(f=>{
@@ -4473,7 +4496,7 @@
         </div>`;
       }).join('');
 
-      bar.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px">
+      bar.innerHTML=`${feedWarning?fixtureFeedWarningHtml():''}<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px">
         <span style="font-size:10px;font-weight:700;letter-spacing:.6px;color:var(--text-3,#9CA3AF);text-transform:uppercase">Coming up</span>
         <button id="fixturesFullToggle" type="button" class="btn btn-sm" aria-controls="fixturesFullPanel" aria-expanded="${fullFixturesExpanded}" onclick="toggleFullFixtures()" style="white-space:nowrap">View full schedule</button>
       </div>
@@ -4488,13 +4511,12 @@
       // Schedule the next refresh for just after the soonest kickoff — no
       // earlier refresh is ever needed because the data only changes when a
       // game kicks off and drops off the upcoming list.
-      scheduleFixturesRefresh(fixtures);
+      scheduleFixturesRefresh(fixtures,feedWarning?5*60*1000:undefined);
     }catch(e){
       if(e.message==='Session expired')return;
-      bar.style.display='none';
-      // On error, retry in 30 minutes so a transient network blip doesn't
-      // leave the bar permanently empty.
-      scheduleFixturesRefresh([]);
+      bar.innerHTML=fixtureFeedWarningHtml();
+      bar.style.display='';
+      scheduleFixturesRefresh([],5*60*1000);
     }
   }
 
