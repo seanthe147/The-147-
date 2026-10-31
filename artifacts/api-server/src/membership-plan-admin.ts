@@ -1,5 +1,6 @@
 import type { MembershipPlan } from "@workspace/db/schema";
 import * as square from "./square";
+import { squareCadenceForPlan } from "./membership-billing-policy";
 
 /** Prepare immutable sale rates BEFORE publishing local price changes.
  * Existing Square subscriptions retain their original variations and prices. */
@@ -24,9 +25,10 @@ export async function prepareMembershipSaleRates(
     if (!id || (changed && previous && !suppliedNewId)) {
       id = (await provider.createCatalogSubscriptionPlan({
         localPlanId: plan.id, name: plan.name, amountPence: amount, frequency,
+        cadence: squareCadenceForPlan(plan, frequency),
       })).squarePlanVariationId;
     }
-    await provider.validateSquareBillingVariation(id, frequency, amount);
+    await provider.validateSquareBillingVariation(id, frequency, amount, squareCadenceForPlan(plan, frequency));
     rates[key] = id;
   }
   return { squareSynced: Object.keys(rates).length > 0, rates };

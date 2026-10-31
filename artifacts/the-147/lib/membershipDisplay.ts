@@ -116,6 +116,7 @@ export function billingSummary(sub: BillingSub): { method: string; dateLabel: st
 }
 
 export interface BenefitSourcePlan {
+  tier?: string | null;
   hoursIncluded?: number | null;
   hoursUnit?: string | null;
   snookerUnlimited?: boolean | null;
@@ -134,7 +135,7 @@ const HAS_STRUCTURED = (p: BenefitSourcePlan) =>
 /** Canonical benefits: server-rendered list first, then the shared schema helper. Never plan.description. */
 export function canonicalBenefits(plan: BenefitSourcePlan & { benefits?: string[] | null }): { key: string; text: string }[] {
   if (Array.isArray(plan.benefitsDetailed) && plan.benefitsDetailed.length > 0) return plan.benefitsDetailed;
-  if (HAS_STRUCTURED(plan)) return getPlanBenefits(plan);
+  if (HAS_STRUCTURED(plan)) return getPlanBenefits({ ...plan, tier: plan.tier ?? undefined });
   if (Array.isArray(plan.benefits)) return plan.benefits.map(text => ({ key: "app", text }));
   return [];
 }
@@ -146,4 +147,5 @@ export const BENEFIT_ICON: Record<string, "time-outline" | "infinite-outline" | 
   guests: "people-outline",
   loyalty: "star-outline",
   app: "phone-portrait-outline",
+  entry: "phone-portrait-outline",
 };

@@ -502,7 +502,9 @@
     }
     return f==='annual'
       ? 'No minimum term. Renews automatically each year until cancelled.'
-      : 'No minimum term. Renews monthly until cancelled.';
+      : p.monthlyIntervalDays===30
+        ? 'No minimum term. Renews automatically every 30 days until cancelled.'
+        : 'No minimum term. Renews monthly until cancelled.';
   }
   function openCheckout(url){
     if(inFrame){
@@ -910,7 +912,8 @@
     const annual = billingFreq==='annual' && p.priceAnnual!=null;
     const pence = annual?p.priceAnnual:p.priceMonthly;
     const price = '£'+(pence/100).toFixed(2);
-    const per = annual?'yr':'mo';
+    const thirtyDay = !annual && p.monthlyIntervalDays===30;
+    const per = annual?'yr':thirtyDay?'30 days':'mo';
     const save = annualSaving(p);
     const commit = isCommitmentPlan(p);
     let saving='';
@@ -933,8 +936,8 @@
             </div>
           </div>
           <div class="price-plate">
-            <div class="plan-price-row"><span class="plan-price" key="${billingFreq}">${price}</span><span class="plan-per">/ ${annual?'year':'month'}</span></div>
-            <div class="plan-period">${annual?'One payment a year, renews automatically':'Billed monthly by card'}</div>
+            <div class="plan-price-row"><span class="plan-price" key="${billingFreq}">${price}</span><span class="plan-per">/ ${annual?'year':thirtyDay?'30 days':'month'}</span></div>
+            <div class="plan-period">${annual?'One payment a year, renews automatically':thirtyDay?'Charged every 30 days by card':'Billed monthly by card'}</div>
             ${saving}
           </div>
           <div class="plan-term">
@@ -1015,7 +1018,8 @@
     if(!p)return;
     const color=p.color||'#0047AB';
     const annual=billingFreq==='annual'&&p.priceAnnual!=null;
-    const price='£'+((annual?p.priceAnnual:p.priceMonthly)/100).toFixed(2)+(annual?'/yr':'/mo');
+    const thirtyDay=!annual&&p.monthlyIntervalDays===30;
+    const price='£'+((annual?p.priceAnnual:p.priceMonthly)/100).toFixed(2)+(annual?'/yr':thirtyDay?'/30 days':'/mo');
     const name=p.name;
     const tier=p.tier||'rack';
     selectedPlan={id,name,tier,color,price,frequency:annual?'annual':'monthly',commitment:isCommitmentPlan(p)};
@@ -1028,7 +1032,9 @@
         : 'I understand this has a 12-month minimum term, bills monthly and continues month to month afterwards until cancelled.')
       : (annual
         ? 'I understand this renews automatically each year until cancelled.'
-        : 'I understand this renews monthly until cancelled.');
+        : thirtyDay
+          ? 'I understand this renews automatically every 30 days until cancelled.'
+          : 'I understand this renews monthly until cancelled.');
     document.getElementById('tabReg').style.display='';
     document.querySelector('#joinModal .modal-title').textContent='Join The 147';
     document.getElementById('modalHeadSub').textContent='Create an account or sign in to continue';

@@ -1,4 +1,5 @@
 export type BillingFrequency = "monthly" | "annual";
+export type SquareBillingCadence = "MONTHLY" | "THIRTY_DAYS" | "ANNUAL";
 export function membershipBusinessDate(date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit",
@@ -31,6 +32,32 @@ export function addCalendarMonths(date: string, months: number): string {
   const last = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0)).getUTCDate();
   start.setUTCDate(Math.min(day, last));
   return start.toISOString().slice(0, 10);
+}
+
+export function addCalendarDays(date: string, days: number): string {
+  if (!validDate(date)) throw new Error("Invalid billing date");
+  const result = new Date(date + "T12:00:00Z");
+  result.setUTCDate(result.getUTCDate() + days);
+  return result.toISOString().slice(0, 10);
+}
+
+export function squareCadenceForPlan(
+  plan: { tier?: string | null },
+  frequency: BillingFrequency,
+): SquareBillingCadence {
+  if (frequency === "annual") return "ANNUAL";
+  return plan.tier === "blue" || plan.tier === "pink" ? "THIRTY_DAYS" : "MONTHLY";
+}
+
+export function billingPeriodEnd(
+  plan: { tier?: string | null },
+  frequency: BillingFrequency,
+  start: string,
+): string {
+  const cadence = squareCadenceForPlan(plan, frequency);
+  if (cadence === "ANNUAL") return addCalendarMonths(start, 12);
+  if (cadence === "THIRTY_DAYS") return addCalendarDays(start, 30);
+  return addCalendarMonths(start, 1);
 }
 
 export function membershipReactivationDeadline(paidThroughDate: string | null | undefined, today: string): string | null {

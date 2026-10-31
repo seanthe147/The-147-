@@ -29,6 +29,7 @@ interface PublicPlan extends BenefitSourcePlan {
   priceMonthly: number;
   priceAnnual?: number | null;
   minimumTermMonths?: number | null;
+  monthlyIntervalDays?: number | null;
   benefits?: string[] | null;
   color?: string | null;
   active: boolean;
@@ -232,10 +233,10 @@ export function MemberTabMembership() {
               </View>
               <View style={s.priceRow}>
                 <Pressable testID={`join-monthly-${plan.id}`} accessibilityRole="button"
-                  accessibilityLabel={`Choose ${plan.name} monthly, ${money(plan.priceMonthly)} per month`}
+                  accessibilityLabel={`Choose ${plan.name} ${plan.monthlyIntervalDays === 30 ? "every 30 days" : "monthly"}, ${money(plan.priceMonthly)}`}
                   onPress={() => choose(plan.id, "monthly")} style={s.priceBtn}>
-                  <Text style={s.priceLabel}>MONTHLY</Text>
-                  <Text style={s.priceValue}>{money(plan.priceMonthly)}<Text style={s.pricePer}>/mo</Text></Text>
+                  <Text style={s.priceLabel}>{plan.monthlyIntervalDays === 30 ? "EVERY 30 DAYS" : "MONTHLY"}</Text>
+                  <Text style={s.priceValue}>{money(plan.priceMonthly)}<Text style={s.pricePer}>{plan.monthlyIntervalDays === 30 ? "/30d" : "/mo"}</Text></Text>
                   <Text style={s.priceCta}>Choose</Text>
                 </Pressable>
                 {plan.priceAnnual != null && (

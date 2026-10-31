@@ -89,6 +89,7 @@ function getPlanMeta(tier: string) {
 }
 
 const BENEFIT_ICONS: Record<BenefitKey, keyof typeof Ionicons.glyphMap> = {
+  entry: "ticket-outline",
   hours: "time-outline",
   discount: "restaurant-outline",
   priority: "flash-outline",

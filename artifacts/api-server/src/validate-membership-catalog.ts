@@ -1,7 +1,7 @@
 /** Read-only pre-launch check. Never creates catalog items, customers or charges. */
 import { storage } from "./storage";
 import { isConfigured, validateSquareBillingVariation } from "./square";
-import { variationForFrequency } from "./membership-billing-policy";
+import { squareCadenceForPlan, variationForFrequency } from "./membership-billing-policy";
 
 if (!isConfigured()) {
   console.error("Square is not configured. No billing can be enabled.");
@@ -14,7 +14,8 @@ for (const plan of plans) {
     if (frequency === "annual" && plan.priceAnnual == null) continue;
     try {
       await validateSquareBillingVariation(variationForFrequency(plan, frequency), frequency,
-        frequency === "annual" ? plan.priceAnnual! : plan.priceMonthly);
+        frequency === "annual" ? plan.priceAnnual! : plan.priceMonthly,
+        squareCadenceForPlan(plan, frequency));
       console.log(`${plan.name}: ${frequency} price and cadence verified`);
     } catch (error) {
       failures++;

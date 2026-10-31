@@ -1,6 +1,6 @@
 import type { MembershipPlan } from "./schema";
 
-export type BenefitKey = "hours" | "discount" | "priority" | "guests" | "loyalty" | "app";
+export type BenefitKey = "hours" | "discount" | "priority" | "guests" | "loyalty" | "app" | "entry";
 
 export interface MembershipBenefit {
   key: BenefitKey;
@@ -8,6 +8,7 @@ export interface MembershipBenefit {
 }
 
 interface BenefitInput {
+  tier?: string;
   hoursIncluded?: number | null;
   hoursUnit?: string | null;
   snookerUnlimited?: boolean | null;
@@ -34,6 +35,19 @@ function plural(count: number, singular: string, plural: string): string {
  * loyalty points anyway.
  */
 export function getPlanBenefits(plan: BenefitInput): MembershipBenefit[] {
+  if (plan.tier === "blue") {
+    return [
+      { key: "entry", text: "No sign-in fees" },
+      { key: "discount", text: "10% off snooker hourly rate" },
+    ];
+  }
+  if (plan.tier === "pink") {
+    return [
+      { key: "entry", text: "No sign-in fees" },
+      { key: "discount", text: "Annual option includes 10% off snooker hourly rate" },
+    ];
+  }
+
   const benefits: MembershipBenefit[] = [];
 
   // Snooker line: explicit "Unlimited" flag takes precedence. If the flag

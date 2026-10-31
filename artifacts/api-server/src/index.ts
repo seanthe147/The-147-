@@ -530,13 +530,38 @@ function scheduleWinBackEmails() {
   // Run startup migrations and background tasks
   await runStartupMigrations();
 
-  // Auto-create Square subscription plans if needed
+  // Create the new Wix-backed offers only in production, then expose them
+  // after Square confirms every advertised billing cadence. Development
+  // instances keep the seeded offers hidden and never mutate live Square.
   try {
     const square = await import("./square.js");
     const { storage: storeForPlans } = await import("./storage.js");
     if (square.isConfigured()) {
+      if (process.env.NODE_ENV === "production") {
+        const { provisionMembershipOffer } = await import("./additional-membership-plans.js");
+        const plansToPublish = (await storeForPlans.getMembershipPlans())
+          .filter(plan => ["blue", "pink"].includes(plan.tier) && plan.active && plan.hideFromSignup);
+        for (const plan of plansToPublish) {
+          try {
+            await provisionMembershipOffer(
+              plan,
+              async changes => {
+                const updated = await storeForPlans.updateMembershipPlan(plan.id, changes);
+                if (!updated) throw new Error(`Could not persist Square setup for ${plan.name}.`);
+                return updated;
+              },
+              square,
+            );
+            log(`[SQUARE BOOT SYNC] Published ${plan.name} membership rates.`);
+          } catch (err: any) {
+            console.error(`[SQUARE BOOT SYNC] ${plan.name} remains hidden:`, err?.message ?? err);
+          }
+        }
+      }
+
       const plans = await storeForPlans.getMembershipPlans();
       for (const plan of plans) {
+        if (!plan.active || plan.hideFromSignup) continue;
         if (plan.squarePlanVariationId) continue;
         if (!plan.priceMonthly || plan.priceMonthly <= 0) continue;
         try {

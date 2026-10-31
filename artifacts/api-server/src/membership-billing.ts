@@ -7,7 +7,7 @@ import { db, storage } from "./storage";
 import * as square from "./square";
 import {
   BILLING_TERMS_VERSION, cancellationAllowed, commitmentEnd, minimumTermMonths, isPlatinumConsolidation,
-  addCalendarMonths, validDate, variationForFrequency, membershipBusinessDate,
+  addCalendarMonths, billingPeriodEnd, squareCadenceForPlan, validDate, variationForFrequency, membershipBusinessDate,
   membershipReactivationDeadline, type BillingFrequency,
 } from "./membership-billing-policy";
 
@@ -139,6 +139,7 @@ export const membershipSignupGuard: RequestHandler = async (req, res, next) => {
       if (plan) await square.validateSquareBillingVariation(
         variationForFrequency(plan, frequency), frequency,
         frequency === "annual" ? plan.priceAnnual! : plan.priceMonthly,
+        squareCadenceForPlan(plan, frequency),
       );
       if (req.path.endsWith("/join") && req.body?.startDate > today()) {
         res.status(400).json({ message: "Future starts require the in-app card setup. Hosted Square checkout would charge immediately." });
@@ -328,7 +329,10 @@ export async function scheduleMembershipChange(sub: BillingSubscription, planId:
       throw new Error("Square already has a billing change or cancellation, or the subscription is not active. Refresh before retrying.");
     }
     const variation = variationForFrequency(target, frequency);
-    await square.validateSquareBillingVariation(variation, frequency, frequency === "annual" ? target.priceAnnual! : target.priceMonthly);
+    await square.validateSquareBillingVariation(
+      variation, frequency, frequency === "annual" ? target.priceAnnual! : target.priceMonthly,
+      squareCadenceForPlan(target, frequency),
+    );
     const result = await square.swapSquareSubscriptionPlan(sub.squareSubscriptionId!, variation);
     const action = result.actions?.find((a: any) => a.type === "SWAP_PLAN");
     if (!validDate(action?.effective_date)) throw new Error("Square did not confirm the upgrade date. Refresh billing before trying again.");
@@ -463,7 +467,10 @@ export function registerMembershipBilling(app: Express, customerAuth: RequestHan
         const variation = variationForFrequency(plan, frequency);
         const locationId = square.getPublicLocationId();
         if (!locationId) throw new Error("Square location is not configured.");
-        await square.validateSquareBillingVariation(variation, frequency, frequency === "annual" ? plan.priceAnnual! : plan.priceMonthly);
+        await square.validateSquareBillingVariation(
+          variation, frequency, frequency === "annual" ? plan.priceAnnual! : plan.priceMonthly,
+          squareCadenceForPlan(plan, frequency),
+        );
         const firstCharge = sub.prepaidUntilDate!;
         const remoteSubs = await square.listSquareSubscriptionsForCustomer(sub.squareCustomerId);
         const live = remoteSubs.filter((r: any) => ["ACTIVE", "PENDING", "PAUSED"].includes(r.status));
@@ -596,7 +603,10 @@ export function registerMembershipBilling(app: Express, customerAuth: RequestHan
         const plan = await storage.getMembershipPlan(reactivation.planId);
         if (!plan?.active || plan.hideFromSignup) throw new Error("This membership is no longer available to reactivate.");
         const variation = variationForFrequency(plan, reactivation.frequency);
-        await square.validateSquareBillingVariation(variation, reactivation.frequency, reactivation.pricePence);
+        await square.validateSquareBillingVariation(
+          variation, reactivation.frequency, reactivation.pricePence,
+          squareCadenceForPlan(plan, reactivation.frequency),
+        );
 
         squareCustomerId = existing.squareCustomerId ?? null;
         if (!squareCustomerId) {
@@ -629,7 +639,7 @@ export function registerMembershipBilling(app: Express, customerAuth: RequestHan
           planId: plan.id,
           status: "pending",
           currentPeriodStart: todayDate,
-          currentPeriodEnd: addCalendarMonths(todayDate, reactivation.frequency === "annual" ? 12 : 1),
+          currentPeriodEnd: billingPeriodEnd(plan, reactivation.frequency, todayDate),
           hoursUsedThisPeriod: 0,
           guestPassesUsed: 0,
           source: "app_reactivation",

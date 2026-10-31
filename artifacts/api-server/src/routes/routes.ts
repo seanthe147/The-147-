@@ -20,7 +20,7 @@ import { alignBillingStart, billingState, recordBillingTerms, migrationOffer, pr
 import { processSquareMembershipEvent, processMembershipPosPayment, refreshExternalSquareMembership, registerSquareMembershipSync, recordLegacyMembershipPayment, validatePosMapping } from "../membership-square-sync";
 import { membershipPlanChanges, membershipPlanCreation, membershipMemberChanges, protectedMembership, changesProtectedBilling } from "../membership-admin-policy";
 import { prepareMembershipSaleRates } from "../membership-plan-admin";
-import { addCalendarMonths, minimumTermMonths, validDate, variationForFrequency } from "../membership-billing-policy";
+import { addCalendarMonths, billingPeriodEnd, minimumTermMonths, squareCadenceForPlan, validDate, variationForFrequency } from "../membership-billing-policy";
 import * as teya from "../teya";
 import { buildReorderPayload, type ReorderMenuItem, type ReorderRawItem } from "../reorder-matching";
 import {
@@ -3251,7 +3251,8 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       }
       const variationId = variationForFrequency(plan, frequency);
       await square.validateSquareBillingVariation(variationId, frequency,
-        frequency === "annual" ? plan.priceAnnual! : plan.priceMonthly);
+        frequency === "annual" ? plan.priceAnnual! : plan.priceMonthly,
+        squareCadenceForPlan(plan, frequency));
       await prepareMigrationOffer(sub.id, sub.planId, plan, frequency, start);
 
       // Ensure a Square customer exists and is linked
@@ -12114,6 +12115,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
     const enriched = visible.map((p: any) => ({
       ...p,
       minimumTermMonths: minimumTermMonths(p),
+      monthlyIntervalDays: p.tier === "blue" || p.tier === "pink" ? 30 : null,
       benefits: getPlanBenefitTexts(p),
       benefitsDetailed: getPlanBenefits(p),
     }));
@@ -12206,7 +12208,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       const today = new Date().toISOString().slice(0, 10);
       // Honour startDate if it is a valid future date (staff-only feature sent from app)
       const periodStart = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) && startDate > today ? startDate : today;
-      const periodEnd = addCalendarMonths(periodStart, isAnnual ? 12 : 1);
+      const periodEnd = billingPeriodEnd(plan, isAnnual ? "annual" : "monthly", periodStart);
 
       // If upgrading (existing sub on a different plan), cancel the old one
       if (existing && existing.id) {
@@ -12378,7 +12380,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
 
       const today = new Date().toISOString().slice(0, 10);
       const periodStart = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) && startDate > today ? startDate : today;
-      const periodEnd = addCalendarMonths(periodStart, isAnnual ? 12 : 1);
+      const periodEnd = billingPeriodEnd(plan, isAnnual ? "annual" : "monthly", periodStart);
 
       // NOTE: We deliberately do NOT cancel the existing subscription here.
       // We only do that AFTER the new card + Square subscription are

@@ -1,4 +1,5 @@
 import { applyPlatinumOffer, applyPlatinumTillMapping } from "./platinum-offer-migration";
+import { applyBluePinkMembershipPlans } from "./additional-membership-plans";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { eq, lt, lte, sql, and, gt, isNull, isNotNull, gte, desc, inArray, ne, ilike, or } from "drizzle-orm";
@@ -469,6 +470,7 @@ export async function runStartupMigrations() {
 
     await applyPlatinumOffer(client);
     await applyPlatinumTillMapping(client);
+    await applyBluePinkMembershipPlans(client);
 
     // Ensure VIP plan exists (10% food & drink, group-based, excludes stacking with deals)
     await client.query(`

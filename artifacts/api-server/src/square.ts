@@ -66,7 +66,7 @@ export async function getSquareInvoice(id: string) {
 export async function getSquareBillingFrequency(variationId: string): Promise<"monthly" | "annual"> {
   const data = await squareRequest("GET", `/v2/catalog/object/${encodeURIComponent(variationId)}`);
   const cadence = data.object?.subscription_plan_variation_data?.phases?.[0]?.cadence;
-  if (cadence === "MONTHLY") return "monthly";
+  if (cadence === "MONTHLY" || cadence === "THIRTY_DAYS") return "monthly";
   if (cadence === "ANNUAL") return "annual";
   throw new Error("Unsupported Square membership billing frequency");
 }
@@ -788,11 +788,16 @@ export async function swapSquareSubscriptionPlan(subscriptionId: string, variati
   return { ...data.subscription, actions: data.actions ?? data.subscription?.actions ?? [] };
 }
 
-export async function validateSquareBillingVariation(variationId: string, frequency: "monthly" | "annual", expectedPence: number) {
+export async function validateSquareBillingVariation(
+  variationId: string,
+  frequency: "monthly" | "annual",
+  expectedPence: number,
+  expectedCadence: "MONTHLY" | "THIRTY_DAYS" | "ANNUAL" = frequency === "annual" ? "ANNUAL" : "MONTHLY",
+) {
   const data = await squareRequest("GET", `/v2/catalog/object/${variationId}`);
   const phases = data.object?.subscription_plan_variation_data?.phases;
   if (!Array.isArray(phases) || phases.length !== 1 ||
-      phases[0].cadence !== (frequency === "annual" ? "ANNUAL" : "MONTHLY") ||
+      phases[0].cadence !== expectedCadence ||
       phases[0].pricing?.type !== "STATIC" ||
       phases[0].pricing?.price_money?.amount !== expectedPence ||
       phases[0].pricing?.price_money?.currency !== "GBP") {
@@ -1068,12 +1073,14 @@ export async function createCatalogSubscriptionPlan(opts: {
   name: string;
   amountPence: number;
   frequency?: "monthly" | "annual";
+  cadence?: "MONTHLY" | "THIRTY_DAYS" | "ANNUAL";
 }): Promise<PlanSetupResult> {
   const tempPlanId = `#plan-${opts.localPlanId}`;
   const tempVarId = `#var-${opts.localPlanId}`;
+  const cadence = opts.cadence ?? (opts.frequency === "annual" ? "ANNUAL" : "MONTHLY");
 
   const data = await squareRequest("POST", "/v2/catalog/batch-upsert", {
-    idempotency_key: createHash("sha256").update(`147-plan:${opts.localPlanId}:${opts.name}:${opts.frequency ?? "monthly"}:${opts.amountPence}`).digest("hex").slice(0, 40),
+    idempotency_key: createHash("sha256").update(`147-plan:${opts.localPlanId}:${opts.name}:${cadence}:${opts.amountPence}`).digest("hex").slice(0, 40),
     batches: [
       {
         objects: [
@@ -1087,10 +1094,10 @@ export async function createCatalogSubscriptionPlan(opts: {
                   type: "SUBSCRIPTION_PLAN_VARIATION",
                   id: tempVarId,
                   subscription_plan_variation_data: {
-                    name: opts.frequency === "annual" ? "Annual" : "Monthly",
+                    name: cadence === "ANNUAL" ? "Annual" : cadence === "THIRTY_DAYS" ? "Every 30 Days" : "Monthly",
                     phases: [
                       {
-                        cadence: opts.frequency === "annual" ? "ANNUAL" : "MONTHLY",
+                        cadence,
                         pricing: {
                           type: "STATIC",
                           price_money: {
