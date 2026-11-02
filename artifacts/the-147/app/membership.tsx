@@ -57,6 +57,7 @@ interface MembershipPlan {
   active: boolean;
   hideFromSignup?: boolean;
   minimumTermMonths?: number | null;
+  monthlyIntervalDays?: number | null;
   // Server-computed benefit lines. The API renders these so any future
   // wording change is server-side only — no app submission required.
   benefits?: string[] | null;
@@ -366,7 +367,11 @@ export default function MembershipScreen() {
     const price = isAnnual && selectedPlan.priceAnnual != null
       ? selectedPlan.priceAnnual
       : selectedPlan.priceMonthly;
-    const periodLabel = isAnnual ? "per year" : "per month";
+    const periodLabel = isAnnual
+      ? "per year"
+      : selectedPlan.monthlyIntervalDays === 30
+        ? "every 30 days"
+        : "per month";
     const saving = getPriceSaving(selectedPlan);
     const savingNote = isAnnual && saving ? `\n\nYou save £${(saving / 100).toFixed(2)} compared to paying monthly.` : "";
     const today = todayString();
@@ -547,7 +552,13 @@ export default function MembershipScreen() {
                     <Text style={[styles.planPrice, { color: planColor }]}>
                       £{(displayPrice / 100).toFixed(2)}
                     </Text>
-                    <Text style={styles.planPeriod}>/{billingFrequency === "annual" ? "year" : "month"}</Text>
+                    <Text style={styles.planPeriod}>
+                      {billingFrequency === "annual"
+                        ? "per year"
+                        : plan.monthlyIntervalDays === 30
+                          ? "every 30 days"
+                          : "per month"}
+                    </Text>
                     {billingFrequency === "annual" && (
                       <Text style={styles.planPriceMonthly}>
                         £{(displayPrice / 100 / 12).toFixed(2)}/mo
@@ -663,7 +674,11 @@ export default function MembershipScreen() {
                           const price = isAnnual && selectedPlan.priceAnnual != null
                             ? selectedPlan.priceAnnual
                             : selectedPlan.priceMonthly;
-                          const period = isAnnual ? "/yr" : "/mo";
+                          const period = isAnnual
+                            ? "/yr"
+                            : selectedPlan.monthlyIntervalDays === 30
+                              ? "/30 days"
+                              : "/mo";
                           return `Join ${selectedPlan.name} — £${(price / 100).toFixed(2)}${period}`;
                         })()}
                       </Text>

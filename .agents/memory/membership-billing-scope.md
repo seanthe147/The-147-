@@ -63,6 +63,12 @@ Blue is £3.99 every 30 days. Pink is £2.99 every 30 days or £20 annually. The
 
 **How to apply:** Keep Blue monthly-only and Pink monthly/annual. Verify the exact Square cadence as well as price before exposing a plan. Do not change Platinum or existing memberships when provisioning these offers.
 
+The 10% rate benefit is for snooker hourly charges only: Blue monthly and Pink annual qualify; Pink monthly does not. It must not discount food, drinks, pool, or other categories.
+
+**Why:** On 2026-11-02 the owner clarified that the new membership discounts must be snooker-only.
+
+**How to apply:** Keep snooker-rate eligibility separate from `foodDrinkDiscount`; enforce it by membership tier, billing frequency, and active paid status, and scope any POS pricing rule only to confirmed snooker sale variations.
+
 Changing only monthly/annual payment frequency on the same plan preserves its accepted minimum-term dates.
 
 **Why:** A payment schedule change is not a newly accepted membership upgrade; extending the term silently would impose another commitment.

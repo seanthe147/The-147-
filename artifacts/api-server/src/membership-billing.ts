@@ -1,14 +1,14 @@
 import type { Express, RequestHandler } from "express";
 import { createHash } from "node:crypto";
 import { ReplaceMembershipCardBody, EnableMembershipAutoRenewBody, ReactivateMembershipBody } from "@workspace/api-zod";
-import { eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { membershipBillingStates as states, membershipSubscriptions as subscriptions, membershipAuditLog, membershipPlanVariationAliases } from "@workspace/db/schema";
 import { db, storage } from "./storage";
 import * as square from "./square";
 import {
   BILLING_TERMS_VERSION, cancellationAllowed, commitmentEnd, minimumTermMonths, isPlatinumConsolidation,
   addCalendarMonths, billingPeriodEnd, squareCadenceForPlan, validDate, variationForFrequency, membershipBusinessDate,
-  membershipReactivationDeadline, type BillingFrequency,
+  membershipReactivationDeadline, snookerRateDiscountPercent, type BillingFrequency,
 } from "./membership-billing-policy";
 
 type Connection = Pick<typeof db, "select" | "insert" | "update" | "execute">;
@@ -200,17 +200,40 @@ export async function syncPaidMembershipGroups(subscriptionId: number) {
   const activePlanId = local.status === "active" ? local.planId
     : currentMembership?.status === "active" && currentMembership.squareCustomerId === local.squareCustomerId
       ? currentMembership.planId : null;
-  await syncSquareMembershipGroupsForCustomer(local.squareCustomerId, activePlanId, local.planId);
+  const activeSubscription = activePlanId === currentMembership?.planId ? currentMembership
+    : activePlanId === local.planId && local.status === "active" ? local : null;
+  const activeBilling = activeSubscription ? await billingState(activeSubscription.id) : null;
+  await syncSquareMembershipGroupsForCustomer(
+    local.squareCustomerId,
+    activePlanId,
+    local.planId,
+    activeBilling?.billingFrequency,
+  );
   await db.update(subscriptions).set({ squareGroupSyncPending: false }).where(eq(subscriptions.id, local.id));
 }
 
-export async function syncSquareMembershipGroupsForCustomer(squareCustomerId: string, activePlanId: number | null, previousPlanId?: number) {
+export async function syncSquareMembershipGroupsForCustomer(
+  squareCustomerId: string,
+  activePlanId: number | null,
+  previousPlanId?: number,
+  billingFrequency?: string | null,
+) {
   const plan = activePlanId ? await storage.getMembershipPlan(activePlanId) : null;
   if (activePlanId && !plan) throw new Error("Paid membership plan not found");
   if (squareCustomerId) {
     const plans = await storage.getMembershipPlans();
     const groups = await square.listCustomerGroups();
     const current = await square.getCustomerGroupIds(squareCustomerId);
+    const [linkedActiveSubscription] = activePlanId
+      ? await db.select().from(subscriptions).where(and(
+          eq(subscriptions.squareCustomerId, squareCustomerId),
+          eq(subscriptions.planId, activePlanId),
+          eq(subscriptions.status, "active"),
+        )).limit(1)
+      : [];
+    const linkedBilling = linkedActiveSubscription ? await billingState(linkedActiveSubscription.id) : null;
+    const resolvedFrequency = billingFrequency ?? linkedBilling?.billingFrequency
+      ?? (plan?.tier === "blue" ? "monthly" : null);
     const target = plan?.active ? plan.squareCustomerGroupId
       ?? await square.getOrCreateCustomerGroup(square.membershipGroupName(plan.name)) : null;
     if (target && !current.includes(target)) await square.addCustomerToGroup(squareCustomerId, target);
@@ -218,6 +241,36 @@ export async function syncSquareMembershipGroupsForCustomer(squareCustomerId: st
       if (group.id !== target && current.includes(group.id) &&
           plans.some(p => (p.priceMonthly > 0 || (p.priceAnnual ?? 0) > 0 || p.id === previousPlanId) &&
             (p.squareCustomerGroupId === group.id || square.membershipGroupName(p.name) === group.name))) {
+        await square.removeCustomerFromGroup(squareCustomerId, group.id);
+      }
+    }
+
+    const snookerDiscountPercent = snookerRateDiscountPercent({
+      tier: plan?.tier,
+      billingFrequency: resolvedFrequency,
+      status: linkedActiveSubscription?.status ?? (activePlanId ? "active" : null),
+      cancelledAt: linkedActiveSubscription?.cancelledAt,
+      periodEnd: linkedActiveSubscription?.currentPeriodEnd,
+      planActive: plan?.active === true,
+    });
+    const eligibleSnookerGroupName = snookerDiscountPercent === 10
+      ? square.snookerDiscountCustomerGroupName(plan?.tier === "blue" ? "blue" : "pinkAnnual")
+      : null;
+    const eligibleSnookerGroup = eligibleSnookerGroupName
+      ? groups.find(group => group.name === eligibleSnookerGroupName)
+        ?? { id: await square.getOrCreateCustomerGroup(eligibleSnookerGroupName), name: eligibleSnookerGroupName }
+      : null;
+    if (eligibleSnookerGroup && !current.includes(eligibleSnookerGroup.id)) {
+      await square.addCustomerToGroup(squareCustomerId, eligibleSnookerGroup.id);
+    }
+    const managedSnookerGroupNames = new Set([
+      square.snookerDiscountCustomerGroupName("blue"),
+      square.snookerDiscountCustomerGroupName("pinkAnnual"),
+    ]);
+    for (const group of groups) {
+      if (managedSnookerGroupNames.has(group.name) &&
+          group.id !== eligibleSnookerGroup?.id &&
+          current.includes(group.id)) {
         await square.removeCustomerFromGroup(squareCustomerId, group.id);
       }
     }

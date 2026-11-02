@@ -1195,6 +1195,107 @@ export function membershipGroupName(planName: string): string {
   return `147 Bradford — ${planName} Members`;
 }
 
+export type SnookerDiscountTier = "blue" | "pinkAnnual";
+
+export function snookerDiscountCustomerGroupName(tier: SnookerDiscountTier): string {
+  return tier === "blue"
+    ? "147 Bradford — Blue Snooker Discount Members"
+    : "147 Bradford — Pink Annual Snooker Discount Members";
+}
+
+async function findCatalogObjectByName(type: "DISCOUNT" | "PRODUCT_SET" | "PRICING_RULE", name: string) {
+  const dataKey = type.toLowerCase() + "_data";
+  const matches: any[] = [];
+  let cursor: string | undefined;
+  do {
+    const result = await squareRequest("POST", "/v2/catalog/search", {
+      object_types: [type],
+      include_deleted_objects: false,
+      ...(cursor ? { cursor } : {}),
+    });
+    for (const object of result.objects ?? []) {
+      if (object[dataKey]?.name === name) matches.push(object);
+    }
+    cursor = result.cursor;
+  } while (cursor);
+
+  if (matches.length > 1) {
+    throw new Error(`Square has multiple ${type} objects named "${name}". Resolve the duplicate before syncing.`);
+  }
+  return matches[0] ?? null;
+}
+
+async function ensureCatalogObject(
+  type: "DISCOUNT" | "PRODUCT_SET" | "PRICING_RULE",
+  name: string,
+  data: Record<string, any>,
+  comparableFields: string[],
+): Promise<string> {
+  const dataKey = type.toLowerCase() + "_data";
+  const existing = await findCatalogObjectByName(type, name);
+  const existingData = existing?.[dataKey] ?? {};
+  const same = existing && comparableFields.every(field => {
+    const left = existingData[field];
+    const right = data[field];
+    if (Array.isArray(left) && Array.isArray(right)) {
+      return [...left].sort().join("\u0000") === [...right].sort().join("\u0000");
+    }
+    return left === right;
+  });
+  if (same) return existing.id;
+
+  const object = {
+    type,
+    id: existing?.id ?? `#147Snooker${type}`,
+    ...(existing?.version ? { version: existing.version } : {}),
+    [dataKey]: data,
+  };
+  const result = await squareRequest("POST", "/v2/catalog/object", {
+    idempotency_key: `147-snooker-${type.toLowerCase()}-${Date.now()}`,
+    object,
+  });
+  const id = result.catalog_object?.id;
+  if (!id) throw new Error(`Square did not return an ID for the ${type} object "${name}".`);
+  return id;
+}
+
+/**
+ * Creates or updates a Square automatic customer-group discount, limited to
+ * explicitly verified snooker price variations. No other products are matched.
+ */
+export async function provisionSnookerMemberDiscount(options: {
+  productVariationIds: string[];
+  customerGroupIds: string[];
+}): Promise<{ discountId: string; productSetId: string; pricingRuleId: string }> {
+  const productVariationIds = [...new Set(options.productVariationIds)].sort();
+  const customerGroupIds = [...new Set(options.customerGroupIds)].sort();
+  if (productVariationIds.length === 0 || customerGroupIds.length === 0) {
+    throw new Error("The snooker discount requires at least one verified snooker item and one eligible customer group.");
+  }
+
+  const discountName = "147 Blue and Pink Snooker Member Discount 10%";
+  const productSetName = "147 Snooker Hourly Rates";
+  const pricingRuleName = "147 Blue and Pink Snooker Member Rate";
+  const discountId = await ensureCatalogObject("DISCOUNT", discountName, {
+    name: discountName,
+    discount_type: "FIXED_PERCENTAGE",
+    percentage_discount: "10",
+  }, ["discount_type", "percentage_discount"]);
+  const productSetId = await ensureCatalogObject("PRODUCT_SET", productSetName, {
+    name: productSetName,
+    all_products: false,
+    product_ids_any: productVariationIds,
+  }, ["all_products", "product_ids_any"]);
+  const pricingRuleId = await ensureCatalogObject("PRICING_RULE", pricingRuleName, {
+    name: pricingRuleName,
+    discount_id: discountId,
+    match_products_id: productSetId,
+    customer_group_ids_any: customerGroupIds,
+  }, ["discount_id", "match_products_id", "customer_group_ids_any"]);
+
+  return { discountId, productSetId, pricingRuleId };
+}
+
 // ── Menu / Ordering ───────────────────────────────────────────────────────────
 
 const PARENT_CATEGORY_IDS = new Set([

@@ -21,9 +21,11 @@ import { apiRequest, queryClient } from "@/lib/query-client";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useColors } from "@/hooks/useColors";
 import { useCustomerGreeting } from "@/hooks/useCustomerGreeting";
+import { useSnookerMemberRate } from "@/hooks/useSnookerMemberRate";
 import { useResponsive } from "@/hooks/useResponsive";
 import Colors from "@/constants/colors";
 import { TABLE_TYPES } from "@/lib/data";
+import { calculateSnookerBookingPrice, formatPounds } from "@/lib/snooker-booking-price";
 import { POOL_TABLE_NUMBERS } from "@workspace/db/schema";
 
 const BOOKING_HOURS = [
@@ -107,6 +109,7 @@ export default function BookScreen() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [depositPaymentUrl, setDepositPaymentUrl] = useState<string | null>(null);
   const { isAuthenticated, customer, login, register } = useCustomerAuth();
+  const availableSnookerDiscountPercent = useSnookerMemberRate();
   const { greeting } = useCustomerGreeting();
   const [autoFilled, setAutoFilled] = useState(false);
 
@@ -261,6 +264,10 @@ export default function BookScreen() {
   });
 
   const selectedTableData = TABLE_TYPES.find((t) => t.id === selectedTable);
+  const snookerDiscountPercent = selectedTable === "snooker" ? availableSnookerDiscountPercent : 0;
+  const snookerPrice = selectedTable === "snooker"
+    ? calculateSnookerBookingPrice(duration, snookerDiscountPercent)
+    : null;
 
   const handleSubmit = () => {
     if (!name.trim() || !email.trim() || !phone.trim()) {
@@ -889,8 +896,15 @@ export default function BookScreen() {
                         <Text style={[styles.summaryValue, { color: Colors.brand.gold }]}>
                           {selectedTableData.priceUnit === "game"
                             ? `\u00A3${selectedTableData.pricePerHour}/game`
-                            : selectedTableData.priceLabel ?? `\u00A3${parseFloat(selectedTableData.pricePerHour) * duration}`}
+                            : snookerPrice
+                              ? formatPounds(snookerPrice.totalPence)
+                              : selectedTableData.priceLabel ?? `\u00A3${parseFloat(selectedTableData.pricePerHour) * duration}`}
                         </Text>
+                        {snookerPrice && snookerDiscountPercent > 0 && (
+                          <Text style={{ fontSize: 12, lineHeight: 17, color: Colors.brand.blue, marginTop: 3 }}>
+                            {snookerDiscountPercent}% snooker member rate · saves {formatPounds(snookerPrice.savingPence)}
+                          </Text>
+                        )}
                       </View>
                     </View>
                   </>

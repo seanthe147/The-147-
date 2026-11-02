@@ -6,11 +6,11 @@ import { eq, inArray, sql } from "drizzle-orm";
 import { customers, membershipPlans, membershipSubscriptions as subs, membershipBillingStates as states,
   membershipPurchaseRecords as purchases, membershipSquareEvents as events, membershipAuditLog as audit } from "@workspace/db/schema";
 import { db, storage } from "./storage";
-import { registerMembershipBilling, billingState, membershipSignupGuard } from "./membership-billing";
+import { registerMembershipBilling, billingState, membershipSignupGuard, syncSquareMembershipGroupsForCustomer } from "./membership-billing";
 import { claimPrepaidPurchases, membershipDay, prepaidCoverage, processMembershipPosPayment,
   processSquareMembershipEvent, reconcileMembershipExpiry, refreshExternalSquareMembership, registerSquareMembershipSync, validatePosMapping } from "./membership-square-sync";
 import { addCalendarMonths } from "./membership-billing-policy";
-import { findSquareCustomerByEmail } from "./square";
+import { findSquareCustomerByEmail, snookerDiscountCustomerGroupName } from "./square";
 
 if (process.env.MEMBERSHIP_BILLING_ISOLATED_TEST !== "yes" || process.env.SQUARE_ACCESS_TOKEN !== "fixture-square-token")
   throw new Error("Use the isolated membership test runner.");
@@ -21,7 +21,7 @@ const groups = new Map<string, Set<string>>(), cards = new Map<string, any>();
 const directory = new Map<string, any[]>();
 const calls: { method: string; path: string; body: any }[] = [];
 let base = "", authCustomer = 0, failGroups = false;
-let standard: any, platinum: any, vip: any, server: any;
+let standard: any, platinum: any, vip: any, blue: any, pink: any, server: any;
 const day = membershipDay(), end = addCalendarMonths(day, 12);
 const group = (id: string) => groups.get(id) ?? new Set<string>();
 async function customer(suffix: string, verified = true) {
@@ -68,6 +68,17 @@ before(async () => {
     planIds.push(p.id);
     if (name === "Standard") standard = p; else if (name === "Platinum") platinum = p; else vip = p;
   }
+  const seededPlans = await storage.getMembershipPlans();
+  const seededBlue = seededPlans.find(plan => plan.tier === "blue");
+  const seededPink = seededPlans.find(plan => plan.tier === "pink");
+  if (!seededBlue || !seededPink) throw new Error("Seeded Blue/Pink plans are required by the isolated membership fixtures.");
+  blue = await storage.updateMembershipPlan(seededBlue.id, {
+    active: true, hideFromSignup: false, squareCustomerGroupId: tag + "-blue-group",
+  });
+  pink = await storage.updateMembershipPlan(seededPink.id, {
+    active: true, hideFromSignup: false, squareCustomerGroupId: tag + "-pink-group",
+  });
+  if (!blue || !pink) throw new Error("Could not prepare Blue/Pink plans for the isolated membership fixtures.");
   globalThis.fetch = async (input, init) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
     if (url.origin !== "https://connect.squareupsandbox.com") throw new Error("External request blocked by isolated sync test");
@@ -75,7 +86,11 @@ before(async () => {
     calls.push({ path, method, body });
     if (path === "/v2/subscriptions/search") return Response.json({ subscriptions: [...remotes.values()].filter(r => body.query.filter.customer_ids.includes(r.customer_id)) });
     if (path === "/v2/customers/search") return Response.json({ customers: directory.get(body.query.filter.email_address.exact) ?? [] });
-    if (path === "/v2/customers/groups") return Response.json({ groups: [standard, platinum, vip].map(p => ({ id: p.squareCustomerGroupId, name: p.name })) });
+    if (path === "/v2/customers/groups") return Response.json({ groups: [
+      ...[standard, platinum, vip, blue, pink].map(p => ({ id: p.squareCustomerGroupId, name: p.name })),
+      { id: tag + "-blue-snooker-group", name: snookerDiscountCustomerGroupName("blue") },
+      { id: tag + "-pink-annual-snooker-group", name: snookerDiscountCustomerGroupName("pinkAnnual") },
+    ] });
     const groupMatch = path.match(/^\/v2\/customers\/([^/]+)\/groups\/([^/]+)$/);
     if (groupMatch) {
       if (failGroups) return Response.json({ errors: [{ code: "TEMPORARY_ERROR" }] }, { status: 503 });
@@ -242,6 +257,31 @@ test("cancelled subscriptions retain paid access; expiry removes even hidden pai
   assert.equal((await storage.getLatestMembershipSubscriptionByCustomer(c.id))?.status, "cancelled");
   assert(!group(c.squareCustomerId).has(standard.squareCustomerGroupId)); assert(group(c.squareCustomerId).has(vip.squareCustomerGroupId));
   await db.update(membershipPlans).set({ hideFromSignup: false }).where(eq(membershipPlans.id, standard.id));
+});
+test("Square POS snooker groups include only Blue monthly and Pink annual members", async () => {
+  async function syncEligibleGroup(suffix: string, plan: any, frequency: string) {
+    const c = await customer(suffix);
+    const sub = await storage.createMembershipSubscription({
+      customerId: c.id, planId: plan.id, status: "active", source: "app", squareCustomerId: c.squareCustomerId,
+    });
+    await db.insert(states).values({ subscriptionId: sub.id, billingFrequency: frequency });
+    await syncSquareMembershipGroupsForCustomer(c.squareCustomerId, plan.id);
+    return group(c.squareCustomerId);
+  }
+
+  const blueMonthlyGroups = await syncEligibleGroup("blue-monthly", blue, "monthly");
+  assert(blueMonthlyGroups.has(tag + "-blue-snooker-group"));
+  assert(!blueMonthlyGroups.has(tag + "-pink-annual-snooker-group"));
+
+  const blueAnnualGroups = await syncEligibleGroup("blue-annual", blue, "annual");
+  assert(!blueAnnualGroups.has(tag + "-blue-snooker-group"));
+
+  const pinkMonthlyGroups = await syncEligibleGroup("pink-monthly", pink, "monthly");
+  assert(!pinkMonthlyGroups.has(tag + "-pink-annual-snooker-group"));
+
+  const pinkAnnualGroups = await syncEligibleGroup("pink-annual", pink, "annual");
+  assert(pinkAnnualGroups.has(tag + "-pink-annual-snooker-group"));
+  assert(!pinkAnnualGroups.has(tag + "-blue-snooker-group"));
 });
 test("prepaid renewal needs explicit minimum-term consent and STORE verification; no immediate charge or duplicate", async () => {
   const c = await customer("auto"), p = pos(c.squareCustomerId, "auto", platinum);

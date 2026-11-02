@@ -220,9 +220,11 @@ async function syncUnlinkedSquareGroups(squareCustomerId: string) {
     isNull(purchases.customerId), inArray(purchases.status, ["unclaimed", "frozen"])));
   const pos = prepaidCoverage(rows.filter(r => r.source === "square_pos")).find(r => r.periodStart <= membershipDay() && r.periodEnd > membershipDay());
   let planId: number | null = pos?.planId ?? null;
+  let frequency: string | null = pos?.frequency ?? null;
   if (!pos) {
     const paid = rows.filter(r => r.source === "square_subscription")
       .sort((a, b) => (b.periodEnd ?? "").localeCompare(a.periodEnd ?? ""))[0];
+    frequency = paid?.frequency ?? null;
     if (paid?.squareSubscriptionId && paid.status !== "frozen") {
       const remote = await square.getSquareSubscription(paid.squareSubscriptionId);
       if (remote.customer_id !== squareCustomerId) throw new Error("Subscription ownership mismatch");
@@ -230,7 +232,7 @@ async function syncUnlinkedSquareGroups(squareCustomerId: string) {
     }
   }
   // Unrelated Square payments must never remove a customer's existing groups.
-  if (rows.length) await syncSquareMembershipGroupsForCustomer(squareCustomerId, planId);
+  if (rows.length) await syncSquareMembershipGroupsForCustomer(squareCustomerId, planId, undefined, frequency);
 }
 
 async function hasLiveSquareMembership(squareCustomerId: string) {

@@ -576,6 +576,34 @@ function scheduleWinBackEmails() {
           console.error(`[SQUARE BOOT SYNC] Failed to create plan for ${plan.name}:`, err?.message ?? err);
         }
       }
+
+      if (process.env.NODE_ENV === "production") {
+        try {
+          const { provisionSnookerMembershipDiscount } = await import("./membership-snooker-discount.js");
+          const livePlans = await storeForPlans.getMembershipPlans();
+          const snookerOffers = livePlans.filter(plan => ["blue", "pink"].includes(plan.tier));
+          const result = await provisionSnookerMembershipDiscount(snookerOffers, square);
+          log(`[SQUARE BOOT SYNC] Snooker member discount configured for ${result.productVariationIds.length} rate variations.`);
+
+          const { syncPaidMembershipGroups } = await import("./membership-billing.js");
+          const existing = await storeForPlans.getMembershipSubscriptions();
+          const activeSnookerMembers = existing.filter(subscription =>
+            subscription.status === "active" &&
+            !!subscription.squareCustomerId &&
+            ["blue", "pink"].includes(subscription.plan?.tier ?? ""),
+          );
+          for (const subscription of activeSnookerMembers) {
+            try {
+              await syncPaidMembershipGroups(subscription.id);
+            } catch (err: any) {
+              console.error(`[SQUARE BOOT SYNC] Could not refresh snooker member groups for subscription ${subscription.id}:`, err?.message ?? err);
+            }
+          }
+          log(`[SQUARE BOOT SYNC] Refreshed snooker discount eligibility for ${activeSnookerMembers.length} active Blue/Pink memberships.`);
+        } catch (err: any) {
+          console.error("[SQUARE BOOT SYNC] Snooker member POS discount was not enabled:", err?.message ?? err);
+        }
+      }
     }
   } catch (err: any) {
     console.error("[SQUARE BOOT SYNC] Skipped due to error:", err?.message ?? err);

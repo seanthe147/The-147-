@@ -53,7 +53,7 @@ try {
   await run(process.execPath, ["--experimental-strip-types", "--test",
     "src/membership-billing-policy.test.ts", "src/platinum-offer-migration.test.ts",
     "src/membership-failure-notifications.test.ts"]);
-  for (const entry of ["membership-billing", "membership-square-sync", "game-claims"]) {
+  for (const entry of ["membership-snooker-discount", "membership-billing", "membership-square-sync", "game-claims"]) {
   const output = path.join(temp, `${entry}.test.mjs`);
   await build({
     absWorkingDir: cwd, entryPoints: [`src/${entry}.test.ts`], outfile: output,

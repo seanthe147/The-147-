@@ -20,7 +20,7 @@ import { alignBillingStart, billingState, recordBillingTerms, migrationOffer, pr
 import { processSquareMembershipEvent, processMembershipPosPayment, refreshExternalSquareMembership, registerSquareMembershipSync, recordLegacyMembershipPayment, validatePosMapping } from "../membership-square-sync";
 import { membershipPlanChanges, membershipPlanCreation, membershipMemberChanges, protectedMembership, changesProtectedBilling } from "../membership-admin-policy";
 import { prepareMembershipSaleRates } from "../membership-plan-admin";
-import { addCalendarMonths, billingPeriodEnd, minimumTermMonths, squareCadenceForPlan, validDate, variationForFrequency } from "../membership-billing-policy";
+import { addCalendarMonths, billingPeriodEnd, minimumTermMonths, snookerRateDiscountPercent, squareCadenceForPlan, validDate, variationForFrequency } from "../membership-billing-policy";
 import * as teya from "../teya";
 import { buildReorderPayload, type ReorderMenuItem, type ReorderRawItem } from "../reorder-matching";
 import {
@@ -12175,7 +12175,22 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       }
     }
     const sub = await storage.getLatestMembershipSubscriptionByCustomer(customerId);
-    res.json(sub ?? null);
+    if (!sub) return res.json(null);
+    const billing = await billingState(sub.id);
+    const billingFrequency = billing?.billingFrequency
+      ?? (sub.plan?.tier === "blue" ? "monthly" : null);
+    res.json({
+      ...sub,
+      billingFrequency,
+      snookerRateDiscountPercent: snookerRateDiscountPercent({
+        tier: sub.plan?.tier,
+        billingFrequency,
+        status: sub.status,
+        cancelledAt: sub.cancelledAt,
+        periodEnd: sub.currentPeriodEnd,
+        planActive: sub.plan?.active === true,
+      }),
+    });
   });
 
   // ── Membership — customer: join a plan ──────────────────────────────────────

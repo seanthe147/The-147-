@@ -60,6 +60,29 @@ export function billingPeriodEnd(
   return addCalendarMonths(start, 1);
 }
 
+export function snookerRateDiscountPercent(input: {
+  tier?: string | null;
+  billingFrequency?: string | null;
+  status?: string | null;
+  cancelledAt?: Date | string | null;
+  periodEnd?: Date | string | null;
+  planActive?: boolean;
+}, now = new Date()): number {
+  if (input.status !== "active" || input.cancelledAt || input.planActive !== true) return 0;
+  if (input.periodEnd) {
+    if (typeof input.periodEnd === "string" && /^\d{4}-\d{2}-\d{2}$/.test(input.periodEnd)) {
+      if (!validDate(input.periodEnd) || input.periodEnd < membershipBusinessDate(now)) return 0;
+    } else {
+      const periodEnd = new Date(input.periodEnd);
+      if (!Number.isFinite(periodEnd.getTime()) || periodEnd.getTime() < now.getTime()) return 0;
+    }
+  }
+
+  if (input.tier === "blue" && input.billingFrequency === "monthly") return 10;
+  if (input.tier === "pink" && input.billingFrequency === "annual") return 10;
+  return 0;
+}
+
 export function membershipReactivationDeadline(paidThroughDate: string | null | undefined, today: string): string | null {
   if (!validDate(paidThroughDate) || !validDate(today) || paidThroughDate >= today) return null;
   const deadline = addCalendarMonths(paidThroughDate, 1);
