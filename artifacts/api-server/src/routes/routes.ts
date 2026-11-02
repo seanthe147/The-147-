@@ -34,6 +34,7 @@ import {
   matchesPushRegistrationSecret,
 } from "../push-registration";
 import { validateMenuItemPresentation } from "../menu-presentation";
+import { liveStock } from "../stock-live";
 import { stockItemInput, stockCountInput, stockDeliveryInput, validateStockInput } from "../stock-validation";
 
 // ── Square POS → Live Tables sync helpers ───────────────────────────────────
@@ -15805,6 +15806,11 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       }));
       res.json(result);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get("/api/stock/live", staffAuth, managerAuth, async (_req, res) => {
+    try { res.json(await liveStock()); }
+    catch { res.status(503).json({ error: "Unable to calculate live stock. Please retry." }); }
   });
 
   app.post("/api/stock/items", staffAuth, managerAuth, validateStockInput(stockItemInput), async (req: any, res) => {

@@ -376,6 +376,66 @@
     .modal .checkbox-row input{width:16px;height:16px;margin-top:2px;accent-color:var(--blue);flex-shrink:0}
     .modal .checkbox-row label{font-size:13px;color:var(--text-2);cursor:pointer}
 
+    /* ── Stock count ── */
+    .sc-form{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:var(--shadow)}
+    .sc-form-title{font-size:16px;font-weight:800}
+    .sc-form-sub{font-size:12px;color:var(--text-2);margin-top:3px;max-width:640px}
+    .sc-form-head{margin-bottom:14px}
+    .sc-meta-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,2fr);gap:12px;margin-bottom:14px}
+    .sc-meta-grid > .form-group{min-width:0}
+    .sc-meta-grid .form-input{min-width:0;max-width:100%;width:100%;box-sizing:border-box}
+    @media(max-width:480px){#stockCountForm .sc-meta-grid{grid-template-columns:minmax(0,1fr)}}
+    .sc-guide{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+    .sc-guide>div{font-size:12px;color:var(--text-2);background:var(--blue-light);border-left:3px solid var(--blue);padding:8px 12px;border-radius:0 var(--r) var(--r) 0}
+    .sc-guide strong{color:var(--text)}
+    .sc-progress{margin-bottom:14px}
+    .sc-progress-top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px;font-size:12px}
+    .sc-progress-label{font-weight:800;color:var(--text)}
+    .sc-progress-stats{color:var(--text-2);font-weight:600}
+    .sc-progress-bar{height:8px;background:var(--bg);border-radius:6px;overflow:hidden;border:1px solid var(--border)}
+    .sc-progress-bar span{display:block;height:100%;width:100%;background:var(--green);transform-origin:left;transform:scaleX(0);transition:transform .25s ease}
+    .sc-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+    .sc-search{flex:1 1 220px}.sc-search input{width:100%}
+    .sc-filters{display:flex;gap:6px;flex-wrap:wrap}
+    .sc-filter-note{font-size:12px;color:var(--amber);font-weight:600;min-height:18px;margin-bottom:6px}
+    .sc-cat{margin-bottom:16px}
+    .sc-cat-hd{display:flex;justify-content:space-between;font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px}
+    .sc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px}
+    .sc-row{background:#F8FAFC;border:1px solid var(--border);border-left:4px solid var(--border-dark);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+    .sc-row[data-state="counted"]{border-left-color:var(--green);background:var(--surface)}
+    .sc-row[data-state="zero"]{border-left-color:var(--amber);background:var(--surface)}
+    .sc-row[data-state="invalid"]{border-left-color:var(--red);background:var(--red-light)}
+    .sc-row-main{display:flex;align-items:center;gap:10px}
+    .sc-row-name{flex:1;min-width:0;font-size:13px;font-weight:700;color:var(--text)}
+    .sc-row-meta{font-size:11px;color:var(--text-2);font-weight:500;margin-top:1px}
+    .sc-row input[type=number]{width:84px;padding:8px;border:1.5px solid var(--border);border-radius:6px;font-size:15px;font-weight:700;font-family:inherit;text-align:right;color:var(--text);background:var(--surface)}
+    .sc-row input[type=number]:focus{outline:none;border-color:var(--blue)}
+    .sc-unit{font-size:11px;font-weight:700;color:var(--text-2);min-width:42px}
+    .sc-row-foot{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+    .sc-chip{border:1px solid var(--border);background:var(--surface);border-radius:14px;padding:3px 9px;font-size:11px;font-weight:700;font-family:inherit;color:var(--text-2);cursor:pointer}
+    .sc-chip:hover{border-color:var(--blue);color:var(--blue)}
+    .sc-hint{font-size:11px;color:var(--text-2);margin-left:auto}
+    .sc-state{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px}
+    .sc-inactive{font-size:10px;font-weight:800;color:var(--purple);text-transform:uppercase;letter-spacing:.5px}
+    .sc-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;position:sticky;bottom:-24px;background:var(--surface);padding:12px 0 4px;border-top:1px solid var(--border)}
+    .sc-hist{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--amber);border-radius:10px;padding:14px 18px}
+    .sc-hist.submitted{border-left-color:var(--green)}
+    .sc-hist-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .sc-hist-period{font-weight:800;font-size:14px}
+    .sc-hist-meta{font-size:12px;color:var(--text-2);margin-top:3px;display:flex;gap:6px 12px;flex-wrap:wrap;align-items:center}
+    .sc-hist-notes{font-size:12px;color:var(--text-2);font-style:italic;background:#F8FAFC;border-left:3px solid var(--gold);padding:6px 10px;border-radius:0 var(--r) var(--r) 0;margin-top:8px}
+    .sc-hist-lines{margin-top:10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:4px 16px;border-top:1px solid var(--border);padding-top:10px}
+    .sc-hist-line{display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:3px 0;border-bottom:1px dashed var(--border)}
+    .sc-hist-line b{font-weight:800}
+    .sc-hist-actions{display:flex;gap:6px;flex-wrap:wrap}
+    @media(max-width:767px){
+      .sc-meta-grid{grid-template-columns:1fr 1fr}.sc-notes-field{grid-column:1/-1}
+      .sc-guide{grid-template-columns:1fr}
+      .sc-grid{grid-template-columns:1fr}
+      .sc-form{padding:14px}
+      .sc-actions{bottom:-14px}.sc-actions .btn{flex:1 1 auto}
+      .sc-hint{margin-left:0;flex-basis:100%}
+    }
     /* ── Toast ── */
     .toast-wrap{position:fixed;top:72px;right:24px;z-index:600;display:flex;flex-direction:column;gap:8px;pointer-events:none}
     .toast{padding:12px 18px;border-radius:var(--r);font-size:13px;font-weight:600;font-family:inherit;color:#fff;min-width:260px;max-width:340px;box-shadow:var(--shadow-md);display:flex;align-items:center;gap:10px;animation:tIn .25s ease;pointer-events:none}
@@ -1874,6 +1934,11 @@
             <button class="menu-tab" data-stock="deliveries" onclick="switchStockTab('deliveries')">Deliveries</button>
             <button class="menu-tab" data-stock="report" onclick="switchStockTab('report')">Consumption Report</button>
             <button class="menu-tab" data-stock="catalogue" onclick="switchStockTab('catalogue')">Catalogue</button>
+            <button class="menu-tab" data-stock="live" onclick="switchStockTab('live')">Estimated Stock</button>
+          </div>
+          <div id="stockTabLive" style="display:none">
+            <p>Estimated stock = latest submitted count + deliveries − completed Square sales. Refreshes every five minutes while open. Spillage and unrecorded stock movements are not included.</p>
+            <div id="stockLiveContent" aria-live="polite"></div>
           </div>
 
           <!-- COUNTS TAB -->
@@ -1884,32 +1949,59 @@
             </div>
 
             <!-- New count form (hidden until + New Count clicked) -->
-            <div id="stockCountForm" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px">
-              <div style="font-size:15px;font-weight:700;margin-bottom:14px">New Stock Count</div>
-              <div id="stockCountFormErr" class="modal-err" style="display:none"></div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+            <div id="stockCountForm" class="sc-form" style="display:none" role="region" aria-labelledby="stockCountFormTitle">
+              <div class="sc-form-head">
+                <div>
+                  <div id="stockCountFormTitle" class="sc-form-title">New Stock Count</div>
+                  <div class="sc-form-sub">Count what is physically in the cellar and behind the bar right now. Blank means not counted; type 0 when the shelf is empty.</div>
+                </div>
+              </div>
+              <div id="stockCountFormErr" class="modal-err" role="alert" style="display:none"></div>
+              <div class="sc-meta-grid">
                 <div class="form-group" style="margin:0">
-                  <label class="form-label">Period Start</label>
+                  <label class="form-label" for="stockCountStart">Period Start</label>
                   <input class="form-input" type="date" id="stockCountStart">
                 </div>
                 <div class="form-group" style="margin:0">
-                  <label class="form-label">Period End</label>
+                  <label class="form-label" for="stockCountEnd">Period End</label>
                   <input class="form-input" type="date" id="stockCountEnd">
                 </div>
+                <div class="form-group sc-notes-field" style="margin:0">
+                  <label class="form-label" for="stockCountNotes">Notes (optional)</label>
+                  <input class="form-input" type="text" id="stockCountNotes" placeholder="e.g. End of Sunday shift, cellar + back bar">
+                </div>
               </div>
-              <div class="form-group" style="margin-bottom:16px">
-                <label class="form-label">Notes (optional)</label>
-                <input class="form-input" type="text" id="stockCountNotes" placeholder="e.g. End of week count">
+              <div class="sc-guide">
+                <div><strong>Kegs</strong> count in kegs. Use the quarter buttons for a part-used keg: 0.25, 0.5 or 0.75. Pints per keg is shown under each line.</div>
+                <div><strong>Bottles &amp; cans</strong> count singles only. Case sizes are for deliveries, never for counting.</div>
               </div>
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-                <div style="font-size:12px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.6px">Items</div>
-                <button class="btn btn-secondary btn-sm" onclick="openBarcodeScan()" title="Scan a barcode to jump to that item">📷 Scan Barcode</button>
+              <div class="sc-progress" aria-live="polite">
+                <div class="sc-progress-top">
+                  <span id="stockCountProgressLabel" class="sc-progress-label">0 of 0 counted</span>
+                  <span id="stockCountProgressStats" class="sc-progress-stats"></span>
+                </div>
+                <div class="sc-progress-bar" role="progressbar" aria-label="Count progress" id="stockCountProgressBar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="stockCountProgressFill"></span></div>
               </div>
-              <div id="stockCountItems" style="margin-bottom:16px"></div>
-              <div style="display:flex;gap:8px;justify-content:flex-end">
+              <div class="sc-toolbar">
+                <div class="search-box sc-search">
+                  <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                  <label class="sr-only" for="stockCountSearch">Search products</label>
+                  <input type="search" id="stockCountSearch" placeholder="Search product or supplier" oninput="applyStockCountFilter()" autocomplete="off">
+                </div>
+                <div class="sc-filters" role="group" aria-label="Show products">
+                  <button type="button" class="filter-pill active" data-sc-filter="all" aria-pressed="true" onclick="setStockCountFilter('all')">All</button>
+                  <button type="button" class="filter-pill" data-sc-filter="blank" aria-pressed="false" onclick="setStockCountFilter('blank')">Not counted</button>
+                  <button type="button" class="filter-pill" data-sc-filter="counted" aria-pressed="false" onclick="setStockCountFilter('counted')">Counted</button>
+                  <button type="button" class="filter-pill" data-sc-filter="zero" aria-pressed="false" onclick="setStockCountFilter('zero')">Zero</button>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="openBarcodeScan()" title="Scan a barcode to jump to that item">Scan Barcode</button>
+              </div>
+              <div class="sc-filter-note" id="stockCountFilterNote" aria-live="polite"></div>
+              <div id="stockCountItems" class="sc-items" oninput="onStockCountInput(event)"></div>
+              <div class="sc-actions">
                 <button class="btn btn-secondary btn-sm" onclick="cancelStockCount()">Cancel</button>
                 <button class="btn btn-secondary btn-sm" onclick="submitStockCount('draft')">Save as Draft</button>
-                <button class="btn btn-primary btn-sm" onclick="submitStockCount('submitted')">Submit Count</button>
+                <button class="btn btn-primary btn-sm" onclick="submitStockCount('submitted')">Review &amp; Submit</button>
               </div>
             </div>
 
@@ -3537,7 +3629,7 @@
   function todayStr(){const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
   function pad(n){return String(n).padStart(2,'0')}
   function esc(s){const d=document.createElement('div');d.textContent=s??'';return d.innerHTML}
-  function escHtml(s){return esc(s);}
+  function escHtml(s){return esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
   function el(id){return document.getElementById(id)}
   function getToken(){return localStorage.getItem(TOKEN_KEY)}
   function setToken(t){localStorage.setItem(TOKEN_KEY,t)}
@@ -8891,15 +8983,33 @@
 
   /* ── Stock Management ── */
   var _stockItems=[], _stockCategories=[];
+  var _stockLiveTimer=null;
+  async function renderLiveStock(){
+    var wrap=el('stockLiveContent');
+    try{
+      var data=await (await api('/api/stock/live')).json();
+      wrap.innerHTML='<p>Sales checked: '+esc(new Date(data.updatedAt).toLocaleString('en-GB'))+'</p>'+
+        data.items.map(function(i){return '<div style="padding:10px;border-bottom:1px solid var(--border)"><strong>'+esc(i.name)+'</strong> — '+
+          (i.issue?esc(i.issue):esc(i.remaining)+' '+esc(i.unit)+(i.remaining<0?' — check stock count or product links':''))+
+          (i.countAt?'<small> · Count: '+esc(new Date(i.countAt).toLocaleDateString('en-GB'))+'</small>':'')+'</div>';}).join('');
+    }catch(e){wrap.textContent='Stock estimate unavailable: '+e.message;}
+  }
 
   function switchStockTab(tab){
-    ['counts','deliveries','report','catalogue'].forEach(t=>{
+    ['counts','deliveries','report','catalogue','live'].forEach(t=>{
       var el2=el('stockTab'+t.charAt(0).toUpperCase()+t.slice(1));
       if(el2)el2.style.display=t===tab?'':'none';
     });
     document.querySelectorAll('[data-stock]').forEach(b=>b.classList.toggle('active',b.dataset.stock===tab));
     if(tab==='catalogue')renderStockCatalogue();
     if(tab==='deliveries')renderStockDeliveries();
+    clearInterval(_stockLiveTimer);
+    if(tab==='live'){
+      renderLiveStock();
+      _stockLiveTimer=setInterval(function(){
+        if(document.visibilityState==='visible'&&el('pageStock').classList.contains('active'))renderLiveStock();
+      },300000);
+    }
   }
 
   async function loadStockPage(){
@@ -8919,69 +9029,198 @@
     renderStockCounts();
   }
 
-  var _stockSavedCounts=[], _stockDraftId=null, _stockCountSaving=false;
+  var _stockSavedCounts=[], _stockDraftId=null, _stockCountSaving=false, _stockCountFilter='all', _stockCountOpenHist={};
+  function stockFmtDate(iso){
+    if(!iso)return '—';
+    return new Date(iso).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric',timeZone:'Europe/London'});
+  }
+  function stockFmtQty(q){var n=Number(q);if(isNaN(n))return escHtml(String(q));return String(Math.round(n*100)/100);}
+  function stockUnitWord(unit,qty){
+    var n=Number(qty), one=n===1;
+    var map={keg:['keg','kegs'],bottle:['bottle','bottles'],can:['can','cans'],bib:['BIB','BIBs'],case:['case','cases']};
+    var m=map[unit];return m?(one?m[0]:m[1]):(unit||'');
+  }
   async function renderStockCounts(){
     var wrap=el('stockCountsContent');
     if(!wrap)return;
     wrap.innerHTML='<div class="loading-state"><div class="spinner"></div>Loading counts…</div>';
     try{
       var counts=await (await api('/api/stock/counts')).json();
-      _stockSavedCounts=counts;
-      if(!counts||!counts.length){wrap.innerHTML='<p style="color:var(--text-2);font-size:13px">No counts yet. Use "+ New Count" to record your first.</p>';return;}
-      var html='<div style="display:flex;flex-direction:column;gap:10px">';
+      _stockSavedCounts=counts||[];
+      if(!counts||!counts.length){wrap.innerHTML='<div class="empty-state" style="padding:48px 16px"><div class="empty-title">No counts yet</div><div class="empty-desc">Use "+ New Count" at the end of a shift to record what is in the cellar.</div></div>';return;}
+      var html='<div style="font-size:12px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Count history</div><div style="display:flex;flex-direction:column;gap:10px">';
       counts.forEach(function(c){
-        var dateStr=c.periodEnd?new Date(c.periodEnd).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric',timeZone:'Europe/London'}):'';
-        var badge=c.status==='submitted'
-          ?'<span style="background:#16A34A20;color:#16A34A;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;text-transform:uppercase">Submitted</span>'
-          :'<span style="background:#F59E0B20;color:#D97706;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;text-transform:uppercase">Draft</span>';
-        var lineCount=c.lines?c.lines.length:0;
-        html+='<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px">'+
-          '<div>'+
-            '<div style="font-weight:700;font-size:14px">Period ending '+dateStr+'</div>'+
-            '<div style="font-size:12px;color:var(--text-2);margin-top:3px">'+lineCount+' item'+(lineCount===1?'':'s')+' counted'+(c.countedBy?' · by '+escHtml(c.countedBy):'')+(c.notes?' · '+escHtml(c.notes):'')+' '+badge+'</div>'+
-          '</div>'+
-          (c.status==='draft'?'<button class="btn btn-ghost" onclick="editStockCount('+c.id+')">Edit draft</button>':'')+
+        var submitted=c.status==='submitted';
+        var badge=submitted
+          ?'<span class="pill pill-green">Submitted · locked</span>'
+          :'<span class="pill pill-amber">Draft · editable</span>';
+        var lines=c.lines||[], lineCount=lines.length;
+        var zeros=lines.filter(function(l){return Number(l.quantityUnits)===0;}).length;
+        var open=!!_stockCountOpenHist[c.id];
+        html+='<div class="sc-hist'+(submitted?' submitted':'')+'">'+
+          '<div class="sc-hist-top"><div style="min-width:0">'+
+            '<div class="sc-hist-period">'+stockFmtDate(c.periodStart)+' – '+stockFmtDate(c.periodEnd)+'</div>'+
+            '<div class="sc-hist-meta">'+badge+
+              '<span>'+lineCount+' item'+(lineCount===1?'':'s')+' recorded'+(zeros?' ('+zeros+' at zero)':'')+'</span>'+
+              (c.countedBy?'<span>Counted by <b>'+escHtml(c.countedBy)+'</b></span>':'')+
+            '</div></div>'+
+            '<div class="sc-hist-actions">'+
+              (lineCount?'<button class="btn btn-secondary btn-sm" aria-expanded="'+open+'" aria-controls="scHistLines'+c.id+'" onclick="toggleStockCountLines('+c.id+')">'+(open?'Hide quantities':'View quantities')+'</button>':'')+
+              (submitted?'':'<button class="btn btn-primary btn-sm" onclick="editStockCount('+c.id+')">Continue draft</button>')+
+            '</div></div>'+
+          (c.notes?'<div class="sc-hist-notes">'+escHtml(c.notes)+'</div>':'')+
+          (open?'<div class="sc-hist-lines" id="scHistLines'+c.id+'">'+lines.map(function(l){
+            return '<div class="sc-hist-line"><span>'+escHtml(l.itemName||('Item #'+l.stockItemId))+'</span><b>'+stockFmtQty(l.quantityUnits)+' '+escHtml(stockUnitWord(l.countUnit,l.quantityUnits))+'</b></div>';
+          }).join('')+'</div>':'')+
         '</div>';
       });
       html+='</div>';
       wrap.innerHTML=html;
-    }catch(e){wrap.innerHTML='<p style="color:var(--red)">Failed to load counts: '+escHtml(e.message||'unknown error')+'</p>';}
+    }catch(e){wrap.innerHTML='<div class="empty-state" style="padding:40px 16px"><div class="empty-title" style="color:var(--red)">Failed to load counts</div><div class="empty-desc">'+escHtml(e.message||'unknown error')+'</div><button class="btn btn-secondary btn-sm" style="margin-top:12px" onclick="renderStockCounts()">Retry</button></div>';}
   }
+  function toggleStockCountLines(id){_stockCountOpenHist[id]=!_stockCountOpenHist[id];renderStockCounts();}
 
+  function stockCountRowHtml(item,inactive){
+    var meta=[];
+    if(item.containerSize)meta.push(escHtml(item.containerSize));
+    if(item.supplier)meta.push(escHtml(item.supplier)+(item.supplierCode?' #'+escHtml(item.supplierCode):''));
+    var isKeg=item.countUnit==='keg';
+    var hint='';
+    if(isKeg&&item.servesPerUnit)hint=escHtml(stockFmtQty(item.servesPerUnit))+' pints/keg';
+    else if(item.caseSize)hint='Count singles (case of '+item.caseSize+' is delivery only)';
+    else if(item.countUnit==='bottle'||item.countUnit==='can')hint='Count singles';
+    var foot='';
+    if(isKeg){
+      foot+='<button type="button" class="sc-chip" onclick="setStockKegFraction('+item.id+',0.25)" aria-label="Set quarter keg fraction for '+escHtml(item.name)+'">¼</button>'+
+        '<button type="button" class="sc-chip" onclick="setStockKegFraction('+item.id+',0.5)" aria-label="Set half keg fraction for '+escHtml(item.name)+'">½</button>'+
+        '<button type="button" class="sc-chip" onclick="setStockKegFraction('+item.id+',0.75)" aria-label="Set three quarter keg fraction for '+escHtml(item.name)+'">¾</button>';
+    }
+    foot+='<button type="button" class="sc-chip" onclick="setStockCountZero('+item.id+')" aria-label="Mark '+escHtml(item.name)+' as zero in stock">Mark 0</button>'+
+      '<span class="sc-hint" id="scHint'+item.id+'">'+hint+'</span>';
+    var unit=stockUnitWord(item.countUnit,2);
+    return '<div class="sc-row" data-sc-row="'+item.id+'" data-search="'+escHtml(((item.name||'')+' '+(item.supplier||'')+' '+(item.containerSize||'')).toLowerCase())+'" data-state="blank">'+
+      '<div class="sc-row-main">'+
+        '<div class="sc-row-name"><label for="scQty'+item.id+'">'+escHtml(item.name)+'</label>'+
+          (meta.length?'<div class="sc-row-meta">'+meta.join(' · ')+'</div>':'')+
+          (inactive?'<div class="sc-inactive">Inactive product · saved on this draft</div>':'')+
+          '<div class="sc-state" id="scState'+item.id+'" style="color:var(--text-3)">Not counted</div></div>'+
+        '<input type="number" inputmode="decimal" min="0" step="any" id="scQty'+item.id+'" data-item-id="'+item.id+'" data-serves="'+escHtml(item.servesPerUnit||'')+'" placeholder="—" aria-describedby="scHint'+item.id+' scState'+item.id+'">'+
+        '<span class="sc-unit">'+escHtml(unit)+'</span>'+
+      '</div>'+
+      '<div class="sc-row-foot">'+foot+'</div>'+
+    '</div>';
+  }
   function startNewStockCount(){
     _stockDraftId=null;
     el('stockCountForm').style.display='';
+    var t=el('stockCountFormTitle');if(t)t.textContent='New Stock Count';
     var today=new Date().toISOString().slice(0,10);
     el('stockCountEnd').value=today;
     var weekAgo=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
     el('stockCountStart').value=weekAgo;
     el('stockCountNotes').value='';
     el('stockCountFormErr').style.display='none';
-    // Build items grouped by category
+    var srch=el('stockCountSearch');if(srch)srch.value='';
+    _stockCountFilter='all';
     var html='';
     _stockCategories.forEach(function(cat){
       var catItems=_stockItems.filter(function(i){return i.categoryId===cat.id&&i.active!==false;});
       if(!catItems.length)return;
-      html+='<div style="margin-bottom:16px"><div style="font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">'+escHtml(cat.name)+'</div>';
-      html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">';
-      catItems.forEach(function(item){
-        html+='<div style="display:flex;align-items:center;gap:8px;background:#F8FAFC;border:1px solid var(--border);border-radius:8px;padding:8px 10px">'+
-          '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(item.name)+'</div></div>'+
-          '<input type="number" min="0" step="0.1" style="width:70px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:13px;text-align:right" data-item-id="'+item.id+'" placeholder="0">'+
-          '<span style="font-size:12px;color:var(--text-2);white-space:nowrap">'+escHtml(item.countUnit||'')+'</span>'+
-        '</div>';
-      });
+      html+='<div class="sc-cat" data-sc-cat="'+cat.id+'"><div class="sc-cat-hd"><span>'+escHtml(cat.name)+'</span><span data-sc-cat-count></span></div><div class="sc-grid">';
+      catItems.forEach(function(item){html+=stockCountRowHtml(item,false);});
       html+='</div></div>';
     });
-    el('stockCountItems').innerHTML=html||'<p style="color:var(--text-2);font-size:13px">No stock items found. Add items first.</p>';
+    html+='<div class="sc-cat" data-sc-cat="inactive" style="display:none"><div class="sc-cat-hd"><span>Inactive products on this draft</span><span data-sc-cat-count></span></div><div class="sc-grid" id="stockCountInactiveGrid"></div></div>';
+    el('stockCountItems').innerHTML=_stockItems.some(function(i){return i.active!==false;})?html:'<p style="color:var(--text-2);font-size:13px">No stock items found. Add items first.</p>'+html;
+    setStockCountFilter('all');
+    el('stockCountForm').scrollIntoView({behavior:'smooth',block:'start'});
   }
 
-  function cancelStockCount(){el('stockCountForm').style.display='none';}
+  function stockAdoptSavedInput(input){
+    var id=parseInt(input.dataset.itemId,10), grid=el('stockCountInactiveGrid');
+    if(!grid)return;
+    var item=_stockItems.find(function(i){return i.id===id;})||{id:id,name:'Item #'+id,countUnit:''};
+    var tmp=document.createElement('div');tmp.innerHTML=stockCountRowHtml(item,true);
+    var row=tmp.firstChild;grid.appendChild(row);
+    row.querySelector('input').value=input.value;
+    input.remove();
+    grid.parentNode.style.display='';
+  }
+  function stockRowState(inp){
+    var raw=String(inp.value).trim();
+    if(raw===''){return inp.validity&&inp.validity.badInput?'invalid':'blank';}
+    var n=Number(raw);
+    if(isNaN(n)||n<0)return 'invalid';
+    return n===0?'zero':'counted';
+  }
+  function updateStockCountProgress(){
+    var inputs=document.querySelectorAll('#stockCountItems [data-item-id]');
+    var total=0,counted=0,zero=0,blank=0,invalid=0;
+    inputs.forEach(function(inp){
+      total++;var st=stockRowState(inp);
+      if(st==='counted')counted++;else if(st==='zero')zero++;else if(st==='invalid')invalid++;else blank++;
+      var row=inp.closest&&inp.closest('[data-sc-row]');
+      if(row){
+        row.dataset.state=st;
+        var lab=document.getElementById('scState'+inp.dataset.itemId);
+        if(lab){
+          var serves=Number(inp.dataset.serves), n=Number(inp.value);
+          var txt={blank:'Not counted',zero:'Counted as zero',invalid:'Invalid quantity',counted:'Counted'}[st];
+          if(st==='counted'&&serves>0)txt+=' · about '+Math.round(n*serves)+' pints';
+          lab.textContent=txt;
+          lab.style.color={blank:'var(--text-3)',zero:'var(--amber)',invalid:'var(--red)',counted:'var(--green)'}[st];
+        }
+      }
+    });
+    var done=counted+zero, pct=total?done/total:0;
+    var lbl=el('stockCountProgressLabel');if(lbl)lbl.textContent=done+' of '+total+' counted';
+    var stats=el('stockCountProgressStats');if(stats)stats.textContent=counted+' with stock · '+zero+' zero · '+blank+' not counted'+(invalid?' · '+invalid+' invalid':'');
+    var fill=el('stockCountProgressFill');if(fill)fill.style.transform='scaleX('+pct+')';
+    var bar=el('stockCountProgressBar');if(bar)bar.setAttribute('aria-valuenow',String(Math.round(pct*100)));
+    return {total:total,counted:counted,zero:zero,blank:blank,invalid:invalid};
+  }
+  function applyStockCountFilter(){
+    var q=((el('stockCountSearch')||{}).value||'').trim().toLowerCase(), shown=0, total=0;
+    document.querySelectorAll('#stockCountItems [data-sc-row]').forEach(function(row){
+      total++;
+      var st=row.dataset.state;
+      var okF=_stockCountFilter==='all'||(_stockCountFilter==='blank'&&(st==='blank'||st==='invalid'))||(_stockCountFilter==='counted'&&st==='counted')||(_stockCountFilter==='zero'&&st==='zero');
+      var ok=okF&&(!q||row.dataset.search.indexOf(q)>=0);
+      row.style.display=ok?'':'none';if(ok)shown++;
+    });
+    document.querySelectorAll('#stockCountItems [data-sc-cat]').forEach(function(cat){
+      var rows=cat.querySelectorAll('[data-sc-row]'), vis=0;
+      rows.forEach(function(r){if(r.style.display!=='none')vis++;});
+      cat.style.display=vis?'':'none';
+      var c=cat.querySelector('[data-sc-cat-count]');if(c)c.textContent=vis+' shown';
+    });
+    var note=el('stockCountFilterNote');
+    if(note)note.textContent=shown<total?('Showing '+shown+' of '+total+' products. Hidden quantities are kept and will still be saved.'):'';
+  }
+  function setStockCountFilter(f){
+    _stockCountFilter=f;
+    document.querySelectorAll('[data-sc-filter]').forEach(function(b){var on=b.dataset.scFilter===f;b.classList.toggle('active',on);b.setAttribute('aria-pressed',String(on));});
+    updateStockCountProgress();applyStockCountFilter();
+  }
+  function onStockCountInput(){updateStockCountProgress();var e=el('stockCountFormErr');if(e)e.style.display='none';}
+  function setStockKegFraction(id,frac){
+    var inp=document.getElementById('scQty'+id);if(!inp)return;
+    var cur=Number(inp.value);var whole=isNaN(cur)||cur<0?0:Math.floor(cur);
+    inp.value=String(whole+frac);updateStockCountProgress();inp.focus();
+  }
+  function setStockCountZero(id){var inp=document.getElementById('scQty'+id);if(!inp)return;inp.value='0';updateStockCountProgress();inp.focus();}
+
+  function cancelStockCount(){
+    if(updateStockCountProgress().total&&document.querySelector('#stockCountItems [data-item-id]')&&Array.prototype.some.call(document.querySelectorAll('#stockCountItems [data-item-id]'),function(i){return i.value!=='';})&&!confirm('Discard unsaved changes to this count?'))return;
+    el('stockCountForm').style.display='none';
+  }
   function editStockCount(id){
     var count=_stockSavedCounts.find(function(c){return c.id===id;});
     if(!count)return;
+    if(count.status==='submitted')return;
     startNewStockCount();
     _stockDraftId=id;
+    var t=el('stockCountFormTitle');if(t)t.textContent='Continue Draft Count';
     el('stockCountStart').value=count.periodStart.slice(0,10);
     el('stockCountEnd').value=count.periodEnd.slice(0,10);
     el('stockCountNotes').value=count.notes||'';
@@ -8992,8 +9231,10 @@
         var saved=document.createElement('input');
         saved.type='hidden';saved.dataset.itemId=line.stockItemId;saved.value=line.quantityUnits;
         el('stockCountItems').appendChild(saved);
+        if(typeof stockAdoptSavedInput==='function')stockAdoptSavedInput(saved);
       }
     });
+    if(typeof setStockCountFilter==='function')setStockCountFilter('all');
   }
 
   async function submitStockCount(status){
@@ -9001,20 +9242,29 @@
     var start=el('stockCountStart').value, end=el('stockCountEnd').value;
     var errEl=el('stockCountFormErr');
     errEl.style.display='none';
-    if(!start||!end){errEl.textContent='Please set both period dates.';errEl.style.display='';return;}
-    var lines=[];
+    function fail(m){errEl.textContent=m;errEl.style.display='';errEl.scrollIntoView({behavior:'smooth',block:'center'});}
+    if(!start||!end){fail('Please set both period dates.');return;}
+    if(start>end){fail('Period end must be on or after the period start.');return;}
+    var lines=[], bad=[];
     document.querySelectorAll('#stockCountItems [data-item-id]').forEach(function(inp){
+      var st=stockRowState(inp);
+      if(st==='invalid'){var r=inp.closest('[data-sc-row]');var lab=r&&r.querySelector('label');bad.push(lab?lab.textContent:'Item #'+inp.dataset.itemId);return;}
       var val=parseFloat(inp.value);
       if(!isNaN(val)&&val>=0){lines.push({stockItemId:parseInt(inp.dataset.itemId),quantityUnits:String(val)});}
     });
-    if(!lines.length){errEl.textContent='Enter at least one quantity.';errEl.style.display='';return;}
-    if(status==='submitted'&&!confirm('Submit this count? It cannot be edited afterwards. Blank products remain uncounted, not zero.'))return;
+    if(bad.length){setStockCountFilter('blank');fail('Fix invalid quantities (must be 0 or more): '+bad.slice(0,5).join(', ')+(bad.length>5?' and '+(bad.length-5)+' more':''));return;}
+    if(!lines.length){fail('Enter at least one quantity.');return;}
+    var p=updateStockCountProgress();
+    if(status==='submitted'&&!confirm('Submit count for '+start+' to '+end+'?\n\n'+
+      'Counted with stock: '+p.counted+'\nCounted as zero: '+p.zero+'\nNot counted (left blank): '+p.blank+'\n\n'+
+      'Blank products stay uncounted, not zero. Submitted counts are locked and cannot be edited.'))return;
     _stockCountSaving=true;
     try{
       await api('/api/stock/counts'+(_stockDraftId?'/'+_stockDraftId:''),{method:_stockDraftId?'PATCH':'POST',body:JSON.stringify({periodStart:start,periodEnd:end,notes:el('stockCountNotes').value,status,lines})});
       el('stockCountForm').style.display='none';
+      if(typeof toast==='function')toast(status==='submitted'?'Count submitted ('+lines.length+' items)':'Draft saved ('+lines.length+' items)');
       renderStockCounts();
-    }catch(e){errEl.textContent='Failed: '+(e.message||'unknown error');errEl.style.display='';}
+    }catch(e){fail('Failed: '+(e.message||'unknown error'));}
     finally{_stockCountSaving=false;}
   }
 
@@ -13526,6 +13776,13 @@
   window.editStockCount=editStockCount;
   window.cancelStockCount=cancelStockCount;
   window.submitStockCount=submitStockCount;
+  window.applyStockCountFilter=applyStockCountFilter;
+  window.setStockCountFilter=setStockCountFilter;
+  window.onStockCountInput=onStockCountInput;
+  window.setStockKegFraction=setStockKegFraction;
+  window.setStockCountZero=setStockCountZero;
+  window.toggleStockCountLines=toggleStockCountLines;
+  window.renderStockCounts=renderStockCounts;
   window.startNewDelivery=startNewDelivery;
   window.cancelDelivery=cancelDelivery;
   window.deleteDelivery=deleteDelivery;

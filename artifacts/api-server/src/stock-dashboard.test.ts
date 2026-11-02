@@ -7,7 +7,7 @@ const html = readFileSync(new URL("./templates/staff-dashboard.html", import.met
 test("dashboard scripts parse and draft handler is publicly bound", () => {
   for (const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) new vm.Script(match[1]);
   assert.match(html, /window\.editStockCount\s*=\s*editStockCount/);
-  assert.match(html, /function escHtml\(s\)\{return esc\(s\);\}/);
+  assert.match(html, /function escHtml\(s\)\{return esc\(s\)\.replace/);
 });
 test("reopening a stock draft restores dates, notes and quantities", () => {
   const nodes: Record<string, any> = {
@@ -34,4 +34,12 @@ test("reopening a stock draft restores dates, notes and quantities", () => {
   assert.equal(nodes.stockCountNotes.value, "Draft");
   assert.equal(visible.value, "10");
   assert.equal(hidden[0].value, "3"); // inactive products must not disappear on edit
+});
+test("stock count inline handlers are bound and hidden filter rows still save", () => {
+  for (const fn of ["applyStockCountFilter", "setStockCountFilter", "onStockCountInput", "setStockKegFraction", "setStockCountZero", "toggleStockCountLines", "renderStockCounts"]) {
+    assert.match(html, new RegExp(`window\\.${fn}\\s*=\\s*${fn}`));
+  }
+  const submit = html.slice(html.indexOf("  async function submitStockCount"), html.indexOf("  async function renderStockDeliveries"));
+  assert.match(submit, /querySelectorAll\('#stockCountItems \[data-item-id\]'\)/); // all inputs, not only visible rows
+  assert.match(submit, /Not counted \(left blank\)/);
 });

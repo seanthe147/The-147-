@@ -19,6 +19,12 @@ Required adding `numeric` to the drizzle-orm/pg-core import in schema.ts — it 
 Deliveries have `deliveredAt` (actual arrival, editable) and `createdAt` (system time). Report uses `deliveredAt` for the period maths — critical for mid-shift top-up accuracy.
 
 ## Reconciliation boundaries and missing counts
+Estimated live levels must not overwrite physical counts or write quantities back to Square.
+
+**Why:** the owner requested five-minute sales-based estimates; these cannot account for unrecorded wastage, so they are not authoritative counts.
+
+**How to apply:** label estimates and timestamps explicitly, preserve negative discrepancies, and withhold estimates when sales, conversions or mappings are missing.
+
 Use the actual opening and closing stock snapshot times for both delivery totals and Square sales, even when those differ from the requested dates. Show the actual period to staff. Blank quantities mean unknown, never zero; incomplete snapshots cannot yield a meaningful consumption variance.
 
 **Why:** comparing nearby count snapshots against a different sales/delivery interval produces false wastage. Staff may submit partial counts, so absence cannot safely mean zero.

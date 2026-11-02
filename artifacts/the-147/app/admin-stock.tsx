@@ -180,7 +180,7 @@ function fmtDateTime(iso: string) {
 
 // ── Main Screen ───────────────────────────────────────────────────────────────
 
-type Tab = "deliveries" | "count" | "report" | "catalogue";
+type Tab = "deliveries" | "count" | "report" | "catalogue" | "live";
 
 export default function AdminStockScreen() {
   const colors = useColors();
@@ -230,12 +230,12 @@ export default function AdminStockScreen() {
       {/* Tab bar */}
       <View style={styles.tabBar}>
         {(canManage
-          ? (["deliveries", "count", "report", "catalogue"] as Tab[])
+          ? (["deliveries", "count", "report", "catalogue", "live"] as Tab[])
           : (["count"] as Tab[])
         ).map((t) => (
           <Pressable key={t} onPress={() => setTab(t)} style={[styles.tabItem, tab === t && styles.tabItemActive]}>
             <Text style={[styles.tabLabel, tab === t && styles.tabLabelActive]}>
-              {t === "deliveries" ? "Deliveries" : t === "count" ? "Stock Count" : t === "report" ? "Report" : "Catalogue"}
+              {t === "deliveries" ? "Deliveries" : t === "count" ? "Stock Count" : t === "report" ? "Report" : t === "live" ? "Live" : "Catalogue"}
             </Text>
           </Pressable>
         ))}
@@ -246,8 +246,26 @@ export default function AdminStockScreen() {
       {tab === "count" && <CountTab items={items} categories={categories} />}
       {tab === "report" && canManage && <ReportTab categories={categories} />}
       {tab === "catalogue" && canManage && <CatalogueTab items={items} categories={categories} />}
+      {tab === "live" && canManage && <LiveStockTab />}
     </View>
   );
+}
+
+function LiveStockTab() {
+  const query = useQuery<{ updatedAt: string; items: { id: number; name: string; remaining: number | null; unit: string; issue: string | null }[] }>({
+    queryKey: ["/api/stock/live"], refetchInterval: 300_000, staleTime: 0, refetchOnMount: "always",
+  });
+  const colors = useColors();
+  return <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+    <Text style={{ color: colors.text }}>Estimated stock: latest count + deliveries − completed Square sales. Updates every five minutes while open. Excludes unrecorded wastage.</Text>
+    {query.isLoading && <ActivityIndicator />}
+    {query.isError && <Text style={{ color: "#DC2626" }}>Unable to refresh stock. {query.error.message}</Text>}
+    {query.data && <Text style={{ color: colors.text }}>Last checked: {new Date(query.data.updatedAt).toLocaleString("en-GB")}</Text>}
+    {query.data?.items.map(item => <View key={item.id} style={{ paddingVertical: 8 }}>
+      <Text style={{ color: colors.text, fontWeight: "700" }}>{item.name}</Text>
+      <Text style={{ color: colors.text }}>{item.issue ?? `${item.remaining} ${item.unit}${(item.remaining ?? 0) < 0 ? " — check count or product links" : ""}`}</Text>
+    </View>)}
+  </ScrollView>;
 }
 
 // ── Deliveries Tab ────────────────────────────────────────────────────────────
@@ -405,9 +423,36 @@ function DeliveriesTab({ items, categories }: { items: StockItem[]; categories: 
 
 // ── Stock Count Tab ───────────────────────────────────────────────────────────
 
+type CountFilter = "all" | "blank" | "counted" | "zero";
+type LineState = "blank" | "counted" | "zero" | "invalid";
+
+function countLineState(raw: string | undefined): LineState {
+  const v = (raw ?? "").trim();
+  if (v === "") return "blank";
+  if (!/^\d*\.?\d+$|^\d+\.$/.test(v)) return "invalid";
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) return "invalid";
+  return n === 0 ? "zero" : "counted";
+}
+
+function fmtQty(q: string | number): string {
+  const n = Number(q);
+  return Number.isFinite(n) ? String(Math.round(n * 100) / 100) : String(q);
+}
+
+function unitWord(unit: string, qty: number): string {
+  const map: Record<string, [string, string]> = { keg: ["keg", "kegs"], bottle: ["bottle", "bottles"], can: ["can", "cans"], bib: ["BIB", "BIBs"], case: ["case", "cases"] };
+  const m = map[unit];
+  return m ? (qty === 1 ? m[0] : m[1]) : unit;
+}
+
+const STATE_LABEL: Record<LineState, string> = { blank: "Not counted", counted: "Counted", zero: "Counted as zero", invalid: "Invalid quantity" };
+const STATE_COLOR: Record<LineState, string> = { blank: "#94A3B8", counted: "#16A34A", zero: "#D97706", invalid: "#DC2626" };
+
 function CountTab({ items, categories }: { items: StockItem[]; categories: StockCategory[] }) {
   const colors = useColors();
   const styles = React.useMemo(() => createThemedStyles(colors), [colors]);
+  const cs = React.useMemo(() => createCountStyles(colors), [colors]);
   const [showForm, setShowForm] = useState(false);
   const [periodStart, setPeriodStart] = useState(() => {
     const d = new Date();
@@ -418,11 +463,22 @@ function CountTab({ items, categories }: { items: StockItem[]; categories: Stock
   const [notes, setNotes] = useState("");
   const [counts, setCounts] = useState<Record<number, string>>({});
   const [draftId, setDraftId] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<CountFilter>("all");
+  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
 
   const countsQuery = useQuery<StockCount[]>({
     queryKey: ["/api/stock/counts"],
     refetchOnMount: "always",
   });
+
+  const buildLines = useCallback(
+    () =>
+      Object.entries(counts)
+        .filter(([, qty]) => (qty ?? "").trim() !== "")
+        .map(([id, qty]) => ({ stockItemId: Number(id), quantityUnits: String(Number(qty.trim())) })),
+    [counts],
+  );
 
   const saveMutation = useMutation({
     mutationFn: async (payload: object) => {
@@ -440,15 +496,12 @@ function CountTab({ items, categories }: { items: StockItem[]; categories: Stock
 
   const submitMutation = useMutation({
     mutationFn: async () => {
-      const countLines = Object.entries(counts)
-        .filter(([, qty]) => qty !== "")
-        .map(([id, qty]) => ({ stockItemId: Number(id), quantityUnits: qty || "0" }));
       const res = await apiRequest(draftId ? "PATCH" : "POST", draftId ? `/api/stock/counts/${draftId}` : "/api/stock/counts", {
         periodStart: new Date(periodStart).toISOString(),
         periodEnd: new Date(periodEnd).toISOString(),
         notes,
         status: "submitted",
-        lines: countLines,
+        lines: buildLines(),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "Failed to submit");
       return res.json();
@@ -462,30 +515,108 @@ function CountTab({ items, categories }: { items: StockItem[]; categories: Stock
     onError: (e: Error) => Alert.alert("Error", e.message),
   });
 
+  // Items on the form: all active items plus any inactive item already saved on this draft.
+  const formItems = React.useMemo(
+    () => items.filter((i) => i.active || counts[i.id] !== undefined),
+    [items, counts],
+  );
+
+  const summary = React.useMemo(() => {
+    const s = { total: formItems.length, counted: 0, zero: 0, blank: 0, invalid: 0 };
+    formItems.forEach((i) => { s[countLineState(counts[i.id])] += 1; });
+    return s;
+  }, [formItems, counts]);
+
+  const validate = (): boolean => {
+    if (!periodStart || !periodEnd) { Alert.alert("Set dates", "Please set period start and end dates."); return false; }
+    if (periodStart > periodEnd) { Alert.alert("Invalid dates", "Period end must be on or after the period start."); return false; }
+    const bad = formItems.filter((i) => countLineState(counts[i.id]) === "invalid");
+    if (bad.length) {
+      setFilter("blank");
+      Alert.alert("Check quantities", `Quantities must be 0 or more: ${bad.slice(0, 5).map((i) => i.name).join(", ")}${bad.length > 5 ? ` and ${bad.length - 5} more` : ""}`);
+      return false;
+    }
+    if (!buildLines().length) { Alert.alert("Enter quantities", "Enter at least one quantity."); return false; }
+    return true;
+  };
+
   const handleSaveDraft = () => {
-    if (!periodStart || !periodEnd) return Alert.alert("Set dates", "Please set period start and end dates.");
-    const countLines = Object.entries(counts)
-      .filter(([, qty]) => qty !== "")
-      .map(([id, qty]) => ({ stockItemId: Number(id), quantityUnits: qty || "0" }));
-    saveMutation.mutate({ periodStart: new Date(periodStart).toISOString(), periodEnd: new Date(periodEnd).toISOString(), notes, lines: countLines });
+    if (!validate()) return;
+    saveMutation.mutate({ periodStart: new Date(periodStart).toISOString(), periodEnd: new Date(periodEnd).toISOString(), notes, lines: buildLines() });
   };
 
   const handleSubmit = () => {
-    if (!periodStart || !periodEnd) return Alert.alert("Set dates", "Please set period start and end dates.");
-    Alert.alert("Submit count?", "Once submitted this count will be used for variance reports and cannot be edited.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Submit", onPress: () => submitMutation.mutate() },
-    ]);
+    if (!validate()) return;
+    Alert.alert(
+      "Submit count?",
+      `${fmtDate(periodStart)} – ${fmtDate(periodEnd)}\n\nCounted with stock: ${summary.counted}\nCounted as zero: ${summary.zero}\nNot counted (blank): ${summary.blank}\n\nBlank items stay uncounted, not zero. Submitted counts are locked and cannot be edited.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Submit", onPress: () => submitMutation.mutate() },
+      ],
+    );
   };
 
-  const activeItems = items.filter((i) => i.active);
-  const groupedItems = categories.map((c) => ({ cat: c, items: activeItems.filter((i) => i.categoryId === c.id) })).filter((g) => g.items.length > 0);
+  const startNew = () => {
+    setDraftId(null);
+    setCounts({});
+    setNotes("");
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    setPeriodStart(localDateStr(d));
+    setPeriodEnd(localDateStr(new Date()));
+    setSearch("");
+    setFilter("all");
+    setShowForm(true);
+  };
+
+  const editDraft = (c: StockCount) => {
+    if (c.status === "submitted") return;
+    const next: Record<number, string> = {};
+    c.lines.forEach((l) => { next[l.stockItemId] = String(l.quantityUnits); });
+    setCounts(next);
+    setDraftId(c.id);
+    setPeriodStart(c.periodStart.slice(0, 10));
+    setPeriodEnd(c.periodEnd.slice(0, 10));
+    setNotes(c.notes ?? "");
+    setSearch("");
+    setFilter("all");
+    setShowForm(true);
+  };
+
+  const setQty = (id: number, v: string) => setCounts((prev) => ({ ...prev, [id]: v.replace(",", ".") }));
+  const setFraction = (id: number, frac: number) =>
+    setCounts((prev) => {
+      const cur = Number(prev[id]);
+      const whole = Number.isFinite(cur) && cur > 0 ? Math.floor(cur) : 0;
+      return { ...prev, [id]: String(whole + frac) };
+    });
 
   if (showForm) {
+    const q = search.trim().toLowerCase();
+    const matches = (i: StockItem) => {
+      const st = countLineState(counts[i.id]);
+      const okF = filter === "all" || (filter === "blank" && (st === "blank" || st === "invalid")) || filter === st;
+      const okQ = !q || `${i.name} ${i.supplier ?? ""} ${i.containerSize ?? ""}`.toLowerCase().includes(q);
+      return okF && okQ;
+    };
+    const inactiveSaved = formItems.filter((i) => !i.active);
+    const groups = [
+      ...categories.map((c) => ({ key: String(c.id), title: c.name, items: formItems.filter((i) => i.active && i.categoryId === c.id) })),
+      { key: "inactive", title: "Inactive products on this draft", items: inactiveSaved },
+    ].filter((g) => g.items.length > 0);
+    const shown = formItems.filter(matches).length;
+    const done = summary.counted + summary.zero;
+    const pct = summary.total ? done / summary.total : 0;
+    const FILTERS: { key: CountFilter; label: string }[] = [
+      { key: "all", label: "All" }, { key: "blank", label: "Not counted" }, { key: "counted", label: "Counted" }, { key: "zero", label: "Zero" },
+    ];
+
     return (
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <ScrollView style={styles.formScroll} contentContainerStyle={{ paddingBottom: 60 }}>
-          <Text style={styles.formTitle}>{draftId ? "Continue Count" : "New Stock Count"}</Text>
+        <ScrollView style={styles.formScroll} contentContainerStyle={{ paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
+          <Text style={styles.formTitle} accessibilityRole="header">{draftId ? "Continue Draft Count" : "New Stock Count"}</Text>
+          <Text style={styles.fieldHint}>Blank means not counted. Type 0 (or tap Mark 0) when an item is out.</Text>
 
           <Text style={styles.fieldLabel}>Period Start</Text>
           <DatePicker value={periodStart} onChange={setPeriodStart} placeholder="Select start date" />
@@ -494,46 +625,107 @@ function CountTab({ items, categories }: { items: StockItem[]; categories: Stock
           <DatePicker value={periodEnd} onChange={setPeriodEnd} placeholder="Select end date" />
 
           <Text style={styles.fieldLabel}>Notes</Text>
-          <TextInput style={[styles.input, { height: 56 }]} value={notes} onChangeText={setNotes} multiline placeholderTextColor={colors.textSecondary} placeholder="Optional" />
+          <TextInput style={[styles.input, { height: 56 }]} value={notes} onChangeText={setNotes} multiline placeholderTextColor={colors.textSecondary} placeholder="Optional, e.g. end of Sunday shift" accessibilityLabel="Count notes" />
 
-          <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Physical count</Text>
-          <Text style={styles.fieldHint}>Enter what you physically counted for each item</Text>
+          <View style={cs.guide}>
+            <Text style={cs.guideText}><Text style={cs.guideStrong}>Kegs: </Text>count whole kegs, then tap ¼ ½ ¾ for a part-used keg.</Text>
+            <Text style={cs.guideText}><Text style={cs.guideStrong}>Bottles & cans: </Text>count singles. Cases are only for deliveries.</Text>
+          </View>
 
-          {groupedItems.map(({ cat, items: catItems }) => (
-            <View key={cat.id}>
-              <Text style={styles.catHeader}>{cat.name}</Text>
-              {catItems.map((item) => (
-                <View key={item.id} style={styles.lineRow}>
-                  <View style={styles.lineInfo}>
-                    <Text style={styles.lineName}>{item.name}</Text>
-                    {item.servesPerUnit ? (
-                      <Text style={styles.lineUnit}>{item.containerSize} · {item.servesPerUnit} pints/keg</Text>
-                    ) : (
-                      <Text style={styles.lineUnit}>{item.containerSize}{item.caseSize ? ` · case of ${item.caseSize}` : ""}</Text>
-                    )}
-                  </View>
-                  <TextInput
-                    style={styles.qtyInput}
-                    value={counts[item.id] ?? ""}
-                    onChangeText={(v) => setCounts((prev) => ({ ...prev, [item.id]: v }))}
-                    keyboardType="decimal-pad"
-                    placeholder="0"
-                    placeholderTextColor={colors.textSecondary}
-                  />
-                  <Text style={styles.unitTag}>{item.countUnit === "keg" ? "kegs" : item.countUnit + "(s)"}</Text>
-                </View>
-              ))}
+          <View style={cs.progressWrap} accessible accessibilityRole="progressbar" accessibilityLabel={`${done} of ${summary.total} counted`} accessibilityValue={{ min: 0, max: summary.total, now: done }}>
+            <View style={cs.progressTop}>
+              <Text style={cs.progressLabel}>{done} of {summary.total} counted</Text>
+              <Text style={cs.progressStats}>{summary.counted} stock · {summary.zero} zero · {summary.blank} blank{summary.invalid ? ` · ${summary.invalid} invalid` : ""}</Text>
             </View>
-          ))}
+            <View style={cs.progressTrack}><View style={[cs.progressFill, { width: `${Math.round(pct * 100)}%` }]} /></View>
+          </View>
+
+          <View style={cs.searchRow}>
+            <Ionicons name="search" size={16} color={colors.textSecondary} />
+            <TextInput style={cs.searchInput} value={search} onChangeText={setSearch} placeholder="Search product or supplier" placeholderTextColor={colors.textSecondary} accessibilityLabel="Search products" autoCorrect={false} />
+            {search ? <Pressable onPress={() => setSearch("")} hitSlop={10} accessibilityRole="button" accessibilityLabel="Clear search"><Ionicons name="close-circle" size={18} color={colors.textSecondary} /></Pressable> : null}
+          </View>
+          <View style={cs.filterRow} accessibilityRole="tablist">
+            {FILTERS.map((f) => (
+              <Pressable key={f.key} onPress={() => setFilter(f.key)} style={[cs.pill, filter === f.key && cs.pillActive]} accessibilityRole="tab" accessibilityState={{ selected: filter === f.key }}>
+                <Text style={[cs.pillText, filter === f.key && cs.pillTextActive]}>{f.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {shown < summary.total ? <Text style={cs.filterNote}>Showing {shown} of {summary.total}. Hidden quantities are kept and still saved.</Text> : null}
+
+          {groups.map((g) => {
+            const visible = g.items.filter(matches);
+            if (!visible.length) return null;
+            return (
+              <View key={g.key}>
+                <Text style={styles.catHeader}>{g.title}</Text>
+                {visible.map((item) => {
+                  const st = countLineState(counts[item.id]);
+                  const isKeg = item.countUnit === "keg";
+                  const serves = Number(item.servesPerUnit);
+                  const meta = [item.containerSize, item.supplier ? `${item.supplier}${item.supplierCode ? ` #${item.supplierCode}` : ""}` : null].filter(Boolean).join(" · ");
+                  const hint = isKeg && serves > 0
+                    ? `${fmtQty(serves)} pints/keg${st === "counted" ? ` · about ${Math.round(Number(counts[item.id]) * serves)} pints` : ""}`
+                    : item.caseSize ? `Count singles (case of ${item.caseSize} is delivery only)`
+                    : item.countUnit === "bottle" || item.countUnit === "can" ? "Count singles" : "";
+                  return (
+                    <View key={item.id} style={[cs.row, { borderLeftColor: STATE_COLOR[st] }]}>
+                      <View style={cs.rowMain}>
+                        <View style={styles.lineInfo}>
+                          <Text style={styles.lineName}>{item.name}</Text>
+                          {meta ? <Text style={styles.lineUnit}>{meta}</Text> : null}
+                          {!item.active ? <Text style={cs.inactive}>Inactive · saved on this draft</Text> : null}
+                          <Text style={[cs.state, { color: STATE_COLOR[st] }]}>{STATE_LABEL[st]}</Text>
+                        </View>
+                        <TextInput
+                          style={[styles.qtyInput, st === "invalid" && { borderColor: STATE_COLOR.invalid }]}
+                          value={counts[item.id] ?? ""}
+                          onChangeText={(v) => setQty(item.id, v)}
+                          keyboardType="decimal-pad"
+                          placeholder="—"
+                          placeholderTextColor={colors.textSecondary}
+                          accessibilityLabel={`${item.name} quantity in ${unitWord(item.countUnit, 2)}`}
+                          accessibilityHint={hint || undefined}
+                        />
+                        <Text style={styles.unitTag}>{unitWord(item.countUnit, 2)}</Text>
+                      </View>
+                      <View style={cs.rowFoot}>
+                        {isKeg && [0.25, 0.5, 0.75].map((f) => (
+                          <Pressable key={f} style={cs.chip} onPress={() => setFraction(item.id, f)} accessibilityRole="button" accessibilityLabel={`Set ${f} keg fraction for ${item.name}`}>
+                            <Text style={cs.chipText}>{f === 0.25 ? "¼" : f === 0.5 ? "½" : "¾"}</Text>
+                          </Pressable>
+                        ))}
+                        <Pressable style={cs.chip} onPress={() => setQty(item.id, "0")} accessibilityRole="button" accessibilityLabel={`Mark ${item.name} as zero`}>
+                          <Text style={cs.chipText}>Mark 0</Text>
+                        </Pressable>
+                        {counts[item.id] ? (
+                          <Pressable style={cs.chip} onPress={() => setCounts((prev) => { const n = { ...prev }; if (item.active) delete n[item.id]; else n[item.id] = ""; return n; })} accessibilityRole="button" accessibilityLabel={`Clear ${item.name}`}>
+                            <Text style={cs.chipText}>Clear</Text>
+                          </Pressable>
+                        ) : null}
+                        {hint ? <Text style={cs.hint}>{hint}</Text> : null}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            );
+          })}
+          {shown === 0 ? <Text style={[styles.emptyHint, { textAlign: "center", marginTop: 20 }]}>No products match this search or filter.</Text> : null}
 
           <View style={styles.formActions}>
-            <Pressable style={styles.cancelBtn} onPress={() => { setShowForm(false); setDraftId(null); setCounts({}); }}>
+            <Pressable style={styles.cancelBtn} accessibilityRole="button" onPress={() => {
+              const close = () => { setShowForm(false); setDraftId(null); setCounts({}); };
+              if (Object.values(counts).some((v) => v !== "")) Alert.alert("Discard changes?", "Unsaved quantities will be lost.", [{ text: "Keep counting", style: "cancel" }, { text: "Discard", style: "destructive", onPress: close }]);
+              else close();
+            }}>
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </Pressable>
-            <Pressable style={[styles.saveBtn, { backgroundColor: "#374151" }]} onPress={handleSaveDraft} disabled={saveMutation.isPending}>
-              <Text style={[styles.saveBtnText, { color: "#fff" }]}>Save Draft</Text>
+            <Pressable style={[styles.saveBtn, { backgroundColor: "#374151" }]} onPress={handleSaveDraft} disabled={saveMutation.isPending} accessibilityRole="button">
+              {saveMutation.isPending ? <ActivityIndicator color="#fff" /> : <Text style={[styles.saveBtnText, { color: "#fff" }]}>Save Draft</Text>}
             </Pressable>
-            <Pressable style={styles.saveBtn} onPress={handleSubmit} disabled={submitMutation.isPending}>
+            <Pressable style={styles.saveBtn} onPress={handleSubmit} disabled={submitMutation.isPending} accessibilityRole="button" accessibilityLabel="Review and submit count">
               {submitMutation.isPending ? <ActivityIndicator color="#000" /> : <Text style={styles.saveBtnText}>Submit</Text>}
             </Pressable>
           </View>
@@ -546,7 +738,7 @@ function CountTab({ items, categories }: { items: StockItem[]; categories: Stock
     <View style={{ flex: 1 }}>
       <View style={styles.listHeader}>
         <Text style={styles.listTitle}>Count Sessions</Text>
-        <Pressable style={styles.addBtn} onPress={() => setShowForm(true)}>
+        <Pressable style={styles.addBtn} onPress={startNew} accessibilityRole="button">
           <Ionicons name="add" size={18} color="#000" />
           <Text style={styles.addBtnText}>New Count</Text>
         </Pressable>
@@ -554,32 +746,93 @@ function CountTab({ items, categories }: { items: StockItem[]; categories: Stock
 
       {countsQuery.isLoading ? (
         <ActivityIndicator color={Colors.brand.gold} style={{ marginTop: 40 }} />
+      ) : countsQuery.isError ? (
+        <View style={styles.emptyState}>
+          <Ionicons name="alert-circle-outline" size={40} color="#DC2626" />
+          <Text style={styles.emptyText}>Could not load counts</Text>
+          <Pressable style={[styles.addBtn, { marginTop: 12 }]} onPress={() => countsQuery.refetch()} accessibilityRole="button"><Text style={styles.addBtnText}>Retry</Text></Pressable>
+        </View>
       ) : !countsQuery.data?.length ? (
         <View style={styles.emptyState}>
           <Ionicons name="list-outline" size={40} color="#444" />
           <Text style={styles.emptyText}>No stock counts yet</Text>
-          <Text style={styles.emptyHint}>Tap "New Count" to start your first monthly count</Text>
+          <Text style={styles.emptyHint}>Tap "New Count" to start your first count</Text>
         </View>
       ) : (
         <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-          {countsQuery.data.map((c) => (
-            <View key={c.id} style={styles.deliveryCard}>
-              <View style={styles.deliveryCardHeader}>
-                <View>
-                  <Text style={styles.deliveryDate}>{fmtDate(c.periodStart)} – {fmtDate(c.periodEnd)}</Text>
-                  <Text style={styles.deliverySupplier}>by {c.countedBy} · {c.lines.length} items counted</Text>
+          {countsQuery.data.map((c) => {
+            const submitted = c.status === "submitted";
+            const zeros = c.lines.filter((l) => Number(l.quantityUnits) === 0).length;
+            const open = !!expanded[c.id];
+            return (
+              <View key={c.id} style={[styles.deliveryCard, cs.histCard, { borderLeftColor: submitted ? "#16A34A" : "#D97706" }]}>
+                <View style={styles.deliveryCardHeader}>
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text style={styles.deliveryDate}>{fmtDate(c.periodStart)} – {fmtDate(c.periodEnd)}</Text>
+                    <Text style={styles.deliverySupplier}>Counted by {c.countedBy} · {c.lines.length} item{c.lines.length === 1 ? "" : "s"}{zeros ? ` (${zeros} at zero)` : ""}</Text>
+                  </View>
+                  <View style={[styles.deliveryCountBadge, submitted ? { backgroundColor: "#064E3B" } : { backgroundColor: "#78350F" }]}>
+                    <Text style={styles.deliveryCountText}>{submitted ? "Submitted · locked" : "Draft"}</Text>
+                  </View>
                 </View>
-                <View style={[styles.deliveryCountBadge, c.status === "submitted" ? { backgroundColor: "#064E3B" } : { backgroundColor: "#78350F" }]}>
-                  <Text style={styles.deliveryCountText}>{c.status === "submitted" ? "Submitted" : "Draft"}</Text>
+                {c.notes ? <Text style={styles.deliveryNotes}>{c.notes}</Text> : null}
+                <View style={cs.histActions}>
+                  {c.lines.length ? (
+                    <Pressable style={cs.chip} onPress={() => setExpanded((p) => ({ ...p, [c.id]: !p[c.id] }))} accessibilityRole="button" accessibilityState={{ expanded: open }}>
+                      <Text style={cs.chipText}>{open ? "Hide quantities" : "View quantities"}</Text>
+                    </Pressable>
+                  ) : null}
+                  {!submitted ? (
+                    <Pressable style={[cs.chip, cs.pillActive]} onPress={() => editDraft(c)} accessibilityRole="button" accessibilityLabel="Continue draft count">
+                      <Text style={[cs.chipText, cs.pillTextActive]}>Continue draft</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
+                {open && c.lines.map((l, idx) => (
+                  <View key={idx} style={styles.deliveryLine}>
+                    <Text style={styles.deliveryLineName}>{l.itemName}</Text>
+                    <Text style={styles.deliveryLineQty}>{fmtQty(l.quantityUnits)} {unitWord(l.countUnit, Number(l.quantityUnits))}</Text>
+                  </View>
+                ))}
               </View>
-              {c.notes ? <Text style={styles.deliveryNotes}>{c.notes}</Text> : null}
-            </View>
-          ))}
+            );
+          })}
         </ScrollView>
       )}
     </View>
   );
+}
+
+function createCountStyles(colors: ReturnType<typeof useColors>) {
+  return StyleSheet.create({
+    guide: { marginTop: 14, padding: 10, borderLeftWidth: 3, borderLeftColor: colors.tint, backgroundColor: colors.surfaceElevated, borderRadius: 8, gap: 4 },
+    guideText: { color: colors.textSecondary, fontSize: 12, lineHeight: 17 },
+    guideStrong: { color: colors.text, fontWeight: "700" },
+    progressWrap: { marginTop: 14 },
+    progressTop: { flexDirection: "row", justifyContent: "space-between", flexWrap: "wrap", gap: 6, marginBottom: 6 },
+    progressLabel: { color: colors.text, fontWeight: "800", fontSize: 13 },
+    progressStats: { color: colors.textSecondary, fontSize: 12, fontWeight: "600" },
+    progressTrack: { height: 8, borderRadius: 4, backgroundColor: colors.surfaceElevated, overflow: "hidden", borderWidth: 1, borderColor: colors.border },
+    progressFill: { height: "100%", backgroundColor: "#16A34A" },
+    searchRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 14, paddingHorizontal: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.input },
+    searchInput: { flex: 1, paddingVertical: 10, fontSize: 15, color: colors.text },
+    filterRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 10 },
+    pill: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+    pillActive: { backgroundColor: colors.tint, borderColor: colors.tint },
+    pillText: { fontSize: 12, fontWeight: "700", color: colors.textSecondary },
+    pillTextActive: { color: "#fff" },
+    filterNote: { marginTop: 8, fontSize: 12, fontWeight: "600", color: "#D97706" },
+    row: { borderLeftWidth: 4, borderBottomWidth: 1, borderBottomColor: colors.border, paddingLeft: 10, paddingVertical: 8, marginBottom: 4 },
+    rowMain: { flexDirection: "row", alignItems: "center", gap: 8 },
+    rowFoot: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6, marginTop: 6 },
+    chip: { paddingHorizontal: 10, paddingVertical: 6, minHeight: 32, justifyContent: "center", borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+    chipText: { fontSize: 12, fontWeight: "700", color: colors.text },
+    hint: { fontSize: 11, color: colors.textSecondary, flexShrink: 1 },
+    state: { fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.5, marginTop: 2 },
+    inactive: { fontSize: 10, fontWeight: "800", color: "#7C3AED", textTransform: "uppercase", marginTop: 2 },
+    histCard: { borderLeftWidth: 4 },
+    histActions: { flexDirection: "row", gap: 8, marginTop: 10, flexWrap: "wrap" },
+  });
 }
 
 // ── Report Tab ────────────────────────────────────────────────────────────────
