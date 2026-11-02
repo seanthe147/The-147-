@@ -208,7 +208,8 @@ export async function reconcileScheduledMembership(sqSub: any, paymentConfirmed 
 
 export async function syncPaidMembershipGroups(subscriptionId: number) {
   const [local] = await db.select().from(subscriptions).where(eq(subscriptions.id, subscriptionId));
-  if (!local?.squareCustomerId) return;
+  if (!local) throw new Error("Membership not found");
+  if (!local.squareCustomerId) throw new Error("Membership has no linked Square customer");
   // Payment confirmation retires VIP atomically with activation. Retain this
   // marker until Square confirms group removal, including across retries.
   const pendingVip = local.status === "active"

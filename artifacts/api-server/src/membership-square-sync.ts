@@ -516,6 +516,48 @@ export async function reconcileMembershipExpiry() {
 }
 
 export function registerSquareMembershipSync(app: Express, staffAuth: RequestHandler, managerAuth: RequestHandler) {
+  app.get("/api/staff/membership/group-sync", staffAuth, async (_req, res) => {
+    try {
+      const members = (await storage.getMembershipSubscriptions()).filter(s => s.squareGroupSyncPending);
+      const paid = members.length ? await db.select().from(purchases).where(and(
+        inArray(purchases.subscriptionId, members.map(s => s.id)), eq(purchases.status, "applied"),
+      )) : [];
+      res.json({ pending: members.map(s => ({
+        id: s.id, customerName: s.customer?.name ?? "Unknown customer",
+        planName: s.plan?.name ?? "Membership", status: s.status,
+        paidThrough: s.currentPeriodEnd,
+        paymentConfirmed: paid.some(p => p.subscriptionId === s.id && p.amountPence > 0),
+        linked: !!s.squareCustomerId,
+      })) });
+    } catch {
+      res.status(503).json({ message: "Pending Square benefits could not be loaded." });
+    }
+  });
+  app.post("/api/staff/membership/group-sync/:id/retry", staffAuth, managerAuth, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      res.status(400).json({ message: "Invalid membership ID." }); return;
+    }
+    try {
+      const local = await storage.getMembershipSubscription(id);
+      if (!local) { res.status(404).json({ message: "Membership not found." }); return; }
+      if (!local.squareGroupSyncPending) {
+        res.json({ message: "Benefits are already synced. No payment or paid-through date was changed." }); return;
+      }
+      if (!local.squareCustomerId) {
+        res.status(409).json({ message: "Link this membership to its Square customer before retrying. No payment or paid-through date was changed." }); return;
+      }
+      await syncPendingGroup(id);
+      await db.insert(audit).values({
+        subscriptionId: id, customerId: local.customerId, action: "square_group_sync_retried",
+        staffUsername: (req as any).staffUsername ?? (req as any).staffUser?.username ?? "staff",
+        note: "Square benefits synced; no payment taken or paid-through date changed.",
+      });
+      res.json({ message: "Square benefits synced. No payment or paid-through date was changed." });
+    } catch {
+      res.status(503).json({ message: "Square benefits could not be confirmed. Refresh and retry; no payment or paid-through date was changed." });
+    }
+  });
   app.get("/api/staff/membership/pos-catalog", staffAuth, managerAuth, async (_req, res) => {
     try { res.json({ items: await square.listMembershipPosCatalog() }); }
     catch { res.status(502).json({ message: "Square till items could not be loaded. Existing mappings were not changed." }); }

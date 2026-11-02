@@ -10490,6 +10490,8 @@
       ]);
       membershipsData={plans,subs};
       renderMemberships(stats||{},plans,subs);
+      box.insertAdjacentHTML('afterbegin','<div id="membershipGroupSyncPanel" style="margin-bottom:20px" aria-live="polite"></div>');
+      loadMembershipGroupSync();
       if(state.role==='owner')loadWixMigration();
       if(isManager){loadPosPurchases();loadLeftoverOneTime();loadOnboardingGap();loadLoyaltyBackfill();loadMembershipAuditLogPanel();loadPwResetHistoryPanel();}
     }catch(e){
@@ -10499,6 +10501,36 @@
       el('mdRetry').onclick=loadMemberships;
     }
   }
+
+  async function loadMembershipGroupSync(){
+    const box=el('membershipGroupSyncPanel');if(!box)return;
+    try{
+      const data=await mdFetchJson('/api/staff/membership/group-sync','object');
+      if(!Array.isArray(data.pending))throw new Error('Unexpected response');
+      if(!data.pending.length){box.innerHTML='<div class="md-s">No pending Square benefit syncs.</div>';return;}
+      const manager=state.role==='manager'||state.role==='owner';
+      box.innerHTML='<div class="settings-section" role="status"><div class="settings-title">Square benefits need attention ('+data.pending.length+')</div><p>Payment and benefits are separate. Do not take another payment to fix a sync issue. Retrying only updates Square groups; paid-through dates stay unchanged.</p>'+data.pending.map(s=>
+        '<div style="border-top:1px solid var(--border);padding:12px 0"><strong>'+esc(s.customerName)+' · '+esc(s.planName)+'</strong><div>'+
+        (s.paymentConfirmed?'Payment confirmed — benefits not yet synced.':'Square group change pending — payment confirmation is not established by this warning.')+
+        '</div><div class="md-s">Membership: '+esc(s.status)+' · Paid through: '+esc(s.paidThrough||'Not recorded')+'</div>'+
+        (!s.linked?'<div>Square customer link missing. A manager must review this membership.</div>':'')+
+        (manager&&s.linked?'<button class="btn btn-secondary btn-sm" onclick="window.retryMembershipGroupSync('+Number(s.id)+',this)">Retry benefits sync</button>':!manager?'<div class="md-s">Ask a manager or owner to retry.</div>':'')+'</div>'
+      ).join('')+'<button class="btn btn-secondary btn-sm" onclick="loadMembershipGroupSync()">Refresh sync status</button></div>';
+    }catch(e){box.innerHTML='<div role="alert">Square benefit sync status could not be loaded. <button class="btn btn-secondary btn-sm" onclick="loadMembershipGroupSync()">Retry loading</button></div>';}
+  }
+  window.retryMembershipGroupSync=async(id,button)=>{
+    button.disabled=true;button.textContent='Syncing…';
+    try{
+      const r=await api('/api/staff/membership/group-sync/'+id+'/retry',{method:'POST'});
+      const d=await r.json();if(!r.ok)throw new Error(d.message||'Benefits sync failed');
+      toast(d.message,'success');
+    }catch(e){toast(e.message||'Benefits sync failed','error');}
+    finally{await loadMembershipGroupSync();button.disabled=false;button.textContent='Retry benefits sync';}
+  };
+  setInterval(()=>{
+    const panel=el('membershipGroupSyncPanel');
+    if(panel&&panel.offsetParent!==null&&!document.hidden)loadMembershipGroupSync();
+  },60000);
 
   /* ── Staff (non-manager) view: sign up + lookup only, no stats / no cancel / no totals ── */
   function renderMembershipsStaff(plans,subs){

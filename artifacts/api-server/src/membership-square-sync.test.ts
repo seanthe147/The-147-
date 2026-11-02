@@ -260,8 +260,24 @@ test("VIP remains until the first paid upgrade invoice, then its membership and 
   r.status = "ACTIVE";
   failGroups = true;
   await assert.rejects(refreshExternalSquareMembership(c.id, { id: c.squareCustomerId }));
+  await assert.rejects(processSquareMembershipEvent(paidEvent(i)));
+  const snapshot = await storage.getMembershipSubscription(paidSub.id);
+  assert.equal(snapshot?.status, "active");
+  assert.equal(snapshot?.squareGroupSyncPending, true);
+  const list = await originalFetch(base + "/api/staff/membership/group-sync", { headers: { "x-fixture": "yes" } });
+  const pending = (await list.json() as any).pending;
+  assert.equal(pending.find((s: any) => s.id === paidSub.id)?.paymentConfirmed, true);
+  const retryPath = `/api/staff/membership/group-sync/${paidSub.id}/retry`;
+  assert.equal((await post(retryPath, {}, false)).status, 401);
+  assert.equal((await post(retryPath, {})).status, 503);
+  assert.equal((await storage.getMembershipSubscription(vipSub.id))?.squareGroupSyncPending, true);
   failGroups = false;
-  await processSquareMembershipEvent(paidEvent(i));
+  const beforeRetry = calls.length;
+  assert.equal((await post(retryPath, {})).status, 200);
+  assert.equal((await post(retryPath, {})).status, 200);
+  assert.equal((await storage.getMembershipSubscription(paidSub.id))?.currentPeriodEnd, snapshot?.currentPeriodEnd);
+  assert.equal((await storage.getMembershipSubscription(paidSub.id))?.squareGroupSyncPending, false);
+  assert(calls.slice(beforeRetry).every(c => c.method === "GET" || c.path.includes("/groups/")));
 
   assert.equal((await storage.getMembershipSubscription(vipSub.id))?.status, "cancelled");
   assert.equal((await storage.getMembershipSubscription(paidSub.id))?.status, "active");
@@ -269,6 +285,19 @@ test("VIP remains until the first paid upgrade invoice, then its membership and 
   assert(!group(c.squareCustomerId).has(vip.squareCustomerGroupId));
   assert.equal((await storage.getMembershipSubscription(vipSub.id))?.squareGroupSyncPending, false);
 });
+test("group sync visibility needs staff auth and retries also require manager authorisation", () => {
+  const routes: { path: string; handlers: unknown[] }[] = [];
+  const app = { get: (path: string, ...handlers: unknown[]) => routes.push({ path, handlers }),
+    post: (path: string, ...handlers: unknown[]) => routes.push({ path, handlers }) };
+  const staff = (() => {}) as any, manager = (() => {}) as any;
+  registerSquareMembershipSync(app as any, staff, manager);
+  const list = routes.find(r => r.path === "/api/staff/membership/group-sync")!;
+  const retry = routes.find(r => r.path === "/api/staff/membership/group-sync/:id/retry")!;
+  assert.equal(list.handlers[0], staff);
+  assert.equal(retry.handlers[0], staff);
+  assert.equal(retry.handlers[1], manager);
+});
+
 test("duplicate failed charge events count once, notify 1/2, and hold access only at failure 3", async () => {
   const c = await customer("failures"), r = remote(c), first = invoice(r, "first-payment");
   await refreshExternalSquareMembership(c.id, { id: c.squareCustomerId });
