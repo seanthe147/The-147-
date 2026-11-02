@@ -156,6 +156,7 @@ export default function MembershipScreen() {
   const [paymentSheetAmount, setPaymentSheetAmount] = useState(0);
   const [paymentSheetError, setPaymentSheetError] = useState<string | null>(null);
   const [paymentSheetBusy, setPaymentSheetBusy] = useState(false);
+  const [vipUpgradeMode, setVipUpgradeMode] = useState(false);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -329,7 +330,13 @@ export default function MembershipScreen() {
       setPaymentSheetError(null);
       setSelectedPlanId(null);
       setTermsAccepted(false);
-      Alert.alert("Welcome to The 147", "Your membership is active. Enjoy!", [{ text: "OK" }]);
+      Alert.alert(
+        vipUpgradeMode ? "Upgrade started" : "Payment submitted",
+        vipUpgradeMode
+          ? "Square is confirming your first payment. Your VIP benefits stay active until the payment is confirmed."
+          : "Square is confirming your first payment. Membership benefits activate after payment succeeds.",
+        [{ text: "OK" }],
+      );
     },
     onError: (err: Error) => {
       setPaymentSheetBusy(false);
@@ -387,8 +394,8 @@ export default function MembershipScreen() {
     // so the sheet's first byte arrives sooner.
     if (useNativeSheet) prefetchSquarePaymentSdk();
     Alert.alert(
-      "Confirm Membership",
-      `Join the ${selectedPlan.name} plan for £${(price / 100).toFixed(2)} ${periodLabel}?${savingNote}${startNote}\n\n${continueCopy}`,
+      vipUpgradeMode ? "Confirm VIP upgrade" : "Confirm Membership",
+      `${vipUpgradeMode ? "Upgrade from VIP to" : "Join"} the ${selectedPlan.name} plan for £${(price / 100).toFixed(2)} ${periodLabel}?${savingNote}${startNote}${vipUpgradeMode ? "\n\nYour first payment is due now. Your VIP benefits stay active until Square confirms that payment. VIP will not be offered as a customer downgrade option." : ""}\n\n${continueCopy}`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -441,12 +448,18 @@ export default function MembershipScreen() {
             <Text style={styles.loginBtnText}>Try again</Text>
           </Pressable>
         </View>
-      ) : isAuthenticated && subscription && showActive ? (
+      ) : isAuthenticated && subscription && showActive &&
+          !(vipUpgradeMode && subscription.plan?.tier === "vip") ? (
         <ActiveMembership
           subscription={subscription}
           insets={insets}
           onRefresh={() => { refetchSubscription(); }}
           refreshing={subRefetching}
+          onUpgradeVip={() => {
+            setVipUpgradeMode(true);
+            setSelectedPlanId(null);
+            setTermsAccepted(false);
+          }}
         />
       ) : (
         <ScrollView
@@ -477,14 +490,33 @@ export default function MembershipScreen() {
               <Ionicons name="card" size={32} color={Colors.brand.blue} />
             </View>
             <Text style={styles.heroTitle}>
-              {firstName ? `Hi ${firstName} — find your plan` : "The 147 Membership"}
+              {vipUpgradeMode
+                ? "Upgrade your VIP membership"
+                : firstName ? `Hi ${firstName} — find your plan` : "The 147 Membership"}
             </Text>
             <Text style={styles.heroSub}>
-              {firstName
+              {vipUpgradeMode
+                ? "Choose a paid plan. Your VIP benefits remain until the first payment is confirmed, and VIP cannot be selected as a downgrade."
+                : firstName
                 ? "Pick the plan that suits how you play. Members get discounts, priority booking, and more."
                 : "Join our exclusive membership programme and make the most of every visit — discounts, priority booking, and more."}
             </Text>
           </View>
+
+          {vipUpgradeMode && (
+            <Pressable
+              onPress={() => {
+                setVipUpgradeMode(false);
+                setSelectedPlanId(null);
+                setTermsAccepted(false);
+              }}
+              accessibilityRole="button"
+              style={{ flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", marginBottom: 12 }}
+            >
+              <Ionicons name="chevron-back" size={16} color={colors.tint} />
+              <Text style={{ color: colors.tint, fontFamily: "Montserrat_600SemiBold" }}>Back to VIP membership</Text>
+            </Pressable>
+          )}
 
           {hasAnyAnnualPlan && (
             <View style={styles.billingToggle}>
@@ -679,7 +711,7 @@ export default function MembershipScreen() {
                             : selectedPlan.monthlyIntervalDays === 30
                               ? "/30 days"
                               : "/mo";
-                          return `Join ${selectedPlan.name} — £${(price / 100).toFixed(2)}${period}`;
+                          return `${vipUpgradeMode ? "Upgrade to" : "Join"} ${selectedPlan.name} — £${(price / 100).toFixed(2)}${period}`;
                         })()}
                       </Text>
                     </>
@@ -766,7 +798,11 @@ export default function MembershipScreen() {
           inProgress={paymentSheetBusy}
           errorMessage={paymentSheetError}
           intent="STORE"
-          recurringDescription={billingFrequency === "annual" ? "/year — renews automatically" : "/month — renews automatically"}
+          recurringDescription={billingFrequency === "annual"
+            ? "/year — renews automatically"
+            : selectedPlan?.monthlyIntervalDays === 30
+              ? "/30 days — renews automatically"
+              : "/month — renews automatically"}
         />
       )}
     </View>
@@ -778,11 +814,13 @@ function ActiveMembership({
   insets,
   onRefresh,
   refreshing,
+  onUpgradeVip,
 }: {
   subscription: MembershipSubscription;
   insets: ReturnType<typeof useSafeAreaInsets>;
   onRefresh: () => void;
   refreshing: boolean;
+  onUpgradeVip: () => void;
 }) {
   const colors = useColors();
   const styles = useMemo(() => createThemeStyles(colors), [colors]);
@@ -1016,7 +1054,7 @@ function ActiveMembership({
         </View>
       )}
 
-      <ManageMembership />
+      <ManageMembership onUpgradeVip={onUpgradeVip} vipUpgradeMode={false} />
 
       <View style={styles.contactBox}>
         <Ionicons name="information-circle-outline" size={18} color={Colors.light.textSecondary} />

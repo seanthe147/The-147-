@@ -8,7 +8,7 @@ import * as square from "./square";
 import {
   BILLING_TERMS_VERSION, cancellationAllowed, commitmentEnd, minimumTermMonths, isPlatinumConsolidation,
   addCalendarMonths, billingPeriodEnd, squareCadenceForPlan, validDate, variationForFrequency, membershipBusinessDate,
-  membershipReactivationDeadline, snookerRateDiscountPercent, type BillingFrequency,
+  membershipReactivationDeadline, snookerRateDiscountPercent, isPaidMembershipPlan, isVipTier, type BillingFrequency,
 } from "./membership-billing-policy";
 
 type Connection = Pick<typeof db, "select" | "insert" | "update" | "execute">;
@@ -196,6 +196,38 @@ export async function reconcileScheduledMembership(sqSub: any, paymentConfirmed 
 export async function syncPaidMembershipGroups(subscriptionId: number) {
   const [local] = await db.select().from(subscriptions).where(eq(subscriptions.id, subscriptionId));
   if (!local?.squareCustomerId) return;
+  const targetPlan = await storage.getMembershipPlan(local.planId);
+  let previousVipPlanId: number | undefined;
+  if (local.status === "active" && isPaidMembershipPlan(targetPlan)) {
+    const memberships = await storage.getMembershipSubscriptions();
+    const activeVip = memberships.filter(member =>
+      member.customerId === local.customerId &&
+      member.id !== local.id &&
+      member.status === "active" &&
+      isVipTier(member.plan?.tier),
+    );
+    if (activeVip.length) {
+      previousVipPlanId = activeVip[0].planId;
+      await db.transaction(async tx => {
+        for (const vip of activeVip) {
+          const [fresh] = await tx.select().from(subscriptions)
+            .where(eq(subscriptions.id, vip.id)).for("update");
+          if (!fresh || fresh.status !== "active") continue;
+          await tx.update(subscriptions).set({
+            status: "cancelled",
+            cancelledAt: new Date(),
+          }).where(eq(subscriptions.id, fresh.id));
+          await tx.insert(membershipAuditLog).values({
+            subscriptionId: fresh.id,
+            customerId: fresh.customerId,
+            action: "vip_upgraded",
+            staffUsername: "square-webhook",
+            note: `VIP access ended after confirmed payment for ${targetPlan.name} membership #${local.id}.`,
+          });
+        }
+      });
+    }
+  }
   const currentMembership = await storage.getMembershipSubscriptionByCustomer(local.customerId);
   const activePlanId = local.status === "active" ? local.planId
     : currentMembership?.status === "active" && currentMembership.squareCustomerId === local.squareCustomerId
@@ -206,7 +238,7 @@ export async function syncPaidMembershipGroups(subscriptionId: number) {
   await syncSquareMembershipGroupsForCustomer(
     local.squareCustomerId,
     activePlanId,
-    local.planId,
+    previousVipPlanId ?? local.planId,
     activeBilling?.billingFrequency,
   );
   await db.update(subscriptions).set({ squareGroupSyncPending: false }).where(eq(subscriptions.id, local.id));

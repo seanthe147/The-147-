@@ -537,6 +537,11 @@
     const tok=getTok();const sec=document.getElementById('manageSection');
     if(!tok){sec.style.display='none';return}
     try{
+      // Refresh Square-group memberships first so invitation-only VIP status
+      // is present before deciding which self-service controls to render.
+      const sr=await fetch(API+'/api/membership/my-subscription',{headers:{Authorization:'Bearer '+tok}});
+      if(sr.status===401){closeMembershipCard();try{localStorage.removeItem('the147_customer_token')}catch(_){};authToken=null;billing=null;sec.innerHTML='';sec.style.display='none';return}
+      if(!sr.ok)throw new Error('Could not refresh your membership from Square ('+sr.status+').');
       const r=await fetch(API+'/api/membership/billing',{headers:{Authorization:'Bearer '+tok}});
       if(r.status===401){closeMembershipCard();try{localStorage.removeItem('the147_customer_token')}catch(_){};authToken=null;billing=null;sec.innerHTML='';sec.style.display='none';return}
       const bd=await r.json().catch(()=>null);
@@ -598,6 +603,16 @@
       // Prepaid renewal/withdrawal controls are rendered above, not generic swaps.
     }else if(sub.migrationNeedsReview){
       h+='<p class="m-note">Your move from the old website billing is being checked by the club. Changes are available once the owner confirms your previous payments have stopped.</p>';
+    }else if(sub.currentTier==='vip'){
+      h+='<h4>Upgrade from VIP</h4>'+
+        '<p class="m-note">Choose a paid membership below. Your first payment is due now; VIP benefits stay active until Square confirms it. VIP is not available as a customer downgrade option.</p>';
+      if(!opts.length)h+='<p class="m-note">No paid membership options are available right now.</p>';
+      else{
+        h+=opts.map((o,i)=>'<label class="m-opt"><input type="radio" name="mOpt" value="'+i+'" onchange="mOptChanged()"><span><strong>'+esc(o.p.name)+' · £'+(o.pr/100).toFixed(2)+'/'+(o.f==='annual'?'yr':o.p.monthlyIntervalDays===30?'30 days':'mo')+'</strong><br><span style="color:var(--text-2)">'+(o.p.minimumTermMonths>0?o.p.minimumTermMonths+'-month minimum term starting with today’s first payment.':'No minimum term.')+'</span></span></label>').join('');
+        h+='<label class="m-opt" style="border:none;padding:4px 0"><input type="checkbox" id="mTerms" onchange="mOptChanged()"><span>I agree to the <a href="/terms" target="_blank" rel="noopener">Terms &amp; Conditions</a>, the selected membership price and billing frequency, and any minimum term. I authorise the first payment now.</span></label>';
+        h+='<button class="m-btn" id="mVipUpgradeBtn" disabled onclick="mSubmitVipUpgrade()">Upgrade and pay now</button>';
+      }
+      h+='<div class="m-msg" id="mChangeMsg" role="status"></div>';
     }else if(!sub.managedInSquare&&sub.source!=='square_pos'){
       h+='<p class="m-note">This membership is managed by the club. Please speak to staff to make changes.</p>';
     }else if(sub.cancellationDate){
@@ -803,7 +818,7 @@
   };
   function selectedOpt(){const r=document.querySelector('input[name="mOpt"]:checked');const o=document.getElementById('manageSection')._opts||[];return r?o[Number(r.value)]:null}
   window.mOptChanged=function(){
-    const o=selectedOpt();const t=document.getElementById('mTerms');const b=document.getElementById('mChangeBtn');
+    const o=selectedOpt();const t=document.getElementById('mTerms');const b=document.getElementById('mChangeBtn')||document.getElementById('mVipUpgradeBtn');
     if(b)b.disabled=!(o&&t&&t.checked);
   };
   window.mSubmitChange=async function(){
@@ -818,6 +833,23 @@
       const m2=document.getElementById('mChangeMsg')||document.getElementById('manageSection').appendChild(document.createElement('div'));
       m2.className='m-msg ok';m2.textContent=(d.message||'Change scheduled.')+(d.effectiveDate?' Effective '+fmtDate(d.effectiveDate)+'.':'');
     }catch(e){m.className='m-msg err';m.textContent=e.message||'Network error — please try again.';b.disabled=false;b.textContent='Schedule change'}
+  };
+  window.mSubmitVipUpgrade=async function(){
+    const o=selectedOpt(),t=document.getElementById('mTerms'),b=document.getElementById('mVipUpgradeBtn'),m=document.getElementById('mChangeMsg');
+    if(!o||!t||!t.checked||!b||!m)return;
+    const ownerToken=getTok();
+    if(!ownerToken)return;
+    b.disabled=true;b.textContent='Starting upgrade…';m.className='m-msg';
+    try{
+      const body={planId:o.p.id,billingFrequency:o.f,termsAccepted:true};
+      if(o.p.minimumTermMonths>0)body.minimumTermAccepted=true;
+      const r=await fetch(API+'/api/membership/join',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+ownerToken},body:JSON.stringify(body)});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.message||'Could not start the upgrade.');
+      if(!d.checkoutUrl)throw new Error('Square did not provide a payment page. Your VIP membership has not been changed.');
+      m.className='m-msg ok';m.textContent='Your VIP benefits stay active until Square confirms your first payment. Opening secure checkout…';
+      openCheckout(d.checkoutUrl);
+    }catch(e){m.className='m-msg err';m.textContent=e.message||'Network error — please try again.';b.disabled=false;b.textContent='Upgrade and pay now'}
   };
   window.mAskCancel=function(){
     const sub=billing.subscription;

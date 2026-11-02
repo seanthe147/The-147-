@@ -42,7 +42,13 @@ function Checkbox({ checked, onToggle, children, testID, colors }: { checked: bo
   );
 }
 
-export function ManageMembership() {
+export function ManageMembership({
+  onUpgradeVip,
+  vipUpgradeMode = false,
+}: {
+  onUpgradeVip?: () => void;
+  vipUpgradeMode?: boolean;
+}) {
   const colors = useColors();
   const s = useMemo(() => createStyles(colors), [colors]);
   const queryClient = useQueryClient();
@@ -403,6 +409,27 @@ export function ManageMembership() {
           </View>
           {sub.migrationNeedsReview ? (
             <Text style={s.muted}>Your move from the old website billing is being checked by the club. Changes will be available once the club confirms your previous payments have stopped.</Text>
+          ) : !sub.managedInSquare && sub.currentTier === "vip" ? (
+            <>
+              <Text style={s.muted}>
+                Choose a paid membership to upgrade. VIP stays active until Square confirms the first payment; VIP cannot be selected again as a customer plan.
+              </Text>
+              {vipUpgradeMode ? (
+                <Text style={s.muted} testID="vip-upgrade-options-hint">
+                  Select your paid plan above. Your first payment is due now.
+                </Text>
+              ) : (
+                <Pressable
+                  onPress={onUpgradeVip}
+                  disabled={!onUpgradeVip}
+                  style={s.primaryBtn}
+                  accessibilityRole="button"
+                  testID="vip-upgrade-button"
+                >
+                  <Text style={s.primaryBtnText}>View paid membership options</Text>
+                </Pressable>
+              )}
+            </>
           ) : !sub.managedInSquare ? (
             <Text style={s.muted}>This membership is managed by the club. Please speak to staff to make changes.</Text>
           ) : sub.status === "cancelled" ? (

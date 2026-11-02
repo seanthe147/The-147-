@@ -12219,14 +12219,26 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
           code: "PLAN_STAFF_ONLY",
         });
       }
+      const isVipUpgrade = existing?.plan?.tier === "vip" && plan.tier !== "vip";
+      if (isVipUpgrade && !square.isConfigured()) {
+        return res.status(503).json({
+          message: "Payment setup is unavailable, so your VIP membership has not been changed.",
+          code: "VIP_UPGRADE_PAYMENT_UNAVAILABLE",
+        });
+      }
+      if (isVipUpgrade && plan.priceMonthly <= 0 && (plan.priceAnnual ?? 0) <= 0) {
+        return res.status(400).json({ message: "Choose a paid membership to upgrade from VIP." });
+      }
 
       const today = new Date().toISOString().slice(0, 10);
       // Honour startDate if it is a valid future date (staff-only feature sent from app)
       const periodStart = startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate) && startDate > today ? startDate : today;
       const periodEnd = billingPeriodEnd(plan, isAnnual ? "annual" : "monthly", periodStart);
 
-      // If upgrading (existing sub on a different plan), cancel the old one
-      if (existing && existing.id) {
+      // Keep a group-based VIP entitlement until the new paid membership's
+      // first Square invoice is confirmed. syncPaidMembershipGroups retires
+      // VIP and removes its Square group only after that confirmation.
+      if (existing && existing.id && !isVipUpgrade) {
         await storage.updateMembershipSubscription(existing.id, {
           status: "cancelled",
           cancelledAt: new Date(),
@@ -12349,8 +12361,8 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         await storage.updateMembershipSubscription(sub.id, { status: "active" });
       }
 
-      const updated = await storage.getMembershipSubscriptionByCustomer(customerId);
-      res.status(201).json({ ...(updated ?? sub), checkoutUrl });
+      const created = await storage.getMembershipSubscription(sub.id);
+      res.status(201).json({ ...(created ?? sub), checkoutUrl });
     } catch (err: any) {
       console.error("[membership/join]", err);
       res.status(500).json({ message: "Failed to create membership" });
@@ -12388,6 +12400,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
           message: "This membership is by invitation only. Please contact the club to be added.",
           code: "PLAN_STAFF_ONLY",
         });
+      }
+      const isVipUpgrade = existing?.plan?.tier === "vip" && plan.tier !== "vip";
+      if (isVipUpgrade && plan.priceMonthly <= 0 && (plan.priceAnnual ?? 0) <= 0) {
+        return res.status(400).json({ message: "Choose a paid membership to upgrade from VIP." });
       }
 
       const customer = await storage.getCustomerById(customerId);
@@ -12489,8 +12505,9 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         squareSubscriptionId: squareSub?.id ?? null,
       } as any);
 
-      // 8) NOW it's safe to retire the previous subscription (plan switch).
-      if (existing && existing.id) {
+      // Keep VIP benefits until Square confirms the new plan's first payment.
+      // Other plan replacements retain the existing immediate retirement path.
+      if (existing && existing.id && !isVipUpgrade) {
         if ((existing as any).squareSubscriptionId) {
           await square.cancelSquareSubscription((existing as any).squareSubscriptionId).catch((e) => {
             console.warn(`[membership/join-native] failed to cancel old Square sub ${(existing as any).squareSubscriptionId}:`, e?.message ?? e);
@@ -12502,9 +12519,9 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
         }).catch(() => {});
       }
 
-      const updated = await storage.getMembershipSubscriptionByCustomer(customerId);
       console.log(`[membership/join-native] sub #${sub.id} created (square sub ${squareSub?.id}) for customer ${customerId}`);
-      res.status(201).json({ ...(updated ?? sub), squareSubscriptionId: squareSub?.id ?? null });
+      const created = await storage.getMembershipSubscription(sub.id);
+      res.status(201).json({ ...(created ?? sub), squareSubscriptionId: squareSub?.id ?? null });
     } catch (err: any) {
       console.error("[membership/join-native]", err);
       res.status(500).json({ message: err?.message || "Failed to create membership" });

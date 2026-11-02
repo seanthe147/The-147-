@@ -11,6 +11,19 @@ export function isPlatinumConsolidation(current: { tier?: string }, target: { ti
   return current.tier === "maximum" && target.tier === "platinum";
 }
 
+export function isVipTier(tier: unknown): boolean {
+  return tier === "vip";
+}
+
+export function isPaidMembershipPlan(plan: {
+  tier?: string | null;
+  priceMonthly?: number | null;
+  priceAnnual?: number | null;
+} | null | undefined): boolean {
+  return !!plan && !isVipTier(plan.tier) &&
+    Math.max(plan.priceMonthly ?? 0, plan.priceAnnual ?? 0) > 0;
+}
+
 export function minimumTermMonths(plan: { name: string; tier?: string }): number {
   return [plan.name, plan.tier ?? ""].some(
     value => /^(?:the 147\s+)?(?:black|platinum)(?:\s+membership)?$/i.test(value.trim()),

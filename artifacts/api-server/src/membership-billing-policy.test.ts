@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addCalendarMonths, cancellationAllowed, commitmentEnd, membershipReactivationDeadline, minimumTermMonths, snookerRateDiscountPercent, validDate, variationForFrequency } from "./membership-billing-policy.ts";
+import { addCalendarMonths, cancellationAllowed, commitmentEnd, isPaidMembershipPlan, isVipTier, membershipReactivationDeadline, minimumTermMonths, snookerRateDiscountPercent, validDate, variationForFrequency } from "./membership-billing-policy.ts";
 
+test("VIP is invitation-only, while a paid plan is a one-way upgrade target", () => {
+  assert.equal(isVipTier("vip"), true);
+  assert.equal(isVipTier("platinum"), false);
+  assert.equal(isPaidMembershipPlan({ tier: "platinum", priceMonthly: 699 }), true);
+  assert.equal(isPaidMembershipPlan({ tier: "vip", priceMonthly: 0 }), false);
+  assert.equal(isPaidMembershipPlan({ tier: "complimentary", priceMonthly: 0, priceAnnual: 0 }), false);
+});
 test("only Black and Platinum receive 12-month minimum terms", () => {
   assert.equal(minimumTermMonths({ name: "Black", tier: "black" }), 12);
   assert.equal(minimumTermMonths({ name: "Platinum", tier: "platinum" }), 12);

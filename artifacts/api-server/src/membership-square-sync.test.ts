@@ -21,7 +21,7 @@ const groups = new Map<string, Set<string>>(), cards = new Map<string, any>();
 const directory = new Map<string, any[]>();
 const calls: { method: string; path: string; body: any }[] = [];
 let base = "", authCustomer = 0, failGroups = false;
-let standard: any, platinum: any, vip: any, blue: any, pink: any, server: any;
+let standard: any, platinum: any, vip: any, originalVipPlan: any, blue: any, pink: any, server: any;
 const day = membershipDay(), end = addCalendarMonths(day, 12);
 const group = (id: string) => groups.get(id) ?? new Set<string>();
 async function customer(suffix: string, verified = true) {
@@ -59,16 +59,26 @@ async function post(path: string, body: unknown, auth = true) {
   return originalFetch(base + path, { method: "POST", headers: { "Content-Type": "application/json", ...(auth ? { "x-fixture": "yes" } : {}) }, body: JSON.stringify(body) });
 }
 before(async () => {
-  for (const [name, price, hidden] of [["Standard", 500, false], ["Platinum", 699, false], ["VIP", 0, true]] as const) {
+  for (const [name, price, hidden] of [["Standard", 500, false], ["Platinum", 699, false]] as const) {
     const p = await storage.createMembershipPlan({ name: name === "Platinum" ? name : tag + name,
       tier: tag + name, priceMonthly: price, priceAnnual: price ? 6500 : null, hideFromSignup: hidden,
       squarePlanVariationId: tag + name + "-monthly", squarePlanVariationIdAlt: tag + name + "-annual",
-      squareCustomerGroupId: name === "VIP" ? tag + "-vip-group" : tag + name + "-group",
+      squareCustomerGroupId: tag + name + "-group",
       squarePosVariationIds: [tag + name + "-pos"] });
     planIds.push(p.id);
-    if (name === "Standard") standard = p; else if (name === "Platinum") platinum = p; else vip = p;
+    if (name === "Standard") standard = p; else platinum = p;
   }
   const seededPlans = await storage.getMembershipPlans();
+  originalVipPlan = seededPlans.find(plan => plan.tier === "vip") ?? null;
+  if (originalVipPlan) {
+    vip = await storage.updateMembershipPlan(originalVipPlan.id, {
+      active: true, hideFromSignup: true, squareCustomerGroupId: tag + "-vip-group",
+    });
+  } else {
+    vip = await storage.createMembershipPlan({ name: tag + "VIP", tier: "vip", priceMonthly: 0,
+      priceAnnual: null, hideFromSignup: true, squareCustomerGroupId: tag + "-vip-group" });
+    planIds.push(vip.id);
+  }
   const seededBlue = seededPlans.find(plan => plan.tier === "blue");
   const seededPink = seededPlans.find(plan => plan.tier === "pink");
   if (!seededBlue || !seededPink) throw new Error("Seeded Blue/Pink plans are required by the isolated membership fixtures.");
@@ -151,6 +161,13 @@ after(async () => {
     }
     await db.delete(customers).where(inArray(customers.id, customerIds));
   }
+  if (originalVipPlan) {
+    await storage.updateMembershipPlan(originalVipPlan.id, {
+      active: originalVipPlan.active,
+      hideFromSignup: originalVipPlan.hideFromSignup,
+      squareCustomerGroupId: originalVipPlan.squareCustomerGroupId,
+    });
+  }
   if (planIds.length) await db.delete(membershipPlans).where(inArray(membershipPlans.id, planIds));
   assert.equal(calls.some(c => c.path === "/v2/payments" && c.method !== "GET"), false, "No real or simulated immediate charges should be created");
 });
@@ -219,6 +236,26 @@ test("direct Square annual purchase records dates; a paid plan change upgrades g
   assert.equal(s?.planId, platinum.id); assert.equal((await billingState(s!.id))?.billingFrequency, "annual");
   assert(group(c.squareCustomerId).has(platinum.squareCustomerGroupId));
   assert(!group(c.squareCustomerId).has(standard.squareCustomerGroupId)); assert(group(c.squareCustomerId).has(vip.squareCustomerGroupId));
+});
+test("VIP remains until the first paid upgrade invoice, then its membership and Square group are removed", async () => {
+  const c = await customer("vip-upgrade");
+  const vipSub = await storage.createMembershipSubscription({
+    customerId: c.id, planId: vip.id, status: "active", source: "square_group_sync",
+  });
+  const r = remote(c, standard), i = invoice(r, "vip-upgrade");
+  const paidSub = await storage.createMembershipSubscription({
+    customerId: c.id, planId: standard.id, status: "pending", source: "app_native",
+    squareCustomerId: c.squareCustomerId, squareSubscriptionId: r.id,
+  });
+
+  assert.equal((await storage.getMembershipSubscription(vipSub.id))?.status, "active");
+  assert(group(c.squareCustomerId).has(vip.squareCustomerGroupId));
+  await processSquareMembershipEvent(paidEvent(i));
+
+  assert.equal((await storage.getMembershipSubscription(vipSub.id))?.status, "cancelled");
+  assert.equal((await storage.getMembershipSubscription(paidSub.id))?.status, "active");
+  assert(group(c.squareCustomerId).has(standard.squareCustomerGroupId));
+  assert(!group(c.squareCustomerId).has(vip.squareCustomerGroupId));
 });
 test("duplicate failed charge events count once, notify 1/2, and hold access only at failure 3", async () => {
   const c = await customer("failures"), r = remote(c), first = invoice(r, "first-payment");
