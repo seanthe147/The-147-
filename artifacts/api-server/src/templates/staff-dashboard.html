@@ -3537,6 +3537,7 @@
   function todayStr(){const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
   function pad(n){return String(n).padStart(2,'0')}
   function esc(s){const d=document.createElement('div');d.textContent=s??'';return d.innerHTML}
+  function escHtml(s){return esc(s);}
   function el(id){return document.getElementById(id)}
   function getToken(){return localStorage.getItem(TOKEN_KEY)}
   function setToken(t){localStorage.setItem(TOKEN_KEY,t)}
@@ -3656,6 +3657,10 @@
         // Non-JSON or non-mustChangePassword 403 — fall through and let
         // the caller handle the response as before.
       }
+    }
+    if(!r.ok && /\/(?:staff\/)?stock\//.test(url)){
+      var stockError=await r.clone().json().catch(function(){return {};});
+      throw new Error(stockError.error||'Stock request failed ('+r.status+')');
     }
     return r;
   }
@@ -8894,6 +8899,7 @@
     });
     document.querySelectorAll('[data-stock]').forEach(b=>b.classList.toggle('active',b.dataset.stock===tab));
     if(tab==='catalogue')renderStockCatalogue();
+    if(tab==='deliveries')renderStockDeliveries();
   }
 
   async function loadStockPage(){
@@ -8909,20 +8915,22 @@
       ]);
       _stockItems=(await itemsR.json())||[];
       _stockCategories=(await catsR.json())||[];
-    }catch(e){_stockItems=[];_stockCategories=[];}
+    }catch(e){el('stockCountsContent').innerHTML='<p style="color:var(--red)">Unable to load products: '+escHtml(e.message)+'</p>';return;}
     renderStockCounts();
   }
 
+  var _stockSavedCounts=[], _stockDraftId=null, _stockCountSaving=false;
   async function renderStockCounts(){
     var wrap=el('stockCountsContent');
     if(!wrap)return;
     wrap.innerHTML='<div class="loading-state"><div class="spinner"></div>Loading counts…</div>';
     try{
       var counts=await (await api('/api/stock/counts')).json();
+      _stockSavedCounts=counts;
       if(!counts||!counts.length){wrap.innerHTML='<p style="color:var(--text-2);font-size:13px">No counts yet. Use "+ New Count" to record your first.</p>';return;}
       var html='<div style="display:flex;flex-direction:column;gap:10px">';
       counts.forEach(function(c){
-        var dateStr=c.periodEnd?new Date(c.periodEnd).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):'';
+        var dateStr=c.periodEnd?new Date(c.periodEnd).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric',timeZone:'Europe/London'}):'';
         var badge=c.status==='submitted'
           ?'<span style="background:#16A34A20;color:#16A34A;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;text-transform:uppercase">Submitted</span>'
           :'<span style="background:#F59E0B20;color:#D97706;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;text-transform:uppercase">Draft</span>';
@@ -8932,6 +8940,7 @@
             '<div style="font-weight:700;font-size:14px">Period ending '+dateStr+'</div>'+
             '<div style="font-size:12px;color:var(--text-2);margin-top:3px">'+lineCount+' item'+(lineCount===1?'':'s')+' counted'+(c.countedBy?' · by '+escHtml(c.countedBy):'')+(c.notes?' · '+escHtml(c.notes):'')+' '+badge+'</div>'+
           '</div>'+
+          (c.status==='draft'?'<button class="btn btn-ghost" onclick="editStockCount('+c.id+')">Edit draft</button>':'')+
         '</div>';
       });
       html+='</div>';
@@ -8940,6 +8949,7 @@
   }
 
   function startNewStockCount(){
+    _stockDraftId=null;
     el('stockCountForm').style.display='';
     var today=new Date().toISOString().slice(0,10);
     el('stockCountEnd').value=today;
@@ -8967,8 +8977,27 @@
   }
 
   function cancelStockCount(){el('stockCountForm').style.display='none';}
+  function editStockCount(id){
+    var count=_stockSavedCounts.find(function(c){return c.id===id;});
+    if(!count)return;
+    startNewStockCount();
+    _stockDraftId=id;
+    el('stockCountStart').value=count.periodStart.slice(0,10);
+    el('stockCountEnd').value=count.periodEnd.slice(0,10);
+    el('stockCountNotes').value=count.notes||'';
+    count.lines.forEach(function(line){
+      var input=document.querySelector('#stockCountItems [data-item-id="'+line.stockItemId+'"]');
+      if(input)input.value=line.quantityUnits;
+      else {
+        var saved=document.createElement('input');
+        saved.type='hidden';saved.dataset.itemId=line.stockItemId;saved.value=line.quantityUnits;
+        el('stockCountItems').appendChild(saved);
+      }
+    });
+  }
 
   async function submitStockCount(status){
+    if(_stockCountSaving)return;
     var start=el('stockCountStart').value, end=el('stockCountEnd').value;
     var errEl=el('stockCountFormErr');
     errEl.style.display='none';
@@ -8979,11 +9008,14 @@
       if(!isNaN(val)&&val>=0){lines.push({stockItemId:parseInt(inp.dataset.itemId),quantityUnits:String(val)});}
     });
     if(!lines.length){errEl.textContent='Enter at least one quantity.';errEl.style.display='';return;}
+    if(status==='submitted'&&!confirm('Submit this count? It cannot be edited afterwards. Blank products remain uncounted, not zero.'))return;
+    _stockCountSaving=true;
     try{
-      await api('/api/stock/counts',{method:'POST',body:JSON.stringify({periodStart:start,periodEnd:end,notes:el('stockCountNotes').value,status,lines})});
+      await api('/api/stock/counts'+(_stockDraftId?'/'+_stockDraftId:''),{method:_stockDraftId?'PATCH':'POST',body:JSON.stringify({periodStart:start,periodEnd:end,notes:el('stockCountNotes').value,status,lines})});
       el('stockCountForm').style.display='none';
       renderStockCounts();
     }catch(e){errEl.textContent='Failed: '+(e.message||'unknown error');errEl.style.display='';}
+    finally{_stockCountSaving=false;}
   }
 
   async function renderStockDeliveries(){
@@ -9045,7 +9077,9 @@
     catch(e){alert('Failed to delete: '+(e.message||'unknown error'));}
   }
 
+  var _stockDeliverySaving=false;
   async function saveDelivery(){
+    if(_stockDeliverySaving)return;
     var errEl=el('stockDeliveryFormErr');errEl.style.display='none';
     var deliveredAt=el('deliveryDate').value;
     if(!deliveredAt){errEl.textContent='Please set the delivery date.';errEl.style.display='';return;}
@@ -9059,11 +9093,13 @@
       }
     });
     if(!lines.length){errEl.textContent='Enter at least one delivery quantity.';errEl.style.display='';return;}
+    _stockDeliverySaving=true;
     try{
       await api('/api/stock/deliveries',{method:'POST',body:JSON.stringify({deliveredAt,supplier:el('deliverySupplier').value,invoiceRef:el('deliveryInvoice').value,notes:el('deliveryNotes').value,lines})});
       el('stockDeliveryForm').style.display='none';
       renderStockDeliveries();
     }catch(e){errEl.textContent='Failed: '+(e.message||'unknown error');errEl.style.display='';}
+    finally{_stockDeliverySaving=false;}
   }
 
   async function runStockReport(){
@@ -9075,7 +9111,9 @@
       var data=await (await api('/api/stock/report?periodStart='+encodeURIComponent(start)+'&periodEnd='+encodeURIComponent(end))).json();
       if(!data||!data.length){wrap.innerHTML='<p style="color:var(--text-2);font-size:13px">No data for this period. Ensure stock counts have been submitted.</p>';return;}
       var lastCat='';
-      var html='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
+      var html='<p>Reconciled between counts: '+escHtml(new Date(data[0].actualPeriodStart).toLocaleString('en-GB'))+' – '+escHtml(new Date(data[0].actualPeriodEnd).toLocaleString('en-GB'))+'. Blank count entries are unknown, not zero.</p>'+
+        (data.some(function(r){return !r.squareSalesAvailable;})?'<p style="color:var(--red)">Square sales unavailable. Sold and variance are not calculated.</p>':'')+
+        '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
         '<thead><tr style="border-bottom:2px solid var(--border);text-align:left">'+
           '<th style="padding:8px 10px;color:var(--text-2);font-weight:700">Item</th>'+
           '<th style="padding:8px 10px;color:var(--text-2);font-weight:700;text-align:right">Opening</th>'+
@@ -9093,12 +9131,12 @@
         var varColor=row.variance===null?'var(--text-2)':row.variance>1?'#DC2626':row.variance<-1?'#16A34A':'var(--text)';
         html+='<tr style="border-bottom:1px solid var(--border)">'+
           '<td style="padding:8px 10px;font-weight:500">'+escHtml(row.itemName)+'<span style="color:var(--text-2);font-size:11px;margin-left:4px">'+escHtml(row.baseUnit||row.countUnit||'')+(row.baseUnit==='pint'?'s':'')+'</span></td>'+
-          '<td style="padding:8px 10px;text-align:right">'+row.opening+'</td>'+
+          '<td style="padding:8px 10px;text-align:right">'+(row.opening===null?'Not counted':row.opening)+'</td>'+
           '<td style="padding:8px 10px;text-align:right">'+row.delivered+'</td>'+
-          '<td style="padding:8px 10px;text-align:right">'+row.closing+'</td>'+
-          '<td style="padding:8px 10px;text-align:right;font-weight:600">'+row.consumed+'</td>'+
+          '<td style="padding:8px 10px;text-align:right">'+(row.closing===null?'Not counted':row.closing)+'</td>'+
+          '<td style="padding:8px 10px;text-align:right;font-weight:600">'+(row.consumed===null?'Missing count':row.consumed)+'</td>'+
           '<td style="padding:8px 10px;text-align:right;color:var(--text-2)">'+
-            (row.sold!==null?row.sold:'<span style="color:var(--border);font-size:11px">not linked</span>')+
+            (row.sold!==null?row.sold:'<span style="color:var(--text-2);font-size:11px">'+(row.squareLinked?'unavailable':'not linked')+'</span>')+
           '</td>'+
           '<td style="padding:8px 10px;text-align:right;font-weight:600;color:'+varColor+'">'+
             (row.variance!==null?(row.variance>0?'+':'')+row.variance:'—')+
@@ -9110,11 +9148,6 @@
     }catch(e){wrap.innerHTML='<p style="color:var(--red)">Report failed: '+escHtml(e.message||'unknown error')+'</p>';}
   }
 
-  // Wire up deliveries tab load when it's first opened
-  var _stockDeliveriesLoaded=false;
-  document.querySelector('[data-stock="deliveries"]')&&document.querySelector('[data-stock="deliveries"]').addEventListener('click',function(){
-    if(!_stockDeliveriesLoaded){_stockDeliveriesLoaded=true;renderStockDeliveries();}
-  });
 
   /* ── Stock Catalogue ── */
   function renderStockCatalogue(){
@@ -9277,7 +9310,7 @@
         var r=await api('/api/staff/stock/square-variations');
         _posVariations=await r.json();
       }
-      var linkedIds=new Set(_stockItems.filter(function(i){return i.squareCatalogVariationId;}).map(function(i){return i.squareCatalogVariationId;}));
+      var linkedIds=new Set(_stockItems.flatMap(function(i){return (i.posLinks||[]).map(function(l){return l.squareVariationId;}).concat(i.squareCatalogVariationId?[i.squareCatalogVariationId]:[]);}));
       var alreadyNamed=new Set(_stockItems.map(function(i){return i.name.toLowerCase();}));
       var unimported=_posVariations.filter(function(v){return !linkedIds.has(v.variationId);});
       if(!unimported.length){el('stockPOSImportList').innerHTML='<p style="color:var(--text-2);font-size:13px">All Square catalog items are already in your stock catalogue.</p>';return;}
@@ -13490,6 +13523,7 @@
 
   window.switchStockTab=switchStockTab;
   window.startNewStockCount=startNewStockCount;
+  window.editStockCount=editStockCount;
   window.cancelStockCount=cancelStockCount;
   window.submitStockCount=submitStockCount;
   window.startNewDelivery=startNewDelivery;

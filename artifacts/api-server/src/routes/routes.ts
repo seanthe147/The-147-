@@ -34,6 +34,7 @@ import {
   matchesPushRegistrationSecret,
 } from "../push-registration";
 import { validateMenuItemPresentation } from "../menu-presentation";
+import { stockItemInput, stockCountInput, stockDeliveryInput, validateStockInput } from "../stock-validation";
 
 // ── Square POS → Live Tables sync helpers ───────────────────────────────────
 // Parses a Square ticket name like "Snooker 4" / "Pool 2" / "Dining 7" into a
@@ -15726,8 +15727,16 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
   ];
 
   let _stockDefaultsSeeded = false;
+  let _stockSeedPromise: Promise<void> | null = null;
   async function ensureStockDefaults() {
+    if (_stockSeedPromise) return _stockSeedPromise;
     if (_stockDefaultsSeeded) return;
+    _stockSeedPromise = seedStockDefaults();
+    try { await _stockSeedPromise; } finally { _stockSeedPromise = null; }
+  }
+  async function seedStockDefaults() {
+    await db.transaction(async db => {
+    await db.execute(dSql`SELECT pg_advisory_xact_lock(14700032)`);
     // Ensure all categories exist
     const existingCats = await db.select().from(stockCategories);
     const existingCatNames = new Set(existingCats.map((c) => c.name));
@@ -15765,6 +15774,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
         sortOrder: 900 + idx,
       }));
     if (newItems.length) await db.insert(stockItems).values(newItems);
+    });
     _stockDefaultsSeeded = true;
   }
 
@@ -15793,7 +15803,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.post("/api/stock/items", staffAuth, managerAuth, async (req: any, res) => {
+  app.post("/api/stock/items", staffAuth, managerAuth, validateStockInput(stockItemInput), async (req: any, res) => {
     try {
       const { categoryId, name, countUnit, containerSize, caseSize, servesPerUnit, supplier, supplierCode } = req.body;
       if (!categoryId || !name || !countUnit) return res.status(400).json({ error: "categoryId, name and countUnit are required" });
@@ -15802,10 +15812,10 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.patch("/api/stock/items/:id", staffAuth, managerAuth, async (req: any, res) => {
+  app.patch("/api/stock/items/:id", staffAuth, managerAuth, validateStockInput(stockItemInput.partial()), async (req: any, res) => {
     try {
       const id = parseInt(req.params.id, 10);
-      const { servesPerUnit, active, name, containerSize, caseSize, supplier } = req.body;
+      const { servesPerUnit, active, name, containerSize, caseSize, supplier, supplierCode, categoryId, countUnit } = req.body;
       const updates: Record<string, unknown> = { updatedAt: new Date() };
       if (servesPerUnit !== undefined) updates.servesPerUnit = servesPerUnit;
       if (active !== undefined) updates.active = active;
@@ -15813,6 +15823,9 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       if (containerSize !== undefined) updates.containerSize = containerSize;
       if (caseSize !== undefined) updates.caseSize = caseSize;
       if (supplier !== undefined) updates.supplier = supplier;
+      if (supplierCode !== undefined) updates.supplierCode = supplierCode;
+      if (categoryId !== undefined) updates.categoryId = categoryId;
+      if (countUnit !== undefined) updates.countUnit = countUnit;
       const [item] = await db.update(stockItems).set(updates).where(dEq(stockItems.id, id)).returning();
       if (!item) return res.status(404).json({ error: "Item not found" });
       res.json(item);
@@ -15839,24 +15852,18 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.post("/api/stock/deliveries", staffAuth, managerAuth, async (req: any, res) => {
+  app.post("/api/stock/deliveries", staffAuth, managerAuth, validateStockInput(stockDeliveryInput), async (req: any, res) => {
     try {
       const { deliveredAt, supplier, invoiceRef, notes, lines } = req.body;
       if (!deliveredAt || !lines?.length) return res.status(400).json({ error: "deliveredAt and lines are required" });
       const username = (req as any).staffUser?.username ?? "unknown";
-      const [delivery] = await db.insert(stockDeliveries).values({
-        deliveredAt: new Date(deliveredAt),
-        supplier,
-        invoiceRef,
-        notes,
-        enteredBy: username,
-      }).returning();
       // Resolve case sizes so deliveries entered in cases are stored as single units.
       const lineItemIds = (lines as Array<{ stockItemId: number }>).map((l) => l.stockItemId);
       const lineItems = lineItemIds.length
         ? await db.select().from(stockItems).where(dInArray(stockItems.id, lineItemIds))
         : [];
       const caseSizeById = new Map(lineItems.map((i) => [i.id, i.caseSize]));
+      if (lineItems.length !== lineItemIds.length) return res.status(400).json({ error: "One or more products no longer exist" });
       const num = (v: unknown): number | null => {
         if (v == null || v === "") return null;
         const n = parseFloat(String(v));
@@ -15877,14 +15884,19 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
           units = unitsIn != null ? unitsIn : (casesIn ?? 0);
         }
         return {
-          deliveryId: delivery.id,
           stockItemId: l.stockItemId,
           quantityUnits: String(units),
           quantityCases: cases != null ? String(cases) : null,
         };
       }).filter((r) => parseFloat(r.quantityUnits) > 0);
       if (!lineRows.length) { res.status(400).json({ error: "No valid delivery quantities" }); return; }
-      await db.insert(stockDeliveryLines).values(lineRows);
+      const delivery = await db.transaction(async tx => {
+        const [created] = await tx.insert(stockDeliveries).values({
+          deliveredAt: new Date(deliveredAt), supplier, invoiceRef, notes, enteredBy: username,
+        }).returning();
+        await tx.insert(stockDeliveryLines).values(lineRows.map(line => ({ ...line, deliveryId: created.id })));
+        return created;
+      });
       res.json({ id: delivery.id });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -15892,7 +15904,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
   app.delete("/api/stock/deliveries/:id", staffAuth, managerAuth, async (req, res) => {
     try {
       const id = parseInt(String(req.params.id), 10);
-      await db.delete(stockDeliveryLines).where(dEq(stockDeliveryLines.deliveryId, id));
+      // Lines cascade with the header, so the deletion is atomic.
       await db.delete(stockDeliveries).where(dEq(stockDeliveries.id, id));
       res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -15918,12 +15930,14 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.post("/api/stock/counts", staffAuth, managerAuth, async (req: any, res) => {
+  app.post("/api/stock/counts", staffAuth, managerAuth, validateStockInput(stockCountInput), async (req: any, res) => {
     try {
       const { periodStart, periodEnd, notes, status, lines } = req.body;
       if (!periodStart || !periodEnd) return res.status(400).json({ error: "periodStart and periodEnd are required" });
+      if (status === "submitted" && !lines?.length) return res.status(400).json({ error: "Enter at least one count before submitting" });
       const username = (req as any).staffUser?.username ?? "unknown";
-      const [count] = await db.insert(stockCounts).values({
+      const count = await db.transaction(async tx => {
+      const [count] = await tx.insert(stockCounts).values({
         periodStart: new Date(periodStart),
         periodEnd: new Date(periodEnd),
         countedBy: username,
@@ -15937,34 +15951,42 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
           stockItemId: l.stockItemId,
           quantityUnits: String(l.quantityUnits),
         }));
-        await db.insert(stockCountLines).values(lineRows);
+        await tx.insert(stockCountLines).values(lineRows);
       }
+      return count;
+      });
       res.json({ id: count.id });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
-  app.patch("/api/stock/counts/:id", staffAuth, managerAuth, async (req: any, res) => {
+  app.patch("/api/stock/counts/:id", staffAuth, managerAuth, validateStockInput(stockCountInput), async (req: any, res) => {
     try {
       const id = parseInt(req.params.id, 10);
       const { periodStart, periodEnd, notes, status, lines } = req.body;
-      const [existing] = await db.select().from(stockCounts).where(dEq(stockCounts.id, id));
+      await db.transaction(async tx => {
+      const [existing] = await tx.select().from(stockCounts).where(dEq(stockCounts.id, id)).for("update");
       if (!existing) return res.status(404).json({ error: "Count not found" });
       if (existing.status === "submitted") return res.status(400).json({ error: "Submitted counts cannot be edited" });
+      if (new Date(periodStart ?? existing.periodStart) > new Date(periodEnd ?? existing.periodEnd)) return res.status(400).json({ error: "Start date must not be after end date" });
+      const savedLines = lines ?? await tx.select().from(stockCountLines).where(dEq(stockCountLines.countId, id));
+      if (status === "submitted" && !savedLines.length) return res.status(400).json({ error: "Enter at least one count before submitting" });
       const updates: Record<string, unknown> = {};
       if (periodStart) updates.periodStart = new Date(periodStart);
       if (periodEnd) updates.periodEnd = new Date(periodEnd);
       if (notes !== undefined) updates.notes = notes;
       if (status) { updates.status = status; if (status === "submitted") updates.submittedAt = new Date(); }
-      if (Object.keys(updates).length) await db.update(stockCounts).set(updates).where(dEq(stockCounts.id, id));
-      if (lines?.length) {
-        await db.delete(stockCountLines).where(dEq(stockCountLines.countId, id));
+      if (Object.keys(updates).length) await tx.update(stockCounts).set(updates).where(dEq(stockCounts.id, id));
+      if (lines !== undefined) {
+        await tx.delete(stockCountLines).where(dEq(stockCountLines.countId, id));
         const lineRows = (lines as Array<{ stockItemId: number; quantityUnits: string }>).map((l) => ({
           countId: id,
           stockItemId: l.stockItemId,
           quantityUnits: String(l.quantityUnits),
         }));
-        await db.insert(stockCountLines).values(lineRows);
+        if (lineRows.length) await tx.insert(stockCountLines).values(lineRows);
       }
+      });
+      if (res.headersSent) return;
       res.json({ id });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -16034,11 +16056,8 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
         squareCatalogVariationId: string | null;
         squareCatalogVariationName: string | null;
       };
-      await db
-        .update(stockItems)
-        .set({ squareCatalogVariationId: squareCatalogVariationId ?? null, squareCatalogVariationName: squareCatalogVariationName ?? null, updatedAt: new Date() })
-        .where(dEq(stockItems.id, id));
-      res.json({ ok: true });
+      req.body = { links: squareCatalogVariationId ? [{ squareVariationId: squareCatalogVariationId, squareVariationName: squareCatalogVariationName, soldUnitFactor: 1 }] : [] };
+      return saveStockLinks(req, res);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -16054,12 +16073,12 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
   // Replace the full set of Square variation links for a stock item.
   // Body: { links: [{ squareVariationId, squareVariationName, soldUnitFactor }] }
   // soldUnitFactor = base units per Square sale (pint=1, half=0.5, bottle=1).
-  app.put("/api/staff/stock/items/:id/square-links", staffAuth, managerAuth, async (req, res) => {
+  async function saveStockLinks(req: Request, res: Response) {
     try {
       const id = parseInt(String(req.params.id), 10);
       const { links } = req.body as { links: Array<{ squareVariationId: string; squareVariationName?: string | null; soldUnitFactor?: number | string }> };
-      const clean = (links ?? [])
-        .filter((l) => l.squareVariationId)
+      if (!Number.isSafeInteger(id) || id < 1 || !Array.isArray(links) || links.some(l => !l || typeof l.squareVariationId !== "string" || !l.squareVariationId.trim())) return res.status(400).json({ error: "Valid product and links are required" });
+      const clean = links
         .map((l) => ({ ...l, soldUnitFactor: Number(l.soldUnitFactor ?? 1) }));
       if (new Set(clean.map((l) => l.squareVariationId)).size !== clean.length) {
         return res.status(400).json({ error: "The same Square variation cannot be linked twice to one stock item." });
@@ -16067,12 +16086,19 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       if (clean.some((l) => !Number.isFinite(l.soldUnitFactor) || l.soldUnitFactor <= 0)) {
         return res.status(400).json({ error: "Every POS conversion factor must be greater than zero." });
       }
+      await db.transaction(async tx => {
+      // Serialize mapping replacements across processes, including legacy mappings.
+      await tx.execute(dSql`SELECT pg_advisory_xact_lock(14700031)`);
+      const [item] = await tx.select().from(stockItems).where(dEq(stockItems.id, id));
+      if (!item) { res.status(404).json({ error: "Item not found" }); return; }
       if (clean.length) {
-        const conflicting = await db
+        const conflicting = await tx
           .select({ stockItemId: stockItemPosLinks.stockItemId, squareVariationId: stockItemPosLinks.squareVariationId })
           .from(stockItemPosLinks)
           .where(dInArray(stockItemPosLinks.squareVariationId, clean.map((l) => l.squareVariationId)));
-        const conflict = conflicting.find((l) => l.stockItemId !== id);
+        const legacy = await tx.select({ stockItemId: stockItems.id, squareVariationId: stockItems.squareCatalogVariationId })
+          .from(stockItems).where(dInArray(stockItems.squareCatalogVariationId, clean.map(l => l.squareVariationId)));
+        const conflict = [...conflicting, ...legacy].find((l) => l.stockItemId !== id);
         if (conflict) {
           return res.status(409).json({
             error: "This Square variation is already linked to another stock item. Remove that link before reusing it.",
@@ -16081,9 +16107,9 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
           });
         }
       }
-      await db.delete(stockItemPosLinks).where(dEq(stockItemPosLinks.stockItemId, id));
+      await tx.delete(stockItemPosLinks).where(dEq(stockItemPosLinks.stockItemId, id));
       if (clean.length) {
-        await db.insert(stockItemPosLinks).values(clean.map((l) => ({
+        await tx.insert(stockItemPosLinks).values(clean.map((l) => ({
           stockItemId: id,
           squareVariationId: l.squareVariationId,
           squareVariationName: l.squareVariationName ?? null,
@@ -16092,14 +16118,17 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       }
       // Mirror the primary (factor closest to 1) link to legacy columns for back-compat.
       const primary = clean.find((l) => Number(l.soldUnitFactor ?? 1) === 1) ?? clean[0] ?? null;
-      await db.update(stockItems).set({
+      await tx.update(stockItems).set({
         squareCatalogVariationId: primary?.squareVariationId ?? null,
         squareCatalogVariationName: primary?.squareVariationName ?? null,
         updatedAt: new Date(),
       }).where(dEq(stockItems.id, id));
+      });
+      if (res.headersSent) return;
       res.json({ ok: true, count: clean.length });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
-  });
+  }
+  app.put("/api/staff/stock/items/:id/square-links", staffAuth, managerAuth, saveStockLinks);
 
   // Consumption Report (now includes Square POS sales where mapped)
   app.get("/api/stock/report", staffAuth, managerAuth, async (req, res) => {
@@ -16108,6 +16137,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       if (!periodStart || !periodEnd) return res.status(400).json({ error: "periodStart and periodEnd query params required" });
       const start = new Date(periodStart);
       const end = new Date(periodEnd);
+      if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || start >= end) return res.status(400).json({ error: "Choose valid dates with the end after the start" });
 
       // All active items with their category
       const itemRows = await db
@@ -16121,7 +16151,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       const [openingCount] = await db
         .select()
         .from(stockCounts)
-        .where(dAnd(dEq(stockCounts.status, "submitted"), dLt(stockCounts.periodEnd, start)))
+        .where(dAnd(dEq(stockCounts.status, "submitted"), dLte(stockCounts.periodEnd, start)))
         .orderBy(dDesc(stockCounts.periodEnd))
         .limit(1);
 
@@ -16140,13 +16170,17 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       const closingLines = closingCount
         ? await db.select().from(stockCountLines).where(dEq(stockCountLines.countId, closingCount.id))
         : [];
+      if (!openingCount || !closingCount) return res.status(409).json({ error: "Submit an opening count on or before the start and a closing count on or after the end before running reconciliation." });
+      // Compare sales and deliveries over the actual snapshots, not mismatched requested dates.
+      const actualStart = openingCount.periodEnd;
+      const actualEnd = closingCount.periodEnd;
 
       // Deliveries within the period (by actual delivery date)
       const deliveryRows = await db
         .select({ line: stockDeliveryLines })
         .from(stockDeliveryLines)
         .innerJoin(stockDeliveries, dEq(stockDeliveryLines.deliveryId, stockDeliveries.id))
-        .where(dAnd(dGte(stockDeliveries.deliveredAt, start), dLte(stockDeliveries.deliveredAt, end)));
+        .where(dAnd(dGte(stockDeliveries.deliveredAt, actualStart), dLt(stockDeliveries.deliveredAt, actualEnd)));
 
       // Square POS variation links per item (one item may map to pint + half sizes)
       const allLinks = itemRows.length
@@ -16160,7 +16194,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
       let salesMap = new Map<string, number>();
       if (squareConfigured) {
         try {
-          salesMap = await square.getSalesByVariation(start.toISOString(), end.toISOString());
+          salesMap = await square.getSalesByVariation(actualStart.toISOString(), actualEnd.toISOString());
         } catch (error: any) {
           squareSalesAvailable = false;
           squareSalesError = error?.message ?? "Square POS sales could not be loaded.";
@@ -16184,7 +16218,8 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
         const opening = round1(toBase(openingUnits));
         const delivered = round1(toBase(deliveredUnits));
         const closing = round1(toBase(closingUnits));
-        const consumed = round1(toBase(openingUnits + deliveredUnits - closingUnits));
+        const countsComplete = openingLines.some(l => l.stockItemId === item.id) && closingLines.some(l => l.stockItemId === item.id);
+        const consumed = countsComplete ? round1(toBase(openingUnits + deliveredUnits - closingUnits)) : null;
 
         // Links (multi-size). Fall back to legacy single column if no links exist yet.
         const itemLinks = allLinks.filter((l) => l.stockItemId === item.id);
@@ -16195,7 +16230,7 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
         const sold = squareLinked && squareSalesAvailable
           ? round1(effectiveLinks.reduce((sum, lk) => sum + (salesMap.get(lk.variationId) ?? 0) * lk.factor, 0))
           : null;
-        const variance = sold !== null ? round1(consumed - sold) : null;
+        const variance = sold !== null && consumed !== null ? round1(consumed - sold) : null;
 
         return {
           itemId: item.id,
@@ -16207,14 +16242,17 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
           squareLinked,
           squareSalesAvailable,
           squareSalesError,
-          opening,
+          countsComplete,
+          actualPeriodStart: actualStart,
+          actualPeriodEnd: actualEnd,
+          opening: openingLines.some(l => l.stockItemId === item.id) ? opening : null,
           delivered,
-          closing,
+          closing: closingLines.some(l => l.stockItemId === item.id) ? closing : null,
           consumed,
           sold,
           variance,
         };
-      }).filter((r) => r.opening > 0 || r.delivered > 0 || r.closing > 0);
+      }).filter((r) => (r.opening ?? 0) > 0 || r.delivered > 0 || (r.closing ?? 0) > 0 || (r.sold ?? 0) > 0);
 
       res.json(report);
     } catch (e: any) { res.status(500).json({ error: e.message }); }

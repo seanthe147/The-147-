@@ -117,10 +117,12 @@ interface ReportLine {
   squareLinked: boolean;
   squareSalesAvailable: boolean;
   squareSalesError: string | null;
-  opening: number;
+  opening: number | null;
   delivered: number;
-  closing: number;
-  consumed: number;
+  closing: number | null;
+  consumed: number | null;
+  actualPeriodStart: string;
+  actualPeriodEnd: string;
   sold: number | null;
   variance: number | null;
 }
@@ -595,12 +597,18 @@ function ReportTab({ categories }: { categories: StockCategory[] }) {
 
   const reportQuery = useQuery<ReportLine[]>({
     queryKey: ["/api/stock/report", periodStart, periodEnd],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/stock/report?periodStart=${encodeURIComponent(periodStart)}&periodEnd=${encodeURIComponent(periodEnd)}`);
+      return res.json();
+    },
     enabled: fetched && !!periodStart && !!periodEnd,
     refetchOnMount: false,
   });
 
   const handleRun = () => {
     if (!periodStart || !periodEnd) return Alert.alert("Set dates", "Please enter both a start and end date.");
+    if (periodStart >= periodEnd) return Alert.alert("Invalid dates", "The end must be after the start.");
+    if (fetched) { void reportQuery.refetch(); return; }
     setFetched(true);
   };
 
@@ -629,8 +637,10 @@ function ReportTab({ categories }: { categories: StockCategory[] }) {
       </Pressable>
 
       {reportQuery.isLoading && <ActivityIndicator color={Colors.brand.gold} style={{ marginTop: 32 }} />}
+      {reportQuery.isError && <Text style={styles.emptyText}>{reportQuery.error.message}</Text>}
+      {data.length > 0 && <Text style={styles.fieldHint}>Between counts: {new Date(data[0].actualPeriodStart).toLocaleDateString("en-GB")} – {new Date(data[0].actualPeriodEnd).toLocaleDateString("en-GB")}. Missing quantities are unknown, not zero.</Text>}
 
-      {fetched && !reportQuery.isLoading && data.length === 0 && (
+      {fetched && !reportQuery.isLoading && !reportQuery.isError && data.length === 0 && (
         <View style={styles.emptyState}>
           <Text style={styles.emptyText}>No data for this period</Text>
           <Text style={styles.emptyHint}>You need at least one submitted stock count and some delivery records for this date range.</Text>
@@ -683,10 +693,10 @@ function ReportTab({ categories }: { categories: StockCategory[] }) {
                       </View>
                       <Text style={styles.reportItemUnit}>{l.containerSize} · in {l.baseUnit === "pint" ? "pints" : l.baseUnit}</Text>
                     </View>
-                    <Text style={[styles.reportCell, styles.reportNumCol, styles.reportNum]}>{l.opening}</Text>
+                    <Text style={[styles.reportCell, styles.reportNumCol, styles.reportNum]}>{l.opening ?? "–"}</Text>
                     <Text style={[styles.reportCell, styles.reportNumCol, styles.reportNum]}>{l.delivered}</Text>
-                    <Text style={[styles.reportCell, styles.reportNumCol, styles.reportNum]}>{l.closing}</Text>
-                    <Text style={[styles.reportCell, styles.reportNumCol, styles.reportNum, l.consumed < 0 ? styles.reportNeg : {}]}>{l.consumed}</Text>
+                    <Text style={[styles.reportCell, styles.reportNumCol, styles.reportNum]}>{l.closing ?? "–"}</Text>
+                    <Text style={[styles.reportCell, styles.reportNumCol, styles.reportNum, l.consumed !== null && l.consumed < 0 ? styles.reportNeg : {}]}>{l.consumed ?? "–"}</Text>
                     <Text style={[styles.reportCell, styles.reportNumColWide, styles.reportNum, { color: l.sold !== null ? Colors.light.text : "#555" }]}>
                       {l.sold !== null ? l.sold : "–"}
                     </Text>
