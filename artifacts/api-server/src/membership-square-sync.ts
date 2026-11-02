@@ -1,12 +1,12 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
-  customers, membershipSubscriptions as subs, membershipBillingStates as states,
+  customers, membershipPlans, membershipSubscriptions as subs, membershipBillingStates as states,
   membershipPurchaseRecords as purchases, membershipSquareEvents as events,
   membershipAuditLog as audit, membershipPlanVariationAliases as aliases,
 } from "@workspace/db/schema";
 import { db, storage } from "./storage";
 import * as square from "./square";
-import { addCalendarMonths, validDate, membershipBusinessDate } from "./membership-billing-policy";
+import { addCalendarMonths, validDate, membershipBusinessDate, isPaidMembershipPlan } from "./membership-billing-policy";
 import { alignBillingStart, billingState, reconcileScheduledMembership, syncPaidMembershipGroups, syncSquareMembershipGroupsForCustomer } from "./membership-billing";
 import type { Express, RequestHandler } from "express";
 
@@ -47,8 +47,8 @@ export async function processSquareMembershipEvent(event: any,
     let [local] = await db.select().from(subs).where(eq(subs.squareSubscriptionId, remote.id));
     if (!local && type === "subscription.created" && remote.customer_id) {
       [local] = await db.select().from(subs).where(and(eq(subs.squareCustomerId, remote.customer_id), isNull(subs.squareSubscriptionId),
-        sql`(${subs.status} IN ('pending', 'pending_payment', 'pending_start') OR (${subs.migrationToken} IS NOT NULL AND ${subs.migrationCompletedAt} IS NULL))`));
-      if (local && (["pending", "pending_payment", "pending_start"].includes(local.status) || local.migrationToken)) {
+        sql`(${subs.status} IN ('pending', 'pending_payment', 'pending_start', 'pending_upgrade') OR (${subs.migrationToken} IS NOT NULL AND ${subs.migrationCompletedAt} IS NULL))`));
+      if (local && (["pending", "pending_payment", "pending_start", "pending_upgrade"].includes(local.status) || local.migrationToken)) {
         const match = await mappedPlan(remote.plan_variation_id);
         const state = await billingState(local.id);
         if (!match || (match.plan.id !== local.planId && match.plan.id !== state?.pendingPlanId)) return true;
@@ -64,7 +64,7 @@ export async function processSquareMembershipEvent(event: any,
       const futurePaid = !!end && end > membershipDay();
       const status = remote.status === "PAUSED" ? "paused"
         : remote.status === "CANCELED" ? (futurePaid && local.status === "active" ? "active" : "cancelled")
-        : remote.status === "PENDING" && local.status !== "active" ? "pending" : local.status;
+        : remote.status === "PENDING" && local.status !== "active" && local.status !== "pending_upgrade" ? "pending" : local.status;
       await storage.updateMembershipSubscription(local.id, {
         status, ...(end ? { currentPeriodEnd: end } : {}), squareGroupSyncPending: true,
         ...(remote.status === "CANCELED" ? { cancelledAt: new Date() } : {}),
@@ -74,7 +74,7 @@ export async function processSquareMembershipEvent(event: any,
         await db.insert(states).values({ subscriptionId: local.id, cancellationDate: end ?? membershipDay() })
           .onConflictDoUpdate({ target: states.subscriptionId, set: { cancellationDate: end ?? membershipDay() } });
       }
-      if (plan && state?.termsVersion && !state.recurringStartDate && ["pending", "pending_start", "pending_payment"].includes(local.status))
+      if (plan && state?.termsVersion && !state.recurringStartDate && ["pending", "pending_start", "pending_payment", "pending_upgrade"].includes(local.status))
         await alignBillingStart(local.id, plan, remote.start_date);
       await syncPaidMembershipGroups(local.id);
     } else await syncUnlinkedSquareGroups(remote.customer_id);
@@ -123,7 +123,7 @@ export async function processSquareMembershipEvent(event: any,
     const inserted = await tx.insert(events).values({ id: key, eventType: type }).onConflictDoNothing().returning();
     if (!inserted.length) return;
     const [fresh] = await tx.select().from(subs).where(eq(subs.id, local.id)).for("update");
-    const firstActivation = ["pending", "pending_payment", "pending_start"].includes(fresh.status) && !fresh.firstPaidAt;
+    const firstActivation = ["pending", "pending_payment", "pending_start", "pending_upgrade"].includes(fresh.status) && !fresh.firstPaidAt;
     const periodStart = paidAt ? membershipDay(paidAt) : fresh.currentPeriodStart;
     await tx.insert(purchases).values({
       id: key, squareCustomerId: remote.customer_id, squareSubscriptionId: remote.id,
@@ -135,6 +135,20 @@ export async function processSquareMembershipEvent(event: any,
     }).onConflictDoNothing();
     const isCurrent = remote.charged_through_date > membershipDay() && remote.charged_through_date >= (fresh.currentPeriodEnd ?? "");
     if (!isCurrent) return; // Late delivery of an older invoice must not roll dates/tiers back.
+    if (isPaidMembershipPlan(match.plan)) {
+      const vipRows = await tx.select({ id: subs.id }).from(subs)
+        .innerJoin(membershipPlans, eq(subs.planId, membershipPlans.id))
+        .where(and(eq(subs.customerId, fresh.customerId), eq(subs.status, "active"),
+          eq(membershipPlans.tier, "vip"))).for("update");
+      for (const vip of vipRows) {
+        if (vip.id === fresh.id) continue;
+        await tx.update(subs).set({ status: "cancelled", cancelledAt: new Date(),
+          squareGroupSyncPending: true }).where(eq(subs.id, vip.id));
+        await tx.insert(audit).values({ subscriptionId: vip.id, customerId: fresh.customerId,
+          action: "vip_upgraded", staffUsername: "square-webhook",
+          note: `VIP replaced by ${match.plan.name} after confirmed payment for membership #${fresh.id}.` });
+      }
+    }
     await tx.update(subs).set({
       planId: match.plan.id, status: "active", failedPaymentAttempts: 0,
       currentPeriodStart: periodStart, currentPeriodEnd: remote.charged_through_date,
@@ -386,6 +400,34 @@ export async function refreshExternalSquareMembership(customerId: number, square
   await claimPrepaidPurchases(customerId, squareCustomer.id);
   const existing = await storage.getLatestMembershipSubscriptionByCustomer(customerId);
   const remoteSubs = await square.listSquareSubscriptionsForCustomer(squareCustomer.id);
+  const [upgrade] = await db.select().from(subs).where(and(
+    eq(subs.customerId, customerId), eq(subs.status, "pending_upgrade"),
+  ));
+  if (upgrade) {
+    // Never attach the new mandate to the old VIP entitlement. Link the
+    // upgrade attempt and use the same verified-invoice activation path.
+    let candidate = remoteSubs.find((r: any) => r.id === upgrade.squareSubscriptionId);
+    if (!candidate && !upgrade.squareSubscriptionId) {
+      for (const remote of remoteSubs) {
+        if (remote.customer_id === upgrade.squareCustomerId &&
+            ["ACTIVE", "PENDING"].includes(remote.status) &&
+            (await mappedPlan(remote.plan_variation_id))?.plan.id === upgrade.planId) {
+          candidate = remote;
+          break;
+        }
+      }
+    }
+    if (candidate) {
+      await processSquareMembershipEvent({ type: "subscription.created", data: { object: { subscription: candidate } } });
+      for (const id of (candidate.invoice_ids ?? []).slice(0, 50)) {
+        const invoice = await square.getSquareInvoice(id);
+        if (invoice?.status === "PAID") {
+          await processSquareMembershipEvent({ type: "invoice.payment_made", data: { object: { invoice } } });
+        }
+      }
+    }
+    return true;
+  }
   const linked = existing?.squareSubscriptionId ? remoteSubs.find((r: any) => r.id === existing.squareSubscriptionId) : null;
   const candidates: any[] = [];
   for (const r of remoteSubs) if (r.status === "ACTIVE" && validDate(r.charged_through_date) &&

@@ -5,6 +5,12 @@ description: Business scope for shared app and Wix membership management through
 
 Membership billing must be one central system customers can access from The 147 app and the Wix website, with Square processing payments. Customers must be able to choose monthly or annual billing and upgrade plans. Selected plans require a 12-month minimum subscription term.
 
+VIP members may opt into paid memberships, but customers must never be offered VIP as a downgrade destination.
+
+**Why:** The owner explicitly requested one-way VIP upgrades. VIP remains invitation-only; a failed or abandoned payment must not remove existing VIP access.
+
+**How to apply:** Collect consent for the new recurring payment and terms. Replace VIP access only after confirmed payment, atomically with activating the paid membership, and keep removal of the old Square group retryable. Do not weaken single-active-membership protections to support checkout.
+
 Memberships must also cover purchases made directly through the Square till/POS and Square recurring subscriptions, alongside the newly built app/website system.
 
 **Why:** The user explicitly confirmed that all three purchase routes are used; app/website checkout alone does not cover the business.

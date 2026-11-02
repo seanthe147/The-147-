@@ -242,20 +242,32 @@ test("VIP remains until the first paid upgrade invoice, then its membership and 
   const vipSub = await storage.createMembershipSubscription({
     customerId: c.id, planId: vip.id, status: "active", source: "square_group_sync",
   });
+  authCustomer = c.id;
+  assert.equal((await post("/api/membership/join", { planId: standard.id })).status, 202);
+  assert.equal((await post("/api/membership/join", { planId: vip.id })).status, 403);
   const r = remote(c, standard), i = invoice(r, "vip-upgrade");
   const paidSub = await storage.createMembershipSubscription({
-    customerId: c.id, planId: standard.id, status: "pending", source: "app_native",
+    customerId: c.id, planId: standard.id, status: "pending_upgrade", source: "app_native",
     squareCustomerId: c.squareCustomerId, squareSubscriptionId: r.id,
   });
 
   assert.equal((await storage.getMembershipSubscription(vipSub.id))?.status, "active");
   assert(group(c.squareCustomerId).has(vip.squareCustomerGroupId));
+  assert.equal((await post("/api/membership/join", { planId: standard.id })).status, 409);
+  r.status = "PENDING";
+  await processSquareMembershipEvent({ type: "subscription.updated", data: { object: { subscription: r } } });
+  assert.equal((await storage.getMembershipSubscription(paidSub.id))?.status, "pending_upgrade");
+  r.status = "ACTIVE";
+  failGroups = true;
+  await assert.rejects(refreshExternalSquareMembership(c.id, { id: c.squareCustomerId }));
+  failGroups = false;
   await processSquareMembershipEvent(paidEvent(i));
 
   assert.equal((await storage.getMembershipSubscription(vipSub.id))?.status, "cancelled");
   assert.equal((await storage.getMembershipSubscription(paidSub.id))?.status, "active");
   assert(group(c.squareCustomerId).has(standard.squareCustomerGroupId));
   assert(!group(c.squareCustomerId).has(vip.squareCustomerGroupId));
+  assert.equal((await storage.getMembershipSubscription(vipSub.id))?.squareGroupSyncPending, false);
 });
 test("duplicate failed charge events count once, notify 1/2, and hold access only at failure 3", async () => {
   const c = await customer("failures"), r = remote(c), first = invoice(r, "first-payment");

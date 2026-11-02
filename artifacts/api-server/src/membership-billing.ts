@@ -99,7 +99,20 @@ export const membershipSignupGuard: RequestHandler = async (req, res, next) => {
         return;
       }
       const existing = await storage.getLatestMembershipSubscriptionByCustomer(customerId);
-      if (existing && existing.status !== "cancelled") {
+      const vipUpgrade = existing?.status === "active" && isVipTier(existing.plan?.tier);
+      const requestedPlan = await storage.getMembershipPlan(Number(req.body?.planId));
+      if (requestedPlan && isVipTier(requestedPlan.tier)) {
+        res.status(403).json({ message: "VIP is invitation-only and cannot be selected as a customer plan.", code: "PLAN_STAFF_ONLY" });
+        return;
+      }
+      const [upgradeAttempt] = await db.select().from(subscriptions).where(and(
+        eq(subscriptions.customerId, customerId), eq(subscriptions.status, "pending_upgrade"),
+      ));
+      if (upgradeAttempt) {
+        res.status(409).json({ message: "A VIP upgrade checkout is already in progress. Complete that checkout or ask staff to review it before starting another.", code: "VIP_UPGRADE_PENDING" });
+        return;
+      }
+      if (existing && existing.status !== "cancelled" && !vipUpgrade) {
         res.status(409).json({ message: "Use Manage membership to change your existing plan. Wix members must use their reviewed migration link.", code: "MEMBERSHIP_EXISTS" });
         return;
       }
@@ -196,38 +209,13 @@ export async function reconcileScheduledMembership(sqSub: any, paymentConfirmed 
 export async function syncPaidMembershipGroups(subscriptionId: number) {
   const [local] = await db.select().from(subscriptions).where(eq(subscriptions.id, subscriptionId));
   if (!local?.squareCustomerId) return;
-  const targetPlan = await storage.getMembershipPlan(local.planId);
-  let previousVipPlanId: number | undefined;
-  if (local.status === "active" && isPaidMembershipPlan(targetPlan)) {
-    const memberships = await storage.getMembershipSubscriptions();
-    const activeVip = memberships.filter(member =>
-      member.customerId === local.customerId &&
-      member.id !== local.id &&
-      member.status === "active" &&
-      isVipTier(member.plan?.tier),
-    );
-    if (activeVip.length) {
-      previousVipPlanId = activeVip[0].planId;
-      await db.transaction(async tx => {
-        for (const vip of activeVip) {
-          const [fresh] = await tx.select().from(subscriptions)
-            .where(eq(subscriptions.id, vip.id)).for("update");
-          if (!fresh || fresh.status !== "active") continue;
-          await tx.update(subscriptions).set({
-            status: "cancelled",
-            cancelledAt: new Date(),
-          }).where(eq(subscriptions.id, fresh.id));
-          await tx.insert(membershipAuditLog).values({
-            subscriptionId: fresh.id,
-            customerId: fresh.customerId,
-            action: "vip_upgraded",
-            staffUsername: "square-webhook",
-            note: `VIP access ended after confirmed payment for ${targetPlan.name} membership #${local.id}.`,
-          });
-        }
-      });
-    }
-  }
+  // Payment confirmation retires VIP atomically with activation. Retain this
+  // marker until Square confirms group removal, including across retries.
+  const pendingVip = local.status === "active"
+    ? (await storage.getMembershipSubscriptions()).filter(member =>
+      member.customerId === local.customerId && member.status === "cancelled" &&
+      member.squareGroupSyncPending && isVipTier(member.plan?.tier))
+    : [];
   const currentMembership = await storage.getMembershipSubscriptionByCustomer(local.customerId);
   const activePlanId = local.status === "active" ? local.planId
     : currentMembership?.status === "active" && currentMembership.squareCustomerId === local.squareCustomerId
@@ -238,10 +226,13 @@ export async function syncPaidMembershipGroups(subscriptionId: number) {
   await syncSquareMembershipGroupsForCustomer(
     local.squareCustomerId,
     activePlanId,
-    previousVipPlanId ?? local.planId,
+    pendingVip[0]?.planId ?? local.planId,
     activeBilling?.billingFrequency,
   );
   await db.update(subscriptions).set({ squareGroupSyncPending: false }).where(eq(subscriptions.id, local.id));
+  for (const vip of pendingVip) {
+    await db.update(subscriptions).set({ squareGroupSyncPending: false }).where(eq(subscriptions.id, vip.id));
+  }
 }
 
 export async function syncSquareMembershipGroupsForCustomer(
@@ -401,7 +392,7 @@ export async function scheduleMembershipChange(sub: BillingSubscription, planId:
     if (state?.pendingPlanId || state?.cancellationDate) throw new Error("A billing change is already scheduled.");
     const target = await storage.getMembershipPlan(planId);
     const current = await storage.getMembershipPlan(sub.planId);
-    if (!target?.active || target.hideFromSignup || !current) throw new Error("Plan is not available.");
+    if (!target?.active || target.hideFromSignup || isVipTier(target.tier) || !current) throw new Error("Plan is not available.");
     if (target.id !== current.id && target.priceMonthly <= current.priceMonthly && !isPlatinumConsolidation(current, target)) {
       throw new Error("Only upgrades or a change of billing frequency are supported. A downgrade requires a separate agreed process.");
     }

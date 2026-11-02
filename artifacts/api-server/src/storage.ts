@@ -2380,7 +2380,7 @@ export class DatabaseStorage implements IStorage {
     const [sub] = await db.select().from(membershipSubscriptions)
       .where(eq(membershipSubscriptions.customerId, customerId))
       .orderBy(sql`CASE WHEN ${membershipSubscriptions.status} = 'active' THEN 0
-        WHEN ${membershipSubscriptions.status} IN ('pending', 'pending_payment', 'pending_start') THEN 1
+        WHEN ${membershipSubscriptions.status} IN ('pending', 'pending_payment', 'pending_start', 'pending_upgrade') THEN 1
         WHEN ${membershipSubscriptions.status} IN ('frozen', 'paused') THEN 2 ELSE 3 END`,
         desc(membershipSubscriptions.createdAt));
     if (!sub) return null;

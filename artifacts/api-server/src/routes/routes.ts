@@ -12246,7 +12246,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       }
 
       // Deferred start: create as pending_start so benefits don't activate early
-      const initialStatus = periodStart > today ? "pending_start" : "pending";
+      const initialStatus = isVipUpgrade ? "pending_upgrade" : periodStart > today ? "pending_start" : "pending";
 
       const sub = await storage.createMembershipSubscription({
         customerId,
@@ -12452,7 +12452,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       }
 
       // 4) Create the local subscription record (pending until Square confirms)
-      const initialStatus = periodStart > today ? "pending_start" : "pending";
+      const initialStatus = isVipUpgrade ? "pending_upgrade" : periodStart > today ? "pending_start" : "pending";
       const sub = await storage.createMembershipSubscription({
         customerId,
         planId: plan.id,
