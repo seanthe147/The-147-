@@ -62,7 +62,11 @@ export async function processSquareMembershipEvent(event: any,
       // A prepaid year is not shortened when a future renewal mandate ends.
       const end = later(local.prepaidUntilDate, remote.charged_through_date, local.currentPeriodEnd);
       const futurePaid = !!end && end > membershipDay();
-      const status = remote.status === "PAUSED" ? "paused"
+      // An unfinished VIP upgrade remains protected even if provider lifecycle
+      // changes arrive before its paid invoice. Only verified payment promotes
+      // it; only the checked checkout-abandon flow releases the signup guard.
+      const status = local.status === "pending_upgrade" ? "pending_upgrade"
+        : remote.status === "PAUSED" ? "paused"
         : remote.status === "CANCELED" ? (futurePaid && local.status === "active" ? "active" : "cancelled")
         : remote.status === "PENDING" && local.status !== "active" && local.status !== "pending_upgrade" ? "pending" : local.status;
       await storage.updateMembershipSubscription(local.id, {

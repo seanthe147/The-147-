@@ -18,3 +18,9 @@ when updating these tools. Preserve the Node-20-compatible Undici line for
 Expo Launch. For locally patched packages, a version-only vulnerability scan
 can still flag the original version: report this explicitly, keep behavioral
 regressions, and replace the backport with an upstream release when available.
+
+Orval's inferred Zod major can differ from the consuming workspace package.
+**Why:** A regenerated client selected Zod 4 APIs while the server schema package
+still used Zod 3; generated fetch helpers also started requiring DOM iterables.
+**How to apply:** Explicitly target the consumer's Zod major and run workspace
+type checks after generation, not just before dependency updates.

@@ -304,6 +304,9 @@ export async function syncSquareMembershipGroupsForCustomer(
 type BillingSubscription = NonNullable<Awaited<ReturnType<typeof storage.getMembershipSubscription>>>;
 
 async function membershipBillingDetails(sub: BillingSubscription | null | undefined) {
+  const [upgrade] = sub ? await db.select().from(subscriptions).where(and(
+    eq(subscriptions.customerId, sub.customerId), eq(subscriptions.status, "pending_upgrade"),
+  )) : [];
   let remote: any = null;
   let paymentCard = null;
   if (sub?.squareSubscriptionId) {
@@ -357,6 +360,12 @@ async function membershipBillingDetails(sub: BillingSubscription | null | undefi
       }
     : null;
   return {
+    pendingUpgrade: upgrade ? {
+      id: upgrade.id,
+      planName: (await storage.getMembershipPlan(upgrade.planId))?.name ?? "Paid membership",
+      canManage: !!upgrade.squareCheckoutLinkId && !!upgrade.squareCheckoutOrderId &&
+        !upgrade.squareSubscriptionId && !upgrade.firstPaidAt,
+    } : null,
     reactivation,
     subscription: sub ? {
       id: sub.id, planId: sub.planId, planName: current?.name ?? "Membership", source: sub.source,
@@ -513,6 +522,72 @@ export async function reverseScheduledMembershipCancellation(sub: BillingSubscri
 }
 
 export function registerMembershipBilling(app: Express, customerAuth: RequestHandler, staffAuth: RequestHandler, ownerAuth: RequestHandler, managerAuth: RequestHandler = ownerAuth) {
+  app.post("/api/membership/upgrade-checkout", customerAuth, async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const { attemptId, action } = req.body ?? {};
+    if (!Number.isInteger(attemptId) || !["resume", "abandon"].includes(action)) {
+      res.status(400).json({ message: "Choose an upgrade checkout and resume or abandon." });
+      return;
+    }
+    try {
+      const result = await db.transaction(async tx => {
+        const customerId = (req as any).customerId as number;
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(14701, ${customerId})`);
+        const [attempt] = await tx.select().from(subscriptions).where(and(
+          eq(subscriptions.id, attemptId), eq(subscriptions.customerId, customerId),
+        )).for("update");
+        if (!attempt || attempt.status !== "pending_upgrade" || attempt.firstPaidAt ||
+            attempt.lastPaidAt || attempt.squareSubscriptionId) {
+          throw new Error("This upgrade may already be billing. Refresh membership; no new checkout was created.");
+        }
+        if (!attempt.squareCheckoutLinkId || !attempt.squareCheckoutOrderId || !attempt.squareCustomerId) {
+          throw new Error("This checkout needs staff review. Your VIP access is unchanged; do not start another payment.");
+        }
+        // A mandate can precede the payment webhook. Fail closed even for an
+        // unrelated/historical mandate rather than risk starting another one.
+        const assertNoMandate = async () => {
+          const remote = await square.listSquareSubscriptionsForCustomer(attempt.squareCustomerId!);
+          if (remote.length) throw new Error("Square has a subscription to review. Refresh membership or contact the club; no checkout was replaced.");
+        };
+        await assertNoMandate();
+        let order = await square.getSquareOrder(attempt.squareCheckoutOrderId);
+        const unpaid = (o: any) => o?.id === attempt.squareCheckoutOrderId &&
+          !o.tenders?.length && !o.returns?.length && !o.refunds?.length &&
+          Number(o.total_money?.amount) > 0 &&
+          Number(o.net_amount_due_money?.amount) === Number(o.total_money?.amount);
+        if (!unpaid(order) || !["OPEN", "DRAFT", "CANCELED"].includes(order.state)) {
+          throw new Error("Square cannot confirm this checkout is unpaid. Refresh membership or contact the club.");
+        }
+        if (action === "resume") {
+          if (order.state === "CANCELED") throw new Error("This checkout is closed. Abandon it before choosing another plan.");
+          const link = await square.getMembershipCheckoutLink(attempt.squareCheckoutLinkId);
+          if (link?.order_id !== order.id || !/^https:\/\//.test(link?.url ?? "")) {
+            throw new Error("Square could not confirm the original checkout link. Contact the club.");
+          }
+          return { message: "Continue your original Square checkout. VIP stays active until payment is confirmed.", checkoutUrl: link.url };
+        }
+        if (order.state !== "CANCELED") {
+          await square.deleteMembershipCheckoutLink(attempt.squareCheckoutLinkId);
+        }
+        // Deleting the link cancels its order. Re-read after deletion to close
+        // the concurrent-payment race. A timeout leaves the attempt protected.
+        order = await square.getSquareOrder(attempt.squareCheckoutOrderId);
+        if (!unpaid(order) || order.state !== "CANCELED") {
+          throw new Error("Square has not confirmed cancellation. Refresh before retrying; your upgrade remains protected.");
+        }
+        await assertNoMandate();
+        await tx.update(subscriptions).set({ status: "cancelled", cancelledAt: new Date() })
+          .where(eq(subscriptions.id, attempt.id));
+        await tx.insert(membershipAuditLog).values({
+          subscriptionId: attempt.id, action: "vip_upgrade_checkout_abandoned", staffUsername: `customer:${customerId}`,
+        });
+        return { message: "Unpaid upgrade abandoned. Your VIP membership is unchanged. You can now choose another paid plan." };
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(409).json({ message: error.message || "Could not verify Square checkout. No replacement was created." });
+    }
+  });
   app.post("/api/membership/enable-auto-renew", customerAuth, async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     const parsed = EnableMembershipAutoRenewBody.safeParse(req.body);

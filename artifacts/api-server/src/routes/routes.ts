@@ -12327,6 +12327,10 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
                   checkoutFailureCode = "SUBSCRIPTION_CHECKOUT_FAILED";
                   console.error(`[membership/join] sub #${sub.id} aborted: subscription checkout link could not be created — refusing to fall back to a one-time payment link.`);
                 } else {
+                  await storage.updateMembershipSubscription(sub.id, {
+                    squareCheckoutLinkId: checkout.paymentLinkId,
+                    squareCheckoutOrderId: checkout.orderId,
+                  });
                   checkoutUrl = checkout.url;
                   console.log(`[membership/join] subscription ${isAnnual ? "annual" : "monthly"} checkout created for sub #${sub.id}`);
                 }
@@ -12347,8 +12351,8 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       // the app keeps them in the in-app sheet.
       if (square.isConfigured() && !checkoutUrl) {
         await storage.updateMembershipSubscription(sub.id, {
-          status: "cancelled",
-          cancelledAt: new Date(),
+          status: isVipUpgrade ? "pending_upgrade" : "cancelled",
+          cancelledAt: isVipUpgrade ? null : new Date(),
           staffNotes: `[Auto-cancelled at signup: ${checkoutFailureCode || "RECURRING_CHECKOUT_UNAVAILABLE"}]`,
         }).catch(() => {});
         return res.status(503).json({
@@ -12486,7 +12490,7 @@ h1{color:#d4a843;font-size:28px;margin:0 0 12px;}p{color:rgba(255,255,255,0.7);l
       } catch (subErr: any) {
         console.error("[membership/join-native] createSquareSubscription failed:", subErr?.message ?? subErr);
         await storage.updateMembershipSubscription(sub.id, {
-          status: "pending",
+          status: isVipUpgrade ? "pending_upgrade" : "pending",
           staffNotes: `[Native sign-up: card saved (${savedCard.id}) but subscription create failed: ${subErr?.message || "unknown"}]`,
         }).catch(() => {});
         return res.status(502).json({

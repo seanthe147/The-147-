@@ -10,6 +10,7 @@ import {
   useGetMembershipBilling,
   useReplaceMembershipCard,
   useUndoScheduledMembershipCancellation,
+  useManageVipUpgradeCheckout,
 } from "@workspace/api-client-react";
 import type { MembershipActionResult, MembershipBillingPlan } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
@@ -57,6 +58,7 @@ export function ManageMembership({
   const [freq, setFreq] = useState<Freq>("monthly");
   const [accepted, setAccepted] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmAbandonUpgrade, setConfirmAbandonUpgrade] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [cardOpen, setCardOpen] = useState(false);
   const [cardConsent, setCardConsent] = useState(false);
@@ -97,6 +99,18 @@ export function ManageMembership({
     invalidate();
   };
   const change = useChangeMembershipPlan({ mutation: { onSuccess: onDone } });
+  const upgradeCheckout = useManageVipUpgradeCheckout({ mutation: {
+    onSuccess: async (result) => {
+      setConfirmAbandonUpgrade(false);
+      setNotice(result.message);
+      invalidate();
+      if (result.checkoutUrl) {
+        try { await Linking.openURL(result.checkoutUrl); }
+        catch { setNotice("Could not open Square. Tap Resume checkout to try again."); }
+      }
+    },
+    onError: (e) => { setNotice(apiErrorMessage(e, "Could not verify checkout. Please refresh.")); invalidate(); },
+  } });
   const cancel = useCancelMembershipBilling({ mutation: { onSuccess: onDone } });
   const undoCancellation = useUndoScheduledMembershipCancellation({ mutation: { onSuccess: onDone } });
   const replaceCard = useReplaceMembershipCard({ mutation: {
@@ -409,6 +423,26 @@ export function ManageMembership({
           </View>
           {sub.migrationNeedsReview ? (
             <Text style={s.muted}>Your move from the old website billing is being checked by the club. Changes will be available once the club confirms your previous payments have stopped.</Text>
+          ) : data?.pendingUpgrade ? (
+            <View testID="pending-vip-upgrade">
+              <Text style={s.muted}>Your upgrade to {data.pendingUpgrade.planName} is unfinished. VIP benefits remain active until Square confirms payment.</Text>
+              {data.pendingUpgrade.canManage ? <>
+                <Pressable style={s.primaryBtn} disabled={upgradeCheckout.isPending}
+                  onPress={() => upgradeCheckout.mutate({ data: { attemptId: data.pendingUpgrade!.id, action: "resume" } })}>
+                  <Text style={s.primaryBtnText}>Resume checkout</Text>
+                </Pressable>
+                <Pressable disabled={upgradeCheckout.isPending} onPress={() => setConfirmAbandonUpgrade(!confirmAbandonUpgrade)}>
+                  <Text style={s.muted}>{confirmAbandonUpgrade ? "Keep checkout" : "Abandon unpaid upgrade"}</Text>
+                </Pressable>
+                {confirmAbandonUpgrade && <>
+                  <Text style={s.muted}>Close this unpaid checkout? Your VIP membership stays unchanged. Square must confirm it is safe before another upgrade is allowed.</Text>
+                  <Pressable disabled={upgradeCheckout.isPending} onPress={() => upgradeCheckout.mutate({
+                    data: { attemptId: data.pendingUpgrade!.id, action: "abandon" },
+                  })}><Text style={s.muted}>Confirm abandon upgrade</Text></Pressable>
+                </>}
+                {upgradeCheckout.isPending && <ActivityIndicator color={colors.tint} />}
+              </> : <Text style={s.muted}>Payment may already be processing, or the checkout needs review. Refresh membership or contact the club. Do not start a second payment.</Text>}
+            </View>
           ) : !sub.managedInSquare && sub.currentTier === "vip" ? (
             <>
               <Text style={s.muted}>

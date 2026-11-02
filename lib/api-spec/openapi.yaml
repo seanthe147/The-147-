@@ -161,6 +161,20 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MembershipBilling" }
+  /membership/upgrade-checkout:
+    post:
+      operationId: manageVipUpgradeCheckout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VipUpgradeCheckoutAction" }
+      responses:
+        "200":
+          description: Existing checkout resumed or safely abandoned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VipUpgradeCheckoutResult" }
   /membership/reactivate:
     post:
       operationId: reactivateMembership
@@ -288,6 +302,10 @@ components:
       type: object
       required: [subscription, plans, reactivation]
       properties:
+        pendingUpgrade:
+          anyOf:
+            - { $ref: "#/components/schemas/PendingVipUpgrade" }
+            - { type: "null" }
         subscription:
           anyOf:
             - { $ref: "#/components/schemas/MembershipBillingSubscription" }
@@ -299,6 +317,25 @@ components:
           anyOf:
             - { $ref: "#/components/schemas/MembershipReactivationOffer" }
             - { type: "null" }
+    PendingVipUpgrade:
+      type: object
+      required: [id, planName, canManage]
+      properties:
+        id: { type: integer }
+        planName: { type: string }
+        canManage: { type: boolean }
+    VipUpgradeCheckoutAction:
+      type: object
+      required: [attemptId, action]
+      properties:
+        attemptId: { type: integer }
+        action: { type: string, enum: [resume, abandon] }
+    VipUpgradeCheckoutResult:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+        checkoutUrl: { type: string }
     MembershipReactivationOffer:
       type: object
       required: [available, planId, planName, frequency, pricePence, minimumTermMonths, paidThroughDate, deadline]

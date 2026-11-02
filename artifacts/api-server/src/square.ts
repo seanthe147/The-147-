@@ -1033,7 +1033,7 @@ export async function createSubscriptionCheckoutLink(opts: {
   subscriptionId: number;
   buyerEmail?: string;
   redirectUrl: string;
-}): Promise<{ url: string; paymentLinkId: string }> {
+}): Promise<{ url: string; paymentLinkId: string; orderId: string }> {
   const locationId = getLocationId();
   const body: Record<string, unknown> = {
     idempotency_key: createHash("sha256").update(`membership-checkout:${opts.subscriptionId}:${opts.planVariationId}`).digest("hex").slice(0, 40),
@@ -1057,10 +1057,19 @@ export async function createSubscriptionCheckoutLink(opts: {
 
   const data = await squareRequest("POST", "/v2/online-checkout/payment-links", body);
   const link = data.payment_link;
-  return { url: link.url, paymentLinkId: link.id };
+  return { url: link.url, paymentLinkId: link.id, orderId: link.order_id };
 }
 
 // ── Square Catalog Subscription Plan Setup ────────────────────────────────────
+export async function getMembershipCheckoutLink(id: string) {
+  const data = await squareRequest("GET", `/v2/online-checkout/payment-links/${encodeURIComponent(id)}`);
+  return data.payment_link;
+}
+
+export async function deleteMembershipCheckoutLink(id: string) {
+  return squareRequest("DELETE", `/v2/online-checkout/payment-links/${encodeURIComponent(id)}`);
+}
+
 
 export interface PlanSetupResult {
   planId: number;

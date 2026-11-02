@@ -549,6 +549,8 @@ export const membershipSubscriptions = pgTable("membership_subscriptions", {
   customerId: integer("customer_id").notNull(),
   planId: integer("plan_id").notNull(),
   squareSubscriptionId: text("square_subscription_id"),
+  squareCheckoutLinkId: text("square_checkout_link_id"),
+  squareCheckoutOrderId: text("square_checkout_order_id"),
   squareCustomerId: text("square_customer_id"),
   status: text("status").notNull().default("active"),
   currentPeriodStart: text("current_period_start"),

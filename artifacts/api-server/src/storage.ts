@@ -217,6 +217,8 @@ export async function runStartupMigrations() {
     await client.query(`
       ALTER TABLE membership_plans ADD COLUMN IF NOT EXISTS square_pos_variation_ids TEXT[] NOT NULL DEFAULT '{}';
       ALTER TABLE membership_subscriptions ADD COLUMN IF NOT EXISTS first_paid_at TIMESTAMP;
+      ALTER TABLE membership_subscriptions ADD COLUMN IF NOT EXISTS square_checkout_link_id TEXT;
+      ALTER TABLE membership_subscriptions ADD COLUMN IF NOT EXISTS square_checkout_order_id TEXT;
       ALTER TABLE membership_subscriptions ADD COLUMN IF NOT EXISTS last_paid_at TIMESTAMP;
       ALTER TABLE membership_subscriptions ADD COLUMN IF NOT EXISTS prepaid_until_date TEXT;
       ALTER TABLE membership_subscriptions ADD COLUMN IF NOT EXISTS square_group_sync_pending BOOLEAN NOT NULL DEFAULT FALSE;

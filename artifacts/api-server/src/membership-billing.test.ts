@@ -33,6 +33,7 @@ const blockedRequests: string[] = [];
 let declineCard = false;
 let failCardUpdate = false;
 let failActionDelete = false;
+let checkoutTest: { order: any; mandates: any[]; failDelete?: boolean; payOnDelete?: boolean } | null = null;
 const card: any = { id: "fixture-card-new", customer_id: "fixture-customer", enabled: true,
   card_brand: "VISA", last_4: "1111", exp_month: 12, exp_year: 2030,
   cardholder_name: "Must not be exposed", billing_address: { postal_code: "private" }, fingerprint: "private" };
@@ -53,7 +54,17 @@ before(async () => {
         if (declineCard) return Response.json({ errors: [{ code: "CARD_DECLINED", detail: "private provider detail" }] }, { status: 400 });
         return Response.json({ card });
       }
-      if (path === "/v2/subscriptions/search") return Response.json({ subscriptions: [remote] });
+      if (path === "/v2/subscriptions/search") return Response.json({ subscriptions: checkoutTest?.mandates ?? [remote] });
+      if (checkoutTest && path === "/v2/orders/fixture-upgrade-order") return Response.json({ order: checkoutTest.order });
+      if (checkoutTest && path === "/v2/online-checkout/payment-links/fixture-upgrade-link") {
+        if (init?.method === "DELETE") {
+          if (checkoutTest.failDelete) return Response.json({ errors: [{ code: "CONFLICT" }] }, { status: 409 });
+          checkoutTest.order.state = checkoutTest.payOnDelete ? "COMPLETED" : "CANCELED";
+          if (checkoutTest.payOnDelete) checkoutTest.order.tenders = [{ id: "paid" }];
+          return Response.json({ cancelled_order_id: "fixture-upgrade-order" });
+        }
+        return Response.json({ payment_link: { id: "fixture-upgrade-link", order_id: "fixture-upgrade-order", url: "https://square.link/fixture-upgrade" } });
+      }
       if (path === "/v2/subscriptions" && init?.method === "POST") {
         return Response.json({ subscription: {
           id: "fixture-reactivated-sub",
@@ -162,6 +173,49 @@ after(async () => {
   assert.equal(requests.some(r => r.path.includes("/payments")), false,
     "membership management must not call the direct payments endpoint");
   globalThis.fetch = realFetch;
+});
+
+test("VIP checkout resumes the exact link and abandons only a confirmed unpaid cancelled order", async () => {
+  const attempt = await storage.createMembershipSubscription({
+    customerId, planId: blackId, status: "pending_upgrade", squareCustomerId: "fixture-customer",
+    squareCheckoutLinkId: "fixture-upgrade-link", squareCheckoutOrderId: "fixture-upgrade-order", source: "app",
+  });
+  const reset = () => { checkoutTest = { mandates: [], order: {
+    id: "fixture-upgrade-order", state: "OPEN", total_money: { amount: 2000 },
+    net_amount_due_money: { amount: 2000 },
+  } }; };
+  const act = (action: string, attemptId = attempt.id) => realFetch(`${base}/api/membership/upgrade-checkout`, {
+    method: "POST", headers: { "Content-Type": "application/json", "x-billing-test-auth": "yes" }, body: JSON.stringify({ action, attemptId }),
+  });
+  try {
+    reset();
+    const resumed = await act("resume");
+    assert.equal(resumed.status, 200);
+    assert.equal(((await resumed.json()) as any).checkoutUrl, "https://square.link/fixture-upgrade");
+    assert.equal((await act("resume", -1)).status, 409);
+    checkoutTest!.mandates = [remote];
+    assert.equal((await act("abandon")).status, 409);
+    reset();
+    checkoutTest!.order.tenders = [{ id: "paid" }];
+    assert.equal((await act("abandon")).status, 409);
+    reset();
+    checkoutTest!.failDelete = true;
+    assert.equal((await act("abandon")).status, 409);
+    assert.equal((await storage.getMembershipSubscription(attempt.id))?.status, "pending_upgrade");
+    reset();
+    checkoutTest!.payOnDelete = true;
+    assert.equal((await act("abandon")).status, 409, "concurrent payment must retain the attempt");
+    assert.equal((await storage.getMembershipSubscription(attempt.id))?.status, "pending_upgrade");
+    reset();
+    assert.equal((await act("abandon")).status, 200);
+    assert.equal((await storage.getMembershipSubscription(attempt.id))?.status, "cancelled");
+    assert.equal((await storage.getMembershipSubscription(subId))?.status, "active", "existing access unchanged");
+    assert.equal((await act("resume")).status, 409);
+  } finally {
+    checkoutTest = null;
+    await db.delete(membershipAuditLog).where(eq(membershipAuditLog.subscriptionId, attempt.id));
+    await db.delete(membershipSubscriptions).where(eq(membershipSubscriptions.id, attempt.id));
+  }
 });
 
 const request = (path: string, body?: unknown, auth = true) => fetch(base + path, {

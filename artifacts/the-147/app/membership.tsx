@@ -249,6 +249,8 @@ export default function MembershipScreen() {
       return data;
     },
     onSuccess: (data: any) => {
+      setVipUpgradeMode(false);
+      queryClient.invalidateQueries({ queryKey: getGetMembershipBillingQueryKey() });
       queryClient.invalidateQueries({ queryKey: ["/api/membership/my-subscription"] });
       setJoining(false);
       setPaymentSheetBusy(false);
@@ -324,6 +326,8 @@ export default function MembershipScreen() {
       return data;
     },
     onSuccess: () => {
+      setVipUpgradeMode(false);
+      queryClient.invalidateQueries({ queryKey: getGetMembershipBillingQueryKey() });
       queryClient.invalidateQueries({ queryKey: ["/api/membership/my-subscription"] });
       setPaymentSheetVisible(false);
       setPaymentSheetBusy(false);

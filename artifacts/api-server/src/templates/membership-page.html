@@ -603,6 +603,13 @@
       // Prepaid renewal/withdrawal controls are rendered above, not generic swaps.
     }else if(sub.migrationNeedsReview){
       h+='<p class="m-note">Your move from the old website billing is being checked by the club. Changes are available once the owner confirms your previous payments have stopped.</p>';
+    }else if(billing.pendingUpgrade){
+      const u=billing.pendingUpgrade;
+      h+='<h4>Unfinished upgrade to '+esc(u.planName)+'</h4><p class="m-note">VIP stays active until Square confirms payment.</p>';
+      h+=u.canManage
+        ?'<button class="m-btn" onclick="mUpgradeCheckout(\'resume\')">Resume checkout</button> <button class="m-btn ghost" onclick="mUpgradeCheckout(\'abandon\')">Abandon unpaid upgrade</button>'
+        :'<p class="m-note">Payment may already be processing, or this checkout needs staff review. Refresh membership or contact the club. Do not start another payment.</p>';
+      h+='<div class="m-msg" id="mChangeMsg" role="status"></div>';
     }else if(sub.currentTier==='vip'){
       h+='<h4>Upgrade from VIP</h4>'+
         '<p class="m-note">Choose a paid membership below. Your first payment is due now; VIP benefits stay active until Square confirms it. VIP is not available as a customer downgrade option.</p>';
@@ -850,6 +857,24 @@
       m.className='m-msg ok';m.textContent='Your VIP benefits stay active until Square confirms your first payment. Opening secure checkout…';
       openCheckout(d.checkoutUrl);
     }catch(e){m.className='m-msg err';m.textContent=e.message||'Network error — please try again.';b.disabled=false;b.textContent='Upgrade and pay now'}
+  };
+  let upgradeCheckoutWorking=false;
+  window.mUpgradeCheckout=async function(action){
+    if(upgradeCheckoutWorking||!billing?.pendingUpgrade)return;
+    if(action==='abandon'&&!window.confirm('Abandon this unpaid upgrade? VIP remains active. Square must confirm cancellation before another upgrade is allowed.'))return;
+    const ownerToken=getTok(),attemptId=billing.pendingUpgrade.id;
+    if(!ownerToken)return;
+    upgradeCheckoutWorking=true;
+    const m=document.getElementById('mChangeMsg');m.textContent='Checking Square…';
+    try{
+      const r=await fetch(API+'/api/membership/upgrade-checkout',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+ownerToken},body:JSON.stringify({attemptId,action})});
+      const d=await r.json().catch(()=>({}));
+      if(getTok()!==ownerToken)return;
+      if(!r.ok)throw new Error(d.message||'Could not verify checkout. Please refresh.');
+      await loadManage();
+      if(d.checkoutUrl)openCheckout(d.checkoutUrl);
+    }catch(e){if(getTok()===ownerToken){m.className='m-msg err';m.textContent=e.message}}
+    finally{upgradeCheckoutWorking=false}
   };
   window.mAskCancel=function(){
     const sub=billing.subscription;
