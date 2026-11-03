@@ -472,6 +472,9 @@
   const API = '';
   let selectedPlan = null;
   let authToken = null;
+  let sessionGeneration = 0;
+  // Website logins live only in this document, never across visits.
+  try{localStorage.removeItem('the147_customer_token')}catch(_){}
   let activeTab = 'reg';
   let allPlans = [];
   let billingFreq = 'monthly';
@@ -515,7 +518,7 @@
     try{window.location.assign(url)}catch(_){window.location.href=url}
   }
   function fmtDate(d){if(!d)return '—';const x=new Date(d);return isNaN(x)?esc(d):x.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}
-  function getTok(){if(authToken)return authToken;try{return localStorage.getItem('the147_customer_token')}catch(_){return null}}
+  function getTok(){return authToken}
 
   function openManageLogin(){
     manageOnly=true;selectedPlan=null;
@@ -545,9 +548,11 @@
       const r=await fetch(API+'/api/membership/billing',{headers:{Authorization:'Bearer '+tok}});
       if(r.status===401){closeMembershipCard();try{localStorage.removeItem('the147_customer_token')}catch(_){};authToken=null;billing=null;sec.innerHTML='';sec.style.display='none';return}
       const bd=await r.json().catch(()=>null);
+      if(getTok()!==tok)return;
       if(!r.ok)throw new Error((bd&&bd.message)||('Could not load your billing details ('+r.status+').'));
       billing=bd||{subscription:null,plans:[]};
     }catch(e){
+      if(getTok()!==tok)return;
       sec.style.display='block';
       sec.innerHTML='<h3>Your membership</h3><p class="m-note">'+esc((e&&e.message)||'We could not load your billing details.')+'</p><button class="m-btn ghost" onclick="loadManage()">Try again</button>';
       return;
@@ -910,6 +915,10 @@
     }catch(e){m.className='m-msg err';m.textContent=e.message||'Network error — please try again.';b.disabled=false;b.textContent='Keep membership'}
   };
   window.signOutPortal=function(){
+    sessionGeneration++;
+    const departingToken=authToken;
+    authToken=null;
+    if(departingToken)fetch(API+'/api/customers/logout',{method:'POST',headers:{Authorization:'Bearer '+departingToken},keepalive:true}).catch(()=>{});
     closeMembershipCard();
     try{localStorage.removeItem('the147_customer_token')}catch(_){}
     authToken=null;billing=null;hasMembership=false;
@@ -917,7 +926,16 @@
     document.getElementById('manageSection').style.display='none';
     document.getElementById('manageSignin').style.display='';{const ms=document.getElementById('memberStrip');if(ms)ms.style.display=''}
     if(allPlans.length)renderPlans();
+    closeModal();
+    hideVerifyBanner();
+    document.querySelectorAll('#joinModal input').forEach(input=>{
+      if(input.type==='checkbox')input.checked=false;else input.value='';
+    });
   };
+  window.addEventListener('pagehide',()=>window.signOutPortal());
+  window.addEventListener('pageshow',event=>{
+    if(event.persisted)window.signOutPortal();
+  });
 
   /* ── helpers ── */
   function esc(s){const d=document.createElement('div');d.textContent=s??'';return d.innerHTML}
@@ -1229,6 +1247,7 @@
     if(!manageOnly&&!document.getElementById('joinTerms').checked){err.textContent='Please tick the box to accept the membership terms.';err.classList.add('show');return}
     const btn=document.getElementById('loginBtn');
     btn.disabled=true;btn.textContent='Signing in…';
+    const loginGeneration=sessionGeneration;
     try{
       const r=await fetch(API+'/api/customers/login',{
         method:'POST',headers:{'Content-Type':'application/json'},
@@ -1236,8 +1255,11 @@
       });
       const d=await r.json();
       if(!r.ok){err.textContent=d.message||'Sign-in failed. Check your email and password.';err.classList.add('show');return}
+      if(loginGeneration!==sessionGeneration){
+        if(d.token)fetch(API+'/api/customers/logout',{method:'POST',headers:{Authorization:'Bearer '+d.token},keepalive:true}).catch(()=>{});
+        return;
+      }
       authToken=d.token;
-      try{localStorage.setItem('the147_customer_token',d.token)}catch(_){}
       if(d.customer && d.customer.emailVerified===false) showVerifyBanner(false);
       if(manageOnly){closeModal();await loadManage();return}
       await loadManage();
@@ -1283,19 +1305,19 @@
     if(b)b.style.display='none';
   }
   async function checkVerificationStatus(){
-    let tok=null;try{tok=localStorage.getItem('the147_customer_token')}catch(_){}
+    const tok=getTok();
     if(!tok)return;
     try{
       const r=await fetch(API+'/api/customers/me',{headers:{'Authorization':'Bearer '+tok}});
       if(r.status===401){try{localStorage.removeItem('the147_customer_token')}catch(_){};return}
       if(!r.ok)return;
       const d=await r.json();
+      if(getTok()!==tok)return;
       if(d && d.emailVerified===false){authToken=tok;showVerifyBanner(false)}
       else hideVerifyBanner();
     }catch(_){}
   }
   async function resendVerifyEmail(){
-    if(!authToken){try{authToken=localStorage.getItem('the147_customer_token')}catch(_){}}
     if(!authToken)return;
     const btn=document.getElementById('verifyResendBtn');
     if(btn){btn.disabled=true;btn.textContent='Sending…'}

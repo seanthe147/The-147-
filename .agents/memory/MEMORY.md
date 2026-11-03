@@ -26,6 +26,7 @@
 - [Banner destination compatibility](banner-destinations.md) — preserve historical destination spellings on reads; normalize new writes without recreating stored banners
 - [Bookable pool tables](booking-pool-tables.md) — offer Pool Tables 1–5 and show pool pricing as £1 per game, never per hour
 - [Central membership billing](membership-billing-scope.md) — one Square membership system for app and Wix; monthly/annual choices, upgrades, and selected 12-month terms
+- [Membership website privacy](membership-website-privacy.md) — sign out on leaving or closing the page, not tab switching; native sessions unchanged
 - [Unattended Expo dependency checks](expo-dependency-validation.md) — dependency mismatches can prompt indefinitely; CI mode must fail rather than wait for input
 - [Expo static publish Metro startup](expo-static-publish-metro-startup.md) — cold Metro startup can exceed 60 seconds before bundling begins, even when the code is healthy
 - [Dependency compatibility](dependency-remediation-compatibility.md) — exercise codegen and asset processing; type checks miss export-shape breaks and scanners miss local backports

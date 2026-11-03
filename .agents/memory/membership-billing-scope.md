@@ -5,6 +5,12 @@ description: Business scope for shared app and Wix membership management through
 
 Membership billing must be one central system customers can access from The 147 app and the Wix website, with Square processing payments. Customers must be able to choose monthly or annual billing and upgrade plans. Selected plans require a 12-month minimum subscription term.
 
+Staff customer accounts should provide linked booking and order history, membership types, and upgrade/downgrade management. Only managers or owners may downgrade Platinum memberships.
+
+**Why:** the owner explicitly requested unified customer records and this Platinum-specific role restriction.
+
+**How to apply:** enforce the restriction on the server as well as in staff controls. Do not infer permission to waive minimum terms, issue refunds, or offer VIP as a downgrade.
+
 VIP members may opt into paid memberships, but customers must never be offered VIP as a downgrade destination.
 
 **Why:** The owner explicitly requested one-way VIP upgrades. VIP remains invitation-only; a failed or abandoned payment must not remove existing VIP access.
