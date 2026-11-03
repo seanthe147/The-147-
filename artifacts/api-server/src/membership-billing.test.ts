@@ -141,6 +141,7 @@ before(async () => {
   const auth: express.RequestHandler = (req, res, next) => {
     if (req.headers["x-billing-test-auth"] !== "yes") { res.sendStatus(401); return; }
     (req as any).customerId = customerId;
+    (req as any).staffRole = req.header("x-test-role") ?? "staff";
     next();
   };
   registerMembershipBilling(app, auth, auth, auth);
@@ -591,4 +592,37 @@ test("expired Square members can reactivate only within one month and start a co
   assert.equal(squareCreate?.body.idempotency_key.length <= 45, true);
   assert.equal(requests.filter(r => r.path.includes("/payments")).length, 0,
     "recurring reactivation must not use a separate immediate-payment endpoint");
+});
+
+test("staff plan-change endpoint enforces Platinum downgrade permission and minimum terms before Square", async () => {
+  if (reactivatedSubId) await db.update(membershipSubscriptions).set({ status: "cancelled" }).where(eq(membershipSubscriptions.id, reactivatedSubId));
+  await db.update(membershipSubscriptions).set({ status: "active", planId: oldId, squareSubscriptionId: remote.id,
+    squareCustomerId: remote.customer_id, source: "app" }).where(eq(membershipSubscriptions.id, subId));
+  await db.update(membershipPlans).set({ name: "Platinum fixture", priceMonthly: 3000 }).where(eq(membershipPlans.id, oldId));
+  await db.delete(membershipBillingStates).where(eq(membershipBillingStates.subscriptionId, subId));
+  actions = [];
+  remote.status = "ACTIVE"; remote.canceled_date = null;
+  catalogPence = 2000; catalogCadence = "MONTHLY";
+  const body = { planId: blackId, billingFrequency: "monthly", termsAccepted: true,
+    customerAuthorised: true, reason: "Customer requested a lower-priced plan" };
+  const change = (role: string, payload: unknown = body) => fetch(`${base}/api/staff/membership/subscriptions/${subId}/change-plan`, {
+    method: "POST", headers: { "x-billing-test-auth": "yes", "x-test-role": role, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  let beforeCalls = requests.filter(r => r.path.endsWith("/swap-plan")).length;
+  assert.equal((await change("staff")).status, 409);
+  assert.equal(requests.filter(r => r.path.endsWith("/swap-plan")).length, beforeCalls);
+  assert.equal((await change("owner", { ...body, reason: "" })).status, 400);
+  await db.insert(membershipBillingStates).values({ subscriptionId: subId, commitmentEndDate: "2099-01-01" });
+  assert.equal((await change("owner")).status, 409);
+  assert.equal(requests.filter(r => r.path.endsWith("/swap-plan")).length, beforeCalls);
+  await db.update(membershipBillingStates).set({ commitmentEndDate: "2020-01-01" }).where(eq(membershipBillingStates.subscriptionId, subId));
+  const result = await change("manager");
+  assert.equal(result.status, 200);
+  assert.equal((await billingState(subId))?.pendingEffectiveDate, renewal);
+  assert.equal((await storage.getMembershipSubscription(subId))?.planId, oldId, "benefits must not change before payment");
+  assert.equal(requests.filter(r => r.path.endsWith("/swap-plan")).length, beforeCalls + 1);
+  assert.equal((await change("owner")).status, 409, "duplicate changes must not schedule twice");
+  const audit = await db.select().from(membershipAuditLog).where(eq(membershipAuditLog.subscriptionId, subId));
+  assert.ok(audit.some(a => a.action === "downgrade_scheduled" && a.note?.includes(body.reason)));
 });

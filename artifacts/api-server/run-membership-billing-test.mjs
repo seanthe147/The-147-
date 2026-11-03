@@ -52,8 +52,9 @@ try {
   } finally { await seed.end(); }
   await run(process.execPath, ["--experimental-strip-types", "--test",
     "src/membership-billing-policy.test.ts", "src/platinum-offer-migration.test.ts",
-    "src/membership-failure-notifications.test.ts"]);
-  for (const entry of ["membership-snooker-discount", "membership-billing", "membership-square-sync", "game-claims"]) {
+    "src/membership-failure-notifications.test.ts", "src/staff-membership-change-policy.test.ts",
+    "src/customer-screen-wiring.test.ts"]);
+  for (const entry of ["membership-snooker-discount", "membership-billing", "membership-square-sync", "game-claims", "customer-account"]) {
   const output = path.join(temp, `${entry}.test.mjs`);
   await build({
     absWorkingDir: cwd, entryPoints: [`src/${entry}.test.ts`], outfile: output,

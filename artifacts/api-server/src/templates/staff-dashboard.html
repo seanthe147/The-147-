@@ -1835,7 +1835,12 @@
     @keyframes caShim{to{background-position:-200% 0}}
     .cust-acct-link{border:1px solid var(--border);background:var(--surface);color:var(--blue);font:inherit;font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;cursor:pointer;flex-shrink:0}
     .cust-acct-link:hover{background:var(--blue-light)}
-    @media(max-width:900px){.ca-shell{grid-template-columns:1fr}.ca-search-col{position:static}.ca-results{max-height:280px}.ca-hero-actions{margin-left:0}}
+    .ca-account-col,.ca-search-col{min-width:0;max-width:100%}
+    .ca-hero-meta,.ca-hero-name,.ca-notice{overflow-wrap:anywhere}
+    .ca-card fieldset{min-width:0;padding:0;margin:0}
+    .ca-hero-actions{flex-wrap:wrap}
+    @media(max-width:900px){.ca-shell{grid-template-columns:minmax(0,1fr)}.ca-search-col{position:static}.ca-results{max-height:280px}.ca-hero-actions{margin-left:0}}
+    @media(max-width:480px){.ca-hero,.ca-card{padding:16px}.ca-kv{grid-template-columns:minmax(0,1fr)}.ca-tabs{flex-wrap:wrap}.ca-hero>div{max-width:100%}}
   </style>
 
           <div class="pay-grid">
@@ -3967,6 +3972,7 @@
   }
 
   function showLogin(){
+    if(window.caResetSession)window.caResetSession();
     // Tear down any background pollers before swapping to the login screen
     // so they don't keep firing /api/* requests once the session has gone
     // (also covers the 401-from-api() → showLogin() path above).
@@ -13910,19 +13916,18 @@
   window.confirmRestore=confirmRestore;
   window.triggerBackup=triggerBackup;
 
-  /* ── Init ── */
-  updateDateUI();
-  if(getToken()){bootApp()}else{showLogin()}
-
-})();
-</script>
-<script>
 /* ── Customer accounts (all approved staff) ──
    Unified read view + staff-assisted recurring plan changes. Cancellation is
    intentionally NOT exposed here. Password resets / CRM remain manager-only. */
 (function(){
   const HIGH_TIERS=['platinum','black','maximum'];
-  const ca={id:null,data:null,tab:'bookings',timer:null,seq:0,inited:false};
+  const ca={id:null,data:null,tab:'bookings',timer:null,seq:0,inited:false,epoch:0};
+  window.caResetSession=function(){
+    clearTimeout(ca.timer);ca.seq++;ca.epoch++;ca.id=null;ca.data=null;ca.tab='bookings';
+    el('caSearchInput').value='';
+    el('caSearchResults').innerHTML='';
+    renderEmptyAccount();
+  };
   function money(p){return p==null||isNaN(p)?'—':'£'+(Number(p)/100).toFixed(2)}
   function d(v){if(!v)return '—';const x=new Date(v);return isNaN(x)?esc(String(v)):x.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}
   function dt(v){if(!v)return '—';const x=new Date(v);return isNaN(x)?esc(String(v)):x.toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}
@@ -13976,14 +13981,15 @@
   }
 
   async function loadAccount(id,flash){
+    const epoch=ca.epoch;
     const box=el('caAccount');
     box.innerHTML='<div class="ca-hero"><div class="ca-skel" style="width:40%;opacity:.4"></div></div><div class="ca-card"><div class="ca-skel"></div><div class="ca-skel" style="width:60%"></div></div><div class="ca-card"><div class="ca-skel"></div><div class="ca-skel"></div></div>';
     try{
       const r=await api('/api/staff/customers/'+encodeURIComponent(id)+'/account');
-      if(ca.id!==id)return;
+      if(ca.id!==id||ca.epoch!==epoch)return;
       if(!r.ok){const m=await errText(r);box.innerHTML='<div class="ca-card" style="margin-top:0"><div class="ca-notice err">Could not load this account: '+esc(m)+'</div><button class="btn btn-secondary btn-sm" style="margin-top:12px" onclick="openCustomerAccount('+id+')">Retry</button></div>';return}
-      ca.data=await r.json();renderAccount(flash);
-    }catch(e){if(ca.id===id)box.innerHTML='<div class="ca-card" style="margin-top:0"><div class="ca-notice err">Could not load this account: '+esc(e.message)+'</div><button class="btn btn-secondary btn-sm" style="margin-top:12px" onclick="openCustomerAccount('+id+')">Retry</button></div>'}
+      const data=await r.json();if(ca.id!==id||ca.epoch!==epoch)return;ca.data=data;renderAccount(flash);
+    }catch(e){if(ca.id===id&&ca.epoch===epoch)box.innerHTML='<div class="ca-card" style="margin-top:0"><div class="ca-notice err">Could not load this account: '+esc(e.message)+'</div><button class="btn btn-secondary btn-sm" style="margin-top:12px" onclick="openCustomerAccount('+id+')">Retry</button></div>'}
   }
 
   function statusPill(s){s=String(s||'');const m={active:'green',confirmed:'blue',completed:'green',arrived:'green',pending:'amber',past_due:'red',cancelled:'gray',canceled:'gray',no_show:'red',expired:'gray',paid:'green',ready:'blue',refunded:'gray'};return '<span class="pill pill-'+(m[s.toLowerCase()]||'gray')+'">'+esc(s.replace(/_/g,' ')||'—')+'</span>'}
@@ -14074,7 +14080,9 @@
       '<div><span>Square status</span><strong>'+statusPill(sub.status)+'</strong></div>'+
     '</div>';
     if(sub.pendingPlanName)h+='<div class="ca-notice info">Scheduled change: moves to <strong>'+esc(sub.pendingPlanName)+'</strong> on '+d(sub.pendingDate)+'.</div>';
-    h+=renderPlanForm(a,sub);
+    h+=sub.status!=='active'||sub.pendingPlanName||sub.cancellationDate
+      ?'<div class="ca-notice info">Plan changes require an active membership with no change or cancellation already scheduled.</div>'
+      :renderPlanForm(a,sub);
     h+='</div></div>';
     return h;
   }
@@ -14084,12 +14092,12 @@
     const commitFuture=sub.commitmentEndDate&&new Date(sub.commitmentEndDate)>new Date();
     const canHigh=!!(a.permissions&&a.permissions.canDowngradePlatinum);
     return ((a.billing&&a.billing.plans)||[]).filter(p=>tierOf(p.tier)!=='vip'&&!/\bvip\b/i.test(p.name||'')).map(p=>{
-      const isCurrent=tierOf(p.tier)===curTier;
-      const down=!isCurrent&&Number(p.monthlyPence)<cur;
+      const isCurrent=sub.planId!=null?p.id===sub.planId:tierOf(p.tier)===curTier;
+      const down=!isCurrent&&Number(p.monthlyPence)<=cur;
       let block=null;
       if(isCurrent)block='Current plan';
       else if(down&&commitFuture)block='Minimum term runs to '+d(sub.commitmentEndDate);
-      else if(down&&HIGH_TIERS.includes(curTier)&&!canHigh)block='Manager or owner required';
+      else if(down&&(HIGH_TIERS.includes(curTier)||/platinum|black|maximum/i.test(sub.planName||''))&&!canHigh)block='Manager or owner required';
       return {p,down,block};
     });
   }
@@ -14164,6 +14172,10 @@
     return h+'</tbody></table></div></div>';
   }
   function orderItems(j){try{const arr=typeof j==='string'?JSON.parse(j):j;if(!Array.isArray(arr))return '—';return arr.map(i=>(i.quantity||i.qty||1)+' x '+(i.name||i.title||'item')).join(', ')}catch(_){return '—'}}
+})();
+  /* Initialise after the account module has registered its handlers. */
+  updateDateUI();
+  if(getToken()){bootApp()}else{showLogin()}
 })();
 </script>
 </body>

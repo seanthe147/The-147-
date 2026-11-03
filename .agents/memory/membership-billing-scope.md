@@ -11,6 +11,18 @@ Staff customer accounts should provide linked booking and order history, members
 
 **How to apply:** enforce the restriction on the server as well as in staff controls. Do not infer permission to waive minimum terms, issue refunds, or offer VIP as a downgrade.
 
+The owner approved staff-assisted changes at renewal, with downgrades only after the minimum term has ended. Preserve prepaid access: a till purchase is not consent for recurring billing.
+
+**Why:** the unified customer account work was approved with these financial safety rules; role permission alone must not change agreed payment obligations.
+
+**How to apply:** require customer authorisation, terms acceptance and an audit reason. Keep existing benefits until Square confirms the new paid period.
+
+Link customer histories by stable account identity; exact-email legacy matches must be unambiguous. Do not match on name alone or silently move records between accounts.
+
+**Why:** email-based history breaks when addresses change, and shared/duplicate emails can expose another person's booking or order history.
+
+**How to apply:** preserve confirmed links and route ambiguous matches to manager review. Apply the same identity rules to account exports and erasure.
+
 VIP members may opt into paid memberships, but customers must never be offered VIP as a downgrade destination.
 
 **Why:** The owner explicitly requested one-way VIP upgrades. VIP remains invitation-only; a failed or abandoned payment must not remove existing VIP access.

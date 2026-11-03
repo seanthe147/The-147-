@@ -1287,10 +1287,13 @@ export class DatabaseStorage implements IStorage {
 
   async deleteBookingsByEmail(email: string): Promise<number> {
     const hash = hashEmail(email);
-    const byHash = await db.delete(bookings).where(eq(bookings.emailHash, hash)).returning();
-    if (byHash.length > 0) return byHash.length;
-    const byPlain = await db.delete(bookings).where(sql`lower(${bookings.customerEmail}) = lower(${email})`).returning();
-    return byPlain.length;
+    const customerId = await this.uniqueCustomerIdForEmail(email);
+    const rows = await db.delete(bookings).where(or(
+      customerId ? eq(bookings.customerId, customerId) : undefined,
+      and(isNull(bookings.customerId), or(eq(bookings.emailHash, hash),
+        sql`lower(${bookings.customerEmail}) = lower(${email})`)),
+    )).returning({ id: bookings.id });
+    return rows.length;
   }
 
   async deletePushTokensByEmail(email: string): Promise<number> {
@@ -1303,10 +1306,13 @@ export class DatabaseStorage implements IStorage {
 
   async deleteOrdersByEmail(email: string): Promise<number> {
     const hash = hashEmail(email);
-    const byHash = await db.delete(appOrders).where(eq(appOrders.customerEmailHash, hash)).returning();
-    if (byHash.length > 0) return byHash.length;
-    const byPlain = await db.delete(appOrders).where(sql`lower(${appOrders.customerEmail}) = lower(${email})`).returning();
-    return byPlain.length;
+    const customerId = await this.uniqueCustomerIdForEmail(email);
+    const rows = await db.delete(appOrders).where(or(
+      customerId ? eq(appOrders.customerId, customerId) : undefined,
+      and(isNull(appOrders.customerId), or(eq(appOrders.customerEmailHash, hash),
+        sql`lower(${appOrders.customerEmail}) = lower(${email})`)),
+    )).returning({ id: appOrders.id });
+    return rows.length;
   }
 
   async deleteContactMessagesByEmail(email: string): Promise<number> {

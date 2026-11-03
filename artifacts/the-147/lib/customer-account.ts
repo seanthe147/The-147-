@@ -9,6 +9,9 @@ export type AccountAudit = { id: number; action: string; staffUsername: string |
 export type BillingPlan = { id: number; name: string; tier: string; monthlyPence: number; annualPence: number | null; minimumTermMonths: number | null };
 export type BillingSubscription = {
   id: number | string;
+  planId?: number;
+  planName?: string;
+  cancellationDate?: string | null;
   currentTier: string | null;
   currentMonthlyPence: number | null;
   managedInSquare: boolean;
@@ -64,12 +67,12 @@ export function planOptions(account: CustomerAccount, now: Date = new Date()): P
   return (account.billing?.plans || [])
     .filter((p) => String(p.tier).toLowerCase() !== "vip" && !/\bvip\b/i.test(p.name || ""))
     .map((plan) => {
-      const isCurrent = String(plan.tier).toLowerCase() === curTier;
-      const isDowngrade = !isCurrent && Number(plan.monthlyPence) < cur;
+      const isCurrent = sub.planId != null ? plan.id === sub.planId : String(plan.tier).toLowerCase() === curTier;
+      const isDowngrade = !isCurrent && Number(plan.monthlyPence) <= cur;
       let blockedReason: string | null = null;
       if (isCurrent) blockedReason = "Current plan";
       else if (isDowngrade && commitFuture) blockedReason = `Minimum term runs to ${formatDate(sub.commitmentEndDate)}`;
-      else if (isDowngrade && HIGH_TIERS.includes(curTier) && !canHigh) blockedReason = "Manager or owner required";
+      else if (isDowngrade && (HIGH_TIERS.includes(curTier) || /platinum|black|maximum/i.test(sub.planName ?? "")) && !canHigh) blockedReason = "Manager or owner required";
       return { plan, isDowngrade, blockedReason };
     });
 }
@@ -80,7 +83,11 @@ export function recurringChangeBlocker(account: CustomerAccount): string | null 
   const m = currentMembership(account.memberships);
   if (!m) return "No membership on this account. New memberships must be bought by the customer on the membership website.";
   const sub = account.billing?.subscription;
-  if (sub && sub.managedInSquare) return null;
+  if (sub && sub.managedInSquare) {
+    if (sub.status !== "active") return "Plan changes require an active, paid membership.";
+    if (sub.pendingPlanName || sub.cancellationDate) return "A change or cancellation is already scheduled. Another change cannot be submitted.";
+    return null;
+  }
   const src = String(m.source || "").toLowerCase();
   const why = m.prepaidUntilDate
     ? `This is a prepaid membership (paid until ${formatDate(m.prepaidUntilDate)})`

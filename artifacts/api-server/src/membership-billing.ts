@@ -1,6 +1,7 @@
 import type { Express, RequestHandler } from "express";
 import { createHash } from "node:crypto";
 import { staffPlanChangePolicy } from "./staff-membership-change-policy";
+import { sendMarketingEmail } from "./email-helpers";
 import { ReplaceMembershipCardBody, EnableMembershipAutoRenewBody, ReactivateMembershipBody } from "@workspace/api-zod";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { membershipBillingStates as states, membershipSubscriptions as subscriptions, membershipAuditLog, membershipPlanVariationAliases } from "@workspace/db/schema";
@@ -957,10 +958,31 @@ export function registerMembershipBilling(app: Express, customerAuth: RequestHan
         const sub = await storage.getMembershipSubscription(id);
         if (!sub) { res.status(404).json({ message: "Membership not found." }); return; }
         const actor = (req as any).staffUsername ?? (req as any).staffUser?.username ?? "staff";
-        res.json(operation === "change-plan"
+        const result = operation === "change-plan"
           ? await scheduleMembershipChange(sub, input.planId, input.billingFrequency, actor,
             { role: (req as any).staffRole ?? "staff", reason: input.reason.trim() })
-          : await scheduleMembershipCancellation(sub, actor));
+          : await scheduleMembershipCancellation(sub, actor);
+        if (operation === "change-plan") {
+          // Transactional notice: independent of marketing opt-ins. A failed
+          // notice must not misreport a successfully scheduled Square change.
+          const escape = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+          let sent = false;
+          try {
+            const [customer, plan] = await Promise.all([storage.getCustomerById(sub.customerId), storage.getMembershipPlan(input.planId)]);
+            if (customer && plan) {
+              const price = (input.billingFrequency === "annual" ? plan.priceAnnual! : plan.priceMonthly) / 100;
+              sent = await sendMarketingEmail(customer.email, "Your The 147 membership change is scheduled",
+                `<p>Your membership will change to <strong>${escape(plan.name)}</strong> from ${escape(result.effectiveDate)}.</p><p>The new price is £${price.toFixed(2)} ${escape(input.billingFrequency)}. Your existing benefits continue until the new plan starts and payment is confirmed.</p><p>${minimumTermMonths(plan) ? `${minimumTermMonths(plan)}-month minimum term applies to the new plan.` : "No new minimum term."} Manage your membership in The 147 app or membership website.</p>`);
+            }
+          } catch { /* Preserve the confirmed billing outcome below. */ }
+          if (!sent) {
+            await db.insert(membershipAuditLog).values({ subscriptionId: sub.id, customerId: sub.customerId,
+              staffUsername: actor, action: "plan_change_email_failed",
+              note: "Plan change scheduled, but confirmation email could not be sent. Provide confirmation to the customer." }).catch(() => {});
+            result.message += " Confirmation email could not be sent; please give the customer written confirmation.";
+          }
+        }
+        res.json(result);
       } catch (error: any) {
         res.status(409).json({ message: error.message || "Square did not confirm this change. Refresh billing before retrying." });
       }
