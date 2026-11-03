@@ -1,5 +1,6 @@
 import type { Express, RequestHandler } from "express";
 import { createHash } from "node:crypto";
+import { staffPlanChangePolicy } from "./staff-membership-change-policy";
 import { ReplaceMembershipCardBody, EnableMembershipAutoRenewBody, ReactivateMembershipBody } from "@workspace/api-zod";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { membershipBillingStates as states, membershipSubscriptions as subscriptions, membershipAuditLog, membershipPlanVariationAliases } from "@workspace/db/schema";
@@ -303,7 +304,7 @@ export async function syncSquareMembershipGroupsForCustomer(
 
 type BillingSubscription = NonNullable<Awaited<ReturnType<typeof storage.getMembershipSubscription>>>;
 
-async function membershipBillingDetails(sub: BillingSubscription | null | undefined) {
+export async function membershipBillingDetails(sub: BillingSubscription | null | undefined) {
   const [upgrade] = sub ? await db.select().from(subscriptions).where(and(
     eq(subscriptions.customerId, sub.customerId), eq(subscriptions.status, "pending_upgrade"),
   )) : [];
@@ -394,7 +395,7 @@ async function membershipBillingDetails(sub: BillingSubscription | null | undefi
 
 // The staff and customer entry points deliberately use the same financial
 // operations. Neither can grant an upgrade early or bypass an accepted term.
-export async function scheduleMembershipChange(sub: BillingSubscription, planId: number, frequency: BillingFrequency, actor: string) {
+export async function scheduleMembershipChange(sub: BillingSubscription, planId: number, frequency: BillingFrequency, actor: string, staffContext?: { role: string; reason: string }) {
   if (!sub.squareSubscriptionId || sub.status !== "active") throw new Error("An active Square subscription is required. Use the reviewed migration process for Wix memberships.");
   return db.transaction(async tx => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(14702, ${sub.id})`);
@@ -403,7 +404,12 @@ export async function scheduleMembershipChange(sub: BillingSubscription, planId:
     const target = await storage.getMembershipPlan(planId);
     const current = await storage.getMembershipPlan(sub.planId);
     if (!target?.active || target.hideFromSignup || isVipTier(target.tier) || !current) throw new Error("Plan is not available.");
-    if (target.id !== current.id && target.priceMonthly <= current.priceMonthly && !isPlatinumConsolidation(current, target)) {
+    const downgrade = target.id !== current.id && target.priceMonthly <= current.priceMonthly && !isPlatinumConsolidation(current, target);
+    if (staffContext && target.id !== current.id) {
+      staffPlanChangePolicy({ role: staffContext.role, current, target, commitmentEndDate: state?.commitmentEndDate,
+        today: today(), consolidation: isPlatinumConsolidation(current, target) });
+    }
+    if (downgrade && !staffContext) {
       throw new Error("Only upgrades or a change of billing frequency are supported. A downgrade requires a separate agreed process.");
     }
     const currentFrequency = state?.billingFrequency ?? (sub.source.includes("annual") ? "annual" : "monthly");
@@ -431,8 +437,8 @@ export async function scheduleMembershipChange(sub: BillingSubscription, planId:
       pendingEffectiveDate: action.effective_date, termsVersion: BILLING_TERMS_VERSION,
     } });
     await tx.insert(membershipAuditLog).values({ subscriptionId: sub.id, customerId: sub.customerId,
-      action: "upgrade_scheduled", staffUsername: actor,
-      note: `${target.name}; ${frequency}; effective ${action.effective_date}; terms ${BILLING_TERMS_VERSION}; customer authorisation confirmed` });
+      action: downgrade ? "downgrade_scheduled" : "upgrade_scheduled", staffUsername: actor,
+      note: `${target.name}; ${frequency}; effective ${action.effective_date}; terms ${BILLING_TERMS_VERSION}; customer authorisation confirmed${staffContext ? "; reason: " + staffContext.reason : ""}` });
     return { message: "The change is scheduled for the next renewal. Current benefits remain until the new plan is paid.", effectiveDate: action.effective_date };
   });
 }
@@ -920,7 +926,7 @@ export function registerMembershipBilling(app: Express, customerAuth: RequestHan
     }
   });
 
-  app.get("/api/staff/membership/subscriptions/:id/billing", staffAuth, managerAuth, async (req, res) => {
+  app.get("/api/staff/membership/subscriptions/:id/billing", staffAuth, async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ message: "Invalid membership ID." }); return; }
     try {
@@ -934,10 +940,14 @@ export function registerMembershipBilling(app: Express, customerAuth: RequestHan
   });
 
   for (const operation of ["change-plan", "cancel"] as const) {
-    app.post(`/api/staff/membership/subscriptions/:id/${operation}`, staffAuth, managerAuth, async (req, res) => {
+    app.post(`/api/staff/membership/subscriptions/:id/${operation}`, staffAuth,
+      ...(operation === "cancel" ? [managerAuth] : []), async (req, res) => {
       const id = Number(req.params.id);
       if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ message: "Invalid membership ID." }); return; }
       const input = req.body ?? {};
+      if (operation === "change-plan" && (typeof input.reason !== "string" || !input.reason.trim() || input.reason.length > 1000)) {
+        res.status(400).json({ message: "Record a reason for the customer's plan change (up to 1,000 characters)." }); return;
+      }
       if (operation === "change-plan" ? (!Number.isInteger(input.planId) || input.planId < 1 ||
           !["monthly", "annual"].includes(input.billingFrequency) || input.termsAccepted !== true || input.customerAuthorised !== true)
           : input.confirmed !== true) {
@@ -948,7 +958,8 @@ export function registerMembershipBilling(app: Express, customerAuth: RequestHan
         if (!sub) { res.status(404).json({ message: "Membership not found." }); return; }
         const actor = (req as any).staffUsername ?? (req as any).staffUser?.username ?? "staff";
         res.json(operation === "change-plan"
-          ? await scheduleMembershipChange(sub, input.planId, input.billingFrequency, actor)
+          ? await scheduleMembershipChange(sub, input.planId, input.billingFrequency, actor,
+            { role: (req as any).staffRole ?? "staff", reason: input.reason.trim() })
           : await scheduleMembershipCancellation(sub, actor));
       } catch (error: any) {
         res.status(409).json({ message: error.message || "Square did not confirm this change. Refresh billing before retrying." });

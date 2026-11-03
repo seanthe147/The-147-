@@ -103,6 +103,7 @@ export type Notification = typeof notifications.$inferSelect;
 
 export const bookings = pgTable("bookings", {
   id: serial("id").primaryKey(),
+  customerId: integer("customer_id"),
   customerName: text("customer_name").notNull(),
   customerEmail: text("customer_email").notNull(),
   customerPhone: text("customer_phone").notNull(),
@@ -126,7 +127,7 @@ export const bookings = pgTable("bookings", {
 });
 
 export const insertBookingSchema = createInsertSchema(bookings)
-  .omit({ id: true, createdAt: true })
+  .omit({ id: true, createdAt: true, customerId: true })
   .extend({
     tableNumber: z.string().nullable().optional(),
     guestCount: z.number().int().nullable().optional(),
@@ -630,6 +631,7 @@ export const membershipSquareEvents = pgTable("membership_square_events", {
 
 export const appOrders = pgTable("app_orders", {
   id: serial("id").primaryKey(),
+  customerId: integer("customer_id"),
   squareLinkId: text("square_link_id"),
   squareOrderId: text("square_order_id"),
   squarePaymentId: text("square_payment_id"),

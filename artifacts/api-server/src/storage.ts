@@ -1027,7 +1027,8 @@ export class DatabaseStorage implements IStorage {
 
   async createBooking(booking: InsertBooking): Promise<Booking> {
     const encrypted = encryptBookingFields(booking);
-    const [created] = await db.insert(bookings).values(encrypted).returning();
+    const customerId = await this.uniqueCustomerIdForEmail(booking.customerEmail);
+    const [created] = await db.insert(bookings).values({ ...encrypted, customerId }).returning();
     return decryptBookingFields(created);
   }
 
@@ -1269,13 +1270,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getBookingsByEmail(email: string): Promise<Booking[]> {
+    const customerId = await this.uniqueCustomerIdForEmail(email);
     const hash = hashEmail(email);
-    const byHash = await db.select().from(bookings).where(eq(bookings.emailHash, hash)).orderBy(bookings.date);
-    if (byHash.length > 0) {
-      return byHash.map(decryptBookingFields);
+    if (customerId) {
+      await db.update(bookings).set({ customerId }).where(and(isNull(bookings.customerId),
+        or(eq(bookings.emailHash, hash), sql`lower(trim(${bookings.customerEmail})) = lower(trim(${email}))`)));
+      return this.getBookingsByCustomerId(customerId);
     }
-    const byPlain = await db.select().from(bookings).where(sql`lower(${bookings.customerEmail}) = lower(${email})`).orderBy(bookings.date);
-    return byPlain.map(decryptBookingFields);
+    return [];
+  }
+
+  async getBookingsByCustomerId(customerId: number): Promise<Booking[]> {
+    const rows = await db.select().from(bookings).where(eq(bookings.customerId, customerId)).orderBy(bookings.date);
+    return rows.map(decryptBookingFields);
   }
 
   async deleteBookingsByEmail(email: string): Promise<number> {
@@ -2076,6 +2083,16 @@ export class DatabaseStorage implements IStorage {
     return byPlain ? decryptCustomer(byPlain) : undefined;
   }
 
+  // Never guess identity from names/phones or choose one of ambiguous emails.
+  async uniqueCustomerIdForEmail(email: string): Promise<number | null> {
+    if (!email?.trim()) return null;
+    const matches = await db.select({ id: customers.id }).from(customers).where(or(
+      eq(customers.emailHash, hashEmail(email.trim().toLowerCase())),
+      sql`lower(trim(${customers.email})) = lower(trim(${email}))`,
+    )).limit(2);
+    return matches.length === 1 ? matches[0].id : null;
+  }
+
   async getCustomerById(id: number): Promise<Customer | undefined> {
     const [customer] = await db.select().from(customers).where(eq(customers.id, id));
     return customer ? decryptCustomer(customer) : undefined;
@@ -2685,7 +2702,9 @@ export class DatabaseStorage implements IStorage {
     ticketNumber?: number;
     loyaltyRewardId?: string;
   }): Promise<{ id: number }> {
+    const customerId = data.customerEmail ? await this.uniqueCustomerIdForEmail(data.customerEmail) : null;
     const rows = await db.insert(appOrders).values({
+      customerId,
       ...(data.id !== undefined ? { id: data.id } : {}),
       squareLinkId: data.squareLinkId ?? null,
       squareOrderId: data.squareOrderId ?? null,
@@ -2801,24 +2820,17 @@ export class DatabaseStorage implements IStorage {
 
   async getCustomerOrders(email: string): Promise<AppOrder[]> {
     const emailHash = hashEmail(email);
-    // Try hash-based lookup (encrypted records)
-    const byHash = await db.select().from(appOrders)
-      .where(and(
-        eq(appOrders.customerEmailHash, emailHash),
-        sql`${appOrders.status} != 'expired'`
-      ))
-      .orderBy(desc(appOrders.createdAt))
-      .limit(50);
-    if (byHash.length > 0) return byHash.map(decryptAppOrder);
-    // Fallback: plaintext lookup for legacy records
-    const byPlain = await db.select().from(appOrders)
-      .where(and(
-        eq(appOrders.customerEmail, email),
-        sql`${appOrders.status} != 'expired'`
-      ))
-      .orderBy(desc(appOrders.createdAt))
-      .limit(50);
-    return byPlain.map(decryptAppOrder);
+    const customerId = await this.uniqueCustomerIdForEmail(email);
+    if (!customerId) return [];
+    await db.update(appOrders).set({ customerId }).where(and(isNull(appOrders.customerId),
+      or(eq(appOrders.customerEmailHash, emailHash), sql`lower(trim(${appOrders.customerEmail})) = lower(trim(${email}))`)));
+    return this.getOrdersByCustomerId(customerId);
+  }
+
+  async getOrdersByCustomerId(customerId: number): Promise<AppOrder[]> {
+    const rows = await db.select().from(appOrders).where(and(eq(appOrders.customerId, customerId),
+      sql`${appOrders.status} != 'expired'`)).orderBy(desc(appOrders.createdAt)).limit(100);
+    return rows.map(decryptAppOrder);
   }
 
   async expireStaleOrders(olderThanMinutes: number = 30): Promise<number> {

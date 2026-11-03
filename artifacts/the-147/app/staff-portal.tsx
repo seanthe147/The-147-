@@ -1894,6 +1894,23 @@ function DashboardScreen() {
           />
         </View>
 
+        {/* Customer accounts — all approved staff. Managers get it in their CUSTOMERS group below. */}
+        {!isManager && (
+          <>
+            <Text style={styles.sectionLabel}>CUSTOMERS</Text>
+            <View style={[styles.toolsList, isTablet && styles.toolsListTablet]}>
+              <AdminTool
+                icon="person-circle"
+                title="Customers"
+                description="Look up a customer's bookings, orders and membership"
+                color="#0EA5E9"
+                onPress={() => router.push("/admin-customers")}
+                testID="portal-customers-staff"
+              />
+            </View>
+          </>
+        )}
+
         {/* Admin tools — managers and owners, grouped by job. */}
         {isManager && (
           <>
@@ -1930,7 +1947,7 @@ function DashboardScreen() {
               <AdminTool
                 icon="person-circle"
                 title="Customers"
-                description="Look up a customer and send a password reset email"
+                description="Open customer accounts and send password reset emails"
                 color="#0EA5E9"
                 onPress={() => router.push("/admin-customers")}
                 testID="portal-customers"

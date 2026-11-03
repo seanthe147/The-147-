@@ -35,6 +35,7 @@ import {
 } from "../push-registration";
 import { validateMenuItemPresentation } from "../menu-presentation";
 import { liveStock } from "../stock-live";
+import { registerCustomerAccount } from "../customer-account";
 import { allocateStockMatches } from "../stock-match-allocation";
 import { stockItemInput, stockCountInput, stockDeliveryInput, validateStockInput } from "../stock-validation";
 
@@ -1702,6 +1703,7 @@ async function getMarketingAudienceEmails(audience: string): Promise<string[]> {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   registerMembershipBilling(app, customerAuth, staffAuth, ownerAuth, managerAuth);
+  registerCustomerAccount(app, staffAuth);
   // ── One-shot kitchen-category seeder ────────────────────────────────────
   // Auto-tags obvious food categories (Burgers, Pizzas, Mains, etc.) as
   // `isKitchen=true` the first time the server boots after this feature
