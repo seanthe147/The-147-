@@ -35,6 +35,7 @@ import {
 } from "../push-registration";
 import { validateMenuItemPresentation } from "../menu-presentation";
 import { liveStock } from "../stock-live";
+import { allocateStockMatches } from "../stock-match-allocation";
 import { stockItemInput, stockCountInput, stockDeliveryInput, validateStockInput } from "../stock-validation";
 
 // ── Square POS → Live Tables sync helpers ───────────────────────────────────
@@ -16012,10 +16013,12 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
   // Auto-match stock items to Square variations by name similarity
   app.post("/api/staff/stock/auto-match", staffAuth, managerAuth, async (_req, res) => {
     try {
-      const [allItems, variations] = await Promise.all([
-        db.select().from(stockItems).where(dEq(stockItems.active, true)),
+      const [allStockItems, variations, existingLinks] = await Promise.all([
+        db.select().from(stockItems),
         square.listCatalogVariations(),
+        db.select().from(stockItemPosLinks),
       ]);
+      const allItems = allStockItems.filter(item => item.active);
 
       function tokenize(s: string): string[] {
         return s
@@ -16054,7 +16057,12 @@ p{color:#555;font-size:.95rem;line-height:1.6}a{color:#8B0000;text-decoration:no
         };
       });
 
-      res.json(results);
+      res.json(allocateStockMatches(results, variations, [
+        ...existingLinks,
+        ...allStockItems.filter(item => item.squareCatalogVariationId).map(item => ({
+          stockItemId: item.id, squareVariationId: item.squareCatalogVariationId,
+        })),
+      ]));
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 

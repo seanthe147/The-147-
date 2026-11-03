@@ -31,6 +31,13 @@ Use the actual opening and closing stock snapshot times for both delivery totals
 
 **How to apply:** preserve explicit zero quantities, show missing quantities distinctly, and keep adjacent reconciliation periods non-overlapping.
 
+## Automatic POS matching safety
+Automatic suggestions must reserve existing mappings, including inactive products and legacy mappings, and allocate each Square item group only once across a proposed batch.
+
+**Why:** native clients expand draught suggestions into pint/half-pint siblings; variation-only matching can propose overlapping links and trigger duplicate-ownership errors during partial batch saves.
+
+**How to apply:** keep ownership checks at save time for concurrency, and prevent conflicting suggestions before presenting them. Existing links must be changed explicitly, not silently replaced by auto-match.
+
 ## Keg pint yields
 Pre-loaded as standard (50L=88, 100L=176). Editable per item in Catalogue tab. User knows Coors 100L actually yields ~187 — they can adjust in the app.
 
