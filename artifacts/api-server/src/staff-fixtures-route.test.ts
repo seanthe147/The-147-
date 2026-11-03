@@ -7,6 +7,7 @@ import { chromium, type Page } from "playwright";
 import { createApp } from "./app.ts";
 import { registerStaffFixturesRoute } from "./routes/routes.ts";
 import { invalidateFixturesCache } from "./sports-fixtures.ts";
+import { loadFixturesWithTestClock } from "./fixture-test-clock.ts";
 import { storage } from "./storage.ts";
 
 const ROUTE = "/api/staff/fixtures/upcoming";
@@ -137,6 +138,7 @@ test("authenticated fixture response stays bounded, canonical, and dashboard-com
   const baseUrl = await listen(server);
 
   try {
+    await loadFixturesWithTestClock();
     const result = await originalFetch(`${baseUrl}${ROUTE}`, {
       headers: { Authorization: `Bearer ${SESSION_TOKEN}` },
     });
@@ -214,6 +216,7 @@ async function startStaffDashboardServer(
   const originalLogStaffAction = storage.logStaffAction;
   const originalFetchForDashboard = globalThis.fetch;
   globalThis.fetch = providerFetch;
+  await loadFixturesWithTestClock();
   (storage as any).validateStaffSession = async (token: string) =>
     token === SESSION_TOKEN
       ? { staffUsername: null, expiresAt: new Date(Date.now() + 60_000) }
@@ -544,6 +547,7 @@ test("browser smoke check stays quiet for an empty schedule and warns on feed fa
       globalThis.fetch = fixtureFailure
         ? (async () => { throw new Error("fixture provider unavailable"); }) as typeof fetch
         : (async () => response([])) as typeof fetch;
+      await loadFixturesWithTestClock();
       const page = await context.newPage();
       try {
         if (fixtureFailure) {
@@ -583,6 +587,7 @@ test("browser smoke check stays quiet for an empty schedule and warns on feed fa
         if (fixtureFailure) {
           globalThis.fetch = (async () => response([])) as typeof fetch;
           invalidateFixturesCache();
+          await loadFixturesWithTestClock();
           await page.evaluate(`
             (() => {
               const refresh = window.__pendingFixtureRefreshes?.pop();

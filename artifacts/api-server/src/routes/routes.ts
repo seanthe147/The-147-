@@ -1284,8 +1284,8 @@ export function registerStaffFixturesRoute(app: Express): void {
     try {
       const { getFixtureFeedStatus, getUpcomingFixtures } = await import("../sports-fixtures.js");
       const fixtures = req.query.view === "all"
-        ? await getUpcomingFixtures(null)
-        : await getUpcomingFixtures(5);
+        ? await getUpcomingFixtures(null, false)
+        : await getUpcomingFixtures(5, false);
       res.json({ fixtures, feedStatus: getFixtureFeedStatus() });
     } catch (err: any) {
       console.error("/api/staff/fixtures/upcoming error:", err.message);

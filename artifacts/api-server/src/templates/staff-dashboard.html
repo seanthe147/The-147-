@@ -4431,6 +4431,7 @@
     return`<div role="alert" style="margin-bottom:8px;padding:9px 12px;border:1px solid #D9770644;border-radius:8px;background:var(--amber-light);color:var(--text);font-size:12px">
       <strong style="color:var(--amber)">Fixture schedule unavailable or incomplete.</strong>
       <span>Last successful refresh: ${esc(lastRefresh)}.</span>
+      <span>Previously fetched fixtures may be shown and may be out of date. Retrying automatically.</span>
     </div>`;
   }
   function announceFixtureChanges(previous,current){
@@ -4535,7 +4536,7 @@
       if(!fixtures.length&&feedWarning){
         bar.innerHTML=fixtureFeedWarningHtml();
         bar.style.display='';
-        scheduleFixturesRefresh([],5*60*1000);
+        scheduleFixturesRefresh([],feedStatus.refreshInProgress?15*1000:5*60*1000);
         return;
       }
       bar.style.display='';
@@ -4608,7 +4609,7 @@
       // Schedule the next refresh for just after the soonest kickoff — no
       // earlier refresh is ever needed because the data only changes when a
       // game kicks off and drops off the upcoming list.
-      scheduleFixturesRefresh(fixtures,feedWarning?5*60*1000:undefined);
+      scheduleFixturesRefresh(fixtures,feedStatus.refreshInProgress?15*1000:feedWarning?5*60*1000:undefined);
     }catch(e){
       if(e.message==='Session expired')return;
       bar.innerHTML=fixtureFeedWarningHtml();

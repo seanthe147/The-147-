@@ -1,8 +1,46 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getFixtureFeedStatus, getUpcomingFixtures, invalidateFixturesCache } from "./sports-fixtures.ts";
+import { getFixtureFeedStatus, getUpcomingFixtures as loadFixtures, invalidateFixturesCache } from "./sports-fixtures.ts";
+import { loadFixturesWithTestClock as getUpcomingFixtures } from "./fixture-test-clock.ts";
 
 const originalFetch = globalThis.fetch;
+
+test("background requests share one refresh and retain failed-source fixtures until recovery", async () => {
+  invalidateFixturesCache();
+  const originalNow = Date.now;
+  let now = Date.parse("2026-11-03T12:00:00Z");
+  Date.now = () => now;
+  let calls = 0;
+  let failure = false;
+  let empty = false;
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    calls++;
+    if (failure) throw new Error("offline");
+    return response(!empty && String(input).includes("&l=4328")
+      ? [providerEvent({ idEvent: "retained" })] : []);
+  }) as typeof fetch;
+  try {
+    // Neither HTTP caller waits on the provider; the test clock joins their job.
+    const initial = await Promise.all([loadFixtures(5, false), loadFixtures(null, false)]);
+    assert.deepEqual(initial, [[], []]);
+    assert.equal(getFixtureFeedStatus().refreshInProgress, true);
+    assert.equal((await getUpcomingFixtures(5)).length, 1);
+    assert.equal(calls, 25);
+    now += 5 * 60_001;
+    failure = true;
+    assert.equal((await getUpcomingFixtures(5))[0].id, "retained");
+    assert.equal(getFixtureFeedStatus().isDegraded, true);
+    now += 5 * 60_001;
+    failure = false;
+    empty = true;
+    assert.deepEqual(await getUpcomingFixtures(5), []);
+    assert.equal(getFixtureFeedStatus().isDegraded, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    Date.now = originalNow;
+    invalidateFixturesCache();
+  }
+});
 
 function providerEvent(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {

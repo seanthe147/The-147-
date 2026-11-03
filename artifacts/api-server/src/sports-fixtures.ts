@@ -80,24 +80,31 @@ const TEAMS: TeamConfig[] = [
 
 // TheSportsDB's current public key is 123. Key 3 is a legacy test key and
 // returns HTTP 403 from production servers.
+import { createFixtureProvider } from "./fixture-provider.ts";
+
 const SPORTSDB_BASE = "https://www.thesportsdb.com/api/v1/json/123";
 const CACHE_TTL = 5 * 60_000; // 5 minutes — short enough that a finished game drops off the bar within one poll cycle
 const DAILY_LEAGUE_IDS = new Set([4328, 4329, 4392, 4396]);
 const DAILY_LOOKAHEAD_DAYS = 4;
 
 let cache: { at: number; data: Fixture[]; priorityIds: string[] } | null = null;
+let refreshInFlight: Promise<void> | null = null;
+let provider = createFixtureProvider();
+let staleRequestCount = 0;
 let failedRequestCount = 0;
 let lastSuccessfulRefreshAt: string | null = null;
 
 export type FixtureFeedStatus = {
   isDegraded: boolean;
+  refreshInProgress: boolean;
   failedRequestCount: number;
   lastSuccessfulRefreshAt: string | null;
 };
 
 export function getFixtureFeedStatus(): FixtureFeedStatus {
   return {
-    isDegraded: failedRequestCount > 0,
+    isDegraded: failedRequestCount > 0 || !cache || Date.now() - cache.at >= CACHE_TTL,
+    refreshInProgress: refreshInFlight !== null,
     failedRequestCount,
     lastSuccessfulRefreshAt,
   };
@@ -198,12 +205,7 @@ async function fetchLeagueFixtures(
   defaultChannel: string,
 ): Promise<Fixture[]> {
   const url = `${SPORTSDB_BASE}/eventsnextleague.php?id=${leagueId}`;
-  const res = await fetch(url, {
-    headers: { Accept: "application/json" },
-    signal: AbortSignal.timeout(8000),
-  });
-  if (!res.ok) throw new Error(`TheSportsDB ${leagueId}: HTTP ${res.status}`);
-  const json: any = await res.json();
+  const json = await fetchFixtureJson(url);
   const events: any[] = Array.isArray(json?.events) ? json.events : [];
 
   const fixtures: Fixture[] = [];
@@ -238,12 +240,7 @@ async function fetchLeagueFixturesForDate(
   date: string,
 ): Promise<Fixture[]> {
   const url = `${SPORTSDB_BASE}/eventsday.php?d=${date}&l=${league.id}`;
-  const res = await fetch(url, {
-    headers: { Accept: "application/json" },
-    signal: AbortSignal.timeout(8000),
-  });
-  if (!res.ok) throw new Error(`TheSportsDB ${league.id} on ${date}: HTTP ${res.status}`);
-  const json: any = await res.json();
+  const json = await fetchFixtureJson(url);
   const events: any[] = Array.isArray(json?.events) ? json.events : [];
   return events
     .map((ev) => parseFixtureEvent(ev, {
@@ -271,12 +268,7 @@ function eventBelongsToTeam(ev: any, team: TeamConfig): boolean {
 
 async function fetchTeamFixtures(team: TeamConfig): Promise<Fixture[]> {
   const url = `${SPORTSDB_BASE}/eventsnext.php?id=${team.id}`;
-  const res = await fetch(url, {
-    headers: { Accept: "application/json" },
-    signal: AbortSignal.timeout(8000),
-  });
-  if (!res.ok) throw new Error(`TheSportsDB team ${team.id}: HTTP ${res.status}`);
-  const json: any = await res.json();
+  const json = await fetchFixtureJson(url);
   const events: any[] = Array.isArray(json?.events) ? json.events : [];
 
   const fixtures: Fixture[] = [];
@@ -336,16 +328,33 @@ function selectFixtures(data: Fixture[], priorityIds: string[], limit?: number |
   return selected.sort((a, b) => a.kickoffMs - b.kickoffMs);
 }
 
-export async function getUpcomingFixtures(limit: number | null = 3): Promise<Fixture[]> {
+export async function getUpcomingFixtures(limit: number | null = 3, waitForRefresh = true): Promise<Fixture[]> {
   const now = Date.now();
-  if (cache && now - cache.at < CACHE_TTL) {
-    return selectFixtures(cache.data, cache.priorityIds, limit);
+  if (!cache || now - cache.at >= CACHE_TTL) {
+    if (!refreshInFlight) {
+      refreshInFlight = refreshFixtures().catch(error => {
+        failedRequestCount = Math.max(1, failedRequestCount);
+        console.warn("[FIXTURES] Refresh failed:", error);
+      }).finally(() => { refreshInFlight = null; });
+    }
+    if (waitForRefresh) await refreshInFlight;
   }
+  return selectFixtures(cache?.data.filter(f => f.kickoffMs >= now) ?? [], cache?.priorityIds ?? [], limit);
+}
 
+async function fetchFixtureJson(url: string): Promise<any> {
+  const result = await provider.get(url);
+  if (result.stale) staleRequestCount++;
+  return result.json;
+}
+
+async function refreshFixtures(): Promise<void> {
+  staleRequestCount = 0;
   // The free provider endpoint for "next league event" returns only one
   // match, which can hide later Friday/Sunday games behind Saturday's first
   // kickoff. Read a short UK-date window for the main domestic leagues. The
-  // total stays below the provider's 30 requests/minute public rate limit.
+  // provider queue spaces calls and stops on rate limits. All callers share
+  // this refresh; HTTP routes return cached data instead of waiting on it.
   const dailyLeagues = LEAGUES.filter((league) => league.enabled && DAILY_LEAGUE_IDS.has(league.id));
   const nextOnlyLeagues = LEAGUES.filter((league) => league.enabled && !DAILY_LEAGUE_IDS.has(league.id));
   const dates = Array.from({ length: DAILY_LOOKAHEAD_DAYS + 1 }, (_, index) => ukDateOffset(index));
@@ -361,7 +370,7 @@ export async function getUpcomingFixtures(limit: number | null = 3): Promise<Fix
     Promise.allSettled(TEAMS.map((team) => fetchTeamFixtures(team))),
   ]);
   const allResults = [...dailyResults, ...leagueResults, ...teamResults];
-  failedRequestCount = allResults.filter((result) => result.status === "rejected").length;
+  failedRequestCount = staleRequestCount + allResults.filter((result) => result.status === "rejected").length;
   if (failedRequestCount === 0) {
     lastSuccessfulRefreshAt = new Date(Date.now()).toISOString();
   }
@@ -401,12 +410,14 @@ export async function getUpcomingFixtures(limit: number | null = 3): Promise<Fix
   const sorted = [...priority, ...generalUnique]
     .sort((a, b) => a.kickoffMs - b.kickoffMs);
 
-  cache = { at: now, data: sorted, priorityIds };
-  return selectFixtures(sorted, priorityIds, limit);
+  cache = { at: Date.now(), data: sorted, priorityIds };
 }
 
 export function invalidateFixturesCache(): void {
+  // Test/admin reset must not start a second refresh beside an active one.
+  if (refreshInFlight) return;
   cache = null;
+  provider = createFixtureProvider();
   failedRequestCount = 0;
   lastSuccessfulRefreshAt = null;
 }
