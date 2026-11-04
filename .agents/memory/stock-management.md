@@ -25,6 +25,12 @@ The two main suppliers are LWC and Molson Coors. Financial reporting is stock gr
 
 **How to apply:** verify product codes, pack sizes and actual invoice costs against supplier invoices before changing the catalogue. Do not globally replace 100L kegs or overwrite historical count units; the same drink may arrive in different keg sizes.
 
+Supplier price preference: “any non Molson coors products use LWC Priceing but any Molson Coors use Molson pricing”.
+
+**Why:** this is the owner's explicit instruction when providing both supplier invoices; do not choose a cheaper supplier automatically.
+
+**How to apply:** distinguish brewery-owned brands from third-party products sold by Molson Coors when resolving overlap. Free promotional lines and container-control lines are not normal replacement purchase costs.
+
 ## Reconciliation boundaries and missing counts
 Estimated live levels must not overwrite physical counts or write quantities back to Square.
 
