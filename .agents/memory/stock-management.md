@@ -48,6 +48,12 @@ Alternate keg sizes belong to one stock identity with pack-to-count-unit convers
 
 **Why:** the same drink is purchased in 50L and 100L packs but sold through the same pint/half-pint variations; separate mapped stock items would duplicate deductions.
 
+Existing production link collisions require explicit reconciliation; new duplicate-write safeguards are not proof that historical links are unique.
+
+**Why:** the read-only live audit found conflicting assignments across duplicate records and across keg, bottled and alcohol-free products, with count/delivery history spread over different copies.
+
+**How to apply:** audit both current link rows and legacy fallback assignments before cleanup. Preserve and reconcile historical quantities, clear obsolete ownership in both representations, and confirm measure sizes before enforcing uniqueness. Never simply delete the duplicate records.
+
 **How to apply:** preserve historical count units, add purchase packs, and never import uploaded invoice quantities as deliveries without an explicit delivery-entry action.
 
 ## Reconciliation boundaries and missing counts

@@ -54,6 +54,7 @@ artifacts/api-server/.membership-billing-test-*/
 artifacts/api-server/backups/
 
 # Firebase — contains credentials, never commit
+/generated-artifacts/
 google-services.json
 GoogleService-Info.plist
 attached_assets/google-services*.json

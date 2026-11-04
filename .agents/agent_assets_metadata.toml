@@ -71,3 +71,32 @@ id = "Rx-6UNyBeSwY3ILmJBvcK"
 uri = "file://the-147-kiosk-standalone.zip"
 type = "unspecified"
 title = "The 147 Kiosk — Standalone Project"
+logical_id = "448ab2b1-3187-4db6-a56b-f34edcabe035"
+
+[[outputs]]
+id = "ugTUktqS-45vc5f5vECAZ"
+uri = "file://generated-artifacts/stock-audit/stock-square-audit.html"
+type = "html"
+title = "Full live stock and Square audit"
+description = "Read-only audit of all 286 stock records, 808 Square variations, 42 invoice lines and 30 days of sales. Includes affected products and a history-preserving repair plan."
+logical_id = "a6f65851-b5b7-4809-8a98-6d1776827777"
+content_hash = "sha256:daa1c7bb9f04dee1fa2d2ab0886b921adc8b0d1363ba433b4a8c7d9ba54e9411"
+size = 224792
+mtime_ms = 1793824916672
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:13dec2e5-79f6-42cb-8e2a-5f1bb4d13e63/a6f65851-b5b7-4809-8a98-6d1776827777/0c1d2c9b-3b9a-40a8-ac2c-c9a6bc85c9e8"
+storage_version_token = "1793824949686803"
+content_type = "text/html"
+
+[[outputs]]
+id = "_TI6LswG3foPs-RaLRfdU"
+uri = "file://generated-artifacts/stock-audit/stock-links-audit.csv"
+type = "table"
+title = "Stock-link audit spreadsheet"
+description = "Every stock record and its current Square links, conversion factors, sales quantities, history usage and audit findings."
+logical_id = "afb381bd-ad1d-4a3c-83ee-5b983a4087a0"
+content_hash = "sha256:4c2cca7fbf4519270becae84b52757252a3ce3089d7724b6002e65dec700c58a"
+size = 33164
+mtime_ms = 1793824916638
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:13dec2e5-79f6-42cb-8e2a-5f1bb4d13e63/afb381bd-ad1d-4a3c-83ee-5b983a4087a0/cd2dd247-8048-4e14-bf76-ec950ec62df5"
+storage_version_token = "1793824950466706"
+content_type = "text/csv"
